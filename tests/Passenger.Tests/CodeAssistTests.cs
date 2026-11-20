@@ -1477,6 +1477,38 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
+    /// <summary>Go to Implementation of a member with several implementations lists them in the popup Show Usages lists usages
+    /// in, titled by what they are, narrowed by a file's name or code as it is typed, with its link handing them to the Find
+    /// window.</summary>
+    [AvaloniaFact]
+    public void Go_to_implementation_lists_several_in_the_popup_show_usages_does_narrowed_by_typing_and_handed_to_the_find_window()
+    {
+        MainWindow window = project.Open("Separated.cs");
+        try
+        {
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "    int Val");
+            Ui.Run(window, AppActions.GoToImplementation);
+            Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 2 }, () => $"the two implementations in the popup Show Usages uses ({window.Status})");
+            UsagesPopup popup = (UsagesPopup)window.Popup!;
+            Assert.True(popup.Title.StartsWith("Implementations", StringComparison.Ordinal) && popup.Title.EndsWith("2 implementations", StringComparison.Ordinal),
+                $"The implementations' popup is titled \"{popup.Title}\", not by what it lists and how many");
+            UiRulesTests.HoldsToPopupRules("Go to Implementation", PopupFrame.FrameOf(popup)!);
+
+            window.KeyTextInput("Separators");
+            Ui.WaitFor(() => popup.Rows.Count == 1, () => $"the implementations narrowed to the one whose code names Separators ({popup.Rows.Count} rows)");
+            Assert.Equal(13, popup.Rows[0].Line);
+
+            Ui.Click(popup.FindWindow);
+            Ui.WaitFor(() => window.Find.Shown?.StartsWith("Implementations", StringComparison.Ordinal) == true && window.Find.Rows.Count(r => r.Usage is not null) == 2,
+                () => $"both implementations listed in the Find window, which shows {window.Find.Shown}");
+            Assert.True(window.Popup is null, "The popup stayed open once its implementations went to the Find window");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The server counts a line at each break in Separators.cs's and Separated.cs's comments that the editor does
     /// not, so a place it names is read in the file's own text, a file not open as it is on disk: Go to Symbol's rows, Go to
     /// Declaration and Implementation, what an agent asks of the code, and the lines an agent's refactoring changed.</summary>
@@ -1510,14 +1542,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Ui.PlaceAfter(editor, "    int Val");
         Ui.Run(window, AppActions.GoToImplementation);
-        Ui.WaitFor(() => window.Assist.Offered.Count == 2, "the two implementations to choose from");
-        Assert.Equal(["Separated.cs:14", "Separated.cs:9"], window.Assist.Offered.Order(StringComparer.Ordinal));
-        Assert.Contains("public int Value() => 1;", window.Assist.OfferedDetails);
-        int second = window.Assist.Offered.ToList().IndexOf("Separated.cs:14");
-        for (int i = 0; i < second; i++)
-        {
-            Ui.Press(window, "DOWN");
-        }
+        Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 2 }, () => $"the two implementations to choose from ({window.Status})");
+        UsagesPopup implementations = (UsagesPopup)window.Popup!;
+        Assert.Equal([(8, "public int Value() => 1;"), (13, "public int Value() => Separators.Value();")], implementations.Rows.Select(u => (u.Line, u.LineText.Trim())));
+        Ui.Press(window, "DOWN");
         Ui.Press(window, "ENTER");
         Ui.Settle();
         Assert.Equal("    public int |Value() => Separators.Value();", XamlTests.CaretLine(editor));

@@ -30,7 +30,16 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             }
             try
             {
-                Go(await CopiedAsync(await lsp.ImplementationAsync(offset)), offset, "Implementations", "No implementations found");
+                string name = context.NameAt(offset);
+                IReadOnlyList<LspLocation> found = await CopiedAsync(await lsp.ImplementationAsync(offset));
+                if (found.Count < 2)
+                {
+                    Go(found, offset, "Implementations", "No implementations found");
+                    return;
+                }
+                // The same list as Show Usages', in the popup or the Find window, as Find Usages' results are kept.
+                context.ShowUsages(name.Length > 0 ? $"Implementations of {name}" : "Implementations", found, context.KeepsPlaces() ? null : offset,
+                    noun: "implementation", kinds: false);
             }
             catch (LanguageServerFailed failed)
             {
@@ -103,7 +112,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
         try
         {
-            IReadOnlyList<LspLocation> served = await lsp.ReferencesAsync(offset);
+            IReadOnlyList<LspLocation> served = await ImplementedReferences.WithoutAsync(lsp, offset, await lsp.ReferencesAsync(offset));
             // A Godot member's uses by its other names hold those of the generated one the offset may be on, which the server found too.
             IReadOnlyList<LspLocation> usages = [.. served, .. await context.Languages.Xaml.CodeUsesAsync(shown, lsp, offset),
                 .. DocumentUris.Besides(await context.Languages.CSharp.GodotUsesAsync(shown, lsp, offset), served)];

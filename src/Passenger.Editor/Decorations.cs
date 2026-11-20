@@ -11,11 +11,15 @@ public enum LineAnnotationLook
 
     /// <summary>In the error colour, italic, on a tinted ground that sets it apart from the rest.</summary>
     ErrorOnGround,
+
+    /// <summary>A hint the pointer may press (Code Spyglass's usages and authors): muted, and given to <see cref="CodeEditor.AnnotationPressed"/>
+    /// when pressed.</summary>
+    Spyglass,
 }
 
 /// <summary>Text drawn after a line's (from zero) code, part of no document: never selected, copied or
-/// typed over.</summary>
-public readonly record struct LineAnnotation(int Line, string Text, LineAnnotationLook Look);
+/// typed over. <see cref="Data"/> is what the host knows it by, for its press and its hover card.</summary>
+public readonly record struct LineAnnotation(int Line, string Text, LineAnnotationLook Look, object? Data = null);
 
 /// <summary>A stretch that folds: from <see cref="Start"/>, the end of its first line's code where its placeholder
 /// stands while folded, to <see cref="End"/>; folded, the lines after the first are hidden. Its kind says whether it

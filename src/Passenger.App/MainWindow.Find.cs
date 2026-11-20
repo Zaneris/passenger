@@ -134,7 +134,7 @@ public partial class MainWindow
         }
         if (found.PopupAt is { } at && usagesAsked is { Focused: CodeEditor editor } asked && asked.Stands(popups))
         {
-            ShowUsagesPopup(editor, at, title, usages, note);
+            ShowUsagesPopup(editor, at, title, usages, note, found.Noun, found.Kinds);
             return;
         }
         ShowInFind(title, usages, note);
@@ -142,9 +142,9 @@ public partial class MainWindow
 
     /// <summary>Show Usages' popup under the offset it was asked at: a usage chosen is gone to, and Open in Find Window
     /// lists them there.</summary>
-    private void ShowUsagesPopup(CodeEditor editor, int at, string title, IReadOnlyList<Usage> usages, string? note)
+    private void ShowUsagesPopup(CodeEditor editor, int at, string title, IReadOnlyList<Usage> usages, string? note, string noun, bool kinds)
     {
-        Navigation.UsagesPopup popup = new(title, usages, note);
+        Navigation.UsagesPopup popup = new(title, usages, note, noun, kinds);
         popup.FindWindowRequested += (_, _) =>
         {
             popups.Close();

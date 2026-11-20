@@ -370,6 +370,9 @@ public sealed class CodeAssist
     /// <summary>A value read for the card at an offset of the file shown, its row taking the keys (Quick Evaluate Expression).</summary>
     public void ShowValue(int offset, DebuggerHover value) => quickInfo.ShowValue(offset, value);
 
+    /// <summary>Goes to a place the language server named.</summary>
+    public void Arrive(LspLocation location) => navigation.Arrive(location);
+
     /// <summary>What the hover card says of a line-end annotation of the file shown (<see cref="QuickInfo.AnnotationCard"/>).</summary>
     internal Func<LineAnnotation, IHoverCard, bool>? AnnotationCard
     {
@@ -807,8 +810,9 @@ public sealed class CodeAssist
 }
 
 /// <summary>Find Usages' answer: what was searched for, where it is used, what the answer went without, and, for Show
-/// Usages, the offset its popup opens at.</summary>
-public sealed record UsagesFound(string Title, IReadOnlyList<LspLocation> Usages, string? Note, int? PopupAt);
+/// Usages, the offset its popup opens at. <see cref="Noun"/> names what the places are ("usage", "implementation"), and
+/// <see cref="Kinds"/> whether each says what it does where it is, which only a usage does.</summary>
+public sealed record UsagesFound(string Title, IReadOnlyList<LspLocation> Usages, string? Note, int? PopupAt, string Noun = "usage", bool Kinds = true);
 
 /// <summary>What the debugger's hover card says of what the pointer rests on: its value as code, and what went wrong reading
 /// it (a binding that failed), said first in the error colour; a value with members as its row instead (<see cref="Values"/>).</summary>

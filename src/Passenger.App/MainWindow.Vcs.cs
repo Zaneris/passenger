@@ -756,10 +756,16 @@ public partial class MainWindow
         {
             return;
         }
+        await ShowCommitAsync(lines[line]);
+    }
+
+    /// <summary>A commit chosen in the Git window's log, and said in the status bar.</summary>
+    private async Task ShowCommitAsync(BlameLine commit)
+    {
         ShowToolWindow(ToolWindowIds.Git);
         GitWindow.ShowLog();
-        await GitLog.SelectHashAsync(lines[line].Hash);
-        status.Text = $"{lines[line].Short} {lines[line].Summary} ({lines[line].Author}, {lines[line].Time.ToLocalTime():f})";
+        await GitLog.SelectHashAsync(commit.Hash);
+        status.Text = $"{commit.Short} {commit.Summary} ({commit.Author}, {commit.Time.ToLocalTime():f})";
     }
 
     /// <summary>The gutter menu where no breakpoint is, or on a line holding lambdas: the line's breakpoints given first, then

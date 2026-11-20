@@ -216,6 +216,12 @@ public sealed partial class CodeEditor
             return;
         }
         Focus();
+        if (left && point.Position.X >= GutterWidth && PressedAnnotation(point.Position) is { } pressedHint)
+        {
+            e.Handled = true;
+            AnnotationPressed?.Invoke(this, pressedHint);
+            return;
+        }
         if (left && point.Position.X >= GutterWidth && ClickChoice(OffsetAt(point.Position)))
         {
             e.Handled = true;

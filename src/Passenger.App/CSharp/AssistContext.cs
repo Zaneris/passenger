@@ -216,8 +216,8 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
 
     /// <summary>Find Usages' answer, for the Find window, or Show Usages' for its popup at an offset: what was searched for,
     /// where it is used, and what the answer went without, when it did.</summary>
-    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, int? popupAt, string? note = null) =>
-        UsagesFound?.Invoke(this, new UsagesFound(title, usages, note, popupAt));
+    public void ShowUsages(string title, IReadOnlyList<LspLocation> usages, int? popupAt, string? note = null, string noun = "usage", bool kinds = true) =>
+        UsagesFound?.Invoke(this, new UsagesFound(title, usages, note, popupAt, noun, kinds));
 
     /// <summary>How the window runs a change of files beyond the open ones (<see cref="ChangeFilesAsync"/>).</summary>
     public Func<IReadOnlyCollection<string>, CommandHistory.Recording, Action, Task>? FilesChanging { get; set; }

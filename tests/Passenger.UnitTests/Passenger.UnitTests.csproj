@@ -270,6 +270,9 @@
        Avalonia. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.Languages/CSharp/TypeHints.cs" Link="Languages/TypeHints.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/SpyglassDeclarations.cs" Link="Languages/SpyglassDeclarations.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/SpyglassReading.cs" Link="Languages/SpyglassReading.cs" />
+    <Compile Include="../../src/Passenger.Languages/CSharp/ReferencePlaces.cs" Link="Languages/ReferencePlaces.cs" />
   </ItemGroup>
 
   <!-- A C# card's code from the server's parts and the editor's kinds for their token types, compiled in since their

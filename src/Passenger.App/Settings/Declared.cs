@@ -174,6 +174,29 @@ public static class Declared
     public static readonly ToggleSetting TypeHints = new(s => s.TypeHints, (s, v) => s with { TypeHints = v },
         new(D.EditorPage, "Show type name hints", "inlay hints type names var lambda parameters new inferred"));
 
+    public static readonly ToggleSetting CodeSpyglass = new(s => s.CodeSpyglass, (s, v) => s with { CodeSpyglass = v },
+        new(D.EditorPage, "Show Code Spyglass hints", "code spyglass lens usages references implementations overrides authors blame inheritors declarations hints",
+            "After each C# type and member's declaration: how many places use it, what implements or overrides it and who last "
+            + "changed it. A hint is pressed to see them."));
+
+    public static readonly ToggleSetting CodeSpyglassUsages = new(s => s.CodeSpyglassUsages, (s, v) => s with { CodeSpyglassUsages = v },
+        new(D.EditorPage, "Code Spyglass: show usages", "code spyglass usages references count")
+        {
+            When = new SettingWhen(s => s.CodeSpyglass, "Code Spyglass is off"),
+        });
+
+    public static readonly ToggleSetting CodeSpyglassInheritors = new(s => s.CodeSpyglassInheritors, (s, v) => s with { CodeSpyglassInheritors = v },
+        new(D.EditorPage, "Code Spyglass: show implementations and overrides", "code spyglass implementations overrides inheritors interface abstract virtual")
+        {
+            When = new SettingWhen(s => s.CodeSpyglass, "Code Spyglass is off"),
+        });
+
+    public static readonly ToggleSetting CodeSpyglassAuthors = new(s => s.CodeSpyglassAuthors, (s, v) => s with { CodeSpyglassAuthors = v },
+        new(D.EditorPage, "Code Spyglass: show authors", "code spyglass authors git blame last changed who")
+        {
+            When = new SettingWhen(s => s.CodeSpyglass, "Code Spyglass is off"),
+        });
+
     public static readonly ToggleSetting SoftWrapIndent = new(s => s.SoftWrapIndent, (s, v) => s with { SoftWrapIndent = v },
         new(D.EditorPage, "Use the original line's indent for wrapped fragments", "soft wrap wrapped indent indentation fragments"));
 

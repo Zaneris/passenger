@@ -43,6 +43,38 @@ public sealed class LineAnnotationTests
         Assert.True(heard.Count == before, $"Past the end of a line with no annotation the editor said the pointer rests on {heard[^1].Annotation?.Text ?? "code"}");
     }
 
+    /// <summary>A press on a Spyglass hint is told to whoever hears of it, with the hint, and takes the press: the caret stays
+    /// where it was and the text is unchanged. A press on any other annotation, or on a hint nobody hears of, is a press on
+    /// the line's text as ever.</summary>
+    [AvaloniaFact]
+    public void A_press_on_a_spyglass_hint_is_told_with_the_hint_and_moves_no_caret_where_any_other_annotation_leaves_it_to_the_text()
+    {
+        const string Code = "int frames = 0;\nfloat speed = 1;\n";
+        EditorRig rig = new(Code);
+        CodeEditor editor = rig.Editor;
+        LineAnnotation hint = new(0, "3 usages", LineAnnotationLook.Spyglass, "the hint's data");
+        LineAnnotation plain = new(1, "speed: 312.5", LineAnnotationLook.Muted);
+        editor.SetLineAnnotations([hint, plain]);
+        Ui.Settle();
+        List<LineAnnotation> pressed = [];
+        editor.AnnotationPressed += (_, annotation) => pressed.Add(annotation);
+        rig.PlaceCaret(10);
+
+        Ui.Click(editor, editor.AnnotationBox(hint.Line, hint.Text)!.Value.Center);
+        Assert.True(pressed.Count == 1 && pressed[0] == hint, $"A press on the hint was told as {pressed.Count} presses, the first of {(pressed.Count == 0 ? "none" : pressed[0].Text)}");
+        Assert.True(rig.Caret == 10 && rig.Text == Code, $"A press on the hint left the caret at {rig.Caret}, not 10, or changed the text");
+
+        Ui.Click(editor, editor.AnnotationBox(plain.Line, plain.Text)!.Value.Center);
+        Assert.True(pressed.Count == 1, "A press on an annotation that is no hint was told as a press on one");
+        Assert.True(rig.Caret >= rig.Document.Snapshot.GetLineStart(1), $"A press on an annotation that is no hint left the caret at {rig.Caret}, not on its line");
+
+        EditorRig deaf = new(Code);
+        deaf.Editor.SetLineAnnotations([hint]);
+        Ui.Settle();
+        Ui.Click(deaf.Editor, deaf.Editor.AnnotationBox(hint.Line, hint.Text)!.Value.Center);
+        Assert.True(deaf.Caret == deaf.Document.Snapshot.GetLine(0).Length, $"A press on a hint nobody hears of left the caret at {deaf.Caret}, not at the end of its line");
+    }
+
     /// <summary>A scroll a pixel at a time over a screen of annotated lines allocates on the UI thread, above the same scroll
     /// with none, only what each annotation's drawing records (a few hundred bytes), a small part of what laying them out
     /// did once.</summary>

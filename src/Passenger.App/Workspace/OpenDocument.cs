@@ -31,6 +31,8 @@ public sealed class OpenDocument : Observable
     /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
+    private IReadOnlyList<LineAnnotation> codeSpyglass = [];
+    private AnchoredLine[] spyglassLines = [];
     private IReadOnlyList<SceneMark> sceneMarks = [];
 
     /// <summary>The line of each of <see cref="sceneMarks"/>, carried by the text.</summary>
@@ -291,6 +293,10 @@ public sealed class OpenDocument : Observable
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
             if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+            if (codeSpyglass.Count > 0 && Set(ref codeSpyglass, Carried(codeSpyglass, spyglassLines), nameof(CodeSpyglass)))
             {
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
@@ -742,6 +748,21 @@ public sealed class OpenDocument : Observable
         }
     }
 
+    /// <summary>Code Spyglass's hints after the lines that declare a type or member (the window's Code Spyglass), shown
+    /// after the rest and carried with their lines as the text is edited.</summary>
+    public IReadOnlyList<LineAnnotation> CodeSpyglass
+    {
+        get => codeSpyglass;
+        set
+        {
+            spyglassLines = Anchored(value, spyglassLines);
+            if (Set(ref codeSpyglass, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
+
     /// <summary>The lines of annotations, anchored in the text, those of the ones they replace let go.</summary>
     private AnchoredLine[] Anchored(IReadOnlyList<LineAnnotation> annotations, AnchoredLine[] replaced)
     {
@@ -773,11 +794,11 @@ public sealed class OpenDocument : Observable
         return moved ?? annotations;
     }
 
-    /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values, a run's errors
-    /// and its failed steps' words.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
+    /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values, a run's errors,
+    /// its failed steps' words and Code Spyglass's hints.</summary>
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 && codeSpyglass.Count == 0 ? lineAnnotations
         : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
-            .. stepMarks.Where(m => m.Failure is not null).Select(m => new LineAnnotation(m.Line, m.Failure!, LineAnnotationLook.Error))];
+            .. stepMarks.Where(m => m.Failure is not null).Select(m => new LineAnnotation(m.Line, m.Failure!, LineAnnotationLook.Error)), .. codeSpyglass];
 
     private IReadOnlyList<Editors.ErrorPin> errorPins = [];
 
