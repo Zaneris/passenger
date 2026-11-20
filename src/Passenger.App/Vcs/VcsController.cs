@@ -74,15 +74,32 @@ public sealed class VcsController : IDisposable
             if (signOff != value)
             {
                 signOff = value;
-                SignOffChanged?.Invoke(this, EventArgs.Empty);
+                KeptChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }
 
     private bool signOff;
 
-    /// <summary>Raised when <see cref="SignOff"/> changes, for the folder to keep it.</summary>
-    public event EventHandler? SignOffChanged;
+    /// <summary>Whether the Commit window lists its files under their folders, as the folder keeps it (Group by
+    /// Directory).</summary>
+    public bool GroupsByDirectory
+    {
+        get => groupsByDirectory;
+        set
+        {
+            if (groupsByDirectory != value)
+            {
+                groupsByDirectory = value;
+                KeptChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private bool groupsByDirectory;
+
+    /// <summary>Raised when <see cref="SignOff"/> or <see cref="GroupsByDirectory"/> changes, for the folder to keep them.</summary>
+    public event EventHandler? KeptChanged;
 
     /// <summary>Why git cannot read the folder's repository: it refused the one the folder is in (one another user owns,
     /// until safe.directory names it), in git's words, or it is not installed (<see cref="GitMissing"/>); null when it

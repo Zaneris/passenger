@@ -1009,6 +1009,7 @@ public partial class MainWindow : IdeWindow
         session.Tests.Keep(opening.UnitTestResults.Value.Methods);
         branchFavorites = opening.GitBranches.Value;
         session.Vcs.SignOff = opening.Commit.Value.SignOff;
+        session.Vcs.GroupsByDirectory = opening.Commit.Value.GroupsByDirectory;
         if (gitView?.Log.Branches is { } branches)
         {
             branches.Favorites = branchFavorites;
