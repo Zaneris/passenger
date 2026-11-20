@@ -286,16 +286,20 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     /// <summary>The runtime's own tiering worker, which runs none of the program's code, is not held while an evaluation
     /// runs, where held it would stand partway through compiling a method, inside the load of a type or the check of a
     /// call to inline, and an evaluation needing what it held there would wait past its time. An evaluation that has it
-    /// compile a method again sees it do so, and the type that compile loads is there for the next.</summary>
-    [Fact]
-    public async Task An_evaluation_leaves_the_runtimes_tiering_worker_running_so_what_it_compiles_meanwhile_holds_none_up()
+    /// compile a method again sees it do so, and the type that compile loads is there for the next: on the program's own
+    /// .NET and on the newest installed, each giving its worker a name of its own.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task An_evaluation_leaves_the_runtimes_tiering_worker_running_so_what_it_compiles_meanwhile_holds_none_up(bool onNewestRuntime)
     {
         Assert.SkipWhen(OperatingSystem.IsMacOS(), "macOS keeps no name the runtime gives its tiering worker, the only word of it the debugger has, so an evaluation holds it there with the rest");
         const string looping = "LoopingConsoleApp";
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
             .InitializeAsync()
-            .LaunchAsync(Debuggees.Program(looping), stopAtEntry: false, justMyCode: true, arguments: ["tiers"], environment: Tiering)
+            .LaunchAsync(Debuggees.Program(looping), stopAtEntry: false, justMyCode: true, arguments: ["tiers"],
+                environment: onNewestRuntime ? new Dictionary<string, string>(Tiering.Concat(Debuggees.NewestRuntime)) : Tiering)
             .WaitForInitializedEvent();
         await host.BreakpointsAsync(Debuggees.Line(looping, "Console.WriteLine(\"tiers\");"), Debuggees.Source(looping, "Program.cs")).ConfigurationDoneAsync();
         StoppedEvent stop = await host.WaitForStoppedEvent();
@@ -305,6 +309,10 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.True(warm.Result == "true", $"The tiering worker compiled nothing in the 2 s of an evaluation that called a method past its count ({warm.Result}): the evaluation held it partway; the engine's log:\n{host.EngineLog()}");
         EvaluateResponse rare = await host.EvaluateAsync(frame, "MakeOptimizedRare()");
         Assert.True(rare.Result == "2", $"The evaluation needing the type the tiering worker loaded was answered {rare.Result}");
+        if (onNewestRuntime)
+        {
+            Assert.Equal("true", (await host.EvaluateAsync(frame, Debuggees.RunsOnNewestRuntime)).Result);
+        }
     }
 
     /// <summary>The finalizer is held while an evaluation runs, before it runs any of the program's code: an evaluation that

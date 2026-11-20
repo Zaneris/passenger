@@ -7,12 +7,12 @@ namespace Passenger.Debugger;
 /// <summary>The runtime's own threads an evaluation leaves running while it holds the program's: its tiering worker, which
 /// runs none of the program's code and, held, stands partway through compiling a method, inside a type's load or the
 /// check of a call to inline, holding what an evaluation may need. Nothing the debugger reads of the runtime says which
-/// thread it is, so it is told by the name the runtime gives it, which Windows and Linux keep; macOS keeps no name one
+/// thread it is, so it is told by the name its runtime gives it, which Windows and Linux keep; macOS keeps no name one
 /// thread gives another, so there it is held with the rest.</summary>
 internal static partial class RuntimeThreads
 {
-    /// <summary>The name the runtime gives its tiering worker.</summary>
-    private const string TieringWorker = ".NET Tiered Compilation Worker";
+    /// <summary>The names runtimes give their tiering worker: .NET 11's, and .NET 10's and earlier.</summary>
+    private static readonly string[] TieringWorkerNames = [".NET Tiered JIT", ".NET Tiered Compilation Worker"];
 
     /// <summary>How much of a thread's name Linux keeps.</summary>
     private const int LinuxNameLength = 15;
@@ -22,8 +22,8 @@ internal static partial class RuntimeThreads
 
     /// <summary>Whether the thread of this id in the process of this id, both the system's, is the runtime's tiering worker.</summary>
     public static bool IsTieringWorker(int processId, int threadId) =>
-        OperatingSystem.IsWindows() ? NameOnWindows(processId, threadId) == TieringWorker
-        : OperatingSystem.IsLinux() && NameOnLinux(processId, threadId) == TieringWorker[..LinuxNameLength];
+        OperatingSystem.IsWindows() ? NameOnWindows(processId, threadId) is { } name && TieringWorkerNames.Contains(name)
+        : OperatingSystem.IsLinux() && NameOnLinux(processId, threadId) is { } kept && TieringWorkerNames.Any(name => name[..Math.Min(name.Length, LinuxNameLength)] == kept);
 
     /// <summary>A thread's name as the process gave it, null where the thread is gone, another process's, or unnamed.</summary>
     [SupportedOSPlatform("windows")]
