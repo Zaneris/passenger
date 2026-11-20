@@ -59,7 +59,7 @@ jobs:
             name: macOS (arm64)
             os: macos-latest
             time_scale: 2
-            processes: 1
+            processes: 2
           - system: Windows
             name: Windows (x64)
             os: windows-latest
