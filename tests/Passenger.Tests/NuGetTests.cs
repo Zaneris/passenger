@@ -1089,7 +1089,7 @@ public sealed class NuGetTests : IDisposable
         Choose(nuget, "1.5.0");
         Ui.WaitFor(() => Said(nuget).Count == 1 && Said(nuget)[0].Contains("1.5.0", StringComparison.Ordinal),
             () => $"1.5.0, deprecated as Lib's 1.0.0 is, to be said with it: [{string.Join(" | ", Said(nuget))}], {nuget.ChosenVersion} chosen of "
-                + $"{nuget.Versions.Count} versions, the window {(nuget.IsShown ? "shown" : "hidden")}");
+                + $"{nuget.Versions.Count} versions, the window {(nuget.IsShown ? "shown" : "hidden")}, 1.5.0's deprecation {Read(nuget, Legacy, "1.5.0")}");
         Assert.Equal(["1.0.0 and 1.5.0 are deprecated: critical bugs."], Said(nuget));
 
         Choose(nuget, "1.2.0");
@@ -1100,6 +1100,12 @@ public sealed class NuGetTests : IDisposable
         static List<string> Said(NuGetView nuget) =>
             [.. nuget.GetLogicalDescendants().OfType<Border>().Where(b => b.Name is "Deprecation" or "ChosenDeprecation")
                 .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
+
+        // What the folder's packages know of a version's deprecation, and whether their sources are the folder's own.
+        static string Read(NuGetView nuget, string id, string version) =>
+            (nuget.Packages.DeprecationOf(id, version) is not null ? "read" : nuget.Packages.DeprecationsUnknown([(id, version)]) is { Count: > 0 } unread
+                ? $"unread, {string.Join(", ", unread)} not answering" : "not read or still being read")
+            + $", the sources {(nuget.Packages.IsCurrent ? "current" : "not current")}";
     }
 
     /// <summary>A version chosen in a package's details while the feed has not yet answered whether it is deprecated stays
