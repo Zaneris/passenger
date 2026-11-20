@@ -39,6 +39,10 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     private bool empty;
     private double drawnAt;
 
+    /// <summary>Whether the host on the connection has said its session started, so it hears what is sent: until then it is
+    /// still setting up, holding what comes and handing it over in a race that may lose a message or give it out of order.</summary>
+    private bool session;
+
     /// <summary>The texts sent and not yet answered, in order, as the host answers them: what an answer's line is read in.</summary>
     private readonly Queue<TextSnapshot> unanswered = new();
 
@@ -107,7 +111,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     private async Task RunAsync(string designer)
     {
         int port = WebAddress.FreeLoopbackPort();
-        listening = new BsonTcpTransport().Listen(IPAddress.Loopback, port, UiThread.Marshal<IAvaloniaRemoteTransportConnection>(Connected));
+        listening = new BsonTcpTransport().Listen(IPAddress.Loopback, port, Accepted);
         string folder = Path.GetDirectoryName(output)!;
         string name = Path.GetFileNameWithoutExtension(output);
         ProcessStartInfo start = ChildProcesses.DotnetCommand(["exec", "--runtimeconfig", Path.Combine(folder, name + ".runtimeconfig.json"),
@@ -144,7 +148,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
 
     public void Update()
     {
-        if (connection is not { } open || disposed)
+        if (connection is not { } open || !session || disposed)
         {
             return;
         }
@@ -161,7 +165,7 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
     /// window drawn to draw again: none before its first frame, after a load it refused or at 0 × 0.</summary>
     public void Rescale(double scaling)
     {
-        if (connection is not { } open || disposed)
+        if (connection is not { } open || !session || disposed)
         {
             return;
         }
@@ -174,14 +178,11 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         IdeErrors.Observe(open.Send(new ClientRenderInfoMessage { DpiX = dpi, DpiY = dpi }));
     }
 
-    private void Connected(IAvaloniaRemoteTransportConnection opened)
+    /// <summary>A connection as the listener makes it, on its thread: heard from at once, as a message coming before its
+    /// handler waits for one and is handed over in a race that may lose it; taken on the window's thread before anything it says.</summary>
+    private void Accepted(IAvaloniaRemoteTransportConnection opened)
     {
-        if (disposed)
-        {
-            opened.Dispose();
-            return;
-        }
-        connection = opened;
+        UiThread.Post(() => Connected(opened));
         opened.OnMessage += (_, message) => UiThread.Post(() => Received(opened, message));
         // A connection broken by the previewer's end says nothing over the end's own words, whichever is heard first.
         opened.OnException += (_, error) => UiThread.Post(() =>
@@ -192,9 +193,27 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
             }
         });
         opened.Start();
+    }
+
+    /// <summary>The connection the host made, to which nothing is sent until its session starts (<see cref="Begin"/>).</summary>
+    private void Connected(IAvaloniaRemoteTransportConnection opened)
+    {
+        if (disposed)
+        {
+            opened.Dispose();
+            return;
+        }
+        connection = opened;
+        session = false;
+    }
+
+    /// <summary>The host's session started, so it hears what comes: what it draws in and at, and the file, sent.</summary>
+    private void Begin(IAvaloniaRemoteTransportConnection open)
+    {
+        session = true;
         double dpi = 96 * preview.Scaling;
-        IdeErrors.Observe(opened.Send(new ClientSupportedPixelFormatsMessage { Formats = [RemoteFormat.Bgra8888, RemoteFormat.Rgba8888] }));
-        IdeErrors.Observe(opened.Send(new ClientRenderInfoMessage { DpiX = dpi, DpiY = dpi }));
+        IdeErrors.Observe(open.Send(new ClientSupportedPixelFormatsMessage { Formats = [RemoteFormat.Bgra8888, RemoteFormat.Rgba8888] }));
+        IdeErrors.Observe(open.Send(new ClientRenderInfoMessage { DpiX = dpi, DpiY = dpi }));
         Update();
     }
 
@@ -206,6 +225,9 @@ internal sealed class AvaloniaPreviewHost : IPreviewHost
         }
         switch (message)
         {
+            case StartDesignerSessionMessage when !session:
+                Begin(from);
+                break;
             case RequestViewportResizeMessage resize:
                 // Never answered: an answer lays out a root sized to its content again, which asks again.
                 empty = resize.Width < 1 || resize.Height < 1;

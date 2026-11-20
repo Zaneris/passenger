@@ -2999,6 +2999,172 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
+    /// <summary>A previewer is sent nothing until it says its session started, after setting itself up: what it is told
+    /// while it sets up it holds until it listens, then hands over in a race that may lose a message or give it out of order.
+    /// A stand-in on the preview's port hears nothing as it connects, then the formats, the scale and the file once it says
+    /// its session started, and the frame it answers with is drawn.</summary>
+    [AvaloniaFact]
+    public void A_previewer_is_sent_nothing_until_it_says_its_session_started()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"), languageServer: false);
+        OpenDocument document = window.EditorArea.Active!;
+        Ui.Run(window, AppActions.Build);
+        Ui.Settle();
+        using (StandInPreviewer standIn = StandInPreviewer.InPlaceOf(window, document))
+        {
+            Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document)!;
+            Ui.Hold(TimeSpan.FromSeconds(1), "what is sent as a previewer connects to reach it");
+            Assert.True(standIn.Heard.Count == 0, $"Passenger sent the previewer {string.Join(", ", standIn.Heard.Select(m => m.GetType().Name))} before it said its "
+                + "session started, which a previewer still setting itself up holds and hands over in a race that may lose one or give it out of order");
+            standIn.Begin();
+            Ui.WaitFor(() => preview.Frame is not null && Math.Abs(preview.FrameSize.Width - StandInPreviewer.WidthOf(1)) < 0.5,
+                () => $"the stand-in's frame drawn, where the preview says '{preview.Status}' and the stand-in heard {string.Join(", ", standIn.Heard.Select(m => m.GetType().Name))}");
+            Assert.Equal([nameof(Avalonia.Remote.Protocol.Viewport.ClientSupportedPixelFormatsMessage), nameof(Avalonia.Remote.Protocol.Viewport.ClientRenderInfoMessage),
+                nameof(Avalonia.Remote.Protocol.Designer.UpdateXamlMessage)], standIn.Heard.Take(3).Select(m => m.GetType().Name));
+        }
+        // XAML Preview is kept on for the next window, which the class's other tests open with it off.
+        Assert.True(window.Perform(AppActions.XamlPreview) && window.PreviewOf(document) is null, "XAML Preview stayed on");
+        window.Close();
+    }
+
+    /// <summary>A previewer of the test's own on the preview's port, the real one stopped as it starts: what Passenger sends
+    /// it is kept, and it answers each load as Avalonia's previewer does, with a frame of a new window as wide as the load's
+    /// number says (<see cref="WidthOf"/>), drawn at the scale last asked; a load after the first it meets first with a frame
+    /// of the window the load replaces, as one drawn before the load reached it, and answers a moment later.</summary>
+    private sealed class StandInPreviewer : IDisposable
+    {
+        /// <summary>How long a load after the first waits for its answer, after the replaced window's frame.</summary>
+        private static readonly TimeSpan Replacing = TimeSpan.FromSeconds(2);
+
+        private readonly Avalonia.Remote.Protocol.IAvaloniaRemoteTransportConnection connection;
+        private readonly List<object> heard = [];
+        private readonly List<Task> sent = [];
+        private int loads;
+        private long sequence;
+        private double dpi = 96;
+
+        private StandInPreviewer(Avalonia.Remote.Protocol.IAvaloniaRemoteTransportConnection connection)
+        {
+            this.connection = connection;
+            connection.OnMessage += (_, message) => Answer(message);
+        }
+
+        /// <summary>What Passenger sent, in order.</summary>
+        public IReadOnlyList<object> Heard
+        {
+            get
+            {
+                lock (heard)
+                {
+                    return [.. heard];
+                }
+            }
+        }
+
+        /// <summary>The loads Passenger has sent.</summary>
+        public int Loads => Volatile.Read(ref loads);
+
+        /// <summary>The width, in units, of the window a load makes.</summary>
+        public static int WidthOf(int load) => 80 + (40 * load);
+
+        /// <summary>Turns XAML Preview on, stops the previewer it starts as it starts, and connects in its place.</summary>
+        public static StandInPreviewer InPlaceOf(MainWindow window, OpenDocument document)
+        {
+            int port = 0;
+            void OnStarted(object? sender, ChildStart start)
+            {
+                if (start.Command.Contains("Avalonia.Designer.HostApp", StringComparison.Ordinal)
+                    && System.Text.RegularExpressions.Regex.Match(start.Command, @"tcp-bson://127\.0\.0\.1:(\d+)/") is { Success: true } named)
+                {
+                    OwnProcess.Of(start.ProcessId).Suspend("The previewer");
+                    Volatile.Write(ref port, int.Parse(named.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            ChildProcesses.Started += OnStarted;
+            try
+            {
+                Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
+                Ui.WaitFor(() => Volatile.Read(ref port) != 0, () => $"the previewer started, where the preview says '{window.PreviewOf(document)?.Status}'");
+            }
+            finally
+            {
+                ChildProcesses.Started -= OnStarted;
+            }
+            Avalonia.Remote.Protocol.IAvaloniaRemoteTransportConnection? made = null;
+            Ui.Await(Waiting.Apart(async () => made = await new Avalonia.Remote.Protocol.BsonTcpTransport().Connect(System.Net.IPAddress.Loopback, port)),
+                "the stand-in's connection to the preview's port");
+            return new StandInPreviewer(made!);
+        }
+
+        /// <summary>Says its session started, as Avalonia's previewer does once it has set itself up.</summary>
+        public void Begin() => Send(new Avalonia.Remote.Protocol.Designer.StartDesignerSessionMessage { SessionId = "stand-in" });
+
+        /// <summary>On the connection's thread, in the order Passenger sent them.</summary>
+        private void Answer(object message)
+        {
+            lock (heard)
+            {
+                heard.Add(message);
+            }
+            switch (message)
+            {
+                case Avalonia.Remote.Protocol.Viewport.ClientRenderInfoMessage info:
+                    dpi = info.DpiX;
+                    if (Loads > 0)
+                    {
+                        Send(Frame(Loads));
+                    }
+                    break;
+                case Avalonia.Remote.Protocol.Designer.UpdateXamlMessage:
+                    int load = Interlocked.Increment(ref loads);
+                    if (load > 1)
+                    {
+                        Send(Frame(load - 1));
+                        Waiting.For(Replacing, "the replaced window's frame heard before the load is answered");
+                    }
+                    Send(new Avalonia.Remote.Protocol.Designer.UpdateXamlResultMessage());
+                    Send(Frame(load));
+                    break;
+            }
+        }
+
+        private Avalonia.Remote.Protocol.Viewport.FrameMessage Frame(int load)
+        {
+            int width = (int)Math.Ceiling(WidthOf(load) * dpi / 96);
+            int height = (int)Math.Ceiling(40 * dpi / 96);
+            return new Avalonia.Remote.Protocol.Viewport.FrameMessage
+            {
+                SequenceId = Interlocked.Increment(ref sequence),
+                Format = Avalonia.Remote.Protocol.Viewport.PixelFormat.Bgra8888,
+                Width = width,
+                Height = height,
+                Stride = width * 4,
+                Data = new byte[width * 4 * height],
+                DpiX = dpi,
+                DpiY = dpi,
+            };
+        }
+
+        private void Send(object message)
+        {
+            lock (sent)
+            {
+                sent.Add(connection.Send(message));
+            }
+        }
+
+        public void Dispose()
+        {
+            Task[] sending;
+            lock (sent)
+            {
+                sending = [.. sent];
+            }
+            Ui.Await(Task.WhenAll(sending), "what the stand-in sent");
+            connection.Dispose();
+        }
+    }
+
     /// <summary>With XAML Preview on, previewers run only for the preview shown and the one hidden last: three views shown in
     /// turn leave two previewers, the first's ended; the one hidden last, shown again, draws with the previewer it kept; a
     /// build that changes nothing starts none again (on Windows, where a previewer holds the build it loaded, it ends both
