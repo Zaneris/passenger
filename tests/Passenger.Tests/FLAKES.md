@@ -28,6 +28,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-20
+
+- `SyntheticVariablesTests`' `A_step_out_lists_what_the_method_stepped_out_of_returned`, CI 44649367892 (Linux report
+  shard 3): "The session ended while a stopped event was awaited". **A bug in the IDE**: the evaluation boxing
+  `Count()`'s returned int was held up by a collection waiting on a thread the evaluation held at the runtime's
+  thread-start patch (#2020, the same at v0.4.0), and the step took the evaluation's frame for its own, so the program
+  ran on to its end. A step now stops below an evaluation left running, and a returned number is kept as its bytes
+  with no evaluation at all (dc5acac9c, #2019; #2018).
+
 ## 2026-11-19
 
 - `DecompiledSymbolsTests`' `An_adapter_starting_deletes_symbols_unused_for_a_month_and_writes_never_finished_and_keeps_those_in_use`,
