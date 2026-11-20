@@ -67,8 +67,9 @@ public sealed class SelfDebuggingTests : IDisposable
         Dictionary<string, byte[]> restore = RestoreFiles(repository);
         string picture = Path.Combine(folder, "inner.png");
         Task<string?> launched;
-        // The build of the person's checkout has their NuGet settings; the inner Passenger it starts, the run's.
+        // The build of the person's checkout has their NuGet settings and analyzers; the inner Passenger it starts, the run's.
         using (TestRun.PersonsNuGet())
+        using (TestRun.AnalyzersAsBuilt())
         {
             launched = window.DebugAsync($"\"{folder}\" --screenshot \"{picture}\" --key F10 --key F10 --wait 600000");
             // A build begins its process only once saves have landed and the projects are read as written.

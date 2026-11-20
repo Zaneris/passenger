@@ -39,6 +39,12 @@
     <Compile Include="../../src/Passenger.UpdateHandlers/Wire.cs" Link="UpdateHandlersWire.cs" />
   </ItemGroup>
 
+  <!-- Whether the build that made the tests ran the analyzers, where it said (CI's builds but one skip them): a test's
+       build of the checkout runs them as that build did, and so finds its compiles current (SelfDebuggingTests). -->
+  <ItemGroup Condition="'$(RunAnalyzers)' != ''">
+    <AssemblyMetadata Include="RunAnalyzers" Value="$(RunAnalyzers)" />
+  </ItemGroup>
+
   <!-- Avalonia's templates, restored from nuget.org as every package is and served to the tests from the package cache
        as a local feed (AvaloniaApp.Feed), so installing them never reaches nuget.org at test time. -->
   <ItemGroup>

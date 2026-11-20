@@ -348,6 +348,20 @@ public sealed class TestRun : IAsyncDisposable
         return new Restored(run);
     }
 
+    /// <summary>Until disposed, what the IDE starts runs the analyzers or skips them as the build that made the tests did
+    /// (Passenger.Tests.csproj's RunAnalyzers), so a build of the checkout finds that build's compiles current, where one
+    /// running them after a build that skipped them compiles every project again.</summary>
+    public static IDisposable AnalyzersAsBuilt()
+    {
+        const string RunAnalyzers = "RunAnalyzers";
+        Dictionary<string, string?> run = new() { [RunAnalyzers] = Environment.GetEnvironmentVariable(RunAnalyzers) };
+        if (AvaloniaApp.MetadataOrNone(RunAnalyzers) is { } built)
+        {
+            Environment.SetEnvironmentVariable(RunAnalyzers, built);
+        }
+        return new Restored(run);
+    }
+
     /// <summary>A command run on the person's checkout given their NuGet settings back, as <see cref="PersonsNuGet"/> gives
     /// them, but to it alone, so its restore of their projects is the one their builds wrote.</summary>
     public static System.Diagnostics.ProcessStartInfo WithPersonsNuGet(System.Diagnostics.ProcessStartInfo start)

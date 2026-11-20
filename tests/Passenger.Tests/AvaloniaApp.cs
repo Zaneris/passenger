@@ -183,8 +183,11 @@ internal static class AvaloniaApp
 
     /// <summary>A value the test project's build put in the assembly (Passenger.Tests.csproj).</summary>
     internal static string Metadata(string key) =>
-        typeof(AvaloniaApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value
-        ?? throw new InvalidOperationException($"The test assembly was built without its {key}");
+        MetadataOrNone(key) ?? throw new InvalidOperationException($"The test assembly was built without its {key}");
+
+    /// <summary>A value the test project's build put in the assembly where it put one, else null.</summary>
+    internal static string? MetadataOrNone(string key) =>
+        typeof(AvaloniaApp).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key == key)?.Value;
 
     /// <summary>The longest dotnet new may take.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
