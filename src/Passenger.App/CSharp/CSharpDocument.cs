@@ -16,8 +16,9 @@ namespace Passenger.App.CSharp;
 /// <see cref="CSharpService.For"/> each time rather than keep this or its <see cref="Lsp"/>.</summary>
 public sealed partial class CSharpDocument : IServerDocument, IDisposable
 {
-    /// <summary>How long typing must pause before diagnostics are asked for again.</summary>
-    public static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
+    /// <summary>How long typing must pause before diagnostics are asked for again, read as the file opened, so a key reads
+    /// no variable.</summary>
+    private readonly TimeSpan pause = Editors.TypingPauses.Diagnostics;
 
     /// <summary>Parameter names that say nothing an argument does not (Console.WriteLine's value, a list's item), whose
     /// hints are left off.</summary>
@@ -275,7 +276,7 @@ public sealed partial class CSharpDocument : IServerDocument, IDisposable
     {
         // The problems a fix asked for at the caret reads, where the text carried their ranges.
         diagnostics.Moved();
-        Pull(Pause);
+        Pull(pause);
         service.OthersMayHaveMoved(document);
         service.Generated.Changed();
         // An AppHost's edit may change what its services are told is missing; any other file's changes only its own.

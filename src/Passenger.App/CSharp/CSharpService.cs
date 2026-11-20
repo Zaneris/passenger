@@ -76,7 +76,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         this.warm = warm;
         this.headStart = headStart;
         Generated = new GeneratedCode(() => session);
-        othersPause = new Debounce(CSharpDocument.Pause, PullOthers);
+        othersPause = new Debounce(Editors.TypingPauses.Diagnostics, PullOthers);
     }
 
     /// <summary>The code source generators made, copied where places lead into it and shown read-only.</summary>

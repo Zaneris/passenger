@@ -54,7 +54,7 @@ public partial class MainWindow
 
     private void AddRunMarks()
     {
-        runMarksLater = new Debounce(TimeSpan.FromMilliseconds(300), () =>
+        runMarksLater = new Debounce(TypingPauses.RunMarks, () =>
         {
             IdeErrors.Observe(ReadRunMarksAsync());
             return Task.CompletedTask;

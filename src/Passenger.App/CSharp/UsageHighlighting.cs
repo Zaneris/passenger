@@ -18,9 +18,6 @@ namespace Passenger.App.CSharp;
 /// edits and caret moves, until Escape or the action again. Each editor of a split has its own, for the file it shows.</summary>
 public sealed class UsageHighlighting
 {
-    /// <summary>How long the caret rests before the server is asked, or a word chosen is looked for.</summary>
-    private static readonly TimeSpan Rest = TimeSpan.FromMilliseconds(300);
-
     private readonly EditorArea editors;
     private readonly Func<CSharpService?> service;
     private readonly ConditionalWeakTable<CodeEditor, Watch> watches = [];
@@ -214,7 +211,7 @@ public sealed class UsageHighlighting
         {
             this.owner = owner;
             this.editor = editor;
-            rest = new Debounce(Rest, AskAsync);
+            rest = new Debounce(TypingPauses.Uses, AskAsync);
         }
 
         public void Moved()

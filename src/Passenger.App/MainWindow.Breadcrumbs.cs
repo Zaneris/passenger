@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.App.Editors;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
@@ -37,7 +38,7 @@ public partial class MainWindow
     private void AddBreadcrumbs()
     {
         BreadcrumbHost.Children.Add(breadcrumbs);
-        outlineAgain = new Debounce(TimeSpan.FromMilliseconds(400), OutlineAsync);
+        outlineAgain = new Debounce(TypingPauses.Outline, OutlineAsync);
         Editors.ActiveChanged += (_, _) =>
         {
             outline = [];
