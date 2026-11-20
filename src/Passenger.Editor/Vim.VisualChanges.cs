@@ -124,7 +124,7 @@ public sealed partial class Vim
             }
             if (op is "p" or "P")
             {
-                return PutOver(acting, op == "P", text, stretches, carets, block, view, top, block ? text.GetLineFromOffset(taken[0].Cursor) : bottom);
+                return PutOver(acting, op == "P", text, stretches, carets, block, view, (top, bottom, left, right), block ? text.GetLineFromOffset(taken[0].Cursor) : bottom);
             }
             return Act(acting, basic, stretches, text, carets, view, block && !lines, (top, bottom, left, right));
         }
@@ -515,7 +515,7 @@ public sealed partial class Vim
     /// go on lines of their own, over a block below the line its cursor stands on (<paramref name="below"/>). From an
     /// empty register the stretch is deleted alone, as a d into the unnamed register (for P into none); . after either
     /// deletes as much again so, putting nothing.</summary>
-    private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, int top, int below)
+    private VimResult PutOver(Command command, bool keep, TextSnapshot text, List<Stretch> stretches, SelectionSet carets, bool block, IVimView view, (int Top, int Bottom, int Left, int Right) over, int below)
     {
         if (VimRegisters.IsClipboard(command.Register))
         {
@@ -526,19 +526,19 @@ public sealed partial class Vim
         if ((command.Register == '_' ? new VimRegister([string.Empty], false) : Registers.Get(command.Register)) is not { } value)
         {
             char? into = keep ? '_' : null;
-            return Act(command with { Keys = into is { } none ? ["\"", none.ToString(), "d"] : ["d"], Register = into }, "d", stretches, text, carets, view, block);
+            return Act(command with { Keys = into is { } none ? ["\"", none.ToString(), "d"] : ["d"], Register = into }, "d", stretches, text, carets, view, block, over);
         }
         Remember(command with { Keys = keep ? ["\"", "_", "d"] : ["d"], Count = 0 });
         stretches.Sort((a, b) => a.Start.CompareTo(b.Start));
-        VimRegister replaced = new([.. Merged(stretches, pieces: true).Select(m => Taken(text, m))], stretches[0].Lines) { Blockwise = block };
+        VimRegister replaced = TakenBy(text, stretches, block, over, view.Indent.TabWidth);
         string eol = view.LineEnding;
         int times = Math.Clamp(command.Count, 1, Math.Max(1, MostRepeatedText / Math.Max(1, value.Text.Length)));
         if (block && value.Linewise)
         {
             // P over a block whose top line's part ran to that line's end, past text it leaves, puts the lines below that line.
             Stretch first = stretches[0];
-            bool belowTop = keep && first.First == top && first.End > first.Start && first.End == text.GetLine(top).End && first.Start > text.GetLine(top).Start;
-            return PutLinesBy(value, keep, keep && !belowTop, text, stretches, top, belowTop ? top : below, eol, replaced, times);
+            bool belowTop = keep && first.First == over.Top && first.End > first.Start && first.End == text.GetLine(over.Top).End && first.Start > text.GetLine(over.Top).Start;
+            return PutLinesBy(value, keep, keep && !belowTop, text, stretches, over.Top, belowTop ? over.Top : below, eol, replaced, times);
         }
         if (value.Blockwise && (block || stretches.TrueForAll(s => !s.Lines)))
         {
@@ -667,6 +667,7 @@ public sealed partial class Vim
         int lastAt = 0;
         int shift = 0;
         string added = string.Empty;
+        bool endsBroken = text.Length > 0 && text.GetLine(text.LineCount - 1).Length == 0 && text.LineCount - 1 > last;
         for (int i = 0; i < value.Parts.Count; i++)
         {
             string padded = value.Parts[i] + new string(' ', Math.Max(0, width - widths[i]));
@@ -677,7 +678,7 @@ public sealed partial class Vim
             if (line > last)
             {
                 at = text.Length;
-                lead = (text.Length > 0 && text.GetLine(text.LineCount - 1).Length == 0 && text.LineCount - 1 > last && added.Length == 0 ? string.Empty : eol) + new string(' ', column);
+                lead = (endsBroken && added.Length == 0 ? string.Empty : eol) + new string(' ', column);
                 followed = false;
             }
             else
@@ -714,7 +715,8 @@ public sealed partial class Vim
         }
         if (added.Length > 0)
         {
-            edits.Add(new TextEdit(text.Length, 0, added));
+            // Lines added past a file that kept its final break keep it after them.
+            edits.Add(new TextEdit(text.Length, 0, endsBroken ? added + eol : added));
             if (edits.Count == 1)
             {
                 firstAt = text.Length + added.IndexOf(value.Parts[0], StringComparison.Ordinal);
