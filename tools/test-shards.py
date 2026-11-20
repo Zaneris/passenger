@@ -737,7 +737,7 @@ def steps_of(folder, shard):
 
 class Memory:
     """The machine's memory watched while a shard's tests run, every few seconds on a thread of its own: the least that
-    was free (Linux's MemAvailable, Windows' available physical memory); nothing where the system says neither."""
+    was free (free_memory); nothing where the system says none."""
 
     def __init__(self):
         self.whole, self.least = None, None
@@ -769,7 +769,18 @@ class Memory:
 
 
 def free_memory():
-    """The machine's memory and how much of it is free, in bytes, or None where the system says neither."""
+    """The machine's memory and how much of it is free, in bytes, or None where the system says neither: on macOS its free,
+    inactive and speculative pages (vm_stat), which it gives a program before swapping."""
+    if sys.platform == "darwin":
+        try:
+            whole = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=10,
+                                       check=True).stdout)
+            stats = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=10, check=True).stdout
+            size = int(re.search(r"page size of (\d+) bytes", stats)[1])
+            pages = {found[1]: int(found[2]) for found in re.finditer(r"^Pages ([\w ]+?):\s+(\d+)\.", stats, re.M)}
+            return whole, size * (pages["free"] + pages["inactive"] + pages["speculative"])
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+            return None
     if sys.platform.startswith("linux"):
         try:
             with open("/proc/meminfo", encoding="ascii") as file:
