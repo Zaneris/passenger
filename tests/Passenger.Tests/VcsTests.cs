@@ -1546,10 +1546,13 @@ public sealed partial class VcsTests : IDisposable
 
         Assert.Equal("main", Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "BranchName")?.Text);
         Assert.Equal([new ChangeMark(2, 1, ChangeMarkKind.Modified)], Marks(window));
+        // A changed line's bar is dashed: down its line, runs of the modified bar's colour with gaps between them.
         CodeEditor editor = window.EditorArea.CodeEditor;
-        Point bar = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Changes, 2), window)!.Value;
-        Avalonia.Media.Color drawn = Ui.Pixel(window, bar);
-        Assert.True(drawn == Modified(), $"The changed line's bar is drawn {drawn}, not the modified bar's colour");
+        Point middle = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Changes, 2), window)!.Value;
+        Point[] down = [.. Enumerable.Range(0, (int)editor.LineHeight).Select(y => new Point(middle.X, middle.Y - (editor.LineHeight / 2) + y + 0.5))];
+        bool[] inked = [.. Ui.Pixels(window, down).Select(drawn => drawn == Modified())];
+        int dashes = inked.Where((on, at) => on && (at == 0 || !inked[at - 1])).Count();
+        Assert.True(dashes >= 2, $"The changed line's bar shows {dashes} runs of the modified bar's colour down its line, not dashes of it: {string.Concat(inked.Select(on => on ? '#' : '.'))}");
         window.Close();
     }
 
