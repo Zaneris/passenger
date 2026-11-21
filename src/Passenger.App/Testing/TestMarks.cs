@@ -38,7 +38,7 @@ public static class TestMarks
         IBrush brush = frame.Brush(kind switch
         {
             TestMarkKind.Passed => TokenKeys.Test_Passed,
-            TestMarkKind.Failed => TokenKeys.Editor_Error,
+            TestMarkKind.Failed => TokenKeys.Test_Failed,
             TestMarkKind.Running => TokenKeys.Editor_ExecutionPoint,
             _ => TokenKeys.Run,
         });
@@ -65,7 +65,7 @@ public static class TestMarks
         if (shape == TestMarkShape.Dotted)
         {
             // A failed test: the run icon with a red mark on it.
-            context.DrawEllipse(frame.Brush(TokenKeys.Editor_Error), frame.Pen(TokenKeys.Editor_Gutter, 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
+            context.DrawEllipse(frame.Brush(TokenKeys.Test_Failed), frame.Pen(TokenKeys.Editor_Gutter, 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
         }
         else if (shape == TestMarkShape.Ticked)
         {

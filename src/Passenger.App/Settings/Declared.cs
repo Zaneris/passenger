@@ -75,6 +75,13 @@ public static class Declared
             + "a tab of their own to go back to; kept there, the places Go to Declaration, Go to Implementation and the like find "
             + "to choose from are listed there too. Open in Find Window in the popup puts the matches there either way."));
 
+    public static readonly ChoiceSetting<StatePalette> StatePalette = new(s => s.StatePalette, (s, v) => s with { StatePalette = v },
+        [(Passenger.App.StatePalette.Theme, "The theme's own"), (Passenger.App.StatePalette.ColourBlindSafe, "Colour-blind safe")],
+        new(D.AccessibilityPage, "Colours of states", "colour color blind blindness deuteranopia protanopia tritanopia red green palette diff test passed failed added changed conflict git accessibility",
+            "The colours tests' results, changes (in a diff, the gutter and the lists of changed files) and signatures take. Colour-blind safe: passed "
+            + "and added in blue, changed and running in orange, failed and conflicts in vermilion, new files in purple, told apart without red and green, "
+            + "each as clear on its ground as the theme's own. Each state has a shape, sign or letter of its own as well."));
+
     public static readonly ChoiceSetting<SoundCuesPlayed> SoundCues = new(s => s.SoundCues, (s, v) => s with { SoundCues = v },
         [(SoundCuesPlayed.WithScreenReader, "While a screen reader runs"), (SoundCuesPlayed.Always, "Always"), (SoundCuesPlayed.Never, "Never")],
         new(D.AccessibilityPage, "Play sound cues", "sound cue audio signal beep tone screen reader voiceover narrator nvda jaws orca accessibility blind",

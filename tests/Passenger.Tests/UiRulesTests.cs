@@ -2653,7 +2653,69 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     [Gate]
     [AvaloniaTheory]
     [MemberData(nameof(EveryLook))]
-    public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(string look)
+    public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(string look) => MeetsWcag(look);
+
+    /// <summary>The colour-blind safe palette laid over every look keeps what each state's colour is drawn on as readable as
+    /// the look's own colours must be.</summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(EveryLook))]
+    public void The_colour_blind_safe_palette_over_every_look_meets_WCAG_on_what_it_is_drawn_on_dark_and_light(string look)
+    {
+        Themes.UseStates(Application.Current!, StatePalette.ColourBlindSafe);
+        try
+        {
+            MeetsWcag(look);
+        }
+        finally
+        {
+            Themes.UseStates(Application.Current!, StatePalette.Theme);
+        }
+    }
+
+    /// <summary>With the colour-blind safe palette over every look, passed and failed, added against changed and against in
+    /// conflict, and a good and a bad signature stay plainly apart to eyes without red cones or green ones (protanopia,
+    /// deuteranopia), as Machado's model sees them, and apart to eyes without blue ones (tritanopia), where Passenger's own
+    /// colours for these come as close as 0.02.</summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(EveryLook))]
+    public void The_colour_blind_safe_palette_over_every_look_keeps_states_apart_to_eyes_without_red_or_green(string look)
+    {
+        (string, string)[] pairs =
+        [
+            (TokenKeys.Test_Passed, TokenKeys.Test_Failed), (TokenKeys.Vcs_Added, TokenKeys.Vcs_Modified), (TokenKeys.Vcs_Added, TokenKeys.Vcs_Conflict),
+            (TokenKeys.Vcs_File_Added, TokenKeys.Vcs_File_Modified),
+            (TokenKeys.Vcs_File_Added, TokenKeys.Vcs_File_Conflicted), (TokenKeys.Vcs_Signature_Good, TokenKeys.Vcs_Signature_Bad),
+        ];
+        Themes.UseStates(Application.Current!, StatePalette.ColourBlindSafe);
+        List<string> close = [];
+        try
+        {
+            using IDisposable worn = CarriedThemes.Wearing(look);
+            foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+            {
+                foreach ((string name, double[,] matrix) in ColourVision.Kinds)
+                {
+                    // Red and green are what the palette stands in for; blue cones' loss is rarer and asked less of it.
+                    double least = name == "tritanopia" ? 0.05 : 0.08;
+                    foreach ((string one, string other) in pairs)
+                    {
+                        double apart = ColourVision.Apart(ColourVision.Seen(Colours(one, variant)[0], matrix), ColourVision.Seen(Colours(other, variant)[0], matrix));
+                        if (apart < least)
+                        {
+                            close.Add($"{variant}, {name}: {one} and {other} are {apart:0.000} apart, under {least}");
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            Themes.UseStates(Application.Current!, StatePalette.Theme);
+        }
+        Assert.True(close.Count == 0, $"Over {look}, the colour-blind safe palette leaves states a colour-blind eye can hardly tell apart:\n" + string.Join("\n", close));
+    }
+
+    private static void MeetsWcag(string look)
     {
         using IDisposable worn = CarriedThemes.Wearing(look);
         // A VS Code theme's edges round its fields are its author's (input.border), so read:Edge holds Passenger's own alone.

@@ -34,6 +34,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Whether High Contrast shows in the theme's and the scheme's place while the system asks for high contrast.</summary>
     public bool FollowSystemContrast { get; init; } = true;
 
+    /// <summary>The colours of tests', changes' and signatures' states: the theme's own, or the colour-blind safe palette over it.</summary>
+    public StatePalette StatePalette { get; init; }
+
     /// <summary>The theme sources the person added, each as <see cref="ThemeSource"/> keeps it, beside Passenger's themes
     /// repository, which every Passenger lists.</summary>
     public IReadOnlyList<string> ThemeSources { get; init; } = [];

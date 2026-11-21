@@ -68,7 +68,7 @@ public sealed class ColourAloneTests
     [AvaloniaFact]
     public void A_tests_marks_before_its_run_passed_failed_and_running_ink_different_shapes_in_one_colour()
     {
-        EditorRig rig = OneColour(TokenKeys.Test_Passed, TokenKeys.Run, TokenKeys.Editor_Error, TokenKeys.Editor_ExecutionPoint);
+        EditorRig rig = OneColour(TokenKeys.Test_Passed, TokenKeys.Run, TokenKeys.Test_Failed, TokenKeys.Editor_ExecutionPoint);
         CodeEditor editor = rig.Editor;
         Marks marks = new();
         Strip strip = new(marks);

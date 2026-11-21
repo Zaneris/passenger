@@ -29,6 +29,7 @@ public static class Themes
     private static ThemeShows shows;
     private static ContrastAsked contrast = ContrastAsked.None;
     private static bool followsContrast = true;
+    private static StatePalette states;
 
     /// <summary>The theme in force, or wanted while it is fetched; null for Passenger's own.</summary>
     public static SourcedTheme? Look { get; private set; }
@@ -83,6 +84,21 @@ public static class Themes
 
     /// <summary>Whether the settings follow the system's high contrast, put in force where it changes what is laid.</summary>
     public static void FollowContrast(Application app, bool follows) => Contrast(app, contrast, follows);
+
+    /// <summary>The colours of tests', changes' and signatures' states, laid over the theme and the scheme in force, and over
+    /// every one laid after.</summary>
+    public static void UseStates(Application app, StatePalette palette)
+    {
+        if (palette == states)
+        {
+            return;
+        }
+        states = palette;
+        if (ReferenceEquals(app, applying))
+        {
+            LayWanted();
+        }
+    }
 
     private static void Contrast(Application app, ContrastAsked asked, bool follows)
     {
@@ -322,6 +338,11 @@ public static class Themes
             laid.Add(tokens);
             merged.Add(tokens);
         }
+        if (states == StatePalette.ColourBlindSafe && StatesOver(app, theme) is { } palette)
+        {
+            laid.Add(palette);
+            merged.Add(palette);
+        }
         TakeAccentFromTokens(app);
         if ((theme?.Shows ?? ThemeShows.Both) != shows)
         {
@@ -344,6 +365,27 @@ public static class Themes
             Layout = theme?.Layout;
             LayoutChanged?.Invoke(null, EventArgs.Empty);
         }
+    }
+
+    /// <summary>The colour-blind safe palette worked out from the grounds and words the theme and scheme just laid give, in
+    /// dark and light; null where one is no plain colour, so the theme's own stand.</summary>
+    private static ResourceDictionary? StatesOver(Application app, ThemeFile? theme)
+    {
+        bool high = theme?.Name == ThemeSource.HighContrast;
+        Dictionary<string, TokenValue>[] variants = [[], []];
+        ThemeVariant[] both = [ThemeVariant.Dark, ThemeVariant.Light];
+        for (int i = 0; i < both.Length; i++)
+        {
+            if (ThemeResources.Colours(app, both[i], StateColours.Read) is not { } given)
+            {
+                return null;
+            }
+            foreach ((string token, uint colour) in StateColours.Tokens(given, high))
+            {
+                variants[i][token] = new ColourValue(colour, 1);
+            }
+        }
+        return ThemeResources.Dictionary(new ThemeFile(nameof(StatePalette.ColourBlindSafe), string.Empty, new Dictionary<string, TokenValue>(), variants[0], variants[1]));
     }
 
     private static bool Gives(ThemeFile file, string token) => file.Both.ContainsKey(token) || file.Dark.ContainsKey(token) || file.Light.ContainsKey(token);

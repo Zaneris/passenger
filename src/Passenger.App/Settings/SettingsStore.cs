@@ -211,6 +211,10 @@ public sealed class SettingsStore : IDisposable
         {
             Themes.FollowContrast(contrasted, after.FollowSystemContrast);
         }
+        if (Avalonia.Application.Current is { } coloured && (before is null || before.StatePalette != after.StatePalette))
+        {
+            Themes.UseStates(coloured, after.StatePalette);
+        }
         FontsInForce(after);
         if (Avalonia.Application.Current is { } careted && (before is null || before.CaretWidth != after.CaretWidth))
         {

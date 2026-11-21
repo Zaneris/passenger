@@ -46,6 +46,22 @@ public static class ThemeResources
         return laid;
     }
 
+    /// <summary>The colours some tokens (named without <c>Passenger.</c>) take in a variant as the application's resources
+    /// stand, as <c>0xAARRGGBB</c>; null where one is not a plain colour.</summary>
+    public static IReadOnlyDictionary<string, uint>? Colours(Application app, ThemeVariant variant, IReadOnlyList<string> tokens)
+    {
+        Dictionary<string, uint> colours = new(StringComparer.Ordinal);
+        foreach (string token in tokens)
+        {
+            if (!app.TryGetResource(Prefix + token, variant, out object? found) || found is not ISolidColorBrush brush)
+            {
+                return null;
+            }
+            colours[token] = brush.Color.ToUInt32();
+        }
+        return colours;
+    }
+
     /// <summary>Tokens as a dictionary of resources, each under its key.</summary>
     public static ResourceDictionary Filled(IReadOnlyDictionary<string, TokenValue> tokens)
     {
