@@ -250,7 +250,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Mcp.AgentCall.EveryVariable, "1000");
         Environment.SetEnvironmentVariable(Passenger.Text.TextSearch.ApartVariable, "1000");
         Environment.SetEnvironmentVariable(Passenger.Profiler.SessionStarts.LimitVariable, "4000");
-        // The pauses every settle after a key in a C# file waits out, still longer than keys a test types together take.
+        // The pauses every settle after a key waits out, still longer than keys a test types together take.
         Environment.SetEnvironmentVariable(Passenger.App.Editors.TypingPauses.Variable, "100");
         // The IDE's own waits on what it started (an Aspire service's start, a restart's wait for it) as long as the run's.
         Environment.SetEnvironmentVariable(Passenger.Core.Waits.ScaleVariable, TimeScale.ToString(System.Globalization.CultureInfo.InvariantCulture));

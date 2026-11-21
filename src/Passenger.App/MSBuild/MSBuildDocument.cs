@@ -16,9 +16,6 @@ namespace Passenger.App.MSBuild;
 /// an unknown SDK) keeps the last one that did for names and values, and says why on its line.</summary>
 public sealed class MSBuildDocument : IDisposable
 {
-    /// <summary>How long typing pauses before the project is evaluated again with the text as typed.</summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
-
     /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
     internal const string Checker = "the project's MSBuild evaluation";
 
@@ -40,7 +37,7 @@ public sealed class MSBuildDocument : IDisposable
     {
         this.service = service;
         Document = document;
-        inspecting = new Debounce(Settle, InspectAsync, () => document.Checking(Checker));
+        inspecting = new Debounce(Editors.TypingPauses.ProjectFile, InspectAsync, () => document.Checking(Checker));
         document.Text.Changed += OnChanged;
         First = InspectAsync();
     }

@@ -19,7 +19,7 @@ namespace Passenger.App.Web;
 public sealed class WebDocument : IServerDocument, IDisposable
 {
     /// <summary>How long typing must pause before diagnostics and colours are asked for again.</summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
+    private readonly TimeSpan settle = Editors.TypingPauses.WebChecks;
 
     private readonly OpenDocument document;
     private readonly ServerDiagnostics diagnostics;
@@ -280,7 +280,7 @@ public sealed class WebDocument : IServerDocument, IDisposable
             document.Markers = Shown();
         }
         AwaitPush();
-        Pull(Settle);
+        Pull(settle);
     }
 
     private void OnSaved(object? sender, EventArgs e) => Lsp?.Saved();

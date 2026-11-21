@@ -19,9 +19,6 @@ namespace Passenger.App.Xaml;
 /// not read (neither Avalonia's nor WPF's) answers nothing.</summary>
 public sealed class XamlDocument : IDisposable
 {
-    /// <summary>How long typing pauses before the file is checked again.</summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(300);
-
     /// <summary>Who checks the file, as an agent is told while its check is under way.</summary>
     internal const string Checker = "Passenger's XAML";
 
@@ -51,7 +48,7 @@ public sealed class XamlDocument : IDisposable
         this.service = service;
         Document = document;
         Loading = loading;
-        analysing = new Debounce(Settle, AnalyseAsync, () => document.Checking(Checker));
+        analysing = new Debounce(Editors.TypingPauses.Xaml, AnalyseAsync, () => document.Checking(Checker));
         document.Text.Changed += OnChanged;
         IdeErrors.Observe(AnalyseAsync());
     }

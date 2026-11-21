@@ -1,4 +1,5 @@
 using Passenger.App.CSharp;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
@@ -21,7 +22,7 @@ public partial class MainWindow
 
     private void AddSteps()
     {
-        stepsLater = new Debounce(TimeSpan.FromMilliseconds(400), () =>
+        stepsLater = new Debounce(TypingPauses.Steps, () =>
         {
             IdeErrors.Observe(ReadStepsAsync());
             return Task.CompletedTask;

@@ -19,9 +19,6 @@ namespace Passenger.App.Editors;
 /// left out and why.</summary>
 public sealed class SvgPreview : DockPanel, IOwnKeys
 {
-    /// <summary>How long typing pauses before the text is drawn again.</summary>
-    private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(300);
-
     private readonly ZoomedPicture picture = new();
     private readonly TextBlock size = MutedText.Of(string.Empty);
     private readonly EmptyState problem = new() { IsVisible = false };
@@ -53,7 +50,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         Children.Add(leftOut);
         Children.Add(problem);
         Children.Add(picture);
-        typing = new Debounce(Pause, DrawAsync);
+        typing = new Debounce(TypingPauses.Previews, DrawAsync);
         followed = FollowedDocument.OfText(OnChanged);
         KeyDown += (_, e) =>
         {

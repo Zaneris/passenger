@@ -19,9 +19,6 @@ namespace Passenger.App.Editors;
 /// 4.1 says so in the page's place; a window nobody sees is given the page with no web view to show it.</summary>
 public sealed class HtmlPreview : DockPanel
 {
-    /// <summary>How long typing pauses before the page is given the text again.</summary>
-    private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(300);
-
     /// <summary>What a Linux without WebKitGTK 4.1 says in the page's place.</summary>
     public const string NoWebKitGtk = "The HTML preview needs WebKitGTK 4.1, which this system lacks: install it (libwebkit2gtk-4.1-0 on Ubuntu and Debian, webkit2gtk4.1 on Fedora) and open the file again";
 
@@ -67,7 +64,7 @@ public sealed class HtmlPreview : DockPanel
     internal HtmlPreview(EditorArea area)
     {
         this.area = area;
-        typing = new Debounce(Pause, GiveAsync);
+        typing = new Debounce(TypingPauses.Previews, GiveAsync);
         followed = FollowedDocument.OfText(OnChanged);
         Bind(BackgroundProperty, this.GetResourceObservable(TokenKeys.Editor_Background));
         open = banner.Link("Open", () => wentAway?.Open?.Invoke());

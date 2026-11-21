@@ -31,7 +31,7 @@ public partial class MainWindow
 
     private void AddRoutes()
     {
-        routesLater = new Debounce(TimeSpan.FromMilliseconds(400), () =>
+        routesLater = new Debounce(TypingPauses.Routes, () =>
         {
             IdeErrors.Observe(ReadRoutesAsync());
             return Task.CompletedTask;

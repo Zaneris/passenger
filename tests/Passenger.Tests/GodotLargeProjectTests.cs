@@ -70,7 +70,7 @@ public sealed class GodotLargeProjectTests
                     GC.WaitForPendingFinalizers();
                     long before = GC.GetAllocatedBytesForCurrentThread();
                     keys[k]();
-                    Ui.Hold(TimeSpan.FromMilliseconds(800), "the typing's pause, after which the scene's project is read again");
+                    Ui.Hold(Passenger.App.Editors.TypingPauses.GodotScenes, "the typing's pause, after which the scene's project is read again");
                     Ui.Settle();
                     least[k] = Math.Min(least[k], GC.GetAllocatedBytesForCurrentThread() - before);
                 }

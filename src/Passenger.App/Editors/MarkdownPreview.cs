@@ -23,9 +23,6 @@ namespace Passenger.App.Editors;
 /// draws the images of files inside the open folder alone, the rest as their words.</summary>
 public sealed class MarkdownPreview : ScrollViewer
 {
-    /// <summary>How long typing pauses before the text is read again.</summary>
-    private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(300);
-
     private readonly CodeEditor editor;
     private readonly EditorArea area;
     private readonly MarkdownPage links;
@@ -48,7 +45,7 @@ public sealed class MarkdownPreview : ScrollViewer
         Focusable = true;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         links = new MarkdownPage(Follow) { LocalLinks = true, ImageFile = ImageFile, Load = LoadAsync };
-        typing = new Debounce(Pause, RenderAsync);
+        typing = new Debounce(TypingPauses.Previews, RenderAsync);
         editor.ScrollChanged += (_, _) => OnEditorScrolled();
         // Before the preview scrolls for them, so the move they make is the preview's own.
         AddHandler(PointerWheelChangedEvent, (_, _) => Lead(), RoutingStrategies.Tunnel, handledEventsToo: true);

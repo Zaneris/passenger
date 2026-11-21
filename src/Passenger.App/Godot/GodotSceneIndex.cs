@@ -16,9 +16,6 @@ namespace Passenger.App.Godot;
 /// read is made off it.</summary>
 public sealed class GodotSceneIndex
 {
-    /// <summary>How long typing in an open scene must pause before the code read against it is read again.</summary>
-    private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
-
     private readonly Dictionary<string, Project> projects = new(PathNames.Comparer);
     private readonly Dictionary<OpenDocument, EventHandler<DocumentChangedEventArgs>> typed = [];
     private Debounce? typing;
@@ -340,7 +337,7 @@ public sealed class GodotSceneIndex
         {
             if (projects.Values.Any(p => p.Paths?.Contains(document.Path) == true))
             {
-                (typing ??= new Debounce(Pause, () =>
+                (typing ??= new Debounce(Editors.TypingPauses.GodotScenes, () =>
                 {
                     Changed?.Invoke(this, EventArgs.Empty);
                     return Task.CompletedTask;

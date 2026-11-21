@@ -16,9 +16,6 @@ namespace Passenger.App.Vcs;
 /// UI-thread object.</summary>
 public sealed class VcsController : IDisposable
 {
-    /// <summary>How long typing pauses before a file's change bars are worked out again.</summary>
-    private static readonly TimeSpan MarksDelay = TimeSpan.FromMilliseconds(120);
-
     /// <summary>How long typing pauses before an annotated file is blamed again: a git each time, so longer.</summary>
     private static readonly TimeSpan BlameDelay = TimeSpan.FromMilliseconds(500);
 
@@ -740,7 +737,7 @@ public sealed class VcsController : IDisposable
         {
             return;
         }
-        Tracked tracked = new(new Debounce(MarksDelay, () => MarkAsync(document)), new Debounce(BlameDelay, () => BlameAsync(document)));
+        Tracked tracked = new(new Debounce(Editors.TypingPauses.ChangeBars, () => MarkAsync(document)), new Debounce(BlameDelay, () => BlameAsync(document)));
         tracked.OnChanged = (_, _) =>
         {
             // Outside a working tree a file has no bars to move; once one is found, every open file's are worked out.

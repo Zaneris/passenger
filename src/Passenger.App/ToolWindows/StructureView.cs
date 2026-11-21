@@ -18,8 +18,6 @@ namespace Passenger.App.ToolWindows;
 /// did not change; a file with none says why.</summary>
 public sealed class StructureView : DockPanel
 {
-    private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);
-
     private readonly ListBox list;
     private readonly EmptyState placeholder;
     private readonly EmptyState unoutlined;
@@ -57,7 +55,7 @@ public sealed class StructureView : DockPanel
         placeholder = new EmptyState();
         placeholder.SayWithKeys(AppActions.GoToFile, keys => $"The open file's outline shows here: open one with {ActionTips.Named("Go to File", keys)}");
         unoutlined = new EmptyState { IsVisible = false };
-        settle = new Debounce(Pause, Refresh);
+        settle = new Debounce(Editors.TypingPauses.Structure, Refresh);
         ListMenus.Attach(list, () => list.SelectedItem is not SymbolRow chosen ? [] :
         [
             ListMenus.Source(() => GoToRequested?.Invoke(this, chosen)),

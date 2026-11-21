@@ -15,7 +15,7 @@ public partial class MainWindow
 
     private void AddRequestMarks()
     {
-        requestMarksLater = new Debounce(TimeSpan.FromMilliseconds(300), () =>
+        requestMarksLater = new Debounce(TypingPauses.RequestMarks, () =>
         {
             foreach (OpenDocument document in Editors.Documents.Where(d => HttpFile.Is(d.Path)))
             {
