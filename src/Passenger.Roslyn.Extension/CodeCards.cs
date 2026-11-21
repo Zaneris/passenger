@@ -157,7 +157,8 @@ internal sealed class CodedCompletionItem : LspCompletionItem
 
 /// <summary><see cref="ExtensionMethods.SignatureHelp"/>: textDocument/signatureHelp by the server's own, asked as for a
 /// client with Visual Studio's extensions so each label comes classified, answered as for one without them with each
-/// label's parts.</summary>
+/// label's parts, whether the signature still fits the call's arguments and the parameter the caret's fills there
+/// (<see cref="SignatureFits"/>).</summary>
 [Method(ExtensionMethods.SignatureHelp)]
 internal sealed class CodedSignatureHelpHandler(SignatureHelpService signatures) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, LspSignatureHelp?>
 {
@@ -175,26 +176,37 @@ internal sealed class CodedSignatureHelpHandler(SignatureHelpService signatures)
         {
             return null;
         }
-        help.Signatures = [.. help.Signatures.Select(s => new CodedSignatureInformation
+        int position = await document.GetPositionFromLinePositionAsync(ProtocolConversions.PositionToLinePosition(request.Position), cancellationToken).ConfigureAwait(false);
+        (_, SignatureHelpItems? items) = await signatures.GetSignatureHelpAsync(document, position,
+            new SignatureHelpTriggerInfo(SignatureHelpTriggerReason.InvokeSignatureHelpCommand), cancellationToken).ConfigureAwait(false);
+        (bool Fits, int Parameter)[]? fits = items is not null && items.Items.Count == help.Signatures.Length
+            ? await SignatureFits.OfAsync(document, position, items, cancellationToken).ConfigureAwait(false)
+            : null;
+        help.Signatures = [.. help.Signatures.Select((s, i) => new CodedSignatureInformation
         {
             Label = s.Label,
             Documentation = s.Documentation,
             Parameters = s.Parameters,
-            ActiveParameter = s.ActiveParameter,
+            ActiveParameter = fits?[i] is { Parameter: >= 0 } fit ? fit.Parameter : s.ActiveParameter,
             Code = s is VSInternalSignatureInformation { ColorizedLabel: { } classified }
                 ? [.. classified.Runs.Select(r => CodeCards.Part(r.ClassificationTypeName, r.Text))]
                 : null,
+            Fits = fits?[i].Fits,
         })];
         return help;
     }
 }
 
-/// <summary>A signature with its label's parts.</summary>
+/// <summary>A signature with its label's parts, and whether it still fits the call's arguments.</summary>
 internal sealed class CodedSignatureInformation : SignatureInformation
 {
     [JsonPropertyName(CodeParts.Member)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CodePart[]? Code { get; init; }
+
+    [JsonPropertyName(CodeParts.Fits)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Fits { get; init; }
 }
 
 [ExportCSharpVisualBasicLspServiceFactory(typeof(CodedHoverHandler), WellKnownLspServerKinds.Any)]

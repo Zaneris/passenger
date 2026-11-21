@@ -117,6 +117,10 @@ public static class CodeParts
     /// <summary>The answer's member holding the parts: a hover's and a completion item's each block of code, a signature's
     /// its label.</summary>
     public const string Member = "passengerCode";
+
+    /// <summary>A signature's member saying whether it still fits the arguments its call has so far; missing where that
+    /// can't be read.</summary>
+    public const string Fits = "passengerFits";
 }
 
 /// <summary>A stretch of code and its semantic token type, null for none.</summary>

@@ -141,6 +141,24 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
     }
 
+    /// <summary>One of a call's overloads, among the rest: its code as <see cref="AddServed"/> shows it but on its line, the
+    /// parameter the caret's argument fills strong (<see cref="ColouredCode.Marked"/>), set back where the call's
+    /// arguments no longer fit it.</summary>
+    public void AddOverload(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language, bool fits, int parameter)
+    {
+        AddServed(code, given, language);
+        ColouredCode shown = (ColouredCode)parts.Children[^1];
+        shown.Signature = false;
+        if (parameter >= 0 && Languages.SignatureLines.Parameters(shown.Code) is { } places && parameter < places.Count)
+        {
+            shown.Marked = places[parameter];
+        }
+        if (!fits)
+        {
+            shown.Classes.Add(StyleClasses.Unfit);
+        }
+    }
+
     /// <summary>A card's code, a signature among it laid out a parameter a line where the card is too narrow for its line.</summary>
     private static ColouredCode Signed(ColouredCode code)
     {

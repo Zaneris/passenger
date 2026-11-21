@@ -527,6 +527,49 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
+    /// <summary>Parameter Info at a call of several overloads shows each: those the arguments so far no longer fit set back,
+    /// the parameter the caret's argument fills strong in each that fits. An argument typed that only one overload takes sets
+    /// the other back, and once it is gone again both fit; an argument not typed yet is no evidence against either.</summary>
+    [AvaloniaFact]
+    public void Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit()
+    {
+        MainWindow window = project.Open("Kinds.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "_ = label;");
+        editor.Focus();
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("_ = new System.ArgumentNullException(label, );");
+        Ui.Press(window, "LEFT");
+        Ui.Press(window, "LEFT");
+        Ui.Run(window, AppActions.ParameterInfo);
+        const string Message = "(string? paramName, string? message)";
+        const string Inner = "(string? message, System.Exception? innerException)";
+        Ui.WaitFor(() => Overloads().Count == 4, () => $"the four constructors after the comma: {window.Assist.SignatureText}");
+        Assert.Equal([("()", false, null), ("(string? paramName)", false, null), (Message, true, "string? message"), (Inner, true, "System.Exception? innerException")],
+            Overloads().OrderBy(o => o.Code.Length).Select(o => (o.Code[o.Code.IndexOf('(', StringComparison.Ordinal)..], o.Fits, o.Strong)));
+
+        window.KeyTextInput("new System.Exception()");
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => Overloads().Any(o => o.Code.EndsWith(Message, StringComparison.Ordinal) && !o.Fits),
+            () => $"the message overload set back after an exception argument: {string.Join(" | ", Overloads())}");
+        Assert.Contains(Overloads(), o => o.Code.EndsWith(Inner, StringComparison.Ordinal) && o.Fits && o.Strong == "System.Exception? innerException");
+
+        foreach (char _ in "new System.Exception()")
+        {
+            Ui.Press(window, "shift LEFT");
+        }
+        Ui.Press(window, "BACKSPACE");
+        Assert.Equal("        _ = new System.ArgumentNullException(label, );", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        Ui.Run(window, AppActions.ParameterInfo);
+        Ui.WaitFor(() => Overloads().Count(o => o.Fits) == 2, () => $"both two-argument overloads fitting once the argument is gone: {string.Join(" | ", Overloads())}");
+        window.Close();
+
+        // Each overload the card shows: its code, whether the arguments still fit it, and the parameter drawn strong.
+        List<(string Code, bool Fits, string? Strong)> Overloads() =>
+            window.Assist.SignatureCard?.GetVisualDescendants().OfType<ColouredCode>()
+                .Select(c => (c.Code, !c.Classes.Contains(StyleClasses.Unfit), c.Marked is { } m ? c.Code.Substring(m.Start, m.Length) : null)).ToList() ?? [];
+    }
+
     /// <summary>A type's members after its dot are offered filters by kind under the rows, the kinds its items are of: turned
     /// on, the list shows only members of the kinds on, narrowed as typed within them, every member again once each is off;
     /// the keys stay in the editor throughout.</summary>

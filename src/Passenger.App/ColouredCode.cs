@@ -179,13 +179,33 @@ public sealed class ColouredCode : Border
         }
     }
 
+    /// <summary>A stretch of the code as given drawn strong and underlined (the parameter a call's argument fills), null for none.</summary>
+    public (int Start, int Length)? Marked
+    {
+        get => marked;
+        set
+        {
+            marked = value;
+            Colour(spans ?? []);
+        }
+    }
+
+    private (int Start, int Length)? marked;
+
     /// <summary>A run for each span of the code as given and for the plain text between, each span's in its kind's look,
-    /// laid out as the code shows now.</summary>
+    /// the stretch <see cref="Marked"/> strong and underlined, laid out as the code shows now.</summary>
     private void Colour(IReadOnlyList<SyntaxSpan> given)
     {
         spans = given;
         string shown = Shown;
         IReadOnlyList<SyntaxSpan> placed = laidOut && signature is not null ? signature.Map(given) : given;
+        (int Start, int End)? strong = null;
+        if (marked is { } mark)
+        {
+            SyntaxSpan stretch = new(mark.Start, mark.Length, TokenKind.Text);
+            stretch = laidOut && signature is not null ? signature.Map([stretch])[0] : stretch;
+            strong = (stretch.Start, stretch.End);
+        }
         List<Inline> runs = [];
         int at = 0;
         foreach (SyntaxSpan span in placed)
@@ -194,36 +214,57 @@ public sealed class ColouredCode : Border
             {
                 continue;
             }
-            if (span.Start > at)
-            {
-                runs.Add(new TextRun(shown[at..span.Start]));
-            }
-            TextRun coloured = new(shown[span.Start..span.End]);
-            if (span.Kind != TokenKind.Text)
-            {
-                Look(coloured, span.Kind);
-            }
-            runs.Add(coloured);
+            Add(at, span.Start, null);
+            Add(span.Start, span.End, span.Kind);
             at = span.End;
         }
-        if (at < shown.Length)
-        {
-            runs.Add(new TextRun(shown[at..]));
-        }
+        Add(at, shown.Length, null);
         text.Inlines!.Clear();
         // An inline added beside a text would take the text as a run before it.
         text.Text = null;
         text.Inlines.AddRange(runs);
+
+        // A run of the stretch, split where the strong stretch begins and ends.
+        void Add(int from, int to, TokenKind? kind)
+        {
+            foreach (int cut in strong is { } edges ? (int[])[edges.Start, edges.End] : [])
+            {
+                if (cut > from && cut < to)
+                {
+                    Add(from, cut, kind);
+                    from = cut;
+                }
+            }
+            if (to <= from)
+            {
+                return;
+            }
+            TextRun run = new(shown[from..to]);
+            bool isStrong = strong is { } within && from >= within.Start && to <= within.End;
+            if (kind is { } coloured && coloured != TokenKind.Text)
+            {
+                Look(run, coloured, isStrong);
+            }
+            if (isStrong)
+            {
+                run.FontWeight = FontWeight.Bold;
+                run.TextDecorations = TextDecorations.Underline;
+            }
+            runs.Add(run);
+        }
     }
 
     /// <summary>A run in its kind's colour, the code's own where the theme gives the kind none, and in the style the theme
     /// sets the kind in, else the kind's own (a heading bold, emphasis italic), as the editor sets it.</summary>
-    private void Look(TextRun run, TokenKind kind)
+    private void Look(TextRun run, TokenKind kind, bool strong = false)
     {
         run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable($"Passenger.Syntax.{kind}"));
         string style = $"Passenger.SyntaxStyle.{kind}";
-        run.Bind(TextElement.FontWeightProperty, this.GetResourceObservable(style, set =>
-            (set is string named ? named.Contains("Bold", StringComparison.Ordinal) : kind is TokenKind.Heading or TokenKind.Bold) ? FontWeight.Bold : FontWeight.Normal));
+        if (!strong)
+        {
+            run.Bind(TextElement.FontWeightProperty, this.GetResourceObservable(style, set =>
+                (set is string named ? named.Contains("Bold", StringComparison.Ordinal) : kind is TokenKind.Heading or TokenKind.Bold) ? FontWeight.Bold : FontWeight.Normal));
+        }
         run.Bind(TextElement.FontStyleProperty, this.GetResourceObservable(style, set =>
             (set is string named ? named.Contains("Italic", StringComparison.Ordinal) : kind is TokenKind.UserInput or TokenKind.Italic) ? FontStyle.Italic : FontStyle.Normal));
     }

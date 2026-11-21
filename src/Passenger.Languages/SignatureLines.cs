@@ -26,7 +26,34 @@ public sealed class SignatureLines
 
     /// <summary>The signature <paramref name="code"/> laid out a parameter a line; null for code of more than one line, or
     /// with no list of parameters, or an empty one.</summary>
-    public static SignatureLines? Of(string code)
+    public static SignatureLines? Of(string code) =>
+        Scan(code) is { } list && list.Close > list.Breaks[0].At ? new SignatureLines(Laid(code, list.Breaks), [.. list.Breaks]) : null;
+
+    /// <summary>Where each parameter of the signature <paramref name="code"/> stands in it, its words without the spaces
+    /// round them; none where it has no list of parameters.</summary>
+    public static IReadOnlyList<(int Start, int Length)> Parameters(string code)
+    {
+        if (Scan(code) is not { } list || list.Close == list.Breaks[0].At)
+        {
+            return [];
+        }
+        (int, int)[] parameters = new (int, int)[list.Breaks.Count];
+        for (int k = 0; k < parameters.Length; k++)
+        {
+            int start = list.Breaks[k].At + list.Breaks[k].Spaces;
+            int end = k + 1 < parameters.Length ? list.Breaks[k + 1].At - 1 : list.Close;
+            while (end > start && code[end - 1] == ' ')
+            {
+                end--;
+            }
+            parameters[k] = (start, end - start);
+        }
+        return parameters;
+    }
+
+    /// <summary>A one-line signature's breaks, after its list's opening bracket and each parameter's comma with the spaces
+    /// after it, and where its list closes; null where it has no list of parameters closed on its line.</summary>
+    private static (List<(int At, int Spaces)> Breaks, int Close)? Scan(string code)
     {
         if (code.Contains('\n', StringComparison.Ordinal) || ListStart(code) is not { } open)
         {
@@ -64,7 +91,7 @@ public sealed class SignatureLines
                     depth--;
                     break;
                 case ')' or ']':
-                    return i == open + 1 ? null : new SignatureLines(Laid(code, breaks), [.. breaks]);
+                    return (breaks, i);
                 case ',' when depth == 0:
                     int spaces = 0;
                     while (i + 1 + spaces < code.Length && code[i + 1 + spaces] == ' ')

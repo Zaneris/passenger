@@ -33,6 +33,15 @@ public sealed class SignatureLinesTests
     public void Commas_in_a_types_arguments_a_nested_bracket_or_a_quoted_default_stay_and_a_tag_before_the_signature_is_no_list(string code, string laid) =>
         Assert.Equal(laid, SignatureLines.Of(code)?.Text);
 
+    [Fact]
+    public void Each_parameter_is_found_where_it_stands_without_the_spaces_round_it()
+    {
+        const string code = "Task.Run<T>(Func<T, int> work, [bool  loud = false] ,  int count)";
+        Assert.Equal(["Func<T, int> work", "[bool  loud = false]", "int count"], SignatureLines.Parameters(code).Select(p => code.Substring(p.Start, p.Length)));
+        Assert.Empty(SignatureLines.Parameters("int Helper.Count()"));
+        Assert.Empty(SignatureLines.Parameters("(local variable) string? c"));
+    }
+
     [Theory]
     [InlineData("int Helper.Count()")]
     [InlineData("(local variable) string? c")]

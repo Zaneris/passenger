@@ -315,6 +315,11 @@ public sealed class SignatureInformation
     /// <summary>A C# signature's label in parts, through Passenger's extension; null otherwise.</summary>
     [JsonPropertyName(Roslyn.Extension.CodeParts.Member)]
     public IReadOnlyList<Roslyn.Extension.CodePart>? Code { get; init; }
+
+    /// <summary>Whether a C# signature still fits the arguments its call has so far, through Passenger's extension; null
+    /// where that is not known.</summary>
+    [JsonPropertyName(Roslyn.Extension.CodeParts.Fits)]
+    public bool? Fits { get; init; }
 }
 
 public sealed class ParameterInformation

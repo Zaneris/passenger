@@ -19,7 +19,9 @@ internal interface IOwnSignatures
 /// <summary>Parameter Info: the card over the caret of the signature of the call it is in, its parameter there's
 /// documentation (else the signature's), shown after an opening bracket or a comma, following the caret moved through the
 /// call, and gone after the closing bracket or once the caret leaves it; a language's own (<see cref="Own"/>) first where
-/// it has one. A screen reader is told the signature as it shows, then the parameter the caret is at as it moves to another.</summary>
+/// it has one. Where the server says which overloads the arguments so far still fit (C#'s), every overload shows, the
+/// parameter the caret's argument fills strong in each that fits, the rest set back. A screen reader is told the
+/// signature as it shows, then the parameter the caret is at as it moves to another.</summary>
 internal sealed class ParameterInfo
 {
     private readonly AssistContext context;
@@ -167,7 +169,20 @@ internal sealed class ParameterInfo
             int overload = Math.Clamp(help.ActiveSignature ?? 0, 0, help.Signatures.Count - 1);
             SignatureInformation signature = help.Signatures[overload];
             card.Clear();
-            card.AddServed(signature.Label, signature.Code, context.Editors.Active is { } file && file.Text == document ? file.Language : null);
+            Languages.Language? language = context.Editors.Active is { } file && file.Text == document ? file.Language : null;
+            if (help.Signatures.Count > 1 && help.Signatures.Any(s => s.Fits is not null))
+            {
+                // Every overload, those the arguments so far still fit with the parameter the caret's fills.
+                foreach (SignatureInformation each in help.Signatures)
+                {
+                    bool fits = each.Fits != false;
+                    card.AddOverload(each.Label, each.Code, language, fits, fits ? each.ActiveParameter ?? help.ActiveParameter ?? -1 : -1);
+                }
+            }
+            else
+            {
+                card.AddServed(signature.Label, signature.Code, language);
+            }
             int active = signature.ActiveParameter ?? help.ActiveParameter ?? -1;
             List<string> names = [.. ParameterNames(signature)];
             if (signature.Parameters is { } parameters && active >= 0 && active < parameters.Count
