@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `McpTests`' `With_no_git_on_the_path_a_repository_is_said_to_need_git_…`, CI 44848029756 (report, every system):
+  "holds, rather than "Git is not installed" greyed: MenuItem.menuNotice …". **The test read wrong**: since ca5a24cda
+  (#2045) the item is a `ListMenus.Notice`, which the test's exact `MenuItem "…"` no longer matched; it reads the notice
+  by its class now and checks ide_actions' Create Git Repository saying git is not installed (c8f88907a, #2051).
+- `AspireCodeHelpTests`' `Renaming_a_resource_…`, Linux, CI 44792503264 and 44848029756 (report): "Waited 180 s for the
+  rename of connected to store to be made, or say why not". **The test read a state that moved**: in CI's Linux order the
+  rename runs a few windows after a test that touched OtherHost.csproj, and the class's kept server, told at each keep
+  that the project changed, loads it again a second into each later window, its warning replacing "Renamed connected to
+  store in 3 files" before the settled wait looked. The test hears the status bar as it is said (52f497763, #2051).
+
 - `XamlTests`' `Passengers_own_xaml_which_compiles_is_marked_with_no_problem`, CI 44836100225 (gate, every system):
   "Resource 'Passenger.CodeFont' is not found". **A bug in the IDE**: the type ramp's `code` style named the code
   font's resource by its words, a key the app sets only from code, which Passenger's XAML check can't find; it names it
