@@ -43,13 +43,16 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         MainWindow window = pair.Open(Counter, languageServer: false);
         try
         {
+            window.ApplySettings(window.Settings with { SoundCues = SoundCuesPlayed.Always });
             CodeEditor editor = window.EditorArea.CodeEditor;
             editor.GoTo(new TextPosition(Pair.Next, 8));
             Ui.Run(window, AppActions.ToggleBreakpoint);
 
             DebugSession first = Debug(window, "First");
             Assert.Equal(DebugState.Paused, first.State);
+            Stopped(window, 1, "the first program's stop at its breakpoint");
             DebugSession second = Debug(window, "Second");
+            Stopped(window, 2, "the second program's stop at its breakpoint");
             Assert.Equal(DebugState.Paused, first.State);
             Assert.Same(second, window.Debugger.Session);
             Assert.Equal(["First", "Second"], window.Debugger.Tabs.Select(t => t.Name));
@@ -66,6 +69,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             int firstThread = first.StoppedThread!.Value;
             Ui.Run(window, AppActions.StepOver);
             Ui.WaitFor(() => second.State == DebugState.Paused && window.Debugger.Stop?.Top?.Line == Pair.Next + 2, "the second program's step");
+            Stopped(window, 3, "the second program's step's end");
             Assert.Equal(DebugState.Paused, first.State);
             Assert.Equal(firstThread, first.StoppedThread);
             Assert.Same(second, window.Debugger.Session);
@@ -92,8 +96,10 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.Same(again, window.Debugger.Tabs[0].Session);
             Assert.False(Tabs(window).Single(t => t.Name == "First").Greyed, "The tab of the program debugged again stayed greyed");
 
+            Stopped(window, 4, "the first program's stop at its breakpoint again");
             Assert.True(window.Perform(AppActions.StopAll), $"Stop All could not run: {Ui.Said(window)}");
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "every program to end");
+            Stopped(window, 4, "every program ended");
             Assert.Equal(DebugState.Ended, again.State);
             Assert.Equal(DebugState.Ended, second.State);
             Assert.All(Tabs(window), t => Assert.True(t.Greyed, $"{t.Name}'s tab was not greyed as its program ended"));
@@ -109,6 +115,14 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         {
             window.Close();
         }
+    }
+
+    /// <summary>Holds the window to having played the debugger's stop cue <paramref name="count"/> times, once a stop.</summary>
+    private static void Stopped(MainWindow window, int count, string at)
+    {
+        Ui.Settle();
+        int played = window.CuesPlayed.Count(c => c == SoundCue.DebuggerStopped);
+        Assert.True(played == count, $"At {at} the debugger's stop cue had played {played} times, not once each stop, {count}");
     }
 
     /// <summary>A stop the person's own resume or start comes to brings the window in front of the program they went to;
