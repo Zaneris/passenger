@@ -115,9 +115,9 @@ internal sealed class PopupPlacement
 
     /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or when there is no
     /// room below, kept inside the editor. A card, a list of choices, Rename's box or the colour picker
-    /// (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>), and one that fits neither under
-    /// nor over its line goes where there is more room, moved in as far as it must to show whole, though it then hides
-    /// some of the line.</summary>
+    /// (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one that fits neither under nor
+    /// over its line goes where there is more room, lowered to it where it gives way in height (<see cref="IGivesWayInHeight"/>),
+    /// else moved in as far as it must to show whole, though it then hides some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
         if (cards.Contains(popup))
@@ -154,6 +154,32 @@ internal sealed class PopupPlacement
         Heard(popup);
         at = editor.TranslatePoint(at, onto) ?? at;
         (popup as IHeldToEditor)?.Within(Math.Max(0, onto.Bounds.Width - RightEdge));
+        (popup as IGivesWayInHeight)?.WithinHeight(double.PositiveInfinity);
+        Size size = Measured(popup);
+        Size room = onto.Bounds.Size;
+        double lineHeight = editor.LineHeight;
+        double below = at.Y + lineHeight + 2;
+        double over = at.Y - size.Height - 2;
+        if (popup is IGivesWayInHeight lowered && over < 0 && below + size.Height > room.Height)
+        {
+            lowered.WithinHeight(Math.Max(room.Height - below, at.Y - 2));
+            size = Measured(popup);
+            over = at.Y - size.Height - 2;
+        }
+        double x = Math.Clamp(at.X - 4, 0, Math.Max(0, room.Width - size.Width - RightEdge));
+        double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
+        if (popup is IHeldToEditor && over < 0 && below + size.Height > room.Height)
+        {
+            y = Math.Clamp(room.Height - below >= at.Y ? below : over, 0, Math.Max(0, room.Height - size.Height));
+        }
+        Canvas.SetLeft(popup, x);
+        Canvas.SetTop(popup, y);
+        lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
+    }
+
+    /// <summary>The size a popup takes as it is now held, measured again.</summary>
+    private static Size Measured(Control popup)
+    {
         // A list shown again measures as its last rows did until a layout pass measures the rows it shows now.
         if (popup.IsAttachedToVisualTree())
         {
@@ -163,20 +189,7 @@ internal sealed class PopupPlacement
         {
             popup.Measure(Size.Infinity);
         }
-        Size size = popup.DesiredSize;
-        Size room = onto.Bounds.Size;
-        double lineHeight = editor.LineHeight;
-        double x = Math.Clamp(at.X - 4, 0, Math.Max(0, room.Width - size.Width - RightEdge));
-        double below = at.Y + lineHeight + 2;
-        double over = at.Y - size.Height - 2;
-        double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
-        if (popup is IHeldToEditor && over < 0 && below + size.Height > room.Height)
-        {
-            y = Math.Clamp(room.Height - below >= at.Y ? below : over, 0, Math.Max(0, room.Height - size.Height));
-        }
-        Canvas.SetLeft(popup, x);
-        Canvas.SetTop(popup, y);
-        lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
+        return popup.DesiredSize;
     }
 
     /// <summary>A card beside a popup, at its top: to its right where it fits there whole, else to the side with more room,
@@ -412,4 +425,14 @@ internal interface IHeldToEditor
 {
     /// <summary>Held to a room narrower than it would be; as wide as it is of itself in a wider one.</summary>
     void Within(double room);
+}
+
+/// <summary>A popup held to the editor that gives way in height too where it fits neither under nor over its line
+/// (<see cref="PopupPlacement.Place(Control, Point, bool)"/>): lowered to the room on the side with more, so it shows
+/// there whole and covers none of the line.</summary>
+internal interface IGivesWayInHeight : IHeldToEditor
+{
+    /// <summary>Held to a room lower than it would be, as far as it can give way; as tall as it is of itself in a taller
+    /// one.</summary>
+    void WithinHeight(double room);
 }

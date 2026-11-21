@@ -58,8 +58,9 @@ public sealed class ColourSwatchesTests : IDisposable
     }
 
     /// <summary>In a window at its smallest with the default layout, the Explorer open leaving the editor narrower than the
-    /// picker's own width, the picker opened on a swatch shows whole in the editor under the swatch's line, narrowed to it:
-    /// its hex whole, and its Choose and Cancel inside it, where Choose writes the colour typed.</summary>
+    /// picker's own width and the navigation bar over it leaving too little room for the picker of itself under the
+    /// swatch's line, the picker opened on that swatch shows whole in the editor under its line, narrowed and lowered to
+    /// the room there: its hex whole, and its Choose and Cancel inside it, where Choose writes the colour typed.</summary>
     [AvaloniaFact]
     public void The_colour_picker_in_an_editor_at_the_windows_smallest_width_shows_whole_under_its_line_and_chooses_there()
     {

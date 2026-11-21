@@ -16,9 +16,16 @@ namespace Passenger.App.Xaml;
 /// it, an alpha bar, the colour before and after, and its hex to read or type. Choose (or Enter) gives the colour,
 /// Cancel or Escape leaves it; over a colour that cannot be written, Choose is greyed, saying why, and Enter gives nothing.
 /// Each colour it moves to is told as it moves (<see cref="Changing"/>). Its gradients are the colours being chosen; its
-/// chrome is the theme's. Over a narrow editor it is held to the editor's width (<see cref="Within"/>).</summary>
-public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPopup
+/// chrome is the theme's. Over a narrow editor it is held to the editor's width (<see cref="Within"/>), and in one too
+/// short for it under or over its line, to the room there (<see cref="WithinHeight"/>).</summary>
+public sealed class ColourPicker : Border, CSharp.IGivesWayInHeight, CSharp.IHeardPopup
 {
+    /// <summary>How tall the square of shades is of itself.</summary>
+    private const double ShadesHeight = 160;
+
+    /// <summary>The least the square of shades gives way to, still a square to drag across.</summary>
+    private const double LeastShades = 64;
+
     private readonly ShadeSquare square;
     private readonly HueBar hue;
     private readonly AlphaBar alpha;
@@ -41,7 +48,7 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPo
         Padding = PopupFrame.Inset;
         (h, s, v) = ToHsv(start);
         a = start.A;
-        square = new ShadeSquare(this) { Height = 160 };
+        square = new ShadeSquare(this) { Height = ShadesHeight };
         hue = new HueBar(this) { Height = 14 };
         this.alpha = new AlphaBar(this) { Height = 14, IsVisible = alpha };
         // The swatches as tall as the field and buttons beside them, rounded as they are.
@@ -86,6 +93,19 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPo
     /// <summary>Held to a room narrower than its own width, its square and bars narrowing with it and its answers going under
     /// its hex where the row leaves the hex too little (<see cref="Footing"/>); its own width in a wider one.</summary>
     public void Within(double room) => Width = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
+
+    /// <summary>Held to a room lower than it is of itself, its square of shades giving way, down to <see cref="LeastShades"/>;
+    /// its own height in a taller one.</summary>
+    public void WithinHeight(double room)
+    {
+        square.Height = ShadesHeight;
+        if (double.IsPositiveInfinity(room))
+        {
+            return;
+        }
+        Measure(Size.Infinity);
+        square.Height = Math.Clamp(ShadesHeight - (DesiredSize.Height - room), LeastShades, ShadesHeight);
+    }
 
     /// <summary>The square of saturation and brightness, which the pointer drags across.</summary>
     public Control Shades => square;
