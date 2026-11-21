@@ -21,9 +21,24 @@ public static class SessionStarts
     public const string LimitVariable = "PASSENGER_SESSION_START_MS";
 
     /// <summary>How long a program's runtime is given to take a session at its diagnostic port: 10 s, or what
-    /// <see cref="LimitVariable"/> gives, as much longer as <see cref="Waits"/> says; a value there that is no whole number of
-    /// milliseconds above 0 is fatal.</summary>
-    public static TimeSpan Limit => Waits.Of(EnvironmentValues.Milliseconds(LimitVariable, TimeSpan.FromSeconds(10)));
+    /// <see cref="LimitVariable"/> gives (or <see cref="HoldLimit"/> holds), as much longer as <see cref="Waits"/> says; a
+    /// value there that is no whole number of milliseconds above 0 is fatal.</summary>
+    public static TimeSpan Limit => Waits.Of(Volatile.Read(ref heldLimit) is > 0 and long held
+        ? TimeSpan.FromTicks(held)
+        : EnvironmentValues.Milliseconds(LimitVariable, TimeSpan.FromSeconds(10)));
+
+    /// <summary>The ticks <see cref="HoldLimit"/> holds <see cref="Limit"/> to before the machine's scale; 0 when none.</summary>
+    private static long heldLimit;
+
+    /// <summary>For a test standing in for a runtime that takes no session: <see cref="Limit"/> is <paramref name="limit"/>
+    /// (before the machine's scale) in this process alone until the hold is disposed, so its starts give up sooner, while
+    /// the programs it starts meanwhile keep their own.</summary>
+    public static IDisposable HoldLimit(TimeSpan limit) => new HeldLimit(Interlocked.Exchange(ref heldLimit, limit.Ticks));
+
+    private sealed class HeldLimit(long before) : IDisposable
+    {
+        public void Dispose() => Volatile.Write(ref heldLimit, before);
+    }
 
     /// <summary>A session of <paramref name="providers"/> at process <paramref name="processId"/>'s port, its failure said
     /// after <paramref name="unread"/> ("Its metrics could not be read"); <paramref name="waiting"/> told how long it waits

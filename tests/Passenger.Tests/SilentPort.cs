@@ -15,9 +15,13 @@ namespace Passenger.Tests;
 /// runtime whose diagnostics are held up does. Any process of the machine may reach it, as a pipe's name on Windows and the
 /// temporary folder elsewhere are shared, so it keeps each connection's time, the process that made it and the request it
 /// sent (<see cref="Account"/>). On macOS and Linux it is taken only over a port of the program's own made before it.
+/// While it stands, a session's start in this process gives up after 4 s, as much longer as the run's scale, and the
+/// programs the process starts keep the IDE's own limit (<see cref="Passenger.Profiler.SessionStarts.HoldLimit"/>).
 /// Disposed, it stops listening and lets each connection go: on the UI thread with the window's loop running.</summary>
 public sealed partial class SilentPort : IDisposable
 {
+    private readonly IDisposable limit = Passenger.Profiler.SessionStarts.HoldLimit(TimeSpan.FromSeconds(4));
+
     /// <summary>A request's header: the protocol's magic, the message's whole size, its command set and command, two bytes unused.</summary>
     private const int HeaderSize = 20;
 
@@ -134,6 +138,7 @@ public sealed partial class SilentPort : IDisposable
         }
         Ui.Pumped(() => reads.All(read => read.IsCompleted), TimeSpan.FromSeconds(10), scaled: false);
         end.Dispose();
+        limit.Dispose();
     }
 
     private static bool Here(Connection connection) => connection.From is null || connection.From == Environment.ProcessId;
