@@ -41,16 +41,18 @@ GATE = "Gate"
 # (tests/Passenger.Tests/SameOnEverySystem.cs), and the one system whose report lane runs it: the others leave it out.
 SAME = "SameOnEverySystem"
 ONE_SYSTEM = "Linux"
-# How long a class's tests take on each system in each of a job's two test processes, for each of their seconds in a
-# process alone (TestTimes.json's): the deal's model of a job of two, and the measure by which `update` keeps the seconds a
-# lone process's. The median `cover` reported for each system's report lane in CI 44824859727, two processes on each.
-PACED = {"macOS": 1.21, "Windows": 1.07, "Linux": 1.06}
+# How long a class's tests take on each system in each of a job's test processes, by how many there are, for each of
+# their seconds in a process alone (TestTimes.json's): the deal's model of a job of several, and the measure by which
+# `update` keeps the seconds a lone process's. Two: the median `cover` reported for each system's report lane in CI
+# 44824859727. Three on Windows: an estimate, two having left most of its four processors idle, until `cover` reports it.
+PACED = {"macOS": {2: 1.21}, "Windows": {2: 1.07, 3: 1.2}, "Linux": {2: 1.06}}
 # How many test processes a job may run at once.
-PROCESSES = (1, 2)
+PROCESSES = (1, 2, 3)
 # How much later, in seconds, the job of a lane's first shard begins its tests than another job where it builds the
 # solution's check first (test.yml's Build: every analyzer and code-style rule) and lists each shard's hand (--check): the
-# median over CI 44836100225, 44848029756 and 44855772233 of that job's time before its tests against the others' median.
-CHECKED_FIRST = {"macOS": 270, "Windows": 120, "Linux": 60}
+# median over CI 44836100225, 44848029756, 44855772233, 44872855052 and 44879987936 of that job's time before its tests
+# against the others' median.
+CHECKED_FIRST = {"macOS": 270, "Windows": 145, "Linux": 65}
 # What xunit's adapter writes into the listing when it could not discover an assembly's tests.
 DISCOVERY_FAILED = "Exception discovering tests"
 # How much sooner the slowest shard must end, dealt from a run's own times, before the summary asks for a new deal.
@@ -399,8 +401,8 @@ def deal(weighed, count):
 
 # How a class runs in a shard's dotnet test (Collections.cs): one after another with the other window classes, at once
 # with them (DebugSession.Collection, Beside), alone once they have all ended, or in the unit tests' own dotnet test after.
-# In a job of two test processes, its window and Beside classes are split between them, and its Alone classes run after
-# both, in one process with nothing beside it.
+# In a job of several test processes, its window and Beside classes are split between them, and its Alone classes run
+# after all of them, in one process with nothing beside it.
 KINDS = ("window", "beside", "alone", "unit")
 # The kinds of class a job's test processes share out, each in one of them.
 SHARED_OUT = ("window", "beside")
@@ -415,7 +417,9 @@ def kinds(classes):
 
 def paced(system, processes):
     """How long a class takes on a system in a job of so many test processes for each second it takes in one alone."""
-    return 1.0 if processes == 1 else PACED[system]
+    if processes != 1 and processes not in PACED[system]:
+        sys.exit(f"test-shards: PACED has no pace for {processes} test processes on {system}")
+    return 1.0 if processes == 1 else PACED[system][processes]
 
 
 def empty_hand(processes, pace=1.0):
@@ -502,7 +506,7 @@ def parts_of(seconds, kind, places, processes, pace=1.0):
 
 
 def said_hand(part):
-    """A hand's seconds by kind as the deal says them: in a job of two processes, each one's first."""
+    """A hand's seconds by kind as the deal says them: in a job of several processes, each one's first."""
     if len(part["window"]) == 1:
         return ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k))
     each = "; ".join(f"process {p + 1}: {part['window'][p] / 60:.1f} window, {part['beside'][p] / 60:.1f} beside"

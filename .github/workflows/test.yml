@@ -2,7 +2,7 @@
 # two lanes: the gate (the [Gate] tests and the unit tests), whose failure fails the caller, and, when the caller asks,
 # the report lane (every other test, its classes marked [SameOnEverySystem] on Linux alone), whose failures are listed for
 # triage and fail nothing. Each lane's tests are split across shards that run at once, the report lane's last ones in the
-# gate's jobs once their gate tests end, and each job runs its tests in two processes at once, the
+# gate's jobs once their gate tests end, and each job runs its tests in several processes at once, the
 # results in artifacts/test-results. Every restore is locked to the packages.lock.json files. Actions are pinned to a
 # release's commit.
 name: Test
@@ -52,8 +52,10 @@ jobs:
         # time_scale multiplies every test's wall-clock limit (PASSENGER_TEST_TIME_SCALE), each written as the Mac's
         # time: to the nearest half, the 90th percentile of how much longer a test of a second or more took on the
         # system's runner (in October, macOS 2.23, Windows 2.64, Linux 1.96). processes is how many test processes a
-        # job runs its window and Beside classes in at once, its Alone classes after them in one: two on every runner,
-        # macOS's of three processors and 7 GB too, where two kept at least 1.4 GB free and ended no process.
+        # job runs its window and Beside classes in at once, its Alone classes after them in one: two on macOS's runner
+        # of three processors and 7 GB, where two kept at least 1.4 GB free and ended no process, and on Linux's, whose
+        # jobs end well within the others'; three on Windows', of four processors and 16 GB, where two ran each class
+        # only 7% slower than one alone and left 7 GB free.
         include:
           - system: macOS
             name: macOS (arm64)
@@ -64,7 +66,7 @@ jobs:
             name: Windows (x64)
             os: windows-latest
             time_scale: 2.5
-            processes: 2
+            processes: 3
           - system: Linux
             name: Linux (x64)
             os: ubuntu-26.04
@@ -283,8 +285,8 @@ jobs:
         if: matrix.lane == 'gate' && steps.report-deal.outcome == 'success'
         run: echo "TESTS_BEGAN=$(date +%s)" >> "$GITHUB_ENV"
 
-      # The hand's runs of dotnet test as the deal wrote them (with two processes, the window and Beside classes in two at
-      # once, then the Alone classes in one), what each prints kept beside the results as it comes, so a shard stopped
+      # The hand's runs of dotnet test as the deal wrote them (with several processes, the window and Beside classes in
+      # them at once, then the Alone classes in one), what each prints kept beside the results as it comes, so a shard stopped
       # partway leaves what it ran. A test hung for 10 minutes is stopped and named, rather than holding the job to its
       # timeout. Each class's time and how low the free memory fell go in the job's summary; the failed tests are listed
       # last, as annotations (warnings in the report lane) and in the job's summary.
