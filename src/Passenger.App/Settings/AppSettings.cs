@@ -197,6 +197,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the other in front; only asks for them; or nothing. An agent's debugging never brings it forward.</summary>
     public DebuggerStop WhenDebuggerStops { get; init; } = DebuggerStop.ComeForward;
 
+    /// <summary>Whether Run, Debug or Profile of a configuration that runs asks first, rather than stopping what runs of it
+    /// and starting it again at once: Stop and Rerun, Stop alone, or Cancel. Off at first; an agent's start never asks.</summary>
+    public bool AskBeforeRerun { get; init; }
+
     /// <summary>"Tool Window: when build is explicitly invoked, open the build progress view in a tool window": the
     /// Build menu's builds, rebuilds and cleans open the Build window as they start.</summary>
     public bool OpenBuildWindowOnBuild { get; init; } = true;

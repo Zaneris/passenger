@@ -95,6 +95,11 @@ public sealed record BuildRunParts(
     /// way that asks nothing, saying so.</summary>
     public bool AsksNoOne { get; init; }
 
+    /// <summary>Asks how a start of a configuration that runs goes on (its name, and the start's verb: run, debug or
+    /// profile): what runs of it stopped and it started again, only stopped, or left running, as it is once the start is
+    /// stopped meanwhile.</summary>
+    public Func<string, string, CancellationToken, Task<RunAgain>>? AskRunAgain { get; init; }
+
     /// <summary>Whether nobody sees the window (<see cref="MainWindow.Unseen"/>): every Godot game and editor it runs runs
     /// headless.</summary>
     public bool Unseen { get; init; }
@@ -1832,6 +1837,13 @@ public sealed partial class BuildRunController
     /// else why not (the folder left meanwhile, or a debugged program the debugger cannot let go).</summary>
     public async Task<string?> EndRunningAsync(RunConfiguration chosen, Working work, string doing)
     {
+        bool runs = copyRuns.Any(c => c.Configuration == chosen.Name) || RunsOwnProgram(chosen.Name)
+            || session.Debug.CopiesOf(chosen.Name).Any(c => debugged.ContainsKey(c.Tab.Name));
+        RunAgain answer = runs && parts.AskRunAgain is { } ask ? await ask(chosen.Name, doing, work.Stopping) : RunAgain.StopAndRerun;
+        if (answer == RunAgain.Cancel || session.IsEnded)
+        {
+            return session.IsEnded ? Refusals.SolutionClosed : $"{chosen.Name} runs on: nothing was stopped or started";
+        }
         if (copyRuns.Any(c => c.Configuration == chosen.Name))
         {
             work.Say($"Ending the copies of {chosen.Name} Run runs to {doing} it…");
@@ -1869,7 +1881,7 @@ public sealed partial class BuildRunController
                 return Refusals.SolutionClosed;
             }
         }
-        return null;
+        return answer == RunAgain.Stop ? $"{chosen.Name} stopped, not started again" : null;
     }
 
     /// <summary>Ends what the Run console (or the terminal's tab) has, done once its end has landed.</summary>
@@ -3096,4 +3108,12 @@ public sealed partial class BuildRunController
     /// <summary>Why Stop cannot run now: nothing it stops is running.</summary>
     public string? WhyNotStop() => session.Debug.IsDebugging || IsRunning || session.Profiled is not null || session.Builder.IsRunning || parts.Work.CanStop
         || parts.PlaysInGodotEditor?.Invoke() == true || session.Dashboards.Any(d => d.Kept) ? null : "Nothing is running";
+}
+
+/// <summary>How a start of a configuration that runs goes on, as the person answered (<see cref="BuildRunParts.AskRunAgain"/>).</summary>
+public enum RunAgain
+{
+    StopAndRerun,
+    Stop,
+    Cancel,
 }

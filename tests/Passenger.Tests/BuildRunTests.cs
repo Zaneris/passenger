@@ -100,6 +100,72 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>With Ask before stopping a running configuration to start it again on, Run of the program that runs asks
+    /// first: Cancel leaves it running, Stop ends it and starts nothing, a Run with nothing running asks nothing, and Stop and
+    /// Rerun with Don't ask again ticked runs it again and turns the question off.</summary>
+    [AvaloniaFact]
+    public void Asked_before_a_rerun_cancel_leaves_the_program_running_stop_ends_it_and_stop_and_rerun_starts_it_again()
+    {
+        string started = Path.Combine(Folder, "program.pid");
+        Write("src/Hello/Program.cs", $$"""
+            File.WriteAllText(@"{{started}}", Environment.ProcessId.ToString());
+            while (true)
+            {
+                Console.WriteLine("running");
+                Thread.Sleep(200);
+            }
+
+            """);
+        // Seen, as only a window the person sees asks them.
+        MainWindow window = new() { Width = 1200, Height = 800, Unseen = false };
+        window.Show();
+        window.OpenFolder(Folder);
+        Ui.Settle();
+        window.ApplySettings(window.Settings with { AskBeforeRerun = true });
+        try
+        {
+            Assert.True(window.Perform(AppActions.RunProgram), $"Run could not run: {window.Status}");
+            Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) > 0, "the program to run", TimeSpan.FromMinutes(2));
+            int first = Processes.ReadId(started);
+
+            ChoiceDialog cancelled = RunAgainAsked(window);
+            Ui.ClickButton(cancelled, "Cancel");
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.RunProgram) is null, "the start the person cancelled to end");
+            Assert.True(window.Runner.IsRunning && Processes.ReadId(started) == first && Processes.IsRunning(first),
+                $"Cancel did not leave the program running as it was: the status bar says \"{window.Status}\"");
+
+            Ui.ClickButton(RunAgainAsked(window), "Stop");
+            Ui.WaitFor(() => !window.Runner.IsRunning && window.Actions.Work.Of(AppActions.RunProgram) is null, "the program to stop, nothing started");
+            Assert.True(Processes.ReadId(started) == first && !Processes.IsRunning(first), $"Stop started the program again or left it running: \"{window.Status}\"");
+
+            Assert.True(window.Perform(AppActions.RunProgram), $"Run could not run: {window.Status}");
+            Assert.Null(window.RunAgainQuestion);
+            Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) is int again && again > 0 && again != first, "the program to run again, asked nothing", TimeSpan.FromMinutes(2));
+            int second = Processes.ReadId(started);
+
+            ChoiceDialog rerun = RunAgainAsked(window);
+            rerun.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Don't ask again").IsChecked = true;
+            Ui.ClickButton(rerun, "Stop and Rerun");
+            Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) is int third && third > 0 && third != second, "the program to run again", TimeSpan.FromMinutes(2));
+            Assert.False(Processes.IsRunning(second), "Stop and Rerun left the program it stopped running beside the new one");
+            Assert.False(window.Settings.AskBeforeRerun, "Don't ask again left the question on");
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
+            window.ApplySettings(new Passenger.App.Settings.AppSettings());
+            window.Close();
+        }
+
+        static ChoiceDialog RunAgainAsked(MainWindow window)
+        {
+            Assert.True(window.Perform(AppActions.RunProgram), $"Run could not run: {window.Status}");
+            Ui.PumpUntil(() => window.RunAgainQuestion is not null, "Run to ask about the program that runs", TimeSpan.FromMinutes(1));
+            return DialogButtonsTests.Check(window.RunAgainQuestion!);
+        }
+    }
+
     /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, and
     /// Build is pressed at once: the build waits for the save to land, saying so, and compiles the saved text (an error
     /// typed into it), never the file as it was.</summary>

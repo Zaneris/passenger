@@ -396,6 +396,12 @@ public static class Declared
             + $"comes to the front, or, where the system keeps that program in front, asks for your attention ({(OperatingSystem.IsMacOS() ? "its Dock icon bounces" : "its taskbar button flashes")}), "
             + "as Ask for attention always does. An agent's debugging never brings the window forward."));
 
+    public static readonly ToggleSetting AskBeforeRerun = new(s => s.AskBeforeRerun, (s, v) => s with { AskBeforeRerun = v },
+        new(D.RunPage, "Ask before stopping a running configuration to start it again",
+            "run debug profile again rerun restart running already stop confirm ask prompt question one copy instance accidental",
+            "Run, Debug or Profile of a configuration that runs stops what runs of it, then starts it again. On, you are asked first: "
+            + "Stop and Rerun, Stop alone, or Cancel, which leaves it running. The question's Don't ask again turns this off. An agent's start never asks."));
+
     public static readonly NumberSetting ConsoleBufferKb = new(s => s.ConsoleBufferKb, (s, v) => s with { ConsoleBufferKb = (int)v }, 16, 102_400, 64,
         new(D.RunPage, "Console buffer size", "console cycle buffer size output limit lines run debug build kb"), "KB");
 

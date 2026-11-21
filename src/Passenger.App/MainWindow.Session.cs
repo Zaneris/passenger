@@ -100,6 +100,7 @@ public partial class MainWindow
         DevCertificates = DevCertificates,
         AskCertificate = AskCertificateAsync,
         AskReplace = AskReplaceAsync,
+        AskRunAgain = AskRunAgainAsync,
         AsksNoOne = AgentsOwn,
         Unseen = Unseen,
         SdkChosen = ChosenSdk,

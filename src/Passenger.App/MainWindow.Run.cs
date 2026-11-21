@@ -16,6 +16,49 @@ namespace Passenger.App;
 /// tab of the Terminal window a configuration that uses one runs in.</summary>
 public partial class MainWindow
 {
+    /// <summary>How a start of a configuration that runs goes on: asked of the person where Settings says so, never of an
+    /// agent's start or where nobody sees the window; Cancel once the start is stopped meanwhile. Don't ask again, ticked
+    /// as a way on is chosen, turns the question off.</summary>
+    private async Task<RunAgain> AskRunAgainAsync(string configuration, string doing, CancellationToken stop)
+    {
+        if (!settings.AskBeforeRerun || Unseen || AgentsOwn || AgentAsks.Beside || AgentAsks.Inputting)
+        {
+            return RunAgain.StopAndRerun;
+        }
+        ChoiceDialog question = new($"{configuration} Is Running",
+            $"{configuration} runs now. Stop it and {doing} it again, only stop it, or leave it running?", [StopAndRerun, StopAlone], StopAndRerun, offersNotAgain: true);
+        RunAgainQuestion = question;
+        try
+        {
+            using CancellationTokenRegistration closing = stop.Register(() => UiThread.Post(() =>
+            {
+                if (question.IsVisible)
+                {
+                    question.Close(null);
+                }
+            }));
+            string? answer = await question.ShowDialog<string?>(this);
+            if (answer is not null && question.NotAgain)
+            {
+                ApplySettings(settings with { AskBeforeRerun = false });
+            }
+            return answer switch { StopAndRerun => RunAgain.StopAndRerun, StopAlone => RunAgain.Stop, _ => RunAgain.Cancel };
+        }
+        finally
+        {
+            if (RunAgainQuestion == question)
+            {
+                RunAgainQuestion = null;
+            }
+        }
+    }
+
+    private const string StopAndRerun = "Stop and Rerun";
+    private const string StopAlone = "Stop";
+
+    /// <summary>The question of a start of a configuration that runs, while it is asked.</summary>
+    public ChoiceDialog? RunAgainQuestion { get; private set; }
+
     /// <summary>Whether a program Run started runs, in the Run window or the terminal.</summary>
     public bool IsRunning => buildRun.IsRunning;
 
