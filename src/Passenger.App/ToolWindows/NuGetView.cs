@@ -600,14 +600,15 @@ public sealed partial class NuGetView : DockPanel
             is { Version: { } version, Said: { } said } ? (version, said) : null;
 
     /// <summary>Reads, while the window is shown, whether the versions the rows' projects have are deprecated, and once they
-    /// are known marks the rows the list holds, unless another list took their place or nothing changed.</summary>
+    /// are known marks the rows the list holds, unless another list took their place or nothing changed. A read ended
+    /// already may have ended after the rows were marked, so it is taken as one that ends now.</summary>
     private async Task DeprecatedAsync(IReadOnlyList<PackageRow> found, CancellationTokenSource cancel)
     {
-        if (!IsShown || Asked(found) is not { Length: > 0 } wanted || model.DeprecationsAsync(wanted) is not { IsCompleted: false } reading)
+        if (!IsShown || Asked(found) is not { Length: > 0 } wanted)
         {
             return;
         }
-        await reading;
+        await model.DeprecationsAsync(wanted);
         if (cancel.IsCancellationRequested || asking != cancel)
         {
             return;
@@ -952,14 +953,15 @@ public sealed partial class NuGetView : DockPanel
     }
 
     /// <summary>Reads, while the window is shown, whether the version chosen in the details is deprecated, and says it once
-    /// known, unless another package or version was chosen meanwhile.</summary>
+    /// known, unless another package or version was chosen meanwhile. A read ended already may have ended after the details
+    /// said what they knew, so it is taken as one that ends now.</summary>
     private async Task ChosenDeprecationAsync(PackageRow row, Panel said, CancellationTokenSource cancel)
     {
-        if (!IsShown || ChosenVersion is not { Length: > 0 } chosen || model.DeprecationsAsync([(row.Id, chosen)]) is not { IsCompleted: false } reading)
+        if (!IsShown || ChosenVersion is not { Length: > 0 } chosen)
         {
             return;
         }
-        await reading;
+        await model.DeprecationsAsync([(row.Id, chosen)]);
         if (!cancel.IsCancellationRequested && Selected == row && ChosenVersion == chosen)
         {
             ShowDeprecated(row, said);
