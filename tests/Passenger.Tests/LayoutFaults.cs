@@ -16,8 +16,8 @@ namespace Passenger.Tests;
 /// what holds them, of the room a row gave their part or of the window, a field or button laid out past the edge of what
 /// shows it with nothing to scroll it into view, a field left too little room to type in, and two things a person reads
 /// or presses drawn one over the other, each as far as what clips it shows it. A field's own options inside it and what
-/// one holds inside another are laid over each other on purpose. The code editor draws its own rows and a scroll bar its
-/// own thumb, so neither is read here.</summary>
+/// one holds inside another are laid over each other on purpose, as a tooltip is over what the pointer rests on. The code
+/// editor draws its own rows and a scroll bar its own thumb, so neither is read here.</summary>
 internal static class LayoutFaults
 {
     /// <summary>The least room a field leaves to type in, a few letters' (a field squeezed by what stands beside it).</summary>
@@ -28,7 +28,8 @@ internal static class LayoutFaults
     {
         List<string> found = [];
         Control[] drawn = [.. part.GetSelfAndVisualDescendants().OfType<Control>().Where(c => (c is TextBlock { Text.Length: > 0 } or Button or ComboBox or TextBox)
-            && c.IsEffectivelyVisible && Drawn(c) && c.FindAncestorOfType<Passenger.Editor.CodeEditor>() is null && c.FindAncestorOfType<ScrollBar>() is null)];
+            && c.IsEffectivelyVisible && Drawn(c) && c.FindAncestorOfType<Passenger.Editor.CodeEditor>() is null && c.FindAncestorOfType<ScrollBar>() is null
+            && c.FindAncestorOfType<ToolTip>() is null)];
         foreach (TextBlock text in drawn.OfType<TextBlock>().Where(t => t.Bounds.Width >= 1))
         {
             double room = text.Bounds.Width - text.Padding.Left - text.Padding.Right;
