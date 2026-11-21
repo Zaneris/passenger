@@ -995,7 +995,8 @@ internal static class Contexts
 }
 
 // By-ref slots an evaluation reads and writes through: ref, out and in parameters (a struct's among them), a ref local, a
-// struct method's this.
+// struct method's this; and ref and in parameters of a struct with a [DebuggerDisplay], a record struct and a DateTime,
+// and that struct's this in its property, shown beside copies of them.
 internal static class Refs
 {
 	private static readonly int[] Firsts = [1];
@@ -1014,6 +1015,20 @@ internal static class Refs
 		}
 		tile.Grow(2);
 		Console.WriteLine($"refs {counted} {assigned} {added} {Firsts[0]} {height} {tile.X} {tile.Y}");
+		Dial dial = new() { Level = 7 };
+		Spot spot = new(1, 2);
+		DateTime moment = new(2026, 11, 20, 10, 30, 0, DateTimeKind.Utc);
+		int shown = Shown(ref dial, in spot, ref moment, out int sum);
+		Console.WriteLine($"shown {shown} {sum} {dial.Doubled}");
+	}
+
+	private static int Shown(ref Dial dial, in Spot spot, ref DateTime moment, out int sum)
+	{
+		Dial dialCopy = dial;
+		Spot spotCopy = spot;
+		DateTime momentCopy = moment;
+		sum = dialCopy.Level + spotCopy.X + momentCopy.Day;
+		return sum;
 	}
 
 	private static int IncrementByRef(ref int value)
@@ -1069,6 +1084,21 @@ internal static class Typed<T>
 		List<T> list = [t];
 		V? maybe = v;
 		return $"{list.Count} {list[0]} {maybe}";
+	}
+}
+
+[DebuggerDisplay("Dial at {Level}")]
+internal struct Dial
+{
+	public int Level;
+
+	public int Doubled
+	{
+		get
+		{
+			int doubled = Level * 2;
+			return doubled;
+		}
 	}
 }
 

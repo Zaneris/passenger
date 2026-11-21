@@ -5,7 +5,8 @@ namespace Passenger.Tests.Debugging;
 
 /// <summary>By-ref slots of a frame in PassengerCases' Refs (ref, out and in parameters, a member of an in struct, a ref
 /// local, a struct method's this) through the protocol: evaluated, set and read in conditions as the managed locations they
-/// are, a change written where they refer to, which the program goes on with.</summary>
+/// are, a change written where they refer to, which the program goes on with; shown as copies of what they refer to show,
+/// in a frame named as declared.</summary>
 [Collection(DebugSession.Collection)]
 public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
 {
@@ -15,6 +16,9 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
     private static readonly int AddOne = Debuggees.Line("PassengerCases", "return value + one;");
     private static readonly int Climb = Debuggees.Line("PassengerCases", "value += 40;");
     private static readonly int Grow = Debuggees.Line("PassengerCases", "Y += by;");
+    private static readonly int Copied = Debuggees.Line("PassengerCases", "Dial dialCopy = dial;");
+    private static readonly int Summed = Debuggees.Line("PassengerCases", "sum = dialCopy.Level + spotCopy.X + momentCopy.Day;");
+    private static readonly int Doubled = Debuggees.Line("PassengerCases", "return doubled;");
 
     /// <summary>A ref, an out and an in parameter and a ref local evaluate and take a value, the program reading back each
     /// value set where the slot refers to: the caller's variable, the array's element.</summary>
@@ -97,29 +101,78 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
         Assert.Contains("refs 4 42 5 1 160 10 22", output, StringComparison.Ordinal);
     }
 
+    /// <summary>A ref and an in parameter of a struct show as the copies of them beside them do, each with its type: a struct
+    /// by its [DebuggerDisplay], a record struct and a DateTime by their ToString, read as rows, opened, evaluated (as a hover
+    /// reads one) and in a tracepoint, beside a call that returns nothing; the frame names its ref, in and out parameters as
+    /// declared; and a struct's this in its property shows by its [DebuggerDisplay].</summary>
+    [Fact]
+    public async Task A_by_reference_struct_shows_as_its_copy_does_and_its_frame_names_in_and_out_as_declared()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await LaunchWithAsync(host, [new DapSourceBreakpoint(Copied, LogMessage: "dial {dial}, collected {System.GC.Collect()}"), new DapSourceBreakpoint(Summed)]);
+        OutputEvent logged = await host.WaitForEvent<OutputEvent>(output => output.Output.StartsWith("dial ", StringComparison.Ordinal));
+        Assert.Equal($"dial Dial at 7, collected {DapRows.RanWithNoValue}\n", logged.Output);
+        DapStackFrame shown = await StoppedFrameAsync(host, Summed);
+        int frame = shown.Id;
+        Assert.EndsWith("Refs.Shown(ref Dial dial, in Spot spot, ref System.DateTime moment, out int sum)", shown.Name, StringComparison.Ordinal);
+        List<DapVariable> rows = await host.VariablesAsync(Assert.Single((await host.ScopesAsync(frame)).Scopes).VariablesReference);
+        DapVariable Row(string name) => Assert.Single(rows, row => row.Name == name);
+        Assert.Equal(("Dial at 7", "Dial"), (Row("dial").Value, Row("dial").Type));
+        Assert.Equal(("Spot { X = 1, Y = 2 }", "Spot"), (Row("spot").Value, Row("spot").Type));
+        foreach ((string byReference, string copy) in new[] { ("dial", "dialCopy"), ("spot", "spotCopy"), ("moment", "momentCopy") })
+        {
+            Assert.True((Row(byReference).Value, Row(byReference).Type) == (Row(copy).Value, Row(copy).Type),
+                $"{byReference}, by reference, shows {Row(byReference).Value} ({Row(byReference).Type}), where its copy {copy} shows {Row(copy).Value} ({Row(copy).Type})");
+            EvaluateResponse evaluated = await host.EvaluateAsync(frame, byReference);
+            Assert.True((evaluated.Result, evaluated.Type) == (Row(copy).Value, Row(copy).Type),
+                $"{byReference} evaluates to {evaluated.Result} ({evaluated.Type}), where its copy {copy} shows {Row(copy).Value} ({Row(copy).Type})");
+        }
+        List<DapVariable> members = await host.VariablesAsync(Row("dial").VariablesReference);
+        Assert.Equal("7", Assert.Single(members, member => member.Name == "Level").Value);
+        Assert.Equal("14", Assert.Single(members, member => member.Name == "Doubled").Value);
+
+        await host.BreakpointsAsync(File, [new DapSourceBreakpoint(Doubled)]);
+        frame = await ContinueToAsync(host, Doubled);
+        rows = await host.VariablesAsync(Assert.Single((await host.ScopesAsync(frame)).Scopes).VariablesReference);
+        Assert.True((Row("this").Value, Row("this").Type) == ("Dial at 7", "Dial"), $"In Dial's Doubled, this shows {Row("this").Value} ({Row("this").Type}), where its display is Dial at 7");
+
+        await host.ClearBreakpointsAsync(File).ContinueAsync();
+        (string output, _) = await host.WaitForEnd();
+        Assert.Contains("shown 28 28 14", output, StringComparison.Ordinal);
+    }
+
     /// <summary>PassengerCases launched with Refs' breakpoints to its first stop, which must be at <paramref name="line"/>;
     /// its top frame.</summary>
-    private static async Task<int> LaunchToAsync(DebugSession host, List<DapSourceBreakpoint> breakpoints, int line)
+    private static async Task<int> LaunchToAsync(DebugSession host, List<DapSourceBreakpoint> breakpoints, int line) =>
+        (await LaunchToFrameAsync(host, breakpoints, line)).Id;
+
+    private static async Task<DapStackFrame> LaunchToFrameAsync(DebugSession host, List<DapSourceBreakpoint> breakpoints, int line)
+    {
+        await LaunchWithAsync(host, breakpoints);
+        return await StoppedFrameAsync(host, line);
+    }
+
+    /// <summary>PassengerCases launched with Refs' breakpoints, running.</summary>
+    private static async Task LaunchWithAsync(DebugSession host, List<DapSourceBreakpoint> breakpoints)
     {
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["refs"])
             .WaitForInitializedEvent();
         await host.BreakpointsAsync(File, breakpoints).ConfigurationDoneAsync();
-        return await StoppedAtAsync(host, line);
     }
 
     private static async Task<int> ContinueToAsync(DebugSession host, int line)
     {
         await host.ContinueAsync();
-        return await StoppedAtAsync(host, line);
+        return (await StoppedFrameAsync(host, line)).Id;
     }
 
-    private static async Task<int> StoppedAtAsync(DebugSession host, int line)
+    private static async Task<DapStackFrame> StoppedFrameAsync(DebugSession host, int line)
     {
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.True(stop.ReadStopInfo().line == line, $"The program was to stop at line {line}, but stopped at the {stop.Reason} at line {stop.Line}");
-        return (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        return await host.TopFrameAsync(stop.ThreadId!.Value);
     }
 
     private static async Task<string> Set(DebugSession host, int frame, string expression, string value) =>

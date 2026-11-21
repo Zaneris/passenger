@@ -434,10 +434,15 @@ public partial class ManagedDebugger
 
     private readonly record struct ResolvedCorDebugValue(ICorDebugValue? Value, string? FriendlyTypeNameOverride);
 
-    /// <summary>A value as it is shown: a nullable's underlying value under its own type's name, and a union's (C# 15)
+    /// <summary>A value as it is shown: a by-reference slot's (a ref, in or out parameter, a ref local, a struct's this) what
+    /// it refers to, as a copy of it shows; a nullable's underlying value under its own type's name, and a union's (C# 15)
     /// the value it holds, as that value's type; either holding none, null.</summary>
     private static ResolvedCorDebugValue ResolveCorDebugValue(ICorDebugValue corDebugValue)
     {
+        if (corDebugValue is ICorDebugReferenceValue { Type: CorElementType.BYREF, IsNull: false } byReference)
+        {
+            corDebugValue = byReference.Dereference();
+        }
         if (TryGetNullableUnderlyingValue(corDebugValue, out string? nullableTypeName, out ICorDebugValue? underlyingValue))
         {
             return new(underlyingValue, nullableTypeName);
