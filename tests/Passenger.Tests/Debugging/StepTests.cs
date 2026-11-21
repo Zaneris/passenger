@@ -451,7 +451,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             Program = program,
             Args = exceptions is null ? ["race"] : ["race", "throws"],
             Cwd = Path.GetDirectoryName(program),
-            Console = "internalConsole",
+            Console = ConsoleKinds.InternalConsole,
             JustMyCode = true,
             StopAtEntry = false,
         });
@@ -475,7 +475,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
             Program = program,
             Args = [.. mode.Split(' ')],
             Cwd = Path.GetDirectoryName(program),
-            Console = "internalConsole",
+            Console = ConsoleKinds.InternalConsole,
             JustMyCode = true,
             StopAtEntry = false,
         });

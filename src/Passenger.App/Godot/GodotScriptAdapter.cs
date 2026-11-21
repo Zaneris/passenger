@@ -202,7 +202,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
     private async Task<bool> LaunchAsync(LaunchArguments arguments)
     {
         string program = arguments.Program ?? throw new DapException(DapCommands.Launch, "No program to launch");
-        if (arguments.Console == "integratedTerminal" && runsInTerminal)
+        if (arguments.Console == ConsoleKinds.IntegratedTerminal && runsInTerminal)
         {
             return await LaunchInTerminalAsync(program, arguments);
         }
@@ -245,7 +245,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
         try
         {
             await Connection.RequestAsync<RunInTerminalResponse>(DapCommands.RunInTerminal,
-                new RunInTerminalArguments("integrated", game.Name, arguments.Cwd, [program, .. arguments.Args ?? []], arguments.Env));
+                new RunInTerminalArguments(RunInTerminalKinds.Integrated, game.Name, arguments.Cwd, [program, .. arguments.Args ?? []], arguments.Env));
         }
         catch (DapException refused)
         {
@@ -431,7 +431,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
                 Value = Plural.Of(globals.Count, "autoload"),
                 VariablesReference = Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>([.. globals.Select(v => Row(v.Name, v.Name, v.Value, v.Type, v.Hint)
                     with { Unsettable = "An autoload is the project's own: set its members and properties" })])),
-                PresentationHint = new DapPresentationHint(Kind: "virtual"),
+                PresentationHint = new DapPresentationHint(Kind: PresentationHintKinds.Virtual),
             });
         }
         return new ScopesResponse([new DapScope("Locals", Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>(rows)), false)]);
@@ -483,7 +483,7 @@ public sealed class GodotScriptAdapter : InProcessAdapter
             {
                 Name = category.Key.Length > 0 ? category.Key : state.Class,
                 Value = Plural.Of(properties.Count, "property", "properties"),
-                PresentationHint = new DapPresentationHint(Kind: "virtual"),
+                PresentationHint = new DapPresentationHint(Kind: PresentationHintKinds.Virtual),
                 VariablesReference = Reference(() => Task.FromResult<IReadOnlyList<DapVariable>>(
                     [.. properties.Select(p => Settable(Row(p.Name, $"{expression ?? $"instance_from_id({id})"}.{p.Name}", p.Value, p.Type, p.Value is GodotObjectId ? p.HintString : string.Empty),
                         id, p.Name, p.Settable ? null : $"{p.Name} is a {p.Type}{((p.Usage & ReadOnlyUsage) != 0 ? ", read-only" : string.Empty)}, which Godot's debugger does not set"))])),

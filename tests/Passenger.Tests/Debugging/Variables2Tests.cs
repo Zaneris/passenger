@@ -198,7 +198,7 @@ file static class TestExtensions
             new() { VariablesReference =  0,  Name = "ComputedProperty",            EvaluateName = "this.ComputedProperty",            Value = "246",                                                       Type = "int" },
 			// TODO: Type should be int
 			new() { VariablesReference = 46,  Name = "ThrowingProperty",            EvaluateName = "this.ThrowingProperty",            Value = expectedThrowingPropertyValue,                               Type = "System.InvalidOperationException" },
-            new() { VariablesReference = 47,  Name = "Static members",              Value = "",                                                          Type = "", PresentationHint = new DapPresentationHint("class") },
+            new() { VariablesReference = 47,  Name = "Static members",              Value = "",                                                          Type = "", PresentationHint = new DapPresentationHint(PresentationHintKinds.Class) },
         ];
         List<DapVariable>? thisInstanceVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         Assert.Equal(expectedVariables.Count, thisInstanceVariables.Count);
@@ -208,7 +208,7 @@ file static class TestExtensions
         await debugProtocolHost.AssertMultiDimArrayVariables(thisInstanceVariables.Single(s => s.Name == "MultiDimArrayField").VariablesReference);
     }
 
-    private static readonly DapPresentationHint _multiDimArrayRowPresentationHint = new("virtual");
+    private static readonly DapPresentationHint _multiDimArrayRowPresentationHint = new(PresentationHintKinds.Virtual);
     private static async Task AssertMultiDimArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
@@ -270,14 +270,14 @@ file static class TestExtensions
         await debugProtocolHost.AssertIEnumerableMembers(staticMemberVariables.Single(s => s.Name == "StaticEnumerableField").VariablesReference);
     }
 
-    private static readonly DapPresentationHint _arrayElementPresentationHint = new("data");
+    private static readonly DapPresentationHint _arrayElementPresentationHint = new(PresentationHintKinds.Data);
     private static async Task AssertIEnumerableMembers(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable>? enumerableMembers = await debugProtocolHost.VariablesAsync(variablesReference);
         List<DapVariable> expectedVariables =
         [
-            new() { VariablesReference = 51, Name = "Raw View", Value = "", Type = "", PresentationHint = new DapPresentationHint("class") },
-            new() { VariablesReference = 52, Name = "Results", Value = "Expanding will force enumeration of the object", Type = "", PresentationHint = new DapPresentationHint("class") },
+            new() { VariablesReference = 51, Name = "Raw View", Value = "", Type = "", PresentationHint = new DapPresentationHint(PresentationHintKinds.Class) },
+            new() { VariablesReference = 52, Name = "Results", Value = "Expanding will force enumeration of the object", Type = "", PresentationHint = new DapPresentationHint(PresentationHintKinds.Class) },
         ];
         Assert.Equal(expectedVariables.Count, enumerableMembers.Count);
         enumerableMembers.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
@@ -306,7 +306,7 @@ file static class TestExtensions
             new() { VariablesReference = 59, Name = "LongTuple",           EvaluateName = "localCompositeValues.LongTuple",           Value = "(1, 2, 3, 4, 5, 6, 7, \"eight\")", Type = "System.Tuple<int, int, int, int, int, int, int, System.Tuple<string>>" },
             new() { VariablesReference = 60, Name = "EmptyTuple",          EvaluateName = "localCompositeValues.EmptyTuple",          Value = "()", Type = "System.ValueTuple" },
             new() { VariablesReference = 61, Name = "Anonymous",           EvaluateName = "localCompositeValues.Anonymous",           Value = "{ Text = \"a\\n\\\"b\\\\c\", Empty = \"\", Missing = null, Nested = (1, \"nested\") }", Type = "<>f__AnonymousType1<string, string, string, System.ValueTuple<int, string>>" },
-            new() { VariablesReference = 62, Name = "FailedMember",        EvaluateName = "localCompositeValues.FailedMember",        Value = "(<error: The name 'DoesNotExist' does not exist in the current context>, 2)", Type = "System.Tuple<DebuggableConsoleApp.InvalidDebuggerDisplay, int>", PresentationHint = new DapPresentationHint(Attributes: ["failedEvaluation"]) },
+            new() { VariablesReference = 62, Name = "FailedMember",        EvaluateName = "localCompositeValues.FailedMember",        Value = "(<error: The name 'DoesNotExist' does not exist in the current context>, 2)", Type = "System.Tuple<DebuggableConsoleApp.InvalidDebuggerDisplay, int>", PresentationHint = new DapPresentationHint(Attributes: [DapAttributes.FailedEvaluation]) },
             new() { VariablesReference = 63, Name = "NullableTuple",       EvaluateName = "localCompositeValues.NullableTuple",       Value = "(4, \"nullable\")", Type = "System.ValueTuple<int, string>?" },
             new() { VariablesReference = 0,  Name = "NullTuple",           EvaluateName = "localCompositeValues.NullTuple",           Value = "null", Type = "System.ValueTuple<int, string>?" },
             new() { VariablesReference = 64, Name = "NullableDebuggerDisplay", EvaluateName = "localCompositeValues.NullableDebuggerDisplay", Value = "display: 5", Type = "DebuggableConsoleApp.NullableDebuggerDisplay?" },

@@ -67,7 +67,7 @@ public class ProtocolBytesTests(ITestOutputHelper testOutput)
         VariablesResponse sent = new([.. Enumerable.Range(0, 2000).Select(i => (i % 4) switch
         {
             0 => new DapVariable { Name = $"[{i}]", Value = $"{{Order {i}, Shipped = {i % 7 == 0}}}", Type = "Shop.Orders.Order", EvaluateName = $"orders[{i}]",
-                VariablesReference = 1000 + i, PresentationHint = i % 20 == 0 ? new DapPresentationHint("data") : null },
+                VariablesReference = 1000 + i, PresentationHint = i % 20 == 0 ? new DapPresentationHint(PresentationHintKinds.Data) : null },
             1 => new DapVariable { Name = $"[{i}]", Value = "Count = 3", Type = i == 1 ? "Café.Menu" : "System.Collections.Generic.List<Shop.Orders.Line>",
                 EvaluateName = $"lines[{i}]", VariablesReference = 5000 + i },
             _ => new DapVariable { Name = $"[{i}]", Value = $"\"customer-{i:D6}@example.com\"", Type = "string", EvaluateName = $"emails[{i}]" },

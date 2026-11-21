@@ -97,7 +97,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         Assert.False(host.EngineLog().Contains(HeldBox, StringComparison.Ordinal), $"The step out of Count() ran a box of the int it returned in the program:\n{host.EngineLog()}");
 
         EvaluateResponse boxed = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, DapRows.ReturnValue, mayStand: true);
-        Assert.True(boxed.Result.Contains("held unfinished", StringComparison.Ordinal) && boxed.PresentationHint?.Attributes?.Contains("failedEvaluation") == true,
+        Assert.True(boxed.Result.Contains("held unfinished", StringComparison.Ordinal) && boxed.PresentationHint?.Attributes?.Contains(DapAttributes.FailedEvaluation) == true,
             $"$ReturnValue, whose box the program could not make, did not say why: {boxed.Result}");
         await RunsToItsEnd(host);
     }
@@ -124,7 +124,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         DapVariable returned = (await host.LocalsAsync(stop))[0];
         string[] attributes = [.. returned.PresentationHint?.Attributes ?? []];
         Assert.True(returned.Name == "Locate() returned" && returned.Value.StartsWith("Not kept: ", StringComparison.Ordinal) && returned.Value.Contains("held unfinished", StringComparison.Ordinal)
-            && attributes.Contains("failedEvaluation") && !attributes.Contains(DapAttributes.NeedsThreads),
+            && attributes.Contains(DapAttributes.FailedEvaluation) && !attributes.Contains(DapAttributes.NeedsThreads),
             $"The row of what Locate() returned did not say why it was not kept, offering nothing to run again: {returned.Name} = {returned.Value} ({string.Join(", ", attributes)})");
         await RunsToItsEnd(host);
     }
@@ -313,7 +313,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
             List<DapVariable> locals = await host.LocalsAsync(stop);
             Assert.True(locals.FirstOrDefault() is { Name: "Twice() returned" } returned
                 && returned.Value.StartsWith("Not shown: LoopingConsoleAppOptimized.dll is built optimized", StringComparison.Ordinal)
-                && returned.PresentationHint?.Attributes?.Contains("failedEvaluation") == true,
+                && returned.PresentationHint?.Attributes?.Contains(DapAttributes.FailedEvaluation) == true,
                 $"Stepped out of Twice() in an optimized program, Variables did not say why no value is listed: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
         }
     }
@@ -358,7 +358,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
     private static async Task<EvaluateResponse> Evaluate(DebugSession host, int frame, string expression)
     {
         EvaluateResponse response = await host.EvaluateAsync(frame, expression);
-        Assert.True(response.PresentationHint?.Attributes?.Contains("failedEvaluation") != true, $"{expression} did not evaluate: {response.Result}");
+        Assert.True(response.PresentationHint?.Attributes?.Contains(DapAttributes.FailedEvaluation) != true, $"{expression} did not evaluate: {response.Result}");
         return response;
     }
 }

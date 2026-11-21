@@ -60,7 +60,8 @@ public sealed record LaunchArguments
     public bool? StopAtEntry { get; init; }
     public bool? JustMyCode { get; init; }
 
-    /// <summary>internalConsole (the output comes as events), integratedTerminal or externalTerminal.</summary>
+    /// <summary>Where the program reads and writes (<see cref="ConsoleKinds"/>), the debug console where none is given.</summary>
+    [IdentifierOf(typeof(ConsoleKinds))]
     public string? Console { get; init; }
 
     /// <summary>Passenger's own: the program's code may be changed as it runs (Hot Reload, applyChanges). The runtime is
@@ -319,7 +320,8 @@ public sealed record DapStackFrame
     public int? EndLine { get; init; }
     public int? EndColumn { get; init; }
 
-    /// <summary>"subtle" for a frame outside the user's code.</summary>
+    /// <summary><see cref="FrameHints.Subtle"/> for a frame outside the user's code.</summary>
+    [IdentifierOf(typeof(FrameHints))]
     public string? PresentationHint { get; init; }
 
     /// <summary>This debugger's own: false for a frame with no source yet, which resolveStackFrame
@@ -363,9 +365,16 @@ public sealed record DapVariable
     public string? Unsettable { get; init; }
 }
 
-/// <summary>How a variable shows: its kind ("virtual" for a row the adapter adds), its attributes, and whether it is lazy, its
-/// value read only as it is opened (its reference then names one variable, the value in its place).</summary>
-public sealed record DapPresentationHint(string? Kind = null, IReadOnlyList<string>? Attributes = null, string? Visibility = null, bool? Lazy = null);
+/// <summary>How a variable shows: its kind (<see cref="PresentationHintKinds"/>), its attributes (<see cref="DapAttributes"/>),
+/// and whether it is lazy, its value read only as it is opened (its reference then names one variable, the value in its
+/// place).</summary>
+public sealed record DapPresentationHint(
+    [IdentifierOf(typeof(PresentationHintKinds))][property: IdentifierOf(typeof(PresentationHintKinds))] string? Kind = null,
+    IReadOnlyList<string>? Attributes = null, string? Visibility = null, bool? Lazy = null)
+{
+    /// <summary>Whether it carries an attribute.</summary>
+    public bool Has([IdentifierOf(typeof(DapAttributes))] string attribute) => Attributes?.Contains(attribute) == true;
+}
 
 /// <summary>An evaluation; Passenger's own <paramref name="LetThreadsRun"/> runs it with every thread of the program let go,
 /// which the person asks for where one with the others held did not end (<see cref="DapAttributes.NeedsThreads"/>).</summary>
@@ -475,7 +484,7 @@ public sealed record DapExceptionDetails
 }
 
 /// <summary>The adapter's request to the client, to start the program in a terminal.</summary>
-public sealed record RunInTerminalArguments(string Kind, string Title, string? Cwd, IReadOnlyList<string> Args, IReadOnlyDictionary<string, string>? Env);
+public sealed record RunInTerminalArguments([IdentifierOf(typeof(RunInTerminalKinds))][property: IdentifierOf(typeof(RunInTerminalKinds))] string Kind, string Title, string? Cwd, IReadOnlyList<string> Args, IReadOnlyDictionary<string, string>? Env);
 
 public sealed record RunInTerminalResponse(int? ProcessId = null, int? ShellProcessId = null);
 

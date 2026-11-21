@@ -31,7 +31,7 @@ public static class Processes
         {
             listed.Add(process.Id);
             found.Add(new ContainerProcess(process.Id, process.Name, process.CommandLine, process.User,
-                Variable(process.Id, RuntimeVariables.ModifiableAssemblies) is { } modifiable && modifiable.Equals("debug", StringComparison.OrdinalIgnoreCase),
+                RuntimeVariables.HotReloadable(Variable(process.Id, RuntimeVariables.ModifiableAssemblies)),
                 Optimized(process), null));
         }
         foreach (int id in Running())
@@ -44,8 +44,7 @@ public static class Processes
             bool held = HeldStart.Holds(name => Variable(id, name));
             string? debuggerOff = HeldStart.DebuggerOff(name => Variable(id, name));
             found.Add(new ContainerProcess(process.Id, process.Name, process.CommandLine, process.User,
-                held && debuggerOff is null && Variable(id, RuntimeVariables.ModifiableAssemblies) is { } modifiable
-                    && modifiable.Equals("debug", StringComparison.OrdinalIgnoreCase),
+                held && debuggerOff is null && RuntimeVariables.HotReloadable(Variable(id, RuntimeVariables.ModifiableAssemblies)),
                 Optimized(process), debuggerOff ?? (held ? null : WhyUnreachable(id))));
         }
         return found;

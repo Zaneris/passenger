@@ -45,8 +45,8 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
         List<DapStackFrame> expectedStackFrames =
         [
             new() { Id = 1, Column = 3, EndColumn =   16, Line = Selected, EndLine = Selected, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.ClassWithBclCall.Selector(int x)",   Source = new DapSource { Name = "ClassWithBclCall.cs", SourceReference = 0, Path = breakpointedFilePath } },
-            new() { Id = 2, Column = 0, EndColumn = null, Line =  0, EndLine = null, Name = "System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.Fill(System.Span<int> results, int start, System.Func<int, int> func)",    Source = null, PresentationHint = "subtle" },
-            new() { Id = 3, Column = 0, EndColumn = null, Line =  0, EndLine = null, Name = "System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.ToArray()",   Source = null, PresentationHint = "subtle" },
+            new() { Id = 2, Column = 0, EndColumn = null, Line =  0, EndLine = null, Name = "System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.Fill(System.Span<int> results, int start, System.Func<int, int> func)",    Source = null, PresentationHint = FrameHints.Subtle },
+            new() { Id = 3, Column = 0, EndColumn = null, Line =  0, EndLine = null, Name = "System.Linq.dll!System.Linq.Enumerable.RangeSelectIterator<int, int>.ToArray()",   Source = null, PresentationHint = FrameHints.Subtle },
             new() { Id = 4, Column = 3, EndColumn =   67, Line = Ranged, EndLine = Ranged, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.ClassWithBclCall.Test(int myParam)", Source = new DapSource { Name = "ClassWithBclCall.cs", SourceReference = 0, Path = breakpointedFilePath } },
             new() { Id = 5, Column = 4, EndColumn =   29, Line = BclCalled, EndLine = BclCalled, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)",        Source = new DapSource { Name = "Program.cs",          SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
 			// TODO: Return internal frames (thread.ActiveInternalFrames), such as a subtle "[Native to Managed Transition]".
@@ -179,7 +179,7 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
 
         Assert.Equal(unresolvedFrame.Id, response.StackFrame.Id);
         Assert.True(response.StackFrame.IsResolved);
-        Assert.Equal("subtle", response.StackFrame.PresentationHint);
+        Assert.Equal(FrameHints.Subtle, response.StackFrame.PresentationHint);
         Assert.EndsWith(".cs", response.StackFrame.Source?.Path);
         Assert.True(response.StackFrame.Line > 0);
         DapDecompiledSource? decompiledSourceInfo = response.StackFrame.DecompiledSourceInfo;

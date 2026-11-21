@@ -420,7 +420,7 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
             ? await browser!.Page.SendAsync(CdpCommands.EvaluateOnCallFrame, new { callFrameId = frame.Id, expression })
             : await browser!.Page.SendAsync(CdpCommands.CallFunctionOn, new { objectId = owner, functionDeclaration = "function(e){return this[e]}", arguments = new[] { new { value = member } } });
         return JsonMembers.Object(evaluated, "exceptionDetails") is { } failed
-            ? new DapVariable { Name = member, Value = WebAssemblyValues.Failure(failed), EvaluateName = expression, PresentationHint = new DapPresentationHint(Attributes: ["failedEvaluation"]) }
+            ? new DapVariable { Name = member, Value = WebAssemblyValues.Failure(failed), EvaluateName = expression, PresentationHint = new DapPresentationHint(Attributes: [DapAttributes.FailedEvaluation]) }
             : Row(member, expression, JsonMembers.Object(evaluated, "result") ?? default, frame);
     }
 

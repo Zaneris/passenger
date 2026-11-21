@@ -192,7 +192,7 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
 
         async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
 
-        static bool ReadOnly(DapVariable row) => row.PresentationHint?.Attributes?.Contains("readOnly") == true;
+        static bool ReadOnly(DapVariable row) => row.PresentationHint?.Has(DapAttributes.ReadOnly) == true;
 
         static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(row => $"{row.Name} = {row.Value}{(ReadOnly(row) ? " (read-only)" : "")}"));
     }

@@ -87,7 +87,7 @@ public sealed class UpdateHandlerHook : IDisposable
         {
             return null;
         }
-        return (hook, new Dictionary<string, string>(variables) { [RuntimeVariables.ModifiableAssemblies] = "debug" });
+        return (hook, new Dictionary<string, string>(variables) { [RuntimeVariables.ModifiableAssemblies] = RuntimeVariables.ModifiableAssembliesDebug });
     }
 
     /// <summary>The hook for an app on a device built for <paramref name="framework"/>, listening on a port of this machine of

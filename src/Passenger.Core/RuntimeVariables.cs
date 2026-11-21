@@ -28,9 +28,16 @@ public static class RuntimeVariables
     /// <summary>"0" turns the runtime's diagnostic port off alone.</summary>
     public const string EnableDiagnosticsIpc = "DOTNET_EnableDiagnostics_IPC";
 
-    /// <summary>"debug" lets a debugger change the program's unoptimized code as it runs (Hot Reload), read by the runtime
-    /// as each module loads.</summary>
+    /// <summary><see cref="ModifiableAssembliesDebug"/> lets a debugger change the program's unoptimized code as it runs (Hot
+    /// Reload), read by the runtime as each module loads.</summary>
     public const string ModifiableAssemblies = "DOTNET_MODIFIABLE_ASSEMBLIES";
+
+    /// <summary>The value of <see cref="ModifiableAssemblies"/> that opens a program's code to Hot Reload.</summary>
+    public const string ModifiableAssembliesDebug = "debug";
+
+    /// <summary>Whether a value of <see cref="ModifiableAssemblies"/> opens a program's code to Hot Reload, in any letter case
+    /// as the runtime reads it; null for a program that sets none.</summary>
+    public static bool HotReloadable(string? value) => string.Equals(value, ModifiableAssembliesDebug, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>"1" lets the runtime load the profiler <see cref="Profiler"/> names as it starts.</summary>
     public const string EnableProfiling = "DOTNET_ENABLE_PROFILING";

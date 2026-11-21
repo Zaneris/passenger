@@ -415,7 +415,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             method.Text = name;
             where.Tag = frame;
             where.Text = frame.Source?.Name is { } file ? $"{file}:{model.LineOf(frame)}" : module;
-            ListRow.Dim(row, frame.PresentationHint == "subtle");
+            ListRow.Dim(row, frame.PresentationHint == FrameHints.Subtle);
         });
     }
 }

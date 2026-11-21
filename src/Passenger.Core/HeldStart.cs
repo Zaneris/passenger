@@ -22,7 +22,7 @@ public static class HeldStart
         yield return new(RuntimeVariables.DefaultDiagnosticPortSuspend, "1");
         if (changeable)
         {
-            yield return new(RuntimeVariables.ModifiableAssemblies, "debug");
+            yield return new(RuntimeVariables.ModifiableAssemblies, RuntimeVariables.ModifiableAssembliesDebug);
         }
     }
 

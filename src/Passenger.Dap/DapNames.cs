@@ -171,13 +171,65 @@ public static class DapRows
     public const string ReturnValue = "$ReturnValue";
 }
 
-/// <summary>Passenger's own attributes of a value's presentation hint, beside the protocol's, written once for both ends.</summary>
+/// <summary>A value's presentation hint kinds, by the protocol's names, each written once for both ends.</summary>
+[IdentifierHome]
+public static class PresentationHintKinds
+{
+    public const string Property = "property";
+    public const string Method = "method";
+    public const string Event = "event";
+    public const string Class = "class";
+    public const string Data = "data";
+
+    /// <summary>A row the adapter adds of its own (Raw View, Static members, a node's children), no member of the value.</summary>
+    public const string Virtual = "virtual";
+}
+
+/// <summary>A value's presentation hint attributes, the protocol's and Passenger's own, each written once for both ends.</summary>
 [IdentifierHome]
 public static class DapAttributes
 {
+    /// <summary>The value is why its evaluation failed, shown as an error.</summary>
+    public const string FailedEvaluation = "failedEvaluation";
+
+    /// <summary>The value cannot be set: a copy the evaluation made, or a value the debugger holds no home for.</summary>
+    public const string ReadOnly = "readOnly";
+
     /// <summary>A failed evaluation that timed out with every other thread held, which probably needs another thread to run:
     /// the person may run it again with every thread let go (evaluate's letThreadsRun).</summary>
     public const string NeedsThreads = "needsThreads";
+}
+
+/// <summary>A stack frame's presentation hints, by the protocol's names, written once for both ends.</summary>
+[IdentifierHome]
+public static class FrameHints
+{
+    /// <summary>A frame outside the user's code, shown dimmed.</summary>
+    public const string Subtle = "subtle";
+}
+
+/// <summary>Where a launch's program reads and writes, a launch's console by the protocol's names, each written once for
+/// both ends.</summary>
+[IdentifierHome]
+public static class ConsoleKinds
+{
+    /// <summary>The debug console, the program's output coming as output events.</summary>
+    public const string InternalConsole = "internalConsole";
+
+    /// <summary>A terminal of the client's own, asked for through runInTerminal.</summary>
+    public const string IntegratedTerminal = "integratedTerminal";
+
+    /// <summary>A terminal window of the system's, asked for through runInTerminal.</summary>
+    public const string ExternalTerminal = "externalTerminal";
+}
+
+/// <summary>Where a runInTerminal request asks the client to start a program, by the protocol's names, written once for
+/// both ends.</summary>
+[IdentifierHome]
+public static class RunInTerminalKinds
+{
+    public const string Integrated = "integrated";
+    public const string External = "external";
 }
 
 /// <summary>When an exception stops the program, an exception option's and an exceptionInfo answer's break mode, by the

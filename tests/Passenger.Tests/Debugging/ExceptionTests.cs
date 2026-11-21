@@ -147,8 +147,8 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         // Numbered on from the frame the first stop gave.
         List<DapStackFrame> expectedStackFrames =
         [
-            new() { Id = 2, Column = 0, EndColumn =  null, Line =  0, EndLine =  null, Name = "System.Private.CoreLib.dll!System.Number.ThrowFormatException<char>(System.ReadOnlySpan<char> value)", Source = null, PresentationHint = "subtle" },
-            new() { Id = 3, Column = 0, EndColumn =  null, Line =  0, EndLine =  null, Name = "System.Private.CoreLib.dll!System.Int32.Parse(string s)",                 Source = null, PresentationHint = "subtle" },
+            new() { Id = 2, Column = 0, EndColumn =  null, Line =  0, EndLine =  null, Name = "System.Private.CoreLib.dll!System.Number.ThrowFormatException<char>(System.ReadOnlySpan<char> value)", Source = null, PresentationHint = FrameHints.Subtle },
+            new() { Id = 3, Column = 0, EndColumn =  null, Line =  0, EndLine =  null, Name = "System.Private.CoreLib.dll!System.Int32.Parse(string s)",                 Source = null, PresentationHint = FrameHints.Subtle },
             new() { Id = 4, Column = 5, EndColumn = 32,    Line = Parsed, EndLine = Parsed, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Exceptions.Test(DebuggableConsoleApp.ExceptionToThrow exceptionToThrow)", Source = new DapSource { Name = "Exceptions.cs", SourceReference = 0, Path = breakpointedFilePath } },
             new() { Id = 5, Column = 4, EndColumn = 38,    Line = ExceptionsCalled, EndLine = ExceptionsCalled, Name = "DebuggableConsoleApp.dll!DebuggableConsoleApp.Program.Main(string[] args)",    Source = new DapSource { Name = "Program.cs",    SourceReference = 0, Path = Debuggees.Source("DebuggableConsoleApp", "Program.cs") } },
         ];

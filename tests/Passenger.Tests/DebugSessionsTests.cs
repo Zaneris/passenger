@@ -291,7 +291,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
 
             ProcessStartInfo start = ChildProcesses.Command(built, []);
             start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
-            start.Environment[RuntimeVariables.ModifiableAssemblies] = "debug";
+            start.Environment[RuntimeVariables.ModifiableAssemblies] = RuntimeVariables.ModifiableAssembliesDebug;
             start.RedirectStandardOutput = true;
             program = ChildProcesses.Start(start);
             Task<string> output = program.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
@@ -340,7 +340,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             window.Debugger.Breakpoints.Toggle(Counter, Pair.Next);
             ProcessStartInfo start = ChildProcesses.Command(built, []);
             start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
-            start.Environment[RuntimeVariables.ModifiableAssemblies] = "debug";
+            start.Environment[RuntimeVariables.ModifiableAssemblies] = RuntimeVariables.ModifiableAssembliesDebug;
             start.RedirectStandardOutput = true;
             program = ChildProcesses.Start(start);
             Assert.Null(Ui.Await(window.Debugger.AttachAsync(program.Id, "First", hotReload: true), "the debugger to attach"));

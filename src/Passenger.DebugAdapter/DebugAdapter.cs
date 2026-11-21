@@ -348,14 +348,14 @@ public sealed class DebugAdapter
             List<string> args = [.. arguments.Args ?? []];
             LaunchRequestConsoleType console = arguments.Console switch
             {
-                "integratedTerminal" => LaunchRequestConsoleType.IntegratedTerminal,
-                "externalTerminal" => LaunchRequestConsoleType.ExternalTerminal,
-                "internalConsole" or null => LaunchRequestConsoleType.InternalConsole,
+                ConsoleKinds.IntegratedTerminal => LaunchRequestConsoleType.IntegratedTerminal,
+                ConsoleKinds.ExternalTerminal => LaunchRequestConsoleType.ExternalTerminal,
+                ConsoleKinds.InternalConsole or null => LaunchRequestConsoleType.InternalConsole,
                 _ => throw new InvalidOperationException($"Invalid console type: '{arguments.Console}'"),
             };
             if (console != LaunchRequestConsoleType.InternalConsole && !runsInTerminal)
             {
-                throw new InvalidOperationException($"the client cannot start a program in a terminal ({arguments.Console}); use internalConsole");
+                throw new InvalidOperationException($"the client cannot start a program in a terminal ({arguments.Console}); use {ConsoleKinds.InternalConsole}");
             }
             // A .dll runs under the host; an apphost or another executable runs itself.
             if (Path.GetExtension(program).Equals(".dll", StringComparison.OrdinalIgnoreCase))
@@ -368,7 +368,7 @@ public sealed class DebugAdapter
             if (hotReload)
             {
                 // The runtime's switch for code that may change (Hot Reload); a launch's own is kept.
-                environment.TryAdd(RuntimeVariables.ModifiableAssemblies, "debug");
+                environment.TryAdd(RuntimeVariables.ModifiableAssemblies, RuntimeVariables.ModifiableAssembliesDebug);
             }
             LaunchInfo launch = new()
             {
@@ -560,8 +560,8 @@ public sealed class DebugAdapter
         RunInTerminalArguments arguments = new(
             launch.LaunchRequestConsoleType switch
             {
-                LaunchRequestConsoleType.IntegratedTerminal => "integrated",
-                LaunchRequestConsoleType.ExternalTerminal => "external",
+                LaunchRequestConsoleType.IntegratedTerminal => RunInTerminalKinds.Integrated,
+                LaunchRequestConsoleType.ExternalTerminal => RunInTerminalKinds.External,
                 _ => throw new ArgumentOutOfRangeException(nameof(launch), $"Invalid console type for runInTerminal: '{launch.LaunchRequestConsoleType}'"),
             },
             $"{Path.GetFileName(programForTitle)} [DEBUG]",
@@ -714,7 +714,7 @@ public sealed class DebugAdapter
         Column = ColumnOut(frame.Column),
         EndColumn = frame.EndColumn is int endColumn ? ColumnOut(endColumn) : null,
         Source = frame.Source is not null ? new DapSource { Path = frame.Source, Name = Path.GetFileName(frame.Source), SourceReference = 0 } : null,
-        PresentationHint = frame.IsUserCode ? null : "subtle",
+        PresentationHint = frame.IsUserCode ? null : FrameHints.Subtle,
         IsResolved = frame.IsResolved,
         DecompiledSourceInfo = frame.DecompiledSourceInfo is { } decompiled
             ? new DapDecompiledSource(decompiled.TypeFullName, new DapAssembly(decompiled.Assembly.AssemblyPath, decompiled.Assembly.Mvid), decompiled.CallingUserCodeAssemblyPath)
@@ -730,20 +730,20 @@ public sealed class DebugAdapter
         string? kind = h.Kind switch
         {
             null => null,
-            PresentationHintKind.Property => "property",
-            PresentationHintKind.Method => "method",
-            PresentationHintKind.Event => "event",
-            PresentationHintKind.Class => "class",
-            PresentationHintKind.Data => "data",
-            PresentationHintKind.Virtual => "virtual",
+            PresentationHintKind.Property => PresentationHintKinds.Property,
+            PresentationHintKind.Method => PresentationHintKinds.Method,
+            PresentationHintKind.Event => PresentationHintKinds.Event,
+            PresentationHintKind.Class => PresentationHintKinds.Class,
+            PresentationHintKind.Data => PresentationHintKinds.Data,
+            PresentationHintKind.Virtual => PresentationHintKinds.Virtual,
             _ => throw new ArgumentOutOfRangeException(nameof(hint), h.Kind, null),
         };
         IReadOnlyList<string>? attributes = h.Attributes switch
         {
             null or AttributesValue.None => null,
-            AttributesValue.FailedEvaluation => ["failedEvaluation"],
-            AttributesValue.FailedNeedingThreads => ["failedEvaluation", DapAttributes.NeedsThreads],
-            AttributesValue.ReadOnly => ["readOnly"],
+            AttributesValue.FailedEvaluation => [DapAttributes.FailedEvaluation],
+            AttributesValue.FailedNeedingThreads => [DapAttributes.FailedEvaluation, DapAttributes.NeedsThreads],
+            AttributesValue.ReadOnly => [DapAttributes.ReadOnly],
             _ => throw new ArgumentOutOfRangeException(nameof(hint), h.Attributes, null),
         };
         return new DapPresentationHint(kind, attributes, Lazy: h.Lazy);

@@ -54,7 +54,7 @@ public class VariablesTests(ITestOutputHelper testOutputHelper)
 
         List<DapVariable> expectedEnumVariables =
         [
-            new() {Name = "Static members", Value = "", Type = "", VariablesReference = 72, PresentationHint = new DapPresentationHint("class")},
+            new() {Name = "Static members", Value = "", Type = "", VariablesReference = 72, PresentationHint = new DapPresentationHint(PresentationHintKinds.Class)},
             new() {Name = "value__", Value = "1", Type = "int", EvaluateName = "((int)enumVar)" },
         ];
 
@@ -117,7 +117,7 @@ file static class TestExtensions
             new() { Name = "FieldFromBase", EvaluateName = "this.FieldFromBase", Value = "42", Type = "int" },
             new() { Name = "PropertyFromBase", EvaluateName = "this.PropertyFromBase", Value = "84", Type = "int" },
             new() { Name = "_doubler", EvaluateName = "this._doubler", Value = "{System.Func<int, int>}", Type = "System.Func<int, int>", VariablesReference = 16 },
-            new() { Name = "Static members", Value = "", Type = "", VariablesReference = 19, PresentationHint = new DapPresentationHint("class")},
+            new() { Name = "Static members", Value = "", Type = "", VariablesReference = 19, PresentationHint = new DapPresentationHint(PresentationHintKinds.Class)},
         ];
         List<DapVariable>? thisInstanceVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         thisInstanceVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
@@ -152,11 +152,11 @@ file static class TestExtensions
         instanceThisStaticVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
     }
 
-    private static readonly DapPresentationHint _arrayElementPresentationHint = new("data");
+    private static readonly DapPresentationHint _arrayElementPresentationHint = new(PresentationHintKinds.Data);
 
     /// <summary>A debugger view's element and member, each the view's copy, which a value set would change alone.</summary>
-    private static readonly DapPresentationHint _viewedElementPresentationHint = new("data", ["readOnly"]);
-    private static readonly DapPresentationHint _viewedPresentationHint = new(Attributes: ["readOnly"]);
+    private static readonly DapPresentationHint _viewedElementPresentationHint = new(PresentationHintKinds.Data, [DapAttributes.ReadOnly]);
+    private static readonly DapPresentationHint _viewedPresentationHint = new(Attributes: [DapAttributes.ReadOnly]);
     public static async Task AssertIntArrayVariables(this DebugSession debugProtocolHost, int variablesReference)
     {
         List<DapVariable> expectedVariables =
@@ -189,7 +189,7 @@ file static class TestExtensions
             new() { Name = "[1]", EvaluateName = "this._intList[1]", Value = "4", Type = "int", PresentationHint = _arrayElementPresentationHint },
             new() { Name = "[2]", EvaluateName = "this._intList[2]", Value = "8", Type = "int", PresentationHint = _arrayElementPresentationHint },
             new() { Name = "[3]", EvaluateName = "this._intList[3]", Value = "25", Type = "int", PresentationHint = _arrayElementPresentationHint },
-            new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 29, PresentationHint = new DapPresentationHint("class") },
+            new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 29, PresentationHint = new DapPresentationHint(PresentationHintKinds.Class) },
         ];
         List<DapVariable>? intListVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         intListVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
@@ -203,7 +203,7 @@ file static class TestExtensions
             new() { Name = "[5]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[0]", Value = "50", Type = "int", VariablesReference = 30, PresentationHint = _viewedElementPresentationHint },
             new() { Name = "[10]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[1]", Value = "100", Type = "int", VariablesReference = 31, PresentationHint = _viewedElementPresentationHint },
             new() { Name = "[15]", EvaluateName = "(new System.Collections.Generic.IDictionaryDebugView<int, int>(this._intDictionary)).Items[2]", Value = "150", Type = "int", VariablesReference = 32, PresentationHint = _viewedElementPresentationHint },
-            new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 33, PresentationHint = new DapPresentationHint("class") },
+            new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 33, PresentationHint = new DapPresentationHint(PresentationHintKinds.Class) },
         ];
         List<DapVariable>? dictionaryVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         dictionaryVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);
@@ -244,7 +244,7 @@ file static class TestExtensions
             new() { Name = "[1]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[1]", Value = "3", Type = "int", PresentationHint = _viewedElementPresentationHint },
             new() { Name = "[2]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[2]", Value = "5", Type = "int", PresentationHint = _viewedElementPresentationHint },
             new() { Name = "[3]", EvaluateName = "(new DebuggableConsoleApp.ClassWithDebugDisplayDebugView(this._classWithDebugDisplay)).Items[3]", Value = "7", Type = "int", PresentationHint = _viewedElementPresentationHint },
-            new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 26, PresentationHint = new DapPresentationHint("class") },
+            new() { Name = "Raw View", Value = "", Type = "", VariablesReference = 26, PresentationHint = new DapPresentationHint(PresentationHintKinds.Class) },
         ];
         List<DapVariable>? classWithDebuggerTypeProxyVariables = await debugProtocolHost.VariablesAsync(variablesReference);
         classWithDebuggerTypeProxyVariables.ShouldBeEquivalentToDebuggerVariables(expectedVariables);

@@ -2882,7 +2882,7 @@ public sealed class DebugController : IDisposable
             return;
         }
         // Shown is the first frame of the user's code (Just My Code), past the inspector's call and a library's own sources.
-        DapStackFrame? user = stack.FirstOrDefault(f => f.Source?.Path is not null && f.PresentationHint != "subtle");
+        DapStackFrame? user = stack.FirstOrDefault(f => f.Source?.Path is not null && f.PresentationHint != FrameHints.Subtle);
         bool inspected = thread == session.StoppedThread && (session.PropertyStop is not null || session.BindingErrorStop);
         bool thrown = thread == session.StoppedThread && session.StopReason == StopReasons.Exception;
         DapStackFrame? top = inspected ? user ?? stack.FirstOrDefault()

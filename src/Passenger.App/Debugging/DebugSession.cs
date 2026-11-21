@@ -403,7 +403,7 @@ public sealed class DebugSession
             Args = plan.Arguments,
             Cwd = place?.ToProgram(plan.WorkingDirectory) ?? plan.WorkingDirectory,
             Env = runInTerminal is null ? ToolWindows.ConsoleSink.TellColours(plan.Environment) : plan.Environment,
-            Console = runInTerminal is null ? "internalConsole" : "integratedTerminal",
+            Console = runInTerminal is null ? ConsoleKinds.InternalConsole : ConsoleKinds.IntegratedTerminal,
             JustMyCode = true,
             StopAtEntry = false,
             HotReload = hotReload,
@@ -463,7 +463,7 @@ public sealed class DebugSession
             Args = plan.Arguments,
             Cwd = plan.WorkingDirectory,
             Env = plan.Environment,
-            Console = runInTerminal is null ? "internalConsole" : "integratedTerminal",
+            Console = runInTerminal is null ? ConsoleKinds.InternalConsole : ConsoleKinds.IntegratedTerminal,
             Unseen = plan.OnOwnDesktop ? true : null,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere: false, place: null, engine: engine);
 

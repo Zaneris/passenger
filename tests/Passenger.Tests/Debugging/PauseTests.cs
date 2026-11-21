@@ -49,7 +49,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         ScopesResponse scopes = await host.ScopesAsync(main.Id);
         List<DapVariable> locals = await host.VariablesAsync(scopes.Scopes.Single().VariablesReference);
         DapVariable nap = Assert.Single(locals, v => v.Name == "nap");
-        Assert.True(nap.Value is "00:00:00.0200000" or "{System.TimeSpan}" && nap.PresentationHint?.Attributes?.Contains("failedEvaluation") != true,
+        Assert.True(nap.Value is "00:00:00.0200000" or "{System.TimeSpan}" && nap.PresentationHint?.Attributes?.Contains(DapAttributes.FailedEvaluation) != true,
             $"A TimeSpan read where the pause caught its thread shows as {nap.Value}");
         List<DapVariable> fields = await host.VariablesAsync(nap.VariablesReference);
         Assert.Equal("200000", Assert.Single(fields, f => f.Name == "_ticks").Value);
@@ -134,7 +134,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             $"Paused in its sleep, $\"{{count}}\" answered {count.Result} and $\"{{ratio:N1}}\" {ratio.Result}, where the program wrote {written.Output.TrimEnd()}");
 
         EvaluateResponse dream = await host.EvaluateAsync(main.Id, "$\"{someObject}\"");
-        Assert.True(dream.PresentationHint?.Attributes?.Contains("failedEvaluation") == true && dream.Result.Contains("ToString", StringComparison.Ordinal),
+        Assert.True(dream.PresentationHint?.Attributes?.Contains(DapAttributes.FailedEvaluation) == true && dream.Result.Contains("ToString", StringComparison.Ordinal),
             $"Paused in its sleep, $\"{{someObject}}\", which only its own ToString writes, answered {dream.Result}, where it was to be refused saying why");
 
         static string Unquoted(EvaluateResponse answer) => answer.Result is ['"', .. string text, '"'] ? text : $"(not a string: {answer.Result})";
@@ -200,7 +200,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         EvaluateResponse again = await host.EvaluateAsync(frame, "locked.Value");
         Assert.True(again.Result == "\"read under the lock\"", $"After the run with every thread let go, the thread's next evaluation was answered \"{again.Result}\"");
 
-        static bool NeedsThreads(EvaluateResponse answer) => answer.PresentationHint?.Attributes is { } attributes && attributes.Contains("failedEvaluation")
+        static bool NeedsThreads(EvaluateResponse answer) => answer.PresentationHint?.Attributes is { } attributes && attributes.Contains(DapAttributes.FailedEvaluation)
             && attributes.Contains(DapAttributes.NeedsThreads) && answer.Result.Contains("needs another thread", StringComparison.Ordinal);
     }
 
@@ -355,7 +355,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             Program = program,
             Args = arguments,
             Cwd = Path.GetDirectoryName(program),
-            Console = "internalConsole",
+            Console = ConsoleKinds.InternalConsole,
             JustMyCode = justMyCode,
             StopAtEntry = false,
         });

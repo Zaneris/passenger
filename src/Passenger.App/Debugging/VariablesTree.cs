@@ -69,7 +69,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
     public bool NeedsThreads { get; init; }
 
     /// <summary>Whether a value the debugger read says it needs another thread to run (<see cref="NeedsThreads"/>).</summary>
-    public static bool SaysNeedsThreads(DapPresentationHint? hint) => hint?.Attributes?.Contains(DapAttributes.NeedsThreads) == true;
+    public static bool SaysNeedsThreads(DapPresentationHint? hint) => hint?.Has(DapAttributes.NeedsThreads) == true;
 
     /// <summary>The debugger says this row's expression reaches only a copy it made to show the value (an element of a
     /// HashSet, through its debugger view): one set there would leave the program's own as it was.</summary>
@@ -133,12 +133,12 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     public static VariableNode From(DapVariable variable, int depth, VariableNode? parent = null) =>
         new(variable.Name, variable.Value, variable.Type, variable.VariablesReference, depth,
-            variable.PresentationHint?.Attributes?.Contains("failedEvaluation") == true ? VariableRole.Error : VariableRole.Value)
+            variable.PresentationHint?.Has(DapAttributes.FailedEvaluation) == true ? VariableRole.Error : VariableRole.Value)
         {
             Parent = parent,
             EvaluateName = variable.EvaluateName is { Length: > 0 } named ? named : null,
-            IsVirtual = variable.PresentationHint?.Kind == "virtual",
-            IsCopy = variable.PresentationHint?.Attributes?.Contains("readOnly") == true,
+            IsVirtual = variable.PresentationHint?.Kind == PresentationHintKinds.Virtual,
+            IsCopy = variable.PresentationHint?.Has(DapAttributes.ReadOnly) == true,
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
             NeedsThreads = SaysNeedsThreads(variable.PresentationHint),
             Unsettable = variable.Unsettable,
@@ -147,7 +147,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>A lazy row as what it read: the debugger's one variable in its place, by its name, or why it read none.</summary>
     public static VariableNode Read(VariableNode lazy, DapVariable? read, string? refused) =>
         new(lazy.Name, read?.Value ?? refused ?? "The debugger read nothing", read?.Type, read?.VariablesReference ?? 0, lazy.Depth,
-            read is not null && read.PresentationHint?.Attributes?.Contains("failedEvaluation") != true ? VariableRole.Value : VariableRole.Error)
+            read is not null && read.PresentationHint?.Has(DapAttributes.FailedEvaluation) != true ? VariableRole.Value : VariableRole.Error)
         {
             Parent = lazy.Parent,
             EvaluateName = lazy.EvaluateName,
@@ -160,7 +160,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
     /// <summary>A row as its expression read again with every thread let go, in its place: a watch stays a watch.</summary>
     public static VariableNode RanAgain(VariableNode row, EvaluateResponse read) =>
         new(row.Name, read.Result, read.Type, read.VariablesReference, row.Depth,
-            row.Role == VariableRole.Watch ? VariableRole.Watch : read.PresentationHint?.Attributes?.Contains("failedEvaluation") == true ? VariableRole.Error : VariableRole.Value)
+            row.Role == VariableRole.Watch ? VariableRole.Watch : read.PresentationHint?.Has(DapAttributes.FailedEvaluation) == true ? VariableRole.Error : VariableRole.Value)
         {
             Parent = row.Parent,
             EvaluateName = row.EvaluateName,
