@@ -1274,6 +1274,10 @@ public partial class ManagedDebugger
     /// <summary>Lets go of a program attached to, which runs on (stopped first, so no thread is let go amid an event).</summary>
     private async Task LetGoAsync(TimeSpan? within)
     {
+        if (HoldsLetGo)
+        {
+            await HoldUntilEvaluationsEndAsync().ConfigureAwait(false);
+        }
         if (_process is not null && _isAttached && !_exited.IsSet && _process?.TryIsRunning(out bool isRunning) is Cor.S_OK && isRunning)
         {
             int hResult = _process.TryStop(0);

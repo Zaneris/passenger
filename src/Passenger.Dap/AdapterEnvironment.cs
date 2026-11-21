@@ -63,6 +63,12 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string HoldLambdaVariable = "PASSENGER_ENGINE_HOLD_LAMBDA";
 
+    /// <summary>The variable that, set to 1, has a let-go wait, the program running, until each evaluation given up still to
+    /// end has ended before it holds the program, so that end comes just before the let-go listens for it, as one once
+    /// did: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldLetGoVariable = "PASSENGER_ENGINE_HOLD_LET_GO";
+
     /// <summary>How long an evaluation runs when nothing says otherwise.</summary>
     public static readonly TimeSpan DefaultEvaluationTimeout = TimeSpan.FromSeconds(5);
 
@@ -90,6 +96,10 @@ public static class AdapterEnvironment
     /// <summary>Whether <see cref="HoldLambdaVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
     /// flag is.</summary>
     public static bool HoldLambda => Flag(HoldLambdaVariable);
+
+    /// <summary>Whether <see cref="HoldLetGoVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
+    /// flag is.</summary>
+    public static bool HoldLetGo => Flag(HoldLetGoVariable);
 
     /// <summary>The kind of event <see cref="FailHandlingVariable"/> names, or null for none; the engine refuses, as fatal,
     /// a name that is no kind of its events.</summary>

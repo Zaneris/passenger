@@ -109,10 +109,10 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Waits out the evaluations given up that still run in the program before it is let go: Detach is refused
-    /// while one runs, and one that returns once the debugger has gone holds its thread for good. The program runs
-    /// until each has ended, other events let go, each waited for to the end of its own time
-    /// (<see cref="EvalStatus.DueAt"/>) or the client's (<paramref name="until"/>), but one that could not be stopped.
-    /// None is aborted: an abort fires wherever its thread then is, which can end the program.</summary>
+    /// while one runs, and one that returns once the debugger has gone holds its thread for good. The program runs until
+    /// each has ended (one whose end came already, unread, at once), other events let go, each to the end of its own time
+    /// (<see cref="EvalStatus.DueAt"/>) or the client's (<paramref name="until"/>), but one that could not be stopped. None
+    /// is aborted: an abort fires wherever its thread then is, which can end the program.</summary>
     private void EndAbandonedEvaluations(ICorDebugProcess process, long? until)
     {
         Dictionary<int, long> left = EvalStatus.DueAt.Where(d => EvalStatus.Abandoned.ContainsKey(d.Key)).ToDictionary();
@@ -126,6 +126,16 @@ public partial class ManagedDebugger
         _callbacks.OnAnyEvent += take;
         try
         {
+            // An end that came before the handler above lies queued behind the engine's lock, unread, its program held there.
+            foreach (int thread in left.Keys.Where(EvalStatus.HasEnded).ToList())
+            {
+                _logger?.Invoke($"Letting go: the evaluation given up on thread {thread} had ended before the let-go listened for its end");
+                Ended(thread);
+            }
+            if (left.Count == 0)
+            {
+                return;
+            }
             _logger?.Invoke($"Letting go: {Plural.Of(left.Count, "evaluation")} given up still to end, waited for");
             ContinueEveryHold(process);
             Stopwatch since = Stopwatch.StartNew();
@@ -135,14 +145,7 @@ public partial class ManagedDebugger
                 {
                     if (EvaluationThread(callbackEvent) is { } thread)
                     {
-                        left.Remove(thread.Id);
-                        // Its value let go, as its end would have been had the program gone on (LetGoAbandonedEvaluation).
-                        if (EvalStatus.Abandoned.Remove(thread.Id, out ICorDebugEval? ended) && ended.TryGetResult(out ICorDebugValue? value) is Cor.S_OK
-                            && value is ICorDebugHandleValue handle)
-                        {
-                            handle.TryDispose();
-                        }
-                        EvalStatus.DueAt.Remove(thread.Id);
+                        Ended(thread.Id);
                     }
                     process.TryContinue(false);
                 }
@@ -159,6 +162,18 @@ public partial class ManagedDebugger
             _callbacks.OnAnyEvent -= take;
         }
 
+        // Its value let go, as its end would have been had the program gone on (LetGoAbandonedEvaluation).
+        void Ended(int thread)
+        {
+            left.Remove(thread);
+            if (EvalStatus.Abandoned.Remove(thread, out ICorDebugEval? ended) && ended.TryGetResult(out ICorDebugValue? value) is Cor.S_OK
+                && value is ICorDebugHandleValue handle)
+            {
+                handle.TryDispose();
+            }
+            EvalStatus.DueAt.Remove(thread);
+        }
+
         // To the end of the latest time still to come of those left, or the client's, whichever is first.
         TimeSpan? Waited(Dictionary<int, long> running)
         {
@@ -169,6 +184,24 @@ public partial class ManagedDebugger
             }
             return Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), by);
         }
+    }
+
+    /// <summary><see cref="HoldsLetGo"/>'s wait, under the engine's lock with the program running: until each evaluation
+    /// given up still to end has ended, its end queued unread, or its time is up.</summary>
+    private async Task HoldUntilEvaluationsEndAsync()
+    {
+        List<int> running = [.. EvalStatus.DueAt.Keys.Where(EvalStatus.Abandoned.ContainsKey)];
+        if (running.Count == 0)
+        {
+            return;
+        }
+        _logger?.Invoke($"Letting go: held until {Plural.Of(running.Count, "evaluation")} given up {(running.Count == 1 ? "has" : "have")} ended, a test's hold");
+        long by = running.Max(thread => EvalStatus.DueAt[thread]);
+        while (!running.All(EvalStatus.HasEnded) && !_exited.IsSet && Stopwatch.GetTimestamp() < by)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10)).ConfigureAwait(false);
+        }
+        _logger?.Invoke("Letting go: the hold ends");
     }
 
     /// <summary>A handler of every event that takes it into <paramref name="events"/>, noting the program's exit as it comes.</summary>

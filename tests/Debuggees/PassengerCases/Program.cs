@@ -89,6 +89,11 @@ if (args is ["lets go"])
 	LetsGo.Run();
 	return;
 }
+if (args is ["lets go", "then reads"])
+{
+	LetsGo.Run(readsFirst: true);
+	return;
+}
 if (args is ["locks"])
 {
 	Locks.Run();
@@ -911,11 +916,16 @@ internal static class LetsGo
 		}
 	}
 
-	public static void Run()
+	// With readsFirst, it ends only once given a line, so a let-go it outlives waits for no end of its.
+	public static void Run(bool readsFirst = false)
 	{
 		for (int turn = 1; turn <= 100; turn++)
 		{
 			Thread.Sleep(10); // each turn of the program let go
+		}
+		if (readsFirst)
+		{
+			Console.ReadLine();
 		}
 		Console.WriteLine("ran on");
 	}

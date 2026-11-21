@@ -257,6 +257,7 @@ public static class Extensions
             throw new ManagedDebugger.EvalException($"An evaluation that could not be stopped is held unfinished on this thread, so no other can run on it until it returns: {NeedsThreads}");
         }
 
+        evalStatus.Begins(thread.Id);
         try
         {
             startEval();

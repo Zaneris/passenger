@@ -202,38 +202,11 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_detach_while_an_evaluation_a_continue_left_runs_runs_the_stops_thread_off_its_breakpoint_and_the_program_runs_on()
     {
-        ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["lets go"]);
-        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
-        start.RedirectStandardInput = true;
-        start.RedirectStandardOutput = true;
-        using Process program = Passenger.Core.ChildProcesses.Start(start);
-        TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
         System.Text.StringBuilder written = new();
-        Task heard = Passenger.Core.ChildProcesses.Hear(program, line =>
-        {
-            lock (written)
-            {
-                written.AppendLine(line);
-            }
-            if (line == "evaluating")
-            {
-                evaluating.TrySetResult();
-            }
-        });
-        Passenger.App.IdeErrors.Observe(heard);
-        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program,
-            new Dictionary<string, string> { [AdapterEnvironment.EvaluationTimeoutVariable] = TimeSpan.FromMinutes(10).TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) });
-        await host
-            .InitializeAsync()
-            .AttachAsync(program.Id)
-            .WaitForInitializedEvent();
-        await host.BreakpointsAsync([Line("Thread.Sleep(10); // each turn of the program let go")], Source).ConfigurationDoneAsync();
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
-        Task<EvaluateResponse> held = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("LetsGo.Held", frame, EvaluateContexts.Watch));
-        await evaluating.Task.WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
-        await host.Send<ContinueResponse>(DapCommands.Continue, new ThreadArguments(stop.ThreadId!.Value)).WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
-        Assert.Contains("went on", (await held).Result, StringComparison.Ordinal);
+        TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using Process program = StartLetsGo(written, evaluating, out Task heard);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program, TenMinutes());
+        int thread = await ContinuedWhileHeldAsync(host, program, evaluating.Task);
 
         // The evaluation ends only once the detach waits for it.
         Task<bool> detached = host.DisconnectAsync(DebugSession.RequestLimit);
@@ -241,15 +214,33 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
             TestContext.Current.CancellationToken), $"The detach never waited for the evaluation; the engine's log:\n{host.EngineLog()}");
         await program.StandardInput.WriteLineAsync("given");
         Assert.True(await detached, "The detach was not answered");
-        Assert.Contains($"Letting go: thread {stop.ThreadId} goes back to its stop", host.EngineLog(), StringComparison.Ordinal);
-        Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()),
-            $"The program let go did not run on to its end; the engine's log:\n{host.EngineLog()}");
-        Assert.True(await Waiting.Within(heard, TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The program's output was not read to its end after it ended");
-        lock (written)
-        {
-            Assert.Contains("ran on", written.ToString(), StringComparison.Ordinal);
-        }
-        Assert.Equal(0, program.ExitCode);
+        await RanOffItsStopAndOnAsync(host, program, thread, heard, written);
+    }
+
+    /// <summary>The same detach as the evaluation's end comes just before the detach listens for it, the program held at that
+    /// end with it queued unread behind the engine's lock (the engine's hold lets it come there): the detach takes that end
+    /// as heard and goes at once, never waiting out the evaluation's time, here ten minutes, in a program that outlives
+    /// it, which runs on.</summary>
+    [Fact]
+    public async Task A_detach_as_an_evaluation_a_continue_left_ends_takes_its_end_before_it_listened_and_goes_without_waiting_out_its_time()
+    {
+        System.Text.StringBuilder written = new();
+        TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using Process program = StartLetsGo(written, evaluating, out Task heard);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program, TenMinutes(new Dictionary<string, string> { [AdapterEnvironment.HoldLetGoVariable] = "1" }));
+        int thread = await ContinuedWhileHeldAsync(host, program, evaluating.Task);
+
+        // The evaluation ends while the detach's hold waits, before the detach listens for its end.
+        Task<bool> detached = host.DisconnectAsync(DebugSession.RequestLimit);
+        Assert.True(await Waiting.UntilAsync(() => host.EngineLog().Contains("Letting go: held until", StringComparison.Ordinal), TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken), $"The detach was never held before it listened for the evaluation's end; the engine's log:\n{host.EngineLog()}");
+        await program.StandardInput.WriteLineAsync("given");
+        Assert.True(await detached, $"The detach was not answered: it waited out the evaluation's ten minutes for an end that had come already; the engine's log:\n{host.EngineLog()}");
+        string log = host.EngineLog();
+        Assert.True(log.Contains($"the evaluation given up on thread {thread} had ended before the let-go listened for its end", StringComparison.Ordinal)
+            && !log.Contains("given up still to end, waited for", StringComparison.Ordinal),
+            $"The detach did not take the evaluation's end that came before it listened as heard, and waited for it; the engine's log:\n{log}");
+        await RanOffItsStopAndOnAsync(host, program, thread, heard, written);
     }
 
     /// <summary>A Detach after an evaluation that could not be stopped, which has had its time and its abort's window
@@ -484,6 +475,69 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>PassengerCases' "reads" case launched with breakpoints on the lines that hold the code given.</summary>
+    /// <summary>An adapter's environment giving each evaluation ten minutes, over <paramref name="more"/>.</summary>
+    private static Dictionary<string, string> TenMinutes(Dictionary<string, string>? more = null) =>
+        new(more ?? []) { [AdapterEnvironment.EvaluationTimeoutVariable] = TimeSpan.FromMinutes(10).TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+
+    /// <summary>PassengerCases' "lets go" started held for the debugger, ending only once given a line after its turns, so
+    /// no let-go waits on its end, its input the test's to give, each line it writes kept in <paramref name="written"/>;
+    /// <paramref name="evaluating"/> ends as LetsGo's getter begins.</summary>
+    private static Process StartLetsGo(System.Text.StringBuilder written, TaskCompletionSource evaluating, out Task heard)
+    {
+        ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["lets go", "then reads"]);
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        Process program = Passenger.Core.ChildProcesses.Start(start);
+        heard = Passenger.Core.ChildProcesses.Hear(program, line =>
+        {
+            lock (written)
+            {
+                written.AppendLine(line);
+            }
+            if (line == "evaluating")
+            {
+                evaluating.TrySetResult();
+            }
+        });
+        Passenger.App.IdeErrors.Observe(heard);
+        return program;
+    }
+
+    /// <summary>The program attached to and stopped in its loop, then let go on (Continue) while a read of its stop's
+    /// evaluation waits in LetsGo.Held for the program's input: the stop's thread.</summary>
+    private static async Task<int> ContinuedWhileHeldAsync(DebugSession host, Process program, Task evaluating)
+    {
+        await host
+            .InitializeAsync()
+            .AttachAsync(program.Id)
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync([Line("Thread.Sleep(10); // each turn of the program let go")], Source).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        Task<EvaluateResponse> held = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("LetsGo.Held", frame, EvaluateContexts.Watch));
+        await evaluating.WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
+        await host.Send<ContinueResponse>(DapCommands.Continue, new ThreadArguments(stop.ThreadId!.Value)).WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
+        Assert.Contains("went on", (await held).Result, StringComparison.Ordinal);
+        return stop.ThreadId!.Value;
+    }
+
+    /// <summary>The detach ran the stop's thread, back at its breakpoint as its evaluation returned, off it, and the program
+    /// let go runs on to its own end once given its last line.</summary>
+    private static async Task RanOffItsStopAndOnAsync(DebugSession host, Process program, int thread, Task heard, System.Text.StringBuilder written)
+    {
+        Assert.Contains($"Letting go: thread {thread} goes back to its stop", host.EngineLog(), StringComparison.Ordinal);
+        await program.StandardInput.WriteLineAsync("end");
+        Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()),
+            $"The program let go did not run on to its end; the engine's log:\n{host.EngineLog()}");
+        Assert.True(await Waiting.Within(heard, TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The program's output was not read to its end after it ended");
+        lock (written)
+        {
+            Assert.Contains("ran on", written.ToString(), StringComparison.Ordinal);
+        }
+        Assert.Equal(0, program.ExitCode);
+    }
+
     private Task<DebugSession> LaunchToBreakpoints(params string[] code) => LaunchCase("reads", code);
 
     /// <summary>A case of PassengerCases launched with breakpoints on the lines that hold the code given.</summary>

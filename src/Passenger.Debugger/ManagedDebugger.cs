@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -321,7 +322,7 @@ public partial class ManagedDebugger
         }
         else if (e is EvalCompleteCorDebugManagedCallbackEventArgs or EvalExceptionCorDebugManagedCallbackEventArgs)
         {
-            EvalStatus.EndCame(e);
+            EvalStatus.EndCame(e, EvaluationThread(e)?.TryGetID(out uint thread) is Cor.S_OK ? (int)thread : null);
         }
         _runtimeEventChannel.Writer.TryWrite(e);
     }
@@ -906,6 +907,10 @@ public partial class ManagedDebugger
     /// of its end; which run goes on after an await), the thread waits in the program for its input, so an evaluation is
     /// held unfinished there, as one that never ends is, until the program is given some.</summary>
     public static bool HoldsAsyncSteps { get; set; }
+
+    /// <summary>A test's hold: a let-go waits, the program running, until each evaluation given up still to end has ended,
+    /// before it holds the program, so that end lies queued unread as the let-go begins, as one once came.</summary>
+    public static bool HoldsLetGo { get; set; }
 
     /// <summary>A test's hold: the handling of each event of this kind (its callback's name, as Breakpoint) fails as it
     /// begins, as an error inside its handler would. A name that is no kind of event is refused.</summary>
@@ -2019,8 +2024,25 @@ internal sealed class EvalStatus
     /// on its callback thread, so the time the program took is told from the time the debugger took to hear it.</summary>
     private readonly ConditionalWeakTable<CorDebugManagedCallbackEventArgs, StrongBox<long>> came = [];
 
-    /// <summary>An evaluation's end has come from the runtime, before it is queued.</summary>
-    internal void EndCame(CorDebugManagedCallbackEventArgs end) => came.AddOrUpdate(end, new StrongBox<long>(System.Diagnostics.Stopwatch.GetTimestamp()));
+    /// <summary>The threads whose latest evaluation's end has come from the runtime, taken on its callback thread: an end
+    /// queued behind the engine's lock is known by it before the event is read.</summary>
+    private readonly ConcurrentDictionary<int, bool> ended = [];
+
+    /// <summary>An evaluation's end has come from the runtime on a thread, before it is queued.</summary>
+    internal void EndCame(CorDebugManagedCallbackEventArgs end, int? thread)
+    {
+        came.AddOrUpdate(end, new StrongBox<long>(System.Diagnostics.Stopwatch.GetTimestamp()));
+        if (thread is int on)
+        {
+            ended[on] = true;
+        }
+    }
+
+    /// <summary>An evaluation begins on the thread: an end said of it from here is this one's.</summary>
+    internal void Begins(int thread) => ended.TryRemove(thread, out _);
+
+    /// <summary>Whether the end of the evaluation begun last on the thread has come, read or not.</summary>
+    internal bool HasEnded(int thread) => ended.ContainsKey(thread);
 
     /// <summary>When an evaluation's end came (<see cref="EndCame"/>), or null for one never stamped.</summary>
     internal long? CameAt(CorDebugManagedCallbackEventArgs end) => came.TryGetValue(end, out StrongBox<long>? at) ? at.Value : null;
