@@ -1229,6 +1229,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
         OwnProcess suspended = default;
         Task<CallToolResult>? diagnostic = null;
         using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
+        TaskCompletionSource refreshesHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             window.OpenFile(Path.Combine(window.Folder!, "Helper.cs"));
@@ -1237,6 +1238,8 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             string taken = Folder;
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", taken])), "the agent attaching");
             Await(Waiting.Apart(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })), "the language server loading the sample");
+            // The window's own pull of the file it shows, at the server's word that its diagnostics moved, would wait on it too.
+            window.CSharpService!.HoldRefreshes(refreshesHeld.Task);
             Ui.Settle();
             Assert.DoesNotContain(InFlight.Now(), AsksTheServer);
             Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
@@ -1264,7 +1267,8 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
                 Ui.PumpUntil(() => diagnostic.IsCompleted, "the agent's diagnostic giving up", TimeSpan.FromSeconds(10));
                 Assert.ThrowsAny<OperationCanceledException>(() => Ui.AwaitPumped(diagnostic, "the agent's diagnostic giving up"));
             }
-            Ui.PumpUntil(() => !InFlight.Now().Any(AsksTheServer), "the diagnostic's request to clear while its server is still suspended", TimeSpan.FromSeconds(10));
+            Assert.True(Ui.Pumped(() => !InFlight.Now().Any(AsksTheServer), TimeSpan.FromSeconds(10)),
+                $"The diagnostic's request never cleared while its server stayed suspended; in flight:\n{InFlight.Describe(InFlight.Now(), System.Diagnostics.Stopwatch.GetTimestamp())}");
             Assert.True(Processes.IsRunning(suspended.Id), "The request cleared only because its language server ended");
         }
         finally
@@ -1276,6 +1280,7 @@ public sealed class McpAttachTimingTests : McpRig, IClassFixture<RestoredFolders
             }
             giveUp.Cancel();
             suspended.Kill();
+            refreshesHeld.TrySetResult();
             try
             {
                 if (client is not null)
