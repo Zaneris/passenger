@@ -3522,6 +3522,40 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.DoesNotMatch(made, "        MenuItem item = ListMenus.Item(header, run);");
     }
 
+    /// <summary>Every key the window names in words (a tip, a placeholder, a status, a label, a note) is the keymap's for an
+    /// action (ActionTips) or KeyWords' for a key no action owns, so a person on another keymap or system reads their own
+    /// keys: a key written as words by hand (a modifier's symbol, a modifier's name before a + or held for something, a
+    /// function key in brackets, a key pressed or held by its name) and a key turned into words anywhere but KeyWords fail
+    /// here, naming the line. The formatter itself (Keymap.cs) is apart.</summary>
+    [Fact]
+    public void Every_key_named_in_words_is_the_keymaps_or_KeyWords()
+    {
+        Regex byHand = new(@"[⌘⌥⇧⌃⏎⎋⇥⌫⌦↩]|\b(?:Ctrl|Control|Alt|Option|Shift|Cmd|Command|Win|Meta)\+|\((?:Shift\+)?F\d{1,2}\)"
+            + @"|\b(?:Ctrl|Alt|Shift|Cmd|Option)\s+for\s"
+            + @"|\b(?:[Pp]ress|[Hh]old|by|or|and|with)\s+(?:Escape|Esc|Enter|Return|Tab|Backspace|Space|Ctrl|Alt|Shift|Cmd)\b(?!\s*(?:key|bar)s?\b)"
+            + @"|\b(?:Escape|Esc|Enter|Return|Tab|Backspace)\s+to\s+(?!the\b)[a-z]");
+        Regex formatted = new(@"\.Display\(\)|\bKeystroke\.Shown\(");
+        string[] apart = ["/KeyWords.cs", "src/Passenger.Editor/Keymap.cs"];
+        string[] found = [.. UiFiles().Where(f => !apart.Any(a => f.Path.EndsWith(a, StringComparison.Ordinal)))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line.Trim())))
+            .Where(l => !l.Text.StartsWith("//", StringComparison.Ordinal) && !l.Text.StartsWith("<!--", StringComparison.Ordinal)
+                && (byHand.IsMatch(l.Text) || formatted.IsMatch(l.Text)))
+            .Select(l => $"{l.Path}:{l.Line}: {l.Text}")];
+        Assert.True(found.Length == 0, $"{found.Length} keys are named in words by hand, so a person on another keymap or system reads keys that "
+            + $"are not theirs: name an action's keys through ActionTips and any other key through KeyWords:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "    private static string Keys(string key) => OperatingSystem.IsMacOS() ? $\"⌘{key}\" : $\"Ctrl+{key}\";");
+        Assert.Matches(byHand, "        ToolTip.SetTip(maskOn, \"File mask (Alt+K)\");");
+        Assert.Matches(byHand, "        Button jump = ToolButtons.Of(IconKeys.Edit, \"Jump to Source (F4)\", AskForSource);");
+        Assert.Matches(byHand, "        ToolTip.SetTip(label, \"Drag left or right to change it: Shift for faster, Alt for finer\");");
+        Assert.Matches(byHand, "            parts.Say($\"Select Element: point at a control in {live.Name} and click it, or press Escape there\");");
+        Assert.Matches(byHand, "        Message?.Invoke(this, \"Smart Step Into: choose a call with the arrow keys or Tab, Enter to step into it, Escape to leave\");");
+        Assert.Matches(byHand, "            \"A plain click on a file's row opens it, the keys staying in the Explorer. Off, a double-click or Enter opens it. \"");
+        Assert.Matches(formatted, "            string keys = AppActions.Keymap().ShortcutsFor(AppActions.HighlightUsages).FirstOrDefault()?.Display() ?? \"the action\";");
+        Assert.DoesNotMatch(byHand, "        ToolTip.SetTip(maskOn, ActionTips.Named(\"File mask\", KeyWords.Of(MaskKey)));");
+        Assert.DoesNotMatch(byHand, "        new(D.EditorPage, \"Show whitespaces\", \"whitespace spaces tabs dots arrows invisible characters appearance\"));");
+        Assert.DoesNotMatch(byHand, "        new(D.EditorPage, \"Vim mode's Ctrl keys\", \"vim keys ctrl control conflict keymap\",");
+    }
+
     /// <summary>A peer of Passenger's tells a screen reader of a change only through PeerChanges.Tell, which tells a pattern's
     /// property only while the peer gives that pattern, as macOS's bridge asks the pattern as it hears the change and a
     /// refusal there ends Passenger: a RaisePropertyChangedEvent written anywhere else fails here, naming its line, as does a

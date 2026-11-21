@@ -102,7 +102,7 @@ public static class Declared
 
     public static readonly ToggleSetting OpenFilesWithSingleClick = new(s => s.OpenFilesWithSingleClick, (s, v) => s with { OpenFilesWithSingleClick = v },
         new(D.ExplorerPage, "Open files with single click", "explorer solution view tree one click preview",
-            "A plain click on a file's row opens it, the keys staying in the Explorer. Off, a double-click or Enter opens it. "
+            $"A plain click on a file's row opens it, the keys staying in the Explorer. Off, a double-click or {KeyWords.Of(ListKeys.OpenKey)} opens it. "
             + "Its options menu turns this on and off too."));
 
     public static readonly ToggleSetting NestFiles = new(s => s.NestFiles, (s, v) => s with { NestFiles = v },
@@ -150,12 +150,12 @@ public static class Declared
 
     public static readonly ToggleSetting CompletionParentheses = new(s => s.CompletionParentheses, (s, v) => s with { CompletionParentheses = v },
         new(D.EditorPage, "Add parentheses to a method chosen from completion", "completion parentheses brackets call method invocation arguments autocomplete",
-            "A C# method chosen by Enter, Tab or a click is written as a call, the caret between its parentheses where it takes "
-            + "arguments. Where the code asks for the method itself, as an event's handler or a delegate, it stays a name."));
+            $"A C# method chosen by {KeyWords.Of(Avalonia.Input.Key.Enter)}, {KeyWords.Of(Avalonia.Input.Key.Tab)} or a click is written as a call, "
+            + "the caret between its parentheses where it takes arguments. Where the code asks for the method itself, as an event's handler or a delegate, it stays a name."));
 
     public static readonly ToggleSetting FormatOnType = new(s => s.FormatOnType, (s, v) => s with { FormatOnType = v },
         new(D.EditorPage, "Format a statement on ';' and a block on '}'", "format on type as you type typing semicolon brace statement block reformat layout auto c#",
-            "In C#, the ';' that ends a statement lays the statement out, the '}' that closes a block lays out the block, and Enter "
+            $"In C#, the ';' that ends a statement lays the statement out, the '}}' that closes a block lays out the block, and {KeyWords.Of(Avalonia.Input.Key.Enter)} "
             + "between a '{' and its '}' puts the '{' where the block's layout has it, as Reformat Code does; one Undo takes the key "
             + "and its layout back together. A ';' in a for loop's header, a string or a comment stays as typed."));
 
@@ -181,7 +181,7 @@ public static class Declared
         new(D.EditorPage, "Show whitespaces", "whitespace spaces tabs dots arrows invisible characters appearance"));
 
     public static readonly ToggleSetting WheelZoom = new(s => s.WheelZoom, (s, v) => s with { WheelZoom = v },
-        new(D.EditorPage, OperatingSystem.IsMacOS() ? "Change font size with Command+Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel",
+        new(D.EditorPage, $"Change font size with {KeyWords.Held(Editor.Keystroke.Command, "Mouse Wheel")}",
             "zoom font size mouse wheel scroll ctrl control command cmd"));
 
     public static readonly ToggleSetting ReformatOnSave = new(s => s.ReformatOnSave, (s, v) => s with { ReformatOnSave = v },

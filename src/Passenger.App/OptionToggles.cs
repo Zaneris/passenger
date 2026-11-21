@@ -41,7 +41,7 @@ public static class OptionToggles
         {
             toggle.Content = new TextBlock { Classes = { StyleClasses.BadgeText }, Text = ".*" }.InCodeFont();
         }
-        return ToolButtons.Tip(toggle, option.Name, option.Key.Display());
+        return ToolButtons.Tip(toggle, option.Name, KeyWords.Of(option.Key));
     }
 
     /// <summary>Turns over the toggle whose option's key a press is, the press handled; false for any other press.</summary>

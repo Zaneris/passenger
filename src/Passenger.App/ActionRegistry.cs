@@ -63,11 +63,11 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     public ActionContext Context() => context();
 
     /// <summary>An action's first shortcut as menus and tips show it ("⌘K, W"), or null with none.</summary>
-    public string? Shortcut(string id) => Keymap.ShortcutsFor(KeysOf(id)) is { Count: > 0 } keys ? keys[0].Display() : null;
+    public string? Shortcut(string id) => KeyWords.Of(Keymap, KeysOf(id));
 
     /// <summary>An action's first shortcut and its first mouse shortcut beside it, as Find Action and the menus show them
     /// ("F12, ⌘Click"), or null with neither.</summary>
-    public string? ShortcutsShown(string id) => Joined(Shortcut(id), Keymap.MouseShortcutsFor(KeysOf(id)) is { Count: > 0 } mouse ? mouse[0].Display() : null);
+    public string? ShortcutsShown(string id) => Joined(Shortcut(id), Keymap.MouseShortcutsFor(KeysOf(id)) is { Count: > 0 } mouse ? KeyWords.Of(mouse[0]) : null);
 
     private static string? Joined(string? keys, string? mouse) => keys is null ? mouse : mouse is null ? keys : $"{keys}, {mouse}";
 
@@ -86,9 +86,9 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     public void ShowKeys(MenuItem item, string id)
     {
         item.InputGesture = Gesture(id);
-        string? keys = item.InputGesture is { } gesture ? new Keystroke(gesture.Key, gesture.KeyModifiers).Display()
-            : Keymap.ShortcutsFor(KeysOf(id)).FirstOrDefault() is { Second: not null } chord ? chord.Display() : null;
-        string? mouse = Keymap.MouseShortcutsFor(KeysOf(id)) is { Count: > 0 } gestures ? gestures[0].Display() : null;
+        string? keys = item.InputGesture is { } gesture ? KeyWords.Of(gesture.Key, gesture.KeyModifiers)
+            : Keymap.ShortcutsFor(KeysOf(id)).FirstOrDefault() is { Second: not null } chord ? KeyWords.Of(chord) : null;
+        string? mouse = Keymap.MouseShortcutsFor(KeysOf(id)) is { Count: > 0 } gestures ? KeyWords.Of(gestures[0]) : null;
         if ((item.InputGesture is null && keys is not null) || mouse is not null)
         {
             ShowText(item, Joined(keys, mouse)!);

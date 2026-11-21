@@ -2042,7 +2042,11 @@ public sealed class DebugController : IDisposable
                 IdeErrors.Observe(ResumeAsync(paused => paused.StepIntoTargetAsync(placed[index].Target.Id), "smart step into"));
             }
         });
-        Message?.Invoke(this, "Smart Step Into: choose a call with the arrow keys or Tab, Enter to step into it, Escape to leave");
+        // The editor's keys of a choice (CodeEditor.Choices), as the keymap in force gives them, or their names where it gives none.
+        string next = ActionTips.Keys(EditorActions.Indent) ?? "Indent";
+        string take = ActionTips.Keys(EditorActions.NewLine) ?? "New Line";
+        string leave = ActionTips.Keys(EditorActions.Escape) ?? "Escape";
+        Message?.Invoke(this, $"Smart Step Into: choose a call with the arrow keys or {next}, {take} to step into it, {leave} to leave");
     }
 
     /// <summary>Where each target is in a file's text as it is now (from the built lines), those placed on one line each.</summary>

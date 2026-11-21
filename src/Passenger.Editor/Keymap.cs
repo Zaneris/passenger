@@ -188,7 +188,7 @@ public readonly record struct Keystroke(Key Key, KeyModifiers Modifiers)
 
     /// <summary>Modifiers before what they are held with, as menus show them: ⌃⌥⇧⌘ on macOS, "Ctrl+Alt+Shift+Win+"
     /// elsewhere (no + after them when nothing follows).</summary>
-    internal static string Shown(KeyModifiers modifiers, string with)
+    public static string Shown(KeyModifiers modifiers, string with)
     {
         if (OperatingSystem.IsMacOS())
         {

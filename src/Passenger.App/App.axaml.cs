@@ -59,7 +59,7 @@ public partial class App : Application
         {
             if (item.InputGesture is { } keys && e.NameScope.Find<TextBlock>("PART_InputGestureText") is { } shown)
             {
-                shown.Text = new Passenger.Editor.Keystroke(keys.Key, keys.KeyModifiers).Display();
+                shown.Text = KeyWords.Of(keys.Key, keys.KeyModifiers);
             }
         });
     }

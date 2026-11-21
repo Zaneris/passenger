@@ -90,7 +90,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         count = new TextBlock();
         settings = ToolButtons.Of(AppActions.DiffSettings, IconKeys.Settings, "Settings", _ => ShowSettings());
         settings.ContextMenu = SettingsMenu();
-        Button jump = ToolButtons.Of(IconKeys.Edit, "Jump to Source (F4)", AskForSource);
+        Button jump = ToolButtons.Of(IconKeys.Edit, ActionTips.Named("Jump to Source", KeyWords.Of(ListKeys.SourceKey)), AskForSource);
         jump.Name = AppActions.DiffJumpToSource;
         Children.Add(DiffLines.Bar(name, Step, count, [jump], settings));
         Find = new Editors.FindBar { [DockProperty] = Dock.Top };
@@ -259,7 +259,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// Shift+F7), and Jump to Source's.</summary>
     public bool TakesKey(KeyEventArgs e) => DiffLines.Step(e) != 0 || IsJump(e);
 
-    private static bool IsJump(KeyEventArgs e) => e.Key == Key.F4 && e.KeyModifiers == KeyModifiers.None;
+    private static bool IsJump(KeyEventArgs e) => e.Key == ListKeys.SourceKey && e.KeyModifiers == KeyModifiers.None;
 
     /// <summary>The file the right side is a version of, which Jump to Source opens.</summary>
     public string? Source { get; init; }

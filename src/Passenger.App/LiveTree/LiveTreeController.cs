@@ -1173,7 +1173,7 @@ public sealed partial class LiveTreeController
         }
         if (on)
         {
-            parts.Say($"Select Element: point at a control in {live.Name} and click it, or press Escape there");
+            parts.Say($"Select Element: point at a control in {live.Name} and click it, or press {KeyWords.Of(Avalonia.Input.Key.Escape)} there");
         }
     }
 

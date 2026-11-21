@@ -39,6 +39,12 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         (SearchScopeKind.Scope, "Scope", Key.S),
     ];
 
+    /// <summary>The key that turns the file mask on and off, its field taking the keys as it turns on.</summary>
+    private static readonly Keystroke MaskKey = new(Key.K, KeyModifiers.Alt);
+
+    /// <summary>The key that keeps the matches in the Find window (<see cref="FindWindow"/>).</summary>
+    private static readonly Keystroke FindWindowKey = new(Key.Enter, Keystroke.Command);
+
     private readonly Func<SearchQuery, SearchScope, CancellationToken, Task<FilesFound>> search;
     private readonly Func<string, TextSnapshot?> textOf;
     private readonly Func<string, CSharpParseOptions> parseOptions;
@@ -92,7 +98,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         find.Children.Add(query);
 
         maskOn = PopupFrame.Option("File mask:", choices.Start.Mask is not null, takesKeys: true);
-        ToolTip.SetTip(maskOn, "File mask (Alt+K)");
+        ToolTip.SetTip(maskOn, ActionTips.Named("File mask", KeyWords.Of(MaskKey)));
         maskBox = Field(choices.Masks.Count > 0 ? choices.Masks : ["*.cs"], editable: true);
         maskBox.Width = 150;
         maskBox.Text = choices.Start.Mask ?? choices.Masks.FirstOrDefault() ?? "*.cs";
@@ -140,7 +146,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         details[SearchScopeKind.Scope] = scopeBox;
         foreach ((SearchScopeKind each, string name, Key key) in Kinds)
         {
-            ToolTip.SetTip(kinds.Add(each, name), ActionTips.Named(name, new Keystroke(key, KeyModifiers.Alt).Display()));
+            ToolTip.SetTip(kinds.Add(each, name), ActionTips.Named(name, KeyWords.Of(key, KeyModifiers.Alt)));
         }
         kinds.Chosen += (_, each) => ScopeKind = each;
         Panel shown = new();
@@ -155,7 +161,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
         status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
         FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
-        ToolTip.SetTip(FindWindow, $"Open in Find Window ({(OperatingSystem.IsMacOS() ? "⌘↩" : "Ctrl+Enter")})");
+        ToolTip.SetTip(FindWindow, ActionTips.Named("Open in Find Window", KeyWords.Of(FindWindowKey)));
         ToolTip.SetShowOnDisabled(FindWindow, true);
         FindWindow.Click += (_, _) => KeepInFindWindow();
         top.Children.Add(new DockPanel { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), Children = { FindWindow, status } });
@@ -545,7 +551,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             e.Handled = true;
             return;
         }
-        if (e.KeyModifiers == KeyModifiers.Alt && e.Key == Key.K)
+        if (Keystroke.From(e) == MaskKey)
         {
             maskOn.IsChecked = maskOn.IsChecked != true;
             if (maskOn.IsChecked == true)
@@ -555,14 +561,16 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             e.Handled = true;
             return;
         }
+        if (Keystroke.From(e) == FindWindowKey)
+        {
+            KeepInFindWindow();
+            e.Handled = true;
+            return;
+        }
         switch (e.Key)
         {
             case Key.Escape:
                 Done?.Invoke(this, null);
-                e.Handled = true;
-                break;
-            case Key.Enter when e.KeyModifiers == Keystroke.Command:
-                KeepInFindWindow();
                 e.Handled = true;
                 break;
             case Key.Enter when replacement?.IsFocused != true && !InField():

@@ -105,7 +105,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             [Avalonia.Automation.AutomationProperties.NameProperty] = "Evaluate expression",
             Margin = new Thickness(Gaps.Small, Gaps.Small, Gaps.Small, Gaps.Tight),
         };
-        string enter = new Keystroke(Key.Enter, KeyModifiers.None).Display();
+        string enter = KeyWords.Of(Key.Enter);
         ActionTips.SetWords(evaluate, AppActions.AddToWatches, keys => keys is null ? $"Evaluate expression ({enter})" : $"Evaluate expression ({enter}) or add a watch ({keys})");
         evaluate.AddHandler(KeyDownEvent, OnEvaluateKey, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         // The debugger the model has now asked, whichever folder's it is: each folder's sets it as it is made.

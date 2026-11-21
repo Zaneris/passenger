@@ -38,6 +38,16 @@ public sealed class ZoomedPicture : ScrollViewer
 
     private Fitting fitting;
 
+    /// <summary>The keys of Zoom In, Zoom Out and Actual Size, which their tips name: the command modifier with =, - and /,
+    /// which the keypad's +, - and / and Shift held with any of them do too (<see cref="CommandFor"/>).</summary>
+    private static readonly Keystroke ZoomInKey = new(Key.OemPlus, Keystroke.Command);
+
+    /// <inheritdoc cref="ZoomInKey"/>
+    private static readonly Keystroke ZoomOutKey = new(Key.OemMinus, Keystroke.Command);
+
+    /// <inheritdoc cref="ZoomInKey"/>
+    private static readonly Keystroke ActualSizeKey = new(Key.OemQuestion, Keystroke.Command);
+
     public ZoomedPicture()
     {
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
@@ -62,9 +72,9 @@ public sealed class ZoomedPicture : ScrollViewer
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                ToolButtons.Of(IconKeys.ZoomIn, $"Zoom In ({Keys("=")})", ZoomIn),
-                ToolButtons.Of(IconKeys.ZoomOut, $"Zoom Out ({Keys("-")})", ZoomOut),
-                ToolButtons.Of(IconKeys.ActualSize, $"Actual Size ({Keys("/")})", () => ZoomTo(1)),
+                ToolButtons.Of(IconKeys.ZoomIn, ActionTips.Named("Zoom In", KeyWords.Of(ZoomInKey)), ZoomIn),
+                ToolButtons.Of(IconKeys.ZoomOut, ActionTips.Named("Zoom Out", KeyWords.Of(ZoomOutKey)), ZoomOut),
+                ToolButtons.Of(IconKeys.ActualSize, ActionTips.Named("Actual Size", KeyWords.Of(ActualSizeKey)), () => ZoomTo(1)),
                 ToolButtons.Of(IconKeys.ZoomFit, "Fit Zoom to Window", FitToWindow),
                 zoomText,
             },
@@ -128,14 +138,14 @@ public sealed class ZoomedPicture : ScrollViewer
     /// for a key that is not its.</summary>
     public Action? CommandFor(KeyEventArgs e)
     {
-        bool held = (e.KeyModifiers & ~KeyModifiers.Shift) == Keystroke.Command;
-        return e.Key switch
+        if ((e.KeyModifiers & ~KeyModifiers.Shift) != Keystroke.Command)
         {
-            Key.OemPlus or Key.Add when held => ZoomIn,
-            Key.OemMinus or Key.Subtract when held => ZoomOut,
-            Key.Oem2 or Key.Divide when held => () => ZoomTo(1),
-            _ => null,
-        };
+            return null;
+        }
+        return e.Key == ZoomInKey.Key || e.Key == Key.Add ? ZoomIn
+            : e.Key == ZoomOutKey.Key || e.Key == Key.Subtract ? ZoomOut
+            : e.Key == ActualSizeKey.Key || e.Key == Key.Divide ? () => ZoomTo(1)
+            : null;
     }
 
     /// <summary>The zoom fitted again to the room as it now is, while it is fitted; false while it has no room yet.</summary>
@@ -181,6 +191,4 @@ public sealed class ZoomedPicture : ScrollViewer
         }
         e.Handled = true;
     }
-
-    private static string Keys(string key) => OperatingSystem.IsMacOS() ? $"⌘{key}" : $"Ctrl+{key}";
 }

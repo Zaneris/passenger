@@ -96,7 +96,7 @@ public sealed class StrokeField : TextBox
         set
         {
             stroke = value;
-            Text = value is { IsModifierAlone: true } alone ? new Shortcut(alone, alone).Display() : value?.Display() ?? string.Empty;
+            Text = value is { IsModifierAlone: true } alone ? KeyWords.Of(new Shortcut(alone, alone)) : value is { } pressed ? KeyWords.Of(pressed) : string.Empty;
             CaretIndex = Text.Length;
             StrokeChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -171,11 +171,11 @@ public sealed class StrokeField : TextBox
         PathIcon plus = new() { Width = 12, Height = 12 };
         plus.Bind(PathIcon.DataProperty, plus.GetResourceObservable(IconKeys.Add));
         Button set = new() { Classes = { StyleClasses.TabPin }, Content = plus, Focusable = false, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        ToolButtons.Tip(set, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(k => k.Display()))} keys");
+        ToolButtons.Tip(set, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(KeyWords.Of))} keys");
         List<MenuItem> items = [];
         foreach (Keystroke key in keys)
         {
-            items.Add(ToolWindows.ListMenus.Item($"Set {key.Display()}", () =>
+            items.Add(ToolWindows.ListMenus.Item($"Set {KeyWords.Of(key)}", () =>
             {
                 Stroke = key;
                 Focus();

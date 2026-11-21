@@ -43,5 +43,5 @@ public partial class MainWindow
     /// key it was given.</summary>
     private string ChordMessage(Keystroke first) => "Prefix key pressed: " + string.Join(", ", keys.Keymap.ChordsFrom(first)
         .DistinctBy(chord => chord.Action)
-        .Select(chord => $"{actions![chord.Action]?.Title ?? chord.Action} ({chord.Second.Display()})"));
+        .Select(chord => $"{actions![chord.Action]?.Title ?? chord.Action} ({KeyWords.Of(chord.Second)})"));
 }

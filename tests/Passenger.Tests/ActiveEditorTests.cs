@@ -364,7 +364,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Ui.Settle();
         dialog.Query = "mouse wheel";
         Ui.Settle();
-        Assert.Equal([OperatingSystem.IsMacOS() ? "Change font size with Command+Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel"], dialog.Shown);
+        Assert.Equal([OperatingSystem.IsMacOS() ? "Change font size with ⌘Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel"], dialog.Shown);
         dialog.Change(s => s with { WheelZoom = true });
         dialog.Ok();
         Ui.Settle();

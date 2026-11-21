@@ -971,7 +971,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }
 
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
-        "The fixes and refactorings offered at a position (Alt+Enter), or over a selection to endLine:endColumn (Extract " +
+        "The fixes and refactorings offered at a position (Show Context Actions), or over a selection to endLine:endColumn (Extract " +
         "Method, Introduce Variable), as 'title [kind]' with the choices each offers (nested actions, a Fix All's scopes, where " +
         "a XAML resource goes), which apply_code_action takes: Passenger's own fixes first (a GDScript's are all Passenger's), then " +
         "ESLint's, then the language server's; in XAML, the line's problems' fixes (a binding's missing property or command, a missing converter), Extract " +
@@ -1029,7 +1029,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     [McpServerTool(Name = McpTools.ApplyCodeAction, Title = "Apply a fix or refactoring", Destructive = true), Description(
-        "Applies the action titled as code_actions lists it there, as Alt+Enter does, choice naming one of its choices, and " +
+        "Applies the action titled as code_actions lists it there, as Show Context Actions does, choice naming one of its choices, and " +
         "saves the files. name is XAML's Extract Resource or Extract Style's new key or style (else their dialog's), which " +
         "replace every use of the value, or an Aspire parameter's Set… value.")]
     public Task<string> ApplyCodeAction(string path, int line, int column, string title, int? endLine = null, int? endColumn = null,

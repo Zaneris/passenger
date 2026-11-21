@@ -175,7 +175,6 @@ public sealed class UsageHighlighting
             {
                 return;
             }
-            string keys = AppActions.Keymap().ShortcutsFor(AppActions.HighlightUsages).FirstOrDefault()?.Display() ?? "the action";
             if (uses.Count == 0)
             {
                 editor.SetUsageHighlights([]);
@@ -184,8 +183,10 @@ public sealed class UsageHighlighting
             }
             editor.SetUsageHighlights(uses, keep: true);
             string name = editor.Document.Snapshot.GetText(uses.First(u => Covers(u.Range, caret)).Range);
-            Message?.Invoke(this, $"{Core.Plural.Of(uses.Count, "usage")} of {name} found "
-                + $"(press {keys} again to remove the highlighting, Escape to remove all highlighting)");
+            // Each named by the keys the keymap in force gives it, or by its name while nothing runs it.
+            string again = ActionTips.Keys(AppActions.HighlightUsages) is { } keys ? $"press {keys} again" : "run Highlight Usages in File again";
+            string escape = ActionTips.Keys(EditorActions.Escape) ?? "Escape";
+            Message?.Invoke(this, $"{Core.Plural.Of(uses.Count, "usage")} of {name} found ({again} to remove the highlighting, {escape} to remove all highlighting)");
         }
     }
 

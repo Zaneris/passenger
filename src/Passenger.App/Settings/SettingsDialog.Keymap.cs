@@ -148,7 +148,7 @@ public sealed partial class SettingsDialog
 
     /// <summary>What an action's row shows of it: its shortcuts, then its mouse shortcuts.</summary>
     private static string[] ShownOf(Keymap keymap, string action) =>
-        [.. keymap.ShortcutsFor(action).Select(s => s.Display()), .. keymap.MouseShortcutsFor(action).Select(g => g.Display())];
+        [.. keymap.ShortcutsFor(action).Select(KeyWords.Of), .. keymap.MouseShortcutsFor(action).Select(KeyWords.Of)];
 
     /// <summary>An action's name as the page and its dialogs say it: the IDE's, else the editor's for its mouse's own.</summary>
     private string TitleOf(string id) => actions[id]?.Title ?? EditorActions.Gestures.FirstOrDefault(g => g.Id == id).Title ?? id;
@@ -267,8 +267,8 @@ public sealed partial class SettingsDialog
     private void FillEditShortcuts(string action, ContextMenu menu)
     {
         Keymap current = Current;
-        List<(string Shown, string Notation)> own = [.. current.ShortcutsFor(action).Select(s => (s.Display(), s.Notation())),
-            .. current.MouseShortcutsFor(action).Select(g => (g.Display(), g.Notation()))];
+        List<(string Shown, string Notation)> own = [.. current.ShortcutsFor(action).Select(s => (KeyWords.Of(s), s.Notation())),
+            .. current.MouseShortcutsFor(action).Select(g => (KeyWords.Of(g), g.Notation()))];
         List<Control> items =
         [
             ToolWindows.ListMenus.Item("Add Keyboard Shortcut", () => IdeErrors.Observe(AddKeyboardShortcut(action))),
@@ -324,7 +324,7 @@ public sealed partial class SettingsDialog
             {
                 if ((!keepDefaults || !Defaults.ShortcutsFor(other).Contains(theirs)) && Left(other).Keys.Remove(theirs))
                 {
-                    said.Add($"{theirs.Display()} was {TitleOf(other)}'s");
+                    said.Add($"{KeyWords.Of(theirs)} was {TitleOf(other)}'s");
                 }
             }
         }
@@ -332,7 +332,7 @@ public sealed partial class SettingsDialog
         {
             if (from.Conflict(action, gesture) is { } other && (!keepDefaults || !Defaults.MouseShortcutsFor(other).Contains(gesture)) && Left(other).Gestures.Remove(gesture))
             {
-                said.Add($"{gesture.Display()} was {TitleOf(other)}'s");
+                said.Add($"{KeyWords.Of(gesture)} was {TitleOf(other)}'s");
             }
         }
         taken = said;
@@ -396,7 +396,7 @@ public sealed partial class SettingsDialog
     private void FilterByShortcut(Shortcut? shortcut)
     {
         shortcutFilter = shortcut;
-        filterChip.Words = shortcut?.Display();
+        filterChip.Words = shortcut is null ? null : KeyWords.Of(shortcut);
         Filter();
         if (shortcut is not null)
         {

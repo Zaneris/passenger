@@ -54,9 +54,12 @@ public static class ActionTips
     }
 
     /// <summary>The control's tip as the keymap in force has its action's keys now, or null for one with no such tip.</summary>
-    public static string? Of(Control control) => control.GetValue(TipProperty) is { Text: null, Action: { } action } tip ? Named(tip.Words, KeysOf(action)) : null;
+    public static string? Of(Control control) => control.GetValue(TipProperty) is { Text: null, Action: { } action } tip ? Named(tip.Words, Keys(action)) : null;
 
-    private static string? KeysOf(string action) => AppActions.Keymap().ShortcutsFor(AppActions.KeysIn(action)).FirstOrDefault()?.Display();
+    /// <summary>An action's keys in words as the keymap in force has them now (<see cref="KeyWords"/>), those of the action
+    /// whose keys it takes where it takes another's (<see cref="AppActions.KeysIn"/>), or null while nothing runs it: for
+    /// words said once (a status), which no later keymap changes.</summary>
+    public static string? Keys(string action) => KeyWords.Of(AppActions.Keymap(), AppActions.KeysIn(action));
 
     /// <summary>Every such tip shown under a window said again, after the keymap in force changed.</summary>
     public static void Follow(Visual within)
@@ -74,15 +77,15 @@ public static class ActionTips
         {
             if (control is TextBox box)
             {
-                box.PlaceholderText = words(KeysOf);
+                box.PlaceholderText = words(Keys);
             }
             else if (control is TextBlock block)
             {
-                block.Text = words(KeysOf);
+                block.Text = words(Keys);
             }
             else if (control is ContentControl content)
             {
-                content.Content = words(KeysOf);
+                content.Content = words(Keys);
             }
         }
         else if (!ActionButtons.IsWorking(control))

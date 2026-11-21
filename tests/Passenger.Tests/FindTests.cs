@@ -98,7 +98,7 @@ public sealed class FindTests : IDisposable
         Ui.Settle();
         FindBar bar = window.EditorArea.FindBar;
         TextBox replacing = bar.FindControl<TextBox>("ReplaceWith")!;
-        Assert.Contains("Shift+Enter puts a line break in", ToolTip.GetTip(replacing) as string, StringComparison.Ordinal);
+        Assert.Contains(OperatingSystem.IsMacOS() ? "⇧⏎ puts a line break in" : "Shift+Enter puts a line break in", ToolTip.GetTip(replacing) as string, StringComparison.Ordinal);
         replacing.Focus();
         window.KeyTextInput(",");
         Ui.Press(window, "shift ENTER");

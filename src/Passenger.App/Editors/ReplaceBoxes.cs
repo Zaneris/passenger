@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Passenger.Editor;
 
 namespace Passenger.App.Editors;
 
@@ -8,8 +9,11 @@ namespace Passenger.App.Editors;
 /// the caret, which the replacement writes as the file's own; its tooltip says so, and what a regex's replacement reads.</summary>
 public static class ReplaceBoxes
 {
+    /// <summary>The key that puts a line break into the box.</summary>
+    private static readonly Keystroke BreakKey = new(Key.Enter, KeyModifiers.Shift);
+
     /// <summary>What the box's tooltip says of what it takes.</summary>
-    public const string Tip = "Shift+Enter puts a line break in here, never Find Previous. With Regex on, \\n, \\t and \\\\ are a line break, a tab and a backslash, and $1 or ${name} a group";
+    public static string Tip { get; } = $"{KeyWords.Of(BreakKey)} puts a line break in here, never Find Previous. With Regex on, \\n, \\t and \\\\ are a line break, a tab and a backslash, and $1 or ${{name}} a group";
 
     /// <summary>Gives a box its Shift+Enter and its tooltip, taken there before the box's own keys.</summary>
     public static void Take(TextBox box)
@@ -20,7 +24,7 @@ public static class ReplaceBoxes
 
     /// <summary>Whether a key is the box's line break, which a handler of its owner's on the box leaves to it: the
     /// handlers one element has on the way down run last added first.</summary>
-    public static bool Breaks(KeyEventArgs e) => e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Shift;
+    public static bool Breaks(KeyEventArgs e) => Keystroke.From(e) == BreakKey;
 
     private static void OnKey(object? sender, KeyEventArgs e)
     {

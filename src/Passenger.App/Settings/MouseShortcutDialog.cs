@@ -55,7 +55,7 @@ public sealed class MouseShortcutDialog : ShortcutDialog
     private void Take(MouseShortcut pressed)
     {
         Gesture = pressed with { Clicks = Math.Min(2, pressed.Clicks) };
-        shown.Text = Gesture.Value.Display();
+        shown.Text = KeyWords.Of(Gesture.Value);
         ShortcutChanged(conflictsOf(Gesture.Value));
     }
 }

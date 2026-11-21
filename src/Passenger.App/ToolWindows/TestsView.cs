@@ -340,7 +340,7 @@ public sealed class TestsView : DockPanel
     /// those chosen.</summary>
     private ToggleButton Filter(string icon, string brush, string name, out TextBlock count)
     {
-        ToggleButton button = ToolButtons.Counted(icon, brush, $"Filter {name}\nHold {(OperatingSystem.IsMacOS() ? "⌘" : "Ctrl")} to select multiple filters", out count);
+        ToggleButton button = ToolButtons.Counted(icon, brush, $"Filter {name}\nHold {KeyWords.Held(Keystroke.Command)} to select multiple filters", out count);
         button.AddHandler(PointerPressedEvent, (_, e) => adding = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta | KeyModifiers.Shift)) != 0,
             RoutingStrategies.Tunnel, handledEventsToo: true);
         return button;

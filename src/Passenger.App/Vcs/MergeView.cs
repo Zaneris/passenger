@@ -689,7 +689,7 @@ public sealed class MergeView : DockPanel
     private DiffStrip Strip(MergeSide side) =>
         new(() => Bands(side), side, side == MergeSide.Left ? Left : Right, () => true, ignores: true, (_, ignore) => ignore
             ? ($"Ignore {side} Side", null)
-            : ($"Accept {side} Side", AcceptKeys(side).Display()), (band, ignore, keys) =>
+            : ($"Accept {side} Side", KeyWords.Of(AcceptKeys(side))), (band, ignore, keys) =>
         {
             if (ignore)
             {

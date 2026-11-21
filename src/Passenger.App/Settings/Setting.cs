@@ -272,12 +272,12 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
                 SelectedIndex = given.Contains(key) ? 1 : 0,
             };
             choice.SelectionChanged += (_, _) => change(s => set(s, Joined(Given(s), key, choice.SelectedIndex == 1)));
-            Avalonia.Automation.AutomationProperties.SetName(choice, stroke.Display());
+            Avalonia.Automation.AutomationProperties.SetName(choice, KeyWords.Of(stroke));
             rows.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 Spacing = Gaps.Normal,
-                Children = { new TextBlock { Text = stroke.Display(), MinWidth = 56, VerticalAlignment = VerticalAlignment.Center }, choice },
+                Children = { new TextBlock { Text = KeyWords.Of(stroke), MinWidth = 56, VerticalAlignment = VerticalAlignment.Center }, choice },
             });
         }
         return rows;

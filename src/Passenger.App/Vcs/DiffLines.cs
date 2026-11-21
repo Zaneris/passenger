@@ -43,12 +43,19 @@ public static class DiffLines
     public static void ScrollTo(CodeEditor pane, double line, CodeEditor across) =>
         pane.ScrollTo(new Vector(across.ScrollOffset.X, line * pane.LineHeight));
 
-    /// <summary>Next Difference (1) or Previous Difference (-1) for a key, 0 for any other: F7 and Shift+F7, and F8 and
-    /// Shift+F8 too off the Mac, as Rider's Visual Studio keymap binds them.</summary>
+    /// <summary>Next Difference's keys: F7, and F8 too off the Mac, as Rider's Visual Studio keymap binds them; Previous
+    /// Difference's are each with Shift held.</summary>
+    private static readonly Key[] StepKeys = OperatingSystem.IsMacOS() ? [Key.F7] : [Key.F7, Key.F8];
+
+    /// <summary>Next Difference (1) or Previous Difference (-1) for a key, 0 for any other (<see cref="StepKeys"/>).</summary>
     public static int Step(KeyEventArgs e) =>
-        (e.Key == Key.F7 || (!OperatingSystem.IsMacOS() && e.Key == Key.F8)) && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift
+        StepKeys.Contains(e.Key) && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift
             ? (e.KeyModifiers == KeyModifiers.Shift ? -1 : 1)
             : 0;
+
+    /// <summary>The keys of a step (1 Next Difference, -1 Previous Difference) in words, as its button's tip names them.</summary>
+    private static string StepKeysShown(int step) =>
+        KeyWords.Either(StepKeys.Select(key => new Keystroke(key, step < 0 ? KeyModifiers.Shift : KeyModifiers.None)));
 
     /// <summary>The bar over the panes: <paramref name="tools"/> first, then Previous and Next Difference, the file's
     /// name and <paramref name="status"/>, with <paramref name="end"/> at its right.</summary>
@@ -62,8 +69,8 @@ public static class DiffLines
             VerticalAlignment = VerticalAlignment.Center,
         };
         start.Children.AddRange(tools);
-        start.Children.Add(ToolButtons.Of(IconKeys.ArrowUp, $"Previous Difference ({Keys("Shift+F7")})", () => step(-1)));
-        start.Children.Add(ToolButtons.Of(IconKeys.ArrowDown, $"Next Difference ({Keys("F7")})", () => step(1)));
+        start.Children.Add(ToolButtons.Of(IconKeys.ArrowUp, ActionTips.Named("Previous Difference", StepKeysShown(-1)), () => step(-1)));
+        start.Children.Add(ToolButtons.Of(IconKeys.ArrowDown, ActionTips.Named("Next Difference", StepKeysShown(1)), () => step(1)));
         start.Children.Add(new TextBlock { Classes = { StyleClasses.Strong }, Text = name, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) });
         status.VerticalAlignment = VerticalAlignment.Center;
         status.Margin = new Thickness(Gaps.Wide, 0);
@@ -80,8 +87,6 @@ public static class DiffLines
         }
         row.Children.Add(start);
         return ToolBars.OverEditor(row);
-
-        static string Keys(string shown) => OperatingSystem.IsMacOS() ? shown : $"{shown}, {shown.Replace("F7", "F8", StringComparison.Ordinal)}";
     }
 
     /// <summary>What a pane shows, over it in its column, ending in an ellipsis where it has no room.</summary>

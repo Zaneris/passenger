@@ -164,6 +164,12 @@ public sealed class ValueSlider : Control
 /// value at <see cref="ShownStep"/> as Godot's inspector does, the whole value kept until the person changes it.</summary>
 public sealed class ScrubField : DockPanel
 {
+    /// <summary>The modifier held to scrub ten times as fast, which the grip's tip names.</summary>
+    private const KeyModifiers Faster = KeyModifiers.Shift;
+
+    /// <summary>The modifier held to scrub a tenth as fast.</summary>
+    private const KeyModifiers Finer = KeyModifiers.Alt;
+
     private readonly TextBlock label;
     private readonly TextBox box;
     private string? written;
@@ -182,7 +188,7 @@ public sealed class ScrubField : DockPanel
             Background = Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.SizeWestEast),
         };
-        ToolTip.SetTip(label, "Drag left or right to change it: Shift for faster, Alt for finer");
+        ToolTip.SetTip(label, $"Drag left or right to change it: {KeyWords.Held(Faster)} for faster, {KeyWords.Held(Finer)} for finer");
         SetDock(label, Dock.Left);
         box = new ValueField();
         Children.Add(label);
@@ -206,7 +212,7 @@ public sealed class ScrubField : DockPanel
                 return;
             }
             double pixels = e.GetPosition(this).X - start.X;
-            double scale = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : e.KeyModifiers.HasFlag(KeyModifiers.Alt) ? 0.1 : 1;
+            double scale = e.KeyModifiers.HasFlag(Faster) ? 10 : e.KeyModifiers.HasFlag(Finer) ? 0.1 : 1;
             double value = Round(from + (Math.Round(pixels / 4) * Step * scale));
             if (value != Value)
             {
