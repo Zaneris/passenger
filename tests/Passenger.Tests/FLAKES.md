@@ -30,6 +30,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `CommandLineTests`' `A_malformed_value_or_a_flag_…(--look sakura)`, CI 44940279906 (gate, every system): "--look takes
+  passenger, cubicle, high contrast, harbour, …". **The test was written before what it reads**: #1851 carried High
+  Contrast, which `--look`'s refusal lists after Cubicle, and the test still expected Harbour there. It now reads the
+  list as it stands (13ee48cf5, #1851).
+- `McpTests`' `An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot`, CI 44940279906
+  (Linux x64 and Windows, gate shard 2): "Assert.Single() Failure: The collection contained 2 matching items … Match
+  indices: 395, 412". **The test read wrong**: reading on through a group ide_actions names as left out, it took the
+  group's whole list, so the actions of it the first answer listed before its cut, Show Game among them, came twice.
+  It now takes from a group only the actions it has not read (2c4bda616, #2070).
+- `AgreeingWordsTests`' `A_word_agreeing_with_a_count_is_chosen_only_through_Plural`, CI 44940279906 (Linux x64, gate
+  shard 2): "ManagedDebugger_LetGo.cs:198: running.Count == 1 ? "has" : "have"". **The IDE broke its own rule**: the
+  debugger's log of a let-go held for evaluations given up chose its verb by hand. It goes through `Plural.Agreeing`
+  (fef5b13c8, #2079).
+- `McpLongAnswersTests`' `Every_answer_that_grows_with_the_code_holds_to_the_limit_…`, CI 44940279906 (macOS report
+  shard 2): "A list of many actions listed 423, saying: 1 more action left out: …". **The test read wrong**: it took
+  only a plural count of what a cut list left out, and ide_actions, cut one short, said "1 more action". It takes the
+  count as written, holding any other to its plural (d3efaefa5, #2070).
 - `VcsTests`' `A_renamed_and_a_moved_files_rows_in_the_Commit_window_name_where_each_came_from`, CI 44940279906 (Linux
   x64, report shard 2): "Expected: ("Store.cs  ← Shop.cs", …) Actual: ("Store.cs  R  ← Shop.cs", …)". **The test was
   written before the design it reads**: #1851 put each changed file's letter beside its name, and the test still read
