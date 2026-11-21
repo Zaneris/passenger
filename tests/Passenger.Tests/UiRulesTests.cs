@@ -4338,13 +4338,11 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.Matches(greyed, "        SaveAsProfileButton.IsEnabled = why is null;");
     }
 
-    /// <summary>A style class is given only to a control a style of it takes: Shell.axaml's or ControlThemes.axaml's selector
-    /// naming the class on the type the control is styled as (its own, or the one its StyleKeyOverride names), on a base of
-    /// it by <c>:is()</c>, or on any control. A class borrowed from another kind of control (a drop-down's given to a
-    /// button), or given to a control of its own kind styled as itself (a Border's class on a Border of Passenger's that
-    /// says no StyleKeyOverride), styles nothing there, the control looking as if it had none: each fails here, naming its
-    /// line. C# is read by its syntax, the control's type taken from what makes it, the declared type of what holds it, a
-    /// cast or the class whose own it is.</summary>
+    /// <summary>A style class is given only to a control a style of it takes: a selector of Shell.axaml or ControlThemes.axaml
+    /// naming it on the type the control is styled as (its own or its StyleKeyOverride's), a base of it by <c>:is()</c>, or
+    /// any control. A class borrowed from another kind of control, or given to a Passenger control styled as itself (a
+    /// Border's on a Border of its own), styles nothing: each fails here, naming its line. C# is read by its syntax, the type
+    /// taken from what makes the control, the declared type of what holds it, a cast or the class whose own it is.</summary>
     [Fact]
     public void Every_style_class_is_given_to_a_control_of_a_type_its_styles_name()
     {
