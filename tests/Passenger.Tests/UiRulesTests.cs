@@ -2133,8 +2133,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>A greyed check box shows its tooltip under the pointer: in NuGet's Sources, a feed of the machine's
-    /// nuget.config, which NuGet never writes, has its check box greyed, saying what it is all the same. On Linux alone,
-    /// where NuGet takes the machine's folder from the run (NUGET_COMMON_APPLICATION_DATA).</summary>
+    /// nuget.config, which NuGet never writes, has its check box greyed, its tip saying what it is and why it is greyed, a
+    /// screen reader naming it all the same. On Linux alone, where NuGet takes the machine's folder from the run
+    /// (NUGET_COMMON_APPLICATION_DATA).</summary>
     [AvaloniaFact]
     public void A_greyed_check_box_shows_its_tooltip_under_the_pointer()
     {
@@ -2167,7 +2168,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Ui.WaitFor(() => (toggle = window.NuGet.Sources.GetVisualDescendants().OfType<Grid>().FirstOrDefault(g => g.Tag as string == "team")?.Children.OfType<CheckBox>().FirstOrDefault()) is not null,
                 "the machine's feed team, listed with its check box");
             Assert.False(toggle!.IsEnabled, "The check box of a feed of the machine's nuget.config, which NuGet never writes, is not greyed");
-            Rest(window, toggle, "Enabled");
+            Rest(window, toggle, $"Enabled: {Passenger.App.ToolWindows.NuGetSourcesView.MachineWide}");
+            Assert.Equal("Enabled", AutomationProperties.GetName(toggle));
         }
         finally
         {

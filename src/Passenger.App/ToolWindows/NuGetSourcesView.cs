@@ -109,7 +109,7 @@ public sealed class NuGetSourcesView : Panel
     }
 
     /// <summary>Why a machine-wide file's feeds are shown but never changed.</summary>
-    private const string MachineWide = "A machine-wide file: NuGet reads it and never writes it";
+    public const string MachineWide = "A machine-wide file: NuGet reads it and never writes it";
 
     private const string DoesNotRead = "The file does not read";
 
@@ -156,7 +156,8 @@ public sealed class NuGetSourcesView : Panel
         CheckBox toggle = CheckRows.Box();
         toggle.IsChecked = enabled;
         toggle.Margin = new Thickness(0, 0, Gaps.Tight, 0);
-        ToolButtons.Grey(toggle, file.ReadOnly ? MachineWide : null, "Enabled");
+        // A box with no words of its own: named, so its tip says what it is before why it is greyed.
+        ToolButtons.Grey(ToolButtons.Tip(toggle, "Enabled"), file.ReadOnly ? MachineWide : null);
         toggle.IsCheckedChanged += (_, _) => IdeErrors.Observe(SetEnabledAsync(file, feed.Name, toggle.IsChecked == true));
         TextBlock name = new() { Classes = { StyleClasses.Strong }, Text = feed.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock url = new() { Classes = { StyleClasses.Muted }, Text = feed.Value, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(Gaps.Normal, 0) };
