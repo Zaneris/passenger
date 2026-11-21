@@ -2188,6 +2188,57 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
+    /// <summary>Run or Debug pressed as the other's start of the same configuration is under way, its program not started
+    /// yet, stops that start first, as it ends one that runs: Run as Debug's start begins leaves Run's program running alone
+    /// and no session open, and Debug as Run's start begins leaves the debugged program alone and the Run console free.</summary>
+    [AvaloniaFact]
+    public void Run_or_Debug_pressed_as_the_others_start_of_a_configuration_is_under_way_stops_that_start_leaving_one_copy()
+    {
+        string started = Path.Combine(TestFolders.Create("debuggee-"), "program.pid");
+        MainWindow window = OpenSleeper(started, languageServer: false);
+        List<OwnProcess> programs = [];
+        try
+        {
+            Task<string?> debugging = window.DebugAsync();
+            Task<string?> running = window.RunAsync();
+            Ui.Launched(window, running, "Run, pressed as Debug's start of the configuration began");
+            string? debugged = Ui.Await(debugging, "Debug's start, which Run was to stop");
+            int run = Processes.WrittenId(started, "Run's program to start");
+            programs.Add(OwnProcess.Of(run));
+            Assert.True(debugged is not null && !window.Debugger.IsDebugging && window.Runner.IsRunning,
+                $"Run pressed as Debug's start began left two copies: Debug's start came to \"{debugged ?? "a session open"}\", Run's program "
+                + $"{(window.Runner.IsRunning ? "runs" : "does not run")}");
+            Assert.True(Copies(started) is not { } copies || copies.SequenceEqual([run]), $"Run pressed as Debug's start began left these copies running: {Listed(Copies(started))}");
+
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning && Processes.Gone(run), "Run's program to end");
+            File.Delete(started);
+
+            running = window.RunAsync();
+            debugging = window.DebugAsync();
+            Ui.Launched(window, debugging, "Debug, pressed as Run's start of the configuration began");
+            string? ran = Ui.Await(running, "Run's start, which Debug was to stop");
+            int again = Running(window, started);
+            programs.Add(OwnProcess.Of(again));
+            Assert.True(ran is not null && window.Debugger.IsDebugging && !window.Runner.IsRunning,
+                $"Debug pressed as Run's start began left two copies: Run's start came to \"{ran ?? "its program running"}\", the session is "
+                + $"{(window.Debugger.IsDebugging ? "open" : "not open")}");
+            Assert.True(Copies(started) is not { } left || left.SequenceEqual([again]), $"Debug pressed as Run's start began left these copies running: {Listed(Copies(started))}");
+        }
+        finally
+        {
+            Ui.Run(window, AppActions.Stop);
+            programs.ForEach(program => program.Kill());
+            window.Close();
+        }
+
+        // The sleepers running that were given this file, by id, as ps lists them; null on Windows, which has no ps.
+        static int[]? Copies(string file) => OperatingSystem.IsWindows() ? null
+            : [.. Processes.Listed().Where(p => p.Value.Contains(file, StringComparison.Ordinal)).Select(p => p.Key).Order()];
+
+        static string Listed(int[]? ids) => ids is null ? "unknown" : string.Join(", ", ids.Select(Processes.Describe));
+    }
+
     [AvaloniaFact]
     public void Closing_the_window_while_debugging_leaves_no_program_debugger_or_language_server_running()
     {

@@ -305,6 +305,10 @@ public sealed partial class BuildRunController
     /// <summary>The copies of a game Run runs now, each in its tab of the Terminal window.</summary>
     public IReadOnlyList<TerminalRun> CopyRuns => [.. copyRuns.Select(c => c.Run)];
 
+    /// <summary>The starts of configurations by Run, Debug and Profile, each by its configuration's name, from the moment it
+    /// asks <see cref="EndRunningAsync"/> to its hand-over (those ended passed over).</summary>
+    private readonly List<(string Configuration, Working Work)> starts = [];
+
     /// <summary>Whether the Run console has a program Run started (a plain run's, or a container run's log), or a tab of the
     /// terminal has: one at a time, which Run and Rerun of a configuration that runs there stop first. An AppHost's is its own.</summary>
     private bool RunsInConsole => session.RunProgram.IsRunning || followingAgain is not null;
@@ -1831,18 +1835,34 @@ public sealed partial class BuildRunController
     public bool RunsOwnProgram(string name) => RunsInConsole && ran == name && session.ContainerRun is not { IsStopped: false };
 
     /// <summary>The one rule for a start of a configuration that runs, by Run, Debug or Profile (<paramref name="doing"/>),
-    /// whichever of them started it: what runs of it ends first, before its build, which on Windows cannot write over a
-    /// program running: the copies of it Run runs, Run's program of it (a Run start under way other than <paramref
-    /// name="work"/> stopped too) and the programs Debug launched of it, done once their ends have landed. Null to go on,
-    /// else why not (the folder left meanwhile, or a debugged program the debugger cannot let go).</summary>
+    /// whichever of them started it: what runs of it ends first, before its build (Windows' cannot write over a program
+    /// running): another start of it under way, stopped, then the copies of it Run runs, Run's program of it and the
+    /// programs Debug launched of it, done once their ends have landed. Null to go on, else why not (the folder left
+    /// meanwhile, or a debugged program the debugger cannot let go).</summary>
     public async Task<string?> EndRunningAsync(RunConfiguration chosen, Working work, string doing)
     {
-        bool runs = copyRuns.Any(c => c.Configuration == chosen.Name) || RunsOwnProgram(chosen.Name)
+        starts.RemoveAll(s => s.Work.HasEnded);
+        Working[] under = [.. starts.Where(s => s.Configuration == chosen.Name && s.Work != work).Select(s => s.Work)];
+        starts.Add((chosen.Name, work));
+        bool runs = under.Length > 0 || copyRuns.Any(c => c.Configuration == chosen.Name) || RunsOwnProgram(chosen.Name)
             || session.Debug.CopiesOf(chosen.Name).Any(c => debugged.ContainsKey(c.Tab.Name));
         RunAgain answer = runs && parts.AskRunAgain is { } ask ? await ask(chosen.Name, doing, work.Stopping) : RunAgain.StopAndRerun;
         if (answer == RunAgain.Cancel || session.IsEnded)
         {
             return session.IsEnded ? Refusals.SolutionClosed : $"{chosen.Name} runs on: nothing was stopped or started";
+        }
+        if (under.Length > 0)
+        {
+            work.Say($"Stopping the start of {chosen.Name} under way to {doing} it…");
+            foreach (Working other in under)
+            {
+                other.Cancel();
+            }
+            await Task.WhenAll(under.Select(other => other.Ended));
+            if (session.IsEnded)
+            {
+                return Refusals.SolutionClosed;
+            }
         }
         if (copyRuns.Any(c => c.Configuration == chosen.Name))
         {

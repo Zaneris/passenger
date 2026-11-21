@@ -182,6 +182,8 @@ public sealed class Working : IDisposable
     // Never disposed: a request that took its token may register on it after the work has ended.
     private readonly CancellationTokenSource stopping = new();
 
+    private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     internal Working(ActionWork owner, string id, string stage, bool stoppable)
     {
         this.owner = owner;
@@ -198,6 +200,9 @@ public sealed class Working : IDisposable
 
     /// <summary>Whether it is done or handed over.</summary>
     public bool HasEnded { get; private set; }
+
+    /// <summary>Ends as the work is done or handed over.</summary>
+    public Task Ended => ended.Task;
 
     /// <summary>The id of the action whose work this is.</summary>
     public string Id { get; }
@@ -235,6 +240,7 @@ public sealed class Working : IDisposable
     public void Dispose()
     {
         HasEnded = true;
+        ended.TrySetResult();
         owner.Ended(this);
     }
 }
