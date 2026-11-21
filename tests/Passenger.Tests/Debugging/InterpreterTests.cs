@@ -78,8 +78,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public async Task A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped()
     {
-        // The first lambda loads the debugger's own code into the program, which a loaded machine may take most of the
-        // run's short limit over.
+        // The first lambda loads the debugger's own code into the program, slow on a loaded machine.
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         await host
             .InitializeAsync()
@@ -380,6 +379,23 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
             string expected = (await Evaluate(host, frame, own)).Value;
             Assert.True(written == expected, $"{interpolated} answered {written}, where the program's {own} is {expected}");
         }
+    }
+
+    /// <summary>A lambda, one reading the frame's locals and a method group given to a constructor (Lazy's, Thread's,
+    /// Timer's) are made delegates in the program, as those given to a method are, and the objects made read on.</summary>
+    [Fact]
+    public async Task A_delegate_given_to_a_constructor_is_made_in_the_program_as_one_given_to_a_method_is()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal(("1", "int"), await Evaluate(host, frame, "new Lazy<int>(() => 1).Value"));
+        Assert.Equal(("7", "int"), await Evaluate(host, frame, "new Lazy<int>(() => spot.X + spot.Y).Value"));
+        Assert.Equal(("\"hello\"", "string"), await Evaluate(host, frame, "new Lazy<string>(word.Trim).Value"));
+        (string id, string? type) = await Evaluate(host, frame, "new Thread(() => { }).ManagedThreadId");
+        Assert.True(type == "int" && int.TryParse(id, out int managed) && managed > 0, $"A thread made with a lambda has the managed id {id} ({type})");
+        (string timer, string? timerType) = await Evaluate(host, frame, "new System.Threading.Timer(_ => { })");
+        Assert.True(timerType == "System.Threading.Timer", $"A timer made with a lambda reads {timer} ({timerType})");
     }
 
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);

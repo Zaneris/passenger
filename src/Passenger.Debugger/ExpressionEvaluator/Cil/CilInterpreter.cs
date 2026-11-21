@@ -651,7 +651,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             argumentValues[argument] = constructor.Signature.ParameterTypes[argument].EndsWith('&')
                 ? await MaterializeByRefArgumentAsync(constructorArguments[argument], resolver, run.Context, handles, temporaryByRefArguments)
-                : await MaterializeForCallAsync(constructorArguments[argument], run.Context, handles);
+                : await MaterializeForCallAsync(constructorArguments[argument], run.Compiled, resolver, run.Delegates, run.Context, handles);
         }
         if (EvaluationMetadataResolver.IsByRefLike(constructor.DeclaringType))
         {
