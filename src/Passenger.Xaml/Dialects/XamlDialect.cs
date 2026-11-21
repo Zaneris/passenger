@@ -182,12 +182,28 @@ public abstract class XamlDialect
     public virtual IEnumerable<ClrMember> EventsOf(TypeSystem types, ClrType type) =>
         types.MembersOf(type).Where(m => m.Kind == MemberKind.Event && !m.IsStatic && m.IsPublic);
 
-    /// <summary>The property an element's content sets, if its type has one.</summary>
-    public abstract XamlProperty? ContentProperty(TypeSystem types, ClrType type);
+    /// <summary>The property an element's content sets, if its type has one: the one its type's or a base's
+    /// <c>[ContentProperty]</c> names.</summary>
+    public virtual XamlProperty? ContentProperty(TypeSystem types, ClrType type)
+    {
+        foreach (ClrType at in types.SelfAndBases(type))
+        {
+            if (at.Attribute("ContentProperty")?.StringArgument(0) is { Length: > 0 } name)
+            {
+                return Property(types, type, name);
+            }
+        }
+        return null;
+    }
 
     /// <summary>Whether XAML can make an element of a type.</summary>
     public virtual bool CanCreate(TypeSystem types, ClrType type) =>
         type.Arity == 0 && type.Kind is ClrTypeKind.Class or ClrTypeKind.Struct && type.HasDefaultConstructor && !type.IsNested;
+
+    /// <summary>An attribute, an exception or an event's arguments, by its name, which no XAML makes though it could.</summary>
+    protected static bool NoXamlMakes(ClrType type) =>
+        type.Name.EndsWith("Attribute", StringComparison.Ordinal) || type.Name.EndsWith("Exception", StringComparison.Ordinal)
+        || type.Name.EndsWith("EventArgs", StringComparison.Ordinal);
 
     /// <summary>Whether a type is a markup extension, written in braces.</summary>
     public abstract bool IsMarkupExtension(TypeSystem types, ClrType type);
@@ -199,6 +215,127 @@ public abstract class XamlDialect
     protected abstract IReadOnlyList<XamlProperty> ReadProperties(TypeSystem types, ClrType type);
 
     protected abstract IReadOnlyList<XamlProperty> ReadAttached(TypeSystem types, ClrType owner);
+
+    /// <summary>The suffix of the static field a framework registers a property by (<c>WidthProperty</c>).</summary>
+    private const string RegisteredSuffix = "Property";
+
+    /// <summary>The name a static field registers a property by (<c>WidthProperty</c>'s Width); null for any other member.</summary>
+    protected static string? RegisteredName(ClrMember member) =>
+        member.Kind == MemberKind.Field && member.IsStatic && member.Name.Length > RegisteredSuffix.Length && member.Name.EndsWith(RegisteredSuffix, StringComparison.Ordinal)
+            ? member.Name[..^RegisteredSuffix.Length]
+            : null;
+
+    /// <summary>Whether a field's type is a framework's registration type (<paramref name="fullName"/>), as metadata names it
+    /// or as source writes it, by its short name resolved.</summary>
+    protected static bool IsRegistration(TypeSystem types, TypeRef field, string fullName)
+    {
+        if (field.Scope is null)
+        {
+            return field.Name == fullName;
+        }
+        return (field.Name == fullName || field.Name == fullName[(fullName.LastIndexOf('.') + 1)..]) && (types.Resolve(field)?.FullName ?? fullName) == fullName;
+    }
+
+    /// <summary>The properties a type's elements set where its framework registers them as WPF's and MAUI's do: a static field
+    /// <c>XxxProperty</c> its <paramref name="registers"/> takes, of <paramref name="kind"/>, read as its CLR wrapper's type
+    /// where it has one, and the plain CLR properties XAML can set, its bases' included.</summary>
+    protected IReadOnlyList<XamlProperty> ReadRegistered(TypeSystem types, ClrType type, XamlPropertyKind kind, Func<TypeRef, bool> registers)
+    {
+        Dictionary<string, XamlProperty> found = new(StringComparer.Ordinal);
+        foreach (ClrType at in types.SelfAndBases(type))
+        {
+            foreach (ClrMember member in at.Members)
+            {
+                if (RegisteredName(member) is { } name && registers(member.Type))
+                {
+                    if (found.TryGetValue(name, out XamlProperty? wrapper))
+                    {
+                        if (wrapper.Field is null && wrapper.Kind == XamlPropertyKind.Clr)
+                        {
+                            found[name] = wrapper with { Kind = kind, Field = member };
+                        }
+                        continue;
+                    }
+                    // A field whose owner has SetXxx or GetXxx and no wrapper is an attached property's, which AttachedOf gives.
+                    if (!at.Members.Any(m => m.Kind == MemberKind.Property && !m.IsStatic && m.Name == name)
+                        && at.Members.Any(m => m.Kind == MemberKind.Method && m.IsStatic && (m.Name == "Set" + name || m.Name == "Get" + name)))
+                    {
+                        continue;
+                    }
+                    found[name] = new XamlProperty(name, at, TypeRef.Named("System.Object"), kind, Field: member);
+                }
+                else if (member.Kind == MemberKind.Property && !member.IsStatic && member.IsPublic)
+                {
+                    bool collection = IsCollection(types, member.Type);
+                    if (found.TryGetValue(member.Name, out XamlProperty? registered))
+                    {
+                        if (registered.ClrProperty is null)
+                        {
+                            found[member.Name] = registered with
+                            {
+                                ClrProperty = member, ValueType = member.Type, IsCollection = !member.CanWrite && collection,
+                                IsReadOnly = !member.CanWrite && !collection, IsHidden = Hides(member),
+                            };
+                        }
+                        continue;
+                    }
+                    bool made = !member.CanWrite && SetAsMade(at, member);
+                    // A read-only wrapper is kept until its registered property's field shows it is one (IsMouseOver).
+                    found[member.Name] = member.CanWrite || collection || made
+                        ? new XamlProperty(member.Name, at, member.Type, XamlPropertyKind.Clr, ClrProperty: member, IsCollection: collection && !member.CanWrite && !made)
+                        {
+                            IsHidden = Hides(member),
+                        }
+                        : new XamlProperty(member.Name, at, member.Type, XamlPropertyKind.Clr, ClrProperty: member) { IsReadOnly = true };
+                }
+            }
+        }
+        // A plain read-only CLR property is no property XAML names at all; a registered property's is, in a trigger.
+        return [.. found.Values.Where(p => !(p.Kind == XamlPropertyKind.Clr && p.IsReadOnly)).OrderBy(p => p.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>Whether its framework keeps a CLR property out of completion's sight (<see cref="XamlProperty.IsHidden"/>).</summary>
+    protected virtual bool Hides(ClrMember property) => false;
+
+    /// <summary>Whether a read-only CLR property of a type is set as its object is made, so XAML sets it as any other.</summary>
+    protected virtual bool SetAsMade(ClrType type, ClrMember property) => false;
+
+    /// <summary>The attached properties a type declares as WPF's and MAUI's do: a static <c>SetXxx(element, value)</c>, with
+    /// its registered field where <paramref name="registers"/> takes one, else only where it takes an element first
+    /// (<paramref name="takesElement"/>); where <paramref name="gettersAlone"/>, also a <c>GetXxx(element)</c> with its field
+    /// and no setter, read-only, which a trigger names (<c>Validation.HasError</c>).</summary>
+    protected static IReadOnlyList<XamlProperty> ReadAttachedPairs(ClrType owner, Func<TypeRef, bool> registers, Func<TypeRef, bool> takesElement, bool gettersAlone)
+    {
+        ClrMember? FieldOf(string name) =>
+            owner.Members.FirstOrDefault(m => m.Kind == MemberKind.Field && m.IsStatic && m.Name == name + RegisteredSuffix && registers(m.Type));
+        Dictionary<string, XamlProperty> found = new(StringComparer.Ordinal);
+        foreach (ClrMember method in owner.Members)
+        {
+            if (method.Kind != MemberKind.Method || !method.IsStatic || method.Name.Length <= 3 || !method.Name.StartsWith("Set", StringComparison.Ordinal)
+                || method.Parameters.Count != 2)
+            {
+                continue;
+            }
+            string name = method.Name[3..];
+            ClrMember? field = FieldOf(name);
+            // A static setter that is no attached property's (Application.SetCookie(Uri, string)) takes no element first.
+            if (field is null && !takesElement(method.Parameters[0]))
+            {
+                continue;
+            }
+            found.TryAdd(name, new XamlProperty(name, owner, method.Parameters[1], XamlPropertyKind.Attached, Field: field, Setter: method));
+        }
+        foreach (ClrMember method in owner.Members)
+        {
+            if (gettersAlone && method.Kind == MemberKind.Method && method.IsStatic && method.Name.Length > 3 && method.Name.StartsWith("Get", StringComparison.Ordinal)
+                && method.Parameters.Count == 1 && !found.ContainsKey(method.Name[3..]) && FieldOf(method.Name[3..]) is { } field)
+            {
+                string name = method.Name[3..];
+                found[name] = new XamlProperty(name, owner, method.Type, XamlPropertyKind.Attached, Field: field, Setter: method) { IsReadOnly = true };
+            }
+        }
+        return [.. found.Values.OrderBy(p => p.Name, StringComparer.Ordinal)];
+    }
 
     /// <summary>Whether a type is a collection XAML adds its children to, so a read-only property of it is still set as a
     /// property element.</summary>

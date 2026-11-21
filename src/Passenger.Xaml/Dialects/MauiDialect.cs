@@ -162,26 +162,13 @@ public sealed class MauiDialect : XamlDialect
         return !extension(name);
     }
 
-    public override XamlProperty? ContentProperty(TypeSystem types, ClrType type)
-    {
-        foreach (ClrType at in types.SelfAndBases(type))
-        {
-            if (at.Attribute("ContentProperty")?.StringArgument(0) is { Length: > 0 } name)
-            {
-                return Property(types, type, name);
-            }
-        }
-        return null;
-    }
-
     public override bool IsMarkupExtension(TypeSystem types, ClrType type) =>
         type.Kind == ClrTypeKind.Class && !type.IsAbstract && !type.IsStatic && types.IsA(type, "Microsoft.Maui.Controls.Xaml.IMarkupExtension");
 
     /// <summary>As the base says, but no attribute, exception, event's arguments or type converter, which no XAML makes;
     /// and a platform's own view (<see cref="IsPlatformView"/>).</summary>
     public override bool CanCreate(TypeSystem types, ClrType type) =>
-        (base.CanCreate(types, type) && !type.Name.EndsWith("Attribute", StringComparison.Ordinal) && !type.Name.EndsWith("Exception", StringComparison.Ordinal)
-            && !type.Name.EndsWith("EventArgs", StringComparison.Ordinal) && !types.IsA(type, "System.ComponentModel.TypeConverter")) || IsPlatformView(types, type);
+        (base.CanCreate(types, type) && !NoXamlMakes(type) && !types.IsA(type, "System.ComponentModel.TypeConverter")) || IsPlatformView(types, type);
 
     /// <summary>A platform's view XAML can make: an Android view with a constructor taking only its context, or a UIKit view
     /// with one taking nothing.</summary>
@@ -190,105 +177,23 @@ public sealed class MauiDialect : XamlDialect
         && ((types.IsA(type, "Android.Views.View") && type.Members.Any(m => m.Kind == MemberKind.Constructor && m.IsPublic && m.Parameters is [{ Name: "Android.Content.Context" }]))
             || (types.IsA(type, "UIKit.UIView") && type.HasDefaultConstructor));
 
-    protected override IReadOnlyList<XamlProperty> ReadProperties(TypeSystem types, ClrType type)
-    {
-        Dictionary<string, XamlProperty> found = new(StringComparer.Ordinal);
-        foreach (ClrType at in types.SelfAndBases(type))
-        {
-            foreach (ClrMember member in at.Members)
-            {
-                if (member.Kind == MemberKind.Field && member.IsStatic && member.Name.Length > "Property".Length
-                    && member.Name.EndsWith("Property", StringComparison.Ordinal) && IsBindableProperty(types, member.Type))
-                {
-                    string name = member.Name[..^"Property".Length];
-                    if (found.TryGetValue(name, out XamlProperty? wrapper))
-                    {
-                        if (wrapper.Field is null && wrapper.Kind == XamlPropertyKind.Clr)
-                        {
-                            found[name] = wrapper with { Kind = XamlPropertyKind.Bindable, Field = member };
-                        }
-                        continue;
-                    }
-                    // A field whose owner has SetXxx or GetXxx and no wrapper is an attached property's, which AttachedOf gives.
-                    if (!at.Members.Any(m => m.Kind == MemberKind.Property && !m.IsStatic && m.Name == name)
-                        && at.Members.Any(m => m.Kind == MemberKind.Method && m.IsStatic && (m.Name == "Set" + name || m.Name == "Get" + name)))
-                    {
-                        continue;
-                    }
-                    found[name] = new XamlProperty(name, at, TypeRef.Named("System.Object"), XamlPropertyKind.Bindable, Field: member);
-                }
-                else if (member.Kind == MemberKind.Property && !member.IsStatic && member.IsPublic)
-                {
-                    bool collection = IsCollection(types, member.Type);
-                    if (found.TryGetValue(member.Name, out XamlProperty? registered))
-                    {
-                        if (registered.ClrProperty is null)
-                        {
-                            found[member.Name] = registered with
-                            {
-                                ClrProperty = member, ValueType = member.Type, IsCollection = !member.CanWrite && collection,
-                                IsReadOnly = !member.CanWrite && !collection, IsHidden = Hidden(member),
-                            };
-                        }
-                        continue;
-                    }
-                    // A read-only property a constructor takes by its name ([Parameter("TargetType")]) is set as the object is made.
-                    bool made = !member.CanWrite && TakenByConstructor(at, member.Name);
-                    found[member.Name] = member.CanWrite || collection || made
-                        ? new XamlProperty(member.Name, at, member.Type, XamlPropertyKind.Clr, ClrProperty: member, IsCollection: collection && !member.CanWrite && !made)
-                        {
-                            IsHidden = Hidden(member),
-                        }
-                        : new XamlProperty(member.Name, at, member.Type, XamlPropertyKind.Clr, ClrProperty: member) { IsReadOnly = true };
-                }
-            }
-        }
-        // A plain read-only CLR property is no property XAML names; a bindable one's (IsFocused) is, in a trigger.
-        return [.. found.Values.Where(p => !(p.Kind == XamlPropertyKind.Clr && p.IsReadOnly)).OrderBy(p => p.Name, StringComparer.Ordinal)];
-    }
+    protected override IReadOnlyList<XamlProperty> ReadProperties(TypeSystem types, ClrType type) =>
+        ReadRegistered(types, type, XamlPropertyKind.Bindable, field => IsRegistration(types, field, BindableProperty));
 
-    protected override IReadOnlyList<XamlProperty> ReadAttached(TypeSystem types, ClrType owner)
-    {
-        Dictionary<string, XamlProperty> found = new(StringComparer.Ordinal);
-        foreach (ClrMember method in owner.Members)
-        {
-            if (method.Kind != MemberKind.Method || !method.IsStatic || method.Name.Length <= 3 || !method.Name.StartsWith("Set", StringComparison.Ordinal)
-                || method.Parameters.Count != 2)
-            {
-                continue;
-            }
-            string name = method.Name[3..];
-            ClrMember? field = FieldOf(types, owner, name);
-            if (field is null && !TakesElement(types, method.Parameters[0]))
-            {
-                continue;
-            }
-            found.TryAdd(name, new XamlProperty(name, owner, method.Parameters[1], XamlPropertyKind.Attached, Field: field, Setter: method));
-        }
-        return [.. found.Values.OrderBy(p => p.Name, StringComparer.Ordinal)];
-    }
+    protected override IReadOnlyList<XamlProperty> ReadAttached(TypeSystem types, ClrType owner) =>
+        ReadAttachedPairs(owner, field => IsRegistration(types, field, BindableProperty), parameter => TakesElement(types, parameter), gettersAlone: false);
+
+    /// <summary>A member marked <c>[EditorBrowsable(EditorBrowsableState.Never)]</c>.</summary>
+    protected override bool Hides(ClrMember property) =>
+        property.Attributes.FirstOrDefault(a => a.ShortName == "EditorBrowsable") is { Arguments: [1] };
+
+    /// <summary>A read-only property a constructor takes by its name (<c>[Parameter("TargetType")]</c>).</summary>
+    protected override bool SetAsMade(ClrType type, ClrMember property) => TakenByConstructor(type, property.Name);
 
     /// <summary>Whether a public constructor of a type takes a parameter of a property's name, as MAUI's XAML sets one.</summary>
     private static bool TakenByConstructor(ClrType type, string property) =>
         type.Members.Any(m => m.Kind == MemberKind.Constructor && m.IsPublic && m.ParameterNames.Any(p => string.Equals(p, property, StringComparison.OrdinalIgnoreCase)));
 
-    /// <summary>Whether a member is marked <c>[EditorBrowsable(EditorBrowsableState.Never)]</c>.</summary>
-    private static bool Hidden(ClrMember member) =>
-        member.Attributes.FirstOrDefault(a => a.ShortName == "EditorBrowsable") is { Arguments: [1] };
-
-    private static ClrMember? FieldOf(TypeSystem types, ClrType owner, string name) =>
-        owner.Members.FirstOrDefault(m => m.Kind == MemberKind.Field && m.IsStatic && m.Name == name + "Property" && IsBindableProperty(types, m.Type));
-
     private static bool TakesElement(TypeSystem types, TypeRef parameter) =>
         types.Resolve(parameter) is { } type && (types.IsA(type, BindableObject) || type.Kind == ClrTypeKind.Interface);
-
-    /// <summary>Whether a field's type is <c>BindableProperty</c>, as metadata names it or as source writes it.</summary>
-    private static bool IsBindableProperty(TypeSystem types, TypeRef field)
-    {
-        if (field.Scope is null)
-        {
-            return field.Name == BindableProperty;
-        }
-        return field.Name is "BindableProperty" or BindableProperty && (types.Resolve(field)?.FullName ?? BindableProperty) == BindableProperty;
-    }
 }

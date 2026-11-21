@@ -69,8 +69,7 @@ public sealed class AvaloniaDialect : XamlDialect
         }
         if (type.HasDefaultConstructor)
         {
-            return !type.Name.EndsWith("Attribute", StringComparison.Ordinal) && !type.Name.EndsWith("Exception", StringComparison.Ordinal)
-                && !type.Name.EndsWith("EventArgs", StringComparison.Ordinal);
+            return !NoXamlMakes(type);
         }
         // What Avalonia's compiler builds from the file's own place (ResourceInclude, StyleInclude), given a service provider or base URI.
         return type.Members.Any(m => m.Kind == MemberKind.Constructor && m.Parameters.Count == 1
@@ -86,10 +85,8 @@ public sealed class AvaloniaDialect : XamlDialect
         {
             foreach (ClrMember member in at.Members)
             {
-                if (member.Kind == MemberKind.Field && member.IsStatic && member.Name.Length > "Property".Length
-                    && member.Name.EndsWith("Property", StringComparison.Ordinal) && Describe(member.Type, types) is { Kind: not XamlPropertyKind.Attached } described)
+                if (RegisteredName(member) is { } name && Describe(member.Type, types) is { Kind: not XamlPropertyKind.Attached } described)
                 {
-                    string name = member.Name[..^"Property".Length];
                     if (found.TryGetValue(name, out XamlProperty? wrapper))
                     {
                         if (wrapper.Field is null && wrapper.Kind == XamlPropertyKind.Clr)
@@ -136,10 +133,8 @@ public sealed class AvaloniaDialect : XamlDialect
         List<XamlProperty> found = [];
         foreach (ClrMember member in owner.Members)
         {
-            if (member.Kind == MemberKind.Field && member.IsStatic && member.Name.Length > "Property".Length
-                && member.Name.EndsWith("Property", StringComparison.Ordinal) && Describe(member.Type, types) is { Kind: XamlPropertyKind.Attached } described)
+            if (RegisteredName(member) is { } name && Describe(member.Type, types) is { Kind: XamlPropertyKind.Attached } described)
             {
-                string name = member.Name[..^"Property".Length];
                 ClrMember? setter = owner.Members.FirstOrDefault(m => m.Kind == MemberKind.Method && m.IsStatic && m.Name == "Set" + name && m.Parameters.Count == 2);
                 found.Add(new XamlProperty(name, owner, described.Value, XamlPropertyKind.Attached, Field: member, Setter: setter));
             }
