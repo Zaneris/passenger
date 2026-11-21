@@ -134,11 +134,16 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
             Ui.Run(window, AppActions.Rename);
             Ui.WaitFor(() => window.Assist.Renaming == old, $"Rename's box on the resource {old}");
+            // Heard as said: a project the class's shared server loads again may say its warning over the rename's words.
+            List<string> said = [];
+            using IDisposable following = Ui.FollowStatus(window, said);
             window.KeyTextInput(name);
             Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.Status?.Contains($"{old} to {name}", StringComparison.Ordinal) == true,
-                $"the rename of {old} to {name} to be made, or say why not");
-            Assert.True(window.Status!.StartsWith($"Renamed {old} to {name}", StringComparison.Ordinal), $"The rename of {old} to {name} was not made: {window.Status}");
+            bool Told(string words) => words.Contains($"{old} to {name}", StringComparison.Ordinal)
+                || words.StartsWith(Refusals.NotRenamed(old, string.Empty), StringComparison.Ordinal);
+            Ui.WaitFor(() => said.Any(Told), () => $"the rename of {old} to {name} to be made, or say why not; the status bar said: {string.Join(" | ", said)}");
+            string told = said.First(Told);
+            Assert.True(told.StartsWith($"Renamed {old} to {name}", StringComparison.Ordinal), $"The rename of {old} to {name} was not made: {told}");
         }
     }
 
@@ -208,8 +213,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         {
             Ui.WaitFor(() => UnsetParameters(window).SetEquals(["token"]), "the secret parameter with no value to be marked");
             List<string> said = [];
-            using IDisposable following = Avalonia.AvaloniaObjectExtensions.GetObservable(window.FindControl<TextBlock>("StatusText")!, TextBlock.TextProperty)
-                .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty)));
+            using IDisposable following = Ui.FollowStatus(window, said);
             SetParameter(window, "AddParameter(\"tok", "Set token in the AppHost's user secrets…", secret: true, "t0ken-value");
             Ui.WaitFor(() => ProjectEdits.PropertyIn(File.ReadAllText(projectFile), "UserSecretsId") is not null,
                 () => $"the AppHost to be given a UserSecretsId ({window.Status})");
