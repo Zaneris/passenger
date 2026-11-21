@@ -941,6 +941,66 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>Rename on a file in the Explorer selects its name before its extension, so a name typed over the selection
     /// keeps the extension: Program.cs becomes Main.cs. A folder's rename selects its whole name, dots and all, and an
     /// extensionless file's too.</summary>
+    /// <summary>A folder or file cut or copied and pasted where its name is the folder holding it (Docs/Docs beside Docs) is
+    /// refused before any question: replacing that folder would send what was pasted to the Trash with it.</summary>
+    [AvaloniaFact]
+    public void A_file_or_folder_pasted_where_its_name_is_the_folder_holding_it_is_refused_before_any_question_and_nothing_moves()
+    {
+        string root = PathNames.Canonical(folder);
+        string outer = TestFolders.Write(root, "Docs/outer.md", "outer\n");
+        string inner = TestFolders.Write(root, "Docs/Docs/inner.md", "inner\n");
+        string notes = TestFolders.Write(root, "Notes/Notes", "notes\n");
+        MainWindow window = Open();
+        List<string> asked = Questions(window);
+        foreach (string held in (string[])[Path.Combine(root, "Docs", "Docs"), notes])
+        {
+            foreach (string action in (string[])[EditorActions.Cut, EditorActions.Copy])
+            {
+                Choose(held);
+                Ui.Run(window, action);
+                Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Kind != NodeKind.File && r.Into is { } into && PathNames.Same(into, root)));
+                Ui.Run(window, EditorActions.Paste);
+                string refusal = Refusals.ReplacesItsFolder(Path.GetFileName(held));
+                Ui.WaitFor(() => window.Status == refusal, () => $"{action} and Paste of {Path.GetRelativePath(root, held)} beside the folder holding it to be refused: '{window.Status}'");
+            }
+        }
+        Assert.True(asked.Count == 0, $"A paste over the folder holding what was pasted asked [{string.Join(" | ", asked)}], where it is refused unasked");
+        Assert.True(File.ReadAllText(outer) == "outer\n" && File.ReadAllText(inner) == "inner\n" && File.ReadAllText(notes) == "notes\n",
+            $"A refused paste moved or changed what it would have replaced: the folder holds [{string.Join(", ", Left(root))}]");
+        Assert.True(!Directory.EnumerateFileSystemEntries(trash).Any(), $"A refused paste put [{string.Join(", ", Left(trash))}] in the Trash");
+        Assert.Null(window.EditorArea.Commands.ToUndo(null));
+        window.Close();
+
+        void Choose(string path)
+        {
+            window.ExplorerView.Reveal(path);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
+        }
+    }
+
+    /// <summary>Two dots in a row inside a name are the name's own (release..notes.txt): New File, New Folder and Rename take
+    /// them, and refuse only ".." as a whole name or one of its folders, which would climb out of the folder.</summary>
+    [AvaloniaFact]
+    public void A_name_with_two_dots_in_a_row_is_made_and_renamed_to_and_only_a_part_climbing_out_is_refused()
+    {
+        string root = PathNames.Canonical(folder);
+        string models = Path.Combine(root, "Models");
+        MainWindow window = Open();
+
+        Assert.Null(window.CreateFile(models, "release..notes.txt", "notes\n"));
+        Assert.Null(window.CreateFolder(models, "v1..2"));
+        Assert.Null(Ui.Await(window.RenameAsync(Path.Combine(models, "release..notes.txt"), "notes..old.txt"), "the rename"));
+        Assert.True(File.ReadAllText(Path.Combine(models, "notes..old.txt")) == "notes\n" && Directory.Exists(Path.Combine(models, "v1..2"))
+            && !File.Exists(Path.Combine(models, "release..notes.txt")), $"Names with two dots in a row were not made or renamed to: Models holds [{string.Join(", ", Left(models))}]");
+        foreach (string climbing in (string[])["..", "../out.txt", "Sub/../out.txt"])
+        {
+            Assert.Equal($"{climbing} is not a file name", window.CreateFile(models, climbing, string.Empty));
+        }
+        Assert.False(File.Exists(Path.Combine(root, "out.txt")), "A name climbing out of its folder made a file outside it");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_files_rename_selects_its_name_before_the_extension_and_a_folders_or_extensionless_files_its_whole_name()
     {

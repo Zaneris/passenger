@@ -906,8 +906,10 @@ public partial class MainWindow
         IdeErrors.Observe(session.Vcs.RefreshAsync());
     }
 
+    /// <summary>Why a name given a new or renamed file or folder is none: empty, holding a character no name may, or with a
+    /// part that climbs out of its folder (".."), where two dots inside a name (release..notes.txt) are its own.</summary>
     private static string? Invalid(string name) =>
         name.Trim().Length == 0 ? "A name is needed"
-        : name.IndexOfAny(Path.GetInvalidFileNameChars().Where(c => c is not '/' and not '\\').ToArray()) >= 0 || name.Contains("..", StringComparison.Ordinal) ? $"{name} is not a file name"
+        : name.IndexOfAny(Path.GetInvalidFileNameChars().Where(c => c is not '/' and not '\\').ToArray()) >= 0 || name.Split(['/', '\\']).Contains("..") ? $"{name} is not a file name"
         : null;
 }

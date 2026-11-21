@@ -656,6 +656,10 @@ public static class Refusals
     public static string RemovedAlone(string name, string from) =>
         $"Delete moves several files and folders to the Trash at once, but {name} only leaves {from}, its files staying on disk: choose it alone to remove it";
 
+    /// <summary>A file or folder moved or copied into a folder where its name is a folder holding it (Docs/Docs put beside
+    /// Docs): replacing that would take it along first, so it stays where it is.</summary>
+    public static string ReplacesItsFolder(string name) => $"{name} cannot replace the folder it is in";
+
     /// <summary>A file or <paramref name="folder"/> of a NuGet package folder, every project's copy of that version, which no
     /// restore writes again.</summary>
     public static string OfPackage(string name, string package, bool folder = false) => $"{name} is {PackagesOwn(package, folder)}";

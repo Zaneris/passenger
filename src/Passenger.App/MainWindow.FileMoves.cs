@@ -98,11 +98,11 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes
-    /// inside itself, two of one name never go at all, a copy into its own folder is named by the person, and a name taken
-    /// there is replaced (to the Trash) only once they agree. A move or a copy, with what follows it and what it replaced, is
-    /// one command, which Undo takes back whole, a copy going to the Trash. The status bar says what went where and what could
-    /// not; the last one put is chosen in the Explorer. Answers with where each went.</summary>
+    /// <summary>Moves or copies files and folders into a folder: what is there already stays put, a folder never goes inside
+    /// itself nor replaces one holding it, two of one name never go at all, a copy into its own folder is named by the person,
+    /// and a name taken there is replaced (to the Trash) only once they agree. A move or a copy, with what follows it and what
+    /// it replaced, is one command, which Undo takes back whole. The status bar says what went where and what could not; the
+    /// last one put is chosen in the Explorer. Answers with where each went.</summary>
     public async Task<IReadOnlyList<string>> PutAsync(IReadOnlyList<string> paths, string into, bool copy)
     {
         into = PathNames.Canonical(into);
@@ -112,6 +112,19 @@ public partial class MainWindow
         // A file's dependents go with it, renamed as a copy's name asks; one chosen with its parent goes as the parent's.
         IReadOnlyDictionary<string, IReadOnlyList<string>> following = DependentsOf(paths);
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
+        // One whose name there is a folder holding it would go to the Trash with what it replaced: it stays, said, unasked.
+        string[] holding = [.. paths.Where(p => !dependents.Contains(p) && PathNames.IsUnder(p, Path.Combine(into, Path.GetFileName(p))))];
+        List<string> unput = [.. holding.Select(p => Refusals.ReplacesItsFolder(Path.GetFileName(p)))];
+        if (holding.Length > 0)
+        {
+            HashSet<string> staying = new([.. holding, .. holding.SelectMany(p => following[p])], PathNames.Comparer);
+            paths = [.. paths.Where(p => !staying.Contains(p))];
+            if (paths.All(dependents.Contains))
+            {
+                status.Text = string.Join("; ", unput);
+                return [];
+            }
+        }
         // Two going where one name can be would leave the first replaced by the second, which no Undo could bring back.
         StringComparer names = PathNames.NamesIn(into);
         List<(string Source, string Name)> claims = [.. paths.Where(p => !dependents.Contains(p))
@@ -132,7 +145,7 @@ public partial class MainWindow
         List<(string From, string To)> moved = [];
         // The ends of the moves, followed with the copies once all are put.
         List<string> came = [];
-        List<string> refused = [];
+        List<string> refused = unput;
         List<string> kept = [];
         foreach (string source in paths.Where(p => !dependents.Contains(p)))
         {
