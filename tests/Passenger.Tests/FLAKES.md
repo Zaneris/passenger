@@ -34,12 +34,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   renamed folders to be watched under their new names alone". **A bug in the IDE**: a renamed folder's own watch can be
   heard ending before its parent reports the rename, as each .NET watcher's events come on a thread of their own, and
   then only the folder itself was let go of, its subfolders left watched under their old names; a watch reported gone
-  lets go of every watch under its folder while it still holds the folder's place (36b91d9e4, #2067).
+  lets go of every watch under its folder while it still holds the folder's place (f1f4cff69, #2067).
 - `UpdatesTests`' `On_Windows_another_Passenger_running_from_the_install_…`, same run (Windows, report): "The program
   running from …\current\Passenger.exe (process N) is not found". **A bug in the IDE**: `Process.MainModule` names a
   just-started program only once its loader has run, so a Passenger started a moment before was passed over and the
   update would have installed over it; the executable is read through QueryFullProcessImageName
-  (`Kernel32.ExecutableOf`; 6fa49cb3a, #2067).
+  (`Kernel32.ExecutableOf`; 755ea3eef, #2067).
 
 - `McpLanguagesTests`' YAML test, CI 44763221323 (Windows, report): "Its code help needs the YAML language server: it
   is starting…". **A bug in the IDE**: an agent's 2-minute wait for its language server never scaled with
