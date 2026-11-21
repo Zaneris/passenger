@@ -51,8 +51,9 @@ public sealed class WorkspaceTrustTests
             Assert.Equal(0, window.Session.Models.Evaluations);
             Assert.Equal(0, window.Session.DesignTimeBuilds.Builds);
             Assert.False(File.Exists(built), "A design-time build ran Directory.Build.targets' Exec in a folder not trusted");
+            // Choose Build Configuration too: its projects, never evaluated here, offer none until the folder is trusted.
             foreach (string action in (string[])[AppActions.Build, AppActions.RunProgram, AppActions.Debug, AppActions.RunAllTests, AppActions.Profile,
-                AppActions.Push, AppActions.Fetch, AppActions.UpdateProject])
+                AppActions.Push, AppActions.Fetch, AppActions.UpdateProject, AppActions.ChooseBuildConfiguration])
             {
                 Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(action, window.Actions.Context()));
             }
@@ -65,6 +66,8 @@ public sealed class WorkspaceTrustTests
             Assert.True(window.Session.Models.Evaluations > 0, "The projects were not evaluated once the folder was trusted");
             Assert.Null(window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
             Assert.Null(window.Actions.WhyNot(AppActions.Fetch, window.Actions.Context()));
+            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.ChooseBuildConfiguration, window.Actions.Context()) is null,
+                () => $"the build configurations offered once the folder is trusted, where Choose Build Configuration says {window.Actions.WhyNot(AppActions.ChooseBuildConfiguration, window.Actions.Context())}");
         }
         finally
         {

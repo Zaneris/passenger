@@ -69,6 +69,39 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Assert.Equal(new[] { linked }, ConfigurationEdit.Over(source, loaded).LinkedAppHosts);
     }
 
+    /// <summary>Tab goes through Edit Configurations as it reads, as Settings' does: from the configurations list on the
+    /// left into the chosen one's form, its first field that takes the keys, then on down the form, Shift+Tab going back
+    /// the same way to the list.</summary>
+    [AvaloniaFact]
+    public void Tab_from_the_configurations_list_goes_into_the_form_and_Shift_Tab_comes_back()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Ui.Settle();
+            ListBox list = dialog.GetVisualDescendants().OfType<ListBox>().First(l => l.ItemsSource is not null && l.Items.Count > 0 && l.SelectedItem is not null);
+            Assert.True(list.IsKeyboardFocusWithin, $"Edit Configurations opened with the keys in {Focused(dialog)}, not its list");
+            Assert.False(dialog.NameBox.IsEnabled || dialog.ProjectBox.IsEnabled, "The generated configuration's name and project can be changed");
+            Ui.Press(dialog, "TAB");
+            Assert.True(dialog.FrameworkBox.IsKeyboardFocusWithin, $"Tab from the configurations list took the keys to {Focused(dialog)}, not the form's first field, Target framework");
+            Ui.Press(dialog, "TAB");
+            Assert.True(dialog.BuildConfigurationBox.IsKeyboardFocusWithin, $"Tab from Target framework took the keys to {Focused(dialog)}, not Build configuration");
+            Ui.Press(dialog, "shift TAB");
+            Ui.Press(dialog, "shift TAB");
+            Assert.True(list.IsKeyboardFocusWithin, $"Shift+Tab from the form's first field took the keys to {Focused(dialog)}, not the configurations list");
+            dialog.Close();
+            Ui.Settle();
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Focused(Avalonia.Controls.Window dialog) => dialog.FocusManager?.GetFocusedElement() is Control control
+            ? $"{control.GetType().Name} {control.Name} {(control as ContentControl)?.Content}" : "nothing";
+    }
+
     /// <summary>In a solution with an AppHost, Run's first choice, none picked yet, is the AppHost's configuration, though
     /// the solution lists one of its services first: Run brings the app up as the person means, never one service alone.</summary>
     [AvaloniaFact]

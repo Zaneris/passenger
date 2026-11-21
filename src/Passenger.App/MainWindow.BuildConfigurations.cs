@@ -16,9 +16,14 @@ public partial class MainWindow
     {
         actions!.Add(new IdeAction(A.ChooseBuildConfiguration, "Choose Build Configuration…", "Build", _ => ShowBuildConfigurations())
         {
-            WhyNot = _ => session.Folder is null ? Refusals.NoFolderTo("build") : session.BuildChoices.Offered.Count == 0 ? Refusals.NoBuildConfigurations : null,
+            WhyNot = _ => WhyNotChooseBuild(),
         });
     }
+
+    /// <summary>Why no build configuration can be chosen: no folder, or none offered yet, which in a folder not trusted is
+    /// for good until it is, as its projects are never evaluated there.</summary>
+    private string? WhyNotChooseBuild() =>
+        session.Folder is null ? Refusals.NoFolderTo("build") : session.BuildChoices.Offered.Count == 0 ? Untrusted() ?? Refusals.NoBuildConfigurations : null;
 
     /// <summary>The session's choice and offer shown in the widget as they change.</summary>
     private void BindBuildConfigurations(ProjectSession next)
@@ -101,9 +106,9 @@ public partial class MainWindow
     {
         UiThread.Check();
         IReadOnlyList<BuildConfiguration> offered = session.BuildChoices.Offered;
-        if (offered.Count == 0)
+        if (WhyNotChooseBuild() is { } why)
         {
-            throw new InvalidOperationException(session.Folder is null ? Refusals.NoFolderTo("build") : Refusals.NoBuildConfigurations);
+            throw new InvalidOperationException(why);
         }
         string listed = Plural.Listed([.. offered.Select(o => o.Key)]);
         BuildConfiguration chosen = session.BuildChoices.Chosen!;

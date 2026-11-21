@@ -191,6 +191,31 @@ public sealed class ActionsTests : IDisposable
         }
     }
 
+    /// <summary>Passenger's quit is named in Find Action as the system names it, Quit Passenger on macOS (the application
+    /// menu's) and Exit elsewhere (File's), and found by either word.</summary>
+    [AvaloniaFact]
+    public void The_quit_is_named_as_the_system_names_it_and_found_in_Find_Action_by_Quit_and_by_Exit()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            IdeAction quit = window.Actions[AppActions.Exit]!;
+            Assert.Equal(OperatingSystem.IsMacOS() ? "Quit Passenger" : "Exit", quit.Title);
+            foreach (string asked in (string[])["Quit", "Exit"])
+            {
+                ActionPopup popup = FindAction(window);
+                popup.Query = asked;
+                Ui.Settle();
+                Assert.True(popup.Rows.Any(a => a.Id == AppActions.Exit), $"Find Action does not list {quit.Title} for '{asked}', only [{string.Join(", ", popup.Rows.Select(a => a.Title))}]");
+                Ui.Press(window, "ESCAPE");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>What the window shows of the actions run: the status bar's words, those Find Action ran latest first, the
     /// windows it opened and what has its keys.</summary>
     private static string Said(MainWindow window) =>

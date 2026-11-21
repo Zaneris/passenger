@@ -93,6 +93,10 @@ public partial class MainWindow
     /// <summary>Why nothing of the open folder's code runs: it is not trusted (<see cref="ProjectSession.Trusted"/>).</summary>
     private string? Untrusted() => session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
 
+    /// <summary>Why an action working in a tool window that serves one kind of project cannot run: the window serves nothing
+    /// in the open folder, in the words its own action greys with (<see cref="Docking.ToolWindow.Unserved"/>).</summary>
+    private string? Unserved([IdentifierOf(typeof(ToolWindowIds))] string window) => Dock[window].Unserved;
+
     /// <summary>Why Expand All or Collapse All cannot run: no tool window with rows to open or close has the keys.</summary>
     private static string? NoTree(ActionContext context, Action? does, string verb) =>
         does is not null ? null : context.ToolWindow is { } window ? $"{window.Title} has no rows to {verb}" : $"No tool window with rows to {verb} has the keys";
@@ -156,8 +160,9 @@ public partial class MainWindow
         actions.Add(new IdeAction(A.RecentFiles, "Recent Files", "IDE", _ => ShowRecentFiles()) { Menus = [new("File", 0, 4), new("View", 2, 0)] });
         Add(A.Save, "Save", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: false)), Refusals.NeedsUnsaved, ("File", 1, 0));
         Add(A.SaveAll, "Save All", "IDE", context => IdeErrors.Observe(SaveExplicitly(all: true)), _ => Editors.Documents.Any(d => d.IsModified) ? null : "Every file is saved", ("File", 1, 1));
-        // Quit is the application menu's on macOS; either closes every window.
-        Add(A.Exit, "Exit", "IDE", _ => Exit(), c => c.ByAgent ? Refusals.QuitIsThePersons : null, OperatingSystem.IsMacOS() ? null : ("File", 4, 0));
+        // Quit is the application menu's on macOS, named and found as it names it; either closes every window.
+        Add(A.Exit, QuitTitle, "IDE", _ => Exit(), c => c.ByAgent ? Refusals.QuitIsThePersons : null, OperatingSystem.IsMacOS() ? null : ("File", 4, 0),
+            words: [OperatingSystem.IsMacOS() ? "Exit" : "Quit"]);
         Add(A.FindAction, "Find Action…", "IDE", _ => ShowFindAction(), menu: ("Help", 0, 0));
 
         // Unit Tests, Problems, the Explorer and the Step Library take Find's keys for their filters, a console its text.

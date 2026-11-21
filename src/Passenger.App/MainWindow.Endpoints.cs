@@ -40,7 +40,7 @@ public partial class MainWindow
         });
         actions!.Add(new IdeAction(AppActions.EndpointsRefresh, "Refresh Endpoints", "Endpoints", _ => Endpoints.Reload(session.Folder))
         {
-            WhyNot = NeedsFolder,
+            WhyNot = c => NeedsFolder(c) ?? Unserved(ToolWindowIds.Endpoints),
             Words = ["Read the .http files again"],
         });
         // A row's Test, Enter and menu, an agent and Find Action test the row chosen; an .http file's icon, its line's request.

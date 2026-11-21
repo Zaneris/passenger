@@ -9,8 +9,8 @@ using Passenger.App.Settings;
 namespace Passenger.Tests;
 
 /// <summary>A tool window serving one kind of project shows only while the open folder holds one: a plain console solution
-/// shows none of them, on a stripe or in a place a layout opens them in, each greyed in View › Tool Windows saying why, its
-/// place in the layout kept; a Godot project come brings the Game window and gone takes it away; and every tool window
+/// shows none of them, on a stripe or in a place a layout opens them in, each greyed in View › Tool Windows saying why, as
+/// the actions working in it are, its place in the layout kept; a Godot project come brings the Game window and gone takes it away; and every tool window
 /// declares what it serves.</summary>
 public sealed class ToolWindowServesTests
 {
@@ -116,6 +116,15 @@ public sealed class ToolWindowServesTests
             }
             Assert.All(dock.Windows.Where(w => !OfAKind.Any(k => k.Id == w.Id)), w =>
                 Assert.True(tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == w.Title).IsEnabled, $"View › Tool Windows greys {w.Title} in a plain console solution"));
+            // What works in such a window greys as the window does, saying the same: Find Action and an agent's ide_actions read it.
+            IdeAction[] within = [.. window.Actions.All.Where(a => a.Group == "Aspire" || a.Id == AppActions.EndpointsRefresh)];
+            Assert.True(within.Length > 10, $"Only {within.Length} actions work in the Aspire and Endpoints windows");
+            foreach (IdeAction action in within)
+            {
+                string why = action.Group == "Aspire" ? Refusals.NoAppHost : Refusals.NoWebRequests;
+                Assert.True(window.Actions.WhyNot(action.Id, window.Actions.Context()) == why,
+                    $"{action.Title} says \"{window.Actions.WhyNot(action.Id, window.Actions.Context())}\" in a plain console solution, not \"{why}\" as its window does");
+            }
             Assert.True(StripeButton(window, ToolWindowIds.Run) is not null, "Run, every folder's, left its stripe");
         }
         finally

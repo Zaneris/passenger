@@ -97,7 +97,7 @@ public sealed class ConflictsDialog : IdeWindow
             vcs.Changed -= changed;
             vcs.BusyChanged -= busy;
         };
-        Opened += (_, _) => Dispatcher.UIThread.Post(FocusChosen, DispatcherPriority.Loaded);
+        Opened += (_, _) => Dispatcher.UIThread.Post(() => ListKeys.Hold(list), DispatcherPriority.Loaded);
         Fill();
     }
 
@@ -176,17 +176,6 @@ public sealed class ConflictsDialog : IdeWindow
         acceptYours.IsEnabled = any;
         acceptTheirs.IsEnabled = any;
         mergeButton.IsEnabled = any && Chosen is [{ CanMerge: true }];
-    }
-
-    /// <summary>The keys to the chosen row, as a list in a dialog takes them.</summary>
-    private void FocusChosen()
-    {
-        if (list.SelectedIndex >= 0)
-        {
-            list.ScrollIntoView(list.SelectedIndex);
-            list.UpdateLayout();
-            list.ContainerFromIndex(list.SelectedIndex)?.Focus();
-        }
     }
 
     /// <summary>A row for whichever file in conflict the list hands its container: its icon, its name in the conflicted

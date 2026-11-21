@@ -339,7 +339,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         List();
         list.SelectedItem = Entries.FirstOrDefault(e => e.Configuration.Name == chosen) ?? Entries.FirstOrDefault();
         ShowChosen();
-        Opened += (_, _) => Dispatcher.UIThread.Post(() => list.Focus(), DispatcherPriority.Loaded);
+        // The keys on the chosen configuration's row, so Tab goes on into its form.
+        Opened += (_, _) => Dispatcher.UIThread.Post(() => ListKeys.Hold(list), DispatcherPriority.Loaded);
     }
 
     public Button AddButton { get; }

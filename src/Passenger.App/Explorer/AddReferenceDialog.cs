@@ -62,26 +62,11 @@ public sealed class AddReferenceDialog : IdeWindow
             Margin = new Thickness(0, 0, 0, Gaps.Wide),
         };
         Content = DialogFooter.Page(new DockPanel { [DialogFooter.InsetProperty] = true, Children = { heading, rows } }, DialogFooter.OkCancel(ok, () => Close(null)));
-        Opened += (_, _) => Dispatcher.UIThread.Post(FocusChosen, DispatcherPriority.Loaded);
+        Opened += (_, _) => Dispatcher.UIThread.Post(() => ListKeys.Hold(list), DispatcherPriority.Loaded);
     }
 
     public IReadOnlyList<ReferenceChoice> Choices { get; }
 
     /// <summary>Closes as OK does, with the projects checked.</summary>
     public void Accept() => Close((IReadOnlyList<string>)[.. Choices.Where(c => c.IsChosen).Select(c => c.Path)]);
-
-    /// <summary>Gives the row chosen the keys.</summary>
-    private void FocusChosen()
-    {
-        if (list.SelectedIndex >= 0)
-        {
-            list.ScrollIntoView(list.SelectedIndex);
-            list.UpdateLayout();
-            list.ContainerFromIndex(list.SelectedIndex)?.Focus();
-        }
-        else
-        {
-            list.Focus();
-        }
-    }
 }
