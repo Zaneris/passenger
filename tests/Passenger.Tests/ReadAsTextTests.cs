@@ -115,9 +115,10 @@ public sealed class ReadAsTextTests : IDisposable
             window.Close();
         }
 
-        // A line of output with the shell's prompt below it, the cursor on that prompt.
+        // A line of output with the shell's prompt below it, the cursor on that prompt; none while it is on the first line.
         static bool PromptBelow(TerminalScreen screen, string output) =>
-            screen.CursorColumn > 0 && screen.LineAt(screen.ScreenTop + screen.CursorRow - 1) is { } above
+            screen.CursorColumn > 0 && screen.ScreenTop + screen.CursorRow > screen.FirstLine
+            && screen.LineAt(screen.ScreenTop + screen.CursorRow - 1) is { } above
             && (above.Text() == output || (screen.CursorRow > 1 && above.Text().Length == 0 && screen.LineAt(screen.ScreenTop + screen.CursorRow - 2).Text() == output));
     }
 
