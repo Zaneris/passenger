@@ -1056,6 +1056,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             fixedSaid = null;
             string? why = await FixAsync(fix, session, startup, runtime, work);
             parts.Say(why ?? fixedSaid ?? $"{fix.Title}: done");
+            work.Tell(why is null, why ?? fixedSaid ?? $"{fix.Title}: done");
             return why;
         }
         finally

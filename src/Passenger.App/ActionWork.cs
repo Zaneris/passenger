@@ -52,6 +52,19 @@ public sealed class ActionWork
         return work;
     }
 
+    /// <summary>Begins an action's work the person never sees (a save): no stage said, nothing greyed or refused while it
+    /// lasts, another beside it welcome; an agent's ide_action that ran it hears it as any work and answers once it ends.</summary>
+    public Working Unseen(string id)
+    {
+        UiThread.Check();
+        Working work = new(this, id, string.Empty, stoppable: false) { IsUnseen = true };
+        if (hearing.Value is { } heard && heard.Began(work))
+        {
+            work.Heard = heard;
+        }
+        return work;
+    }
+
     /// <summary>The work under way for an action, or null.</summary>
     public Working? Of(string id) => under.Find(w => w.Id == id);
 
@@ -106,7 +119,11 @@ public sealed class ActionWork
 
     internal void Ended(Working work)
     {
-        if (under.Remove(work))
+        if (work.IsUnseen)
+        {
+            work.Heard?.Ended();
+        }
+        else if (under.Remove(work))
         {
             work.Heard?.Ended();
             Changed?.Invoke(this, new WorkChange(work, Ended: true));
@@ -175,6 +192,9 @@ public sealed class Working : IDisposable
 
     /// <summary>The action an agent runs that began it as it ran, heard so (<see cref="ActionWork.Hear"/>).</summary>
     internal Hearing? Heard { get; set; }
+
+    /// <summary>Whether it is work the person never sees (<see cref="ActionWork.Unseen"/>).</summary>
+    internal bool IsUnseen { get; init; }
 
     /// <summary>Whether it is done or handed over.</summary>
     public bool HasEnded { get; private set; }

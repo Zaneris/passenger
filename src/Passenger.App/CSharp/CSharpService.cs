@@ -605,6 +605,9 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// (<see cref="Restart"/>).</summary>
     public bool IsStopped { get; private set; }
 
+    /// <summary>Whether the server could not start, <see cref="State"/> saying why, until it is started again.</summary>
+    public bool IsUnavailable { get; private set; }
+
     /// <summary>The server ended on its own or stopped answering, with what was done about it: started again, or left stopped
     /// (<see cref="IsStopped"/>), saying why. Raised on the UI thread.</summary>
     public event EventHandler<string>? Stopped;
@@ -1281,7 +1284,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         starting?.Cancel();
         CancellationTokenSource cancel = new();
         starting = cancel;
-        IsStopped = false;
+        IsStopped = IsUnavailable = false;
         reloadingRestored = restoreFailed = restoringTheirs = restoredLoaded = false;
         restoring.Clear();
         restoredNone.Clear();
@@ -1714,6 +1717,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             string why = error is LanguageServerFailed failed ? failed.Reason : error.Message;
             IdeErrors.Write($"The C# language server could not start for {opening.Folder}: {error}");
             Progress = null;
+            IsUnavailable = true;
             SetState($"C# unavailable: {why}");
         }
         finally
@@ -2285,13 +2289,14 @@ public sealed partial class CSharpService : IAsyncDisposable
     }
 
     /// <summary>Starts the server again at a person's word, in place of the one running or starting, its restarts counted
-    /// afresh: one left stopped for ending too often runs again once what ended it is gone.</summary>
-    public void Restart()
+    /// afresh: one left stopped for ending too often runs again once what ended it is gone. False where none starts: C# has
+    /// ended with its window, or has no workspace yet.</summary>
+    public bool Restart()
     {
         UiThread.Check();
         if (disposed || workspace is not { } restarting)
         {
-            return;
+            return false;
         }
         restarts.Forget();
         if (session is { } running)
@@ -2300,6 +2305,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         }
         IdeErrors.Write($"The C# language server is started again for {restarting.Folder}, as asked");
         Start(restarting);
+        return true;
     }
 
     /// <summary>A server, as it ran or as it started, gone: started again, unless servers have gone too often to be worth

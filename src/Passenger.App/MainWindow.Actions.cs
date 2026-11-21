@@ -56,9 +56,9 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Runs an action's work held under its id: begun at once with its first stage, ended with the task; asked for
-    /// again while it works, it says what is under way.</summary>
-    private async Task WorkingAsync(string id, string stage, Func<Task> run, bool stoppable = false)
+    /// <summary>Runs an action's work held under its id: begun at once with its first stage, ended with the task, telling
+    /// what <paramref name="run"/> says it came to; asked for again while it works, it says what is under way.</summary>
+    private async Task WorkingAsync(string id, string stage, Func<Task<(bool Succeeded, string Said)>> run, bool stoppable = false)
     {
         if (work.Begin(id, stage, stoppable) is not { } working)
         {
@@ -67,8 +67,22 @@ public partial class MainWindow
         }
         using (working)
         {
-            await run();
+            (bool succeeded, string said) = await run();
+            working.Tell(succeeded, said);
         }
+    }
+
+    /// <summary>An action's work from its first moment, begun under its id saying its first stage, so an agent's ide_action
+    /// waits for it, hears the popup or dialog it opens as it ends and what it tells; null, said in the status bar, while that
+    /// work is under way already.</summary>
+    private Working? BeginWork(string id, string stage)
+    {
+        if (work.Begin(id, stage, stoppable: false) is { } begun)
+        {
+            return begun;
+        }
+        status.Text = ActionWork.Busy(work.Of(id)!);
+        return null;
     }
 
     /// <summary>Where an action asked for now runs: the file shown and its caret, what has the keys in the window its keys
@@ -253,11 +267,41 @@ public partial class MainWindow
         });
         Add(A.ToggleSolutionAnalysis, "Toggle Solution-Wide Analysis", "IDE", _ => ToggleSolutionAnalysis(),
             _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 0));
-        Add(A.RestartCSharpServer, "Restart C# Language Server", "IDE", _ =>
+        Add(A.RestartCSharpServer, "Restart C# Language Server", "IDE", _ => RestartCSharpServer(),
+            _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 1), words: ["Roslyn"]);
+    }
+
+    /// <summary>Restart C# Language Server: the server started again, its work held from the restart until the server has
+    /// started and loads the projects, or C# is left stopped or unavailable, telling which; Stop ends the wait alone.</summary>
+    private void RestartCSharpServer()
+    {
+        CSharp.CSharpService csharp = session.CSharp!;
+        Working? restarting = work.Begin(A.RestartCSharpServer, "Starting the C# language server again…");
+        status.Text = "Starting the C# language server again";
+        if (!csharp.Restart() || restarting is null)
         {
-            session.CSharp!.Restart();
-            status.Text = "Starting the C# language server again";
-        }, _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 1), words: ["Roslyn"]);
+            restarting?.Dispose();
+            return;
+        }
+        string starting = csharp.State;
+        CancellationTokenRegistration stopped = default;
+        void Follow(object? sender, EventArgs e)
+        {
+            if (!restarting.IsStopped && csharp.State == starting && !csharp.IsStopped)
+            {
+                return;
+            }
+            csharp.StateChanged -= Follow;
+            stopped.Dispose();
+            if (!restarting.IsStopped)
+            {
+                bool started = !csharp.IsStopped && !csharp.IsUnavailable;
+                restarting.Tell(started, started ? $"The C# language server started again: {csharp.State}" : csharp.State);
+            }
+            restarting.Dispose();
+        }
+        csharp.StateChanged += Follow;
+        stopped = restarting.Stopping.Register(() => UiThread.Post(() => Follow(null, EventArgs.Empty)));
     }
 
     /// <summary>The editor's actions, run where the keys are: a text box's own editing there, another editor (a diff's)

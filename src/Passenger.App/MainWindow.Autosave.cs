@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Passenger.App.Editors;
 using Passenger.App.Workspace;
 using Passenger.Core;
 
@@ -143,9 +144,11 @@ public partial class MainWindow
     /// <summary>File, Save (the file shown as it is pressed) or Save All: each changed file first gets what Settings
     /// ask of a save (Run eslint --fix on save, then Prettier's Run on save, or a GDScript's Reformat on save, else
     /// Reformat on save), which an explicit save runs and autosave never does, each one undoable edit. The files are saved
-    /// whatever came of those, a file Reformat on save left as it was said once.</summary>
+    /// whatever came of those, a file Reformat on save left as it was said once. An agent's ide_action that ran it answers
+    /// once its saves have landed (<see cref="ActionWork.Unseen"/>), the person seeing nothing of it.</summary>
     private async Task SaveExplicitly(bool all)
     {
+        using Working underWay = work.Unseen(all ? AppActions.SaveAll : AppActions.Save);
         OpenDocument? pressed = all ? null : Editors.Active?.Saves;
         List<OpenDocument> saving = all ? [.. Editors.Documents.Where(d => d.IsModified)] : pressed is { IsModified: true } ? [pressed] : [];
         string? held = await Editors.ClearAsync([.. saving.Select(d => d.Path)]);
@@ -193,6 +196,10 @@ public partial class MainWindow
         finally
         {
             BackgroundWork.End();
+        }
+        if (ActionWork.Heard is not null)
+        {
+            await EditorArea.LandedAsync(saving.Select(d => d.Path), null);
         }
         // Not held while the person is asked, so a screenshot or a test finds the question.
         await SaveReadOnlyAsync(saving);

@@ -238,7 +238,12 @@ public sealed class ProfilerCommands
         launching = profiled;
         try
         {
-            return await LaunchAsync(profiled, arguments, work, configuration);
+            string? problem = await LaunchAsync(profiled, arguments, work, configuration);
+            if (problem is not null)
+            {
+                work.Tell(false, problem);
+            }
+            return problem;
         }
         finally
         {
@@ -399,9 +404,11 @@ public sealed class ProfilerCommands
                 run.Input = input;
             }
             View.Running(chosen.Name, () => running.Elapsed);
-            parts.Say(!running.Samples ? FramesAloneSaid(chosen.Name)
+            string said = !running.Samples ? FramesAloneSaid(chosen.Name)
                 : inTerminal ? string.Join("; ", [$"Profiling {chosen.Name} in a tab of the Terminal window", .. plan!.Notes])
-                : $"Profiling {chosen.Name}");
+                : $"Profiling {chosen.Name}";
+            parts.Say(said);
+            work.Tell(true, said);
             return null;
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -1177,7 +1184,9 @@ public sealed class ProfilerCommands
             {
                 if (ask && !await parts.Confirm("Get Memory Snapshot", $"{only.Message}. Take it anyway?", "Take Snapshot"))
                 {
-                    parts.Say($"No memory snapshot of {name}: its output would carry createdump's lines");
+                    string declined = $"No memory snapshot of {name}: its output would carry createdump's lines";
+                    parts.Say(declined);
+                    work.Tell(false, declined);
                     return (null, only.Message);
                 }
                 intoOutputAgreed = run;
@@ -1185,7 +1194,9 @@ public sealed class ProfilerCommands
                 heap = await run.TakeMemorySnapshotAsync(intoOutput: true, stopping.Token);
             }
             View.ShowMemory(heap);
-            parts.Say(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{heap.Name} of {name}: {heap.Objects:N0} objects, {Sizes.Said(heap.Bytes)}{(heap.Lacks is null ? string.Empty : ", read from its runtime's GC heap dump")}"));
+            string taken = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{heap.Name} of {name}: {heap.Objects:N0} objects, {Sizes.Said(heap.Bytes)}{(heap.Lacks is null ? string.Empty : ", read from its runtime's GC heap dump")}");
+            parts.Say(taken);
+            work.Tell(true, taken);
             return (heap, note ?? heap.Lacks);
         }
         catch (Exception error) when (error is HeapUnreadableException or ProfilingException or OperationCanceledException || DiagnosticsFailures.Of(error))
@@ -1194,10 +1205,12 @@ public sealed class ProfilerCommands
             {
                 string ended = $"{name} ended before its memory snapshot";
                 parts.Say(ended);
+                work.Tell(false, ended);
                 return (null, ended);
             }
             string why = error is OperationCanceledException ? "it was stopped" : error.Message;
             parts.Say($"No memory snapshot: {why}");
+            work.Tell(false, $"No memory snapshot: {why}");
             return (null, why);
         }
         finally

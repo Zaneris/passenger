@@ -38,7 +38,7 @@ public partial class MainWindow
             // A game whose GDScript Godot reloads as each file is saved takes its edits as they are saved.
             if (UnsavedGameScripts() is { Count: > 0 } unsaved)
             {
-                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Saving the game's scripts…", async () => status.Text = await SaveGameScriptsAsync(unsaved)));
+                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Saving the game's scripts…", async () => (true, status.Text = await SaveGameScriptsAsync(unsaved))));
             }
             // A container run's services take the edits through their debuggers, Run's app without dotnet watch its XAML.
             else if (session.Debug.HotReload is not null || session.Debug.Running.Count > 0 || session.Debug.IsDebugging || RunXamlEdited)
@@ -48,7 +48,10 @@ public partial class MainWindow
             else
             {
                 // Done once dotnet watch has said what it made of the save; the status bar follows its later words.
-                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", () => SaveForWatchAsync(TimeSpan.Zero)));
+                IdeErrors.Observe(WorkingAsync(AppActions.ApplyHotReloadChanges, "Applying Hot Reload changes…", async () =>
+                    await SaveForWatchAsync(TimeSpan.Zero) is { } outcome
+                        ? (outcome.Result is HotReloadResult.Applied or HotReloadResult.NothingToApply, outcome.Said)
+                        : (true, status.Text ?? "Hot Reload: saved for dotnet watch to apply")));
             }
         }, _ => Untrusted() is { } untrusted ? untrusted
             : session.Debug.Running.Count > 0 || UnsavedGameScripts().Count > 0 ? null

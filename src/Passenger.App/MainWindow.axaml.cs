@@ -1126,6 +1126,7 @@ public partial class MainWindow : IdeWindow
         Explorer.ShowProjectAgain(project);
         session.Configurations.Configure(Projects);
         status.Text = $"{Path.GetFileNameWithoutExtension(project)} {(unloaded ? "unloaded" : "reloaded")}";
+        ActionWork.Tell(true, $"{Path.GetFileNameWithoutExtension(project)} {(unloaded ? "unloaded" : "reloaded")}");
         FindTests();
         ShowSolutionProblems();
         KeepWorkspace();
