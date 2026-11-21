@@ -32,7 +32,8 @@ public partial class MainWindow
     /// (<see cref="RefusalPlace"/>).</summary>
     private bool Request(string action, ActionContext? context = null)
     {
-        if (actions!.Run(action, context ?? actions.Context()) is not { } why)
+        context ??= actions!.Context();
+        if (actions!.Run(action, FromDiff(action, context) ?? context) is not { } why)
         {
             return true;
         }

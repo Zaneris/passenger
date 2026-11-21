@@ -164,11 +164,13 @@ public sealed class CodeAssist
     }
 
     /// <summary>A diff's side that is an open file's own text answers the pointer resting on it as the file's editor does,
-    /// with the card of what is there, while <paramref name="worked"/> says its diff is the one worked in; on
-    /// <paramref name="layer"/>, over the diff's own window, else over the editors. A side of another version is never
-    /// given: no language server has read it, so it shows no card.</summary>
+    /// with the card of what is there and, under Go to Declaration's held gesture, what it would go from underlined, while
+    /// <paramref name="worked"/> says its diff is the one worked in; on <paramref name="layer"/>, over the diff's own window,
+    /// else over the editors. A side of another version is never given: no language server has read it.</summary>
     public void HoverIn(CodeEditor side, OpenDocument file, Func<bool> worked, Canvas? layer)
     {
+        side.ClickReach = (action, offset, cancel) => worked() && action == AppActions.GoToDeclaration && ReferenceEquals(side.Document, file.Text)
+            ? DeclaredFromAsync(file, side, offset, cancel) : NoReach;
         side.Hovered += (_, e) =>
         {
             if (worked() && !quickInfo.ValuesInUse && e.Annotation is null && e.Hint is null)
@@ -682,14 +684,14 @@ public sealed class CodeAssist
     /// <summary>What Go to Declaration would go from at an offset of the file shown, as its editor draws it: the name or link
     /// the file's language declares somewhere (<see cref="LanguageAssists.DeclaresAsync"/>), else a link there, which it
     /// follows; null where it goes nowhere, or the pointer moved on before the language answered.</summary>
-    private async Task<TextRange?> DeclaredFromAsync(int offset, CancellationToken cancel)
+    private Task<TextRange?> DeclaredFromAsync(int offset, CancellationToken cancel) =>
+        context.Editors.Active is { } shown && ReferenceEquals(shown.Text, Editor.Document) ? DeclaredFromAsync(shown, Editor, offset, cancel) : NoReach;
+
+    /// <summary>What Go to Declaration would go from at an offset of an open file, as an editor showing its text draws it.</summary>
+    private async Task<TextRange?> DeclaredFromAsync(OpenDocument shown, CodeEditor editor, int offset, CancellationToken cancel)
     {
-        if (context.Editors.Active is not { } shown || !ReferenceEquals(shown.Text, Editor.Document))
-        {
-            return null;
-        }
         bool declares = await context.Languages.DeclaresAsync(shown, offset);
-        return !cancel.IsCancellationRequested && (declares || Editor.LinkOn(offset) is not null) ? Editor.TokenAt(offset) : null;
+        return !cancel.IsCancellationRequested && (declares || editor.LinkOn(offset) is not null) ? editor.TokenAt(offset) : null;
     }
 
     /// <summary>Order Script's Parts on the GDScript shown, as one command of Undo, said in the status bar.</summary>
