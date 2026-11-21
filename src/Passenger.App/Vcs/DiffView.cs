@@ -12,7 +12,9 @@ namespace Passenger.App.Vcs;
 /// <summary>The side-by-side diff: the last commit's text on the left (read-only), the file as it is on the right (the
 /// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band
 /// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
-/// arrow puts that change back; F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous one; F4 asks
+/// arrow puts that change back in the open file's text, as Rollback Lines does to the change at the caret
+/// (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous
+/// one; F4 asks
 /// for its file at the caret's line (Jump to Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses
 /// how differences are highlighted, by words at first; Find searches the side with the caret (<see cref="ShowFind"/>).
 /// Made by <see cref="DiffPanes"/>.</summary>
@@ -67,7 +69,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Right.Show(mine, SelectionSet.Single(0), default);
         named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
         bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _) => ($"Roll back change {band.Index + 1} to {named.Left}", null),
-            (band, _, _) => Revert(Hunks[band.Index])) { Width = 36 };
+            (band, _, _) => Revert(Hunks[band.Index]), AppActions.RollbackLines) { Width = 36 };
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
         Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
@@ -278,6 +280,9 @@ public sealed class DiffView : DockPanel, IOwnKeys
 
     public bool IsEditable { get; }
 
+    /// <summary>Why no change of the diff can be put back: its file's side is a copy, not the open file's own text.</summary>
+    public string? WhyNotRollBack => IsEditable ? null : Refusals.ReadOnly(named.Right);
+
     /// <summary>The file changed from this view: typed in on its side, or a difference put back by its band.</summary>
     public event EventHandler? Edited;
 
@@ -313,13 +318,21 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The differences as they stand.</summary>
     public IReadOnlyList<DiffHunk> Hunks => shown.Hunks;
 
-    /// <summary>Puts one difference back as the last commit has it (the band's arrow), unless the file was edited since
-    /// the differences were found, which may have moved it.</summary>
-    public void Revert(DiffHunk hunk)
+    /// <summary>Puts one difference back as the other side has it (the band's arrow), unless the file was edited since the
+    /// differences were found, which may have moved it (<see cref="RevertAsync"/>).</summary>
+    public void Revert(DiffHunk hunk) => IdeErrors.Observe(RevertAsync(hunk));
+
+    /// <summary>Puts one difference back as the other side has it, an edit of the open file its Undo takes back: null once
+    /// put back, else why not (the file's side a copy, or edited since the differences were found, which may have moved it).</summary>
+    public async Task<string?> RevertAsync(DiffHunk hunk)
     {
-        if (!IsEditable || !ReferenceEquals(Right.Document.Snapshot, shown.Text))
+        if (WhyNotRollBack is { } readOnly)
         {
-            return;
+            return readOnly;
+        }
+        if (!ReferenceEquals(Right.Document.Snapshot, shown.Text) || !Hunks.Contains(hunk))
+        {
+            return "The file changed since its differences were found: roll the change back again";
         }
         reverting = true;
         try
@@ -330,8 +343,39 @@ public sealed class DiffView : DockPanel, IOwnKeys
         {
             reverting = false;
         }
-        IdeErrors.Observe(CompareAsync());
+        await CompareAsync();
+        return null;
     }
+
+    /// <summary>Rollback Lines in the diff: the change at the caret of the side with the keys (the file's, unless the last
+    /// commit's has them) put back as the other side has it, once the differences are of the file's text as it is now.
+    /// What came of it, in words.</summary>
+    public async Task<(bool RolledBack, string Said)> RollBackAtCaretAsync()
+    {
+        if (WhyNotRollBack is { } readOnly)
+        {
+            return (false, readOnly);
+        }
+        bool head = Left.IsKeyboardFocusWithin;
+        // Typed in just before, the differences shown are of an older text, whose changes may stand elsewhere now.
+        while (!ReferenceEquals(Right.Document.Snapshot, shown.Text) && away is null)
+        {
+            await CompareAsync();
+        }
+        if (away is not null)
+        {
+            return (false, "The diff was closed");
+        }
+        if ((head ? shown.HeadHunkAt(Left.CaretPosition.Line) : shown.HunkAt(Right.CaretPosition.Line)) is not { } hunk)
+        {
+            return (false, NoChangeHere);
+        }
+        int index = Hunks.ToList().IndexOf(hunk) + 1;
+        return await RevertAsync(hunk) is { } refused ? (false, refused) : (true, $"Rolled back change {index} to {named.Left}");
+    }
+
+    /// <summary>What Rollback Lines says with no change at the caret.</summary>
+    public const string NoChangeHere = "No change here to roll back";
 
     /// <summary>The next or previous difference from the right side's caret, shown on both sides.</summary>
     public void Step(int step)

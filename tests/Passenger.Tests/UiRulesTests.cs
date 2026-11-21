@@ -2209,12 +2209,14 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             List<string> untold = Untold(view);
             Assert.True(untold.Count == 0, $"{untold.Count} controls of the diff say nothing of what they do: give each ToolButtons.Tip:\n{string.Join("\n", untold)}");
 
-            Button arrow = icons.Single(b => ToolTip.GetTip(b) as string == "Roll back change 1 to HEAD");
+            // The arrow's tip names Rollback Lines' keys, which do its work to the change at the caret.
+            string rollBack = ActionTips.Named("Roll back change 1 to HEAD", ActionTips.Keys(AppActions.RollbackLines));
+            Button arrow = icons.Single(b => ToolTip.GetTip(b) as string == rollBack);
             CheckBox box = icons.OfType<CheckBox>().Single(b => ToolTip.GetTip(b) as string == "Include change 1 in commit");
             Assert.Equal("Roll back change 1 to HEAD", Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(arrow).GetName());
             Assert.Equal("Include change 1 in commit", Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(box).GetName());
             TopLevel top = TopLevel.GetTopLevel(view)!;
-            Rest(top, arrow, "Roll back change 1 to HEAD");
+            Rest(top, arrow, rollBack);
             Rest(top, box, "Include change 1 in commit");
 
             Button bare = new() { Content = new PathIcon() };

@@ -806,7 +806,14 @@ public partial class MainWindow
         Add(AppActions.Unstash, "Unstash Changes…", context => IdeErrors.Observe(ShowUnstashAsync()), new("Git", 1, 1));
         Add(AppActions.ShowDiff, "Show Diff", context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);
         Add(AppActions.Annotate, "Annotate with Git Blame", context => IdeErrors.Observe(ToggleAnnotationsAsync(context.File!)), new("Git", 2, 1), onFile: true);
-        Add(AppActions.RollbackLines, "Rollback Lines", context => IdeErrors.Observe(RollbackLinesAsync()), new("Git", 2, 2), onFile: true);
+        // In a diff, the change at the caret of the side with the keys, as its band's arrow puts it back.
+        actions!.Add(new IdeAction(AppActions.RollbackLines, "Rollback Lines", "Git", context => IdeErrors.Observe(DiffWithKeys(context) is { } diff
+            ? RollingBackAsync(diff.RollBackAtCaretAsync)
+            : RollbackLinesAsync()))
+        {
+            WhyNot = context => DiffWithKeys(context) is { } diff ? diff.WhyNotRollBack : NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : Refusals.NeedsFile(context)),
+            Menus = [new MenuPlace("Git", 2, 2)],
+        });
         Add(AppActions.NextChange, "Next Change", _ => GoToChange(1), new("Navigate", 3, 2), onFile: true);
         Add(AppActions.PreviousChange, "Previous Change", _ => GoToChange(-1), new("Navigate", 3, 3), onFile: true);
         // A diff's own, whatever it compares: how its differences are highlighted.
@@ -966,13 +973,24 @@ public partial class MainWindow
         Editors.CodeEditor.GoTo(new TextPosition(at, 0));
     }
 
-    /// <summary>Rollback Lines: the change under the caret goes back to what the last commit has there.</summary>
-    private async Task RollbackLinesAsync()
+    /// <summary>Rollback Lines: the change under the caret goes back to what the last commit has there, said once done.</summary>
+    private Task RollbackLinesAsync() => RollingBackAsync(RolledBackLinesAsync);
+
+    /// <summary>Rollback Lines' work, in an editor or a diff, held from its first moment, what it came to said in the status
+    /// bar and told.</summary>
+    private Task RollingBackAsync(Func<Task<(bool RolledBack, string Said)>> rollBack) =>
+        WorkingAsync(AppActions.RollbackLines, "Rolling back the change at the caret…", async () =>
+        {
+            (bool rolledBack, string said) = await rollBack();
+            status.Text = said;
+            return (rolledBack, said);
+        });
+
+    private async Task<(bool RolledBack, string Said)> RolledBackLinesAsync()
     {
         if (Editors.Active is not { } document)
         {
-            status.Text = "No change here to roll back";
-            return;
+            return (false, DiffView.NoChangeHere);
         }
         FileDiff? diff;
         using (BackgroundWork.Scope())
@@ -986,14 +1004,14 @@ public partial class MainWindow
         }
         if (Editors.Active != document)
         {
-            return;
+            return (false, $"{document.Name} is no longer shown");
         }
         if (diff?.HunkAt(Editors.CodeEditor.CaretPosition.Line) is not { } hunk)
         {
-            status.Text = "No change here to roll back";
-            return;
+            return (false, DiffView.NoChangeHere);
         }
         Editors.CodeEditor.ApplyEdits([diff.Restore(hunk)]);
+        return (true, $"Rolled back the change at line {hunk.NewStart + 1} of {document.Name}");
     }
 
     /// <summary>Add to .gitignore: a line of the repository's top .gitignore matching that file alone (<see

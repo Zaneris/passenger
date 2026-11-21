@@ -14,8 +14,8 @@ public readonly record struct DiffBand(int Index, double LeftTop, double LeftBot
 
 /// <summary>The strip between two panes of a diff or a merge: each change a band from its lines on the left to its lines
 /// on the right, tinted by its kind, with the button whose arrow takes it (pointing away from the icons' side) and the one
-/// whose X ignores it at that side's end, while what made the strip allows them, each named by its tip. Only the changes in
-/// view have buttons, so a diff of thousands scrolls as lightly as one of a few; <see cref="Refresh"/> follows a scroll or
+/// whose X ignores it at that side's end, while what made the strip allows them, each named by its tip, the arrow's naming
+/// the keys of the action that does its work at the caret where one does. Only the changes in view have buttons, so a diff of thousands scrolls as lightly as one of a few; <see cref="Refresh"/> follows a scroll or
 /// a change of the bands.</summary>
 public sealed class DiffStrip : Control
 {
@@ -34,15 +34,19 @@ public sealed class DiffStrip : Control
     private readonly bool ignores;
     private readonly Func<DiffBand, bool, (string Words, string? Keys)> tip;
     private readonly Action<DiffBand, bool, KeyModifiers> pressed;
+    private readonly string? arrowAction;
     private readonly List<BandButton> buttons = [];
 
     /// <param name="iconSide">The side whose end has the icons, the arrow pointing away from it.</param>
     /// <param name="pane">The pane at <paramref name="iconSide"/>, whose line the icons stand beside.</param>
     /// <param name="tip">What a change's arrow (false) or X (true) does, and the keys that do it to the change at the caret.</param>
     /// <param name="pressed">A click on a change's arrow (false) or X (true), with the keys held.</param>
+    /// <param name="arrowAction">The action doing an arrow's work at the caret, whose keys its tip names as the keymap has them.</param>
     public DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconSide, CodeEditor pane, Func<bool> takes, bool ignores,
-        Func<DiffBand, bool, (string Words, string? Keys)> tip, Action<DiffBand, bool, KeyModifiers> pressed)
+        Func<DiffBand, bool, (string Words, string? Keys)> tip, Action<DiffBand, bool, KeyModifiers> pressed,
+        string? arrowAction = null)
     {
+        this.arrowAction = arrowAction;
         this.bands = bands;
         this.iconSide = iconSide;
         this.pane = pane;
@@ -157,7 +161,7 @@ public sealed class DiffStrip : Control
                 }
                 BandButton button = used < buttons.Count ? buttons[used] : Made();
                 used++;
-                button.Show(band, ignore, iconSide, Colours(band.Kind).Edge, icon.Inflate(Reach), tip);
+                button.Show(band, ignore, iconSide, Colours(band.Kind).Edge, icon.Inflate(Reach), tip, ignore ? null : arrowAction);
             }
         }
         for (int i = used; i < buttons.Count; i++)
@@ -229,8 +233,9 @@ public sealed class DiffStrip : Control
         /// <summary>Where it stands in the strip.</summary>
         public Rect At { get; private set; }
 
-        /// <summary>Stands beside a change's icon at <paramref name="at"/>, named for that change and drawn in its colour.</summary>
-        public void Show(DiffBand shown, bool ignore, MergeSide iconSide, string edge, Rect at, Func<DiffBand, bool, (string Words, string? Keys)> tip)
+        /// <summary>Stands beside a change's icon at <paramref name="at"/>, named for that change and drawn in its colour, its
+        /// tip naming <paramref name="action"/>'s keys where it does that action's work.</summary>
+        public void Show(DiffBand shown, bool ignore, MergeSide iconSide, string edge, Rect at, Func<DiffBand, bool, (string Words, string? Keys)> tip, string? action)
         {
             band = shown;
             if (Index != shown.Index || Ignore != ignore)
@@ -238,7 +243,14 @@ public sealed class DiffStrip : Control
                 Index = shown.Index;
                 Ignore = ignore;
                 (string words, string? keys) = tip(shown, ignore);
-                ToolButtons.Tip(Button, words, keys);
+                if (action is not null)
+                {
+                    ActionTips.Set(Button, action, words);
+                }
+                else
+                {
+                    ToolButtons.Tip(Button, words, keys);
+                }
             }
             glyph.Show(ignore ? 0 : iconSide == MergeSide.Left ? 1 : -1, edge);
             At = at;

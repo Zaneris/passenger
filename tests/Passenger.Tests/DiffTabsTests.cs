@@ -190,6 +190,60 @@ public sealed class DiffTabsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Rollback Lines' keys in the Commit window's diff put back the change at the caret, as its band's arrow does,
+    /// whose tip names those keys: from the file's side, then from the last commit's, each an edit of the file Undo takes
+    /// back. A diff whose file's side is a copy, its file not open, greys Rollback Lines saying so, and shows no arrows.</summary>
+    [AvaloniaFact]
+    public void Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys()
+    {
+        MainWindow window = Open();
+        OpenDocument file = window.EditorArea.Active!;
+        DiffView view = Assert.IsType<DiffView>(DiffFromCommit(window, byEnter: true).View);
+        Ui.Landed(() => view.Right.IsKeyboardFocusWithin, "the diff tab's side of the file to have the keys");
+        string? keys = ActionTips.Keys(AppActions.RollbackLines);
+        Assert.False(keys is null, "Rollback Lines has no keys in the keymap in force");
+        Button arrow = view.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && Avalonia.Automation.AutomationProperties.GetName(b) == "Roll back change 2 to HEAD");
+        Assert.Equal($"Roll back change 2 to HEAD ({keys})", ToolTip.GetTip(arrow));
+
+        // The file's side: the caret on the second change, which only its own line holds.
+        view.Right.GoTo(new TextPosition(4, 3));
+        Ui.Press(window, Ui.Shortcut(AppActions.RollbackLines));
+        Ui.Landed(() => file.Text.Snapshot.ToString().Contains("    void Add() { count++; }", StringComparison.Ordinal) && view.Hunks.Count == 1,
+            "the second change put back by Rollback Lines' keys in the diff");
+        Assert.Equal([new DiffHunk(2, 1, 2, 1)], view.Hunks);
+        Assert.Contains("long count", file.Text.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal("Rolled back change 2 to HEAD", window.Status);
+
+        // The last commit's side: its caret on the first change's line puts that one back.
+        view.Left.Focus();
+        view.Left.GoTo(new TextPosition(2, 0));
+        Ui.Landed(() => view.Left.IsKeyboardFocusWithin, "the last commit's side to have the keys");
+        Ui.Press(window, Ui.Shortcut(AppActions.RollbackLines));
+        Ui.Landed(() => file.Text.Snapshot.ToString() == Original && view.Hunks.Count == 0, "the first change put back from the last commit's side");
+
+        // Where no change is, it says so and changes nothing; the file's Undo takes the last one back.
+        Ui.Press(window, Ui.Shortcut(AppActions.RollbackLines));
+        Assert.Equal(DiffView.NoChangeHere, window.Status);
+        view.Right.Focus();
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Ui.Landed(() => file.Text.Snapshot.ToString().Contains("long count", StringComparison.Ordinal) && view.Hunks.Count == 1, "Undo to bring the first change back");
+
+        // Saved and closed, the diff's side of it is a copy: Rollback Lines greys saying so, and no change has an arrow.
+        Ui.Run(window, AppActions.Save);
+        Assert.False(file.IsModified, "Save from the diff tab left Shop.cs unsaved");
+        Ui.Run(window, AppActions.CloseTab);
+        window.OpenFile(file.Path);
+        Ui.Run(window, AppActions.CloseTab);
+        Ui.Settle();
+        Assert.DoesNotContain(window.EditorArea.Documents, d => d.Path == file.Path);
+        DiffView copy = Assert.IsType<DiffView>(DiffFromCommit(window, byEnter: true).View);
+        Ui.Landed(() => copy.Right.IsKeyboardFocusWithin && copy.Hunks.Count == 1, "the diff of the closed Shop.cs, its one change left, to have the keys");
+        Assert.Equal("Your version (read-only) is read-only", window.Actions.WhyNot(AppActions.RollbackLines, window.Actions.Context()));
+        Assert.DoesNotContain(copy.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible
+            && Avalonia.Automation.AutomationProperties.GetName(b)?.StartsWith("Roll back", StringComparison.Ordinal) == true);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void A_diff_tab_splits_moves_to_a_window_of_its_own_jumps_to_its_file_and_is_left_out_of_the_folders_kept_tabs()
     {

@@ -192,6 +192,12 @@ public sealed class FileDiff
         ? line == h.Value.NewStart || line == h.Value.NewStart - 1
         : line >= h.Value.NewStart && line < h.Value.NewStart + h.Value.NewCount);
 
+    /// <summary>The change a line of the last commit's text is in, where lines came being the lines either side of the
+    /// place; null for a line the file has as it was.</summary>
+    public DiffHunk? HeadHunkAt(int line) => Hunks.Cast<DiffHunk?>().FirstOrDefault(h => h!.Value.OldCount == 0
+        ? line == h.Value.OldStart || line == h.Value.OldStart - 1
+        : line >= h.Value.OldStart && line < h.Value.OldStart + h.Value.OldCount);
+
     /// <summary>Lines of <see cref="Text"/> (from 0) as the last commit numbers them, for Show History for Selection: each
     /// moved by the changes above it, and a changed one taken as the whole change's lines there. Null when none of them is
     /// in the last commit.</summary>
