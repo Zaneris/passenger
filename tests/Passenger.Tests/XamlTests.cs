@@ -194,7 +194,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Ui.WaitFor(() => window.Assist.CompletionLabels.Contains(IconKeys.Menu), "Icons.axaml's geometries");
         Ui.Press(window, "ESCAPE");
 
-        Ui.PlaceAfter(editor, "<Button Name=\"MenuButton\" Classes=\"");
+        Ui.PlaceAfter(editor, "<Button Name=\"ProjectButton\" Classes=\"");
         Ui.Run(window, AppActions.Complete);
         Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("tool"), "the style classes Shell.axaml styles");
         Assert.Contains("widget", window.Assist.CompletionLabels);
