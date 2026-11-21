@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `ReadAsTextTests`' `The_terminals_last_command_and_its_output_open_as_text_and_Escape_gives_the_terminal_its_keys_back`,
+  CI 44953680429 (macOS report shard 1): "ArgumentOutOfRangeException : index ('-1') must be a non-negative value",
+  thrown by `TerminalScreen.LineAt` inside the test's wait. **The test read wrong**, not #1849's marks, which /bin/sh is
+  given none of: its wait for the prompt under `first` read the line above the cursor whenever the cursor stood past a
+  line's start, and while the cursor still stood on the first line, on the prompt and the command typed there before sh
+  had echoed Enter, there is no line above, so it asked for line -1. It reads the line above only once there is one
+  (3a5203ff7).
 - `SoundCuesTests`' `A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(kind: "pwsh")`,
   CI 44948517766 (macOS report shard 4): "Waited 180 s for the shell's next prompt after 'echo first'", the screen
   showing `PS …> echo first` and `echo first` again on the row below. **The test waited wrong**: it typed at pwsh's
