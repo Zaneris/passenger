@@ -13,6 +13,7 @@ using Passenger.App.Aspire;
 using Passenger.App.Aspire.Protocol;
 using Passenger.App.Run;
 using Passenger.App.Telemetry;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Text;
 
@@ -645,7 +646,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.Aspire.Rows.Count == 2, "both resources' rows");
             Control api = Row(window, "apiservice");
             Assert.Contains(api.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text == "healthy");
-            Assert.True(api.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single().IsEffectivelyVisible, "The resource's row has no state dot");
+            Assert.True(api.GetSelfAndVisualDescendants().OfType<RunRowView>().Single().StateMark.IsEffectivelyVisible, "The resource's row has no state mark");
             Button address = api.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "aspireUrl");
             Assert.Equal("localhost:5310", address.Content);
             Ui.Click(address);
@@ -2251,9 +2252,10 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             FindAction(window, "Show Aspire Resources");
             Ui.WaitFor(() => window.Aspire.Rows.Any(row => row.Resource.Name == "apiservice"), "the refused service's row");
             Control row = Row(window, "apiservice");
-            Avalonia.Controls.Shapes.Ellipse dot = row.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single();
+            RowIcon dot = row.GetSelfAndVisualDescendants().OfType<RunRowView>().Single().StateMark;
             Assert.Equal($"{AspireAppRun.NotStarted}. {AspireAppRun.NotStartedWhy}", ToolTip.GetTip(dot));
-            Assert.Equal(Colour(window, TokenKeys.TextMuted), (dot.Fill as Avalonia.Media.ISolidColorBrush)?.Color);
+            Assert.True(dot.ForegroundKey == TokenKeys.TextMuted && dot.DataKey == RunRows.ShapeOf(RunState.Stopped),
+                $"A service left unstarted is marked {dot.DataKey} in {dot.ForegroundKey}, not as stopped");
             Ui.Click(Words(row, "apiservice"));
             Ui.Click(Tab(window, "Details"));
             string[] shown = [.. window.AspireWindow.Details.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty)];
@@ -2267,9 +2269,6 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             window.Close();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }
-
-        static Avalonia.Media.Color Colour(MainWindow window, string token) =>
-            window.TryFindResource(token, window.ActualThemeVariant, out object? found) && found is Avalonia.Media.ISolidColorBrush brush ? brush.Color : default;
     }
 
     /// <summary>The Aspire window's service actions are the Containers window's, under the same titles and in the same

@@ -6,7 +6,7 @@ using Passenger.Text;
 namespace Passenger.App.Vcs;
 
 /// <summary>The gutter's change bars against the code, the lines the editor's decorations mark as differing from the last
-/// commit, read for the lines on screen, each kind a shape of its own as well as its colour (<see cref="ShapeOf"/>): a
+/// commit, read for the lines on screen, each kind a shape of its own as well as its colour (<see cref="ChangeShapes"/>): a
 /// green bar for lines added, a blue bar broken into dashes for lines changed, two red rails in conflict, a grey wedge where
 /// lines were deleted. A click on one is <see cref="Pressed"/>'s.</summary>
 public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
@@ -44,7 +44,7 @@ public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
                 continue;
             }
             double top = frame.TopOf(change.Line);
-            if (ShapeOf(change.Kind) == ChangeShape.Wedge)
+            if (ChangeShapes.Of(change.Kind) == ChangeShape.Wedge)
             {
                 GutterShape key = new(nameof(ChangeMarkKind.Deleted), 4);
                 if (!frame.TryShape(key, out StreamGeometry? wedge))
@@ -67,7 +67,7 @@ public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
             });
             double bottom = frame.BottomOf(Math.Min(change.Line + change.Count - 1, frame.LineCount - 1));
             Rect bar = new(x, top + 1, BarWidth, Math.Max(1, bottom - top - 2));
-            switch (ShapeOf(change.Kind))
+            switch (ChangeShapes.Of(change.Kind))
             {
                 case ChangeShape.Rails:
                     // Two pixels apart, so they stay two where the strip stands between pixels.
@@ -93,15 +93,6 @@ public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
     private const double Dash = 3;
     private const double DashPeriod = 5;
 
-    /// <summary>The shape a kind of change takes in the gutter, apart from its colour.</summary>
-    public static ChangeShape ShapeOf(ChangeMarkKind kind) => kind switch
-    {
-        ChangeMarkKind.Added => ChangeShape.Bar,
-        ChangeMarkKind.Deleted => ChangeShape.Wedge,
-        ChangeMarkKind.Conflict => ChangeShape.Rails,
-        _ => ChangeShape.Dashes,
-    };
-
     public GutterAnswer Press(GutterPress press)
     {
         if (press.Click.Context || !press.OnStrip || Pressed is null || At(editor.ChangeMarks, press.Click.Line) is not { } change)
@@ -111,13 +102,4 @@ public sealed class ChangeColumn(CodeEditor editor) : IGutterColumn
         Pressed(this, (press.Click, change));
         return GutterAnswer.Taken;
     }
-}
-
-/// <summary>A change's shape in the gutter: a whole bar, a bar broken into dashes, two thin rails, or a wedge between lines.</summary>
-public enum ChangeShape
-{
-    Bar,
-    Dashes,
-    Rails,
-    Wedge,
 }

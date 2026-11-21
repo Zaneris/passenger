@@ -71,6 +71,9 @@ public sealed partial class CodeEditor
     /// <summary>The file's errors and warnings, counted when the markers are set.</summary>
     public (int Errors, int Warnings) ProblemCount => decorations.Problems;
 
+    /// <summary>The scrollbar's track the stripe's marks are drawn on, in this control's coordinates.</summary>
+    public Rect StripeTrack => TrackRect();
+
     /// <summary>The middle of where a stripe mark is drawn, in this control's coordinates: what a click on it hits.</summary>
     public Point StripePoint(StripeMark mark)
     {
@@ -535,6 +538,17 @@ public sealed partial class CodeEditor
             {
                 IBrush next = BrushOf(palette, built.Marks[i]);
                 Rect mark = Drawn(built.Marks[i], spans[i], track);
+                if (built.Marks[i] is { Kind: StripeMarkKind.Change } change && ChangeShapes.Of(change.Change) is ChangeShape.Dashes or ChangeShape.Rails)
+                {
+                    if (brush is not null)
+                    {
+                        context.FillRectangle(brush, run);
+                        drawn++;
+                        brush = null;
+                    }
+                    drawn += DrawBroken(context, next, ChangeShapes.Of(change.Change), mark);
+                    continue;
+                }
                 if (ReferenceEquals(next, brush) && mark.X == run.X && mark.Width == run.Width && mark.Top <= run.Bottom && mark.Bottom >= run.Top)
                 {
                     run = run.Union(mark);
@@ -555,6 +569,25 @@ public sealed partial class CodeEditor
             editor.StripeRectangles = drawn;
             StripeMark caret = editor.CaretMark();
             context.FillRectangle(BrushOf(palette, caret), Drawn(caret, Span(caret, track, scale), track));
+        }
+
+        /// <summary>A change's strip in its shape as the gutter draws it: dashes from its top, or two rails; how many
+        /// rectangles that took.</summary>
+        private static int DrawBroken(DrawingContext context, IBrush brush, ChangeShape shape, Rect strip)
+        {
+            if (shape == ChangeShape.Rails)
+            {
+                context.FillRectangle(brush, strip.WithWidth(1));
+                context.FillRectangle(brush, strip.WithX(strip.Right - 1).WithWidth(1));
+                return 2;
+            }
+            int drawn = 0;
+            for (double y = strip.Top; y < strip.Bottom; y += 3)
+            {
+                context.FillRectangle(brush, new Rect(strip.X, y, strip.Width, Math.Min(2, strip.Bottom - y)));
+                drawn++;
+            }
+            return drawn;
         }
 
         /// <summary>The marks and where each is on the track, in this control's coordinates: both what is drawn and what a
@@ -595,7 +628,8 @@ public sealed partial class CodeEditor
 
         /// <summary>What a mark fills across the track at its span: an error, a match or a use most of its breadth, a
         /// warning its right half and a suggestion its right quarter, so each is told by its breadth as well as its colour, a
-        /// bookmark a dot at its right, a change a strip down its left edge.</summary>
+        /// bookmark a dot at its right, a change a strip down its left edge (drawn in its shape, <see cref="ChangeShapes"/>:
+        /// a conflict's rails four wide, a deletion a tick five wide).</summary>
         public static Rect Drawn(StripeMark mark, (double Top, double Height) span, Rect track)
         {
             (double left, double width) = mark.Kind switch
@@ -605,7 +639,12 @@ public sealed partial class CodeEditor
                 StripeMarkKind.Info => (track.Width * 3 / 4, (track.Width / 4) - 2),
                 StripeMarkKind.SearchMatch or StripeMarkKind.Usage or StripeMarkKind.WriteUsage => (3.0, track.Width - 6),
                 StripeMarkKind.Bookmark => (track.Width - 4, 3.0),
-                StripeMarkKind.Change => (0.0, 2.0),
+                StripeMarkKind.Change => ChangeShapes.Of(mark.Change) switch
+                {
+                    ChangeShape.Wedge => (0.0, 5.0),
+                    ChangeShape.Rails => (0.0, 4.0),
+                    _ => (0.0, 2.0),
+                },
                 _ => (1.0, track.Width - 2),
             };
             return new Rect(track.X + left, span.Top, Math.Max(1, width), span.Height);
@@ -674,7 +713,8 @@ public sealed partial class CodeEditor
 
         /// <summary>Where a mark is drawn on the track, on the thumb's scale: a tick three pixels high about its row's middle,
         /// a suggestion's two and the caret's a line from the same top, so the caret's line on a problem's row leaves the
-        /// problem's middle and foot in its colour; a change from its first row's top to its last row's foot.</summary>
+        /// problem's middle and foot in its colour; a change from its first row's top to its last row's foot, four high at
+        /// least, a deletion a tick two high at its place.</summary>
         public static (double Top, double Height) Span(StripeMark mark, Rect track, StripeScale scale)
         {
             double row = scale.RowHeight;
@@ -682,7 +722,8 @@ public sealed partial class CodeEditor
             {
                 double first = scale.At(mark.Row * row, track.Height);
                 double foot = scale.At((mark.Row + mark.Rows) * row, track.Height);
-                return (Math.Round(track.Top + first), Math.Max(2, foot - first));
+                // A deletion a tick between lines; the rest tall enough for a dash and its gap to show.
+                return (Math.Round(track.Top + first), ChangeShapes.Of(mark.Change) == ChangeShape.Wedge ? 2 : Math.Max(4, foot - first));
             }
             double top = Math.Round(track.Top + scale.At((mark.Row + 0.5) * row, track.Height) - (Tick / 2));
             return (top, mark.Kind switch

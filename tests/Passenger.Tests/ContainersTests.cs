@@ -1661,10 +1661,8 @@ public sealed class ContainersTests
                 RunRowView row = view.GetVisualDescendants().OfType<RunRowView>().Single(r => r.Shown?.Label == name);
                 Ui.Click(row.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == name));
                 Assert.Equal(name, view.Chosen?.Label);
-                Avalonia.Controls.Shapes.Ellipse dot = row.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single();
-                Assert.True(window.TryFindResource(colour, window.ActualThemeVariant, out object? expected) && expected is Avalonia.Media.ISolidColorBrush brush
-                    && dot.Fill is Avalonia.Media.ISolidColorBrush fill && fill.Color == brush.Color,
-                    $"{name}'s dot is {(dot.Fill as Avalonia.Media.ISolidColorBrush)?.Color}, where a container {said} shows {colour}");
+                RowIcon dot = row.StateMark;
+                Assert.True(dot.ForegroundKey == colour, $"{name}'s mark is {dot.ForegroundKey}, where a container {said} shows {colour}");
                 Assert.Equal($"{name}: {said}", ToolTip.GetTip(dot));
             }
 

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Passenger.App.Testing;
+using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
 using Passenger.Editor;
 using Passenger.Text;
@@ -11,11 +12,10 @@ using Passenger.Vcs;
 namespace Passenger.Tests;
 
 /// <summary>Every state the editor tells apart by colour is told apart by shape as well: drawn one at a time in one place
-/// with each family's colours made one grey, an error's, a warning's and a suggestion's lines, the gutter's change marks,
-/// a diff's signs and a test's marks still differ in the pixels they ink, so a person who cannot tell their colours apart
-/// can; and
-/// every state of each family, a changed file's kind too, has a shape, sign or letter of its own, a state added later held
-/// to one as well.</summary>
+/// with each family's colours made one grey, an error's, a warning's and a suggestion's lines, the gutter's and the
+/// scrollbar stripe's change marks, a diff's signs and a test's marks still differ in the pixels they ink, so a person who
+/// cannot tell their colours apart can; and every state of each family, a changed file's kind and a run's state too, has a
+/// shape, sign or letter of its own, a state added later held to one as well.</summary>
 public sealed class ColourAloneTests
 {
     private const string Grey = "#808080";
@@ -80,6 +80,29 @@ public sealed class ColourAloneTests
         }), "a test's gutter marks");
     }
 
+    [AvaloniaFact]
+    public void The_stripes_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour()
+    {
+        EditorRig rig = new(string.Concat(Enumerable.Range(0, 300).Select(i => $"line {i}\n")));
+        foreach (string key in (string[])[TokenKeys.Vcs_Added, TokenKeys.Vcs_Modified, TokenKeys.Vcs_Conflict, TokenKeys.Vcs_Deleted])
+        {
+            rig.Window.Resources[key] = new SolidColorBrush(Color.Parse(Grey));
+        }
+        CodeEditor editor = rig.Editor;
+        rig.PlaceCaret(rig.Document.Snapshot.Length);
+        // The left of the track down its whole height, where a change's strip is drawn and nothing else of these.
+        Rect Strip() => editor.StripeTrack.WithWidth(6);
+        Color[] bare = Seen(rig, Strip());
+        AllApart(Enum.GetValues<ChangeMarkKind>().Select(kind =>
+        {
+            editor.SetChangeMarks([new ChangeMark(100, kind == ChangeMarkKind.Deleted ? 0 : 12, kind)]);
+            return (kind.ToString(), Inked(rig, Strip, bare));
+        }), "the scrollbar stripe's change marks");
+    }
+
+    [Fact]
+    public void Every_run_state_has_a_mark_of_its_own() => Apart(Enum.GetValues<RunState>().Where(s => s != RunState.None), RunRows.ShapeOf);
+
     [Fact]
     public void Every_kind_of_problem_has_a_line_of_its_own() =>
         Apart(Enum.GetValues<MarkerKind>().Where(k => k != MarkerKind.Unnecessary), Underlines.Of);
@@ -87,7 +110,7 @@ public sealed class ColourAloneTests
     [Fact]
     public void Every_kind_of_change_has_a_gutter_shape_and_a_diff_sign_of_its_own()
     {
-        Apart(Enum.GetValues<ChangeMarkKind>(), ChangeColumn.ShapeOf);
+        Apart(Enum.GetValues<ChangeMarkKind>(), ChangeShapes.Of);
         Apart(Enum.GetValues<ChangeMarkKind>(), DiffSigns.SignOf);
     }
 
@@ -127,14 +150,29 @@ public sealed class ColourAloneTests
     private static string Inked(EditorRig rig, Func<Rect> place)
     {
         Ui.Settle();
-        Rect area = place();
-        Window window = rig.Window;
         CodeEditor editor = rig.Editor;
         // The editor's ground, past the end of a line of spaces, where nothing is drawn.
-        Color ground = Ui.Pixel(window, editor.TranslatePoint(editor.PointOf(30) + new Vector(editor.LineHeight * 4, editor.LineHeight / 2), window)!.Value);
-        Point origin = editor.TranslatePoint(area.TopLeft, window)!.Value;
+        Color ground = Ui.Pixel(rig.Window, editor.TranslatePoint(editor.PointOf(30) + new Vector(editor.LineHeight * 4, editor.LineHeight / 2), rig.Window)!.Value);
+        Rect area = place();
+        return Mask(Seen(rig, area), _ => ground, Columns(rig, area));
+    }
+
+    /// <summary>Which pixels of an area hold ink where it was bare before (<paramref name="bare"/>), as <see cref="Inked(EditorRig, Func{Rect})"/> says them.</summary>
+    private static string Inked(EditorRig rig, Func<Rect> place, Color[] bare)
+    {
+        Ui.Settle();
+        Rect area = place();
+        return Mask(Seen(rig, area), i => bare[i], Columns(rig, area));
+    }
+
+    /// <summary>The window's pixels over an area of the editor, a row at a time, once what was just set is drawn.</summary>
+    private static Color[] Seen(EditorRig rig, Rect area)
+    {
+        Ui.Settle();
+        Window window = rig.Window;
+        Point origin = rig.Editor.TranslatePoint(area.TopLeft, window)!.Value;
         double step = 1 / window.RenderScaling;
-        int columns = (int)Math.Floor(area.Width / step);
+        int columns = Columns(rig, area);
         int rows = (int)Math.Floor(area.Height / step);
         List<Point> points = [];
         for (int row = 0; row < rows; row++)
@@ -144,13 +182,17 @@ public sealed class ColourAloneTests
                 points.Add(origin + new Vector((column + 0.5) * step, (row + 0.5) * step));
             }
         }
-        Color[] seen = Ui.Pixels(window, points);
-        return string.Join("/", Enumerable.Range(0, rows).Select(row => new string([.. Enumerable.Range(0, columns).Select(column =>
-        {
-            Color c = seen[(row * columns) + column];
-            return Math.Abs(c.R - ground.R) + Math.Abs(c.G - ground.G) + Math.Abs(c.B - ground.B) > 90 ? '#' : '.';
-        })])));
+        return Ui.Pixels(window, points);
     }
+
+    private static int Columns(EditorRig rig, Rect area) => (int)Math.Floor(area.Width * rig.Window.RenderScaling);
+
+    private static string Mask(Color[] seen, Func<int, Color> ground, int columns) =>
+        string.Join("/", seen.Chunk(Math.Max(1, columns)).Select((row, r) => new string([.. row.Select((c, column) =>
+        {
+            Color under = ground((r * columns) + column);
+            return Math.Abs(c.R - under.R) + Math.Abs(c.G - under.G) + Math.Abs(c.B - under.B) > 90 ? '#' : '.';
+        })])));
 
     private static void AllApart(IEnumerable<(string State, string Inked)> shapes, string what)
     {
