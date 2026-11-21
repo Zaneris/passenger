@@ -27,7 +27,7 @@ public sealed class GodotResourcePicker : Border
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
         Padding = PopupFrame.Inset;
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = classes.Count > 0 ? $"Filter {string.Join(", ", classes)}" : "Filter resources" };
+        filter = SearchBox.InPopup("Choose a Resource", classes.Count > 0 ? $"Filter {string.Join(", ", classes)}" : "Filter resources");
         list = new ListBox { Classes = { StyleClasses.Tree }, Height = ListRow.Height * 12 };
         ReusedRows.Use(list, Row);
         empty = new EmptyState { Text = "Looking for the project's resources…" };

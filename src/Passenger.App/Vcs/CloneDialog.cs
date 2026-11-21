@@ -36,8 +36,8 @@ public sealed partial class CloneDialog : IdeWindow
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        url = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "https://github.com/owner/repository.git" };
-        parent = new TextBox { Classes = { StyleClasses.Search }, Text = folder };
+        url = new TextBox { PlaceholderText = "https://github.com/owner/repository.git" };
+        parent = new TextBox { Text = folder };
         url.TextChanged += (_, _) => ShowDestination();
         parent.TextChanged += (_, _) => ShowDestination();
         folderRow = BrowseRow.Of(parent, BrowseAsync);

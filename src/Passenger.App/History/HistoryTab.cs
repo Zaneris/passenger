@@ -71,10 +71,10 @@ public sealed class HistoryTab : DockPanel
         diffPlaceholder = new EmptyState("Select activity to view changes");
         diffHost.Content = diffPlaceholder;
 
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = isFolder ? "Search by file name" : "Search by content", Width = 240, Margin = new Thickness(Gaps.Normal, 0) };
+        filter = SearchBox.Of(isFolder ? "Search changes by file name" : "Search changes by content");
         filter.TextChanged += (_, _) => IdeErrors.Observe(FilterAsync());
         Button revert = ToolButtons.Of(IconKeys.Rollback, "Revert Selected and Later Changes", () => IdeErrors.Observe(RevertAsync()));
-        Border top = ToolBars.Top(new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { filter, revert } });
+        Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { filter, revert } });
 
         Control right = diffHost;
         if (isFolder)

@@ -184,7 +184,7 @@ public sealed class ScrubField : DockPanel
         };
         ToolTip.SetTip(label, "Drag left or right to change it: Shift for faster, Alt for finer");
         SetDock(label, Dock.Left);
-        box = new TextBox { Classes = { StyleClasses.Code }, MinWidth = 0, Padding = new Thickness(Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
+        box = new ValueField();
         Children.Add(label);
         Children.Add(box);
         label.PointerPressed += (_, e) =>

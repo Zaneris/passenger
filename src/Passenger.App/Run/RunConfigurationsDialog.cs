@@ -1557,7 +1557,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         { } found => $"Godot{(found.Version is { } version ? $" {version}" : string.Empty)}{(found.Sharp is null ? string.Empty : ", a .NET build")}: {found.Executable}",
     };
 
-    private static TextBox Field(string? placeholder = null) => new() { Classes = { StyleClasses.Search }, PlaceholderText = placeholder };
+    private static TextBox Field(string? placeholder = null) => new() { PlaceholderText = placeholder };
 
     private static PathIcon Glyph(string key)
     {

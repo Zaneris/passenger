@@ -53,13 +53,14 @@ public sealed class DebugView : DockPanel, IOwnKeys
         ReusedRows.Use(sessions, SessionTab);
         HeaderTools = sessions;
 
-        threads = new ComboBox
+        threads = new ToolDropDown("No paused threads")
         {
             [DockProperty] = Dock.Top,
             Margin = new Thickness(Gaps.Small, Gaps.Small, Gaps.Small, Gaps.Tight),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             ItemsSource = model.Threads,
         };
+        Avalonia.Automation.AutomationProperties.SetName(threads, "Threads");
         ReusedRows.Use(threads, () =>
         {
             TextBlock label = new();
@@ -101,7 +102,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
         evaluate = new TextBox
         {
             [DockProperty] = Dock.Top,
-            Classes = { StyleClasses.Search },
+            [Avalonia.Automation.AutomationProperties.NameProperty] = "Evaluate expression",
             Margin = new Thickness(Gaps.Small, Gaps.Small, Gaps.Small, Gaps.Tight),
         };
         string enter = new Keystroke(Key.Enter, KeyModifiers.None).Display();

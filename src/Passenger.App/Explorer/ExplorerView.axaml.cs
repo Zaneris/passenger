@@ -39,7 +39,7 @@ public partial class ExplorerView : UserControl
     /// <summary>How long typing in the filter pauses before the rows follow it.</summary>
     private static readonly TimeSpan FilterPause = TimeSpan.FromMilliseconds(150);
 
-    private readonly TextBox filter = ToolWindows.FilterBox.Of();
+    private readonly TextBox filter = SearchBox.Finding("Filter files");
     private readonly Border filterBar;
     private readonly Debounce filtering;
 

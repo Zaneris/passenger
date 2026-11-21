@@ -122,8 +122,7 @@ public sealed class TestsView : DockPanel
         PaneSplit split = new(new Panel { Children = { tree, placeholder } }, result, "2*,1,3*", "3*,1,2*");
 
         // Above the tree: what changes it, then a filter for each outcome; the search on the right.
-        search = FilterBox.Of();
-        ToolFlow.SetFills(search, new ToolLayout.Fills(160, 220));
+        search = SearchBox.Finding("Filter tests");
         search.TextChanged += (_, _) => model.SearchFor(search.Text ?? string.Empty);
         search.KeyDown += OnSearchKey;
         groupBy = ToolButtons.Of(IconKeys.GroupBy, "Group By", ShowGroupBy);

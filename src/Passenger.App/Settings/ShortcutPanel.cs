@@ -83,7 +83,6 @@ public sealed class StrokeField : TextBox
     {
         this.passesDialogKeys = passesDialogKeys;
         IsReadOnly = true;
-        Classes.Add(StyleClasses.Search);
         if (passesDialogKeys)
         {
             InnerRightContent = SpecialKeys();

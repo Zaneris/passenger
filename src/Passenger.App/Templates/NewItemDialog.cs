@@ -27,13 +27,13 @@ public sealed class NewItemDialog : IdeWindow
     private static readonly HashSet<string> Asked = new(StringComparer.OrdinalIgnoreCase) { "namespace" };
 
     private readonly ItemTarget target;
-    private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small) };
+    private readonly TextBox search = SearchBox.Of("Search templates");
     private readonly ListBox list;
     private readonly TextBlock loading = new() { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide) };
     private readonly TextBlock heading = new() { Classes = { StyleClasses.PageTitle } };
     private readonly TextBlock description = new() { Classes = { StyleClasses.Muted }, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-    private readonly TextBox itemName = new() { Classes = { StyleClasses.Search } };
-    private readonly TextBox space = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox itemName = new();
+    private readonly TextBox space = new();
     private readonly Control nameRow;
     private readonly Control spaceRow;
     private readonly TemplateOptions options = new();
@@ -73,6 +73,7 @@ public sealed class NewItemDialog : IdeWindow
         search.TextChanged += (_, _) => Filter();
         ListKeys.Search(search, list);
         DockPanel leftPanel = new();
+        search.Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small);
         DockPanel.SetDock(search, Dock.Top);
         leftPanel.Children.Add(search);
         leftPanel.Children.Add(new Panel { Children = { list, loading } });

@@ -95,7 +95,8 @@ public sealed class AttachToProcessDialog : IdeWindow
         MinHeight = 300;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        Search = new TextBox { Classes = { StyleClasses.Search }, Text = search, PlaceholderText = "Search by name, process ID, user, command line or container" };
+        Search = SearchBox.Of("Search processes", "Search processes by name, ID, user, command line or container");
+        Search.Text = search;
         Search.TextChanged += (_, _) => ShowRows();
         Search.AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
         Button refresh = ToolButtons.Of(IconKeys.Rerun, "Refresh", () => IdeErrors.Observe(RefreshAsync()));

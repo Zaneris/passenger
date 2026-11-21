@@ -308,7 +308,7 @@ public sealed class GodotItemsEditor : Border
     private TextBox Field(object? value, object row, Action<string> taken)
     {
         string was = GodotVariant.Shown(value, quoted: value is string or GodotName or GodotNodePath);
-        TextBox field = new TextBox { Classes = { StyleClasses.Code }, Text = was, VerticalAlignment = VerticalAlignment.Center };
+        TextBox field = new ValueField { Text = was };
         field.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
@@ -581,7 +581,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
         TextBlock label = new() { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0) };
         ToolTip.SetTip(label, name);
         GodotValueCell cell = new(game, this);
-        TextBox typed = new TextBox { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center };
+        TextBox typed = new ValueField();
         TextBlock shown = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         typed.KeyDown += (_, e) =>
         {

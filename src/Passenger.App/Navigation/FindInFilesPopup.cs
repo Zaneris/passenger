@@ -80,7 +80,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         this.parseOptions = parseOptions;
         projects = choices.Projects;
         Width = PopupFrame.Widest;
-        query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text to find", Text = initial ?? string.Empty };
+        query = SearchBox.InPopup(replace ? "Replace in Files" : "Find in Files", "Text to find");
+        query.Text = initial ?? string.Empty;
         matchCase = OptionToggles.Of(OptionToggles.MatchCase);
         words = OptionToggles.Of(OptionToggles.Words);
         regex = OptionToggles.Of(OptionToggles.Regex);
@@ -104,7 +105,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         StackPanel top = new() { Children = { header, find } };
         if (replace)
         {
-            replacement = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Replacement" };
+            replacement = SearchBox.InPopup("Replacement", "Replacement");
             Editors.ReplaceBoxes.Take(replacement);
             Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
             all.Click += (_, _) => RequestReplace();
@@ -578,9 +579,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private bool InField() => new[] { projectBox, directoryBox, scopeBox, maskBox }.Any(f => f.IsKeyboardFocusWithin);
 
     /// <summary>A compact drop-down field of the popup's scope and mask, typed into when editable.</summary>
-    private static ComboBox Field(System.Collections.IEnumerable items, bool editable) => new()
+    private static ComboBox Field(System.Collections.IEnumerable items, bool editable) => new ToolDropDown
     {
-        Classes = { StyleClasses.Compact },
         ItemsSource = items,
         IsEditable = editable,
         HorizontalAlignment = HorizontalAlignment.Stretch,

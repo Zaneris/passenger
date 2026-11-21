@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
@@ -82,7 +83,8 @@ public sealed class LiveTreeView : DockPanel
         SelectElement.Click += (_, _) => PickRequested?.Invoke(this, SelectElement.IsChecked == true);
         Button refresh = ToolButtons.Of(AppActions.LiveTreeRefresh, IconKeys.Rerun, "Refresh", _ => RefreshRequested?.Invoke(this, EventArgs.Empty));
         status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        sources = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0), IsVisible = false };
+        sources = new ToolDropDown { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0), IsVisible = false };
+        AutomationProperties.SetName(sources, "Running game");
         ToolTip.SetTip(sources, "The running game whose nodes are shown");
         sources.SelectionChanged += (_, _) =>
         {
@@ -91,7 +93,8 @@ public sealed class LiveTreeView : DockPanel
                 SourceChosen?.Invoke(this, sources.SelectedIndex);
             }
         };
-        PickIn = new ComboBox { Classes = { StyleClasses.Compact }, ItemsSource = PickKinds, SelectedIndex = 0, VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
+        PickIn = new ToolDropDown { ItemsSource = PickKinds, SelectedIndex = 0, VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
+        AutomationProperties.SetName(PickIn, "Select Element picks in");
         ToolTip.SetTip(PickIn, "What Select Element picks in the game: its 2D nodes and controls, or its 3D nodes");
         PickIn.SelectionChanged += (_, _) =>
         {
@@ -166,7 +169,8 @@ public sealed class LiveTreeView : DockPanel
             tabs.Add(page, page.ToString());
         }
         tabs.Chosen += (_, page) => ShowPage(page);
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Filter properties", Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        filter = SearchBox.Of("Filter properties");
+        filter.Margin = new Thickness(0, 0, Gaps.Small, 0);
         filter.TextChanged += (_, _) => ShowProperties();
         defaults = Segments.Toggle("Defaults");
         ToolTip.SetTip(defaults, "Show the properties at their default values too");

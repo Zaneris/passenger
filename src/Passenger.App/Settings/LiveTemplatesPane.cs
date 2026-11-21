@@ -57,8 +57,8 @@ public sealed class LiveTemplatesPane : ListPane
         ReusedRows.Use(list, RowView);
         list.SelectionChanged += (_, _) => ShowChosen();
 
-        ShortcutBox = Field();
-        DescriptionBox = Field();
+        ShortcutBox = new TextBox();
+        DescriptionBox = new TextBox();
         ShortcutBox.TextChanged += (_, _) => Edit(t => t with { Abbreviation = ShortcutBox.Text?.Trim() ?? string.Empty }, relist: true);
         DescriptionBox.TextChanged += (_, _) => Edit(t => t with { Description = DescriptionBox.Text ?? string.Empty }, relist: true);
         ReformatBox = new CheckBox { Content = "Reformat" };
@@ -71,17 +71,17 @@ public sealed class LiveTemplatesPane : ListPane
         GenerationButton = Use("Generation", TemplateUse.Generation);
         SurroundButton = Use("Surround", TemplateUse.Surround);
         BothButton = Use("Both", TemplateUse.Both);
-        MnemonicBox = new TextBox { Classes = { StyleClasses.Search }, Width = 44 };
+        MnemonicBox = new TextBox { Width = 44, [Avalonia.Automation.AutomationProperties.NameProperty] = "Mnemonic" };
         MnemonicBox.TextChanged += (_, _) => Mnemonic();
         EditVariablesButton = new Button { Content = "Edit variables" };
         EditVariablesButton.Click += (_, _) => IdeErrors.Observe(EditVariables());
         TextBox = new TextBox
         {
+            [Avalonia.Automation.AutomationProperties.NameProperty] = "Template text",
             AcceptsReturn = true,
             AcceptsTab = true,
             TextWrapping = TextWrapping.NoWrap,
-            VerticalContentAlignment = VerticalAlignment.Top,
-            Classes = { StyleClasses.Search, StyleClasses.Code },
+            Classes = { StyleClasses.Code },
             Margin = new Thickness(0, Gaps.Wide, 0, 0),
         };
         TextBox.TextChanged += (_, _) => Edit(t => WithText(t, (TextBox.Text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)));
@@ -474,6 +474,4 @@ public sealed class LiveTemplatesPane : ListPane
         SetDock(control, dock);
         return control;
     }
-
-    private static TextBox Field() => new() { Classes = { StyleClasses.Search } };
 }

@@ -37,20 +37,20 @@ public sealed class PublishDialog : IdeWindow
 
     private readonly ComboBox profileBox = new FormDropDown();
     private readonly ComboBox targetBox = new FormDropDown { ItemsSource = new[] { FolderTarget, ImageTarget }, SelectedItem = FolderTarget };
-    private readonly TextBox repositoryBox = new() { Classes = { StyleClasses.Search } };
-    private readonly TextBox tagBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "latest (several between semicolons)" };
-    private readonly TextBox runtimesBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "The SDK's own (several between semicolons: linux-x64;linux-arm64)" };
-    private readonly TextBox registryBox = new() { Classes = { StyleClasses.Search }, PlaceholderText = "None: the engine on this machine" };
+    private readonly TextBox repositoryBox = new();
+    private readonly TextBox tagBox = new() { PlaceholderText = "latest (several between semicolons)" };
+    private readonly TextBox runtimesBox = new() { PlaceholderText = "The SDK's own (several between semicolons: linux-x64;linux-arm64)" };
+    private readonly TextBox registryBox = new() { PlaceholderText = "None: the engine on this machine" };
     private readonly TextBlock imageSaid = FormRows.Note();
     private readonly Control folderRows;
     private readonly Control imageRows;
-    private readonly TextBox nameBox = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox nameBox = new();
     private readonly Control nameRow;
     private readonly ComboBox configurationBox = new FormDropDown();
     private readonly ComboBox frameworkBox = new FormDropDown();
     private readonly ComboBox deploymentBox = new FormDropDown { ItemsSource = new[] { FrameworkDependent, SelfContainedMode } };
     private readonly ComboBox runtimeBox = new FormDropDown();
-    private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox folderBox = new();
     private readonly TextBlock destination = FormRows.Note(path: true);
     private readonly TextBlock copied = FormRows.Note();
     private readonly BrowseRow folderRow;

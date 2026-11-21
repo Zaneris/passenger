@@ -69,7 +69,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// runs there and its global.json decides what it can make.</summary>
     private string readFrom;
     private readonly Passenger.Editor.Debounce followFolder;
-    private readonly TextBox search = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Search", Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small) };
+    private readonly TextBox search = Passenger.App.SearchBox.Of("Search templates");
     private readonly ListBox list;
     private readonly TextBlock loading;
     private readonly ComboBox typeChooser = new FormDropDown();
@@ -77,9 +77,9 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBlock heading;
     private readonly TextBlock description;
     private readonly TextBlock windowsNote = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Gaps.Tight, 0, 0), IsVisible = false };
-    private readonly TextBox solutionName = new() { Classes = { StyleClasses.Search } };
-    private readonly TextBox projectName = new() { Classes = { StyleClasses.Search } };
-    private readonly TextBox directory = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox solutionName = new();
+    private readonly TextBox projectName = new();
+    private readonly TextBox directory = new();
     private readonly CheckBox sameDirectory = new() { Content = "Put solution and project in the same directory" };
     private readonly ComboBox format = new FormDropDown();
 
@@ -201,7 +201,7 @@ public sealed class NewProjectDialog : IdeWindow
         list = new ListBox
         {
             Classes = { StyleClasses.Tree },
-            // The chosen family's band as wide as the search field above, its name where the field's text starts.
+            // The chosen family's band as wide as the search field above, its name in line with the field's magnifier.
             Padding = new Thickness(Gaps.Normal, 0),
         };
         ReusedRows.Use(list, Item);
@@ -216,6 +216,7 @@ public sealed class NewProjectDialog : IdeWindow
         ListKeys.Search(search, list);
         loading = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide) };
         DockPanel leftPanel = new();
+        search.Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small);
         DockPanel.SetDock(search, Dock.Top);
         leftPanel.Children.Add(search);
         leftPanel.Children.Add(new Panel { Children = { list, loading } });

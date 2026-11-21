@@ -291,7 +291,6 @@ public sealed class InteractiveTestDialog : IdeWindow
         TextBox box = new TextBox { Classes = { StyleClasses.Code }, Text = text, AcceptsReturn = multiline, TextWrapping = TextWrapping.NoWrap };
         if (multiline)
         {
-            box.VerticalContentAlignment = VerticalAlignment.Top;
             ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
             ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
         }

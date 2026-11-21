@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
@@ -125,8 +126,9 @@ public sealed partial class NuGetView : DockPanel
             }
         };
         model = folder;
-        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search packages", VerticalAlignment = VerticalAlignment.Center };
-        chooser = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Normal, 0) };
+        search = SearchBox.Of("Search packages");
+        chooser = new ToolDropDown { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Normal, 0) };
+        AutomationProperties.SetName(chooser, "Feeds searched");
         ToolTip.SetTip(chooser, "The feeds searched");
         chooser.SelectionChanged += (_, _) =>
         {
@@ -158,8 +160,6 @@ public sealed partial class NuGetView : DockPanel
         (projectSearch, projectFilters, projectsHeader) = MakeProjectsHeader();
         // Inside the search, so the bar's parts keep their room at the window's least width.
         filters.Inside(search);
-        ToolFlow.SetFills(search, new ToolLayout.Fills(140, 260));
-        ToolFlow.SetFills(status, new ToolLayout.Fills(120));
         Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { search, chooser, prerelease, refresh, updateAll, status } });
 
         list = new ListBox
@@ -171,15 +171,16 @@ public sealed partial class NuGetView : DockPanel
         details = new StackPanel { Spacing = Gaps.Normal, Margin = new Thickness(ListRow.TextStart, Gaps.Wide) };
         log = new TextBox
         {
+            [AutomationProperties.NameProperty] = "Package changes' output",
             IsReadOnly = true,
             AcceptsReturn = true,
-            Classes = { StyleClasses.Caption },
+            Classes = { StyleClasses.Code },
             Height = 90,
             BorderThickness = Hairlines.Above,
             Background = Brushes.Transparent,
             IsVisible = false,
             [DockProperty] = Dock.Bottom,
-        }.InCodeFont();
+        };
         log.Bind(TextBox.BorderBrushProperty, log.GetResourceObservable(TokenKeys.Divider));
         DockPanel right = new();
         right.Children.Add(log);
@@ -826,7 +827,8 @@ public sealed partial class NuGetView : DockPanel
         string? vulnerable = row.AuditedVersions.Where(v => known.Of(row.Id, v).Count > 0).OrderByDescending(v => v, VersionOrder.Instance).FirstOrDefault();
         string? fix = vulnerable is null ? null : known.FixedVersion(row.Id, vulnerable, versions);
         ChosenVersion = PickedOf(row) ?? row.UpdateVersion ?? fix ?? versions.FirstOrDefault() ?? row.Version;
-        ComboBox picker = new() { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, MinWidth = 140 };
+        ComboBox picker = new ToolDropDown { Name = "Versions", ItemsSource = versions, SelectedItem = ChosenVersion, VerticalAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(picker, $"Version of {row.Id}");
         StackPanel vulnerabilities = new() { Spacing = Gaps.Normal };
         StackPanel deprecated = new() { Spacing = Gaps.Normal };
         picker.SelectionChanged += (_, _) =>

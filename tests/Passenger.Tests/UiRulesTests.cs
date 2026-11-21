@@ -1237,6 +1237,65 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Every field a person meets in the window, its tool windows and every page of Settings has a name a screen
+    /// reader says (its own, its label's, a search's), never a placeholder alone, and stands as tall as the buttons and
+    /// drop-downs beside it: the one field look, but a field of several lines, a value typed in its row (ValueField) and
+    /// a table's cell.</summary>
+    [AvaloniaFact]
+    public void Every_field_in_the_window_its_tool_windows_and_Settings_is_named_and_a_controls_height()
+    {
+        MainWindow window = Open(1400, 880);
+        SettingsDialog? settings = null;
+        try
+        {
+            double height = (double)window.FindResource(TokenKeys.ControlHeight)!;
+            window.OpenFile(project.PathOf("Program.cs"));
+            Ui.Settle();
+            window.Perform(AppActions.Find);
+            Ui.Settle();
+            List<string> faults = [];
+            HashSet<TextBox> seen = [];
+            void Check(string where, Visual within)
+            {
+                foreach (TextBox box in within.GetVisualDescendants().OfType<TextBox>().Where(b => b.IsEffectivelyVisible && b.Bounds.Width > 0 && b.TemplatedParent is null).Where(seen.Add))
+                {
+                    string shown = $"{where}'s {box.GetType().Name} {box.Name} \"{box.PlaceholderText}\" in {box.GetVisualParent()?.GetType().Name}";
+                    if (string.IsNullOrWhiteSpace(Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(box).GetName()))
+                    {
+                        faults.Add($"{shown}: nameless to a screen reader");
+                    }
+                    if (!box.AcceptsReturn && box is not ValueField && !box.Classes.Contains(StyleClasses.Cell) && Math.Abs(box.Bounds.Height - height) > 0.5)
+                    {
+                        faults.Add($"{shown}: {box.Bounds.Height:0.#} tall");
+                    }
+                }
+            }
+            foreach (Passenger.App.Docking.ToolWindow tool in window.DockHost.Windows.ToList())
+            {
+                window.DockHost.Show(tool.Id);
+                Ui.Settle();
+                Check(tool.Title, window);
+            }
+            settings = window.ShowSettings();
+            Ui.Settle();
+            foreach (string page in settings.Pages.ToList())
+            {
+                settings.Page = page;
+                Ui.Settle();
+                Check($"Settings › {page}", settings);
+            }
+            Assert.True(seen.Count >= 20, $"Only {seen.Count} fields were found in the window, its tool windows and Settings");
+            Assert.True(faults.Count == 0, $"{faults.Count} fields are nameless or stand at a height of their own: give each a name (its label through "
+                + $"FormRows or AutomationProperties.LabeledBy, a search through SearchBox) and leave its height the base TextBox's:\n{string.Join("\n", faults)}");
+        }
+        finally
+        {
+            settings?.Close();
+            Ui.Settle();
+            window.Close();
+        }
+    }
+
     /// <summary>Every button that runs one of the window's actions, the toolbar's and every tool window's, names in its tip
     /// (a link offering one, in its words) the keys the keymap in force gives that action (<see cref="ActionTips"/>), and
     /// every tool window's Hide names Hide Tool Window's keys or none: under every keymap Settings offers, each chosen in
@@ -3592,6 +3651,80 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.Matches(plain, "        From = new ComboBox { Name = \"ScriptFrom\" };");
         Assert.Matches(plain, "    private readonly ComboBox stepBox = new() { HorizontalAlignment = HorizontalAlignment.Stretch };");
         Assert.DoesNotMatch(plain, "    private readonly ComboBox stepBox = new FormDropDown();");
+    }
+
+    /// <summary>Every search field is a SearchBox, its magnifier, name and words at the dense step one way in every tool
+    /// window, dialog and page, and every other field takes the one field look of the base TextBox: the search class given
+    /// anywhere but SearchBox and the find bar's XAML fails here, naming its line.</summary>
+    [Fact]
+    public void Every_search_field_is_a_SearchBox_and_every_other_field_the_one_field()
+    {
+        Regex byHand = new(@"\bStyleClasses\.Search\b|Classes=""[^""]*\bsearch\b");
+        string[] owners = ["/SearchBox.cs", "/Editors/FindBar.axaml"];
+        string[] found = [.. UiFiles().Where(f => !owners.Any(o => f.Path.EndsWith(o, StringComparison.Ordinal)))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} fields are given the search class by hand, so a search stands without its magnifier or name, "
+            + $"or a form's field at a search's size: make a search a SearchBox (SearchBox.InPopup in a popup that is a search), and leave any other "
+            + $"field the base TextBox's:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = \"Search packages\" };");
+        Assert.Matches(byHand, "            <TextBox Name=\"Query\" Classes=\"search\" />");
+    }
+
+    /// <summary>Every tool window's drop-down is a ToolDropDown: a bar's, a popup's scope, a value chosen in a row, each at
+    /// the dense step, one height and one least width, named where words stand before it. One given the compact class by
+    /// hand, or a plain drop-down made in a tool window's or a pane's file (but a table's cell, a form's FormDropDown and
+    /// Settings' theme picker, which narrows as a Settings row does), fails here, naming its line.</summary>
+    [Fact]
+    public void Every_tool_windows_drop_down_is_a_ToolDropDown()
+    {
+        Regex made = new(@"\b(?:(\w+)\s*=\s*new\s+ComboBox\b|ComboBox\s+(\w+)\s*(?:\{\s*get;\s*\}\s*)?=\s*new\s*\(\s*\))\s*\{?");
+        string[] apart = ["/Settings/ThemePicker.cs"];
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            bool form = path.EndsWith("Dialog.cs", StringComparison.Ordinal) || path.EndsWith("Dialogs.cs", StringComparison.Ordinal) || apart.Any(a => path.EndsWith(a, StringComparison.Ordinal));
+            foreach (Match match in made.Matches(text))
+            {
+                string name = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+                string own = match.Value.EndsWith('{') ? Whole(text, match.Index + match.Length) : string.Empty;
+                if (own.Contains("StyleClasses.Compact", StringComparison.Ordinal) || !form && !own.Contains("StyleClasses.Cell", StringComparison.Ordinal))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}: {name}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} tool windows' drop-downs are made by hand, so they stand at a size, height or width of their own "
+            + $"beside the search field and buttons of their bar: make each a ToolDropDown (ToolDropDown.Labelled for words before it):\n{string.Join("\n", found)}");
+        Assert.Matches(made, "        chooser = new ComboBox { Classes = { StyleClasses.Compact }, MinWidth = 130 };");
+        Assert.Matches(made, "    public ComboBox OrderBox { get; } = new() { Width = 120 };");
+        Assert.DoesNotMatch(made, "        ComboBox chooser = new ToolDropDown { Name = name };");
+    }
+
+    /// <summary>A value typed over in its row is a ValueField, one height and one look in the debugger's values, the Live
+    /// Visual Tree's and a Godot scene's properties: the in-row class given anywhere but ValueField fails here, naming its
+    /// line, as does code shown through the code font alone, which stands at the body's size, a third size of code beside
+    /// the editor's and a pane's: code takes the code step (StyleClasses.Code), and InCodeFont only a run in running text or
+    /// an element given its step (a badge's letters, TypeRamp.Code).</summary>
+    [Fact]
+    public void A_value_typed_in_its_row_is_a_ValueField_and_code_shown_takes_the_code_step()
+    {
+        Regex inRow = new(@"\bStyleClasses\.InRow\b");
+        string[] typed = [.. UiFiles().Where(f => !f.Path.EndsWith("/ValueField.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => inRow.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(typed.Length == 0, $"{typed.Length} values are typed over in a row of their own making: make each a ValueField:\n{string.Join("\n", typed)}");
+
+        Regex codeFont = new(@"\.InCodeFont\(\)|\bFontFamily\s*=\s*[\w.]*\bCodeFont\b");
+        Regex stepped = new(@"\bStyleClasses\.BadgeText\b|\bTypeRamp\.\w+|^\s*run\.InCodeFont\(\)");
+        string[] alone = [.. UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => codeFont.IsMatch(l.Text) && !stepped.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(alone.Length == 0, $"{alone.Length} places show code in the code font at the body's size, a third size of code: give each "
+            + $"StyleClasses.Code:\n{string.Join("\n", alone)}");
+        Assert.Matches(codeFont, "        TextBlock code = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();");
+        Assert.Matches(codeFont, "        FontFamily = Passenger.Editor.CodeEditor.CodeFont,");
+        Assert.Matches(stepped, "        TextBlock text = new TextBlock { Classes = { StyleClasses.BadgeText }, Text = method }.InCodeFont();");
     }
 
     /// <summary>A dialog opens at one of the widths <see cref="DialogWidths"/> gives a kind of dialog, so a form is one width

@@ -19,7 +19,7 @@ public sealed class AppHostPublishDialog : IdeWindow
     private readonly string project;
     private readonly string open;
     private readonly IReadOnlyList<string> configured;
-    private readonly TextBox folderBox = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox folderBox = new();
     private readonly ComboBox stepBox = new FormDropDown();
     private readonly TextBlock stepSaid = FormRows.Note();
     private readonly TextBlock destination = FormRows.Note(path: true);

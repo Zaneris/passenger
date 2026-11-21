@@ -23,7 +23,7 @@ public sealed class StepLibraryView : DockPanel
 
     private readonly ListBox list;
     private readonly EmptyState empty;
-    private readonly TextBox filter = FilterBox.Of();
+    private readonly TextBox filter = SearchBox.Finding("Filter steps");
     private readonly FilterMenu filters;
     private IReadOnlyList<LibraryStep> steps = [];
     private IReadOnlyList<StepHook> hooks = [];

@@ -66,7 +66,9 @@ public sealed class WelcomeView : UserControl
         };
 
         TextBlock recent = new() { Classes = { StyleClasses.WelcomeSection }, Text = "Recent solutions", VerticalAlignment = VerticalAlignment.Center };
-        search = new TextBox { Classes = { StyleClasses.Search, StyleClasses.WelcomeSearch }, PlaceholderText = "Search recent solutions", [Grid.ColumnProperty] = 1 };
+        search = SearchBox.Of("Search recent solutions");
+        search.Classes.Add(StyleClasses.WelcomeSearch);
+        Grid.SetColumn(search, 1);
         search.TextChanged += (_, _) => Filter();
         Grid bar = new() { Classes = { StyleClasses.WelcomeRecentBar }, ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { recent, search } };
 

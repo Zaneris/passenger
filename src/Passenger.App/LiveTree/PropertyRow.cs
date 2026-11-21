@@ -39,7 +39,7 @@ public sealed class PropertyRow : Grid
     public TextBlock Value { get; } = new() { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
 
     /// <summary>The box the value is typed over in, hidden until it is.</summary>
-    public TextBox Box { get; } = new() { Classes = { StyleClasses.Code }, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
+    public TextBox Box { get; } = new ValueField { IsVisible = false };
 
     /// <summary>Where the value comes from, muted under the name and value.</summary>
     public TextBlock Source { get; } = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };

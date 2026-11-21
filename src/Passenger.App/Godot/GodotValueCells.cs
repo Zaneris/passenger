@@ -266,7 +266,7 @@ internal sealed class GodotValueCell : LiveValueCell
     {
         if (choice is null)
         {
-            choice = Add(new ComboBox { Classes = { StyleClasses.Compact }, HorizontalAlignment = HorizontalAlignment.Stretch, MaxDropDownHeight = 320 });
+            choice = Add(new ToolDropDown { HorizontalAlignment = HorizontalAlignment.Stretch, MaxDropDownHeight = 320 });
             ReusedRows.Use(choice, () =>
             {
                 TextBlock row = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };

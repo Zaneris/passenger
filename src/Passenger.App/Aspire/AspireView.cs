@@ -64,7 +64,7 @@ public sealed class AspireView : DockPanel, IDisposable
     public AspireView(AspireModel model)
     {
         this.model = model;
-        AppSelector = new ComboBox { MaxWidth = 300, MinWidth = 200, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
+        AppSelector = new ToolDropDown("No AppHost running") { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         AutomationProperties.SetName(AppSelector, "Aspire AppHost");
         ToolTip.SetTip(AppSelector, "Running AppHost (every request uses its absolute project path)");
         ToolFlow bar = RunWindowFrame.Tools(AppSelector);

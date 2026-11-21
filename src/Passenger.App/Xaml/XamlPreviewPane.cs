@@ -68,10 +68,9 @@ public sealed class XamlPreviewPane : DockPanel
         this.preview = preview;
         this.titleOf = titleOf;
         status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        sizes = new ComboBox
+        sizes = new ToolDropDown
         {
             [DockProperty] = Dock.Right,
-            Classes = { StyleClasses.Compact },
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(Gaps.Wide, 0, 0, 0),
             IsVisible = false,
@@ -275,9 +274,8 @@ public sealed class XamlPreviewPane : DockPanel
     /// <summary>A chooser of what a MAUI page is drawn as.</summary>
     private static ComboBox Chooser(string[] items, string tip)
     {
-        ComboBox chooser = new()
+        ComboBox chooser = new ToolDropDown
         {
-            Classes = { StyleClasses.Compact },
             VerticalAlignment = VerticalAlignment.Center,
             ItemsSource = items,
         };

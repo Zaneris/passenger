@@ -37,7 +37,8 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
     {
         Width = width;
         this.title = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title, VerticalAlignment = VerticalAlignment.Center };
-        query = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = placeholder, Text = initialQuery ?? string.Empty };
+        query = SearchBox.InPopup(title, placeholder);
+        query.Text = initialQuery ?? string.Empty;
         results = new ListBox
         {
             Classes = { StyleClasses.Tree },
@@ -88,11 +89,15 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         set => query.Text = value;
     }
 
-    /// <summary>What the popup is called over its query.</summary>
+    /// <summary>What the popup is called over its query, and the query's name.</summary>
     public string Title
     {
         get => title.Text ?? string.Empty;
-        protected set => title.Text = value;
+        protected set
+        {
+            title.Text = value;
+            Avalonia.Automation.AutomationProperties.SetName(query, value);
+        }
     }
 
     /// <summary>Whether the popup's switch is on; false for a popup without one.</summary>

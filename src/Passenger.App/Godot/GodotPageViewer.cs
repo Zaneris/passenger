@@ -313,7 +313,7 @@ public sealed class GodotPageViewer
     /// <summary>The rows that add an action by the name typed, and an event chosen to an action chosen.</summary>
     private IEnumerable<Control> ActionMaking(GodotPageFacts facts)
     {
-        TextBox named = new() { Name = NewActionName, PlaceholderText = "New action's name" };
+        TextBox named = new() { Name = NewActionName, PlaceholderText = "New action's name", [Avalonia.Automation.AutomationProperties.NameProperty] = "New action's name" };
         yield return Row(named, null, Link(AddActionWords, () => Ask(facts.Folder, GodotPageEdits.AddAction(named.Text ?? string.Empty))));
         if (facts.Actions.Count == 0)
         {
@@ -344,7 +344,7 @@ public sealed class GodotPageViewer
                 numbers.SelectedIndex = 0;
             }
         };
-        TextBox named = new() { Name = LayerNameName, PlaceholderText = "Layer's name", MinWidth = 180 };
+        TextBox named = new() { Name = LayerNameName, PlaceholderText = "Layer's name", MinWidth = 180, [Avalonia.Automation.AutomationProperties.NameProperty] = "Layer's name" };
         return Row(kinds, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Normal, Children = { numbers, named } }, Link(NameLayerWords, () =>
         {
             if (kinds.SelectedItem is string kind && numbers.SelectedItem is string number)
@@ -360,7 +360,7 @@ public sealed class GodotPageViewer
     private static ComboBox Choice<T>(string name, IReadOnlyList<T> items, T? chosen, Func<T, string> shown)
         where T : class
     {
-        ComboBox box = new() { Classes = { StyleClasses.Compact }, Name = name, MaxDropDownHeight = 320 };
+        ComboBox box = new ToolDropDown { Name = name, MaxDropDownHeight = 320 };
         ReusedRows.Use(box, () =>
         {
             TextBlock row = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };

@@ -64,7 +64,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     {
         RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock place = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Wide, 0) };
-        TextBlock code = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }.InCodeFont();
+        TextBlock code = new() { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock kind = ListRow.DetailText();
         DockPanel row = new() { Height = ListRow.Height, Margin = ListRow.Inset };
         DockPanel.SetDock(icon, Dock.Left);

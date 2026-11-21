@@ -192,7 +192,7 @@ public sealed class BreakpointProperties : UserControl
         }
     }
 
-    private static TextBox Field(string watermark) => new() { Classes = { StyleClasses.Search }, PlaceholderText = watermark, MinWidth = 280 };
+    private static TextBox Field(string watermark) => new() { PlaceholderText = watermark, MinWidth = 280 };
 
     private static StackPanel Row(params Control[] controls)
     {
@@ -283,7 +283,7 @@ public sealed class BreakpointsWindow : UserControl
     private readonly Button removeTool = ToolButtons.Of(IconKeys.Minimize, "Remove");
     private readonly StackPanel chosenPane;
     private readonly StackPanel addPane;
-    private readonly TextBox typed = new() { Classes = { StyleClasses.Search }, PlaceholderText = "An exception type: InvalidOperationException" };
+    private readonly TextBox typed = SearchBox.Of("Search exception types", "An exception type: InvalidOperationException");
     private readonly ListBox found = new() { Classes = { StyleClasses.Tree }, Height = 210 };
     private IReadOnlyList<string> known = [];
 

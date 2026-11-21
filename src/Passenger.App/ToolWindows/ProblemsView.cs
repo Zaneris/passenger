@@ -39,8 +39,7 @@ public sealed class ProblemsView : DockPanel
         }
         tabs.Chosen += (_, tab) => model.Shown = tab;
         bar.Children.Add(tabs);
-        search = FilterBox.Of();
-        ToolFlow.SetFills(search, new ToolLayout.Fills(160, 200));
+        search = SearchBox.Finding("Filter problems");
         search.Text = model.Filter.Text;
         search.TextChanged += (_, _) => model.Filter = model.Filter with { Text = (search.Text ?? string.Empty).Trim() };
         search.KeyDown += OnSearchKey;

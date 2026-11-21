@@ -131,7 +131,8 @@ public sealed class BranchesPanel : DockPanel
             }
         };
         ListMenus.Attach(list, () => Selected is { Branch: { } branch } ? Menu(branch) : []);
-        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Branch or tag", Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center };
+        search = SearchBox.Of("Filter branches and tags");
+        search.Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0);
         search.TextChanged += (_, _) => Show();
         newBranch = ToolButtons.Of(IconKeys.Add, "New Branch…", () => Request(NewBranchRequested, WhyNotFrom));
         update = ToolButtons.Of(IconKeys.Update, "Update Selected", () =>

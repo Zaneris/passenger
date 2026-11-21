@@ -12,7 +12,7 @@ public sealed class OpenApiDocumentDialog : IdeWindow
 
     public OpenApiDocumentDialog(string project, string? named)
     {
-        Address = new TextBox { Name = "OpenApiDocument", Classes = { StyleClasses.Search }, Text = named ?? string.Empty, PlaceholderText = OpenApiSources.Defaults[0] };
+        Address = new TextBox { Name = "OpenApiDocument", Text = named ?? string.Empty, PlaceholderText = OpenApiSources.Defaults[0] };
         Ok = DialogFooter.Default();
         Ok.Click += (_, _) => Accept();
         Button cancel = DialogFooter.Cancel(() => Close(false));

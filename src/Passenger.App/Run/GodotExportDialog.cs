@@ -39,7 +39,7 @@ public sealed class GodotExportDialog : IdeWindow
     private readonly Action<Uri> browse;
     private readonly ComboBox presetBox = new FormDropDown();
     private readonly ComboBox kindBox = new FormDropDown { ItemsSource = new[] { Release, Debug }, SelectedIndex = 0 };
-    private readonly TextBox pathBox = new() { Classes = { StyleClasses.Search } };
+    private readonly TextBox pathBox = new();
     private readonly TextBlock destination = FormRows.Note(path: true);
     private readonly TextBlock platform = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock templates = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };

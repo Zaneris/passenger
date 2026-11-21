@@ -76,7 +76,7 @@ public sealed class TemplateOptions
                     row = Row(label, choices, said);
                     break;
                 default:
-                    TextBox text = new() { Classes = { StyleClasses.Search }, Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
+                    TextBox text = new() { Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
                     text.TextChanged += (_, _) => Set(option, text.Text ?? string.Empty);
                     editor = text;
                     row = Row(label, text, said);

@@ -36,7 +36,7 @@ public sealed class CommitSigningDialog : IdeWindow
         ssh = Radio("format", "SSH key", !configured || setup.Format is SigningFormat.Ssh);
         gpg = Radio("format", "GPG key", configured && setup.Format is SigningFormat.OpenPgp);
         x509 = Radio("format", "X.509 certificate", configured && setup.Format is SigningFormat.X509);
-        key = new TextBox { Name = "SigningKey", Classes = { StyleClasses.Search }, Text = setup.Key ?? string.Empty };
+        key = new TextBox { Name = "SigningKey", Text = setup.Key ?? string.Empty };
         found = new WrapPanel { ItemSpacing = Gaps.Wide, Margin = new Thickness(0, Gaps.Small, 0, 0) };
         foundNone = MutedText.Of(string.Empty);
         foundNone.TextWrapping = TextWrapping.Wrap;

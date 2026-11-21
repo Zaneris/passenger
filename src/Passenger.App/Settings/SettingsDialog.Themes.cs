@@ -27,7 +27,7 @@ public sealed partial class SettingsDialog
     /// <summary>Where a source to add is written.</summary>
     public TextBox ThemeSourceBox { get; } = new()
     {
-        Classes = { StyleClasses.Search }, PlaceholderText = "A folder, owner/repository or https:// address",
+        PlaceholderText = "A folder, owner/repository or https:// address",
     };
 
     public Button AddThemeSourceButton { get; } = new() { Content = "Add" };

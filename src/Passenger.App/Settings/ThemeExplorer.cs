@@ -37,7 +37,6 @@ public sealed class ThemeExplorer : StackPanel
         this.change = change;
         this.chosen = chosen;
         Spacing = Gaps.Small;
-        AutomationProperties.SetName(SearchBox, "Search VS Code themes");
         AutomationProperties.SetName(OrderBox, "Order of VS Code themes");
         AutomationProperties.SetName(List, "VS Code themes");
         OrderBox.ItemsSource = Orders;
@@ -98,13 +97,10 @@ public sealed class ThemeExplorer : StackPanel
     public Button OpenButton { get; } = new() { Content = "Browse VS Code Themes", Name = "BrowseVsCodeThemes" };
 
     /// <summary>The words searched for: a theme's or extension's name, its publisher, or words it is described by.</summary>
-    public TextBox SearchBox { get; } = new()
-    {
-        Classes = { StyleClasses.Search }, PlaceholderText = "Name, publisher or words", Width = 260,
-    };
+    public TextBox SearchBox { get; } = Passenger.App.SearchBox.Of("Search VS Code themes", "Search by name, publisher or words");
 
     /// <summary>The order the themes are listed in.</summary>
-    public ComboBox OrderBox { get; } = new() { Width = 120 };
+    public ComboBox OrderBox { get; } = new ToolDropDown();
 
     /// <summary>The colour themes found, one row each.</summary>
     public ListBox List { get; } = new() { Classes = { StyleClasses.Tree }, Height = 240 };

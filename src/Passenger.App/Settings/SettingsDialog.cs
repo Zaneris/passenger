@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.ToolWindows;
@@ -131,7 +132,8 @@ public sealed partial class SettingsDialog : IdeWindow
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         AddOptions(agents ?? Mcp.AgentSetup.Here(null, current.TerminalShell));
-        search = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Search settings", Margin = new Thickness(PagesInset.Left, PagesInset.Top, PagesInset.Right, Gaps.Small) };
+        search = SearchBox.Of("Search settings");
+        search.Margin = new Thickness(PagesInset.Left, PagesInset.Top, PagesInset.Right, Gaps.Small);
         search.TextChanged += (_, _) => Filter();
         pages = new ListBox { Classes = { StyleClasses.Tree, StyleClasses.Pages }, Padding = new Thickness(PagesInset.Left, 0) };
         pages.SelectionChanged += (_, _) => ShowPage();
@@ -337,7 +339,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SolutionWideAnalysis);
         Add(Declared.ParameterHints);
         Add(Declared.TypeHints);
-        TextBox masks = new() { Classes = { StyleClasses.Search }, Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
+        TextBox masks = new() { Text = Working.SoftWrapFiles, PlaceholderText = "No files", IsEnabled = Working.SoftWrap };
         ToolTip.SetTip(masks, "Use * and ? as wildcards and ; to separate patterns");
         masks.TextChanged += (_, _) => Change(s => s with { SoftWrapFiles = masks.Text ?? string.Empty });
         CheckBox wrapFiles = Check(Working.SoftWrap, v =>
@@ -401,7 +403,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.Browser);
 
         string? onPath = Passenger.Core.Programs.Node();
-        TextBox node = new() { Classes = { StyleClasses.Search }, Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
+        TextBox node = new() { Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
         node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
         Add(NodePage, "Node interpreter", node, "node nodejs interpreter javascript typescript html css json language server npm path",
             "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on. Empty, it is the first on the PATH, "
@@ -551,6 +553,11 @@ public sealed partial class SettingsDialog : IdeWindow
             TextWrapping = TextWrapping.Wrap,
         };
         AutomationProperties.SetLabeledBy(editor, name);
+        // The one field of an editor of several parts (a check box before it, its problem under it) is heard by the row's words.
+        if (editor is not TextBox && editor.GetLogicalDescendants().OfType<TextBox>().ToList() is [{ } field] && AutomationProperties.GetName(field) is null or "")
+        {
+            AutomationProperties.SetLabeledBy(field, name);
+        }
         TextBlock? said = note is null ? null : new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
         TextBlock? setOver = null;
         if (over is not null)

@@ -1169,7 +1169,7 @@ public partial class MainWindow : IdeWindow
             Debugging.LineBreakpoint? inside = session.Debug.OnLambda(document, lambda);
             MenuItem choice = Choice(name, inside is not null, () => session.Debug.ToggleLambda(document, lambda));
             // Its code as the editor draws it.
-            choice.InCodeFont();
+            choice.Classes.Add(StyleClasses.Code);
             choice.FontFeatures = CSharp.Fonts.Features(settings.Ligatures);
             items.Add(choice);
             if (inside is not null)

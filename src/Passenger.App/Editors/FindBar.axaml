@@ -11,7 +11,7 @@
         <StackPanel Spacing="{x:Static app:Gaps.Small}">
             <Panel Name="QueryRow">
                 <Panel Name="QueryRoom">
-                    <TextBox Name="Query" Classes="search" PlaceholderText="Find" Padding="{x:Static editors:FindBar.QueryPadding}" />
+                    <TextBox Name="Query" Classes="search" PlaceholderText="Find" AutomationProperties.Name="Find" Padding="{x:Static editors:FindBar.QueryPadding}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="{x:Static editors:FindBar.OptionsMargin}" Spacing="{x:Static app:Gaps.Hair}">
                         <!-- Each made an option, its look, mark, tip and key, by OptionToggles. -->
                         <ToggleButton Name="MatchCase" />
@@ -33,7 +33,7 @@
                 </Button>
             </Panel>
             <Panel Name="ReplaceRow" IsVisible="False">
-                <TextBox Name="ReplaceWith" Classes="search" PlaceholderText="Replace" />
+                <TextBox Name="ReplaceWith" Classes="search" PlaceholderText="Replace" AutomationProperties.Name="Replace" />
                 <StackPanel Name="ReplaceButtons" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Small}">
                     <Button Name="ReplaceButton" Content="Replace" />
                     <Button Name="ReplaceAllButton" Content="Replace All" />

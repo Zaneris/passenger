@@ -49,7 +49,7 @@ public sealed class ColourPicker : Border, CSharp.IHeldToEditor, CSharp.IHeardPo
         after = new Border { Width = 28, Height = 28 };
         before.Bind(Border.CornerRadiusProperty, before.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(c.TopLeft, 0, 0, c.BottomLeft) : default(CornerRadius)));
         after.Bind(Border.CornerRadiusProperty, after.GetResourceObservable(TokenKeys.ControlRadius, r => r is CornerRadius c ? new CornerRadius(0, c.TopRight, c.BottomRight, 0) : default(CornerRadius)));
-        hex = new TextBox { Classes = { StyleClasses.Search }, [AutomationProperties.NameProperty] = "Hex" }.InCodeFont();
+        hex = new TextBox { Classes = { StyleClasses.Code }, [AutomationProperties.NameProperty] = "Hex" };
         Button choose = new() { Content = "Choose", Classes = { StyleClasses.Primary }, IsDefault = chooses, IsEnabled = chooses };
         ToolTip.SetTip(choose, unchangeable);
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);

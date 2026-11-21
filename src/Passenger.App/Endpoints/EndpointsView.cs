@@ -89,13 +89,12 @@ public sealed class EndpointsView : DockPanel
         ]);
         placeholder = new EmptyState { Text = "No requests: add an .http file (GET https://…)" };
 
-        environments = new ComboBox { MinWidth = 140, VerticalAlignment = VerticalAlignment.Center };
+        environments = new ToolDropDown("None") { VerticalAlignment = VerticalAlignment.Center };
         environments.SelectionChanged += (_, _) => EnvironmentChanged?.Invoke(this, EventArgs.Empty);
         ToolTip.SetTip(environments, $"The environment of {HttpVariables.PublicFile} whose variables the requests use");
         Button refresh = ToolButtons.Of(AppActions.EndpointsRefresh, IconKeys.Rerun, "Read the .http files again", action => ActionRequested?.Invoke(this, action));
-        TextBlock label = new() { Text = "Environment", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
         // The shared bar, whose parts take a row of their own where the window is too narrow for them, never running past it.
-        Children.Add(ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Tight, Children = { label, environments, refresh } }));
+        Children.Add(ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Spacing = Gaps.Tight, Children = { ToolDropDown.Labelled("Environment", environments), refresh } }));
 
         Grid panes = new() { RowDefinitions = new RowDefinitions("*,1,*") };
         Panel top = new() { Children = { list, placeholder } };

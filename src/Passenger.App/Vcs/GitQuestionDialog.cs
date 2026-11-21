@@ -23,11 +23,11 @@ public sealed class GitQuestionDialog : IdeWindow
         bool yesNo = question.Kind == GitQuestionKind.YesNo;
         if (question.Kind == GitQuestionKind.User)
         {
-            user = new TextBox { Name = "GitUser", Classes = { StyleClasses.Search } };
+            user = new TextBox { Name = "GitUser" };
         }
         if (!yesNo)
         {
-            secret = new TextBox { Name = "GitSecret", Classes = { StyleClasses.Search }, PasswordChar = '•' };
+            secret = new TextBox { Name = "GitSecret", PasswordChar = '•' };
         }
         StackPanel fields = new() { Spacing = FormRows.Between };
         if (user is not null)

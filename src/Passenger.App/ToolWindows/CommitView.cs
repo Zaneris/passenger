@@ -274,19 +274,18 @@ public sealed class CommitView : DockPanel, IOwnKeys
         unsigned.Classes.Add(StyleClasses.Error);
         movesFirst = new CheckBox { Content = MovesFirstTitle, IsChecked = true };
         movesSaid = MutedText.Wrapped(string.Empty);
-        movesMessage = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Message of the moves' commit" };
+        movesMessage = new TextBox { PlaceholderText = "Message of the moves' commit", [Avalonia.Automation.AutomationProperties.NameProperty] = "Message of the moves' commit" };
         movesFirst.IsCheckedChanged += (_, _) => movesMessage.IsEnabled = movesFirst.IsChecked == true;
         movesOffer = new StackPanel { Margin = new Thickness(ListRow.TextStart, Gaps.Small, ListRow.TextStart, 0), Spacing = Gaps.Tight, IsVisible = false, Children = { movesSaid, movesFirst, movesMessage } };
         message = new TextBox
         {
-            Classes = { StyleClasses.Search },
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             PlaceholderText = "Commit Message",
+            [Avalonia.Automation.AutomationProperties.NameProperty] = "Commit message",
             MinHeight = 90,
             MaxHeight = 220,
             Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, Gaps.Normal),
-            VerticalContentAlignment = VerticalAlignment.Top,
         };
         message.TextChanged += (_, _) => UpdateButtons();
         // Ctrl+Enter (Cmd+Enter on the Mac) commits, seen as it tunnels: the box takes any Enter as a new line first.

@@ -114,6 +114,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         details = new TextBox
         {
+            [Avalonia.Automation.AutomationProperties.NameProperty] = "Commit details",
             IsReadOnly = true,
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
@@ -125,8 +126,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         placeholder = new EmptyState();
         placeholder.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
 
-        filter = new TextBox { Classes = { StyleClasses.Search }, PlaceholderText = "Text or hash", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        ToolFlow.SetFills(filter, new ToolLayout.Fills(120, 246));
+        filter = SearchBox.Of("Filter commits");
+        filter.Margin = new Thickness(0, 0, Gaps.Small, 0);
+        ToolTip.SetTip(filter, "Commits whose message, author or branch holds the words, or whose hash starts with them");
         filter.TextChanged += (_, _) => Filter();
         Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.

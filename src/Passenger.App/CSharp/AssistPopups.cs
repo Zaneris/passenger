@@ -700,7 +700,7 @@ internal sealed class ChoicePopup : Border, IHeardPopup
     /// font for code.</summary>
     private static Control ChoiceRow(bool numbered)
     {
-        TextBlock digit = new TextBlock { Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0), [DockPanel.DockProperty] = Dock.Left }.InCodeFont();
+        TextBlock digit = new() { Classes = { StyleClasses.Code }, Width = 10, IsVisible = numbered, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Normal, 0), [DockPanel.DockProperty] = Dock.Left };
         TextBlock text = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock detail = ListRow.DetailText();
         detail.MaxWidth = 460;
@@ -753,7 +753,7 @@ internal sealed class RenameBox : Border, IHeardPopup
         Called = caption;
         Classes.Add(StyleClasses.Popup);
         Padding = new Thickness(Gaps.Normal, Gaps.Small);
-        name = new TextBox { Text = current, Classes = { StyleClasses.Search }, MinWidth = 220 }.InCodeFont();
+        name = new TextBox { Classes = { StyleClasses.Code }, Text = current, MinWidth = 220 };
         TextBlock captioned = new() { Text = caption, Classes = { StyleClasses.PaneTitle } };
         AutomationProperties.SetLabeledBy(name, captioned);
         body = new StackPanel

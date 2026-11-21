@@ -171,5 +171,5 @@ public sealed class PostfixTemplatesPane : ListPane
         });
     }
 
-    private static TextBox Code() => new TextBox { IsReadOnly = true, Classes = { StyleClasses.Search, StyleClasses.Code }, Focusable = false };
+    private static TextBox Code() => new TextBox { IsReadOnly = true, Classes = { StyleClasses.Code }, Focusable = false };
 }

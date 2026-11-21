@@ -112,5 +112,5 @@ public abstract class RefactoringDialog : IdeWindow
     /// <summary>A label and what it names, a form's row (<see cref="FormRows"/>), the label at the top of a tall field.</summary>
     protected static Control Row(string? label, Control editor, bool top = false) => FormRows.Of(label, editor, top);
 
-    protected static TextBox Field(string text) => new() { Classes = { StyleClasses.Search }, Text = text };
+    protected static TextBox Field(string text) => new() { Text = text };
 }

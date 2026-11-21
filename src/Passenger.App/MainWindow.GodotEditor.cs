@@ -199,11 +199,11 @@ public partial class MainWindow
     /// <summary>Lines a person can select and copy, under a question.</summary>
     private static TextBox Copyable(string text) => new()
     {
+        Classes = { StyleClasses.Code },
         Text = text,
         IsReadOnly = true,
         AcceptsReturn = true,
         TextWrapping = Avalonia.Media.TextWrapping.NoWrap,
-        FontFamily = Passenger.Editor.CodeEditor.CodeFont,
         MaxHeight = 220,
     };
 

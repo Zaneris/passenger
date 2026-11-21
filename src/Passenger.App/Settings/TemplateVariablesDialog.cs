@@ -35,7 +35,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         up.Click += (_, _) => Move(-1);
         down.Click += (_, _) => Move(1);
         names.SelectionChanged += (_, _) => ShowChosen();
-        ParameterBox = new TextBox { Classes = { StyleClasses.Search } };
+        ParameterBox = new TextBox();
         ParameterBox.TextChanged += (_, _) => Edit(v => v with { Parameter = ParameterBox.Text ?? string.Empty });
         EditableBox = new CheckBox { Content = "Editable" };
         EditableBox.IsCheckedChanged += (_, _) => Edit(v => v with { Editable = EditableBox.IsChecked == true });

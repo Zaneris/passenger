@@ -36,7 +36,7 @@ public sealed partial class NuGetView
     private readonly TextBox projectSearch;
     private readonly FilterMenu projectFilters;
     private readonly TextBlock projectCount = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
-    private readonly StackPanel projectsHeader;
+    private readonly ToolFlow projectsHeader;
     private ProjectOrder projectOrder;
     private ProjectsShown projectsShown;
     private PackageRow? projectsOf;
@@ -70,16 +70,16 @@ public sealed partial class NuGetView
     /// <summary>The names of the chosen package's projects as the pane lists them, in its order.</summary>
     public IReadOnlyList<string> ProjectNames => [.. ProjectLines.Select(l => l.Children.OfType<TextBlock>().FirstOrDefault()?.Text).OfType<string>()];
 
-    private (TextBox Search, FilterMenu Filters, StackPanel Header) MakeProjectsHeader()
+    private (TextBox Search, FilterMenu Filters, ToolFlow Header) MakeProjectsHeader()
     {
-        TextBox typed = new() { Classes = { StyleClasses.Search }, PlaceholderText = "Filter projects", MinWidth = 180, Margin = new Thickness(Gaps.Wide, 0, Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center };
+        TextBox typed = SearchBox.Of("Filter projects");
+        typed.Margin = new Thickness(Gaps.Wide, 0, Gaps.Tight, 0);
         typed.TextChanged += (_, _) => ShowProjectsAgain();
         FilterMenu menu = new("Sort and Filter Projects", ProjectFilterItems);
         menu.Inside(typed);
         projectCount.Classes.Add(StyleClasses.Muted);
-        StackPanel header = new()
+        ToolFlow header = new()
         {
-            Orientation = Orientation.Horizontal,
             Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = "Projects", VerticalAlignment = VerticalAlignment.Center }, projectCount, typed },
         };
         return (typed, menu, header);

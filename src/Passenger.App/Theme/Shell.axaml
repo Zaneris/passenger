@@ -374,13 +374,39 @@
     </Style>
     <!-- Selected text readable in both themes: Fluent's is the system's saturated blue, under black text in light. -->
     <!-- A field's caret blinks as every caret does (Carets), never where the system keeps carets shown. -->
-    <!-- Every field's words start where a search field's do (SearchFields), a drop-down's and a number box's too. -->
+    <!-- Every field one look, a form's, a search's and a tool window's alike: as tall as the buttons and drop-downs beside it
+         (Fluent's is taller), its words a step in from its edge where a drop-down's and a number box's start (FieldInsets),
+         its own height in a row beside something taller (a check box) rather than stretched to that one's. -->
     <Style Selector="TextBox">
-        <Setter Property="Padding" Value="{x:Static app:SearchFields.Padding}" />
+        <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
+        <Setter Property="Padding" Value="{x:Static app:FieldInsets.Padding}" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="SelectionBrush" Value="{DynamicResource Passenger.TextSelection}" />
         <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Passenger.Text}" />
         <Setter Property="CaretBlinkInterval" Value="{DynamicResource Passenger.TextBoxCaretBlink}" />
+    </Style>
+    <!-- A field of several lines starts its text at its top, not halfway down, and fills the room it is given. -->
+    <Style Selector="TextBox[AcceptsReturn=True]">
+        <Setter Property="VerticalContentAlignment" Value="Top" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="TextBox /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Field}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
+    </Style>
+    <!-- A focused field keeps its own ground (Fluent turns it black, white in light) and gains the accent edge. After the
+         field's own edge, which would otherwise win and leave the focused field's edge grey. -->
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Field}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
+    </Style>
+    <Style Selector="TextBox:focus">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <!-- A field's placeholder, narrower than it, ends in an ellipsis rather than being cut at its edge: while the field is
          empty its text scrolls no way, so the placeholder, which lies in what scrolls, is laid out in the field's room. -->
@@ -396,7 +422,7 @@
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <!-- The chosen item's words, narrower than they are, end in an ellipsis rather than being cut at the arrow. -->
         <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
-        <Setter Property="Padding" Value="{x:Static app:SearchFields.DropDown}" />
+        <Setter Property="Padding" Value="{x:Static app:FieldInsets.DropDown}" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -431,14 +457,14 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
     </Style>
-    <Style Selector="TextBox.search:disabled /template/ Border#PART_BorderElement">
+    <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
     </Style>
     <!-- A number box likewise, its own height beside something taller; its text box no taller than the box. -->
     <Style Selector="NumericUpDown">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
-        <Setter Property="Padding" Value="{x:Static app:SearchFields.Padding}" />
+        <Setter Property="Padding" Value="{x:Static app:FieldInsets.Padding}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
@@ -448,6 +474,7 @@
     </Style>
     <Style Selector="NumericUpDown /template/ TextBox#PART_TextBox">
         <Setter Property="MinHeight" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
     <!-- The number's text box is part of the one box: no frame or ground of its own when focused, under the pointer or
          disabled (Fluent draws a second, brighter frame round the number alone), the box's frame taking the accent while
@@ -909,10 +936,10 @@
     <Style Selector="ListBox.tree ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.RowSelected}" />
     </Style>
-    <!-- Settings' pages under its search field: a page's name where the field's text starts (the band as wide as the field
-         is SettingsDialog's). -->
+    <!-- Settings' pages under its search field: a page's name in line with the field's magnifier (the band as wide as the
+         field is SettingsDialog's). -->
     <Style Selector="ListBox.pages ListBoxItem">
-        <Setter Property="Padding" Value="{x:Static app:SearchFields.InLine}" />
+        <Setter Property="Padding" Value="{x:Static app:FieldInsets.InLine}" />
     </Style>
     <!-- A framed list's chosen row clear of the frame's top and foot. -->
     <Style Selector="Border.framed > ListBox.tree">
@@ -1024,37 +1051,10 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.Selected}" />
     </Style>
 
-    <!-- A search field (the find bar, Go to File): flat, the chrome's own colour, an accent edge when
-         focused, and room at its right for toggles drawn inside it. -->
+    <!-- A search field (SearchBox: a tool window's filter, a dialog's search, the find bar, Go to File): a field whose words
+         stand at the step of a tool window's dense controls. -->
     <Style Selector="TextBox.search">
-        <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
-        <!-- Fluent's padding would make it a pixel taller than the buttons and drop-downs beside it. -->
-        <Setter Property="Padding" Value="{x:Static app:SearchFields.Padding}" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
-        <!-- Its own height in a row beside something taller (a check box), not stretched to that one's. -->
-        <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="FontSize" Value="13" />
-    </Style>
-    <!-- A field of several lines starts its text at its top, not halfway down. -->
-    <Style Selector="TextBox.search[AcceptsReturn=True]">
-        <Setter Property="VerticalContentAlignment" Value="Top" />
-        <Setter Property="VerticalAlignment" Value="Stretch" />
-    </Style>
-    <Style Selector="TextBox.search /template/ Border#PART_BorderElement">
-        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
-    </Style>
-    <Style Selector="TextBox.search:pointerover /template/ Border#PART_BorderElement">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Field}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
-    </Style>
-    <!-- A focused search field keeps its own ground (Fluent turns it black, white in light) and gains the accent edge.
-         After the field's own edge, which would otherwise win and leave the focused field's edge grey. -->
-    <Style Selector="TextBox.search:focus /template/ Border#PART_BorderElement">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Field}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Passenger.Accent}" />
-    </Style>
-    <Style Selector="TextBox.search:focus">
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <!-- A table's editable cell (Change Signature's parameters): flat on the row's own colour, an accent line under it
          while it has the keys. -->
@@ -1079,6 +1079,13 @@
     </Style>
     <Style Selector="TextBox.cell:focus">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <!-- A value typed over in its row (ValueField): inside the row's height, its words a step in from its edge. -->
+    <Style Selector="TextBox.inRow">
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Height" Value="{x:Static app:ValueField.Tall}" />
+        <Setter Property="Padding" Value="6,0" />
     </Style>
     <!-- A table's drop-down cell (a parameter's modifier): flat as the text cells beside it until the pointer is over it. -->
     <Style Selector="ComboBox.cell">
@@ -1122,11 +1129,12 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
     </Style>
 
-    <!-- A drop-down as tall as a search field beside it (Find in Files' scope and mask). -->
+    <!-- A tool window's drop-down (ToolDropDown: a bar's, a popup's scope, a row's value), its words at the step of the
+         search field beside it. -->
     <Style Selector="ComboBox.compact">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="Padding" Value="8,0,4,0" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>

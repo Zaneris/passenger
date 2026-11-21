@@ -31,7 +31,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
     {
         this.attempt = attempt;
         Width = PopupFrame.Narrow;
-        name = new TextBox { Classes = { StyleClasses.Search }, Text = initial };
+        name = new TextBox { Text = initial };
         problem = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, IsVisible = false, TextWrapping = TextWrapping.Wrap };
         StackPanel body = new() { Spacing = Gaps.Normal, Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title }, name } };
         if (option is { } asked)

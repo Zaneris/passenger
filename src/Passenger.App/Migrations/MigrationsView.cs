@@ -91,7 +91,12 @@ public sealed class MigrationsView : DockPanel
         WrapPanel top = new()
         {
             Margin = new Thickness(Gaps.Normal, Gaps.Hair),
-            Children = { Labelled("Project", projects), Labelled("Startup", startups), Labelled("Environment", environments), Labelled("Context", contexts), against },
+            ItemSpacing = Gaps.Wide,
+            Children =
+            {
+                ToolDropDown.Labelled("Project", projects), ToolDropDown.Labelled("Startup", startups), ToolDropDown.Labelled("Environment", environments),
+                ToolDropDown.Labelled("Context", contexts), against,
+            },
         };
         Border topBar = ToolBars.Top(top);
 
@@ -279,10 +284,9 @@ public sealed class MigrationsView : DockPanel
 
     private static ComboBox Chooser(string name, string tip)
     {
-        ComboBox chooser = new()
+        ComboBox chooser = new ToolDropDown
         {
             Name = name,
-            MinWidth = 140,
             VerticalAlignment = VerticalAlignment.Center,
         };
         ReusedRows.Use(chooser, () =>
@@ -301,12 +305,4 @@ public sealed class MigrationsView : DockPanel
         ToolTip.SetTip(chooser, tip);
         return chooser;
     }
-
-    private static Control Labelled(string label, ComboBox chooser) => new StackPanel
-    {
-        Orientation = Orientation.Horizontal,
-        Spacing = Gaps.Small,
-        Margin = new Thickness(0, 0, Gaps.Wide, 0),
-        Children = { new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center }, chooser },
-    };
 }
