@@ -51,8 +51,9 @@ public static partial class McpHost
     /// <summary>The socket folder when it is there and the user's own, else null: the windows an agent may join.</summary>
     internal static string? FoundSocketFolder() => SocketFolders.Found(StateStore.DefaultRoot);
 
-    /// <summary>What an agent is told as it connects: how to begin and find its way, and what a person's window asks.</summary>
-    internal const string Instructions =
+    /// <summary>What an agent is told as it connects: how to begin and find its way, what a person's window asks, and what
+    /// it refuses while its folder is not trusted (<see cref="McpTools.Untrusted"/>).</summary>
+    internal static readonly string Instructions =
         "Passenger is a C# IDE (with XAML, MSBuild files and the web languages). These tools act on its open workspace as its user would. " +
         "Lines and columns count from 1; relative paths are the open folder's; a file outside it, but in a project a trusted solution or AppHost names beside it, is read only where definition and usages lead (a package's file, generated or decompiled code) and never changed. Parameters several tools share: configuration, a run " +
         "configuration (the chosen one by default); arguments, a command line in place of its own; waitSeconds, how long a call " +
@@ -96,8 +97,9 @@ public static partial class McpHost
         "several things asks once with request_full_access, which the person may answer by allowing every tool until it disconnects. " +
         "A call waits for each answer 2 minutes at most, telling its progress meanwhile when asked to; one refused or left unanswered says so, and a later call asks " +
         "again. A file the agent opens or edits there comes in a tab behind the person's, whose tab, caret and keys stay as they were. " +
-        "Where the person has not trusted the folder, build, run, debug_start, tests_run, profile, hot_reload and nuget_install " +
-        "are refused until they trust it, and C# answers wait for that too. " +
+        "Where the person has not trusted the folder, none of its code runs and none of the feeds it names is asked until they trust it: " +
+        $"{Plural.Listed([.. McpTools.Untrusted.Keys])} are refused at once, as are ide_action's actions that would run its code (building it " +
+        "among them) and C# answers, as its C# language server does not start. " +
         "Passenger --mcp FOLDER is an agent's own IDE with no window, which asks nothing, trusts the folder it was started on (the agent " +
         "runs there already), and runs apps where nobody sees them (an Avalonia app on its headless platform), saying so when one cannot " +
         "run there.";

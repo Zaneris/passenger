@@ -290,7 +290,8 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent in a person's window whose folder they opened without trusting is refused at once the tools that
     /// would run its code, in the words the window greys its actions with, and a search of the feeds its nuget.config names,
-    /// asking the person nothing; workspace says why, and the agent cannot trust the folder itself.</summary>
+    /// asking the person nothing; workspace says why, C# answers and a build are refused too, as the server's instructions say
+    /// with each tool the rule refuses named, and the agent cannot trust the folder itself.</summary>
     [AvaloniaFact]
     public void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_what_would_run_its_code_and_cannot_trust_it()
     {
@@ -315,10 +316,21 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 $"{McpTools.NugetSearch} in a window whose folder is not trusted answered: {Text(search)}");
             JsonElement workspace = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the workspace");
             Assert.Equal(Refusals.Untrusted, workspace.GetProperty("trust").GetString());
+            // As the instructions say: every tool the one rule refuses named, and the C# answers and builds refused, never waited for.
+            string told = client.ServerInstructions ?? string.Empty;
+            Assert.True(McpTools.Untrusted.Keys.All(tool => told.Contains(tool, StringComparison.Ordinal)) && !told.Contains("wait for that", StringComparison.Ordinal)
+                && told.Contains("refused at once, as are ide_action's actions that would run its code (building it among them) and C# answers", StringComparison.Ordinal),
+                $"The instructions misstate what a folder not trusted refuses: {told}");
+            CallToolResult symbol = Await(Waiting.Apart(() => Result(client, McpTools.FindSymbol, new() { ["query"] = "Program" })), McpTools.FindSymbol);
+            Assert.True(symbol.IsError == true && Text(symbol).Contains(Refusals.Untrusted, StringComparison.Ordinal),
+                $"{McpTools.FindSymbol} in a window whose folder is not trusted answered: {Text(symbol)}");
+            Task<CallToolResult> building = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Build }));
+            Press(Question(window, "the question for the agent's Build"), AgentToolDialog.AllowForSession);
+            CallToolResult built = Await(building, "the agent's Build");
+            Assert.True(built.IsError == true && Text(built).Contains(Refusals.Untrusted, StringComparison.Ordinal),
+                $"{McpTools.IdeAction} {AppActions.Build} in a window whose folder is not trusted answered: {Text(built)}");
 
-            Task<CallToolResult> trusting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.TrustFolder }));
-            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
-            CallToolResult trust = Await(trusting, "the agent's Trust Folder");
+            CallToolResult trust = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.TrustFolder })), "the agent's Trust Folder");
             Assert.True(trust.IsError == true && Text(trust).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
                 $"An agent's Trust Folder answered: {Text(trust)}");
             Assert.False(window.Session.Trusted, "An agent trusted the person's folder");
