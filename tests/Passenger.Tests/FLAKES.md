@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `KeymapChoiceTests`' `A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through`, the Linux VM in a run of
+  308 tests landing #2034 (#2080): "Waited 180 s for what was typed run in the floating terminal". **The test waited
+  wrong**: it typed `echo floated` as soon as its Ctrl+J had gone to the shell, and Linux's /bin/sh (dash) edits no line
+  of its own, so the terminal echoes what is typed as it comes; where dash had not yet read the empty line and drawn its
+  next prompt, the command was echoed ahead of that prompt and its output followed the prompt ("$ floated"), on no line
+  beginning "floated", however long it waited. A probe typing at once after Ctrl+J showed that screen in 3 of 6 runs
+  beside a busy loop a core, where the same probe waiting for the prompt passed 6 of 6. The test now types only once the
+  prompt has come a row lower, and the class passed 10 of 10 runs beside a busy loop a core (76fe95e93).
 - `AspireStandInTests`' `An_edit_made_after_the_AppHosts_build_as_its_service_starts_is_applied_once_the_service_runs`,
   CI 44940279906 (Windows, report shard 3): "The edit made before the API started was not applied: The program's
   runtime has not loaded its CoreLib yet". **A race in the IDE**: the quiet attach for Hot Reload lets a program held
