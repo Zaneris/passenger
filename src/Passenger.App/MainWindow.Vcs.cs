@@ -514,6 +514,11 @@ public partial class MainWindow
         {
             DiffView view = Diffs.ForFile(other is null ? Path.GetFileName(path) : title, diff, mine, open, titles, other ?? path, path);
             view.Note = note;
+            if (open is null)
+            {
+                view.PutsBackOnDisk = (compared, edit, what) => PutBackOnDiskAsync(path, version, compared, edit, what);
+                FollowDisk(path, view);
+            }
             if (version == "HEAD" && other is null && note is null)
             {
                 CommitView.ConfigureDiff(path, view);
@@ -1048,6 +1053,35 @@ public partial class MainWindow
         }
         Editors.CodeEditor.ApplyEdits([diff.Restore(hunk)]);
         return (true, $"Rolled back the change at line {hunk.NewStart + 1} of {document.Name}");
+    }
+
+    /// <summary>A diff's change put back in a file not open (<see cref="DiffView.PutsBackOnDisk"/>): written as a save writes
+    /// it, keeping its encoding and line breaks, as one command of global Undo, unless the file changed on disk since its
+    /// diff read it or was opened since. Null once written, else why not.</summary>
+    private Task<string?> PutBackOnDiskAsync(string path, string version, TextSnapshot compared, TextEdit edit, string what) =>
+        ChangeFileAsync($"Roll back {what} of {Path.GetFileName(path)} to {version}", [path], () =>
+        {
+            if (Editors.Find(path) is not null)
+            {
+                return $"{Path.GetFileName(path)} was opened since its diff was shown: roll the change back there";
+            }
+            if (FileText.Load(path) is not { } file || file.Text != compared.ToString())
+            {
+                return $"{Path.GetFileName(path)} changed on disk since its diff read it: roll the change back again";
+            }
+            FileText.SaveOver(path, file, string.Concat(file.Text.AsSpan(0, edit.Start), edit.Text, file.Text.AsSpan(edit.Start + edit.Length)));
+            return null;
+        });
+
+    /// <summary>A diff whose file's side is a copy of a file not open takes the file's text again from disk whenever git's
+    /// status is read (after a rollback written there, its Undo, another program's write), read off the window's thread.</summary>
+    private void FollowDisk(string path, DiffView view)
+    {
+        VcsController vcs = session.Vcs;
+        void Follow(object? sender, EventArgs e) => IdeErrors.Observe(FollowDiskAsync());
+        async Task FollowDiskAsync() => view.FollowDisk(await BackgroundWork.Run(() => EditorArea.ReadText(path)));
+        view.AttachedToVisualTree += (_, _) => vcs.Changed += Follow;
+        view.DetachedFromVisualTree += (_, _) => vcs.Changed -= Follow;
     }
 
     /// <summary>A diff of a changed text file against the last commit stages its changes into git's index: a change's own

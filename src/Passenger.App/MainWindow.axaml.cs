@@ -523,7 +523,13 @@ public partial class MainWindow : IdeWindow
             return;
         }
         bool own = editor == Editors.CodeEditor;
-        if (!shifted && EditorActions.IsChange(action) && editor is { IsReadOnly: true, ReadOnlyWhy: { } readOnly })
+        if (!shifted && action is EditorActions.Undo or EditorActions.Redo && editor.FindAncestorOfType<Passenger.App.Vcs.DiffView>() is { PutsBackOnDisk: not null } copy
+            && editor == copy.Right && UndoCommand(action == EditorActions.Redo, null))
+        {
+            // A diff's copy of a file not open takes back or makes again what was written to the file, as the Explorer does.
+            e.Handled = true;
+        }
+        else if (!shifted && EditorActions.IsChange(action) && editor is { IsReadOnly: true, ReadOnlyWhy: { } readOnly })
         {
             Say(readOnly);
             e.Handled = true;

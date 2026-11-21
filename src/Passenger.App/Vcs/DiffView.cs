@@ -12,12 +12,11 @@ namespace Passenger.App.Vcs;
 /// <summary>The side-by-side diff: the last commit's text on the left (read-only), the file as it is on the right (the
 /// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band
 /// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
-/// arrow puts that change back in the open file's text, as Rollback Lines does to the change at the caret
-/// (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the next and previous
-/// one; F4 asks
-/// for its file at the caret's line (Jump to Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses
-/// how differences are highlighted, by words at first; Find searches the side with the caret (<see cref="ShowFind"/>).
-/// Made by <see cref="DiffPanes"/>.</summary>
+/// arrow puts that change back in the open file's text, or writes it to a file not open, as Rollback Lines does to the
+/// change at the caret (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the
+/// next and previous one; F4 asks for its file at the caret's line (Jump to Source); Settings (its keys
+/// <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by words at first; Find searches the
+/// side with the caret (<see cref="ShowFind"/>). Made by <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -71,7 +70,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         DiffSigns.Give(Left);
         DiffSigns.Give(Right);
         named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
-        bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false,
+        bands = new DiffStrip(Bands, MergeSide.Left, Left, () => RollsBack, ignores: false,
             (band, stage) => (stage ? $"{(HeldAt(band.Index) == true ? "Unstage" : "Stage")} change {band.Index + 1}" : $"Roll back change {band.Index + 1} to {named.Left}", null),
             (band, stage, _) =>
             {
@@ -410,8 +409,48 @@ public sealed class DiffView : DockPanel, IOwnKeys
 
     public bool IsEditable { get; }
 
-    /// <summary>Why no change of the diff can be put back: its file's side is a copy, not the open file's own text.</summary>
-    public string? WhyNotRollBack => IsEditable ? null : Refusals.ReadOnly(named.Right);
+    /// <summary>Where the file's side is a copy of a file not open, how a change put back is written to the file: given the
+    /// text it was found in, the edit that puts it back and the change named ("change 2"), null once written, else why not.
+    /// Null where the file's side is the open file's own text, or a version nothing is put back to (a commit's).</summary>
+    public Func<TextSnapshot, TextEdit, string, Task<string?>>? PutsBackOnDisk
+    {
+        get => putsBackOnDisk;
+        set
+        {
+            putsBackOnDisk = value;
+            bands.Refresh();
+        }
+    }
+
+    private Func<TextSnapshot, TextEdit, string, Task<string?>>? putsBackOnDisk;
+
+    /// <summary>Whether a change can be put back: in the open file's text, or written to a file not open.</summary>
+    public bool RollsBack => IsEditable || putsBackOnDisk is not null;
+
+    /// <summary>Why no change of the diff can be put back: its file's side is a version of its own.</summary>
+    public string? WhyNotRollBack => RollsBack ? null : Refusals.ReadOnly(named.Right);
+
+    /// <summary>The copy of a file not open takes its text from disk (<paramref name="text"/>, null where it can't be read)
+    /// where that differs, after something wrote it: a change put back, its Undo, another program.</summary>
+    public void FollowDisk(string? text)
+    {
+        if (IsEditable || text is null || away is not null || text == Right.Document.Snapshot.ToString())
+        {
+            return;
+        }
+        taking = true;
+        try
+        {
+            Right.Document.SetText(text, Right.Selections);
+        }
+        finally
+        {
+            taking = false;
+        }
+    }
+
+    /// <summary>The copy is taking its text from disk, no edit of this view's.</summary>
+    private bool taking;
 
     /// <summary>The file changed from this view: typed in on its side, or a difference put back by its band.</summary>
     public event EventHandler? Edited;
@@ -455,22 +494,45 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// differences were found, which may have moved it (<see cref="RevertAsync"/>).</summary>
     public void Revert(DiffHunk hunk) => IdeErrors.Observe(RevertAsync(hunk));
 
-    /// <summary>Puts one difference back as the other side has it, an edit of the open file its Undo takes back: null once
-    /// put back, else why not (the file's side a copy, or edited since the differences were found, which may have moved it).</summary>
+    /// <summary>Puts one difference back as the other side has it: an edit of the open file its Undo takes back, or written to
+    /// a file not open (<see cref="PutsBackOnDisk"/>), the copy taking it. Null once put back, else why not (a version of its
+    /// own, edited since the differences were found, which may have moved it, or the write refused).</summary>
     public async Task<string?> RevertAsync(DiffHunk hunk)
     {
         if (WhyNotRollBack is { } readOnly)
         {
             return readOnly;
         }
-        if (!ReferenceEquals(Right.Document.Snapshot, shown.Text) || !Hunks.Contains(hunk))
+        TextSnapshot compared = shown.Text;
+        if (!ReferenceEquals(Right.Document.Snapshot, compared) || !Hunks.Contains(hunk))
         {
             return "The file changed since its differences were found: roll the change back again";
+        }
+        TextEdit edit = shown.Restore(hunk);
+        if (!IsEditable)
+        {
+            if (await putsBackOnDisk!(compared, edit, $"change {Hunks.ToList().IndexOf(hunk) + 1}") is { } refused)
+            {
+                return refused;
+            }
+            // The copy shows what was written, unless it took the disk's text meanwhile.
+            if (!ReferenceEquals(Right.Document.Snapshot, compared))
+            {
+                return null;
+            }
         }
         reverting = true;
         try
         {
-            Right.ApplyEdits([shown.Restore(hunk)]);
+            if (IsEditable)
+            {
+                Right.ApplyEdits([edit]);
+            }
+            else
+            {
+                SelectionSet carets = Right.Selections;
+                Right.Document.Edit([edit], carets, TextEditing.MapThrough(carets, [edit]));
+            }
         }
         finally
         {
@@ -527,7 +589,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private void OnMineChanged(object? sender, DocumentChangedEventArgs e)
     {
         rediff.Restart();
-        if (reverting || Right.IsKeyboardFocusWithin)
+        if (reverting || Right.IsKeyboardFocusWithin && !taking)
         {
             Edited?.Invoke(this, EventArgs.Empty);
         }

@@ -192,7 +192,8 @@ public sealed class DiffTabsTests : IDisposable
 
     /// <summary>Rollback Lines' keys in the Commit window's diff put back the change at the caret, as its band's arrow does,
     /// whose tip names those keys: from the file's side, then from the last commit's, each an edit of the file Undo takes
-    /// back. A diff whose file's side is a copy, its file not open, greys Rollback Lines saying so, and shows no arrows.</summary>
+    /// back. Where the file is not open, the diff's copy of it puts the change back on disk, one command its copy's Undo
+    /// takes back, the copy following the file each way.</summary>
     [AvaloniaFact]
     public void Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys()
     {
@@ -228,7 +229,7 @@ public sealed class DiffTabsTests : IDisposable
         Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
         Ui.Landed(() => file.Text.Snapshot.ToString().Contains("long count", StringComparison.Ordinal) && view.Hunks.Count == 1, "Undo to bring the first change back");
 
-        // Saved and closed, the diff's side of it is a copy: Rollback Lines greys saying so, and no change has an arrow.
+        // Saved and closed, the diff's side of it is a copy, whose rollback writes the file.
         Ui.Run(window, AppActions.Save);
         Assert.False(file.IsModified, "Save from the diff tab left Shop.cs unsaved");
         Ui.Run(window, AppActions.CloseTab);
@@ -238,9 +239,24 @@ public sealed class DiffTabsTests : IDisposable
         Assert.DoesNotContain(window.EditorArea.Documents, d => d.Path == file.Path);
         DiffView copy = Assert.IsType<DiffView>(DiffFromCommit(window, byEnter: true).View);
         Ui.Landed(() => copy.Right.IsKeyboardFocusWithin && copy.Hunks.Count == 1, "the diff of the closed Shop.cs, its one change left, to have the keys");
-        Assert.Equal("Your version (read-only) is read-only", window.Actions.WhyNot(AppActions.RollbackLines, window.Actions.Context()));
-        Assert.DoesNotContain(copy.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible
-            && Avalonia.Automation.AutomationProperties.GetName(b)?.StartsWith("Roll back", StringComparison.Ordinal) == true);
+        Assert.Contains(copy.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Avalonia.Automation.AutomationProperties.GetName(b) == "Roll back change 1 to HEAD");
+        string saved = File.ReadAllText(file.Path);
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        copy.Right.GoTo(new TextPosition(2, 2));
+        Ui.Press(window, Ui.Shortcut(AppActions.RollbackLines));
+        Ui.WaitFor(() => File.ReadAllText(file.Path) == Original && copy.Hunks.Count == 0, () => $"the closed Shop.cs rolled back on disk and in its copy, where the disk has\n{File.ReadAllText(file.Path)}");
+        Assert.Equal("Roll back change 1 of Shop.cs to HEAD", window.EditorArea.Commands.ToUndo(null)?.Name);
+
+        // The copy's Undo takes the write back, and the copy follows the file.
+        Ui.Press(window, Ui.Shortcut(EditorActions.Undo));
+        Ui.WaitFor(() => File.ReadAllText(file.Path) == saved && copy.Right.Document.Snapshot.ToString() == saved && copy.Hunks.Count == 1,
+            () => $"Undo in the copy to put Shop.cs back as saved, where the disk has\n{File.ReadAllText(file.Path)}\nand the copy\n{copy.Right.Document.Snapshot}");
+        Assert.True(asked is [{ } question] && question.Contains("Roll back change 1 of Shop.cs", StringComparison.Ordinal), $"Undo asked [{string.Join(" | ", asked)}]");
         window.Close();
     }
 
