@@ -14,6 +14,10 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
     private const int MessageLimit = 4 * 1024 * 1024;
     private const int DialogLimit = 16;
     private const long FileLimit = 100 * 1024 * 1024;
+
+    /// <summary>How long the AppHost started is given to answer on its resource service, on a developer's machine.</summary>
+    private static readonly TimeSpan AnswerLimit = TimeSpan.FromSeconds(30);
+
     private readonly GrpcChannel channel;
     private readonly DashboardService.DashboardServiceClient client;
     private readonly Metadata headers;
@@ -63,11 +67,12 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
             MaxSendMessageSize = MessageLimit,
         });
         AspireInteractions? connection = null;
+        TimeSpan limit = Waits.Of(AnswerLimit);
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
         try
         {
             connection = new AspireInteractions(channel, apiKey, owner, appName, cancel);
-            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            timeout.CancelAfter(limit);
             await connection.client.GetApplicationInformationAsync(new ApplicationInformationRequest(),
                 new CallOptions(connection.headers, cancellationToken: timeout.Token).WithWaitForReady(true)).ResponseAsync.ConfigureAwait(false);
             connection.call = connection.client.WatchInteractions(connection.headers, cancellationToken: connection.cancellation);
@@ -79,6 +84,12 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
             connection?.Dispose();
             channel.Dispose();
             throw new OperationCanceledException(cancel);
+        }
+        catch (RpcException) when (timeout.IsCancellationRequested)
+        {
+            connection?.Dispose();
+            channel.Dispose();
+            throw new IOException($"The AppHost's resource service did not answer within {Durations.Said(limit)} of its start");
         }
         catch (RpcException error)
         {

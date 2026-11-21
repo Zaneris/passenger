@@ -511,7 +511,15 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray()
             .Any(item => item.GetString() == StandInAppHost.Configuration), TimeSpan.FromMinutes(2), Cancel),
             $"The stand-in AppHost's Aspire configuration was not found.{Said()}");
-        JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration });
+        JsonElement ran;
+        try
+        {
+            ran = await Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration });
+        }
+        catch (Xunit.Sdk.XunitException failed)
+        {
+            throw new Xunit.Sdk.XunitException(failed.Message + project.StartSaid(), failed);
+        }
         Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"run of the stand-in AppHost answered: {ran}");
         JsonElement workspace = await Call(client, McpTools.Workspace);
         Assert.True(workspace.GetProperty("aspireApps").EnumerateArray().Any(app => PathNames.Same(app.GetProperty("appHostPath").GetString()!, host)

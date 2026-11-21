@@ -3959,6 +3959,13 @@ public sealed class StandInAppHost : SharedProject
     /// requests carry.</summary>
     public string DashboardKeyFile => KeyFile + ".dashboard";
 
+    /// <summary>When the stand-in AppHost began (its <see cref="UrlsFile"/> written) and wrote its key, or that it has not,
+    /// as a run that found no resource service says them beside the IDE's log.</summary>
+    internal string StartSaid() => $"\nThe stand-in AppHost {Written(UrlsFile, "began")} and {Written(KeyFile, "wrote its key")}";
+
+    private static string Written(string file, string what) => File.Exists(file)
+        ? $"{what} at {File.GetLastWriteTime(file).ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture)}" : $"never {what}";
+
     /// <summary>The AppHost's launch profile, naming the stand-in resource service's address, as an AppHost's names its own;
     /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport.</summary>
     internal void Serve(AspireInteractionHost backend, string? https = null) => Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https));
