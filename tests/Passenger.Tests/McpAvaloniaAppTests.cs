@@ -267,7 +267,8 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
 
     /// <summary>An agent stopped in the app's click handler by its breakpoint steps over, deletes the breakpoint and steps on
     /// out of the handler: the app runs on, the click's handling done, never stopped in Passenger's inspector, whose code made
-    /// the click and which is never the app's own code to Just My Code (#1891).</summary>
+    /// the click and which is never the app's own code to Just My Code (#1891), nor at its next click, which the window's
+    /// loop, managed code with the app's Main below it, hands the handler as it did the first (#1899).</summary>
     [Fact]
     public async Task An_agent_stepping_out_of_a_click_handler_it_clicked_into_is_never_stopped_in_passengers_inspector()
     {
@@ -290,6 +291,9 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
         stepped = await Call(client, McpTools.DebugStep, new() { ["waitSeconds"] = 2 });
         Assert.True(stepped.GetProperty("state").GetString() == "running", $"The step out of the click handler stopped the app again: {stepped}\n{StepsLogged()}");
         Assert.Contains("\"Clicked once\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
+        string again = Text(await Call(client, McpTools.AppClick, new() { ["control"] = "#Count" }));
+        Assert.True(!again.Contains("paused", StringComparison.Ordinal), $"The next click paused the app in the handler stepped off before: {again}\n{StepsLogged()}");
+        Assert.Contains("\"Clicked 2 times\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Counter" })), StringComparison.Ordinal);
         await Call(client, McpTools.Stop);
     }
 

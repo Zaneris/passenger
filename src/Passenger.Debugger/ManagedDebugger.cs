@@ -948,6 +948,7 @@ public partial class ManagedDebugger
     {
         _returnGuard?.Guard.TryDeactivate();
         _returnGuard = null;
+        EndUnwinding();
     }
 
     /// <summary>The step over an await goes on from where its run resumed, on this thread, which need not be the one that
@@ -1044,7 +1045,160 @@ public partial class ManagedDebugger
             _returnGuard = (guard, stepper, RunsOn: true);
             _logger?.Invoke($"  None of the user's code is below {FrameTold(from)}: a step out of it stands guard, the step ending as it returns");
         }
+        else if (justMyCode && from is not null && CallerOf(thread, from) is { } caller && !IsUserCodeFrame(caller) && !IsAsyncFrame(from))
+        {
+            _unwinding = new Unwinding(thread.Id);
+            GuardUnwinding(_unwinding, from);
+            _logger?.Invoke($"  {FrameTold(from)} returns to {FrameTold(caller)}, not the user's code: a step out of each frame it returns through stands guard in turn");
+        }
         return stepper;
+    }
+
+    /// <summary>A Just My Code step from a frame that returns to code not the user's, theirs further below (a library's
+    /// loop calling the frame, a window's or a dispatcher's): a step out of the innermost frame the thread has not returned
+    /// from since the step began stands guard, moved down as each returns, and the methods returned from are kept. The
+    /// user's code the step reaches through a new call of one of them is a later turn of what called the frame, never the
+    /// step's (<see cref="LaterTurn"/>).</summary>
+    private Unwinding? _unwinding;
+
+    private sealed class Unwinding(int thread)
+    {
+        public int Thread { get; } = thread;
+
+        public ICorDebugStepper? Guard { get; set; }
+
+        /// <summary>The frame the guard steps out of, which the thread has not returned from, and its method.</summary>
+        public StackRange? Standing { get; set; }
+
+        public (ModuleInfo Module, int Token)? StandingMethod { get; set; }
+
+        /// <summary>The methods of the frames the thread has returned from since the step began.</summary>
+        public HashSet<(ModuleInfo Module, int Token)> Left { get; } = [];
+    }
+
+    private void GuardUnwinding(Unwinding unwinding, ICorDebugFrame frame)
+    {
+        ICorDebugStepper guard = Intercepting(frame.CreateStepper());
+        guard.SetUnmappedStopMask(CorDebugUnmappedStop.STOP_NONE);
+        guard.StepOut();
+        unwinding.Guard = guard;
+        unwinding.Standing = RangeOf(frame);
+        unwinding.StandingMethod = MethodOf(frame);
+    }
+
+    /// <summary>The guarded frame has returned: its method is kept as left, and the guard moves to the frame it returned to,
+    /// unless that is the user's code, where the step stops as its stepper takes it.</summary>
+    private void FollowUnwinding(ICorDebugThread thread, Unwinding unwinding)
+    {
+        if (unwinding.StandingMethod is { } left)
+        {
+            unwinding.Left.Add(left);
+        }
+        unwinding.Guard?.TryDeactivate();
+        unwinding.Guard = null;
+        unwinding.Standing = null;
+        unwinding.StandingMethod = null;
+        if (StoppedFrame(thread) is { } landed && !IsUserCodeFrame(landed))
+        {
+            GuardUnwinding(unwinding, landed);
+        }
+    }
+
+    private void EndUnwinding()
+    {
+        _unwinding?.Guard?.TryDeactivate();
+        _unwinding = null;
+    }
+
+    /// <summary>Where the step has reached the user's code through a new call of a method it had returned from, between
+    /// that code and the frame it has not returned from: that method, as the call stack names it. Null where the step
+    /// reached it from the frame it has not returned from, or from below it.</summary>
+    private string? LaterTurn(ICorDebugThread thread, Unwinding unwinding)
+    {
+        if (unwinding.Standing is not { } standing || unwinding.Left.Count == 0)
+        {
+            return null;
+        }
+        try
+        {
+            bool reached = false;
+            foreach (ICorDebugChain chain in thread.EnumerateChains())
+            {
+                foreach (ICorDebugFrame frame in chain.IsManaged ? chain.EnumerateFrames() : [])
+                {
+                    if (frame is ICorDebugInternalFrame)
+                    {
+                        continue;
+                    }
+                    if (RangeOf(frame) == standing)
+                    {
+                        return null;
+                    }
+                    if (reached && MethodOf(frame) is { } method && unwinding.Left.Contains(method))
+                    {
+                        return FrameTold(frame);
+                    }
+                    reached = true;
+                }
+            }
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return null;
+        }
+        return null;
+    }
+
+    /// <summary>The frame a frame returns to, in its own chain; null where it was called from native code.</summary>
+    private static ICorDebugFrame? CallerOf(ICorDebugThread thread, ICorDebugFrame frame)
+    {
+        if (RangeOf(frame) is not { } of)
+        {
+            return null;
+        }
+        foreach (ICorDebugChain chain in thread.EnumerateChains())
+        {
+            bool found = false;
+            foreach (ICorDebugFrame below in chain.IsManaged ? chain.EnumerateFrames() : [])
+            {
+                if (found && below is not ICorDebugInternalFrame)
+                {
+                    return below;
+                }
+                found = found || RangeOf(below) == of;
+            }
+            if (found)
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private (ModuleInfo Module, int Token)? MethodOf(ICorDebugFrame frame)
+    {
+        try
+        {
+            return frame.Function is { } function && FindModule(function.Module) is { } module ? (module, function.Token) : null;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Whether a frame runs an async method's state machine, whose steps the async stepper follows.</summary>
+    private bool IsAsyncFrame(ICorDebugFrame frame)
+    {
+        try
+        {
+            return frame is ICorDebugILFrame il && FindModule(il.Function.Module) is { } module
+                && module.MetadataReader.GetAsyncMethodSteppingInfo(il.Function.Token, ModuleMetadataReader.VersionOf(il)) is not null;
+        }
+        catch (Exception error) when (Failures.OfRuntime(error))
+        {
+            return false;
+        }
     }
 
     /// <summary>Whether a frame, once it returns, goes back to the user's code on its thread: a frame of theirs below it
@@ -1719,9 +1873,11 @@ public partial class ManagedDebugger
             // A step under way would stop the program as it runs off its stop, and fails the detach.
             _stepper?.TryDeactivate();
             _returnGuard?.Guard.TryDeactivate();
+            _unwinding?.Guard?.TryDeactivate();
         }
         _stepper = null!;
         _returnGuard = null;
+        _unwinding = null;
         _stepping = null;
         _stepAfterEvaluation = null;
         _unhandledByUser = null;

@@ -595,6 +595,12 @@ public partial class ManagedDebugger
             return;
         }
         TakeBehindStep();
+        if (_unwinding is { Guard: { } unwound } following && stepCompleteEventArgs.Stepper == unwound)
+        {
+            FollowUnwinding(corThread, following);
+            Continue(clearVariables: false);
+            return;
+        }
         if (_returnGuard is ({ } guard, { } guarded, bool runsOn) && _stepper is { } lost && guarded == lost && stepCompleteEventArgs.Stepper == guard)
         {
             _returnGuard = null;
@@ -616,6 +622,17 @@ public partial class ManagedDebugger
             // A step that had completed when a stop (another thread's, a pause) ended it: its end, queued behind, stops nothing.
             _logger?.Invoke($"The end of a step on thread {corThread.Id} that a stop ended meanwhile is let go");
             Continue(clearVariables: false);
+            return;
+        }
+        if (_unwinding is { } unwinding && unwinding.Thread == corThread.Id && LaterTurn(corThread, unwinding) is { } through)
+        {
+            _logger?.Invoke($"The step on thread {corThread.Id} reaches the user's code through a new call of {through}, which it had returned from: "
+                + "a later turn of what called its frame, not the step's, so the program runs on");
+            stepCompleteEventArgs.Stepper.TryDeactivate();
+            _stepper = null;
+            EndStepForStop();
+            EndReturnWatch();
+            Continue(clearVariables: true);
             return;
         }
         EndReturnGuard();

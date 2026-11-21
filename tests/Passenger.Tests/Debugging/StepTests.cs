@@ -280,11 +280,11 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
+    /// <summary>The engine holds the yield back as the runtime once did under load: the thread runs on past it, its step
+    /// ending later. This await always suspends, so the yield always comes.</summary>
     [Fact]
     public async Task A_step_over_an_await_stops_at_its_next_line_though_the_stepping_thread_leaving_at_it_is_told_only_with_its_steps_end()
     {
-        // The engine holds the yield back as the runtime once did under load: the thread runs on past it, its step ending
-        // later. This await always suspends, so the yield always comes.
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper,
             environment: new Dictionary<string, string> { [AdapterEnvironment.LateYieldVariable] = "1" });
         await StepOverWhileAnotherThreadPasses(host, "elsewhere", "step over the await that goes on elsewhere",
@@ -389,6 +389,87 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     [Fact]
     public Task A_step_out_of_an_async_handler_whose_end_calls_the_next_on_its_thread_lets_the_program_run_on() =>
         StepOutOfHandler(Looping, ["dispatch"], "the dispatched handler goes on after its await", "the dispatched handler returns", "dispatched 20 handlers");
+
+    /// <summary>A program whose loop, code that is not the user's, waits for each line of input and hands it through frames
+    /// of its own to the user's handler, as a window's loop in managed code hands it a click, stopped in the handler, its
+    /// breakpoint deleted and stepped off its end: the step ends there and the program runs on, the handler's calls for the
+    /// lines after never stopping, though the user's code that started the loop is below it (#1899).</summary>
+    [Fact]
+    public async Task A_step_off_a_handler_a_managed_loop_calls_lets_the_program_run_on_so_its_call_for_the_next_input_never_stops()
+    {
+        string source = Debuggees.Source(Cases, "Program.cs");
+        int counted = Debuggees.Line(Cases, "handled++;");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program(Cases), stopAtEntry: false, justMyCode: true, arguments: ["dispatches"]).WaitForInitializedEvent();
+        await host.BreakpointsAsync([counted], source).ConfigurationDoneAsync();
+        await host.RequestAsync(DapCommands.Input, new InputArguments("one\n"));
+        StoppedEvent hit = await host.WaitForStoppedEvent();
+        Assert.Equal((StopReasons.Breakpoint, counted), (hit.Reason, hit.ReadStopInfo().line));
+        int thread = hit.ThreadId!.Value;
+        await host.ClearBreakpointsAsync(source);
+        StoppedEvent closing = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        closing = closing.ReadStopInfo().line == counted + 1 ? await host.StepOverAsync(thread).WaitForStoppedEvent() : closing;
+        Assert.Equal((StopReasons.Step, counted + 2), (closing.Reason, closing.ReadStopInfo().line));
+
+        await host.RequestAsync(DapCommands.Input, new InputArguments("two\nthree\n", Close: true));
+        (StoppedEvent? after, string written) = await host.StepOverAsync(thread).WaitForStopOrEnd();
+        Assert.True(after is null, $"Stepped off the handler with its breakpoint deleted, the program stopped again for {after?.Reason} at line "
+            + $"{after?.ReadStopInfo().line}, the handler's call for the next line, where it should have run on to its end. The engine's account:\n{StepAccount(host.EngineLog())}");
+        Assert.Contains("handled 3 lines", written, StringComparison.Ordinal);
+        Assert.True(host.EngineLog().Contains("a later turn of what called its frame", StringComparison.Ordinal),
+            $"The program ended, but not because the step told the handler's next call from its own:\n{StepAccount(host.EngineLog())}");
+    }
+
+    /// <summary>Lambdas a library calls one after another: a step off ForEach's lambda lands in its next call, and a step off
+    /// a LINQ pipeline's lambda in the next lambda the pipeline calls, whether the iterator that called the one stepped off
+    /// calls it, an iterator below, or one the pipeline calls anew for the next element; and off the pipeline's last
+    /// lambda, back in the foreach that reads it (#1899).</summary>
+    [Fact]
+    public async Task A_step_off_a_lambda_a_library_calls_lands_in_its_next_call_or_the_pipelines_next_lambda()
+    {
+        string source = Debuggees.Source(Cases, "Program.cs");
+        int each = Debuggees.Line(Cases, "Console.WriteLine($\"each {value}\");");
+        int selected = Debuggees.Line(Cases, "return selected * 10;");
+        int filtered = Debuggees.Line(Cases, "return filtered > 10;");
+        int tested = Debuggees.Line(Cases, "return tested != 2;");
+        int mapped = Debuggees.Line(Cases, "return mapped + 1;");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program(Cases), stopAtEntry: false, justMyCode: true, arguments: ["turns"]).WaitForInitializedEvent();
+        await host.BreakpointsAsync([each], source).ConfigurationDoneAsync();
+        int thread = (await host.WaitForStoppedEvent()).ThreadId!.Value;
+        await host.ClearBreakpointsAsync(source);
+
+        await StepOff(each, each, "value", "2", "ForEach's next call");
+        await host.BreakpointsAsync([selected], source);
+        await host.ContinueAsync().WaitForStoppedEvent();
+        await host.ClearBreakpointsAsync(source);
+        await StepOff(selected, filtered, "filtered", "10", "the Where lambda the iterator below calls");
+        await StepOff(filtered, selected, "selected", "2", "the Select lambda the Where iterator calls anew for the next element");
+        await host.BreakpointsAsync([tested], source);
+        await host.ContinueAsync().WaitForStoppedEvent();
+        await host.ClearBreakpointsAsync(source);
+        await StepOff(tested, mapped, "mapped", "1", "the Select lambda the same iterator calls");
+        await StepOff(mapped, 0, null, null, "the foreach reading the pipeline");
+        (StoppedEvent? after, string written) = await host.ContinueAsync().WaitForStopOrEnd();
+        Assert.True(after is null && written.Contains("kept 2", StringComparison.Ordinal), $"The program did not run on to its end: {written}");
+
+        // From the lambda's brace or line to its closing brace, then off it: into a lambda, a value read, or Turns.Run.
+        async Task StepOff(int line, int landing, string? name, string? value, string where)
+        {
+            StoppedEvent closing = await host.StepOverAsync(thread).WaitForStoppedEvent();
+            closing = closing.ReadStopInfo().line == line ? await host.StepOverAsync(thread).WaitForStoppedEvent() : closing;
+            Assert.Equal((StopReasons.Step, line + 1), (closing.Reason, closing.ReadStopInfo().line));
+            StoppedEvent landed = await host.StepOverAsync(thread).WaitForStoppedEvent();
+            int stop = landed.ReadStopInfo().line;
+            DapStackFrame top = await host.TopFrameAsync(thread);
+            string read = name is null ? top.Name : (await host.EvaluateAsync(top.Id, name)).Result;
+            Assert.True(landed.Reason == StopReasons.Step && (landing == 0 ? read.Contains("Turns.Run", StringComparison.Ordinal) : (stop == landing || stop == landing - 1) && read == value),
+                $"A step off the lambda at line {line} should have landed in {where}{(landing == 0 ? "" : $" at line {landing}, {name} reading {value}")}; "
+                + $"it stopped for {landed.Reason} at line {stop} in {top.Name}{(name is null ? "" : $", {name} reading {read}")}. The engine's account:\n{StepAccount(host.EngineLog())}");
+        }
+    }
+
+    private const string Cases = "PassengerCases";
 
     private const string MinimalApi = "MinimalApiApp";
 

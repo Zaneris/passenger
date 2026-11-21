@@ -69,6 +69,16 @@ if (args is ["corelib"])
 	CoreLibCalls.Run();
 	return;
 }
+if (args is ["turns"])
+{
+	Turns.Run();
+	return;
+}
+if (args is ["dispatches"])
+{
+	Dispatches.Run();
+	return;
+}
 if (args is ["leaves"])
 {
 	Leaves.Run();
@@ -780,6 +790,73 @@ internal static class CoreLibCalls
 		{
 			Console.WriteLine($"called by CoreLib with {value}");
 		});
+	}
+}
+
+// Lambdas a library calls one after another, each a step off the one before lands in: ForEach's next call, and the next
+// lambda of a LINQ pipeline, called by an iterator a frame below or by one the pipeline calls anew for the next element.
+internal static class Turns
+{
+	public static void Run()
+	{
+		List<int> each = [1, 2, 3];
+		each.ForEach(value =>
+		{
+			Console.WriteLine($"each {value}");
+		});
+		int[] kept = [.. each.Select(selected =>
+		{
+			return selected * 10;
+		}).Where(filtered =>
+		{
+			return filtered > 10;
+		})];
+		foreach (int shown in each.Where(tested =>
+		{
+			return tested != 2;
+		}).Select(mapped =>
+		{
+			return mapped + 1;
+		}))
+		{
+			Console.WriteLine($"shown {shown}");
+		}
+		Console.WriteLine($"kept {kept.Length}");
+	}
+}
+
+// A loop of code that is not the user's, as a window's or a dispatcher's is, which waits for each line of input and hands
+// it through frames of its own to the user's handler: a step off the handler never stops in its call for the next line.
+internal static class Dispatches
+{
+	private static int handled;
+
+	public static void Run()
+	{
+		Loop.Run(Handle);
+		Console.WriteLine($"handled {handled} lines");
+	}
+
+	private static void Handle(string line)
+	{
+		handled++;
+		Console.WriteLine($"handling {line}");
+	}
+
+	[DebuggerNonUserCode]
+	private static class Loop
+	{
+		public static void Run(Action<string> handler)
+		{
+			while (Console.ReadLine() is { } line)
+			{
+				Dispatch(line, handler);
+			}
+		}
+
+		private static void Dispatch(string line, Action<string> handler) => Raise(line.Trim(), handler);
+
+		private static void Raise(string line, Action<string> handler) => handler(line);
 	}
 }
 
