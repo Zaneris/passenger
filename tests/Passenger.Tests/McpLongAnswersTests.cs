@@ -147,6 +147,41 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
 
     private const int RoutesEach = 100;
 
+    /// <summary>A line longer than an answer holds (a minified script's, a data file's) is cut where the answer runs out, saying how much of
+    /// it was left out and the from and column that read on, and read on that way to its end and the line after it, its
+    /// pieces joining whole.</summary>
+    [Fact]
+    public async Task A_line_longer_than_an_answer_is_cut_saying_how_to_read_on_and_its_pieces_join_whole()
+    {
+        string folder = TestFolders.Create("mcp-long-line-");
+        DeleteAtEnd(folder);
+        string line = string.Concat(Enumerable.Range(0, 14_000).Select(i => $"x{i % 10}=[{i % 7}],\"\";"));
+        TestFolders.Write(folder, "long.txt", line + "\nafter\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        StringBuilder read = new();
+        int column = 1;
+        for (int reads = 1; ; reads++)
+        {
+            string text = Text(await Held(client, McpTools.EditorText, new() { ["path"] = "long.txt", ["from"] = 1, ["column"] = column }));
+            Assert.StartsWith("     1\t", text, StringComparison.Ordinal);
+            Match cut = Regex.Match(text, $@"\nLine 1 is cut short, ([\d,]+) of its {Regex.Escape(line.Length.ToString("N0", CultureInfo.InvariantCulture))} characters left out and 2 more lines after it: from 1 with column (\d+) reads on$");
+            if (!cut.Success)
+            {
+                Assert.True(text.EndsWith("\n     2\tafter\n     3\t", StringComparison.Ordinal), $"editor_text of long.txt from column {column} ended: {text[^Math.Min(300, text.Length)..]}");
+                read.Append(text[7..^"\n     2\tafter\n     3\t".Length]);
+                break;
+            }
+            string piece = text[7..cut.Index];
+            int next = int.Parse(cut.Groups[2].Value, CultureInfo.InvariantCulture);
+            Assert.True(next == column + piece.Length && Number(cut.Groups[1].Value) == line.Length - next + 1,
+                $"editor_text of long.txt from column {column} showed {piece.Length:N0} characters, saying: {text[cut.Index..]}");
+            read.Append(piece);
+            column = next;
+            Assert.True(reads < 10, $"editor_text read long.txt's line on {reads} times, reaching column {column} of {line.Length:N0}");
+        }
+        Assert.True(read.ToString() == line, $"The pieces of long.txt's line read on by column made {read.Length:N0} characters other than its {line.Length:N0}");
+    }
+
     [Fact]
     public async Task A_workspace_of_hundreds_of_projects_and_thousands_of_routes_holds_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
     {

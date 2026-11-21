@@ -239,7 +239,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.EditorText, Title = "A file's text in the editor", ReadOnly = true), Description(
         "A file's text as the editor holds it, unsaved changes included, its lines numbered.")]
-    public Task<string> EditorText(string path, int? from = null, int? to = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<string> EditorText(string path, int? from = null, int? to = null, int? column = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         OpenDocument document = await TextualAsync(path, cancel);
         TextSnapshot text = document.Text.Snapshot;
@@ -248,27 +248,48 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"to {end} is before from {first + 1}");
         }
+        int length = text.GetLine(first).Length;
+        if (column is int at && (at < 1 || at > length + 1))
+        {
+            throw new ArgumentException($"Column {at} is outside line {first + 1}, whose columns are 1 to {length + 1}");
+        }
         int last = Math.Min((to ?? text.LineCount) - 1, text.LineCount - 1);
-        return Numbered(text, first, last);
+        return Numbered(text, first, last, (column ?? 1) - 1);
     });
 
     /// <summary>A text's lines from <paramref name="first"/> to <paramref name="last"/> (from 0) numbered as editor_text
-    /// numbers them, held within <see cref="AgentAnswers.MostCharacters"/>: those that fit, at least the first (cut where it
-    /// alone runs past), then how many more lines were left out and the from that reads on.</summary>
-    private static string Numbered(TextSnapshot text, int first, int last)
+    /// numbers them, the first from its <paramref name="column"/> (from 0), held within <see cref="AgentAnswers.MostCharacters"/>:
+    /// those that fit, at least the first, cut where it alone runs past, then what was left out and the from (and column)
+    /// that reads on, a cut line's pieces joining whole.</summary>
+    private static string Numbered(TextSnapshot text, int first, int last, int column = 0)
     {
         System.Text.StringBuilder shown = new();
         int room = AgentAnswers.MostCharacters - WordsRoom;
         int at = first;
         for (; at <= last; at++)
         {
-            string line = $"{at + 1,6}\t{text.GetLineText(at)}";
-            if (line.Length + 1 > room && at > first)
+            LineSpan line = text.GetLine(at);
+            int from = at == first ? column : 0;
+            string number = $"{at + 1,6}\t";
+            int length = number.Length + line.Length - from;
+            if (length + 1 > room && at > first)
             {
                 break;
             }
-            shown.Append(at > first ? "\n" : string.Empty).Append(line.Length > room ? AgentAnswers.Cut(line, room) : line);
-            room -= line.Length + 1;
+            int kept = Math.Min(line.Length - from, Math.Max(0, room - number.Length));
+            if (kept < line.Length - from && kept > 0 && char.IsHighSurrogate(text[line.Start + from + kept - 1]))
+            {
+                kept--;
+            }
+            shown.Append(at > first ? "\n" : string.Empty).Append(number).Append(text.GetText(line.Start + from, kept));
+            if (kept < line.Length - from)
+            {
+                int after = last - at;
+                return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"{shown}\nLine {at + 1} is cut short, {line.Length - from - kept:N0} of its {line.Length:N0} characters left out"
+                    + $"{(after > 0 ? $" and {after:N0} more {Plural.Noun(after, "line")} after it" : string.Empty)}: from {at + 1} with column {from + kept + 1} reads on");
+            }
+            room -= length + 1;
         }
         return at > last ? shown.ToString() : $"{shown}\n{AgentAnswers.More(last - at + 1, "line", $"from {at + 1} reads on")}";
     }
