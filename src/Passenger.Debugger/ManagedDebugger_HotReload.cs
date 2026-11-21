@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Passenger.Core;
 using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
@@ -82,7 +83,7 @@ public partial class ManagedDebugger
         }
         catch (TimeoutException)
         {
-            _logger?.Invoke($"The program's runtime had not loaded its CoreLib {limit.TotalSeconds:0.#} s after an update asked what it takes");
+            _logger?.Invoke($"The program's runtime had not loaded its CoreLib {Durations.Said(limit)} after an update asked what it takes");
         }
     }
 
