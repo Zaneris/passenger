@@ -311,7 +311,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         Ui.PumpUntil(() =>
         {
             console.Flush();
-            return console.Document.Snapshot.ToString().Contains("binding errors past the first 1000 failed bindings are counted, not listed", StringComparison.Ordinal);
+            return console.Document.Snapshot.ToString().Contains($"binding errors past the first {Numbers.Said(1000)} failed bindings are counted, not listed", StringComparison.Ordinal);
         }, "the Debug console to say the failures past the first thousand are counted, not listed", TimeSpan.FromMinutes(1));
         // Asked as the app connected: its answer comes within the time the window waits for one, the flood going on.
         string last = $"Flooded{3000 - 1}";
@@ -360,7 +360,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         problems.Shown = ProblemsTab.Bindings;
         Ui.Settle();
         Assert.Contains(problems.Rows, r => r.Problem is null && r.Label == $"{Numbers.Said(app.Untold.Bindings)} more binding failures, not listed"
-            && r.Detail == "BindingErrorsApp lists its first 1000 failed bindings and only counts the failures of any after them");
+            && r.Detail == $"BindingErrorsApp lists its first {Numbers.Said(1000)} failed bindings and only counts the failures of any after them");
 
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");

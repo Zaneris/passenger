@@ -13,7 +13,7 @@ namespace Passenger.App.LiveTree;
 public sealed record BindingProblem(BindingFailure Failure, Problem Problem)
 {
     /// <summary>What it binds and how often it failed, beside its message: "TextBlock#Caption.Text · Nmae · MainWindow.axaml:9:20 · ×3".</summary>
-    public string Detail => string.Join(" · ", new[] { $"{Failure.Control}.{Failure.Property}", Failure.Path, Problem.Path is null ? null : Problem.Where, $"×{Failure.Count}" }
+    public string Detail => string.Join(" · ", new[] { $"{Failure.Control}.{Failure.Property}", Failure.Path, Problem.Path is null ? null : Problem.Where, $"×{Numbers.Said(Failure.Count)}" }
         .Where(part => !string.IsNullOrEmpty(part)));
 }
 
@@ -29,7 +29,7 @@ public static partial class BindingErrors
     {
         (BindingFailure failure, Problem at) = (problem.Failure, problem.Problem);
         string place = at.Path is { } file ? $"{PathNames.Shown(file, folder)}({at.Position.Line + 1},{at.Position.Column + 1}): " : string.Empty;
-        string again = failure.Count > 1 ? $" (×{failure.Count})" : string.Empty;
+        string again = failure.Count > 1 ? $" (×{Numbers.Said(failure.Count)})" : string.Empty;
         return $"{place}binding error: {failure.Control}.{failure.Property} to {failure.Path}: {Message(failure)}{again}\n";
     }
 
@@ -40,17 +40,17 @@ public static partial class BindingErrors
         if (app.Untold.Bindings > 0)
         {
             yield return ($"{Plural.Of(app.Untold.Bindings, "more binding failure")}, not listed",
-                $"{app.Name} lists its first {app.Bindings.Count} failed bindings and only counts the failures of any after them");
+                $"{app.Name} lists its first {Numbers.Said(app.Bindings.Count)} failed bindings and only counts the failures of any after them");
         }
         if (app.Untold.Messages > 0)
         {
-            yield return ($"{app.Untold.Messages} of {app.Name}'s inspector's own messages left out", "Too many waited to be sent at once; the IDE's log has those it sent");
+            yield return ($"{Numbers.Said(app.Untold.Messages)} of {app.Name}'s inspector's own messages left out", "Too many waited to be sent at once; the IDE's log has those it sent");
         }
     }
 
     /// <summary>A console's line as an app first counts failures past the bindings it lists, which it no longer writes there.</summary>
     public static string UntoldLine(LiveApp app) =>
-        $"binding errors past the first {app.Bindings.Count} failed bindings are counted, not listed: Problems' Bindings says how many\n";
+        $"binding errors past the first {Numbers.Said(app.Bindings.Count)} failed bindings are counted, not listed: Problems' Bindings says how many\n";
 
     /// <summary>The framework's message, and the nearest members when the path named one its source's type does not have.</summary>
     public static string Message(BindingFailure failure) => failure.Nearest.Count == 0
