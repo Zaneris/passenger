@@ -419,15 +419,7 @@ public partial class ExplorerView : UserControl
         {
             return;
         }
-        if (Rows.SelectedIndex < 0)
-        {
-            Rows.SelectedIndex = 0;
-        }
-        int index = Rows.SelectedIndex;
-        // A row scrolled out of sight, or in a window just shown, has no container until it is laid out in view.
-        Rows.ScrollIntoView(index);
-        Rows.UpdateLayout();
-        Rows.ContainerFromIndex(index)?.Focus();
+        ListKeys.Hold(Rows, chooseFirst: true);
     }
 
     /// <summary>The folder's indexed files by their paths from its root, as the window's index has them now, which the

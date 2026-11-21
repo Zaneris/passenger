@@ -636,14 +636,7 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
         };
         ListKeys.Act(list, new ListActs { Open = Choose, Keys = TakeDigit });
         list.SelectionChanged += (_, _) => Moved?.Invoke(this, list.SelectedItem as Choice);
-        Dispatcher.UIThread.Post(() =>
-        {
-            list.Focus();
-            if (list.ContainerFromIndex(Math.Max(0, list.SelectedIndex)) is Control first)
-            {
-                first.Focus();
-            }
-        }, DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(() => ListKeys.Hold(list, chooseFirst: true), DispatcherPriority.Loaded);
     }
 
     public AutomationControlType Role => AutomationControlType.List;

@@ -368,18 +368,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         }
     }
 
-    /// <summary>Gives the commits the keys on the chosen one, as a click on it does.</summary>
-    public void FocusRows()
-    {
-        int index = Math.Max(0, list.SelectedIndex);
-        if (rows.Count == 0)
-        {
-            return;
-        }
-        list.ScrollIntoView(index);
-        list.UpdateLayout();
-        list.ContainerFromIndex(index)?.Focus();
-    }
+    /// <summary>Gives the commits the keys on the chosen one, the first chosen where none is, as a click on it does.</summary>
+    public void FocusRows() => ListKeys.Hold(list, chooseFirst: true);
 
     /// <summary>The file a file's or some lines' history follows, as a commit had it; null in the Log or a folder's
     /// history, whose commits change many.</summary>

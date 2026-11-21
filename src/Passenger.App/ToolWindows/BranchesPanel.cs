@@ -315,16 +315,7 @@ public sealed class BranchesPanel : DockPanel
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Gives the chosen row the keys, as a click on it does.</summary>
-    public void FocusRows()
-    {
-        if (list.SelectedIndex < 0)
-        {
-            return;
-        }
-        list.ScrollIntoView(list.SelectedIndex);
-        list.UpdateLayout();
-        list.ContainerFromIndex(list.SelectedIndex)?.Focus();
-    }
+    public void FocusRows() => ListKeys.Hold(list);
 
     /// <summary>Opens or closes a group, as a click on its arrow does.</summary>
     public void Toggle(BranchNode node)

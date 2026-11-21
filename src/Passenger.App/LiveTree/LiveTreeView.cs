@@ -947,7 +947,7 @@ public sealed class LiveTreeView : DockPanel
                 ValueSet?.Invoke(this, new PropertySet(value, editor.Text ?? string.Empty));
             }
             Show(value);
-            properties.Focus();
+            ListKeys.Hold(properties);
         };
         editor.LostFocus += (_, _) =>
         {

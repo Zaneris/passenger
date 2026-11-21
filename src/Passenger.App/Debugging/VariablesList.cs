@@ -143,19 +143,7 @@ public sealed class VariablesList : TreeList
     }
 
     /// <summary>Gives the keys to the chosen row, the first when none is chosen, as a person's click on it would.</summary>
-    public void FocusRow()
-    {
-        if (SelectedIndex < 0 && Tree.Rows.Count > 0)
-        {
-            SelectedIndex = 0;
-        }
-        if (SelectedIndex >= 0 && ContainerFromIndex(SelectedIndex) is Control row)
-        {
-            row.Focus(NavigationMethod.Directional);
-            return;
-        }
-        Focus(NavigationMethod.Directional);
-    }
+    public void FocusRow() => ListKeys.Hold(this, chooseFirst: true, NavigationMethod.Directional);
 
     /// <summary>Shows rows read again in place of these (a value set changes what they say), those that were open opened
     /// again, and the row chosen chosen again, with the keys if the list had them.</summary>

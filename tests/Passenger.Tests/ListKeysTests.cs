@@ -1,7 +1,9 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Debugging;
 using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
@@ -91,6 +93,62 @@ public sealed class ListKeysTests : IDisposable
         {
             window.Close();
         }
+    }
+
+    /// <summary>The Breakpoints window opens with the keys on its chosen breakpoint's row; an exception breakpoint added by
+    /// its type's name takes them on its own row, and Delete takes each out in turn, the keys going on to the next.</summary>
+    [AvaloniaFact]
+    public void The_Breakpoints_window_opens_with_the_keys_on_its_chosen_breakpoint_and_Delete_takes_each_out_in_turn()
+    {
+        TestFolders.Write(folder, "Program.cs", "int one = 1;\nint two = 2;\nSystem.Console.WriteLine(one + two);\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile("Program.cs");
+            Ui.Settle();
+            string path = window.EditorArea.Active!.Path;
+            foreach (int line in (int[])[0, 1])
+            {
+                window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(line, 0));
+                Ui.Run(window, AppActions.ToggleBreakpoint);
+            }
+            Assert.Equal(2, window.Debugger.Breakpoints.In(path).Count);
+            LineBreakpoint first = window.Debugger.Breakpoints.In(path)[0];
+
+            Ui.Run(window, AppActions.ViewBreakpoints);
+            BreakpointsWindow breakpoints = Assert.IsType<BreakpointsWindow>(window.Popup);
+            Ui.Settle();
+            Assert.True(breakpoints.Chosen == first && KeyedRow(breakpoints) == first,
+                $"The Breakpoints window opened with {breakpoints.Chosen?.Location ?? "nothing"} chosen and the keys on {Keys(breakpoints)}, not on {first.Location}'s row");
+
+            Ui.Click(breakpoints.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Add CLR Exception Breakpoints"));
+            Assert.True(TopLevel.GetTopLevel(breakpoints)?.FocusManager?.GetFocusedElement() is TextBox, $"Add CLR Exception Breakpoints opened with the keys on {Keys(breakpoints)}, not in its search");
+            window.KeyTextInput("Passenger.NoSuchException");
+            Ui.Press(window, "ENTER");
+            ExceptionBreakpoint added = Assert.IsType<ExceptionBreakpoint>(breakpoints.Chosen);
+            Assert.True(added.Type == "Passenger.NoSuchException" && KeyedRow(breakpoints) == added,
+                $"Enter on a type's name added {added.Type} with the keys on {Keys(breakpoints)}, not on Passenger.NoSuchException's row");
+
+            Ui.Press(window, "DELETE");
+            Assert.True(!breakpoints.Listed.Contains(added) && KeyedRow(breakpoints) == first,
+                $"Delete on Passenger.NoSuchException's row left [{string.Join(", ", breakpoints.Listed.Select(b => b.Location))}], the keys on {Keys(breakpoints)}, not on {first.Location}'s row");
+            Ui.Press(window, "DELETE");
+            Ui.Press(window, "DELETE");
+            Assert.True(window.Debugger.Breakpoints.In(path).Count == 0, $"Delete twice more left {window.Debugger.Breakpoints.In(path).Count} of the two line breakpoints, the keys on {Keys(breakpoints)}");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static Breakpoint? KeyedRow(Control within) => (TopLevel.GetTopLevel(within)?.FocusManager?.GetFocusedElement() as ListBoxItem)?.Tag as Breakpoint;
+
+        static string Keys(Control within) => TopLevel.GetTopLevel(within)?.FocusManager?.GetFocusedElement() switch
+        {
+            null => "nothing",
+            ListBoxItem { Tag: Breakpoint row } => $"{row.Location}'s row",
+            object other => other.GetType().Name,
+        };
     }
 
     /// <summary>The Bookmarks window, shown, its list holding the keys' row.</summary>

@@ -93,8 +93,7 @@ public sealed class WorkingTreeDiffView : Panel, IOwnKeys
         // Opened from a menu whose list went with the tab it was in, the keys come to the first file, as nowhere else has them.
         if (first && files.Files.Count > 0 && TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is null or TopLevel)
         {
-            files.List.UpdateLayout();
-            files.List.ContainerFromIndex(files.List.SelectedIndex)?.Focus();
+            ListKeys.Hold(files.List);
         }
     }
 

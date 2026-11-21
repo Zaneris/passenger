@@ -122,16 +122,7 @@ public sealed class UnstashPopup : UserControl
 
     /// <summary>Gives the keys to the chosen row, as a click on it does: a ListBox takes no focus of its own, and the
     /// editor under the popup would take Enter and Delete.</summary>
-    private void FocusRow()
-    {
-        if (list.SelectedIndex < 0)
-        {
-            return;
-        }
-        list.ScrollIntoView(list.SelectedIndex);
-        list.UpdateLayout();
-        list.ContainerFromIndex(list.SelectedIndex)?.Focus();
-    }
+    private void FocusRow() => ListKeys.Hold(list);
 
     private void Run(bool now)
     {

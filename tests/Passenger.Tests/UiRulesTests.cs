@@ -3552,6 +3552,52 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"ahead of, or which does other than Enter does: give each its acts through ListKeys.Act (TreeKeys.Attach for a tree):\n{string.Join("\n", found)}");
     }
 
+    /// <summary>A list takes the keys on its chosen row only through ListKeys.Hold (TreeKeys moving them as a tree's rows
+    /// move): a ListBox refuses Focus(), so a list given the keys that way gets none, and a row's container given them by
+    /// hand misses a row out of sight or none chosen. Focus() on a ListBox, a TreeList or a class of theirs, or on a row
+    /// taken from one by ContainerFromIndex or ContainerFromItem, fails here, naming its line.</summary>
+    [Fact]
+    public void A_list_takes_the_keys_on_its_chosen_row_only_through_ListKeys_Hold()
+    {
+        (string Path, string Text)[] files = [.. UiFiles()];
+        HashSet<string> kinds = ["ListBox", "TreeList"];
+        Regex subclass = new(@"\bclass\s+(\w+)\s*:\s*(\w+)\b");
+        for (int before = 0; before != kinds.Count;)
+        {
+            before = kinds.Count;
+            kinds.UnionWith(files.SelectMany(f => subclass.Matches(f.Text)).Where(m => kinds.Contains(m.Groups[2].Value)).Select(m => m.Groups[1].Value));
+        }
+        string kind = string.Join("|", kinds.Order(StringComparer.Ordinal));
+        Regex declared = new($@"\b(?:{kind})\??\s+(\w+)\b(?!\s*\()|\b(\w+)\s*=\s*new\s+(?:{kind})\b|<(?:\w+:)?(?:{kind})\b[^>]*\bName=""(\w+)""");
+        Regex isList = new($@"\bclass\s+\w+\s*:\s*(?:{kind})\b");
+        Regex focused = new(@"(?:\b([\w.]+?)\??\.(?:Container(?:FromIndex|FromItem)\((?:[^()]|\([^()]*\))*\)\??\.)?|(?<![\w.?]))Focus\(");
+        Dictionary<string, HashSet<string>> lists = files.ToDictionary(f => f.Path,
+            f => declared.Matches(f.Text).SelectMany(m => m.Groups.Values.Skip(1)).Where(g => g.Success).Select(g => g.Value).ToHashSet(StringComparer.Ordinal));
+        HashSet<string> anywhere = [.. lists.Values.SelectMany(n => n)];
+        List<string> found = [];
+        foreach ((string path, string text) in files.Where(f => !f.Path.EndsWith("/ListKeys.cs", StringComparison.Ordinal) && !f.Path.EndsWith("/TreeKeys.cs", StringComparison.Ordinal)))
+        {
+            // A view's code names the lists its XAML declares.
+            HashSet<string> here = path.EndsWith(".axaml.cs", StringComparison.Ordinal) && lists.TryGetValue(path[..^3], out HashSet<string>? xaml) ? [.. lists[path], .. xaml] : lists[path];
+            string[] lines = text.Split('\n');
+            foreach (Match match in focused.Matches(text))
+            {
+                string line = lines[LineOf(text, match.Index) - 1].TrimStart();
+                string? on = match.Groups[1].Success ? match.Groups[1].Value : null;
+                bool list = on is null or "this" ? isList.IsMatch(text) && !Regex.IsMatch(line, @"\b(?:void|bool)\s+Focus\(")
+                    : on.Contains('.') ? anywhere.Contains(on[(on.LastIndexOf('.') + 1)..]) : here.Contains(on);
+                if (list && !line.StartsWith("//", StringComparison.Ordinal))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}: {line.Trim()}");
+                }
+            }
+        }
+        Assert.True(anywhere.Count > 30 && files.Sum(f => Regex.Count(f.Text, @"\bListKeys\.Hold\(")) > 15,
+            $"The rule found {anywhere.Count} lists declared and few given the keys through ListKeys.Hold, so it no longer reads how lists are written");
+        Assert.True(found.Count == 0, $"{found.Count} lists are given the keys by Focus(), which a ListBox refuses and a row's container takes only where "
+            + $"it is laid out and chosen, leaving the keys nowhere: give each its chosen row the keys through ListKeys.Hold:\n{string.Join("\n", found)}");
+    }
+
     /// <summary>A menu's item is made by the shared pieces (ListMenus, MenuChoice, and the window's action menus in
     /// MainWindow.Menu), so every item shows only keys the keymap gives its action or its list's row does it by, and greys
     /// saying why: a MenuItem made anywhere else, or keys set beside an item by hand, fails here, naming its line. The

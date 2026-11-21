@@ -197,7 +197,7 @@ public sealed class GodotSceneProperties : DockPanel, IGodotTuner
                 typing = null;
                 Refreshed?.Invoke();
             }
-            list.Focus();
+            ListKeys.Hold(list);
         };
         (GodotValueCells From, LiveValueCell Cell)? made = null;
         Refreshed += () =>

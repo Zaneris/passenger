@@ -329,7 +329,7 @@ public sealed class BreakpointsWindow : UserControl
                 e.Handled = true;
             }
         }, RoutingStrategies.Bubble);
-        AttachedToVisualTree += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => list.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
+        AttachedToVisualTree += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(() => ListKeys.Hold(list), Avalonia.Threading.DispatcherPriority.Loaded);
         properties.Submitted += (_, _) => properties.Apply(store);
         properties.Dismissed += (_, _) => Close();
 
@@ -472,7 +472,7 @@ public sealed class BreakpointsWindow : UserControl
         ExceptionBreakpoint added = store.AddException(type);
         addPane.IsVisible = false;
         Fill(added);
-        list.Focus();
+        ListKeys.Hold(list);
     }
 
     private void OnTypedKeyDown(object? sender, KeyEventArgs e)
@@ -485,7 +485,7 @@ public sealed class BreakpointsWindow : UserControl
                 break;
             case Key.Escape:
                 ShowChosen();
-                list.Focus();
+                ListKeys.Hold(list);
                 e.Handled = true;
                 break;
             case Key.Up or Key.Down or Key.PageUp or Key.PageDown when ListKeys.Move(found, e):
@@ -516,12 +516,19 @@ public sealed class BreakpointsWindow : UserControl
         goTo.IsEnabled = Chosen is LineBreakpoint;
     }
 
+    /// <summary>Takes the chosen breakpoint out, the keys going on to the row chosen next where the list had them, as its
+    /// rows are made again.</summary>
     private void RemoveChosen()
     {
         if (Chosen is { } breakpoint && Removable(breakpoint))
         {
+            bool keyed = list.IsKeyboardFocusWithin;
             store.Remove(breakpoint);
             Fill(null);
+            if (keyed)
+            {
+                ListKeys.Hold(list);
+            }
         }
     }
 

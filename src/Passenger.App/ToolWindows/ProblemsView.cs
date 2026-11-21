@@ -161,15 +161,7 @@ public sealed class ProblemsView : DockPanel
         {
             list.SelectedItem = first;
         }
-        if (list.SelectedItem is { } chosen)
-        {
-            list.ScrollIntoView(chosen);
-            list.ContainerFromItem(chosen)?.Focus();
-        }
-        else
-        {
-            list.Focus();
-        }
+        ListKeys.Hold(list);
     }
 
     private void Choose()

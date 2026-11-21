@@ -251,7 +251,7 @@ public sealed class WelcomeView : UserControl
         if (focused && list.SelectedIndex >= 0)
         {
             // The rows are made anew, so the focus goes back to the one chosen.
-            Dispatcher.UIThread.Post(() => list.ContainerFromIndex(list.SelectedIndex)?.Focus(), DispatcherPriority.Loaded);
+            Dispatcher.UIThread.Post(() => ListKeys.Hold(list), DispatcherPriority.Loaded);
         }
     }
 

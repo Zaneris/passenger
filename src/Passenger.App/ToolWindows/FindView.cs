@@ -373,15 +373,8 @@ public sealed class FindView : DockPanel
 
     private DockPanel Body { get; }
 
-    /// <summary>Gives the tree the keys, as a click on a row does: the chosen row's, else the list's.</summary>
-    public void FocusRows()
-    {
-        int index = Math.Max(0, list.SelectedIndex);
-        // A row scrolled out of sight has no container to take the focus until it is brought into view.
-        list.ScrollIntoView(index);
-        list.UpdateLayout();
-        list.ContainerFromIndex(index)?.Focus();
-    }
+    /// <summary>Gives the tree the keys, as a click on a row does: the chosen row's, the first chosen where none is.</summary>
+    public void FocusRows() => ListKeys.Hold(list, chooseFirst: true);
 
     /// <summary>A new search's usages in a tab of their own, every group open and the first usage chosen, with what the
     /// search went without above them (<paramref name="without"/>), when it went without anything. Those in generated
