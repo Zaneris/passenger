@@ -3157,7 +3157,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         /// <summary>The width, in units, of the window a load makes.</summary>
         public static int WidthOf(int load) => 80 + (40 * load);
 
-        /// <summary>Turns XAML Preview on, stops the previewer it starts as it starts, and connects in its place.</summary>
+        /// <summary>Turns XAML Preview on, stops the previewer it starts as it starts, and connects in its place; the loop run
+        /// without settling meanwhile, as the preview holds the window for the frame only the stand-in will draw.</summary>
         public static StandInPreviewer InPlaceOf(MainWindow window, OpenDocument document)
         {
             int port = 0;
@@ -3174,14 +3175,14 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
             try
             {
                 Assert.True(window.Perform(AppActions.XamlPreview), $"XAML Preview could not run: {window.Status}");
-                Ui.WaitFor(() => Volatile.Read(ref port) != 0, () => $"the previewer started, where the preview says '{window.PreviewOf(document)?.Status}'");
+                Ui.PumpUntil(() => Volatile.Read(ref port) != 0, "the previewer started");
             }
             finally
             {
                 ChildProcesses.Started -= OnStarted;
             }
             Avalonia.Remote.Protocol.IAvaloniaRemoteTransportConnection? made = null;
-            Ui.Await(Waiting.Apart(async () => made = await new Avalonia.Remote.Protocol.BsonTcpTransport().Connect(System.Net.IPAddress.Loopback, port)),
+            Ui.AwaitPumped(Waiting.Apart(async () => made = await new Avalonia.Remote.Protocol.BsonTcpTransport().Connect(System.Net.IPAddress.Loopback, port)),
                 "the stand-in's connection to the preview's port");
             return new StandInPreviewer(made!);
         }
