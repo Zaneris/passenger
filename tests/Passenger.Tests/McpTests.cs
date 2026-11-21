@@ -2225,9 +2225,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("main", (await Call(client, McpTools.VcsStatus)).GetProperty("branch").GetString());
     }
 
-    /// <summary>With no git on the PATH, a folder's repository is never taken for none: the Version control menu greys "Git is
-    /// not installed" where Create Git Repository… would be, the status bar saying why and how to install it, and
-    /// vcs_status answers that git is not installed.</summary>
+    /// <summary>With no git on the PATH, a folder's repository is never taken for none: the Version control menu says "Git is
+    /// not installed" in place of its items, a notice the keys and the pointer pass over, where Create Git Repository…
+    /// would be, the status bar saying why and how to install it; vcs_status answers that git is not installed, and
+    /// ide_actions that Create Git Repository cannot run for it.</summary>
     [Fact]
     public async Task With_no_git_on_the_path_a_repository_is_said_to_need_git_in_the_version_control_menu_never_taken_for_none()
     {
@@ -2250,12 +2251,16 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string menu = string.Empty;
         await Waiting.UntilAsync(async () => (menu = Text(await Call(client, McpTools.AppTree, items))).StartsWith("MenuItem", StringComparison.Ordinal),
             TimeSpan.FromSeconds(10), Cancel, TimeSpan.FromMilliseconds(200));
-        Assert.True(menu.Contains("MenuItem \"Git is not installed\"", StringComparison.Ordinal) && menu.Contains("[disabled]", StringComparison.Ordinal)
+        string notice = $"MenuItem.{StyleClasses.MenuNotice} \"Git is not installed\"";
+        Assert.True(menu.Split('\n').Any(line => line.StartsWith(notice, StringComparison.Ordinal) && line.Contains("[disabled]", StringComparison.Ordinal))
             && !menu.Contains("Create Git Repository", StringComparison.Ordinal),
-            $"The Version control menu over a repository with no git on the PATH holds, rather than \"Git is not installed\" greyed: {menu}");
+            $"The Version control menu over a repository with no git on the PATH holds, rather than the notice that Git is not installed: {menu}");
         string bar = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["control"] = "#StatusText" }));
         Assert.True(bar.Contains("git is not installed", StringComparison.Ordinal),
-            $"The status bar, once the Version control menu greyed Git with no git on the PATH, does not say why: {bar}");
+            $"The status bar, once the Version control menu said Git is not installed, does not say why: {bar}");
+        string[] creating = [.. (await Call(client, McpTools.IdeActions, new() { ["query"] = AppActions.CreateRepository })).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(creating.Any(a => a.StartsWith($"{AppActions.CreateRepository}:", StringComparison.Ordinal) && a.Contains("cannot run: git is not installed", StringComparison.Ordinal)),
+            $"ide_actions, over a repository with no git on the PATH, offers Create Git Repository rather than that git is not installed: {string.Join("; ", creating)}");
     }
 
     /// <summary>An agent's ide_action runs Create Git Repository in a folder of no repository, answered once it is made: the
