@@ -18,8 +18,9 @@ public class AsyncStepTests(ITestOutputHelper testOutputHelper)
     private const string StateMachines = "StateMachineAsyncConsoleApp";
     private static readonly int InnerAwaited = StateMachinesLine("sum += await InnerAsync(i);");
     private static readonly int BeforeSet = StateMachinesLine("int before = i;");
-    private static readonly int DelayAwaited = StateMachinesLine("await Task.Delay(10);");
-    private static readonly int Doubled = StateMachinesLine("int doubled = before * 2;");
+    /// <summary>ThrowsLaterAsync's first line, an await that always yields, and its next.</summary>
+    private static readonly int YieldAwaited = StateMachinesLine("static async Task ThrowsLaterAsync(int depth)") + 2;
+    private static readonly int Deeper = YieldAwaited + 1;
 
     [Fact]
     public async Task Steps_through_an_async_method_stop_at_each_of_its_lines_in_turn()
@@ -111,32 +112,33 @@ public class AsyncStepTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A step over an await whose question of which run went on after it is held unfinished on the thread the run
     /// goes on on: the step waits for that evaluation and, once it returns, goes on there to the next line, never left to
-    /// the evaluation (#2029).</summary>
+    /// the evaluation (#2029). The await is Task.Yield's, which always leaves the method: a delay may end before its await
+    /// looks, the method then going on with no run to tell (#2078).</summary>
     [Fact]
     public async Task A_step_over_an_await_whose_question_of_the_run_that_went_on_is_held_unfinished_stops_at_the_next_line_once_it_returns()
     {
-        await using DebugSession host = await LaunchHoldingAsyncSteps(DelayAwaited);
+        await using DebugSession host = await LaunchHoldingAsyncSteps(YieldAwaited, ["throws"]);
         StoppedEvent stop = await host.WaitForStoppedEvent();
         await host.ClearBreakpointsAsync(Debuggees.Source("RuntimeAsyncConsoleApp", "Program.cs"));
         Task<(StoppedEvent? Stop, string Output)> stepped = host.StepOverAsync(stop.ThreadId!.Value).WaitForStopOrEnd();
         await WaitsForTheEvaluation(host, "the question of which run resumed");
         await host.RequestAsync(DapCommands.Input, new InputArguments("x", Close: true));
         (StoppedEvent? after, string written) = await stepped;
-        Assert.True(after is { Reason: StopReasons.Step } && after.Line == Doubled,
-            $"Once the held question returned, the step over InnerAsync's await {(after is null ? $"never stopped, the program running to its end:\n{written}" : $"stopped for {after.Reason} at line {after.Line}")}, "
-            + $"not at its next line, {Doubled}; the engine's log:\n{host.EngineLog()}");
-        Assert.Equal("0", Assert.Single(await host.LocalsAsync(after!), v => v.Name == "before").Value);
-        await RunsToItsEnd(host);
+        Assert.True(after is { Reason: StopReasons.Step } && after.Line == Deeper,
+            $"Once the held question returned, the step over ThrowsLaterAsync's await {(after is null ? $"never stopped, the program running to its end:\n{written}" : $"stopped for {after.Reason} at line {after.Line}")}, "
+            + $"not at its next line, {Deeper}; the engine's log:\n{host.EngineLog()}");
+        Assert.Equal("2", Assert.Single(await host.LocalsAsync(after!), v => v.Name == "depth").Value);
+        await RunsToItsEnd(host, "caught InvalidOperationException");
     }
 
     /// <summary>StateMachineAsyncConsoleApp launched to a breakpoint at a line, the async stepper's questions of the program
     /// each waiting for its input first (<see cref="AdapterEnvironment.HoldAsyncStepVariable"/>).</summary>
-    private async Task<DebugSession> LaunchHoldingAsyncSteps(int line)
+    private async Task<DebugSession> LaunchHoldingAsyncSteps(int line, IReadOnlyList<string>? arguments = null)
     {
         DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { [AdapterEnvironment.HoldAsyncStepVariable] = "1" });
         try
         {
-            await host.InitializeAsync().LaunchAsync(Debuggees.Program(StateMachines), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+            await host.InitializeAsync().LaunchAsync(Debuggees.Program(StateMachines), stopAtEntry: false, justMyCode: true, arguments).WaitForInitializedEvent();
             await host.BreakpointsAsync(line, Debuggees.Source("RuntimeAsyncConsoleApp", "Program.cs")).ConfigurationDoneAsync();
             return host;
         }
@@ -155,11 +157,11 @@ public class AsyncStepTests(ITestOutputHelper testOutputHelper)
             $"{held} was never held unfinished:\n{host.EngineLog()}");
     }
 
-    /// <summary>The program let go runs on to its end, every value it computed as it would have.</summary>
-    private static async Task RunsToItsEnd(DebugSession host)
+    /// <summary>The program let go runs on to its end, every value it computed as it would have, writing what it ends with.</summary>
+    private static async Task RunsToItsEnd(DebugSession host, string ending = "total 10")
     {
         (string output, int? exitCode) = await host.ContinueAsync().WaitForEnd();
-        Assert.True(output.Contains("total 10", StringComparison.Ordinal) && exitCode == 0,
+        Assert.True(output.Contains(ending, StringComparison.Ordinal) && exitCode == 0,
             $"Let go, the program did not run on to its end as it would have (exit code {exitCode}):\n{output}");
     }
 
