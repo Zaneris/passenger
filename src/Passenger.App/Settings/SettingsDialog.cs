@@ -17,6 +17,7 @@ public sealed partial class SettingsDialog : IdeWindow
 {
     public const string Appearance = "Appearance";
     public const string SystemPage = "System Settings";
+    public const string AccessibilityPage = "Accessibility";
     public const string UpdatesPage = "Updates";
     public const string ExplorerPage = "Explorer";
     public const string EditorPage = "Editor";
@@ -56,7 +57,7 @@ public sealed partial class SettingsDialog : IdeWindow
     /// <summary>The names of <see cref="DiscordShown"/>'s choices, in its order.</summary>
     public static readonly string[] DiscordChoices = ["Passenger only", "The solution", "The solution and the file"];
 
-    private static readonly string[] Order = [Appearance, SystemPage, TrustPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
+    private static readonly string[] Order = [Appearance, SystemPage, AccessibilityPage, TrustPage, UpdatesPage, ExplorerPage, EditorPage, CodeFoldingPage, PostfixPage, XamlCodeStylePage, GDScriptCodeStylePage, LiveTemplatesPage,
         VersionControlPage, BuildPage, RunPage, HotReloadPage, NodePage, EslintPage, PrettierPage, SchemasPage, StylesheetsPage, DockerPage, GodotPage, TerminalPage, McpPage, DiscordPage, DiagnosticsPage, KeymapPage];
 
     /// <summary>The names of Attributes format's choices, in <see cref="Passenger.Xaml.Features.XamlAttributeStyle"/>'s
@@ -287,6 +288,16 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ToolWindowLook);
         Add(Declared.ClosedToolWindows);
         Add(Declared.FindResults);
+
+        Add(Declared.SoundCues);
+        Add(Declared.SoundOnErrorLine);
+        Add(Declared.SoundOnWarningLine);
+        Add(Declared.SoundOnBreakpointLine);
+        Add(Declared.SoundOnFoldedLine);
+        Add(Declared.SoundOnChangedLine);
+        Add(Declared.SoundOnBuildEnd);
+        Add(Declared.SoundOnTestsEnd);
+        Add(Declared.SoundOnDebuggerStop);
 
         Add(Declared.ReopenProjectsOnStartup);
         StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Group };

@@ -5,10 +5,10 @@ using Passenger.Core;
 namespace Passenger.App;
 
 /// <summary>A sound file played through the system's own player, one at a time, a new one ending the last: macOS's afplay
-/// (WAV, MP3, AIFF), a Linux desktop's pw-play or paplay (WAV, Ogg, FLAC, MP3), else aplay (WAV), and on Windows
-/// PowerShell's sound player (WAV). An Ogg Vorbis or MP3 sound, a Godot game's other kinds, is decoded to a WAV first
+/// (WAV, MP3, AIFF), a Linux desktop's pw-play or paplay (WAV, Ogg, FLAC, MP3), else aplay (WAV), and on Windows its own
+/// PlaySound (WAV), in Passenger's process. An Ogg Vorbis or MP3 sound, a Godot game's other kinds, is decoded to a WAV first
 /// (<see cref="Playable"/>), so each plays on every system. What the system's player cannot play is said as why.</summary>
-public static class Sounds
+public static partial class Sounds
 {
     private static readonly OnePlaying<Process> Playing = new(static last =>
     {
@@ -65,7 +65,9 @@ public static class Sounds
         }
     }
 
-    private static void Write(Stream wav, int channels, int rate, Func<float[], int> read)
+    /// <summary>Samples, from -1 to 1 and as many channels as given interleaved, written as a 16-bit PCM WAV: each read fills
+    /// as much of the buffer as it has and says how much, none at the end.</summary>
+    internal static void Write(Stream wav, int channels, int rate, Func<float[], int> read)
     {
         if (channels is < 1 or > 8 || rate <= 0)
         {
@@ -121,7 +123,8 @@ public static class Sounds
         }
     }
 
-    /// <summary>The program that plays a file here and its arguments, or why none can.</summary>
+    /// <summary>The program that plays a file here and its arguments, or why none can; neither for a WAV on Windows, which
+    /// plays it itself.</summary>
     public static (ProcessStartInfo? Start, string? WhyNot) Player(string file)
     {
         string extension = Path.GetExtension(file).ToLowerInvariant();
@@ -133,13 +136,8 @@ public static class Sounds
         }
         if (OperatingSystem.IsWindows())
         {
-            if (extension != ".wav" || Programs.OnPath("powershell.exe") is not { } powershell)
-            {
-                return (null, $"Windows' player plays WAV files alone, not {extension}: open it in Godot's editor to hear it");
-            }
-            ProcessStartInfo start = ChildProcesses.Command(powershell, ["-NoProfile", "-NonInteractive", "-Command", "(New-Object System.Media.SoundPlayer $env:SOUND_TO_PLAY).PlaySync()"]);
-            start.Environment["SOUND_TO_PLAY"] = file;
-            return (start, null);
+            // Windows plays a WAV itself (PlayOnWindows), no program started.
+            return (null, extension == ".wav" ? null : $"Windows' player plays WAV files alone, not {extension}: open it in Godot's editor to hear it");
         }
         foreach (string program in (string[])["pw-play", "paplay"])
         {
@@ -157,6 +155,10 @@ public static class Sounds
     public static async Task<string?> PlayAsync(string file)
     {
         UiThread.Check();
+        if (OperatingSystem.IsWindows())
+        {
+            return Player(file).WhyNot ?? PlayOnWindows(file);
+        }
         int ask = Playing.Ask();
         (ProcessStartInfo? start, string? whyNot) = await BackgroundWork.Run(() => Player(file));
         if (Playing.Overtaken(ask))
@@ -183,5 +185,21 @@ public static class Sounds
     {
         UiThread.Check();
         Playing.Stop();
+        if (OperatingSystem.IsWindows())
+        {
+            PlaySound(null, 0, 0);
+        }
     }
+
+    /// <summary>SND_ASYNC, SND_NODEFAULT and SND_FILENAME: the file played while PlaySound returns, a sound playing ended,
+    /// and no sound of the system's own where the file cannot be.</summary>
+    private const uint FileAtOnce = 0x1 | 0x2 | 0x20000;
+
+    /// <summary>A WAV played by Windows' own player, the sound playing ended; why where it cannot be.</summary>
+    private static string? PlayOnWindows(string file) =>
+        PlaySound(file, 0, FileAtOnce) ? null : $"Windows could not play {Path.GetFileName(file)}: no sound device took it";
+
+    [System.Runtime.InteropServices.LibraryImport("winmm.dll", EntryPoint = "PlaySoundW", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool PlaySound(string? sound, nint module, uint flags);
 }

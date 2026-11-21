@@ -248,25 +248,31 @@ public partial class MainWindow
     public IReadOnlyList<string> SoundsHanded => handed;
 
     /// <summary>Plays a sound file through the system's player (<see cref="Sounds"/>), decoded off the window's thread where
-    /// the player takes it only so, saying why where it cannot; a window nobody sees (<see cref="Unseen"/>) plays nothing.</summary>
-    public async Task PlaySoundAsync(string file)
+    /// the player takes it only so; why where it cannot, said in the status bar unless not <paramref name="sayWhyNot"/>. A
+    /// window nobody sees (<see cref="Unseen"/>) plays nothing.</summary>
+    public async Task<string?> PlaySoundAsync(string file, bool sayWhyNot = true)
     {
         UiThread.Check();
         played.Add(file);
         (string? playable, string? whyNot) = await BackgroundWork.Run(() => Sounds.Playable(file, Path.Combine(StateFolder, "cache", "sounds")));
         if (playable is null)
         {
-            status.Text = whyNot;
-            return;
+            return Said(whyNot);
         }
         handed.Add(playable);
         if (Unseen)
         {
-            return;
+            return null;
         }
-        if (await Sounds.PlayAsync(playable) is { } why)
+        return Said(await Sounds.PlayAsync(playable));
+
+        string? Said(string? why)
         {
-            status.Text = why;
+            if (sayWhyNot && why is not null)
+            {
+                status.Text = why;
+            }
+            return why;
         }
     }
 

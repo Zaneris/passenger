@@ -121,14 +121,20 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     }
 
     /// <summary>Read as Text in the Unit Tests window opens the chosen test's result as text, named by the test and its
-    /// outcome, its failure's message and stack under its outcome; Escape gives the test's row the keys back.</summary>
+    /// outcome, its failure's message and stack under its outcome; Escape gives the test's row the keys back. With the sound
+    /// cues on, the run's build passing and the run failing each played its cue once, in turn.</summary>
     [AvaloniaFact]
     public void A_failed_tests_result_opens_as_text_from_its_row_and_Escape_gives_the_row_its_keys_back()
     {
         MainWindow window = Open();
+        window.ApplySettings(window.Settings with { SoundCues = Passenger.App.Settings.SoundCuesPlayed.Always });
         window.EditorArea.CodeEditor.GoTo(new TextPosition(16, 8));
         Ui.Run(window, AppActions.RunTests);
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Two_and_two_make_five")?.State == TestState.Failed, "the failing test's run", TimeSpan.FromSeconds(120));
+        Ui.Settle();
+        SoundCue[] ended = [.. window.CuesPlayed.Where(c => c is SoundCue.BuildPassed or SoundCue.BuildFailed or SoundCue.TestsPassed or SoundCue.TestsFailed)];
+        Assert.True(ended.SequenceEqual([SoundCue.BuildPassed, SoundCue.TestsFailed]),
+            $"A run whose build passed and whose test failed played {(ended.Length == 0 ? "no cue" : string.Join(", ", ended))}");
         ListBox tree = Tree(window);
         tree.SelectedItem = Method(window, "Two_and_two_make_five");
         ListKeys.Hold(tree);

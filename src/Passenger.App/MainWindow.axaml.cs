@@ -727,11 +727,16 @@ public partial class MainWindow : IdeWindow
         ShowHotReloadButtons();
     }
 
-    /// <summary>A program the person debugs stopped: the window comes to the front or asks for them, as Settings says
-    /// (<see cref="AppSettings.WhenDebuggerStops"/>); never for an agent's debugging, nor where nobody sees the window.</summary>
+    /// <summary>A program the person debugs stopped: its cue, and the window comes to the front or asks for them, as Settings
+    /// says (<see cref="AppSettings.WhenDebuggerStops"/>); never for an agent's debugging, nor where nobody sees the window.</summary>
     private void FollowStop(Debugging.DebugSession stopped)
     {
-        if (Unseen || AgentsOwn || stopped.AgentDrives || settings.WhenDebuggerStops == DebuggerStop.Nothing)
+        if (AgentsOwn || stopped.AgentDrives)
+        {
+            return;
+        }
+        Cue(SoundCue.DebuggerStopped);
+        if (Unseen || settings.WhenDebuggerStops == DebuggerStop.Nothing)
         {
             return;
         }

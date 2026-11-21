@@ -67,6 +67,43 @@ public static class Declared
             + "a tab of their own to go back to; kept there, the places Go to Declaration, Go to Implementation and the like find "
             + "to choose from are listed there too. Open in Find Window in the popup puts the matches there either way."));
 
+    public static readonly ChoiceSetting<SoundCuesPlayed> SoundCues = new(s => s.SoundCues, (s, v) => s with { SoundCues = v },
+        [(SoundCuesPlayed.WithScreenReader, "While a screen reader runs"), (SoundCuesPlayed.Always, "Always"), (SoundCuesPlayed.Never, "Never")],
+        new(D.AccessibilityPage, "Play sound cues", "sound cue audio signal beep tone screen reader voiceover narrator nvda jaws orca accessibility blind",
+            "Short sounds for what the caret comes to and for what ends, each turned on below. While a screen reader runs, they play only while the "
+            + "system says one does (VoiceOver, Narrator, NVDA, JAWS or Orca), so a person who sees the screen hears none."));
+
+    public static readonly ToggleSetting SoundOnErrorLine = Cue(s => s.SoundOnErrorLine, (s, v) => s with { SoundOnErrorLine = v },
+        "An error on the caret's line", "error problem line caret");
+
+    public static readonly ToggleSetting SoundOnWarningLine = Cue(s => s.SoundOnWarningLine, (s, v) => s with { SoundOnWarningLine = v },
+        "A warning on the caret's line", "warning problem line caret");
+
+    public static readonly ToggleSetting SoundOnBreakpointLine = Cue(s => s.SoundOnBreakpointLine, (s, v) => s with { SoundOnBreakpointLine = v },
+        "A breakpoint on the caret's line", "breakpoint debugger line caret");
+
+    public static readonly ToggleSetting SoundOnFoldedLine = Cue(s => s.SoundOnFoldedLine, (s, v) => s with { SoundOnFoldedLine = v },
+        "A folded region at the caret's line", "fold folded folding collapsed region line caret");
+
+    public static readonly ToggleSetting SoundOnChangedLine = Cue(s => s.SoundOnChangedLine, (s, v) => s with { SoundOnChangedLine = v },
+        "A line changed since the last commit", "change changed modified added git diff line caret");
+
+    public static readonly ToggleSetting SoundOnBuildEnd = Cue(s => s.SoundOnBuildEnd, (s, v) => s with { SoundOnBuildEnd = v },
+        "A build passing or failing", "build passed failed succeeded end finished");
+
+    public static readonly ToggleSetting SoundOnTestsEnd = Cue(s => s.SoundOnTestsEnd, (s, v) => s with { SoundOnTestsEnd = v },
+        "A test run passing or failing", "tests test run passed failed end finished");
+
+    public static readonly ToggleSetting SoundOnDebuggerStop = Cue(s => s.SoundOnDebuggerStop, (s, v) => s with { SoundOnDebuggerStop = v },
+        "The debugger stopping", "debugger stop stopped breakpoint hit exception step paused");
+
+    /// <summary>A sound cue's row on the Accessibility page, voided while the cues play never.</summary>
+    private static ToggleSetting Cue(Func<AppSettings, bool> get, Func<AppSettings, bool, AppSettings> set, string label, string words) =>
+        new(get, set, new(D.AccessibilityPage, label, $"sound cue audio signal {words}")
+        {
+            When = new(s => s.SoundCues != SoundCuesPlayed.Never, "Play sound cues is Never"),
+        });
+
     public static readonly ToggleSetting ReopenProjectsOnStartup = new(s => s.ReopenProjectsOnStartup, (s, v) => s with { ReopenProjectsOnStartup = v },
         new(D.SystemPage, "Reopen projects on startup", "reopen last solution project folder startup start launch welcome screen recent"));
 

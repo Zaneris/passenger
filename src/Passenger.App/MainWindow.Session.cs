@@ -295,6 +295,7 @@ public partial class MainWindow
         // Detach acts on the container run under way: whole from the Run window or with nothing chosen, else the chosen service alone.
         next.Debug.RunDetach = new(runs.DetachesContainers, runs.WhyNotDetachContainers, runs.DetachContainersAsync);
         BindAspire(next);
+        BindSoundCues(next);
         buildRun.RunningChanged += (_, _) =>
         {
             if (session == next)

@@ -70,6 +70,10 @@ public partial class App : Application
         BackgroundWork.Install(work => Dispatcher.UIThread.Post(work));
         IdeErrors.Install();
         SystemMotion.LookAgain();
+        if (!PassengerApp.ShowsNoWindow)
+        {
+            ScreenReaders.LookAgain();
+        }
         if (MacTextElements.Install() is { } unread)
         {
             IdeErrors.Write($"VoiceOver reads the editor and the terminal by their caret's line alone: {unread}");
