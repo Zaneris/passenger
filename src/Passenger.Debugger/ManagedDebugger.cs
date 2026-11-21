@@ -823,6 +823,7 @@ public partial class ManagedDebugger
         _stopShown = true;
         // A pause holds threads where they stand, and an exception inside its managed dispatch, neither at a patch.
         _stoppedInDispatch = reason is StopReasons.Pause or StopReasons.Exception ? null : threadId;
+        _stoppedAt = _stoppedInDispatch is int stopped && _process is { } held ? PlaceOf(held, stopped) : null;
         _stoppedByEvent = reason is StopReasons.Pause ? null : threadId;
         OnStopped?.Invoke(new StopInfo(threadId, reason, filePath, line, column, hitBreakpointIds, text));
     }
@@ -1803,15 +1804,25 @@ public partial class ManagedDebugger
         bool runsOff = letGo && !exited;
         // The threads the runtime holds inside its handling of a breakpoint or a step's end, run off it before the detach.
         List<int> inDispatch = runsOff ? [.. _deferredEvents.Concat(_behindStep).Select(DispatchThread).OfType<int>()] : [];
-        if (_stopShown && _stoppedInDispatch is int stopped)
+        // The stop's thread also once a continue left it in an evaluation given up there, to which it returns as that ends.
+        bool backToStop = _stoppedInDispatch is int returning && EvalStatus.Abandoned.ContainsKey(returning);
+        if ((_stopShown || backToStop) && _stoppedInDispatch is int stopped)
         {
             inDispatch.Insert(0, stopped);
+            if (backToStop && !_stopShown && runsOff)
+            {
+                _logger?.Invoke($"Letting go: thread {stopped} goes back to its stop as its evaluation given up there returns, and is run off it");
+            }
         }
-        // The client's time for the let-go, and where each held thread stands before anything below runs it.
+        // The client's time for the let-go, and where each held thread stands before anything below runs it, the stop's as it came.
         long? letGoBy = within is { } given ? Stopwatch.GetTimestamp() + (long)(given.TotalSeconds * Stopwatch.Frequency) : null;
         Dictionary<int, ThreadPlace?> heldAt = [];
         if (!exited && letGo && _process is { } measured)
         {
+            if (_stoppedInDispatch is int shown && inDispatch.Contains(shown) && _stoppedAt is { } stood)
+            {
+                heldAt[shown] = stood;
+            }
             foreach (int thread in inDispatch)
             {
                 heldAt.TryAdd(thread, PlaceOf(measured, thread));

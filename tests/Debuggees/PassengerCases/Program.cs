@@ -901,6 +901,16 @@ internal static class LetsGo
 		}
 	}
 
+	// Until the program is given a line, which a test gives once the evaluation is where it wants it.
+	public static string Held
+	{
+		get
+		{
+			Console.WriteLine("evaluating");
+			return Console.ReadLine() ?? "none";
+		}
+	}
+
 	public static void Run()
 	{
 		for (int turn = 1; turn <= 100; turn++)

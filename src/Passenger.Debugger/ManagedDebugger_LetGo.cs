@@ -16,6 +16,10 @@ public partial class ManagedDebugger
     /// (a patch it hit or a single step): one that is resumed through that handling, not from where it stands.</summary>
     private int? _stoppedInDispatch;
 
+    /// <summary>Where the thread of the stop shown stood as the stop came, which an evaluation there moves it from until it
+    /// returns: the place it is run off as the program is let go (<see cref="RunOffDispatch"/>).</summary>
+    private ThreadPlace? _stoppedAt;
+
     /// <summary>Where a thread stands: its leaf frame, by its place on the stack, and the native offset in it.</summary>
     private readonly record struct ThreadPlace(CORDB_ADDRESS FrameStart, CORDB_ADDRESS FrameEnd, uint Offset);
 
@@ -122,6 +126,7 @@ public partial class ManagedDebugger
         _callbacks.OnAnyEvent += take;
         try
         {
+            _logger?.Invoke($"Letting go: {Plural.Of(left.Count, "evaluation")} given up still to end, waited for");
             ContinueEveryHold(process);
             Stopwatch since = Stopwatch.StartNew();
             while (left.Count > 0 && !_exited.IsSet && Waited(left) is { } wait && wait > TimeSpan.Zero)

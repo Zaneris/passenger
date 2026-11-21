@@ -196,6 +196,62 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(0, program.ExitCode);
     }
 
+    /// <summary>A program attached to, let go on (Continue) while a read of its stop's evaluation runs, then let go (Detach)
+    /// before that evaluation returns, as Run without Debugger lets a service go just after a person resumed it: the detach
+    /// waits for the evaluation's end, runs the stop's thread, back at its breakpoint, off it, and the program runs on.</summary>
+    [Fact]
+    public async Task A_detach_while_an_evaluation_a_continue_left_runs_runs_the_stops_thread_off_its_breakpoint_and_the_program_runs_on()
+    {
+        ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["lets go"]);
+        start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        using Process program = Passenger.Core.ChildProcesses.Start(start);
+        TaskCompletionSource evaluating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Text.StringBuilder written = new();
+        Task heard = Passenger.Core.ChildProcesses.Hear(program, line =>
+        {
+            lock (written)
+            {
+                written.AppendLine(line);
+            }
+            if (line == "evaluating")
+            {
+                evaluating.TrySetResult();
+            }
+        });
+        Passenger.App.IdeErrors.Observe(heard);
+        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, program,
+            new Dictionary<string, string> { [AdapterEnvironment.EvaluationTimeoutVariable] = TimeSpan.FromMinutes(10).TotalMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+        await host
+            .InitializeAsync()
+            .AttachAsync(program.Id)
+            .WaitForInitializedEvent();
+        await host.BreakpointsAsync([Line("Thread.Sleep(10); // each turn of the program let go")], Source).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        Task<EvaluateResponse> held = host.Send<EvaluateResponse>(DapCommands.Evaluate, new EvaluateArguments("LetsGo.Held", frame, EvaluateContexts.Watch));
+        await evaluating.Task.WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
+        await host.Send<ContinueResponse>(DapCommands.Continue, new ThreadArguments(stop.ThreadId!.Value)).WaitAsync(DebugSession.RequestLimit, TestContext.Current.CancellationToken);
+        Assert.Contains("went on", (await held).Result, StringComparison.Ordinal);
+
+        // The evaluation ends only once the detach waits for it.
+        Task<bool> detached = host.DisconnectAsync(DebugSession.RequestLimit);
+        Assert.True(await Waiting.UntilAsync(() => host.EngineLog().Contains("given up still to end, waited for", StringComparison.Ordinal), TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken), $"The detach never waited for the evaluation; the engine's log:\n{host.EngineLog()}");
+        await program.StandardInput.WriteLineAsync("given");
+        Assert.True(await detached, "The detach was not answered");
+        Assert.Contains($"Letting go: thread {stop.ThreadId} goes back to its stop", host.EngineLog(), StringComparison.Ordinal);
+        Assert.True(program.WaitForExit(TimeSpan.FromSeconds(30).Scaled()),
+            $"The program let go did not run on to its end; the engine's log:\n{host.EngineLog()}");
+        Assert.True(await Waiting.Within(heard, TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The program's output was not read to its end after it ended");
+        lock (written)
+        {
+            Assert.Contains("ran on", written.ToString(), StringComparison.Ordinal);
+        }
+        Assert.Equal(0, program.ExitCode);
+    }
+
     /// <summary>A Detach after an evaluation that could not be stopped, which has had its time and its abort's window
     /// already, never waits it out again, nor for its thread to leave its stop: it is answered.</summary>
     [Fact]
