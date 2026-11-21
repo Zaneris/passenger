@@ -316,6 +316,70 @@ public sealed class SettingsTests : IDisposable
         static double Scale(Control control) => control.TransformToVisual(TopLevel.GetTopLevel(control)!)!.Value.M11;
     }
 
+    /// <summary>A dialog opened while a display scale is in force is sized for its content at that scale, as far as its
+    /// screen holds it, by the windows' one rule: Settings, of a set size, and About, as tall as its content, stand 1.5 and
+    /// 2 times as large as at 100% where the screen has room, on its working area, every footer button inside.</summary>
+    [AvaloniaFact]
+    public void A_dialog_opened_at_a_display_scale_is_sized_for_its_content_at_it_with_its_buttons_inside()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Size settings = Opened(window.ShowSettings(), "Settings", 1, default);
+            Assert.True(window.Perform(AppActions.About));
+            Ui.Settle();
+            Size about = Opened(Assert.IsType<AboutDialog>(window.Frontmost), "About", 1, default);
+            foreach (double scale in new[] { 1.5, 2.0 })
+            {
+                window.ApplySettings(window.Settings with { DisplayScale = scale });
+                Ui.Settle();
+                Opened(window.ShowSettings(), "Settings", scale, settings);
+                Assert.True(window.Perform(AppActions.About));
+                Ui.Settle();
+                Opened(Assert.IsType<AboutDialog>(window.Frontmost), "About", scale, about);
+            }
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { DisplayScale = 1 });
+            window.Close();
+        }
+
+        // The dialog's client size, its frame on the screen's working area, its footer buttons inside it, and at a scale the
+        // size it had at 100% grown by as much, as far as the area holds it round the frame the window fit keeps free.
+        static Size Opened(Window dialog, string name, double scale, Size atOne)
+        {
+            Ui.Settle();
+            try
+            {
+                Avalonia.Platform.Screen screen = dialog.Screens.ScreenFromWindow(dialog) ?? dialog.Screens.Primary!;
+                Size area = screen.WorkingArea.Size.ToSize(screen.Scaling);
+                Size client = dialog.ClientSize;
+                PixelRect frame = new(dialog.Position, PixelSize.FromSize(dialog.FrameSize ?? client, dialog.DesktopScaling));
+                Assert.True(screen.WorkingArea.Contains(frame), $"At {scale:P0} {name}'s frame {frame} left the screen's working area {screen.WorkingArea}");
+                Button[] footer = [.. dialog.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible && b.Content is "OK" or "Apply" or "Cancel" or "Close" or "Copy and Close")];
+                Assert.True(footer.Length >= 2, $"At {scale:P0} {name} shows {footer.Length} footer buttons");
+                foreach (Button button in footer)
+                {
+                    Rect shown = new(button.TranslatePoint(default, dialog)!.Value, button.Bounds.Size * scale);
+                    Assert.True(new Rect(client).Contains(shown), $"At {scale:P0} {name}'s {button.Content} stands at {shown}, outside its {client} client area");
+                }
+                if (scale != 1)
+                {
+                    Size wanted = new(Math.Min(atOne.Width * scale, Math.Floor(area.Width - 16)), Math.Min(atOne.Height * scale, Math.Floor(area.Height - 40)));
+                    Assert.True(Math.Abs(client.Width - wanted.Width) <= 2 && Math.Abs(client.Height - wanted.Height) <= 2,
+                        $"At {scale:P0} {name} opened {client}, where {atOne} at 100% asks for {wanted} on a {area} screen");
+                }
+                return client;
+            }
+            finally
+            {
+                dialog.Close();
+                Ui.Settle();
+            }
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData(0, 1)]
     [InlineData(10, 3)]

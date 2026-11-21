@@ -31,6 +31,12 @@ public abstract class IdeWindow : Window
         {
             ShowActivated = false;
         }
+        // Its template applied before the platform takes its size, so the display scale its content takes grows that first.
+        AddHandler(WindowOpenedEvent, (_, _) =>
+        {
+            ApplyStyling();
+            ApplyTemplate();
+        });
     }
 
     /// <summary>Fits the window to the screen most of it stands on when it keeps its place, else the primary, before it is
