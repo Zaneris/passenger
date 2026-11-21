@@ -30,6 +30,24 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `XamlTests`' `Passengers_own_main_window_completes_its_theme_tokens_and_its_style_classes`, CI 44855772233 (every
+  system): "'<Button Name="MenuButton" Classes="' is not in the file". **The test read wrong**: #2045's
+  `ToolButtons.Give` makes the menu button's class in code; the test completes the project button's classes (e06a7994c).
+- `ProjectFileHelpTests`' `A_version_s_card_near_the_editor_s_edge_…`, same run (every system): "The card was to go
+  to the list's left". **A bug in the IDE**: #2045 raised the list's least width to Narrow (360), leaving 184 beside it
+  in the narrowest editor, under a card's 200, so the card went under the list; the least gives way to
+  `PopupPlacement.BesideRoom` now (1838ff846, #2054).
+- `UiRulesTests`' `A_greyed_check_box_shows_its_tooltip_under_the_pointer`, same run (Linux): waited for "Enabled" and
+  found only the why. **A bug in the IDE and the test**: the box, greyed rightly, had no name, so its tip lost what it
+  is; it is named now and the test waits for "Enabled: <why>" (c03cfc6eb, #2054).
+- `DialogButtonsTests`' `Every_dialog_…(look: "Harbour")`, same run (Windows): "'Reformat' and 'Availability
+  configuration' one over the other". **The test read wrong**: the Availability button's tooltip opened under the
+  pointer left on it, and `LayoutFaults` counted it; it passes over tooltips (08d6b5477, #2054).
+- `MigrationsTests`' `A_provider_behind_EF_Core_moves_up_…`, same run (Windows): "Waited 225 s for the fix's question
+  (status: Reading how Shop runs…)". **Cause not found**: the window's own listing stood in `ResolvePlanAsync` with the
+  IDE quiet, most likely on the project host's Properties answer or its gate; a wait that gives up now names the hosts'
+  unanswered requests (93c041e66, #2054).
+
 - `McpTests`' `With_no_git_on_the_path_a_repository_is_said_to_need_git_…`, CI 44848029756 (report, every system):
   "holds, rather than "Git is not installed" greyed: MenuItem.menuNotice …". **The test read wrong**: since ca5a24cda
   (#2045) the item is a `ListMenus.Notice`, which the test's exact `MenuItem "…"` no longer matched; it reads the notice
