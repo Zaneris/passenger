@@ -602,6 +602,155 @@ public class VimTests
     public void Dot_repeats_the_last_change_its_typing_included(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
+    /// <summary>. after an insert session that broke a line with Enter types again what its keys typed: each break made as
+    /// Enter makes it where . types, taking the blanks after the caret and indenting as that line has it, as Vim's
+    /// autoindent does, where it typed nothing or cut what was typed short.</summary>
+    [Theory]
+    [InlineData("one| two\nthree four\n", "i<CR><Esc>jw.", "one\ntwo\nthree \n|four\n")]
+    [InlineData("one| two\nthree four\n", "i<CR><Esc>jwh.", "one\ntwo\nthree\n|four\n")]
+    [InlineData("    a|  b\n    c  d\n", "ix<CR>y<Esc>j0fc.", "    ax\n    yb\n    x\n    |yc  d\n")]
+    [InlineData("a|  b\nc  d\n", "ax<CR>y<Esc>j0.", "a x\nyb\ncx\n|yd\n")]
+    [InlineData("a|  b\nc  d\n", "ax<CR>y<Esc>j0l.", "a x\nyb\nc x\n|yd\n")]
+    [InlineData("    |    return a;\nnext\n", "ia<CR>b<Esc>j.", "    a\n    breturn a;\nnexa\n|bt\n")]
+    [InlineData("    a|b\ncd\n", "ix<CR>y<Esc>j.", "    ax\n    yb\ncx\n|yd\n")]
+    [InlineData("a|b\n    cd\n", "ix<CR>y<Esc>j$.", "ax\nyb\n    cx\n    |yd\n")]
+    [InlineData("    a|b\n    cd\n", "ia<CR><Esc>j.", "    aa\n    b\n   a\n  | cd\n")]
+    [InlineData("x|  y\nz  w\n", "a<CR><CR><Esc>3j.", "x \n\ny\nz\n\n|w\n")]
+    [InlineData("x|  y\n", "3a<CR>q<Esc>", "x \nq\nq\n|qy\n")]
+    public void Dot_after_enter_takes_the_blanks_after_the_caret_and_indents_as_enter_does_where_it_types_again(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>A file that keeps its final line break and has had every line deleted is Vim's empty buffer, one empty line:
+    /// what is put or typed into it keeps the file's final line break, as Vim's 'eol' does, and deleting it again leaves
+    /// the text empty.</summary>
+    [Theory]
+    [InlineData("w|ord\n", "ddp", "\n|word\n")]
+    [InlineData("w|ord\n", "ddiX<Esc>", "|X\n")]
+    [InlineData("|a\nb\n", "dGoX<Esc>", "\n|X\n")]
+    [InlineData("|a\nb\n", "dGiX<Esc>", "|X\n")]
+    [InlineData("|a\nb\n", "ddddiX<Esc>", "|X\n")]
+    [InlineData("|a\n", "ddo<Esc>", "\n|\n")]
+    [InlineData("|a\n", "ddO<Esc>", "|\n\n")]
+    [InlineData("|a\n", "dd", "|")]
+    [InlineData("|a\nb\n", ":%d<CR>:norm Ax<CR>", "|x\n")]
+    [InlineData("|a\nb\n", "dGp", "\n|a\nb\n")]
+    [InlineData("|a\nb\n", "dGP", "|a\nb\n\n")]
+    [InlineData("|a\n", "ylddp", "\n|a\n")]
+    [InlineData("|a\n", "ddcwX<Esc>", "|X\n")]
+    [InlineData("|a\n", "ddSX<Esc>", "|X\n")]
+    [InlineData("|a\n", "ddRxy<Esc>", "x|y\n")]
+    [InlineData("|a\n", "ddiX<Esc>dd", "|")]
+    public void What_is_written_into_a_file_emptied_of_every_line_keeps_its_final_line_break(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>An ex command's range past the last line is refused (E16), where a jump to it goes to the last line; line 0
+    /// stands for the first, one before it for none; a :join of a range whose ends are one line joins nothing, and one on
+    /// the last line has nothing to join, each taking the caret to its line in its column; and ':' from visual mode leaves
+    /// the caret at the stretch's start, a line's first column for whole lines.</summary>
+    [Theory]
+    [InlineData("a1\n | b2\nc3\n", ":5d<CR>", "a1\n | b2\nc3\n")]
+    [InlineData("a1\n | b2\nc3\n", ":2,9d<CR>", "a1\n | b2\nc3\n")]
+    [InlineData("a1\n | b2\nc3\n", ":0d<CR>", "  |b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":-1,.d<CR>", "  |b2\nc3\n")]
+    [InlineData("a1\n | b2\nc3\n", ":4<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("a1\n | b2\nc3\n", ":9<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":2,9j<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", ":2,2j<CR>", "a1\n | b2\nc3\n")]
+    [InlineData("a1\n  b2\nc|3\n", ":1,1j<CR>", "a|1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":3,3j<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("a1\n  b2\n|c3\n", ":j<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":.,.+5j<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":5s/./X/<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":2,9><CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":9norm Ax<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":5y<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":1,9g/./d<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":0<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("a1\n|  b2\nc3\n", ":0,1d<CR>", "  |b2\nc3\n")]
+    [InlineData("a1\n|  b2\nc3\n", ":0j<CR>", "|a1 b2\nc3\n")]
+    [InlineData("a1\n|  b2\nc3\n", ":0><CR>", "    |a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":.,+3d<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":+5<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("a1\n  b2\n|c3\n", ":.+1d<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("a1\n|  b2\nc3\n", ":2;+5d<CR>", "a1\n|  b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", "Vj:j<CR>", "|a1 b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", "V:j<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":2,2j!<CR>", "a1\n|  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":%j<CR>", "|a1 b2 c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":$j<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":-2d<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":-1d<CR>", "  |b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":0-1d<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":2j<CR>", "a1\n  |b2 c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":3j<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":-1<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("a1\n|  b2\nc3\n", ":-5<CR>", "a1\n|  b2\nc3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":3,9<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":4,5<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":$+1<CR>", "a1\n  b2\n|c3\n")]
+    [InlineData("|a1\n  b2\nc3\n", ":$+1d<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("|a1\n", ":%j<CR>", "|a1\n")]
+    [InlineData("|a1\nb\n", ":1,1><CR>", "    |a1\nb\n")]
+    [InlineData("a|1\n  b2\nc3\n", "V:noh<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", "V:<Esc>", "|a1\n  b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", ":$j<CR>", "a1\n  b2\nc|3\n")]
+    [InlineData("a|1\n  b2\nc3\n", ":3j<CR>", "a1\n  b2\nc|3\n")]
+    [InlineData("a1\n  |b2\nc3\n", "V:j<CR>", "a1\n|  b2\nc3\n")]
+    [InlineData("a1\n  b|2\nc3\n", "v:j<CR>", "a1\n  b|2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", "vl:j<CR>", "a|1\n  b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", "V:s/x/y/<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("a|1\n  b2\nc3\n", "Vj:noh<CR>", "|a1\n  b2\nc3\n")]
+    [InlineData("a1\n  b|2\nc3\n", "vk:noh<CR>", "a|1\n  b2\nc3\n")]
+    [InlineData("a1\n  b2\nc|3\n", "Vk:d<CR>", "|a1\n")]
+    public void Ex_ranges_past_the_last_line_are_refused_and_a_join_of_one_line_joins_nothing(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    /// <summary>gq leaves the caret on the first non-blank of the line its motion reached, the line after the paragraph where
+    /// an exclusive motion ended at that line's start (gq}, gq), a search), else the last line it formatted; gw moves a
+    /// caret in a comment's mark or a joined line's lead as Vim's does whether or not the text changed.</summary>
+    [Theory]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqq", "one two three four\n|five six seven\neight nine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqj", "one two three four\nfive six seven eight\n|nine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gq}", "one two three four\nfive six seven eight\nnine ten eleven\n|\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqip", "one two three four\nfive six seven eight\n|nine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqap", "one two three four\nfive six seven eight\nnine ten eleven\n|\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqG", "one two three four\nfive six seven eight\nnine ten eleven\n\n|last line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n", ":set tw=20<CR>gq}", "one two three four\nfive six seven eight\n|nine ten eleven\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gq)", "one two three four\nfive six seven eight\nnine ten eleven\n|\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>Vjgq", "one two three four\nfive six seven eight\n|nine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gq2j", "one two three four\nfive six seven eight\nnine ten eleven\n|\nlast line here\n")]
+    [InlineData("one two three four five six seven\n|eight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqk", "one two three four\nfive six seven eight\n|nine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gw}", "|one two three four\nfive six seven eight\nnine ten eleven\n\nlast line here\n")]
+    [InlineData("one t|wo three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gwip", "one t|wo three four\nfive six seven eight\nnine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gq/last<CR>", "one two three four\nfive six seven eight\nnine ten eleven\n\n|last line here\n")]
+    [InlineData("|one two three four five six seven\neight nine ten eleven\n\nlast line here\n", ":set tw=20<CR>gqgg", "one two three four\n|five six seven\neight nine ten eleven\n\nlast line here\n")]
+    [InlineData("|one two three four\nlast line here xx\nmore words here yy\n", ":set tw=10<CR>gq/last<CR>", "one two\nthree four\n|last line here xx\nmore words here yy\n")]
+    [InlineData("one |two three four\nlast line here xx\nmore words here yy\n", ":set tw=10<CR>gq/more<CR>", "one two\nthree four\nlast line\nhere xx\n|more words here yy\n")]
+    [InlineData("    |one two three four five\n\nx\n", ":set tw=10<CR>gq}", "    one\n    two\n    three\n    four\n    five\n|\nx\n")]
+    [InlineData("// eta nu epsilon\n|// quick eta\n", ":set tw=20<CR>gwap", "// eta nu epsilon\n// |quick eta\n")]
+    [InlineData("// eta nu epsilon\n/|/ quick eta\n", ":set tw=20<CR>gwap", "// eta nu epsilon\n// |quick eta\n")]
+    [InlineData("// eta nu epsilon\n//| quick eta\n", ":set tw=20<CR>gwap", "// eta nu epsilon\n// |quick eta\n")]
+    [InlineData("// eta nu epsilon\n// q|uick eta\n", ":set tw=20<CR>gwap", "// eta nu epsilon\n// q|uick eta\n")]
+    [InlineData("|// eta nu epsilon\n// quick eta\n", ":set tw=20<CR>gwap", "|// eta nu epsilon\n// quick eta\n")]
+    [InlineData("/|/ eta nu epsilon\n// quick eta\n", ":set tw=20<CR>gwap", "/|/ eta nu epsilon\n// quick eta\n")]
+    [InlineData("- one two three four\n|  five six\n", ":set tw=20<CR>gwap", "- one two three fou|r\n  five six\n")]
+    [InlineData("- one two three four\n | five six\n", ":set tw=20<CR>gwap", "- one two three fou|r\n  five six\n")]
+    [InlineData("    x y\n |   z w\n", ":set tw=20<CR>gwap", "    x y| z w\n")]
+    [InlineData("- one two\n|  three\n", ":set tw=20<CR>gwap", "- one two| three\n")]
+    [InlineData("    one two\n  |  three\n", ":set tw=20<CR>gwap", "    one two| three\n")]
+    [InlineData("> one two\n|> three\n", ":set tw=20<CR>gwap", "> one two |three\n")]
+    public void Gq_and_gw_leave_the_caret_where_vims_do(string before, string keys, string after) =>
+        Assert.Equal(after, Run(before, keys));
+
+    [Fact]
+    public void A_range_past_the_last_line_says_invalid_range_and_changes_nothing()
+    {
+        (TextSnapshot text, SelectionSet carets) = Marked.Parse("a\nb|\nc\n");
+        VimResult said = Press(new Vim(), ":5d<CR>", text, carets);
+        Assert.True(said is { Message: "E16: Invalid range", MessageIsError: true, Edits: null }, $":5d on three lines said '{said.Message}' and made {said.Edits?.Count ?? 0} edits");
+    }
+
+
     [Theory]
     [InlineData("\t|x\nabcdefgh", "j", "\tx\nabcd|efgh")]
     [InlineData("|\tx\nabcdefgh", "j", "\tx\nabc|defgh")]

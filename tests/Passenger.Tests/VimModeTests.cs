@@ -285,6 +285,54 @@ public sealed class VimModeTests : IDisposable
         Assert.Equal("X two three\nX five six\n", rig.Text);
     }
 
+    /// <summary>. after an insert session whose Enter took the blanks after the caret types again what its keys typed,
+    /// its line break made as Enter makes it where . is pressed, indented as that line is, where it wrote a blank in place
+    /// of the letter typed after the break; one u takes it back.</summary>
+    [AvaloniaFact]
+    public void Dot_after_enter_that_took_the_blanks_after_the_caret_breaks_the_line_again_as_enter_does()
+    {
+        EditorRig rig = new("        return a;\nnext\n");
+        rig.Editor.UsesVim = true;
+        rig.Editor.Selections = SelectionSet.Single(4);
+        Keys(rig.Window, "ia<CR>b<Esc>");
+        Assert.Equal("    a\n    breturn a;\nnext\n", rig.Text);
+        Keys(rig.Window, "j.");
+        Assert.True(rig.Text == "    a\n    breturn a;\nnexa\nbt\n", $". did not type again what the session's keys typed, its break as Enter makes it:\n{rig.Text}");
+        Keys(rig.Window, "u");
+        Assert.Equal("    a\n    breturn a;\nnext\n", rig.Text);
+    }
+
+    /// <summary>A file whose every line is deleted is Vim's empty buffer: a line put into it, or text typed, keeps the file's
+    /// final line break, and :w saves it so; one u takes back the put or the insert session whole.</summary>
+    [AvaloniaFact]
+    public void What_is_put_or_typed_into_a_file_emptied_of_every_line_is_saved_with_its_final_line_break()
+    {
+        (MainWindow window, CodeEditor editor) = Open("word\n");
+        string path = Path.Combine(folder, "One.txt");
+        try
+        {
+            window.ApplySettings(window.Settings with { VimMode = true });
+            Ui.Settle();
+            Keys(window, "ddp");
+            Assert.Equal("\nword\n", Text(editor));
+            Keys(window, ":w<CR>");
+            Ui.WaitFor(() => File.ReadAllText(path) == "\nword\n", () => $":w saved \"{File.ReadAllText(path).ReplaceLineEndings("\\n")}\", not the put line with its final line break");
+            Keys(window, "u");
+            Assert.True(Text(editor).Length == 0, $"One u did not take back the put whole, leaving \"{Text(editor)}\"");
+
+            Keys(window, "iX<Esc>");
+            Assert.Equal("X\n", Text(editor));
+            Keys(window, ":w<CR>");
+            Ui.WaitFor(() => File.ReadAllText(path) == "X\n", () => $":w saved \"{File.ReadAllText(path).ReplaceLineEndings("\\n")}\", not what was typed with its final line break");
+            Keys(window, "u");
+            Assert.True(Text(editor).Length == 0, $"One u did not take back the insert session whole, leaving \"{Text(editor)}\"");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>v, V and Ctrl+V select as the editor's own selections, a block one selection per line, and the status
     /// bar says which; an operator takes what is selected as one step of undo, which puts back carets in normal mode; a
     /// block's I types on every line it crosses and leaves one caret at its corner.</summary>

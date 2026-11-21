@@ -44,7 +44,7 @@ public sealed partial class Vim
             i++;
         }
         int caretLine = text.GetLineFromOffset(selections.Primary.Caret);
-        if (!ReadRange(line, ref i, text, caretLine, view, out (int First, int Last)? range, out string? problem))
+        if (!ReadRange(line, ref i, text, caretLine, view, out (int First, int Last)? range, out bool bothEnds, out string? problem))
         {
             return Said(problem!);
         }
@@ -82,6 +82,11 @@ public sealed partial class Vim
         }
         string args = line[i..];
         int last = VimMotions.LastLine(text, breakEnds);
+        if (name.Length > 0 && range is { } named && Math.Max(named.First, named.Last) > last)
+        {
+            // A line past the last is a jump's to the last, but no command's to act on.
+            return Said("E16: Invalid range");
+        }
         (int first, int end) = range ?? (caretLine, caretLine);
         (first, end) = (Math.Clamp(Math.Min(first, end), 0, last), Math.Clamp(Math.Max(first, end), 0, last));
         string trimmed = args.Trim();
@@ -124,9 +129,10 @@ public sealed partial class Vim
             case "d" or "de" or "del" or "delete" or "y" or "ya" or "yank":
                 return LinesCommand(name[0] == 'd' ? "d" : "y", trimmed, first, end, selections.Primary.Caret, text, view);
             case "j" or "join":
-                return Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), spaced: !bang, Options.JoinSpaces) is { } joined
+                // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column.
+                return (bothEnds && first == end ? null : Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), spaced: !bang, Options.JoinSpaces)) is { } joined
                     ? new VimResult(true, Edits: [OnFirstNonBlank(text, joined, first)])
-                    : VimResult.Held;
+                    : new VimResult(true, SelectionSet.Single(InColumn(text, first, selections.Primary.Caret)));
             case ">" or ">>" or ">>>" or "<" or "<<" or "<<<":
                 Stretch shifted = Whole(text, first, end, text.GetLineStart(first));
                 VimResult moved = Shift(text, SelectionSet.Single(text.GetLineStart(first)), [shifted], name[0] == '>', view, name.Length);
@@ -261,6 +267,14 @@ public sealed partial class Vim
         return plan with { Selections = SelectionSet.Single(VimMotions.FirstNonBlank(after, Math.Min(line, VimMotions.LastLine(after, breakEnds)), breakEnds)) };
     }
 
+    /// <summary>The place on a line as far along it as the caret stands on its own, settled onto the line's characters.</summary>
+    private int InColumn(TextSnapshot text, int line, int caret)
+    {
+        LineSpan to = text.GetLine(line);
+        int column = caret - VimMotions.LineOf(text, caret).Start;
+        return Settled(text, Math.Min(to.Start + column, to.End), breakEnds);
+    }
+
     /// <summary>A jump to an offset: the place left kept as the mark ' and told to the host for its places.</summary>
     private VimResult Jumped(TextSnapshot text, SelectionSet selections, IVimView view, int to)
     {
@@ -270,14 +284,17 @@ public sealed partial class Vim
     }
 
     /// <summary>The lines a command names, from zero; none where it names none; false with why where an address fails.</summary>
-    private bool ReadRange(string line, ref int i, TextSnapshot text, int caretLine, IVimView view, out (int First, int Last)? range, out string? problem)
+    private bool ReadRange(string line, ref int i, TextSnapshot text, int caretLine, IVimView view, out (int First, int Last)? range, out bool bothEnds,
+        out string? problem)
     {
         range = null;
+        bothEnds = false;
         problem = null;
         if (i < line.Length && line[i] == '%')
         {
             i++;
             range = (0, VimMotions.LastLine(text, breakEnds));
+            bothEnds = true;
             return true;
         }
         int current = caretLine;
@@ -297,6 +314,7 @@ public sealed partial class Vim
                 return false;
             }
             range = (first ?? caretLine, second ?? current);
+            bothEnds = true;
             return true;
         }
         range = first is { } only ? (only, only) : null;
@@ -382,7 +400,8 @@ public sealed partial class Vim
             int by = i > start ? int.Parse(line[start..i], CultureInfo.InvariantCulture) : 1;
             address = (address ?? current) + (sign * by);
         }
-        if (address is < 0 && c != '0')
+        // Line 0 stands for the first, as Vim takes it; one before it is no line.
+        if (address is < -1)
         {
             problem = "E16: Invalid range";
             return false;

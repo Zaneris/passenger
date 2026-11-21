@@ -20,18 +20,18 @@ public static class VimWrapping
     /// the lead holds a comment's mark, and the blanks the join put before the word.</summary>
     public readonly record struct Moved(int From, int To, int Length, int Trail, int Lead, bool Marked, int Joined);
 
-    /// <summary>What wrapping lines made: the edits, in order, and where each word of theirs went, for gw to put the caret
-    /// back in the text.</summary>
-    public sealed record Wrapped(IReadOnlyList<TextEdit> Edits, IReadOnlyList<Moved> Words)
+    /// <summary>What wrapping lines made: the edits, in order, every paragraph wrapped (as an edit, though it made the text it
+    /// held), and where each word of theirs went, for gw to put the caret back in the text.</summary>
+    public sealed record Wrapped(IReadOnlyList<TextEdit> Edits, IReadOnlyList<TextEdit> Paragraphs, IReadOnlyList<Moved> Words)
     {
-        /// <summary>An offset of the text before carried into the text after (<paramref name="after"/>): inside a word, the
-        /// same place in it; in a paragraph's indent, as far from its line's start, up to the indent made again; between the
-        /// indent and the first word, as far before it; on the blanks after a word on its line, the same blank; on a joined
-        /// line's lead, its next word where the lead holds a mark, else as far back from the blanks the join put as the lead
-        /// runs on; and from blanks a line break took the place of, the line's end.</summary>
+        /// <summary>An offset of the text before carried into the text after (<paramref name="after"/>), in any paragraph
+        /// wrapped, though it made the text it held: inside a word, the same place in it; in a paragraph's indent, as far from
+        /// its line's start, up to the indent made again; between the indent and the first word, as far before it; on the
+        /// blanks after a word, the same blank; on a joined line's lead, its next word where the lead holds a mark, else as far
+        /// back from the blanks the join put as the lead runs on; from blanks a line break took the place of, the line's end.</summary>
         public int Map(int offset, TextSnapshot after)
         {
-            foreach (TextEdit edit in Edits)
+            foreach (TextEdit edit in Paragraphs)
             {
                 if (offset < edit.Start || offset > edit.End)
                 {
@@ -108,17 +108,18 @@ public static class VimWrapping
         string? lineComment, bool sentenceSpaces)
     {
         List<TextEdit> edits = [];
+        List<TextEdit> paragraphs = [];
         List<Moved> words = [];
         int shift = 0;
         foreach ((int first, int last) in ranges)
         {
-            Wrap(text, first, last, width, indent, lineEnding, lineComment, sentenceSpaces, edits, words, ref shift);
+            Wrap(text, first, last, width, indent, lineEnding, lineComment, sentenceSpaces, edits, paragraphs, words, ref shift);
         }
-        return new Wrapped(edits, words);
+        return new Wrapped(edits, paragraphs, words);
     }
 
     private static void Wrap(TextSnapshot text, int first, int last, int width, IndentOptions indent, string lineEnding, string? lineComment, bool sentenceSpaces,
-        List<TextEdit> edits, List<Moved> words, ref int shift)
+        List<TextEdit> edits, List<TextEdit> paragraphs, List<Moved> words, ref int shift)
     {
         int line = first;
         while (line <= last)
@@ -138,9 +139,10 @@ public static class VimWrapping
             int stop = text.GetLine(end).End;
             string was = text.GetText(start, stop - start);
             (string made, List<Moved> placed) = Paragraph(text, line, end, head, width, indent, lineEnding, lineComment, sentenceSpaces);
+            paragraphs.Add(new TextEdit(start, stop - start, made));
             if (made != was)
             {
-                edits.Add(new TextEdit(start, stop - start, made));
+                edits.Add(paragraphs[^1]);
             }
             foreach (Moved word in placed)
             {

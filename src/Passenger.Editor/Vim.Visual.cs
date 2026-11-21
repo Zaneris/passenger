@@ -34,8 +34,12 @@ public sealed partial class Vim
     }
 
     /// <summary>A change for . to make again: its keys after the count, the count, what its insert typed, and for a change
-    /// made in visual mode how much it took.</summary>
-    private sealed record ChangeMade(IReadOnlyList<string> Keys, int Count, string Inserted, VisualExtent? Visual = null);
+    /// made in visual mode how much it took; <see cref="Breaks"/> the places in what it typed of each line break Enter made,
+    /// which . makes as Enter does, the indent Enter wrote after it left out of the text.</summary>
+    private sealed record ChangeMade(IReadOnlyList<string> Keys, int Count, string Inserted, VisualExtent? Visual = null)
+    {
+        public IReadOnlyList<int> Breaks { get; init; } = [];
+    }
 
     private static readonly HashSet<string> VisualOperators = ["d", "x", VimKeys.Delete, "X", "D", "c", "s", "C", "S", "R", "y", "Y", ">", "<", "=", "~", "u", "U", "J", "p", "P", "I", "A"];
 
@@ -302,9 +306,15 @@ public sealed partial class Vim
         }
         if (key == ":")
         {
-            // The command line takes the stretch's lines, visual mode ending as Vim's does.
+            // The command line takes the stretch's lines, visual mode ending at its start (whole lines' first column) as Vim's does.
             pending.Clear();
+            (bool lines, bool block) = (Mode == VimMode.VisualLine, Mode == VimMode.VisualBlock);
+            List<int> starts = [.. regions.Select(r => lines ? VimMotions.LineOf(text, r.Low).Start : r.Low)];
             VimResult left = LeaveVisual(text, view);
+            if (!block && starts.Count == left.Selections?.Count)
+            {
+                left = left with { Selections = SelectionSet.Create([.. starts.Select(at => Selection.At(Settled(text, at, breakEnds)))], left.Selections.PrimaryIndex) };
+            }
             commandLine = (':', new System.Text.StringBuilder("'<,'>"), [], 0);
             return left;
         }

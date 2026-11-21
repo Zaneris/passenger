@@ -11,8 +11,9 @@ public sealed partial class Vim
     private static readonly HashSet<string> Jumps = ["%", "(", ")", "{", "}"];
 
     /// <summary>One caret's stretch for an operator: the text from <see cref="Start"/> to <see cref="End"/>, or the lines
-    /// <see cref="First"/> to <see cref="Last"/> when <see cref="Lines"/>.</summary>
-    private readonly record struct Stretch(int Start, int End, bool Lines, int First, int Last, int Caret, int Landing = 0, bool Inclusive = false);
+    /// <see cref="First"/> to <see cref="Last"/> when <see cref="Lines"/>; <see cref="Reached"/> the line after it an exclusive
+    /// motion ended at the start of, -1 for any other.</summary>
+    private readonly record struct Stretch(int Start, int End, bool Lines, int First, int Last, int Caret, int Landing = 0, bool Inclusive = false, int Reached = -1);
 
     private VimResult Operate(Command command, string op, TextSnapshot text, SelectionSet selections, IVimView view)
     {
@@ -26,8 +27,8 @@ public sealed partial class Vim
                 continue;
             }
             Stretch stretch = span.Linewise
-                ? Whole(text, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret) with { Landing = landing }
-                : new Stretch(span.Start, span.End, false, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret, landing, inclusive);
+                ? Whole(text, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret) with { Landing = landing, Reached = reachedPast ?? -1 }
+                : new Stretch(span.Start, span.End, false, text.GetLineFromOffset(span.Start), text.GetLineFromOffset(span.End), s.Caret, landing, inclusive, reachedPast ?? -1);
             if (op is "g~" or "gu" or "gU" && !stretch.Lines && stretch.End == stretch.Start && stretch.Start == text.GetLineStart(stretch.First)
                 && text.GetLine(stretch.First).Length > 0)
             {
@@ -320,7 +321,8 @@ public sealed partial class Vim
             {
                 return Selection.At(Settled(after, wrapped.Map(c.Caret, after), breakEnds));
             }
-            int end = TextEditing.MapOffset(text.GetLine(s.Last).End, edits, true);
+            // gq leaves the caret on the line its motion reached, the stretch's last where it took that line in.
+            int end = TextEditing.MapOffset(s.Reached >= 0 ? text.GetLineStart(s.Reached) : text.GetLine(s.Last).End, edits, true);
             return Selection.At(VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(end, after.Length)), breakEnds));
         });
         return edits.Count == 0 ? new VimResult(true, carets) : new VimResult(true, Edits: [new EditPlan(edits, carets, EditKind.Other)]);

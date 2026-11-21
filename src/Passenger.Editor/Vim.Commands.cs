@@ -488,6 +488,7 @@ public sealed partial class Vim
     private (VimSpan Span, int Landing, bool Inclusive)? SpanOf(Command command, string op, TextSnapshot text, int caret, IVimView view)
     {
         ranOutAt = null;
+        reachedPast = null;
         int n = Math.Max(command.Count, 1);
         if (command.Name == "line")
         {
@@ -555,6 +556,7 @@ public sealed partial class Vim
         if (target.Kind == VimMotionKind.Exclusive && stopLine > startLine && stop == text.GetLineStart(stopLine))
         {
             // An exclusive motion ending at a line's start ends at the line before; from the indent, it takes whole lines.
+            reachedPast = stopLine;
             if (VimMotions.InIndent(text, start))
             {
                 return (new VimSpan(text.GetLineStart(startLine), text.GetLineStart(stopLine - 1), true), start, false);
