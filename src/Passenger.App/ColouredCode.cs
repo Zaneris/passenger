@@ -10,15 +10,23 @@ namespace Passenger.App;
 
 /// <summary>Code shown to read and copy (a card's, a Markdown page's fenced code, an agent's setup), drawn as the editor
 /// draws code: on its ground in its font, each stretch in its kind's colour and style, the theme's
-/// <c>Passenger.Syntax.*</c> and <c>Passenger.SyntaxStyle.*</c>, followed as the look changes. Coloured by the spans a
-/// server gives (C#'s, <see cref="Languages.CSharp.ServerCode"/>), else by its language's highlighter while it is on screen,
-/// let go as it leaves, else plain; selectable and wrapped rather than cut.</summary>
+/// <c>Passenger.Syntax.*</c> and <c>Passenger.SyntaxStyle.*</c>, followed as the look changes. Coloured by the spans a server gives (C#'s,
+/// <see cref="Languages.CSharp.ServerCode"/>), else by its language's highlighter while it is on screen, let go as it
+/// leaves, else plain; selectable and wrapped rather than cut, a card's signature too long for its width laid out a
+/// parameter a line (<see cref="Signature"/>).</summary>
 public sealed class ColouredCode : Border
 {
     private readonly SelectableWords text;
     private readonly Languages.Language? language;
     private TextDocument? document;
     private IHighlighter? highlighter;
+
+    /// <summary>The spans the code is coloured by, of its one-line text; none while it is plain.</summary>
+    private IReadOnlyList<SyntaxSpan>? spans;
+
+    /// <summary>The code laid out a parameter a line, for a card's signature that has parameters; and whether it shows so.</summary>
+    private Languages.SignatureLines? signature;
+    private bool laidOut;
 
     protected override Type StyleKeyOverride => typeof(Border);
 
@@ -50,8 +58,55 @@ public sealed class ColouredCode : Border
     /// <summary>Code of no language, in the code's own colour.</summary>
     public static ColouredCode Plain(string code) => new(code, null, null);
 
-    /// <summary>The code as shown.</summary>
+    /// <summary>The code as given, on one line where a signature is laid out a parameter a line.</summary>
     public string Code { get; }
+
+    /// <summary>The code as it shows now: a signature laid out a parameter a line where its width breaks it.</summary>
+    public string Shown => laidOut && signature is not null ? signature.Text : Code;
+
+    /// <summary>Whether a signature on one line wider than the room it is given shows laid out a parameter a line, as a
+    /// card's does.</summary>
+    public bool Signature
+    {
+        get => signature is not null;
+        set
+        {
+            signature = value ? Languages.SignatureLines.Of(Code) : null;
+            laidOut = false;
+            InvalidateMeasure();
+        }
+    }
+
+    /// <summary>A signature as wide as its one line where that fits the room, else laid out a parameter a line.</summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (signature is not null && !double.IsPositiveInfinity(availableSize.Width))
+        {
+            LayOut(false);
+            double whole = base.MeasureOverride(new Size(double.PositiveInfinity, availableSize.Height)).Width;
+            LayOut(whole > availableSize.Width);
+        }
+        return base.MeasureOverride(availableSize);
+    }
+
+    /// <summary>The signature shown on one line or a parameter a line, in its colours.</summary>
+    private void LayOut(bool parameterALine)
+    {
+        if (laidOut == parameterALine)
+        {
+            return;
+        }
+        laidOut = parameterALine;
+        if (spans is not null)
+        {
+            Colour(spans);
+        }
+        else
+        {
+            text.Inlines?.Clear();
+            text.Text = Shown;
+        }
+    }
 
     /// <summary>The language its highlighter colours it as, by the name the IDE gives it; null for none.</summary>
     public string? Language => language?.Name;
@@ -124,22 +179,26 @@ public sealed class ColouredCode : Border
         }
     }
 
-    /// <summary>A run for each span and for the plain text between, each span's in its kind's look.</summary>
-    private void Colour(IReadOnlyList<SyntaxSpan> spans)
+    /// <summary>A run for each span of the code as given and for the plain text between, each span's in its kind's look,
+    /// laid out as the code shows now.</summary>
+    private void Colour(IReadOnlyList<SyntaxSpan> given)
     {
+        spans = given;
+        string shown = Shown;
+        IReadOnlyList<SyntaxSpan> placed = laidOut && signature is not null ? signature.Map(given) : given;
         List<Inline> runs = [];
         int at = 0;
-        foreach (SyntaxSpan span in spans)
+        foreach (SyntaxSpan span in placed)
         {
-            if (span.Start < at || span.End > Code.Length)
+            if (span.Start < at || span.End > shown.Length)
             {
                 continue;
             }
             if (span.Start > at)
             {
-                runs.Add(new TextRun(Code[at..span.Start]));
+                runs.Add(new TextRun(shown[at..span.Start]));
             }
-            TextRun coloured = new(Code[span.Start..span.End]);
+            TextRun coloured = new(shown[span.Start..span.End]);
             if (span.Kind != TokenKind.Text)
             {
                 Look(coloured, span.Kind);
@@ -147,9 +206,9 @@ public sealed class ColouredCode : Border
             runs.Add(coloured);
             at = span.End;
         }
-        if (at < Code.Length)
+        if (at < shown.Length)
         {
-            runs.Add(new TextRun(Code[at..]));
+            runs.Add(new TextRun(shown[at..]));
         }
         text.Inlines!.Clear();
         // An inline added beside a text would take the text as a run before it.

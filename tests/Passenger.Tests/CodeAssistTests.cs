@@ -462,7 +462,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// name does.</summary>
     private const string KindsCode = "using System.Linq;\n\nstatic class Kinds\n{\n    public static int Totalled(int first, string label)\n    {\n"
         + "        var count = label.Length;\n        double half = first / 2.0;\n        int Doubled(int value, bool loud) => loud ? value * 2 : value;\n"
-        + "        _ = label;\n        return Doubled(count, false) + (int)half;\n    }\n}\n";
+        + "        _ = label;\n        _ = Described(label, label, first);\n        return Doubled(count, false) + (int)half;\n    }\n\n"
+        + "    public static string Described(string firstName, string lastName, int yearOfBirth, bool includeTheMiddleInitial = false) => firstName;\n}\n";
 
     /// <summary>A call's list names each value by what it is, its type beside it: a local (the inferred one too) apart from
     /// a parameter, and a named argument apart from both, a method with what it returns, each with the badge of its kind.</summary>
@@ -487,6 +488,43 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(("n", "bool"), rows["loud:"]);
         Assert.Equal(("m", "int"), rows["Doubled"]);
         window.Close();
+    }
+
+    /// <summary>A hover card's signature too long for the card takes a parameter a line, each indented under the line that
+    /// opens the list, the card held to a width words read at; a short one stays on its line. A screen reader is told the
+    /// signature on one line either way.</summary>
+    [AvaloniaFact]
+    public void A_hover_cards_long_signature_takes_a_parameter_a_line_within_a_card_held_to_a_readable_width()
+    {
+        MainWindow window = project.Open("Kinds.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+
+        string[] lines = Hovered(text.IndexOf("_ = Described(", StringComparison.Ordinal) + 6);
+        Assert.True(lines.Length == 5 && lines[0].EndsWith("Kinds.Described(", StringComparison.Ordinal) && lines[1] == "    string firstName,"
+            && lines[2] == "    string lastName," && lines[3] == "    int yearOfBirth," && lines[4].StartsWith("    ", StringComparison.Ordinal)
+            && lines[4].Contains("bool includeTheMiddleInitial", StringComparison.Ordinal),
+            $"The long signature showed as [{string.Join(" | ", lines)}], not a parameter a line");
+        Assert.Contains("Kinds.Described(string firstName, string lastName, int yearOfBirth,", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.True(window.Assist.HoverCard!.Bounds.Width <= PopupFrame.Medium + 0.5,
+            $"The card took {window.Assist.HoverCard.Bounds.Width} wide, past the {PopupFrame.Medium} its words read at");
+
+        lines = Hovered(text.IndexOf("return Doubled(", StringComparison.Ordinal) + 9);
+        Assert.True(lines.Length == 1 && lines[0].EndsWith("Doubled(int value, bool loud)", StringComparison.Ordinal),
+            $"The short signature showed as [{string.Join(" | ", lines)}], not on its line");
+        window.Close();
+
+        // The lines of the hover card's first code, the pointer resting on the name at an offset.
+        string[] Hovered(int at)
+        {
+            window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText is null, "the last card gone");
+            Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
+            window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverCard?.GetVisualDescendants().OfType<ColouredCode>().FirstOrDefault() is { Bounds.Width: > 0 },
+                "the hover card's signature laid out");
+            return window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>().First().Shown.Split('\n');
+        }
     }
 
     /// <summary>A type's members after its dot are offered filters by kind under the rows, the kinds its items are of: turned

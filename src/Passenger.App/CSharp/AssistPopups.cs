@@ -13,10 +13,12 @@ using Passenger.Editor;
 
 namespace Passenger.App.CSharp;
 
-/// <summary>A card over the editor: hover information, a diagnostic's message, a signature. Code is drawn as the editor
-/// draws it (<see cref="ColouredCode"/>), prose in the interface's font, a problem in its severity's colour. A paused
-/// program's value with members is its row of the stop's values (<see cref="AddValues"/>), which the card then takes the
-/// pointer and the keys for. A screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
+/// <summary>A card over the editor, every one alike: hover information, a diagnostic's message, a signature, the
+/// completion list's item. Code is drawn as the editor draws it (<see cref="ColouredCode"/>), a signature too long for the
+/// card a parameter a line, prose in the interface's font, a problem in its severity's colour; as wide as what it holds,
+/// up to the popups' Medium, a width words read well at. A paused program's value with members is its row of the stop's
+/// values (<see cref="AddValues"/>), which the card then takes the pointer and the keys for, up to the popups' Wide. A
+/// screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
 internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 {
     /// <summary>The most rows of a value the card shows before it scrolls.</summary>
@@ -33,10 +35,13 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         Called = called;
         Classes.Add(StyleClasses.Popup);
         Padding = PopupFrame.CardInset;
-        MaxWidth = PopupFrame.Wide;
+        MaxWidth = PopupFrame.Medium;
         Child = parts;
         IsHitTestVisible = false;
     }
+
+    /// <summary>The most the card is wide: a value's rows the widest of the popups, words and code a width they read at.</summary>
+    private double Widest => Values is null ? PopupFrame.Medium : PopupFrame.Wide;
 
     public AutomationControlType Role => AutomationControlType.ToolTip;
 
@@ -81,12 +86,12 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         Usable = false;
         fitted = 0;
         IsHitTestVisible = false;
-        MaxWidth = PopupFrame.Wide;
+        MaxWidth = PopupFrame.Medium;
     }
 
-    /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself, up to the
-    /// popups' <see cref="PopupFrame.Wide"/>, in a wider one.</summary>
-    public void Within(double room) => MaxWidth = Math.Min(PopupFrame.Wide, Math.Max(0, room));
+    /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself, up to
+    /// <see cref="Widest"/>, in a wider one.</summary>
+    public void Within(double room) => MaxWidth = Math.Min(Widest, Math.Max(0, room));
 
     /// <summary>A value's rows, which open in the card: it takes the pointer and the keys, a width of the popups'
     /// (<see cref="PopupFrame.Fitting"/>), growing as rows open, and scrolls past <see cref="MostRows"/> rows or the room it is given.</summary>
@@ -119,8 +124,9 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         return new Size(width, base.MeasureOverride(new Size(width, availableSize.Height)).Height);
     }
 
-    /// <summary>Code in a language, coloured as its highlighter colours it (<see cref="ColouredCode"/>); plain for none.</summary>
-    public void AddCode(string code, Languages.Language? language = null) => parts.Children.Add(ColouredCode.Of(code, language));
+    /// <summary>Code in a language, coloured as its highlighter colours it (<see cref="ColouredCode"/>); plain for none. A
+    /// signature too long for the card is laid out a parameter a line.</summary>
+    public void AddCode(string code, Languages.Language? language = null) => parts.Children.Add(Signed(ColouredCode.Of(code, language)));
 
     /// <summary>Code a language server shows of a file in <paramref name="language"/>: in the colours of the parts it gives
     /// where they spell it (C#'s, through Passenger's extension), else as the language's highlighter colours it, but plain
@@ -129,10 +135,17 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     {
         if (given is not null && Languages.CSharp.ServerCode.Of(given) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
         {
-            parts.Children.Add(ColouredCode.Of(shown, spans));
+            parts.Children.Add(Signed(ColouredCode.Of(shown, spans)));
             return;
         }
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
+    }
+
+    /// <summary>A card's code, a signature among it laid out a parameter a line where the card is too narrow for its line.</summary>
+    private static ColouredCode Signed(ColouredCode code)
+    {
+        code.Signature = true;
+        return code;
     }
 
     public void AddText(string text, IBrush? colour = null) => parts.Children.Add(new TextBlock
