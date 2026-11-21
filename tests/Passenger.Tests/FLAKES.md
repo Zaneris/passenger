@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `HiddenFramesTests`' `A_step_into_a_line_reading_a_class_without_Just_My_Code_…(newestRuntime: False)`, the Mac under
+  load (#1899's runs): "No stopped event came in 60 s", the step's end waiting for CoreLib's symbols to be decompiled.
+  **The test waited wrong**: a stop in CoreLib without Just My Code comes once CoreLib is decompiled, once a run, which
+  took 37 to 46 s on this Mac beside twelve busy loops and longer beside two test processes and a VM. The protocol
+  tests' waits for an event begin their time again while the engine's log says a decompile is under way (a1de75015,
+  #2078).
 - `AsyncStepTests`' `A_step_over_an_await_whose_question_of_the_run_that_went_on_is_held_unfinished_…`, the Mac under
   load (#1899's runs): "the question of which run resumed was never held unfinished". **The test's await**:
   `Task.Delay(10)`, whose returned value the step watches, stopping the thread at the call's return, a round trip to
