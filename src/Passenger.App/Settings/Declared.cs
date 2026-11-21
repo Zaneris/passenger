@@ -21,7 +21,15 @@ public static class Declared
     public static AppSettings InForce(AppSettings settings) => All.Aggregate(settings, (filled, setting) => setting.FilledIn(filled));
 
     public static readonly ThemeSetting Look = new(code: false, s => s.Look, (s, v) => s with { Look = v },
-        new(D.Appearance, "Theme", "colour color theme look palette source repository passenger-themes " + string.Join(" ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant()))));
+        new(D.Appearance, "Theme", "colour color theme look palette source repository passenger-themes " + string.Join(" ", ThemeSource.FormerlyCarried.Select(n => n.ToLowerInvariant())))
+        {
+            When = new(s => !(s.FollowSystemContrast && SystemContrast.InForce.High), $"The system asks for high contrast, so {ThemeSource.HighContrast} shows in its place"),
+        });
+
+    public static readonly ToggleSetting FollowSystemContrast = new(s => s.FollowSystemContrast, (s, v) => s with { FollowSystemContrast = v },
+        new(D.Appearance, "Use High Contrast while the system asks for it", "high contrast accessibility increase contrast contrast themes low vision aaa colour color blind windows macos gnome",
+            $"While the system asks for high contrast (a Windows contrast theme, macOS's Increase contrast, GNOME's High Contrast), {ThemeSource.HighContrast} "
+            + "shows in the chosen theme's and colour scheme's place, dark or light as the system is, and they come back once it no longer asks."));
 
     public static readonly ChoiceSetting<ThemeChoice> Theme = new(s => s.Theme, (s, v) => s with { Theme = v },
         [(ThemeChoice.System, "System"), (ThemeChoice.Dark, "Dark"), (ThemeChoice.Light, "Light")],

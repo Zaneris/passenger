@@ -54,6 +54,7 @@ internal static class Program
             _ = ThemeSource.Repository.Reached;
             _ = Containers.BuildKitChecks.ByDefault;
             _ = SystemMotion.Named;
+            _ = SystemContrast.Named;
             _ = Debugging.BrowserRun.Proxy;
             Mcp.McpProxy.CheckVariable();
             _ = Mcp.McpHost.StartsLanguageServer;

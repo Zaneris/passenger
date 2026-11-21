@@ -65,6 +65,7 @@ public sealed class SettingsPreview : IDisposable
         MainMenuBar = Shown(from.MainMenuBar, to.MainMenuBar, saved.MainMenuBar),
         MergeMainMenuWithWindowTitle = Shown(from.MergeMainMenuWithWindowTitle, to.MergeMainMenuWithWindowTitle, saved.MergeMainMenuWithWindowTitle),
         ColourScheme = Shown(from.ColourScheme, to.ColourScheme, saved.ColourScheme),
+        FollowSystemContrast = Shown(from.FollowSystemContrast, to.FollowSystemContrast, saved.FollowSystemContrast),
         EditorFontFamily = Shown(from.EditorFontFamily, to.EditorFontFamily, saved.EditorFontFamily),
         EditorFontSize = Shown(from.EditorFontSize, to.EditorFontSize, saved.EditorFontSize),
         EditorLineSpacing = Shown(from.EditorLineSpacing, to.EditorLineSpacing, saved.EditorLineSpacing),

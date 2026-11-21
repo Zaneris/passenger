@@ -14,6 +14,6 @@ public static class FirstStartPictures
     /// <summary>The file naming the version of Passenger the pictures show.</summary>
     public const string VersionFile = "pictures.json";
 
-    /// <summary>The file of a theme's picture, by the theme's name, in dark or light.</summary>
-    public static string FileOf(string theme, bool dark) => $"{theme.ToLowerInvariant()}-{(dark ? "dark" : "light")}.webp";
+    /// <summary>The file of a theme's picture, by the theme's name in lower case, a space a hyphen, in dark or light.</summary>
+    public static string FileOf(string theme, bool dark) => $"{theme.ToLowerInvariant().Replace(' ', '-')}-{(dark ? "dark" : "light")}.webp";
 }

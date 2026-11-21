@@ -40,7 +40,7 @@ public sealed class FirstStartTests : IDisposable
         {
             FirstStartView page = Shown(window);
             Assert.Equal(FirstStartView.Screen.Theme, page.Shown);
-            Assert.Equal(["Passenger", "Cubicle"], Names(page));
+            Assert.Equal(["Passenger", "Cubicle", ThemeSource.HighContrast], Names(page));
             Assert.True(Chosen(page) == "Passenger", $"The theme in force, Passenger's own, is not the one marked, which is {Chosen(page)}");
             Assert.True(page.IsKeyboardFocusWithin, "The question does not have the keys, so the person's arrows and Enter go elsewhere");
             Color passengers = Ui.Pixel(window, Bare);

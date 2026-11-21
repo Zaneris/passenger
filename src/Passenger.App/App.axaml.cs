@@ -74,6 +74,7 @@ public partial class App : Application
         {
             ScreenReaders.LookAgain();
         }
+        SystemContrast.LookAgain();
         if (MacTextElements.Install() is { } unread)
         {
             IdeErrors.Write($"VoiceOver reads the editor and the terminal by their caret's line alone: {unread}");

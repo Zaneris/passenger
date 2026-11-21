@@ -337,6 +337,22 @@ BUILT_IN = {
         code=dict(keyword="blue", string="string", escape="yellow", number="number", type="cyan", struct="cyan",
                   method="method", member="member", event="pink", tag="blue", attribute="cyan", heading="blue"),
     ),
+    # Words at WCAG AAA's 7:1 on every ground they are read on, marks and edges at 4.5:1; comments in italics, so they
+    # read as comments without their colour; the one Passenger follows the system's high contrast to (ThemeSource).
+    "High Contrast": dict(
+        about="every word and edge at its clearest: words at WCAG AAA's 7 to 1 on what they are read on, strong edges, a yellow "
+              "accent and a cyan focus by night, deep blue and magenta by day, comments in italics, the theme Passenger takes "
+              "while the system asks for high contrast",
+        shape="stark", italic=True, contrast=(7.1, 4.6),
+        dark=dict(ground="#121212", text="#FFFFFF", muted="#E2E2E2", accent="#FFD400", glance="#00E5FF",
+                  red="#FF7A7A", orange="#FFB066", yellow="#FFE45C", green="#6EF08A", cyan="#5CE6FF", blue="#82B4FF",
+                  purple="#D9A3FF", pink="#FF94D2", comment="#B5E8B0", member="#BFE0FF"),
+        light=dict(ground="#FFFFFF", text="#000000", muted="#262626", accent="#0037B3", glance="#B3006B",
+                   red="#A30014", orange="#8F3500", yellow="#6B5000", green="#0A6620", cyan="#005E73", blue="#0038A8",
+                   purple="#5A1AA6", pink="#8A0A5A", comment="#3A5C33", member="#003E73"),
+        code=dict(keyword="blue", string="orange", escape="pink", number="purple", type="cyan", struct="green",
+                  method="yellow", member="member", event="pink", tag="blue", attribute="cyan", heading="yellow"),
+    ),
 }
 
 # The shapes a theme draws its own way: Passenger's pills and crowned popups, Harbour's cards joined to the editor,
@@ -375,6 +391,14 @@ SHAPES = {
               ("BoxShadows", "Passenger.TabShadow", "inset 0 -2 0 0 #FF79B83A"), ("Thickness", "Passenger.PopupEdge", "1"),
               ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "32"),
               ("Thickness", "Passenger.ToolTitleMargin", "10,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "12,8")],
+    "stark": [("CornerRadius", "Passenger.ControlRadius", "4"), ("CornerRadius", "Passenger.ToolRadius", "4"),
+              ("CornerRadius", "Passenger.PopupRadius", "4"), ("CornerRadius", "Passenger.CardRadius", "4"),
+              ("CornerRadius", "Passenger.BadgeRadius", "4"), ("CornerRadius", "Passenger.ChipRadius", "4"),
+              ("x:Double", "Passenger.TabStripHeight", "34"), ("Thickness", "Passenger.TabMargin", "0"),
+              ("Thickness", "Passenger.TabPadding", "12,0,8,0"), ("CornerRadius", "Passenger.TabRadius", "0"),
+              ("BoxShadows", "Passenger.TabShadow", "inset 0 -3 0 0 #FF3D8BFF"), ("Thickness", "Passenger.PopupEdge", "2"),
+              ("x:Double", "Passenger.EditorTextPadding", "6"), ("x:Double", "Passenger.ToolHeaderHeight", "34"),
+              ("Thickness", "Passenger.ToolTitleMargin", "12,0,0,0"), ("Thickness", "Passenger.DialogFooterPadding", "16,10")],
     "square": [("CornerRadius", "Passenger.ControlRadius", "2"), ("CornerRadius", "Passenger.ToolRadius", "2"),
                ("CornerRadius", "Passenger.PopupRadius", "2"), ("CornerRadius", "Passenger.CardRadius", "2"),
                ("CornerRadius", "Passenger.BadgeRadius", "2"), ("CornerRadius", "Passenger.ChipRadius", "2"),
@@ -398,17 +422,21 @@ SYNTAX_KINDS = ["Keyword", "ControlKeyword", "Comment", "DocComment", "String", 
 # ---------------------------------------------------------------------------------------------------------------------
 # Every token from a variant's palette.
 
-def file_icons(hue, text, muted, panel, dark):
+def file_icons(hue, text, muted, panel, dark, least):
     """The file icons' colours (Passenger.FileIcon.*): file-icons' ten hues in a theme's own, each a mark that reads on
     the Explorer's ground."""
     icons = {name.capitalize(): hue(name) for name in ("red", "orange", "yellow", "green", "cyan", "blue", "purple", "pink")}
     icons["Maroon"] = shift(mix(hue("red"), hue("orange"), 0.45), -0.08)
     icons["Grey"] = mix(text, muted, 0.8)
-    return {f"Passenger.FileIcon.{name}": legible(colour, [panel], 3.1, dark) for name, colour in icons.items()}
+    return {f"Passenger.FileIcon.{name}": legible(colour, [panel], least, dark) for name, colour in icons.items()}
 
 
 def variant(theme, p, dark):
     t = {}
+    # The least contrast a colour is nudged to: words' (WCAG AA's 4.5:1 and a margin), and marks' and edges' (3:1).
+    T, M = theme.get("contrast", (4.6, 3.1))
+    # A theme of high contrast draws its edges and rules stronger, each nearer its words' colour.
+    strong = "contrast" in theme
     hue = lambda name: p.get(name) or p[{"string": "green", "member": "blue"}.get(name, name)]
     text, muted = p["text"], p["muted"]
 
@@ -433,8 +461,8 @@ def variant(theme, p, dark):
     accent = p["accent"]
     white, black = "#FFFFFF", shift(frame, -0.03) if dark else "#141414"
     accent_text = white if ratio(white, accent) >= ratio(black, accent) else black
-    accent = legible(accent, [accent_text], 4.6, accent_text != white)
-    accent = legible(accent, [panel], 3.05, dark)
+    accent = legible(accent, [accent_text], T, accent_text != white)
+    accent = legible(accent, [panel], round(M - 0.05, 2), dark)
     accent_hover = shift(accent, 0.04 if accent_text != white else -0.04)
     # Pressed, a button goes as far again: the accent a step past its hover, a plain one under the pressed wash.
     accent_pressed = shift(accent_hover, lightness(accent_hover) - lightness(accent))
@@ -448,13 +476,13 @@ def variant(theme, p, dark):
     t["Passenger.Panel"] = panel
     t["Passenger.Field"] = field
     edge = mix(panel, text, 0.2)
-    t["Passenger.FieldBorder"] = legible(edge, [field, panel, popup], 3.05, dark)
+    t["Passenger.FieldBorder"] = legible(edge, [field, panel, popup], round(M - 0.05, 2), dark)
     t["Passenger.List"] = lst
     t["Passenger.Button"] = button
     t["Passenger.ButtonHover"] = button_hover
     t["Passenger.ButtonPressed"] = button_pressed
     t["Passenger.Popup"] = popup
-    t["Passenger.PopupBorder"] = mix(popup, text, 0.16)
+    t["Passenger.PopupBorder"] = mix(popup, text, 0.6 if strong else 0.16)
     t["Passenger.PopupShadow"] = theme.get("glow") if dark and "glow" in theme else "0 6 20 0 #80000000" if dark else "0 6 20 0 #2E000000"
     second = hue("cyan") if hue("cyan") != accent else hue("blue")
     t["Passenger.Popup.Edge"] = ("gradient", accent, mix(second, accent, 0.2)) if theme["shape"] == "pill" \
@@ -465,27 +493,27 @@ def variant(theme, p, dark):
     t["Passenger.DropZone"] = ("opacity", accent, "0.22" if dark else "0.14")
 
     t["Passenger.Divider"] = divider
-    t["Passenger.Separator"] = mix(panel, text, 0.1)
-    t["Passenger.StripeSeparator"] = mix(frame, text, 0.22)
+    t["Passenger.Separator"] = mix(panel, text, 0.35 if strong else 0.1)
+    t["Passenger.StripeSeparator"] = mix(frame, text, 0.45 if strong else 0.22)
     t["Passenger.WindowEdge"] = edge
 
     tile = mix(editor, panel, 0.5)
     text_grounds.append(tile)
-    t["Passenger.Text"] = legible(text, text_grounds + [button_hover, button_pressed], 4.6, dark)
-    t["Passenger.TextMuted"] = legible(muted, text_grounds, 4.6, dark)
+    t["Passenger.Text"] = legible(text, text_grounds + [button_hover, button_pressed], T, dark)
+    t["Passenger.TextMuted"] = legible(muted, text_grounds, T, dark)
     t["Passenger.TextDisabled"] = mix(panel, text, 0.36)
     t["Passenger.DisabledBorder"] = t["Passenger.Separator"]
     marks = [panel, frame, popup, editor]
-    t["Passenger.Icon"] = legible(mix(text, muted, 0.5), marks, 3.1, dark)
-    link = legible(hue("blue"), marks, 4.6, dark)
+    t["Passenger.Icon"] = legible(mix(text, muted, 0.5), marks, M, dark)
+    link = legible(hue("blue"), marks, T, dark)
     t["Passenger.Link"] = link
-    t["Passenger.LinkHover"] = legible(shift(link, 0.06 if dark else -0.06), [panel], 4.6, dark)
+    t["Passenger.LinkHover"] = legible(shift(link, 0.06 if dark else -0.06), [panel], T, dark)
     t["Passenger.AccentText"] = accent_text
     t["Passenger.BadgeText"] = field if dark else "#FFFFFF"
-    t["Passenger.Error"] = legible(hue("red"), marks, 4.6, dark)
-    t["Passenger.Warning"] = legible(hue("yellow") if dark else hue("orange"), marks, 4.6, dark)
+    t["Passenger.Error"] = legible(hue("red"), marks, T, dark)
+    t["Passenger.Warning"] = legible(hue("yellow") if dark else hue("orange"), marks, T, dark)
     selection = mix(editor, hue("blue"), 0.3 if dark else 0.22)
-    t["Passenger.TextSelection"] = legible(selection, [t["Passenger.Text"]], 4.6, not dark)
+    t["Passenger.TextSelection"] = legible(selection, [t["Passenger.Text"]], T, not dark)
 
     t["Passenger.Hover"] = hover
     t["Passenger.Selected"] = selected
@@ -493,8 +521,8 @@ def variant(theme, p, dark):
     t["Passenger.Accent"] = accent
     t["Passenger.AccentHover"] = accent_hover
     t["Passenger.AccentPressed"] = accent_pressed
-    t["Passenger.Focus"] = legible(glance, marks + [field], 3.1, dark)
-    t["Passenger.CheckBorder"] = legible(mix(panel, text, 0.45), [panel, popup, lst], 3.05, dark)
+    t["Passenger.Focus"] = legible(glance, marks + [field], M, dark)
+    t["Passenger.CheckBorder"] = legible(mix(panel, text, 0.45), [panel, popup, lst], round(M - 0.05, 2), dark)
     t["Passenger.ScrollThumb"] = "#59808080" if dark else "#33000000"
     t["Passenger.ScrollThumbHover"] = "#8C808080" if dark else "#80000000"
     t["Passenger.ScrollTrackHover"] = "#1A808080"
@@ -512,16 +540,16 @@ def variant(theme, p, dark):
         bar_hover, bar_pressed = (shift(frame, 0.05), shift(frame, 0.08)) if dark else (shift(frame, -0.05), shift(frame, -0.08))
         bars = [frame, bar_hover, bar_pressed]
         t["Passenger.TitleBar"] = frame
-    t["Passenger.TitleBar.Text"] = legible(text, bars, 4.6, dark)
-    t["Passenger.TitleBar.Icon"] = legible(t["Passenger.Icon"], bars[:2], 3.1, dark)
+    t["Passenger.TitleBar.Text"] = legible(text, bars, T, dark)
+    t["Passenger.TitleBar.Icon"] = legible(t["Passenger.Icon"], bars[:2], M, dark)
     t["Passenger.TitleBar.Hover"] = bar_hover
     t["Passenger.TitleBar.Pressed"] = bar_pressed
     t["Passenger.TitleBar.Rule"] = t["Passenger.StripeSeparator"]
-    t["Passenger.TitleBar.Run"] = legible(hue("green"), bars[:2], 3.1, dark)
-    t["Passenger.TitleBar.Stop"] = legible(hue("red"), bars[:2], 3.1, dark)
-    t["Passenger.TitleBar.HotReload"] = legible(hue("orange"), bars[:2], 3.1, dark)
-    t["Passenger.TitleBar.Debug"] = legible(hue("purple"), bars[:2], 3.1, dark)
-    t["Passenger.TitleBar.Focus"] = legible(glance, bars, 3.1, dark)
+    t["Passenger.TitleBar.Run"] = legible(hue("green"), bars[:2], M, dark)
+    t["Passenger.TitleBar.Stop"] = legible(hue("red"), bars[:2], M, dark)
+    t["Passenger.TitleBar.HotReload"] = legible(hue("orange"), bars[:2], M, dark)
+    t["Passenger.TitleBar.Debug"] = legible(hue("purple"), bars[:2], M, dark)
+    t["Passenger.TitleBar.Focus"] = legible(glance, bars, M, dark)
     t["Passenger.TitleBar.Badge"] = accent
     t["Passenger.TitleBar.BadgeText"] = accent_text
     t["Passenger.WindowButton.Hover"] = "#1AFFFFFF" if dark else "#1A000000"
@@ -532,54 +560,54 @@ def variant(theme, p, dark):
 
     stripe = mix(frame, accent, 0.28 if dark else 0.2)
     t["Passenger.Stripe.Selected"] = stripe
-    t["Passenger.Stripe.SelectedIcon"] = legible(mix(text, accent, 0.55), [stripe, row], 3.1, dark)
-    tab = editor if theme["shape"] in ("card", "square") else mix(panel, accent, 0.14 if dark else 0.0)
+    t["Passenger.Stripe.SelectedIcon"] = legible(mix(text, accent, 0.55), [stripe, row], M, dark)
+    tab = editor if theme["shape"] in ("card", "square", "stark") else mix(panel, accent, 0.14 if dark else 0.0)
     if not dark and theme["shape"] == "pill":
         tab = editor
     t["Passenger.Tab.Active"] = tab
-    t["Passenger.Tab.ActiveText"] = legible(text, [tab], 4.6, dark)
+    t["Passenger.Tab.ActiveText"] = legible(text, [tab], T, dark)
     # The mark beside every choice, read on the page and on each chosen ground beside it.
     t["Passenger.ChosenMark"] = legible(accent, [panel, frame, popup, lst, over(hover, panel), row, over(selected, panel),
-                                                 over(selected, frame), over(selected, popup), tab, stripe], 3.1, dark)
-    t["Passenger.Modified"] = legible(glance, [frame, panel], 3.1, dark)
+                                                 over(selected, frame), over(selected, popup), tab, stripe], M, dark)
+    t["Passenger.Modified"] = legible(glance, [frame, panel], M, dark)
 
     t["Passenger.Welcome.Tile"] = tile
-    t["Passenger.Welcome.TileBorder"] = mix(tile, text, 0.1) if theme["shape"] in ("pill", "square") else tile
-    t["Passenger.Welcome.TileShadow"] = "0 0 0 0 #00000000" if theme["shape"] in ("pill", "square") \
+    t["Passenger.Welcome.TileBorder"] = mix(tile, text, 0.5) if strong else mix(tile, text, 0.1) if theme["shape"] in ("pill", "square") else tile
+    t["Passenger.Welcome.TileShadow"] = "0 0 0 0 #00000000" if theme["shape"] in ("pill", "square", "stark") \
         else ("0 2 10 0 #59000000" if dark else "0 2 10 0 #1F000000")
     t["Passenger.Welcome.Chip"] = row
     t["Passenger.Welcome.ChipIcon"] = t["Passenger.Stripe.SelectedIcon"]
     # The project's badge sweeps from the accent into another of the theme's hues, its letters reading on both.
     if "badge" in theme:
-        other = legible(mix(accent, hue(theme["badge"]), 0.6), [accent_text], 4.6, accent_text != white)
+        other = legible(mix(accent, hue(theme["badge"]), 0.6), [accent_text], T, accent_text != white)
         t["Passenger.Welcome.Badge"] = ("gradient", accent, other)
     else:
         t["Passenger.Welcome.Badge"] = accent
 
-    t["Passenger.Run"] = legible(hue("green"), [panel, frame], 3.1, dark)
-    t["Passenger.HotReload"] = legible(hue("orange"), [panel, frame], 3.1, dark)
-    t["Passenger.Debug"] = legible(hue("purple"), [panel, frame], 3.1, dark)
+    t["Passenger.Run"] = legible(hue("green"), [panel, frame], M, dark)
+    t["Passenger.HotReload"] = legible(hue("orange"), [panel, frame], M, dark)
+    t["Passenger.Debug"] = legible(hue("purple"), [panel, frame], M, dark)
     t["Passenger.Test.Passed"] = t["Passenger.Run"]
-    t["Passenger.Test.Failed"] = legible(hue("red"), [panel], 3.1, dark)
-    t["Passenger.Test.Skipped"] = legible(mix(muted, panel, 0.15), [panel], 3.1, dark)
-    t["Passenger.Test.Running"] = legible(hue("blue"), [panel], 3.1, dark)
+    t["Passenger.Test.Failed"] = legible(hue("red"), [panel], M, dark)
+    t["Passenger.Test.Skipped"] = legible(mix(muted, panel, 0.15), [panel], M, dark)
+    t["Passenger.Test.Running"] = legible(hue("blue"), [panel], M, dark)
     t["Passenger.Test.NotRun"] = t["Passenger.CheckBorder"]
 
-    t["Passenger.Vcs.Added"] = legible(hue("green"), [editor], 3.1, dark)
-    t["Passenger.Vcs.Modified"] = legible(hue("blue"), [editor], 3.1, dark)
-    t["Passenger.Vcs.Deleted"] = legible(mix(muted, panel, 0.15), [editor], 3.1, dark)
-    t["Passenger.Vcs.Conflict"] = legible(hue("red"), [editor], 3.1, dark)
+    t["Passenger.Vcs.Added"] = legible(hue("green"), [editor], M, dark)
+    t["Passenger.Vcs.Modified"] = legible(hue("blue"), [editor], M, dark)
+    t["Passenger.Vcs.Deleted"] = legible(mix(muted, panel, 0.15), [editor], M, dark)
+    t["Passenger.Vcs.Conflict"] = legible(hue("red"), [editor], M, dark)
     files = [panel, row]
-    t["Passenger.Vcs.File.Modified"] = legible(hue("blue"), files, 4.6, dark)
-    t["Passenger.Vcs.File.Added"] = legible(hue("green"), files, 4.6, dark)
-    t["Passenger.Vcs.File.Deleted"] = legible(mix(muted, panel, 0.25), files, 4.6, dark)
-    t["Passenger.Vcs.File.Unversioned"] = legible(hue("orange"), files, 4.6, dark)
-    t["Passenger.Vcs.File.Conflicted"] = legible(hue("red"), files, 4.6, dark)
+    t["Passenger.Vcs.File.Modified"] = legible(hue("blue"), files, T, dark)
+    t["Passenger.Vcs.File.Added"] = legible(hue("green"), files, T, dark)
+    t["Passenger.Vcs.File.Deleted"] = legible(mix(muted, panel, 0.25), files, T, dark)
+    t["Passenger.Vcs.File.Unversioned"] = legible(hue("orange"), files, T, dark)
+    t["Passenger.Vcs.File.Conflicted"] = legible(hue("red"), files, T, dark)
     for i, name in enumerate(["blue", "green", "yellow", "purple", "red", "cyan"]):
-        t[f"Passenger.Graph.{i}"] = legible(hue(name), [panel], 2.2, dark)
+        t[f"Passenger.Graph.{i}"] = legible(hue(name), [panel], round(M - 0.9, 2), dark)
     t["Passenger.Vcs.Ref"] = mix(panel, text, 0.1)
-    t["Passenger.Vcs.RefText"] = legible(mix(text, muted, 0.5), [t["Passenger.Vcs.Ref"]], 4.6, dark)
-    t["Passenger.Vcs.Favorite"] = legible(hue("yellow"), [panel], 3.1, dark)
+    t["Passenger.Vcs.RefText"] = legible(mix(text, muted, 0.5), [t["Passenger.Vcs.Ref"]], T, dark)
+    t["Passenger.Vcs.Favorite"] = legible(hue("yellow"), [panel], M, dark)
     t["Passenger.Vcs.Signature.Good"] = t["Passenger.Run"]
     t["Passenger.Vcs.Signature.Unverified"] = t["Passenger.Test.Skipped"]
     t["Passenger.Vcs.Signature.Bad"] = t["Passenger.Test.Failed"]
@@ -590,24 +618,24 @@ def variant(theme, p, dark):
     t["Passenger.Picker.Checker"] = "#CCCCCC"
 
     # The terminal on the editor's ground, its ANSI colours the palette's hues, bright ones a step further.
-    t["Passenger.Terminal.Foreground"] = legible(text, [editor], 4.6, dark)
+    t["Passenger.Terminal.Foreground"] = legible(text, [editor], T, dark)
     t["Passenger.Terminal.Background"] = editor
-    t["Passenger.Terminal.Cursor"] = legible(glance, [editor], 3.1, dark)
-    t["Passenger.Terminal.Selection"] = legible(selection, [t["Passenger.Terminal.Foreground"]], 4.6, not dark)
+    t["Passenger.Terminal.Cursor"] = legible(glance, [editor], M, dark)
+    t["Passenger.Terminal.Selection"] = legible(selection, [t["Passenger.Terminal.Foreground"]], T, not dark)
     ansi = ["red", "green", "yellow", "blue", "purple", "cyan"]
     up = 0.07 if dark else -0.07
     t["Passenger.Terminal.Ansi0"] = mix(editor, text, 0.2) if dark else shift(text, -0.1)
     for i, name in enumerate(ansi, 1):
-        t[f"Passenger.Terminal.Ansi{i}"] = hue(name) if dark else legible(hue(name), [editor], 3.0, dark)
+        t[f"Passenger.Terminal.Ansi{i}"] = hue(name) if dark else legible(hue(name), [editor], round(M - 0.1, 2), dark)
         t[f"Passenger.Terminal.Ansi{i + 8}"] = shift(t[f"Passenger.Terminal.Ansi{i}"], up * (1 if dark else -0.6))
     t["Passenger.Terminal.Ansi7"] = mix(muted, text, 0.3)
     t["Passenger.Terminal.Ansi8"] = mix(editor, text, 0.42)
     t["Passenger.Terminal.Ansi15"] = shift(text, 0.08) if dark else mix(editor, text, 0.32)
 
-    t["Passenger.File.Folder"] = legible(mix(text, muted, 0.6), [panel], 3.1, dark)
-    t["Passenger.File.SolutionFolder"] = legible(hue("purple"), [panel], 3.1, dark)
+    t["Passenger.File.Folder"] = legible(mix(text, muted, 0.6), [panel], M, dark)
+    t["Passenger.File.SolutionFolder"] = legible(hue("purple"), [panel], M, dark)
     t["Passenger.File.Plain"] = t["Passenger.File.Folder"]
-    t.update(file_icons(hue, text, muted, panel, dark))
+    t.update(file_icons(hue, text, muted, panel, dark, M))
 
     t["Passenger.Editor.Background"] = editor
     t["Passenger.Editor.Gutter"] = editor
@@ -617,31 +645,31 @@ def variant(theme, p, dark):
     current = shift(editor, 0.025 if dark else -0.018)
     execution = mix(editor, hue("blue"), 0.18)
     code_grounds = [editor, current]
-    t["Passenger.Editor.Text"] = legible(text, [editor, current, selection, execution], 4.6, dark)
-    t["Passenger.Editor.LineNumber"] = legible(mix(muted, editor, 0.25), [editor], 4.6, dark)
-    t["Passenger.Editor.LineNumberCurrent"] = legible(glance, [editor], 4.6, dark)
+    t["Passenger.Editor.Text"] = legible(text, [editor, current, selection, execution], T, dark)
+    t["Passenger.Editor.LineNumber"] = legible(mix(muted, editor, 0.25), [editor], T, dark)
+    t["Passenger.Editor.LineNumberCurrent"] = legible(glance, [editor], T, dark)
     t["Passenger.Editor.CurrentLine"] = current
     t["Passenger.Editor.Selection"] = selection
     t["Passenger.Editor.SelectionInactive"] = mix(editor, text, 0.08)
-    t["Passenger.Editor.Caret"] = legible(glance, code_grounds, 3.1, dark)
+    t["Passenger.Editor.Caret"] = legible(glance, code_grounds, M, dark)
     t["Passenger.Editor.SearchMatch"] = mix(editor, hue("yellow"), 0.18 if dark else 0.28)
     t["Passenger.Editor.SearchCurrent"] = mix(editor, hue("yellow"), 0.45 if dark else 0.55)
     # A problem's squiggle is a mark on the code, and a count of them in the gutter carries a badge's letters.
     badge = t["Passenger.BadgeText"]
-    t["Passenger.Editor.Error"] = legible(legible(hue("red"), [editor], 3.1, dark), [badge], 4.6, badge != "#FFFFFF")
-    t["Passenger.Editor.Warning"] = legible(legible(hue("yellow") if dark else hue("orange"), [editor], 3.1, dark), [badge], 4.6,
+    t["Passenger.Editor.Error"] = legible(legible(hue("red"), [editor], M, dark), [badge], T, badge != "#FFFFFF")
+    t["Passenger.Editor.Warning"] = legible(legible(hue("yellow") if dark else hue("orange"), [editor], M, dark), [badge], T,
                                             badge != "#FFFFFF")
-    t["Passenger.Editor.Info"] = legible(muted, [editor], 3.1, dark)
-    t["Passenger.Editor.Breakpoint"] = legible(hue("red"), [editor], 3.1, dark)
+    t["Passenger.Editor.Info"] = legible(muted, [editor], M, dark)
+    t["Passenger.Editor.Breakpoint"] = legible(hue("red"), [editor], M, dark)
     t["Passenger.Editor.BreakpointLine"] = mix(editor, hue("red"), 0.12)
     t["Passenger.Editor.BreakpointMuted"] = t["Passenger.Icon"]
-    t["Passenger.Editor.Tracepoint"] = legible(hue("yellow"), [editor], 3.1, dark)
+    t["Passenger.Editor.Tracepoint"] = legible(hue("yellow"), [editor], M, dark)
     t["Passenger.Editor.ExecutionLine"] = execution
-    t["Passenger.Editor.ExecutionPoint"] = legible(glance, [editor], 3.1, dark)
+    t["Passenger.Editor.ExecutionPoint"] = legible(glance, [editor], M, dark)
     t["Passenger.Editor.ExceptionBack"] = mix(editor, hue("red"), 0.18)
-    t["Passenger.Editor.InlineValue"] = legible(muted, [editor, execution], 4.6, dark)
+    t["Passenger.Editor.InlineValue"] = legible(muted, [editor, execution], T, dark)
     hint_back = mix(editor, text, 0.06)
-    t["Passenger.Editor.InlayHint"] = legible(muted, [hint_back], 4.6, dark)
+    t["Passenger.Editor.InlayHint"] = legible(muted, [hint_back], T, dark)
     t["Passenger.Editor.InlayHintBack"] = hint_back
     t["Passenger.Editor.UsageRead"] = mix(editor, hue("blue"), 0.14)
     t["Passenger.Editor.UsageWrite"] = mix(editor, hue("pink"), 0.14)
@@ -650,11 +678,11 @@ def variant(theme, p, dark):
     t["Passenger.Editor.MatchedBrace"] = mix(editor, hue("cyan"), 0.2)
     t["Passenger.Editor.SmartStepTarget"] = mix(editor, hue("purple"), 0.2)
     t["Passenger.Editor.SmartStepChosen"] = mix(editor, hue("purple"), 0.38)
-    t["Passenger.Editor.SmartStepBorder"] = legible(hue("purple"), [editor], 3.1, dark)
+    t["Passenger.Editor.SmartStepBorder"] = legible(hue("purple"), [editor], M, dark)
     t["Passenger.Editor.Whitespace"] = mix(editor, text, 0.2)
     t["Passenger.Editor.SoftWrapSign"] = mix(editor, text, 0.38)
     t["Passenger.Editor.LinkUnderline"] = hue("blue")
-    t["Passenger.Editor.Bookmark"] = legible(hue("blue"), [editor], 3.1, dark)
+    t["Passenger.Editor.Bookmark"] = legible(hue("blue"), [editor], M, dark)
     for name, tone in (("Added", "green"), ("Modified", "blue"), ("Deleted", None), ("Conflict", "red")):
         other = hue(tone) if tone else text
         t[f"Passenger.Diff.{name}"] = mix(editor, other, (0.15 if tone else 0.08) if dark else (0.14 if tone else 0.07))
@@ -663,10 +691,10 @@ def variant(theme, p, dark):
     # A wash under the code gives way where the code's words would not read on it.
     for under_code in ["SelectionInactive", "SearchMatch", "SearchCurrent", "BreakpointLine", "ExceptionBack", "UsageRead", "UsageWrite",
                   "MatchedBrace", "SmartStepTarget", "SmartStepChosen"]:
-        t[f"Passenger.Editor.{under_code}"] = legible(t[f"Passenger.Editor.{under_code}"], [t["Passenger.Editor.Text"]], 4.6, not dark)
+        t[f"Passenger.Editor.{under_code}"] = legible(t[f"Passenger.Editor.{under_code}"], [t["Passenger.Editor.Text"]], T, not dark)
     for name in ("Added", "Modified", "Deleted", "Conflict"):
         for key in (f"Passenger.Diff.{name}", f"Passenger.Diff.{name}Word"):
-            t[key] = legible(t[key], [t["Passenger.Editor.Text"]], 4.6, not dark)
+            t[key] = legible(t[key], [t["Passenger.Editor.Text"]], T, not dark)
 
     roles = theme["code"]
     pick = lambda role: hue(roles.get(role, role))
@@ -685,22 +713,22 @@ def variant(theme, p, dark):
         "Quote": hue("comment"), "LinkDestination": hue("blue"),
     }
     for kind in SYNTAX_KINDS:
-        t[f"Passenger.Syntax.{kind}"] = legible(syntax[kind], code_grounds, 4.6, dark)
+        t[f"Passenger.Syntax.{kind}"] = legible(syntax[kind], code_grounds, T, dark)
     for kind in PLAIN_KINDS:
         role = roles.get(kind.lower())
-        t[f"Passenger.Syntax.{kind}"] = legible(hue(role), code_grounds, 4.6, dark) if role else t["Passenger.Editor.Text"]
+        t[f"Passenger.Syntax.{kind}"] = legible(hue(role), code_grounds, T, dark) if role else t["Passenger.Editor.Text"]
     t["Passenger.Syntax.Excluded"] = mix(editor, text, 0.35)
     style = "Italic" if theme["italic"] else "Normal"
     t["Passenger.SyntaxStyle.Comment"] = ("string", style)
     t["Passenger.SyntaxStyle.DocComment"] = ("string", style)
     # The fourth to sixth brace colours, a parameter's style, and the code's colours in a language over the theme's own.
     for level, name in enumerate(theme.get("braces", []), 4):
-        t[f"Passenger.Syntax.Brace{level}"] = legible(hue(name), code_grounds, 4.6, dark)
+        t[f"Passenger.Syntax.Brace{level}"] = legible(hue(name), code_grounds, T, dark)
     if "parameter" in theme:
         t["Passenger.SyntaxStyle.Parameter"] = ("string", theme["parameter"])
-    t["languages"] = {language: {f"Syntax.{kind}": legible(hue(name), code_grounds, 4.6, dark) for kind, name in kinds.items()}
+    t["languages"] = {language: {f"Syntax.{kind}": legible(hue(name), code_grounds, T, dark) for kind, name in kinds.items()}
                       for language, kinds in theme.get("languages", {}).items()}
-    check(theme["name"], "Dark" if dark else "Light", t)
+    check(theme["name"], "Dark" if dark else "Light", t, round(T - 0.1, 2))
     return t
 
 
@@ -733,12 +761,14 @@ def declared_pairs():
 PAIRS = declared_pairs()
 
 
-def check(name, which, t):
-    """UiRulesTests' WCAG pairs, so a palette that cannot meet them fails here rather than in the tests."""
+def check(name, which, t, words):
+    """UiRulesTests' WCAG pairs, so a palette that cannot meet them fails here rather than in the tests: words held to
+    `words`:1 (4.5, or AAA's 7 in a theme of high contrast), marks and edges to 3:1."""
     below = []
     for fore, ground, under, least in PAIRS:
         if "Passenger." + fore not in t:
             continue
+        least = max(least, words) if least == 4.5 else least
         worst = min(ratio(f, over(g, u)) for f in solid(t, "Passenger." + fore) for g in solid(t, "Passenger." + ground)
                     for u in solid(t, "Passenger." + under))
         if worst < least:

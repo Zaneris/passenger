@@ -106,8 +106,8 @@
   </ItemGroup>
 
   <!-- What a theme file says, read from its JSON alone against a table of tokens, a theme source as its words name it, a
-       VS Code colour theme read and made a Passenger theme, and Open VSX's answers, compiled in since their project is the
-       app's. -->
+       VS Code colour theme read and made a Passenger theme, Open VSX's answers and what a system says of high contrast,
+       compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.cs" Link="App/ThemeFiles.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeFiles.Beyond.cs" Link="App/ThemeFiles.Beyond.cs" />
@@ -119,6 +119,7 @@
     <Compile Include="../../src/Passenger.App/Theme/ThemeJson.cs" Link="App/ThemeJson.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeSources.cs" Link="App/ThemeSources.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemeColours.cs" Link="App/ThemeColours.cs" />
+    <Compile Include="../../src/Passenger.App/Theme/ContrastAsked.cs" Link="App/ContrastAsked.cs" />
     <Compile Include="../../src/Passenger.App/Theme/ThemePalettes.cs" Link="App/ThemePalettes.cs" />
     <Compile Include="../../src/Passenger.App/Theme/VsCodeThemes.cs" Link="App/VsCodeThemes.cs" />
     <Compile Include="../../src/Passenger.App/Theme/VsCodeScopes.cs" Link="App/VsCodeScopes.cs" />

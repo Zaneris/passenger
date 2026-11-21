@@ -451,9 +451,21 @@ themes() {
 # theme the app carries, at the tiles' size and lossless, with no window buttons, since a tile is no window of any one
 # system; and the version they are of, which the unit tests hold to the app's.
 first_start() {
-    local theme=$1 look state out="$repo/src/Passenger.App/Assets/FirstStart" version
+    local theme=$1 look file state out="$repo/src/Passenger.App/Assets/FirstStart" version
     mkdir -p "$work/png/first-start" "$out"
-    for look in passenger $(python3 -I - "$repo/src/Passenger.App/Theme/BuiltIn" <<'EOF2'
+    # Each theme's name in lower case, as --look takes it, and its pictures' name, a space a hyphen (FirstStartPictures).
+    while IFS= read -r look; do
+        file=${look// /-}
+        state="$tmp/passenger-site-shots/state/first-start-$file-$theme"
+        rm -rf "$state"
+        mkdir -p "$state"
+        # The class's doc comment, keywords, types, a lambda and numbers in the editor, the theme's own layout round it.
+        PASSENGER_SETTINGS="$state" "$passenger" "$folder/Greenhouse.slnx" --theme "$theme" --look "$look" \
+            --size 936x585 --scale 1.5 --file src/Greenhouse.Core/WateringPlan.cs --caret 4:21 \
+            --screenshot "$work/png/first-start/$file-$theme.png"
+        cwebp -quiet -lossless -z 9 "$work/png/first-start/$file-$theme.png" -o "$out/$file-$theme.webp"
+        echo "site-shots: $out/$file-$theme.webp ($(($(wc -c < "$out/$file-$theme.webp") / 1024)) KB)"
+    done < <(echo passenger; python3 -I - "$repo/src/Passenger.App/Theme/BuiltIn" <<'EOF2'
 import json, os, sys
 folder = sys.argv[1]
 with open(os.path.join(folder, "passenger-themes.json"), encoding="utf-8") as f:
@@ -461,17 +473,7 @@ with open(os.path.join(folder, "passenger-themes.json"), encoding="utf-8") as f:
         with open(os.path.join(folder, file), encoding="utf-8") as theme:
             print(json.load(theme)["name"].lower())
 EOF2
-    ); do
-        state="$tmp/passenger-site-shots/state/first-start-$look-$theme"
-        rm -rf "$state"
-        mkdir -p "$state"
-        # The class's doc comment, keywords, types, a lambda and numbers in the editor, the theme's own layout round it.
-        PASSENGER_SETTINGS="$state" "$passenger" "$folder/Greenhouse.slnx" --theme "$theme" --look "$look" \
-            --size 936x585 --scale 1.5 --file src/Greenhouse.Core/WateringPlan.cs --caret 4:21 \
-            --screenshot "$work/png/first-start/$look-$theme.png"
-        cwebp -quiet -lossless -z 9 "$work/png/first-start/$look-$theme.png" -o "$out/$look-$theme.webp"
-        echo "site-shots: $out/$look-$theme.webp ($(($(wc -c < "$out/$look-$theme.webp") / 1024)) KB)"
-    done
+    )
     version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$repo/Directory.Build.props")
     printf '{\n  "version": "%s"\n}\n' "$version" > "$out/pictures.json"
 }

@@ -46,6 +46,7 @@ public sealed partial class SettingsDialog
         Add(Declared.Look, ThemePicker);
         Add(Declared.Theme);
         Add(Declared.ColourScheme, SchemePicker);
+        Add(Declared.FollowSystemContrast);
         ThemeExplorer = new ThemeExplorer(() => Working, Change, () => ThemePicker.Refill());
         ThemeExplorer.Under(ThemePicker.Box, ThemePicker.AddFile);
         Add(Appearance, "VS Code themes", ThemeExplorer, "theme themes vscode vs code visual studio code open vsx openvsx extension vsix colour color dracula monokai one dark solarized github",

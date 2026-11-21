@@ -208,6 +208,8 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Containers.BuildKitChecks.Variable, "off");
         // Nor the person's motion and caret settings: carets blink at Passenger's own rate but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemMotion.Variable, "full,blink=530");
+        // Nor the person's high contrast: a window shows the theme its test chooses but where a test stands in.
+        Environment.SetEnvironmentVariable(Passenger.App.SystemContrast.Variable, "none");
         // Nor the person's user secrets: a container run mounts a project's from the run's own folder, which a test writes.
         Environment.SetEnvironmentVariable(Passenger.App.Containers.ContainerPlans.UserSecretsVariable, UserSecrets);
         // Nor the person's Passenger: an agent's call with no window to join starts this build headless, in the run's state.

@@ -194,7 +194,10 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         if (Shown == Screen.Theme)
         {
             title.Text = "Welcome to Passenger";
-            about.Text = $"Choose a theme to begin, then dark or light. {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} changes either at any time.";
+            about.Text = Themes.InHighContrast
+                ? $"Your system asks for high contrast, so {ThemeSource.HighContrast} shows while it does. Choose the theme for when it no longer asks, "
+                    + $"then dark or light. {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} changes either at any time."
+                : $"Choose a theme to begin, then dark or light. {SettingsDialog.PlaceOfPage(SettingsDialog.Appearance)} changes either at any time.";
             foreach (Look look in Looks)
             {
                 Add(Tile(look.Name, look.Words, look.Picture(dark), look.Theme == settings.Look, () => ChooseLook(look)));
@@ -236,7 +239,7 @@ public sealed class FirstStartView : UserControl, IOwnKeys
         PathIcon check = new() { Classes = { StyleClasses.FirstStartCheck }, IsVisible = chosen };
         check.Bind(PathIcon.DataProperty, check.GetResourceObservable(IconKeys.Check));
         TextBlock named = new() { Classes = { StyleClasses.FirstStartName }, Text = name };
-        TextBlock said = new() { Classes = { StyleClasses.FirstStartWords }, Text = words, IsVisible = words is not null, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock said = new() { Classes = { StyleClasses.FirstStartWords }, Text = words, IsVisible = words is not null, TextWrapping = TextWrapping.Wrap };
         Button tile = new()
         {
             Classes = { StyleClasses.FirstStartTile },

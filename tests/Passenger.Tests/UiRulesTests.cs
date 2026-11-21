@@ -2649,6 +2649,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// themes the tests carry as Passenger makes them, for a rule held of its tokens alone, which costs no window.</summary>
     public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames, .. CarriedThemes.VsCodeNames];
 
+    /// <summary>Holds what each colour is drawn on to WCAG AA, and the words of the theme of high contrast to AAA's 7:1.</summary>
     [Gate]
     [AvaloniaTheory]
     [MemberData(nameof(EveryLook))]
@@ -2657,6 +2658,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         using IDisposable worn = CarriedThemes.Wearing(look);
         // A VS Code theme's edges round its fields are its author's (input.border), so read:Edge holds Passenger's own alone.
         bool own = !look.StartsWith(CarriedThemes.VsCodePrefix, StringComparison.Ordinal);
+        double words = look == ThemeSource.HighContrast ? 7 : 4.5;
         List<string> below = [];
         foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
         {
@@ -2670,13 +2672,14 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 Color[] under = Colours(pair.Under, variant);
                 Color[] grounds = Colours(pair.Ground, variant);
                 double worst = (from f in Colours(pair.Fore, variant) from g in grounds from u in under select Ratio(f, Over(g, u))).Min();
-                if (worst < pair.Least)
+                double least = pair.Least == 4.5 ? words : pair.Least;
+                if (worst < least)
                 {
-                    below.Add($"{variant}: {pair.Fore} on {pair.Ground} is {worst:0.00}:1, under {pair.Least}:1");
+                    below.Add($"{variant}: {pair.Fore} on {pair.Ground} is {worst:0.00}:1, under {least}:1");
                 }
             }
         }
-        Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG AA, so what they draw is hard to read or to find (text 4.5:1, icons, focus rings, the caret and a field's edge 3:1):\n" + string.Join("\n", below));
+        Assert.True(below.Count == 0, $"In {look}, {below.Count} pairs fall below WCAG {(words > 4.5 ? "AAA" : "AA")}, so what they draw is hard to read or to find (text {words}:1, icons, focus rings, the caret and a field's edge 3:1):\n" + string.Join("\n", below));
     }
 
     /// <summary>Every colour Tokens.axaml gives says on Dark's what it is read on, is a ground another is read on, or says

@@ -29,6 +29,7 @@ public partial class MainWindow
         {
             settingsStore.LookAgain();
             SystemMotion.LookAgain();
+            SystemContrast.LookAgain();
         };
         Themes.SaidChanged += OnThemesSaid;
         Themes.FontsChanged += OnThemeFonts;

@@ -31,6 +31,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// theme's ground, so the areas stay told apart), or null for the theme's own.</summary>
     public SourcedTheme? ColourScheme { get; init; }
 
+    /// <summary>Whether High Contrast shows in the theme's and the scheme's place while the system asks for high contrast.</summary>
+    public bool FollowSystemContrast { get; init; } = true;
+
     /// <summary>The theme sources the person added, each as <see cref="ThemeSource"/> keeps it, beside Passenger's themes
     /// repository, which every Passenger lists.</summary>
     public IReadOnlyList<string> ThemeSources { get; init; } = [];
