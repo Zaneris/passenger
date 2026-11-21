@@ -195,7 +195,7 @@ public partial class ManagedDebugger
         {
             return;
         }
-        _logger?.Invoke($"Letting go: held until {Plural.Of(running.Count, "evaluation")} given up {(running.Count == 1 ? "has" : "have")} ended, a test's hold");
+        _logger?.Invoke($"Letting go: held until {Plural.Of(running.Count, "evaluation")} given up {Plural.Agreeing(running.Count, "has", "have")} ended, a test's hold");
         long by = running.Max(thread => EvalStatus.DueAt[thread]);
         while (!running.All(EvalStatus.HasEnded) && !_exited.IsSet && Stopwatch.GetTimestamp() < by)
         {
