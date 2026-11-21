@@ -461,7 +461,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
         GroupByMenu?.Close();
         ContextMenu menu = new()
         {
-            ItemsSource = (Control[])[FilterMenu.Toggle("Directory", vcs.GroupsByDirectory, _ => ActionRequested?.Invoke(this, AppActions.GroupByDirectory))],
+            ItemsSource = (Control[])[ListMenus.Toggle("Directory", vcs.GroupsByDirectory, _ => ActionRequested?.Invoke(this, AppActions.GroupByDirectory), action: AppActions.GroupByDirectory)],
             Placement = PlacementMode.BottomEdgeAlignedLeft,
         };
         GroupByMenu = menu;
@@ -1084,8 +1084,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// and a click on it chooses the item it shows, a group's or folder's every file under it.</summary>
     private Control Row()
     {
-        RowIcon chevron = RowIcon.Chevron();
-        Border toggle = new() { Width = Gaps.Indent, Height = ListRow.Height, Background = Brushes.Transparent, Child = chevron };
+        RowExpander toggle = RowExpander.Of<ITreeRow>(Toggle);
         CheckBox box = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Gaps.Hair, 0) };
         RowIcon folderIcon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
         TextBlock branchName = new() { VerticalAlignment = VerticalAlignment.Center };
@@ -1106,14 +1105,6 @@ public sealed class CommitView : DockPanel, IOwnKeys
         DockPanel row = new() { Height = ListRow.Height, Children = { toggle, box, content } };
         bool setting = false;
         string? nameColour = null;
-        toggle.PointerPressed += (_, e) =>
-        {
-            if (row.DataContext is CommitBranch branch)
-            {
-                Toggle(branch);
-                e.Handled = true;
-            }
-        };
         box.IsCheckedChanged += (_, _) =>
         {
             if (setting)
@@ -1133,8 +1124,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             setting = true;
             row.Margin = new Thickness(Gaps.Tight + (item.Depth * Gaps.Indent), 0, 0, 0);
-            chevron.IsVisible = item.Expands;
-            chevron.Turned = item.IsExpanded;
+            toggle.Expands = item.Expands;
+            toggle.IsOpen = item.IsExpanded;
             branchLine.IsVisible = item is CommitBranch;
             shown.Line.IsVisible = item is CommitRow;
             bool boxed = false;
@@ -1153,7 +1144,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                     folderIcon.Foreground = Explorer.FileIcons.BrushForFolder(last);
                 }
                 branchName.Text = folder?.Name ?? ((CommitGroup)branch).Name;
-                branchName.FontWeight = folder is null ? FontWeight.SemiBold : FontWeight.Normal;
+                branchName.Classes.Set(StyleClasses.Strong, folder is null);
                 branchName.Resource(TextBlock.ForegroundProperty, ref nameColour, conflicts ? TokenKeys.Vcs_File_Conflicted : null);
                 count.Text = Core.Plural.Of(branch.Rows.Count, "file");
                 resolve.IsVisible = conflicts;

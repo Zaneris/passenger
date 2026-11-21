@@ -52,7 +52,7 @@ public sealed partial class VcsTests
             Assert.Equal(["Main.cs", "Shop.cs", "View.cs", "intro.md"], ChosenNames(commit));
             Assert.True(Folder(commit, "src").IsChosen is null, "src, holding App's chosen files and Util.cs left out, is not partly ticked");
 
-            Ui.Click(Ui.Row(list, Folder(commit, "src")).GetVisualDescendants().OfType<Border>().First(b => b.Child is RowIcon));
+            Ui.Click(Ui.Row(list, Folder(commit, "src")).GetVisualDescendants().OfType<RowExpander>().Single());
             Assert.DoesNotContain(commit.Rows, r => r is CommitRow { Change.Name: "Main.cs" });
             Assert.Equal(["Main.cs", "Shop.cs", "View.cs", "intro.md"], ChosenNames(commit));
 
