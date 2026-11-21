@@ -94,6 +94,12 @@ jobs:
           global-json-file: global.json
           dotnet-version: 10.0.x
 
+      # macOS's runners of one label come as more than one machine (7 GB and 14 GB of memory, a job's tests taking a third
+      # longer on the smaller), which the log names, so a job's time is read against the machine it had.
+      - name: The runner's machine
+        if: runner.os == 'macOS'
+        run: sysctl hw.model machdep.cpu.brand_string hw.ncpu hw.memsize
+
       # The runner's .NET is in ~/.dotnet, not where the macOS installer puts it: registered, so the IDE started with
       # launchd's bare environment finds its runtime.
       - name: Register .NET's install location
