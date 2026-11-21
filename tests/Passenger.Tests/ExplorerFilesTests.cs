@@ -1305,6 +1305,78 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The Explorer's Delete, of a file, a folder or several chosen together, is one command of global undo named
+    /// after them: Undo asks by that name and brings each back from the Trash with what it held, the Trash keeping it no
+    /// more, and Redo sends it there again. On Windows through the Recycle Bin itself.</summary>
+    [AvaloniaFact]
+    public void Delete_of_a_file_a_folder_or_several_is_one_command_Undo_brings_back_from_the_Trash_and_Redo_sends_again()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Trash.Folder = null;
+        }
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
+        File.WriteAllText(Path.Combine(folder, "Models", "Order.cs"), "class Order { }\n");
+        File.WriteAllText(Path.Combine(folder, "a.txt"), "a\n");
+        File.WriteAllText(Path.Combine(folder, "b.txt"), "b\n");
+        MainWindow window = Open();
+        List<string> asked = Questions(window);
+
+        Deleted(["Notes.txt"], "Delete Notes.txt", () => Ui.ClickRow(window, Row(window, "Notes.txt")));
+        Deleted(["Models"], "Delete Models", () => Ui.ClickRow(window, Row(window, "Models")));
+        Deleted(["a.txt", "b.txt"], "Delete a.txt and b.txt", () =>
+        {
+            ExplorerNode a = Row(window, "a.txt");
+            ExplorerNode b = Row(window, "b.txt");
+            Ui.ClickRow(window, a);
+            AlsoChoose(window, b);
+        });
+        window.Close();
+
+        // Deletes what choose picks, then takes the delete back and makes it again, each item checked on disk and in the Trash.
+        void Deleted(string[] names, string command, Action choose)
+        {
+            string[] paths = [.. names.Select(name => PathNames.Canonical(Path.Combine(folder, name)))];
+            Dictionary<string, string> held = paths.ToDictionary(path => path, Contents);
+            choose();
+            Ui.Press(window, "DELETE");
+            Ui.WaitFor(() => paths.All(path => !Path.Exists(path)) || window.Status?.Contains("could not", StringComparison.Ordinal) == true, $"{command} to go to the Trash");
+            CommandHistory.Command done = window.EditorArea.Commands.ToUndo(null)
+                ?? throw new Xunit.Sdk.XunitException($"{command} left no command for Undo to take back: {window.Status}");
+            Assert.Equal(command, done.Name);
+            Trashed[] went = [.. done.Deleted.Select(d => d.Went ?? throw new Xunit.Sdk.XunitException($"The Trash kept {Path.GetFileName(d.Path)} nowhere Passenger finds"))];
+            Assert.True(went.Length == names.Length && went.All(Trash.Holds), $"{command} put [{string.Join(", ", went.Select(w => w.At))}] in the Trash, not each of {string.Join(", ", names)}");
+
+            asked.Clear();
+            Step(EditorActions.Undo);
+            Ui.WaitFor(() => paths.All(Path.Exists) || window.Status?.Contains("Cannot", StringComparison.Ordinal) == true,
+                () => $"Undo of {command} to bring each back; asked [{string.Join(" | ", asked)}], the status bar saying '{window.Status}'");
+            Assert.True(asked.SequenceEqual([$"Undo {command}? It brings back {Plural.Listed(names)}."]), $"Undo of {command} asked [{string.Join(" | ", asked)}]");
+            Assert.All(paths, path => Assert.True(Contents(path) == held[path], $"Undo of {command} brought {Path.GetFileName(path)} back holding {Contents(path)}, not {held[path]}"));
+            Assert.True(!went.Any(Trash.Holds), $"After Undo of {command} the Trash still holds [{string.Join(", ", went.Where(Trash.Holds).Select(w => w.At))}]");
+
+            asked.Clear();
+            Step(EditorActions.Redo);
+            Ui.WaitFor(() => paths.All(path => !Path.Exists(path)) || window.Status?.Contains("Cannot", StringComparison.Ordinal) == true,
+                () => $"Redo of {command} to send each to the Trash again; asked [{string.Join(" | ", asked)}], the status bar saying '{window.Status}'");
+            Assert.True(asked.SequenceEqual([$"Redo {command}? It deletes {Plural.Listed(names)}."]), $"Redo of {command} asked [{string.Join(" | ", asked)}]");
+            CommandHistory.Command again = window.EditorArea.Commands.ToUndo(null) ?? throw new Xunit.Sdk.XunitException($"Redo of {command} left nothing to undo");
+            Assert.True(again.Deleted.All(d => d.Went is { } there && Trash.Holds(there)), $"Redo of {command} left the Trash without each of {string.Join(", ", names)}");
+        }
+
+        // Undo or Redo from the Explorer, the project's row chosen in it.
+        void Step(string action)
+        {
+            Ui.ClickRow(window, Row(window, "Shop.csproj"));
+            Ui.Run(window, action);
+        }
+
+        // A file's text, or a folder's files and their texts, as one string to compare.
+        static string Contents(string path) => File.Exists(path) ? File.ReadAllText(path)
+            : string.Join("|", Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal)
+                .Select(file => $"{Path.GetRelativePath(path, file)}={File.ReadAllText(file)}"));
+    }
+
     /// <summary>A folder chosen with a file inside it goes to the Trash once, the file with it: the question is of the
     /// folder alone, and nothing is said to have failed for the file gone before its turn.</summary>
     [AvaloniaFact]

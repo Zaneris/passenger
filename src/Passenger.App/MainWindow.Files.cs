@@ -529,8 +529,8 @@ public partial class MainWindow
     /// <summary>Moves files and folders to the Trash, none inside another, said in the status bar; their open files are
     /// saved first, and again just before they go with what was typed while it waited, so the Trash and Local History have
     /// what the editor showed, and close once gone. The design-time builds of the projects in them are held off, those
-    /// running waited out. Each goes in the command given, else, in a shared project's folder, in one of its own leaving
-    /// its items file, whose Undo takes it out of the Trash. Each that stayed, with why; null where an open file could not be saved.</summary>
+    /// running waited out. Each goes in the command given, else one of its own named after them (Undo takes each back out of
+    /// the Trash, a shared project's items file with it). Each that stayed, with why; null where an open file was not saved.</summary>
     private async Task<IReadOnlyList<(string Path, string Why)>?> TrashAsync(IReadOnlyList<string> paths, CommandHistory.Recording? within)
     {
         List<string> names = [.. paths.Select(Path.GetFileName).OfType<string>()];
@@ -549,10 +549,8 @@ public partial class MainWindow
         }
         List<string> gone = [];
         List<(string Path, string Why)> refused = [];
-        // What goes from a shared project's folder leaves its items file too, in a command whose Undo takes all it deleted
-        // back out of the Trash and writes the items file back.
-        using CommandHistory.Recording? sharing = within is null && InShared(paths) ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
-        CommandHistory.Recording? recording = within ?? sharing;
+        using CommandHistory.Recording? own = within is null ? Editors.Commands.Record($"Delete {Plural.Listed(names)}") : null;
+        CommandHistory.Recording recording = within ?? own!;
         for (int i = 0; i < paths.Count; i++)
         {
             string path = paths[i];
@@ -564,7 +562,7 @@ public partial class MainWindow
             {
                 Trashed? went = Trash.Move(path);
                 gone.Add(path);
-                recording?.Deleted(path, went);
+                recording.Deleted(path, went);
                 if (taken[i] is { } kept)
                 {
                     keeping!.Deleted(kept);
@@ -584,7 +582,7 @@ public partial class MainWindow
             CameOrWent(gone);
         }
         List<string> said = gone.Count == 0 ? [] : [$"Moved {Plural.Listed([.. gone.Select(Path.GetFileName).OfType<string>()])} to the Trash"];
-        if (recording is not null && gone.Count > 0 && OutOfShared(gone, recording) is { } unshared)
+        if (gone.Count > 0 && OutOfShared(gone, recording) is { } unshared)
         {
             said.Add(unshared);
         }
