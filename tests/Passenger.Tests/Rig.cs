@@ -1233,6 +1233,14 @@ public static class Ui
         return conversations.Length == 0 ? string.Empty : $"\nThe language servers' conversations:\n{conversations}";
     }
 
+    /// <summary>What the project hosts were asked and have not answered, and whether their gate is held: no host's request is
+    /// work a quiet wait waits for, so a wait that gave up with the IDE quiet may have stood on one.</summary>
+    private static string HostsAsked()
+    {
+        string asked = Passenger.Workspace.ProjectHosts.Unanswered();
+        return asked.Length == 0 ? string.Empty : $"\nThe project hosts had not answered:\n{asked}";
+    }
+
     /// <summary>The programs still running under the tests' process, with their command lines, which say where work waiting
     /// on a program stopped: a git, a helper it started, or a stand-in's server.</summary>
     private static string ProgramsRunning()
@@ -1283,12 +1291,12 @@ public static class Ui
         {
             if (until.Passed)
             {
-                throw new TimeoutException($"Waited {within.TotalSeconds} s for {what()}");
+                throw new TimeoutException($"Waited {within.TotalSeconds} s for {what()}{HostsAsked()}");
             }
             Frame();
             if (!Settled(Deadline.Later(Deadline.In(SettleLimit.Scaled()), until)))
             {
-                throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{ServerConversations()}{IdeLogTail()}{ServerLogTail()}");
+                throw new TimeoutException($"The IDE was not quiet while waiting {within.TotalSeconds} s for {what()}. Still busy:\n{Busy()}{ServerConversations()}{HostsAsked()}{IdeLogTail()}{ServerLogTail()}");
             }
         }
         // What it waited for may have landed with none of the window's jobs run since (a read that ended at once).

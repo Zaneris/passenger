@@ -113,6 +113,22 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A test's wait that gives up says what the project hosts were asked and have not answered, which no quiet
+    /// wait waits for: a hold of the folder's host's design-time builds, unanswered until released, named with its host.</summary>
+    [AvaloniaFact]
+    public void A_wait_that_gives_up_names_what_the_project_host_has_not_answered()
+    {
+        MainWindow window = Open();
+        ProjectHost host = Ui.Await(Waiting.Apart(() => ProjectHosts.ForAsync(folder)), "the folder's project host");
+        using CancellationTokenSource release = new();
+        Ui.Await(Waiting.Apart(() => host.HoldAsync(_ => { }, release.Token)), "the host's design-time builds held");
+        TimeoutException gaveUp = Assert.Throws<TimeoutException>(() => Ui.WaitFor(() => false, "nothing that comes", TimeSpan.FromSeconds(1)));
+        release.Cancel();
+        Assert.Contains($"Project host (process {host.ProcessId}): {HostMethods.Hold}, request ", gaveUp.Message, StringComparison.Ordinal);
+        Ui.WaitFor(() => !ProjectHosts.Unanswered().Contains($": {HostMethods.Hold}, ", StringComparison.Ordinal), "the hold, released, to be answered");
+        window.Close();
+    }
+
     /// <summary>A host whose answer does not read, as one of another build's could write, is ended and the evaluation asked
     /// of it fails; the next change is evaluated by a host started anew.</summary>
     [Gate]
