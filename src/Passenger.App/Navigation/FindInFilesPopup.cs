@@ -125,8 +125,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         projectBox = Field(choices.Projects, editable: false);
         ReusedRows.Use(projectBox, () =>
         {
-            TextBlock name = new();
-            return name.Showing<ProjectModel>(project => name.Text = project.Name);
+            ProjectLabel named = new();
+            return named.Showing<ProjectModel>(named.Show);
         });
         projectBox.SelectedItem = choices.Projects.FirstOrDefault(p => p.Path == choices.Start.Project) ?? choices.Projects.FirstOrDefault();
         directoryBox = Field(choices.Directories, editable: true);

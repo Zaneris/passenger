@@ -22,8 +22,11 @@ public static class FileIconSet
     /// <summary>A project's dependencies and its packages, NuGet's.</summary>
     public static readonly FileIconLook Packages = new("NuGet", Blue);
 
-    /// <summary>A compose file (<see cref="Containers.ComposeFiles.IsCompose"/>).</summary>
-    private static readonly FileIconLook Compose = new("Docker", Blue);
+    /// <summary>A compose file (<see cref="Containers.ComposeFiles.IsCompose"/>), and a Docker Compose project.</summary>
+    public static readonly FileIconLook Compose = new("Docker", Blue);
+
+    /// <summary>A Godot script, and a Godot game's C# project.</summary>
+    public static readonly FileIconLook Godot = new("Godot", Blue);
 
     private static readonly Dictionary<string, FileIconLook> Names = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -154,6 +157,7 @@ public static class FileIconSet
         [".vbproj"] = new("Stack", Purple),
         [".proj"] = new("Stack", Grey),
         [".shproj"] = new("Stack", Green),
+        [".dcproj"] = Compose,
         [".projitems"] = new("Config", Green),
         [".props"] = new("Config", Cyan),
         [".targets"] = new("Config", Red),
@@ -374,7 +378,7 @@ public static class FileIconSet
         [".f"] = new("Fortran", Maroon),
         [".f90"] = new("Fortran", Maroon),
         [".ino"] = new("Arduino", Cyan),
-        [GodotFileKinds.Script] = new("Godot", Blue),
+        [GodotFileKinds.Script] = Godot,
         [".hx"] = new("Haxe", Orange),
         [".g4"] = new("Antlr", Red),
         [".sol"] = new("Solidity", Grey),

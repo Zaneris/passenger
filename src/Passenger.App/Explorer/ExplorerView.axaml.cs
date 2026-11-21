@@ -638,7 +638,8 @@ public partial class ExplorerView : UserControl
         {
             row.Margin = node.Indent;
             row.Opacity = node.Opacity;
-            ToolTip.SetTip(row, node.Tip);
+            ToolTip.SetTip(row, node.Hover);
+            AutomationProperties.SetName(row, node.Said);
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;
             glyphs.Icon = node.Icon;

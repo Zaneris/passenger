@@ -132,7 +132,7 @@ public partial class MainWindow
         List<CheckChoice> projects = [.. running.Select(p => new CheckChoice(
             Path.GetFileNameWithoutExtension(p.Path),
             DockerFiles.Describe(p, all).ExistingDockerfile is { } dockerfile ? DockerShown(dockerfile) : "no Dockerfile: Docker Support adds one",
-            true, p.Path))];
+            true, p.Path) { Project = p })];
         List<CheckChoice> services = [.. BackingService.Known
             .Select(k => (Service: k, Users: running.Where(p => BackingService.For(p.Packages.Select(q => q.Name)).Contains(k)).ToList()))
             .Where(k => k.Users.Count > 0)

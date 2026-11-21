@@ -28,8 +28,8 @@ public partial class MainWindow
         HashSet<string> referenced = new(all.FirstOrDefault(p => PathNames.Same(p.Path, project))?.ProjectReferences ?? [], StringComparer.Ordinal);
         HashSet<string> imported = new(ImportedShared(project), StringComparer.Ordinal);
         HashSet<string> dependents = ProjectModel.Dependents(all, project);
-        AddReferenceDialog dialog = new(name, [.. others.Select(p => new ReferenceChoice(p.Path, p.Name, InFolder(p.Path), referenced.Contains(p.Path), dependents.Contains(p.Path))),
-            .. shared.Select(p => new ReferenceChoice(p, Path.GetFileNameWithoutExtension(p), $"shared · {InFolder(p)}", imported.Contains(p), circular: false))]);
+        AddReferenceDialog dialog = new(name, [.. others.Select(p => new ReferenceChoice(p, InFolder(p.Path), referenced.Contains(p.Path), dependents.Contains(p.Path))),
+            .. shared.Select(p => new ReferenceChoice(ProjectModel.Unevaluated(p), $"shared · {InFolder(p)}", imported.Contains(p), circular: false))]);
         IdeErrors.Observe(ApplyAsync());
         return dialog;
 

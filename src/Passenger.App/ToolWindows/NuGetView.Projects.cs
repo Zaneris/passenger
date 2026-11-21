@@ -68,7 +68,7 @@ public sealed partial class NuGetView
     }
 
     /// <summary>The names of the chosen package's projects as the pane lists them, in its order.</summary>
-    public IReadOnlyList<string> ProjectNames => [.. ProjectLines.Select(l => l.Children.OfType<TextBlock>().FirstOrDefault()?.Text).OfType<string>()];
+    public IReadOnlyList<string> ProjectNames => [.. ProjectLines.Select(l => l.Children.OfType<ProjectLabel>().FirstOrDefault()?.Text).OfType<string>()];
 
     private (TextBox Search, FilterMenu Filters, ToolFlow Header) MakeProjectsHeader()
     {

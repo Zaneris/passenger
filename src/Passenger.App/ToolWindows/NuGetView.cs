@@ -1139,7 +1139,8 @@ public sealed partial class NuGetView : DockPanel
                 string where = several && bad.Framework is { } framework ? $" for {framework}" : string.Empty;
                 mark.Children.Add(Warning($"Known security vulnerability in {bad.Version}{where}, brought in by {string.Join(", ", bad.BroughtBy)}: {gravest.Severity} severity ({gravest.Address})"));
             }
-            TextBlock name = new() { Text = project.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            ProjectLabel name = new() { VerticalAlignment = VerticalAlignment.Center };
+            name.Show(project);
             ToolFlow.SetFills(name, new ToolLayout.Fills(100, 220));
             ToolFlow line = new()
             {

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
@@ -291,13 +292,14 @@ public sealed class MigrationsView : DockPanel
         };
         ReusedRows.Use(chooser, () =>
         {
-            TextBlock shown = new();
+            ProjectLabel shown = new();
             TextBlock note = MutedText.Of(string.Empty);
             note.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
             StackPanel row = new() { Orientation = Orientation.Horizontal, Children = { shown, note } };
+            AutomationProperties.SetLabeledBy(row, shown);
             return row.Showing<object>(item =>
             {
-                shown.Text = item switch { ProjectModel project => project.Name, EfContext context => context.Name, EfEnvironment environment => environment.Name, _ => string.Empty };
+                shown.Show(item switch { ProjectModel project => project, EfContext context => context.Name, EfEnvironment environment => environment.Name, _ => (object)string.Empty });
                 note.Text = (item as EfEnvironment)?.Note ?? string.Empty;
                 note.IsVisible = note.Text.Length > 0;
             });

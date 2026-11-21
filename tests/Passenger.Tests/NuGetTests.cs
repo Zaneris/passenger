@@ -1269,7 +1269,8 @@ public sealed class NuGetTests : IDisposable
             $"With {TestProjects.Framework}'s 1.0.0 brought in by {Charts}, {Id}'s row is {(row.IsVulnerable ? "marked" : "unmarked")}, "
             + $"{(row.IsDeprecated ? $"tagged deprecated at {row.Deprecated?.Version}" : "untagged")}, and the status says \"{nuget.Status}\"");
         Assert.True(ShownVersion(nuget, "Lib") == "1.0.1, 1.0.0", $"Lib's line shows {ShownVersion(nuget, "Lib")}, not {Restorable}'s 1.0.1 and {TestProjects.Framework}'s 1.0.0");
-        string? marked = Line(nuget, "Lib")!.Children.OfType<Panel>().SelectMany(p => p.Children).OfType<RowIcon>().Select(i => ToolTip.GetTip(i) as string).FirstOrDefault();
+        string? marked = Line(nuget, "Lib")!.Children.OfType<Panel>().Where(p => p is not ProjectLabel).SelectMany(p => p.Children).OfType<RowIcon>()
+            .Select(i => ToolTip.GetTip(i) as string).FirstOrDefault();
         Assert.True(marked == $"Known security vulnerability in 1.0.0 for {TestProjects.Framework}, brought in by {Charts}: Moderate severity ({Advisory})",
             $"Lib's line is marked \"{marked}\", not with {TestProjects.Framework}'s vulnerable 1.0.0 and what brings it in");
 
@@ -1539,7 +1540,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>A project's line among the chosen package's projects.</summary>
     internal static Panel? Line(NuGetView nuget, string project) => nuget.GetLogicalDescendants().OfType<Panel>()
-        .FirstOrDefault(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == project);
+        .FirstOrDefault(line => line.Children.FirstOrDefault() is ProjectLabel { Text: { } text } && text == project);
 
     /// <summary>The button of a label on a project's line.</summary>
     internal static Button? Action(NuGetView nuget, string project, string label) =>
@@ -1550,5 +1551,5 @@ public sealed class NuGetTests : IDisposable
         Line(nuget, project)?.Children.OfType<Button>().Select(b => b.Content).OfType<string>() ?? [];
 
     /// <summary>The version a project's line shows for the chosen package: the one in force there, or nothing.</summary>
-    private static string? ShownVersion(NuGetView nuget, string project) => Line(nuget, project)?.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()?.Text;
+    internal static string? ShownVersion(NuGetView nuget, string project) => Line(nuget, project)?.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
 }

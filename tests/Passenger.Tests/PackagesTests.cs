@@ -91,10 +91,7 @@ public sealed class PackagesTests : IDisposable
     }
 
     /// <summary>The Install button on a project's line among the chosen package's projects.</summary>
-    private static Button? InstallButton(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<Panel>()
-        .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == name)
-        .SelectMany(line => line.Children.OfType<Button>())
-        .FirstOrDefault(button => (string?)button.Content == "Install");
+    private static Button? InstallButton(NuGetView nuget, string name) => NuGetTests.Action(nuget, name, "Install");
 
     [Gate]
     [AvaloniaFact]
@@ -234,10 +231,7 @@ public sealed class PackagesTests : IDisposable
     }
 
     /// <summary>The version a project's line shows for the chosen package: the one installed there, or nothing.</summary>
-    private static string? ShownVersion(NuGetView nuget, string name) => nuget.GetLogicalDescendants().OfType<Panel>()
-        .Where(line => line.Children.FirstOrDefault() is TextBlock { Text: { } text } && text == name)
-        .Select(line => line.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()?.Text)
-        .FirstOrDefault();
+    private static string? ShownVersion(NuGetView nuget, string name) => NuGetTests.ShownVersion(nuget, name);
 
     /// <summary>A window on a folder (the Lib project's unless given) with the NuGet window open on a feed; without the C#
     /// language server, which nothing here asks of, so none starts and restores the project.</summary>

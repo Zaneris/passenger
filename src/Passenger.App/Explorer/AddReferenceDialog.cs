@@ -5,18 +5,21 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
 
 /// <summary>A project the Add Reference dialog offers: checked while the project references it, and not offered when it
 /// references the project itself, directly or through others (a reference back would be a cycle MSBuild refuses).</summary>
-public sealed class ReferenceChoice(string path, string name, string where, bool chosen, bool circular) : Observable, ICheckChoice
+public sealed class ReferenceChoice(ProjectModel project, string where, bool chosen, bool circular) : Observable, ICheckChoice
 {
     private bool isChosen = chosen;
 
-    public string Path { get; } = path;
+    public string Path => Project.Path;
 
-    public string Name { get; } = name;
+    public string Name => Project.Name;
+
+    public ProjectModel Project { get; } = project;
 
     /// <summary>Where it is, and why it cannot be chosen when it cannot.</summary>
     public string Detail { get; } = circular ? $"{where} (references this project)" : where;

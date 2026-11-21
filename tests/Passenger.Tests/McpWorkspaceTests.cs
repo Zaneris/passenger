@@ -7,10 +7,10 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>What an agent's own Passenger (<c>--mcp</c>) knows of its folder: workspace calls an Android app, which .NET for
-/// Android evaluates as a Library, the Exe it runs as, and a library stays a Library; a file made while the folder's
-/// watcher heard nothing is found at the agent's next call; and a project's frameworks the agent just edited, and a project
-/// it just added to the solution, are what the next call answers from.</summary>
+/// <summary>What an agent's own Passenger (<c>--mcp</c>) knows of its folder: workspace names what each project builds, and
+/// calls an Android app, which .NET for Android evaluates as a Library, the Exe it runs as, and a library stays a Library; a
+/// file made while the folder's watcher heard nothing is found at the agent's next call; and a project's frameworks the
+/// agent just edited, and a project it just added to the solution, are what the next call answers from.</summary>
 [Collection(Beside.Name)]
 public sealed class McpWorkspaceTests : McpRig
 {
@@ -29,6 +29,27 @@ public sealed class McpWorkspaceTests : McpRig
         string said = string.Empty;
         await Waiting.UntilAsync(async () => (said = Said(await Call(client, McpTools.Workspace))) == Expected, TimeSpan.FromSeconds(60), Cancel, TimeSpan.FromMilliseconds(200));
         Assert.True(said == Expected, $"workspace did not call the Android app an Exe, the run configuration it lists, and the library a Library: {said}");
+    }
+
+    /// <summary>workspace names what each project builds as the Solution view draws it, from its evaluation: a web API, a
+    /// project of tests, a class library and a shared project.</summary>
+    [Fact]
+    public async Task Workspace_names_what_each_project_builds_as_the_solution_view_draws_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-kinds-"));
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Shop.Api/Shop.Api.csproj", TestProjects.Web());
+        TestFolders.Write(folder, "Shop.Tests/Shop.Tests.csproj", TestProjects.Library("<IsTestProject>true</IsTestProject>"));
+        TestFolders.Write(folder, "Shop.Core/Shop.Core.csproj", TestProjects.Library());
+        TestFolders.Write(folder, "Shop.Shared/Shop.Shared.shproj", "<Project>\n  <Import Project=\"Shop.Shared.projitems\" Label=\"Shared\" />\n</Project>\n");
+        TestFolders.Write(folder, "Shop.Shared/Shop.Shared.projitems", "<Project>\n</Project>\n");
+        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop.Api/Shop.Api.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n"
+            + "  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n  <Project Path=\"Shop.Shared/Shop.Shared.shproj\" />\n</Solution>\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        const string Expected = "Shop.Api: web API, Shop.Core: class library, Shop.Shared: shared project, Shop.Tests: test project";
+        string said = string.Empty;
+        await Waiting.UntilAsync(async () => (said = Kinds(await Call(client, McpTools.Workspace))) == Expected, TimeSpan.FromSeconds(60), Cancel, TimeSpan.FromMilliseconds(200));
+        Assert.True(said == Expected, $"workspace did not name what each project builds: {said}");
     }
 
     /// <summary>A file made while the folder's watcher heard nothing, as the system drops a change without a word, is found at
@@ -175,6 +196,11 @@ public sealed class McpWorkspaceTests : McpRig
     /// <summary>Where find_in_files found its matches, by file and line.</summary>
     private static string[] Found(JsonElement found) =>
         [.. found.GetProperty("matches").EnumerateArray().Select(m => $"{m.GetProperty("path").GetString()}:{m.GetProperty("line").GetInt32()}").Order(StringComparer.Ordinal)];
+
+    /// <summary>Each project's kind by name.</summary>
+    private static string Kinds(JsonElement workspace) =>
+        string.Join(", ", workspace.GetProperty("projects").EnumerateArray()
+            .Select(p => $"{p.GetProperty("name").GetString()}: {(p.TryGetProperty("kind", out JsonElement kind) ? kind.GetString() : "none")}").Order(StringComparer.Ordinal));
 
     /// <summary>Each project's output type by name, then the run configurations.</summary>
     private static string Said(JsonElement workspace) =>

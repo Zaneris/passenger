@@ -1,8 +1,10 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -11,6 +13,9 @@ namespace Passenger.App;
 public interface ICheckChoice
 {
     string Name { get; }
+
+    /// <summary>The project it stands for, whose kind its row draws before its name; null for a choice of anything else.</summary>
+    ProjectModel? Project => null;
 
     string Detail { get; }
 
@@ -29,6 +34,8 @@ public sealed class CheckChoice(string name, string detail, bool chosen, object 
     private bool canChoose = true;
 
     public string Name { get; } = name;
+
+    public ProjectModel? Project { get; init; } = value as ProjectModel;
 
     public string Detail { get; } = detail;
 
@@ -55,8 +62,8 @@ public sealed class CheckChoice(string name, string detail, bool chosen, object 
 
 /// <summary>A row a person checks or clears (Add Reference's projects, Add Docker Compose's services, Add Aspire
 /// Orchestration's, a nuget.config's feeds), as tall as every list's row (<see cref="ListRow.Height"/>): its box at its
-/// start, centred in it, then what it names, and what it is in the rest of the row's width, each cut short with an
-/// ellipsis where it has no more, what it is first.</summary>
+/// start, centred in it, then what it names (a project by its <see cref="ProjectLabel"/>), and what it is in the rest of
+/// the row's width, each cut short with an ellipsis where it has no more, what it is first.</summary>
 public static class CheckRows
 {
     /// <summary>A list of check rows over its choices, one row a choice: Space checks or clears the chosen row, Enter does
@@ -91,11 +98,12 @@ public static class CheckRows
     {
         CheckBox check = Box();
         check.Focusable = false;
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        ProjectLabel name = new();
         TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(check, Dock.Left);
         DockPanel.SetDock(name, Dock.Left);
         DockPanel row = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Small, 0), Children = { check, name, detail } };
+        AutomationProperties.SetLabeledBy(row, name);
         bool setting = false;
         check.IsCheckedChanged += (_, _) =>
         {
@@ -110,7 +118,7 @@ public static class CheckRows
             check.IsChecked = choice.IsChosen;
             check.IsEnabled = choice.CanChoose;
             setting = false;
-            name.Text = choice.Name;
+            name.Show(choice.Project, choice.Name);
             detail.Text = choice.Detail;
             ListRow.Dim(row, !choice.CanChoose);
         });

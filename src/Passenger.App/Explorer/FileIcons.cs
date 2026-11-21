@@ -1,19 +1,20 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
 
 /// <summary>The icon and tint a file or folder is drawn with: <see cref="FileIconSet"/>'s shape and colour for its name, a
 /// folder the set draws nothing apart for as a folder (one the SDK reads with its badge, open or not), and a solution
-/// folder as a filled one, so it never passes for a folder on disk. A project of a kind drawn apart (<see cref="KindIcon"/>)
-/// takes its kind's icon in its project file's tint.</summary>
+/// folder as a filled one, so it never passes for a folder on disk. A project takes its kind's icon (<see cref="KindIcon"/>)
+/// in its project file's tint, wherever it is listed (<see cref="ForProject"/>).</summary>
 public static class FileIcons
 {
     public static Geometry For(ExplorerNode node) => KindIcon(node.ProjectKind) is { } kind
         ? Find<Geometry>(kind)
         : Look(node) is { } look
-        ? Find<Geometry>($"FileIcon.{look.Shape}")
+        ? Find<Geometry>(Shaped(look))
         : Find<Geometry>(node.Kind switch
         {
             NodeKind.SolutionFolder => node.IsExpanded ? IconKeys.SolutionFolderOpen : IconKeys.SolutionFolder,
@@ -27,12 +28,35 @@ public static class FileIcons
         });
 
     /// <summary>The icon each kind of project is drawn with, the one place a kind gets its look: the icon of the IDE's
-    /// window for it where it has one; null for a project drawn as its project file.</summary>
+    /// window for it where it has one, a file's of its kind where one is, else its own; null for a project drawn as its
+    /// project file.</summary>
     private static string? KindIcon(ProjectKind kind) => kind switch
     {
+        ProjectKind.Compose => Shaped(FileIconSet.Compose),
+        ProjectKind.Shared => IconKeys.SharedProject,
         ProjectKind.AspireHost => IconKeys.Aspire,
+        ProjectKind.Test => IconKeys.Tests,
+        ProjectKind.GodotGame => Shaped(FileIconSet.Godot),
+        ProjectKind.Functions => IconKeys.FunctionsApp,
+        ProjectKind.Maui => IconKeys.MauiApp,
+        ProjectKind.Mobile => IconKeys.MobileApp,
+        ProjectKind.Blazor => IconKeys.BlazorApp,
+        ProjectKind.Avalonia => IconKeys.AvaloniaApp,
+        ProjectKind.Wpf => IconKeys.WpfApp,
+        ProjectKind.WindowsForms => IconKeys.FormsApp,
+        ProjectKind.WebApp => IconKeys.WebApp,
+        ProjectKind.WebApi => IconKeys.Endpoints,
+        ProjectKind.Desktop => IconKeys.DesktopApp,
+        ProjectKind.Console => IconKeys.Terminal,
+        ProjectKind.Library => IconKeys.ClassLibrary,
         _ => null,
     };
+
+    /// <summary>A project's icon wherever a list names it: its kind's, else its project file's.</summary>
+    public static Geometry ForProject(string path, ProjectKind kind) => KindIcon(kind) is { } key ? Find<Geometry>(key) : ForFile(path);
+
+    /// <summary>The resource of a shape of the file icons.</summary>
+    private static string Shaped(FileIconLook look) => $"FileIcon.{look.Shape}";
 
     public static IBrush BrushFor(ExplorerNode node) => Look(node) is { } look
         ? Tint(look)
@@ -45,12 +69,12 @@ public static class FileIcons
 
     /// <summary>A folder's icon by its name, as the Explorer draws a folder on disk.</summary>
     public static Geometry ForFolder(string name, bool open) => FileIconSet.ForFolder(name) is { } look
-        ? Find<Geometry>($"FileIcon.{look.Shape}")
+        ? Find<Geometry>(Shaped(look))
         : Find<Geometry>(open ? IconKeys.FolderOpen : IconKeys.Explorer);
 
     public static IBrush BrushForFolder(string name) => FileIconSet.ForFolder(name) is { } look ? Tint(look) : Find<IBrush>(TokenKeys.File_Folder);
 
-    public static Geometry ForFile(string path) => Find<Geometry>($"FileIcon.{FileIconSet.ForFile(Path.GetFileName(path)).Shape}");
+    public static Geometry ForFile(string path) => Find<Geometry>(Shaped(FileIconSet.ForFile(Path.GetFileName(path))));
 
     public static IBrush BrushForFile(string path) => Tint(FileIconSet.ForFile(Path.GetFileName(path)));
 

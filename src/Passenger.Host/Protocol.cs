@@ -300,7 +300,7 @@ public static class CarriedProperties
         DockerfileFastModeStage, ContainerDevelopmentMode, DockerDefaultTargetOS, UserSecretsId, IsPublishable, ProjectAssetsFile,
         NuGetPackageRoot, NuGetPackageFolders, TargetPath, NuGetLockFilePath, RootNamespace, PublishProfileRootFolder, ManagePackageVersionsCentrally,
         DirectoryPackagesPropsPath, GodotProjectDir, GodotProjectDirBase64, UsingGodotNETSdk, StaticWebAssetBasePath, PackageId, AspireHostingSDKVersion,
-        AndroidApplication, Configurations, Platforms, AzureFunctionsVersion, EnableAvaloniaXamlCompilation,
+        AndroidApplication, Configurations, Platforms, AzureFunctionsVersion, EnableAvaloniaXamlCompilation, MSBuildNames.UseMaui,
     ];
 }
 

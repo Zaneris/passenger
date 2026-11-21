@@ -131,7 +131,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     }, projects: false);
 
     [McpServerTool(Name = McpTools.Workspace, Title = "The workspace", ReadOnly = true), Description(
-        "The open folder and solution (or solution filter), its projects (output type, frameworks and the one chosen, unloaded marked; a shared one with sharedBy), run " +
+        "The open folder and solution (or solution filter), its projects (kind, output type, frameworks and the one chosen, unloaded marked; a shared one with sharedBy), run " +
         "configurations (the chosen one marked), the build configuration every build takes and the others, whether the folder is trusted, the language server's state, the open files (unsaved marked) and the active " +
         "one with its caret, and the Aspire AppHosts and container run under way, each resource with its state, hold, debug " +
         "session and target. routes adds the web projects' routes, read from their code.")]
@@ -4114,10 +4114,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             session.Workspace?.Filter?.Path ?? session.Solution?.Path,
             [.. (session.Workspace?.Projects ?? []).Where(p => Here(p.Path)).Select(p => new ProjectInfo(p.Name, Relative(p.Path), p.IsAndroidApp ? "Exe" : p.OutputType, p.TargetFrameworks)
             {
+                Kind = session.Unloaded.Contains(p.Path) ? null : ProjectKinds.Words(ProjectKinds.Of(p)),
                 Unloaded = session.Unloaded.Contains(p.Path) ? true : null,
                 ChosenFramework = session.Frameworks.Of(p),
             }), .. (session.Workspace?.SharedProjects ?? []).Where(Here).Select(p => new ProjectInfo(Path.GetFileNameWithoutExtension(p), Relative(p), null, [])
             {
+                Kind = ProjectKinds.Words(ProjectKind.Shared),
                 SharedBy = [.. ImportersOf(session, p)],
             })],
             [.. session.Configurations.All.Where(c => inside is null || PlacesOf(c).Any(Here)).Select(c => c.Name)],
@@ -4380,6 +4382,10 @@ public sealed record RouteInfo(string Project, string Kind, string Route, string
 /// Android build), which .NET for Android evaluates as Library though it runs.</summary>
 public sealed record ProjectInfo(string Name, string Path, string? OutputType, IReadOnlyList<string>? TargetFrameworks)
 {
+    /// <summary>What it builds as its evaluation says, in the Solution view's words ("web API", "class library"); null
+    /// where none is said: not yet evaluated, unloaded, or of no kind told apart.</summary>
+    public string? Kind { get; init; }
+
     /// <summary>True for a project not loaded: one the solution filter opened leaves out, or one the person unloaded; null
     /// for one loaded, which the answer leaves unsaid.</summary>
     public bool? Unloaded { get; init; }

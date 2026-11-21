@@ -23,7 +23,24 @@ public sealed record ProjectModelCache : IStateDocument<ProjectModelCache>
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, ForgetWindowsTargeted, ForgetAll, ForgetUncarried, ForgetUnpublishable, ForgetAll,
         ForgetUnrestored, ForgetUndefined, ForgetUnversioned, ForgetUnserved, ForgetUncentral, ForgetGodotless,
-        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared, ForgetFunctionless, ForgetUnshared];
+        ForgetUnfoldered, ForgetUnbundled, ForgetGodotFoldered, ForgetUnconfigured, ForgetUndeclared, ForgetFunctionless, ForgetUnshared,
+        ForgetMauiless];
+
+    /// <summary>The evaluations of projects that target a platform, kept before they carried UseMaui, by which a .NET MAUI
+    /// app is told from another platform's app, are evaluated again.</summary>
+    private static void ForgetMauiless(JsonObject document)
+    {
+        if (document["projects"] is not JsonObject projects)
+        {
+            return;
+        }
+        foreach (string path in projects.Where(p => p.Value?["targetFrameworks"] is JsonArray frameworks
+            && frameworks.Any(f => f?.GetValueKind() == System.Text.Json.JsonValueKind.String && FrameworkNames.PlatformOf(f.GetValue<string>()) is not null))
+            .Select(p => p.Key).ToList())
+        {
+            projects.Remove(path);
+        }
+    }
 
     /// <summary>The evaluations of projects importing a shared project's items, kept before each item said whether a shared
     /// project brings it in, by which the shared files show under the shared project rather than among the project's own.</summary>

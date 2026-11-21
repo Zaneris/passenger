@@ -279,7 +279,7 @@ public sealed class ExplorerTree
             ProjectModel project = projects[node.Path!];
             node.Detail = Unloaded.Contains(project.Path) ? "(unloaded)" : DetailOf(project);
             node.Tip = Unloaded.Contains(project.Path) ? null : TipOf(project);
-            node.ProjectKind = Unloaded.Contains(project.Path) ? ProjectKind.Other : ProjectKinds.Of(project);
+            node.ProjectKind = KindOf(project);
             foreach (ExplorerNode below in Loaded(node, _ => true))
             {
                 if (below.Reload())
@@ -287,6 +287,11 @@ public sealed class ExplorerTree
                     reloaded.Add(below);
                 }
             }
+        }
+        // A reference to a project evaluated again shows its kind as its own row does.
+        foreach (ExplorerNode reference in Loaded(Root, n => n.Kind == NodeKind.ProjectReference && n.Referenced is { } named && changed.Contains(named)))
+        {
+            reference.ProjectKind = KindOf(reference.Referenced!);
         }
         ShowAgain(reloaded);
     }
@@ -687,7 +692,13 @@ public sealed class ExplorerTree
                 : [Dependencies(given, node.Depth + 1)];
             children.AddRange(HeldIn(given, string.Empty, node.Depth + 1));
             return children;
-        }, DetailOf(Current(given))) { Tip = TipOf(Current(given)), ProjectKind = ProjectKinds.Of(Current(given)) };
+        }, DetailOf(Current(given))) { Tip = TipOf(Current(given)), ProjectKind = KindOf(Current(given)) };
+
+    /// <summary>What a project builds as its evaluation says; <see cref="ProjectKind.Other"/> while it is unloaded.</summary>
+    private ProjectKind KindOf(ProjectModel project) => Unloaded.Contains(project.Path) ? ProjectKind.Other : ProjectKinds.Of(project);
+
+    /// <summary>What a project a row names builds: one shown as last evaluated, else as its file alone says.</summary>
+    private ProjectKind KindOf(string project) => KindOf(projects.TryGetValue(project, out ProjectModel? known) ? known : ProjectModel.Unevaluated(project));
 
     /// <summary>What a project's row says beside its name: its frameworks, and off Windows those that run only on
     /// Windows (a WPF or Windows Forms app's); or that the folder has no SDK to evaluate it with, or MSBuild could
@@ -752,6 +763,7 @@ public sealed class ExplorerTree
         {
             Owner = owner.Path,
             Referenced = named,
+            ProjectKind = ProjectKinds.Of(holder),
         };
     }
 
@@ -802,15 +814,15 @@ public sealed class ExplorerTree
             return children;
         }) { Owner = given.Path };
 
-    /// <summary>The projects and packages a project (or one framework of it) references; packages the SDK adds of
-    /// itself are left out.</summary>
-    private static IEnumerable<ExplorerNode> Referenced(ProjectModel project, IEnumerable<string> projects, IReadOnlyList<PackageDependency> packages, int depth) =>
-        projects.Select(r => Leaf(NodeKind.ProjectReference, Path.GetFileNameWithoutExtension(r), null, depth, project, r))
+    /// <summary>The projects and packages a project (or one framework of it) references, each project by its kind; packages
+    /// the SDK adds of itself are left out.</summary>
+    private IEnumerable<ExplorerNode> Referenced(ProjectModel project, IEnumerable<string> referenced, IReadOnlyList<PackageDependency> packages, int depth) =>
+        referenced.Select(r => Leaf(NodeKind.ProjectReference, Path.GetFileNameWithoutExtension(r), null, depth, project, r, KindOf(r)))
             .Concat((packages.Count > 0 ? packages.Where(p => !p.Implicit).Select(p => (p.Name, p.Version)) : project.Packages)
                 .Select(p => Leaf(NodeKind.Package, p.Name, p.Version, depth, project)));
 
-    private static ExplorerNode Leaf(NodeKind kind, string name, string? detail, int depth, ProjectModel owner, string? referenced = null) =>
-        new(kind, name, null, depth, false, null, detail) { Owner = owner.Path, Referenced = referenced };
+    private static ExplorerNode Leaf(NodeKind kind, string name, string? detail, int depth, ProjectModel owner, string? referenced = null, ProjectKind built = ProjectKind.Other) =>
+        new(kind, name, null, depth, false, null, detail) { Owner = owner.Path, Referenced = referenced, ProjectKind = built };
 
     private ExplorerNode Folder(string path, int depth, bool dimmed, Nesting? nesting = null) => Packaged(
         new(NodeKind.Folder, Path.GetFileName(path) is { Length: > 0 } name ? name : path, path, depth, dimmed,
@@ -1016,12 +1028,19 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public string? Tip
     {
         get => tip;
-        set => Set(ref tip, value);
+        set
+        {
+            if (Set(ref tip, value))
+            {
+                Raise(nameof(Hover));
+            }
+        }
     }
 
     private string? tip;
 
-    /// <summary>What a project's row stands for, which its icon shows (an evaluation changes it).</summary>
+    /// <summary>What the project a row stands for or names (a reference, a shared project's import) builds, which its icon
+    /// shows and its <see cref="Said"/> and <see cref="Hover"/> say (an evaluation changes it).</summary>
     public ProjectKind ProjectKind
     {
         get => projectKind;
@@ -1030,11 +1049,20 @@ public sealed class ExplorerNode : Observable, ITreeRow
             if (Set(ref projectKind, value))
             {
                 Raise(nameof(Icon));
+                Raise(nameof(Said));
+                Raise(nameof(Hover));
             }
         }
     }
 
     private ProjectKind projectKind;
+
+    /// <summary>What a screen reader names a project's row by: its name and kind; null for a row its words name.</summary>
+    public string? Said => ProjectKind == ProjectKind.Other ? null : ProjectKinds.Said(Name, ProjectKind);
+
+    /// <summary>What hovering the row shows: a project's kind, then its <see cref="Tip"/>, which a shared project's names.</summary>
+    public string? Hover => ProjectKinds.Words(ProjectKind) is not { } words || (ProjectKind == ProjectKind.Shared && Tip is not null) ? Tip
+        : Tip is null ? Refusals.Sentence(words) : $"{Refusals.Sentence(words)}\n{Tip}";
 
     /// <summary>Where the row is among the solution's own folders: a solution folder's path in the solution ("/src/tools/"),
     /// or for a file one holds, that folder's; null for every other row.</summary>

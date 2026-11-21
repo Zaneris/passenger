@@ -133,8 +133,8 @@ public sealed class RunConfigurationsDialog : IdeWindow
         SaveAsProfileButton.Click += (_, _) => SaveAsLaunchProfile();
         ReusedRows.Use(ProjectBox, () =>
         {
-            TextBlock name = new();
-            return name.Showing<object>(item => name.Text = item is ProjectModel p ? p.Name : item.ToString());
+            ProjectLabel named = new();
+            return named.Showing<object>(named.Show);
         });
         GodotBox = new FormDropDown { ItemsSource = godotStartItems, Name = "GodotBox" };
         SceneBox = new FormDropDown { ItemsSource = SceneStarts, Name = "SceneBox" };

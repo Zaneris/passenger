@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -864,29 +865,76 @@ public sealed class SolutionViewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>An Aspire AppHost's row stands apart from the projects beside it: once MSBuild evaluates it as one, the
-    /// Solution view draws it with the Aspire window's icon, in its project file's tint, and a library keeps its project
-    /// file's icon.</summary>
+    /// <summary>Each project's row says what it builds, as MSBuild evaluates it: its kind's icon in its project file's tint (an
+    /// Aspire AppHost the Aspire window's, tests the Unit Tests window's, a web API the Endpoints window's, a console app the
+    /// Terminal's, a Godot game and a Docker Compose project their files', the rest their own), its kind's words after its
+    /// name to a screen reader and on hover; a reference to one under another's Dependencies is drawn as its row is.</summary>
     [AvaloniaFact]
-    public void An_Aspire_AppHost_is_drawn_with_the_Aspire_windows_icon_and_a_library_with_its_project_files()
+    public void Every_project_is_drawn_by_what_it_builds_and_a_screen_reader_and_a_hover_say_it()
     {
-        Write("Shop.AppHost/Shop.AppHost.csproj", TestProjects.Console("<IsAspireHost>true</IsAspireHost>"));
-        Write("Shop.AppHost/Program.cs", "System.Console.WriteLine(\"Host\");\n");
-        Write("Shop.Core/Shop.Core.csproj", TestProjects.Library());
-        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop.AppHost/Shop.AppHost.csproj\" />\n  <Project Path=\"Shop.Core/Shop.Core.csproj\" />\n</Solution>\n");
+        (string Name, string File, string Text, string Icon, string Words)[] kinds =
+        [
+            ("Shop.AppHost", "Shop.AppHost/Shop.AppHost.csproj", TestProjects.Console("<IsAspireHost>true</IsAspireHost>"), IconKeys.Aspire, "Aspire AppHost"),
+            ("Shop.Tests", "Shop.Tests/Shop.Tests.csproj", TestProjects.Library("<IsTestProject>true</IsTestProject>"), IconKeys.Tests, "test project"),
+            ("Shop.Game", "Shop.Game/Shop.Game.csproj", TestProjects.Library("<UsingGodotNETSdk>true</UsingGodotNETSdk>",
+                "<GodotProjectDir>$(MSBuildProjectDirectory)/</GodotProjectDir>"), "FileIcon.Godot", "Godot game"),
+            ("Shop.Functions", "Shop.Functions/Shop.Functions.csproj", TestProjects.Console("<AzureFunctionsVersion>v4</AzureFunctionsVersion>"), IconKeys.FunctionsApp,
+                "Azure Functions app"),
+            ("Shop.Maui", "Shop.Maui/Shop.Maui.csproj", TestProjects.Console("<UseMaui>true</UseMaui>"), IconKeys.MauiApp, ".NET MAUI app"),
+            ("Shop.Phone", "Shop.Phone/Shop.Phone.csproj", TestProjects.Library("<AndroidApplication>true</AndroidApplication>"), IconKeys.MobileApp, "mobile app"),
+            ("Shop.Blazor", "Shop.Blazor/Shop.Blazor.csproj", TestProjects.Web(), IconKeys.BlazorApp, "Blazor app"),
+            ("Shop.Desktop", "Shop.Desktop/Shop.Desktop.csproj", TestProjects.Console("<EnableAvaloniaXamlCompilation>true</EnableAvaloniaXamlCompilation>"),
+                IconKeys.AvaloniaApp, "Avalonia app"),
+            ("Shop.Wpf", "Shop.Wpf/Shop.Wpf.csproj", WindowsApp("<UseWPF>true</UseWPF>"), IconKeys.WpfApp, "WPF app"),
+            ("Shop.Forms", "Shop.Forms/Shop.Forms.csproj", WindowsApp("<UseWindowsForms>true</UseWindowsForms>"), IconKeys.FormsApp, "Windows Forms app"),
+            ("Shop.Pages", "Shop.Pages/Shop.Pages.csproj", TestProjects.Web(), IconKeys.WebApp, "web app"),
+            ("Shop.Api", "Shop.Api/Shop.Api.csproj", TestProjects.Web().With("  <ItemGroup>\n    <ProjectReference Include=\"../Shop.Core/Shop.Core.csproj\" />\n  </ItemGroup>\n"),
+                IconKeys.Endpoints, "web API"),
+            ("Shop.Window", "Shop.Window/Shop.Window.csproj", TestProjects.Library("<OutputType>WinExe</OutputType>"), IconKeys.DesktopApp, "desktop app"),
+            ("Shop.Tool", "Shop.Tool/Shop.Tool.csproj", TestProjects.Console(), IconKeys.Terminal, "console app"),
+            ("Shop.Core", "Shop.Core/Shop.Core.csproj", TestProjects.Library(), IconKeys.ClassLibrary, "class library"),
+            ("Shop.Shared", "Shop.Shared/Shop.Shared.shproj", "<Project>\n  <Import Project=\"Shop.Shared.projitems\" Label=\"Shared\" />\n</Project>\n",
+                IconKeys.SharedProject, "shared project"),
+            ("docker-compose", "docker-compose.dcproj", "<Project Sdk=\"Microsoft.Docker.Sdk\">\n</Project>\n", "FileIcon.Docker", "Docker Compose project"),
+        ];
+        foreach ((_, string file, string text, _, _) in kinds)
+        {
+            Write(file, text);
+        }
+        Write("Shop.Blazor/Components/App.razor", "<h1>Shop</h1>\n");
+        Write("Shop.Pages/Pages/Index.cshtml", "@page\n<h1>Shop</h1>\n");
+        Write("Shop.Shared/Shop.Shared.projitems", "<Project>\n  <ItemGroup>\n    <Compile Include=\"$(MSBuildThisFileDirectory)Money.cs\" />\n  </ItemGroup>\n</Project>\n");
+        Write("Shop.Shared/Money.cs", "public record Money(decimal Amount);\n");
+        Write("Shop.slnx", $"<Solution>\n{string.Concat(kinds.Select(k => $"  <Project Path=\"{k.File}\" />\n"))}</Solution>\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Ui.WaitFor(() => window.Projects.Count(p => p.IsEvaluated) == 2, "MSBuild to evaluate Shop.AppHost and Shop.Core");
-        Assert.True(window.Projects.Single(p => p.Name == "Shop.AppHost").IsAspireHost, "Shop.AppHost, setting IsAspireHost, is not evaluated as an AppHost");
+        int evaluated = kinds.Length - 2;
+        Ui.WaitFor(() => window.Projects.Count(p => p.IsEvaluated) == evaluated, $"MSBuild to evaluate the {evaluated} projects of the SDK's");
+        TreeList tree = window.ExplorerView.GetVisualDescendants().OfType<TreeList>().First(list => ReferenceEquals(list.ItemsSource, window.ExplorerView.Tree.Rows));
 
-        object projectTint = Resource(TokenKeys.FileIcon_Blue);
-        Ui.WaitFor(() => ReferenceEquals(Resource(IconKeys.Aspire), Drawn(window, Row(window, NodeKind.Project, "Shop.AppHost")).Data),
-            "The Solution view to draw Shop.AppHost with the Aspire window's icon");
-        Assert.True(ReferenceEquals(projectTint, Drawn(window, Row(window, NodeKind.Project, "Shop.AppHost")).Foreground),
-            "The Solution view draws Shop.AppHost in another colour than a .csproj's");
-        (Avalonia.Media.Geometry? Data, Avalonia.Media.IBrush? Foreground) library = Drawn(window, Row(window, NodeKind.Project, "Shop.Core"));
-        Assert.True(ReferenceEquals(Resource("FileIcon.Stack"), library.Data), "The Solution view no longer draws Shop.Core, a library, with a project file's icon");
-        Assert.True(ReferenceEquals(projectTint, library.Foreground), "The Solution view draws Shop.Core in another colour than a .csproj's");
+        foreach ((string name, string file, _, string icon, string words) in kinds)
+        {
+            ExplorerNode row = Row(window, NodeKind.Project, name);
+            Ui.WaitFor(() => ReferenceEquals(Resource(icon), Drawn(window, row).Data), $"The Solution view to draw {name} with {icon}, a {words}'s icon");
+            string tint = Path.GetExtension(file) == ".shproj" ? TokenKeys.FileIcon_Green : TokenKeys.FileIcon_Blue;
+            Assert.True(ReferenceEquals(Resource(tint), Drawn(window, row).Foreground), $"The Solution view draws {name} in another colour than its project file's");
+            tree.ScrollIntoView(row);
+            tree.UpdateLayout();
+            string heard = ControlAutomationPeer.CreatePeerForElement(tree.ContainerFromItem(row)!).GetName();
+            Assert.True(heard.StartsWith($"{name}, {words}, level", StringComparison.Ordinal), $"A screen reader hears {name}'s row as \"{heard}\", not as a {words}");
+            Assert.True(row.Hover?.StartsWith(string.Concat(words[..1].ToUpperInvariant(), words[1..]), StringComparison.Ordinal) == true,
+                $"Hovering {name}'s row says \"{row.Hover}\", not that it is a {words}");
+        }
+
+        ExplorerNode dependencies = Dependencies(window, "Shop.Api");
+        Ui.ClickRow(window, dependencies);
+        Ui.Press(window, "RIGHT");
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.ProjectReference && r.Name == "Shop.Core"), "Shop.Api's Dependencies to show its reference to Shop.Core");
+        ExplorerNode reference = window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.ProjectReference && r.Name == "Shop.Core");
+        Assert.True(ReferenceEquals(Resource(IconKeys.ClassLibrary), Drawn(window, reference).Data), "Shop.Api's reference to Shop.Core is not drawn as Shop.Core's row is, a class library");
         window.Close();
+
+        static string WindowsApp(string uses) =>
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>WinExe</OutputType>\n    <TargetFramework>{TestProjects.Framework}-windows</TargetFramework>\n    {uses}\n  </PropertyGroup>\n</Project>\n";
     }
 
     /// <summary>A web project's Properties and wwwroot, and a class library's Properties, are the folders the SDK reads: listed
