@@ -128,4 +128,51 @@ public sealed class PartialCommitTests
         byte[] committed = [0xEF, 0xBB, 0xBF, (byte)'a', 0xE9, (byte)'\n', (byte)'b', (byte)'\n', (byte)'C', 0xFE, (byte)'\n'];
         Assert.Equal([0xEF, 0xBB, 0xBF, (byte)'a', 0xE9, (byte)'\n', (byte)'B', (byte)'\n', (byte)'C', 0xFE, (byte)'\n'], PartialCommit.Restaged(head, staged, committed));
     }
+
+    /// <summary>A change taken out of the index puts back the last commit's lines wherever the index changed those the file's
+    /// change has there, a replacement, a line added or one deleted alike, and keeps what else it holds; one that meets no
+    /// change the index holds leaves it as it was.</summary>
+    [Theory]
+    [InlineData("A\nb\nc\nd\nE\nf\n", 0, 1, "a\nb\nc\nd\nE\nf\n")]
+    [InlineData("A\nb\nc\nd\nE\nf\n", 4, 1, "A\nb\nc\nd\ne\nf\n")]
+    [InlineData("a\nb\nnew\nc\nd\nE\nf\n", 2, 0, "a\nb\nc\nd\nE\nf\n")]
+    [InlineData("a\nc\nd\nE\nf\n", 1, 1, "a\nb\nc\nd\nE\nf\n")]
+    [InlineData("A\nb\nc\nd\ne\nf\n", 3, 1, "A\nb\nc\nd\ne\nf\n")]
+    [InlineData("a\nb\nc\nd\ne\nf\nlast\n", 6, 0, "a\nb\nc\nd\ne\nf\n")]
+    public void A_change_unstaged_gives_back_the_last_commits_lines_where_the_index_changed_them_and_keeps_the_rest(string staged, int start, int count, string expected)
+    {
+        const string Head = "a\nb\nc\nd\ne\nf\n";
+        byte[]? unstaged = PartialCommit.Unstaged(Encoding.UTF8.GetBytes(Head), Encoding.UTF8.GetBytes(staged), [new DiffHunk(start, count, start, 1)]);
+        Assert.Equal(expected, unstaged is null ? null : Encoding.UTF8.GetString(unstaged));
+    }
+
+    /// <summary>Unstaging keeps every byte the index held where no change reached, its line breaks included, and refuses a
+    /// text wide in one of the two and not the other.</summary>
+    [Fact]
+    public void Unstaging_keeps_the_index_byte_for_byte_beyond_the_change_and_refuses_one_wide_in_part()
+    {
+        byte[] head = [(byte)'a', 0xE9, (byte)'\r', (byte)'\n', (byte)'b', (byte)'\r', (byte)'\n', (byte)'c', 0xFF, (byte)'\r', (byte)'\n'];
+        byte[] staged = [(byte)'A', 0xE9, (byte)'\r', (byte)'\n', (byte)'b', (byte)'\r', (byte)'\n', (byte)'C', 0xFE, (byte)'\r', (byte)'\n'];
+        Assert.Equal([(byte)'A', 0xE9, (byte)'\r', (byte)'\n', (byte)'b', (byte)'\r', (byte)'\n', (byte)'c', 0xFF, (byte)'\r', (byte)'\n'],
+            PartialCommit.Unstaged(head, staged, [new DiffHunk(2, 1, 2, 1)]));
+        byte[] wide = [.. Encoding.Unicode.GetPreamble(), .. Encoding.Unicode.GetBytes("a\nB\n")];
+        Assert.Null(PartialCommit.Unstaged(Encoding.UTF8.GetBytes("a\nb\n"), wide, [new DiffHunk(1, 1, 1, 1)]));
+    }
+
+    /// <summary>A change is held whole in the index where the file's text differs from the index's nowhere among its lines: a
+    /// replacement, a line added and a line taken out alike; one the index holds none or part of is not.</summary>
+    [Theory]
+    [InlineData("a\nb\nc\nd\ne\nf\n", "FFF")]
+    [InlineData("A\nb\nc\nd\ne\nf\n", "TFF")]
+    [InlineData("A\nb\nnew\nc\nd\nf\n", "TTT")]
+    [InlineData("a\nb\nnew\nc\nd\ne\nf\n", "FTF")]
+    [InlineData("a\nb\nc\nd\nf\n", "FFT")]
+    public void A_change_is_held_in_the_index_where_the_file_differs_from_it_nowhere_among_its_lines(string index, string held)
+    {
+        const string Head = "a\nb\nc\nd\ne\nf\n";
+        TextSnapshot text = new TextDocument("A\nb\nnew\nc\nd\nf\n").Snapshot;
+        FileDiff diff = FileDiff.Compare(Head, text);
+        Assert.Equal(3, diff.Hunks.Count);
+        Assert.Equal(held, string.Concat(diff.HeldIn(FileDiff.Compare(index, text)).Select(h => h ? 'T' : 'F')));
+    }
 }

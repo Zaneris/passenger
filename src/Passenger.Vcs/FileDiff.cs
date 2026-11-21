@@ -192,6 +192,20 @@ public sealed class FileDiff
         ? line == h.Value.NewStart || line == h.Value.NewStart - 1
         : line >= h.Value.NewStart && line < h.Value.NewStart + h.Value.NewCount);
 
+    /// <summary>Which of its changes git's index holds whole, given the file's differences from the index's text
+    /// (<paramref name="fromIndex"/>, of the same text): each whose lines of the file no difference from the index meets.</summary>
+    public bool[] HeldIn(FileDiff fromIndex) => [.. Hunks.Select(h => !fromIndex.Hunks.Any(w => Meet(w.NewStart, w.NewCount, h.NewStart, h.NewCount)))];
+
+    /// <summary>Whether two stretches of a text's lines meet: a place where lines were added or taken (a count of 0) meets a
+    /// stretch only inside it, and another place only where it is the same.</summary>
+    private static bool Meet(int start, int count, int otherStart, int otherCount) => (count > 0, otherCount > 0) switch
+    {
+        (true, true) => start < otherStart + otherCount && otherStart < start + count,
+        (true, false) => start < otherStart && otherStart < start + count,
+        (false, true) => otherStart < start && start < otherStart + otherCount,
+        (false, false) => start == otherStart,
+    };
+
     /// <summary>The change a line of the last commit's text is in, where lines came being the lines either side of the
     /// place; null for a line the file has as it was.</summary>
     public DiffHunk? HeadHunkAt(int line) => Hunks.Cast<DiffHunk?>().FirstOrDefault(h => h!.Value.OldCount == 0

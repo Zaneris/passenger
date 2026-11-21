@@ -129,8 +129,6 @@ public sealed record PartialCommit(FileDiff Diff, IReadOnlyList<DiffHunk> Hunks,
         return Read(head) is { } before && Read(staged) is { } kept && Read(committed) is { } taken
             ? reading.GetBytes(string.Concat(Restaged(before, kept, taken))) : null;
 
-        static Encoding? Wide(byte[] bytes) => FileText.Bom(bytes) is { CodePage: not 65001 } encoding ? encoding : null;
-
         string[]? Read(byte[] bytes) => reading.GetString(bytes) is var text && reading.GetBytes(text).AsSpan().SequenceEqual(bytes) ? Lines(text) : null;
     }
 
@@ -185,16 +183,53 @@ public sealed record PartialCommit(FileDiff Diff, IReadOnlyList<DiffHunk> Hunks,
         }
         lines.AddRange(head.AsSpan(at));
         return lines;
-
-        // Lines added at a place share it with a stretch only inside it, and with lines added at that same place.
-        static bool Overlaps(DiffHunk hunk, int start, int end) => (hunk.OldCount > 0, start < end) switch
-        {
-            (true, true) => hunk.OldStart < end && start < End(hunk),
-            (true, false) => hunk.OldStart < start && start < End(hunk),
-            (false, true) => start < hunk.OldStart && hunk.OldStart < end,
-            (false, false) => hunk.OldStart == start,
-        };
     }
+
+    /// <summary>What the index is to hold of a file once some of its changes are taken out of it, each text as git keeps it:
+    /// <paramref name="staged"/>, what it held, with each of its changes from the last commit's <paramref name="head"/> that
+    /// shares lines of the last commit with one of <paramref name="changes"/> (the file's changes, by their lines there)
+    /// put back as the last commit has them. Null where the two can't be read alike, as <see cref="Restaged(byte[], byte[], byte[])"/>.</summary>
+    public static byte[]? Unstaged(byte[] head, byte[] staged, IReadOnlyList<DiffHunk> changes)
+    {
+        Encoding? wide = Wide(head);
+        if (Wide(staged)?.CodePage != wide?.CodePage)
+        {
+            return null;
+        }
+        Encoding reading = wide ?? Encoding.Latin1;
+        if (Read(head) is not { } before || Read(staged) is not { } held)
+        {
+            return null;
+        }
+        List<string> lines = [];
+        int at = 0;
+        int shift = 0;
+        foreach (DiffHunk hunk in LineDiff.Hunks(before, held))
+        {
+            bool taken = changes.Any(c => Overlaps(hunk, c.OldStart, End(c)) || Overlaps(c, hunk.OldStart, End(hunk)));
+            lines.AddRange(before.AsSpan(at, hunk.OldStart - at));
+            lines.AddRange(taken ? before.AsSpan(hunk.OldStart, hunk.OldCount) : held.AsSpan(hunk.OldStart + shift, hunk.NewCount));
+            at = End(hunk);
+            shift += hunk.NewCount - hunk.OldCount;
+        }
+        lines.AddRange(before.AsSpan(at));
+        return reading.GetBytes(string.Concat(lines));
+
+        string[]? Read(byte[] bytes) => reading.GetString(bytes) is var text && reading.GetBytes(text).AsSpan().SequenceEqual(bytes) ? Lines(text) : null;
+    }
+
+    /// <summary>A text's encoding where it is UTF-16 or UTF-32, by its byte order mark; null for any other.</summary>
+    private static Encoding? Wide(byte[] bytes) => FileText.Bom(bytes) is { CodePage: not 65001 } encoding ? encoding : null;
+
+    /// <summary>Whether a change of the last commit's lines meets a stretch of them: lines added at a place meet a stretch
+    /// only inside it, and lines added at that same place.</summary>
+    private static bool Overlaps(DiffHunk hunk, int start, int end) => (hunk.OldCount > 0, start < end) switch
+    {
+        (true, true) => hunk.OldStart < end && start < End(hunk),
+        (true, false) => hunk.OldStart < start && start < End(hunk),
+        (false, true) => start < hunk.OldStart && hunk.OldStart < end,
+        (false, false) => hunk.OldStart == start,
+    };
 
     /// <summary>A text's lines, each with the break that ends it.</summary>
     private static string[] Lines(string text)

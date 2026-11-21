@@ -29,7 +29,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     private readonly Canvas hunkBoxes = new() { Width = 28, ClipToBounds = true, IsVisible = false };
     private readonly List<int> boxedHunks = [];
     private bool[] hunksTaken = [];
-    private Func<FileDiff, bool[]>? hunksChosen;
+    private Func<FileDiff, bool[]?>? hunksChosen;
     private Action<FileDiff, int, bool>? chooseHunk;
     private bool settingHunkBoxes;
 
@@ -71,8 +71,19 @@ public sealed class DiffView : DockPanel, IOwnKeys
         DiffSigns.Give(Left);
         DiffSigns.Give(Right);
         named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
-        bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _) => ($"Roll back change {band.Index + 1} to {named.Left}", null),
-            (band, _, _) => Revert(Hunks[band.Index]), AppActions.RollbackLines) { Width = 36 };
+        bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false,
+            (band, stage) => (stage ? $"{(HeldAt(band.Index) == true ? "Unstage" : "Stage")} change {band.Index + 1}" : $"Roll back change {band.Index + 1} to {named.Left}", null),
+            (band, stage, _) =>
+            {
+                if (!stage)
+                {
+                    Revert(Hunks[band.Index]);
+                }
+                else if (HeldAt(band.Index) is { } held)
+                {
+                    StageRequested?.Invoke(this, ([Hunks[band.Index]], !held));
+                }
+            }, AppActions.RollbackLines, band => HeldAt(band.Index), AppActions.Stage) { Width = 36 };
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
         Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
@@ -153,12 +164,12 @@ public sealed class DiffView : DockPanel, IOwnKeys
     }
 
     /// <summary>A box beside each change for whether it goes into the next commit: <paramref name="chosen"/> asked once for
-    /// each diff shown and each change of the choice, <paramref name="choose"/> told of a box the person turns.</summary>
-    public void ChooseForCommit(Func<FileDiff, bool[]> chosen, Action<FileDiff, int, bool> choose)
+    /// each diff shown and each change of the choice, null while no change is chosen apart (the boxes hidden),
+    /// <paramref name="choose"/> told of a box the person turns.</summary>
+    public void ChooseForCommit(Func<FileDiff, bool[]?> chosen, Action<FileDiff, int, bool> choose)
     {
         hunksChosen = chosen;
         chooseHunk = choose;
-        hunkBoxes.IsVisible = true;
         RefreshCommitChoices();
     }
 
@@ -169,8 +180,96 @@ public sealed class DiffView : DockPanel, IOwnKeys
         {
             return;
         }
-        hunksTaken = hunksChosen(shown);
+        bool[]? taken = hunksChosen(shown);
+        hunkBoxes.IsVisible = taken is not null;
+        hunksTaken = taken ?? [];
         PlaceHunkBoxes();
+    }
+
+    /// <summary>A stage button beside each change, a plus that stages it and a minus that unstages it as git's index holds
+    /// it whole: <paramref name="held"/> asked which changes of each diff shown the index holds whole (null where it can't
+    /// say), again on <see cref="RefreshStaged"/>.</summary>
+    public void StageWith(Func<FileDiff, Task<bool[]?>> held)
+    {
+        heldIn = held;
+        RefreshStaged();
+    }
+
+    private Func<FileDiff, Task<bool[]?>>? heldIn;
+    private (FileDiff Of, bool[] Held)? staged;
+    private int stagings;
+
+    /// <summary>Whether the diff stages its changes (<see cref="StageWith"/>).</summary>
+    public bool Stages => heldIn is not null;
+
+    /// <summary>Asks again which changes git's index holds, after it changed.</summary>
+    public void RefreshStaged() => IdeErrors.Observe(AskStagedAsync());
+
+    private async Task AskStagedAsync()
+    {
+        if (heldIn is null)
+        {
+            return;
+        }
+        FileDiff of = shown;
+        int generation = ++stagings;
+        bool[]? held = await heldIn(of);
+        if (generation == stagings && ReferenceEquals(of, shown))
+        {
+            staged = held is null ? null : (of, held);
+            bands.Refresh();
+            StagedShown?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Which changes git's index holds, worked out for the differences shown.</summary>
+    public event EventHandler? StagedShown;
+
+    /// <summary>Whether git's index holds a change of the differences shown whole; null while that is not known (or the diff
+    /// stages nothing).</summary>
+    public bool? HeldAt(int index) => staged is { } known && ReferenceEquals(known.Of, shown) && index < known.Held.Length ? known.Held[index] : null;
+
+    /// <summary>Changes to stage (true) or unstage, by a change's stage button or Stage's keys.</summary>
+    public event EventHandler<(IReadOnlyList<DiffHunk> Changes, bool Stage)>? StageRequested;
+
+    /// <summary>The changes the side with the keys has its selections over (the file's side unless the last commit's has
+    /// them), each change a selection's lines touch, else the one at its caret, as the differences stand.</summary>
+    public IReadOnlyList<DiffHunk> ChangesAtCarets()
+    {
+        bool head = Left.IsKeyboardFocusWithin;
+        CodeEditor side = head ? Left : Right;
+        TextSnapshot text = side.Document.Snapshot;
+        HashSet<DiffHunk> found = [];
+        foreach (Selection selection in side.Selections.Items)
+        {
+            int first = text.GetLineFromOffset(selection.Start);
+            int last = Math.Max(first, text.GetLineFromOffset(selection.End) - (selection.End > selection.Start && text.GetLineStart(text.GetLineFromOffset(selection.End)) == selection.End ? 1 : 0));
+            for (int line = first; line <= last; line++)
+            {
+                if ((head ? shown.HeadHunkAt(line) : shown.HunkAt(line)) is { } hunk)
+                {
+                    found.Add(hunk);
+                }
+            }
+        }
+        return [.. Hunks.Where(found.Contains)];
+    }
+
+    /// <summary>Asks to stage the changes at the carets, or to unstage them where git's index holds every one whole (Stage's
+    /// keys, turning as the change's own button turns): why not, else null once asked.</summary>
+    public string? StageAtCarets(bool? stage = null)
+    {
+        if (!Stages)
+        {
+            return "Only a diff of the working tree against the last commit stages its changes";
+        }
+        if (ChangesAtCarets() is not { Count: > 0 } changes)
+        {
+            return "No change here to stage";
+        }
+        bool[] held = [.. changes.Select(c => HeldAt(Hunks.ToList().IndexOf(c)) == true)];
+        StageRequested?.Invoke(this, (changes, stage ?? !held.All(h => h)));
+        return null;
     }
 
     /// <summary>A box beside the first line of each change in view, as the file's side scrolls: only the changes in view
@@ -321,6 +420,9 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>The differences as they stand.</summary>
     public IReadOnlyList<DiffHunk> Hunks => shown.Hunks;
 
+    /// <summary>The comparison shown, whose texts the differences are of.</summary>
+    public FileDiff Compared => shown;
+
     /// <summary>Puts one difference back as the other side has it (the band's arrow), unless the file was edited since the
     /// differences were found, which may have moved it (<see cref="RevertAsync"/>).</summary>
     public void Revert(DiffHunk hunk) => IdeErrors.Observe(RevertAsync(hunk));
@@ -425,6 +527,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         shown = diff;
         RefreshCommitChoices();
+        RefreshStaged();
         bool off = highlighting == DiffHighlighting.None;
         Left.SetChangeMarks(off ? [] : [.. Hunks.Select(h => h.OldCount == 0 ? new ChangeMark(h.OldStart, 0, ChangeMarkKind.Added)
             : h.NewCount == 0 ? new ChangeMark(h.OldStart, h.OldCount, ChangeMarkKind.Deleted)

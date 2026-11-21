@@ -18,12 +18,31 @@ public enum ChangeKind
     Conflicted,
 }
 
+/// <summary>How much of a file's change git's index holds, which a commit of the index takes: none of it, part of it (the
+/// working tree changed it further), or all of it.</summary>
+public enum StagedState
+{
+    None,
+    Part,
+    Whole,
+}
+
 /// <summary>A changed file of the working tree: its path (absolute), how it changed, where it came from if renamed, what
 /// changed in it where it is a submodule, and its mode where that changed since the last commit.</summary>
 public sealed record FileChange(string Path, ChangeKind Kind, string? From = null, SubmoduleChange Submodule = SubmoduleChange.None,
     ModeChange? Mode = null)
 {
     public string Name => System.IO.Path.GetFileName(Path);
+
+    /// <summary>How much of the change the index holds (git's staged changes).</summary>
+    public StagedState Staged { get; init; }
+
+    /// <summary>Whether the index holds the file's move alone, the last commit's content under its new name, as a move
+    /// Passenger made keeps the file's history: nothing staged of what changed in it.</summary>
+    public bool MovedOnlyInIndex { get; init; }
+
+    /// <summary>Whether the index holds some of what changed in the file, beyond a move alone.</summary>
+    public bool HoldsStaged => Staged != StagedState.None && !MovedOnlyInIndex && Kind is not (ChangeKind.Conflicted or ChangeKind.Unversioned);
 
     /// <summary>In a folder not trusted, the filter git would store the file through, which runs only once the folder is
     /// trusted (<see cref="UntrustedGit.FilteredAsync"/>); null where it has none, or the folder is trusted.</summary>
@@ -672,12 +691,16 @@ public sealed partial class Git
                 case (byte)'1' when Spaced(entry, fields[..9]):
                     ReadOnlySpan<byte> xy = entry[fields[1]];
                     changes.Add(new FileChange(names.Full(entry[fields[8]]), Kind(xy), Submodule: Submodule(xy, entry[fields[2]]),
-                        Mode: Mode(entry[fields[3]], entry[fields[5]])));
+                        Mode: Mode(entry[fields[3]], entry[fields[5]])) { Staged = StagedOf(xy) });
                     break;
-                // "2 XY sub mH mI mW hH hI Xscore path", then the path it came from as its own entry.
+                // "2 XY sub mH mI mW hH hI Xscore path", then where it came from; a move alone where hI and mI are hH and mH.
                 case (byte)'2' when Spaced(entry, fields[..10]):
                     changes.Add(new FileChange(names.Full(entry[fields[9]]), ChangeKind.Renamed, names.Full(Entry(ref output)),
-                        Mode: Mode(entry[fields[3]], entry[fields[5]])));
+                        Mode: Mode(entry[fields[3]], entry[fields[5]]))
+                    {
+                        Staged = StagedOf(entry[fields[1]]),
+                        MovedOnlyInIndex = entry[fields[6]].SequenceEqual(entry[fields[7]]) && entry[fields[3]].SequenceEqual(entry[fields[4]]),
+                    });
                     break;
                 // "u XY sub m1 m2 m3 mW h1 h2 h3 path": a stage git has no version at has the mode 000000.
                 case (byte)'u' when Spaced(entry, fields):
@@ -706,6 +729,9 @@ public sealed partial class Git
 
         static ChangeKind Kind(ReadOnlySpan<byte> xy) =>
             xy.Contains((byte)'D') ? ChangeKind.Deleted : xy[0] == (byte)'A' ? ChangeKind.Added : ChangeKind.Modified;
+
+        // X is the index's change from the last commit, Y the working tree's from the index; '.' where none.
+        static StagedState StagedOf(ReadOnlySpan<byte> xy) => xy[0] == (byte)'.' ? StagedState.None : xy[1] == (byte)'.' ? StagedState.Whole : StagedState.Part;
 
         // "N..." for a file; "S" then C, M and U (or '.') for a submodule's commit, tracked and untracked changes. A
         // commit the index holds that the last commit does not is a change of its commit too.
@@ -1829,6 +1855,134 @@ public sealed partial class Git
         return merging ? await RunAsync(Root, commit, environment: signing.Environment, asker: asker)
             : relative.Length > 0 ? await PutBackAsync(await OnFilesAsync([.. commit, "--only"], relative, asker, signing.Environment), relative, before)
             : await RunAsync(Root, [.. commit, .. amend ? new[] { "--only" } : []], environment: signing.Environment, asker: asker);
+    }
+
+    /// <summary>Commits what the index holds, as git commit with no files named does (amending the last commit when asked),
+    /// signed and signed off as <paramref name="signing"/> says, a key's passphrase asked of <paramref name="asker"/>.</summary>
+    public async Task<GitResult> CommitIndexAsync(string message, bool amend, CommitSigning? signing = null, GitAsker? asker = null)
+    {
+        signing ??= CommitSigning.AsConfigured;
+        using CommitFile file = CommitFile.Message(message);
+        return await RunAsync(Root, [.. signing.Before, "commit", "-F", file.Path, .. amend ? new[] { "--amend" } : [], .. signing.After],
+            environment: signing.Environment, asker: asker);
+    }
+
+    /// <summary>Stages files whole, as git add does: each as the disk has it now, one gone taken out of the index (a rename's
+    /// old name among them).</summary>
+    public async Task<GitResult> StageAsync(IReadOnlyList<string> paths)
+    {
+        string[] relative = [.. paths.Select(Relative).Distinct()];
+        string[] there = [.. relative.Where(StillThere)];
+        if (await UnfilteredAsync(there) is { } unfiltered)
+        {
+            return unfiltered;
+        }
+        if (there.Length > 0 && await OnFilesAsync(["add", "-A"], there) is { Succeeded: false } unadded)
+        {
+            return unadded;
+        }
+        string[] gone = [.. relative.Except(there)];
+        return gone.Length > 0 ? await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], gone) : Done;
+    }
+
+    /// <summary>Unstages files whole: the index given back what the last commit has at each, none where it has none.</summary>
+    public async Task<GitResult> UnstageAsync(IReadOnlyList<string> paths)
+    {
+        string[] relative = [.. paths.Select(Relative).Distinct()];
+        return relative.Length == 0 ? Done
+            : await HeadAsync() is null ? await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], relative)
+            : await OnFilesAsync(["reset", "-q", "HEAD"], relative);
+    }
+
+    /// <summary>Stages some of a file's changes: what the index holds of it takes in <paramref name="chosen"/>'s changes as
+    /// git keeps text (the file's conversions run on them), what it held besides kept (<see cref="PartialCommit.Restaged"/>).
+    /// Refused where the file changed since they were chosen, the index has no text of it, or what it holds can't be kept
+    /// beside them.</summary>
+    public async Task<GitResult> StageChangesAsync(string path, PartialCommit chosen)
+    {
+        string relative = Relative(path);
+        if (await UnfilteredAsync([relative]) is { } unfiltered)
+        {
+            return unfiltered;
+        }
+        FileText? disk = await BackgroundWork.Run(() => File.Exists(path) ? FileText.Load(path) : null);
+        byte[]? before = await BytesAtAsync("HEAD", chosen.From ?? path);
+        FileText? head = before is null ? null : FileText.FromBytes(before, disk?.Encoding);
+        if (disk is null || head is null || disk.Text != chosen.Diff.Text.ToString() || head.Text != chosen.Diff.Head)
+        {
+            return new GitResult(1, string.Empty, $"{System.IO.Path.GetFileName(path)} changed since its changes were chosen: stage them again");
+        }
+        bool composed = await ComposesAsync();
+        string name = GitForm(relative, composed);
+        if (await IndexEntryOfAsync(name) is not { Mode: "100644" or "100755" } entry)
+        {
+            return new GitResult(1, string.Empty, $"Git's index has no text of {System.IO.Path.GetFileName(path)}: stage it whole");
+        }
+        byte[] bytes = FileText.Encoded(chosen.Content(), disk.Encoding, disk.HasBom, disk.CrBreaks);
+        (GitResult Ran, string? Read) blob = await RunAsync(Root, ["hash-object", "-w", "--stdin", $"--path={name}"], TextAsync, bytes);
+        if (!blob.Ran.Succeeded)
+        {
+            return blob.Ran;
+        }
+        (GitResult listed, Dictionary<string, StagedEntry> staged) = await StagedAsync();
+        if (!listed.Succeeded)
+        {
+            return listed;
+        }
+        string from = chosen.From is { } moved ? GitForm(Relative(moved), composed) : name;
+        (string? kept, bool left, GitResult? refused) = await RestagedAsync(name, from, (entry.Mode, blob.Read!.Trim()), staged);
+        if (refused is not null || left)
+        {
+            return refused ?? new GitResult(1, string.Empty, $"Git's index holds {System.IO.Path.GetFileName(path)} as no text: stage it whole");
+        }
+        return await RunAsync(Root, ["update-index", "-z", "--index-info"], kept ?? $"{entry.Mode} {blob.Read!.Trim()}\t{name}\0");
+    }
+
+    /// <summary>Unstages some of a file's changes: what the index holds of it gives back the last commit's lines wherever
+    /// it changed those of <paramref name="changes"/> (each by its lines in the last commit, <see cref="DiffHunk.OldStart"/>
+    /// and <see cref="DiffHunk.OldCount"/>), the rest it holds kept (<see cref="PartialCommit.Unstaged"/>).</summary>
+    public async Task<GitResult> UnstageChangesAsync(string path, string? from, IReadOnlyList<DiffHunk> changes)
+    {
+        bool composed = await ComposesAsync();
+        string name = GitForm(Relative(path), composed);
+        string was = from is null ? name : GitForm(Relative(from), composed);
+        if (await IndexEntryOfAsync(name) is not { Mode: "100644" or "100755" } entry)
+        {
+            return new GitResult(1, string.Empty, $"Git's index has no text of {System.IO.Path.GetFileName(path)}: unstage it whole");
+        }
+        byte[]? kept = await BlobAtAsync("HEAD", was) is { } head && await BytesAsync(Root, ["cat-file", "blob", head]) is { } headBytes
+            && await BytesAsync(Root, ["cat-file", "blob", entry.Blob]) is { } heldBytes
+            ? await BackgroundWork.Run(() => PartialCommit.Unstaged(headBytes, heldBytes, changes)) : null;
+        if (kept is null)
+        {
+            return new GitResult(1, string.Empty, $"Passenger can't take part of what Git's index holds of {System.IO.Path.GetFileName(path)} out: unstage it whole");
+        }
+        (GitResult Ran, string? Read) written = await RunAsync(Root, ["hash-object", "-w", "--stdin", "--no-filters"], TextAsync, kept);
+        return !written.Ran.Succeeded ? written.Ran
+            : await RunAsync(Root, ["update-index", "-z", "--index-info"], $"{entry.Mode} {written.Read!.Trim()}\t{name}\0");
+    }
+
+    /// <summary>What the index holds at a file, its mode and blob, or null where it holds none (or it is in conflict), for
+    /// putting it back as it was (<see cref="PutIndexEntryAsync"/>).</summary>
+    public async Task<(string Mode, string Blob)?> IndexEntryAsync(string path) =>
+        await IndexEntryOfAsync(GitForm(Relative(path), !Ascii.IsValid(Relative(path)) && await ComposesAsync()));
+
+    /// <summary>Puts the index's entry at a file as <paramref name="entry"/> has it, taking it out where that is null.</summary>
+    public async Task<GitResult> PutIndexEntryAsync(string path, (string Mode, string Blob)? entry)
+    {
+        string name = GitForm(Relative(path), !Ascii.IsValid(Relative(path)) && await ComposesAsync());
+        // A mode of zeros takes the entry out.
+        string line = entry is { } put ? $"{put.Mode} {put.Blob}\t{name}\0" : $"0 {new string('0', 40)}\t{name}\0";
+        return await RunAsync(Root, ["update-index", "-z", "--index-info"], line);
+    }
+
+    /// <summary>The index's stage-0 entry at a name as git writes it, or null where it has none.</summary>
+    private async Task<(string Mode, string Blob)?> IndexEntryOfAsync(string name)
+    {
+        GitResult entries = await RunAsync(Root, ["ls-files", "--stage", "-z"]);
+        // "<mode> <blob> <stage>\t<name>"
+        return entries.Succeeded && entries.Output.Split('\0').FirstOrDefault(e => e.IndexOf('\t') is > 0 and int tab && e[(tab + 1)..] == name) is { } entry
+            && entry[..entry.IndexOf('\t')].Split(' ') is [{ } mode, { } blob, "0"] ? (mode, blob) : null;
     }
 
     /// <summary>Where a commit of whole files failed (a hook refused it, its signing was refused), the index's entries for

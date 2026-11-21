@@ -516,7 +516,7 @@ public partial class MainWindow : IdeWindow
         }
         if (EditorWithKeys(window, focused) is not { } editor)
         {
-            if (!shifted && (ExplorerTakes(action) || (focused as Visual)?.FindAncestorOfType<ReleaseNotesView>(includeSelf: true)?.Move(action) == true))
+            if (!shifted && (ExplorerTakes(action) || CommitTakes(action, focused) || (focused as Visual)?.FindAncestorOfType<ReleaseNotesView>(includeSelf: true)?.Move(action) == true))
             {
                 e.Handled = true;
             }

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using Passenger.App.Vcs;
 using Passenger.Core;
 using Passenger.Editor;
@@ -12,13 +13,18 @@ using Passenger.Vcs;
 
 namespace Passenger.App.ToolWindows;
 
-/// <summary>A changed file in the Commit window, and whether it goes into the next commit.</summary>
-public sealed class CommitRow(FileChange change, bool chosen) : Observable, ITreeRow
+/// <summary>A changed file in the Commit window, and whether it goes into the next commit: while git's index holds staged
+/// changes, as listed under Staged (<paramref name="staged"/> true) or Unstaged (false), its box saying which.</summary>
+public sealed class CommitRow(FileChange change, bool chosen, bool? staged = null) : Observable, ITreeRow
 {
     private bool isChosen = chosen && IsChoosable(change);
     private int depth = 1;
 
     public FileChange Change { get; } = change;
+
+    /// <summary>Whether it is listed under Staged (true) or Unstaged (false), while git's index holds staged changes; null
+    /// while what is ticked goes in.</summary>
+    public bool? Staged { get; } = staged;
 
     /// <summary>How deep it is listed: under its group, or under its folders while the window groups by directory.</summary>
     public int Depth
@@ -208,6 +214,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
 
     /// <summary>Whether the list was last filled grouped by directory.</summary>
     private bool grouped;
+
+    /// <summary>Whether the list was last filled while git's index held staged changes (<see cref="VcsController.HoldsStaged"/>):
+    /// its files under Staged and Unstaged, a box staging or unstaging its file, and Commit taking what is staged.</summary>
+    private bool staging;
     private readonly EmptyState placeholder;
     private readonly Border form;
     private readonly StackPanel underWay;
@@ -258,6 +268,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
             ListMenus.Source(() => OpenRequested?.Invoke(this, chosen.Change.Path), Deleted(chosen.Change)),
             new Separator(),
             ListMenus.Item("Rollback…", () => RollbackRequested?.Invoke(this, [.. ChosenChanges(chosen)]), vcs.WhyNotRollback([.. ChosenChanges(chosen)])),
+            ListMenus.Keyed("Stage", AppActions.Stage, () => StageRequested?.Invoke(this, ([.. ChosenChanges(chosen)], true)), WhyNotStage([.. ChosenChanges(chosen)], stage: true)),
+            ListMenus.Keyed("Unstage", AppActions.Unstage, () => StageRequested?.Invoke(this, ([.. ChosenChanges(chosen)], false)), WhyNotStage([.. ChosenChanges(chosen)], stage: false)),
             ListMenus.Item("Delete…", () => DeleteRequested?.Invoke(this, chosen.Change.Path), Deleted(chosen.Change)),
             ListMenus.Item("Add to .gitignore", () => IgnoreRequested?.Invoke(this, chosen.Change.Path), chosen.Change.Kind is ChangeKind.Unversioned ? null : Refusals.Tracked),
             new Separator(),
@@ -287,7 +299,14 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 if (e.Key == Key.Space && e.KeyModifiers == KeyModifiers.None)
                 {
                     CommitRow[] selected = [.. SelectedFiles().Where(r => r.CanChoose)];
-                    Choose(selected, !selected.All(r => r.IsChosen));
+                    if (staging)
+                    {
+                        Restage(selected, !selected.All(r => r.IsChosen));
+                    }
+                    else
+                    {
+                        Choose(selected, !selected.All(r => r.IsChosen));
+                    }
                     return true;
                 }
                 bool diff = AppActions.Presses(AppActions.ShowDiff, e);
@@ -676,18 +695,54 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>The files that go into the next commit.</summary>
     public IReadOnlyList<FileChange> Chosen => [.. Files.Where(r => r.IsChosen).Select(r => r.Change)];
 
-    /// <summary>Gives a diff of a changed file against the last commit a box beside each change, for whether it goes in;
-    /// none while a merge's commit, which takes files whole, is under way.</summary>
+    /// <summary>Gives a diff of a changed file against the last commit a box beside each change, for whether it goes in,
+    /// the file's row found as the list stands; none while git's index holds staged changes, which a commit takes instead,
+    /// nor while a merge's commit, which takes files whole, is under way.</summary>
     public void ConfigureDiff(string path, DiffView view)
     {
-        if (vcs.Merge.CommitsWhole || Files.FirstOrDefault(r => PathNames.Same(r.Change.Path, path)) is not { CanChoose: true } row
-            || row.Change.Kind is not (ChangeKind.Modified or ChangeKind.Renamed) || row.Change.Mode is not null || row.Change.Submodule != SubmoduleChange.None)
+        if (ChoosableRow(path) is null)
         {
             return;
         }
-        view.ChooseForCommit(row.ChosenIn, row.ChooseHunk);
-        row.FollowWhileShown(view, (_, _) => view.RefreshCommitChoices());
+        view.ChooseForCommit(diff => ChoosableRow(path)?.ChosenIn(diff), (diff, index, take) => ChoosableRow(path)?.ChooseHunk(diff, index, take));
+        CommitRow? followed = null;
+        void Follow(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => view.RefreshCommitChoices();
+        void Refollow(object? sender, EventArgs e)
+        {
+            if (followed is not null)
+            {
+                followed.PropertyChanged -= Follow;
+            }
+            followed = sender is null ? null : ChoosableRow(path);
+            if (followed is not null)
+            {
+                followed.PropertyChanged += Follow;
+            }
+            view.RefreshCommitChoices();
+        }
+        view.AttachedToVisualTree += (_, _) =>
+        {
+            Listed += Refollow;
+            Refollow(this, EventArgs.Empty);
+        };
+        view.DetachedFromVisualTree += (_, _) =>
+        {
+            Listed -= Refollow;
+            Refollow(null, EventArgs.Empty);
+        };
+        if (view.IsAttachedToVisualTree())
+        {
+            Listed += Refollow;
+            Refollow(this, EventArgs.Empty);
+        }
     }
+
+    /// <summary>The row of a changed file whose changes are chosen one by one, while what is ticked goes in: a text file
+    /// modified or renamed, its mode as it was, no submodule.</summary>
+    private CommitRow? ChoosableRow(string path) =>
+        staging || vcs.Merge.CommitsWhole ? null
+        : Files.FirstOrDefault(r => PathNames.Same(r.Change.Path, path)) is { CanChoose: true, Change: { Kind: ChangeKind.Modified or ChangeKind.Renamed, Mode: null, Submodule: SubmoduleChange.None } } row
+            ? row : null;
 
     public string Message
     {
@@ -720,7 +775,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         Dictionary<string, PartialCommit> partial = Partial();
         string? first = movesOffer.IsVisible && movesFirst.IsChecked == true && !Amend
             ? (movesMessage.Text is { } typed && typed.Trim().Length > 0 ? typed : movesWritten) : null;
-        CommitResult made = await vcs.CommitAsync(Chosen, Message, Amend, push, signing: Signing, partial: partial, movesFirst: first);
+        CommitResult made = staging ? await vcs.CommitAsync(Chosen, Message, Amend, push, signing: Signing, staged: true)
+            : await vcs.CommitAsync(Chosen, Message, Amend, push, signing: Signing, partial: partial, movesFirst: first);
         bool notSigned = !made.Commit.Succeeded && made.Commit.Message.StartsWith(SigningFailure.Unsigned, StringComparison.Ordinal);
         unsigned.Text = notSigned ? made.Commit.Message : null;
         unsigned.IsVisible = notSigned;
@@ -770,7 +826,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// the window's thread, and offers to commit the moves first where it finds one; the latest look's answer wins.</summary>
     private void LookForLostMoves()
     {
-        IReadOnlyList<FileChange> chosen = Amend || vcs.Merge.CommitsWhole ? [] : Chosen;
+        IReadOnlyList<FileChange> chosen = Amend || vcs.Merge.CommitsWhole || staging ? [] : Chosen;
         string moved = string.Join('\0', chosen.Where(c => c.From is not null).Select(c => $"{c.From}\0{c.Path}"));
         if (lostOf is { } last && ReferenceEquals(last.Changes, vcs.Changes) && last.Chosen == moved)
         {
@@ -834,8 +890,12 @@ public sealed class CommitView : DockPanel, IOwnKeys
         return (changes, vcs.WhyNotRollback(changes));
     }
 
+    /// <summary>The files selected, else those ticked; while git's index holds staged changes, whose boxes say what is
+    /// staged, every file listed under Staged and Unstaged.</summary>
     private IReadOnlyList<FileChange> RollbackTargets() =>
-        SelectedFiles().ToArray() is { Length: > 0 } selected ? [.. selected.Select(r => r.Change)] : Chosen;
+        SelectedFiles().ToArray() is { Length: > 0 } selected ? [.. selected.Select(r => r.Change).Distinct()]
+        : staging ? [.. groups.Where(g => g.Name is StagedGroup or UnstagedGroup).SelectMany(g => g.Rows).Select(r => r.Change).Distinct()]
+        : Chosen;
 
     /// <summary>Rollback greyed where it would put back a file git cannot write out here, its tip saying why.</summary>
     private void UpdateRollback() => ToolButtons.Grey(rollback, vcs.WhyNotRollback(RollbackTargets()));
@@ -850,7 +910,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private void Fill()
     {
         HashSet<string> selected = [.. list.SelectedItems?.OfType<CommitRow>().Select(r => r.Change.Path) ?? []];
-        Dictionary<FileChange, CommitRow> kept = [];
+        Dictionary<(FileChange, bool?), CommitRow> kept = [];
         Dictionary<string, CommitBranch> was = branches.ToDictionary(b => b.Key);
         foreach (CommitRow row in Files)
         {
@@ -859,14 +919,25 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 chosen[row.Change.Path] = row.Partial is null && row.IsChosen;
             }
-            kept.TryAdd(row.Change, row);
+            kept.TryAdd((row.Change, row.Staged), row);
         }
         IReadOnlyList<FileChange> changes = vcs.Changes;
         List<CommitGroup> filled = [];
         List<CommitBranch> under = [];
+        staging = vcs.HoldsStaged;
         Group(MergeConflicts, [.. changes.Where(c => c.Kind is ChangeKind.Conflicted).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, false))]);
-        Group("Changes", [.. changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Conflicted)).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, true))]);
-        Group("Unversioned Files", [.. changes.Where(c => c.Kind is ChangeKind.Unversioned).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, false))]);
+        IEnumerable<FileChange> tracked = changes.Where(c => c.Kind is not (ChangeKind.Unversioned or ChangeKind.Conflicted)).OrderBy(c => c.Path, StringComparer.Ordinal);
+        if (staging)
+        {
+            // A file staged in part is under both, its staged change under Staged and the rest under Unstaged.
+            Group(StagedGroup, [.. tracked.Where(c => c.Staged != StagedState.None).Select(c => Row(c, true, staged: true))]);
+            Group(UnstagedGroup, [.. tracked.Where(c => c.Staged != StagedState.Whole).Select(c => Row(c, false, staged: false))]);
+        }
+        else
+        {
+            Group("Changes", [.. tracked.Select(c => Row(c, true))]);
+        }
+        Group("Unversioned Files", [.. changes.Where(c => c.Kind is ChangeKind.Unversioned).OrderBy(c => c.Path, StringComparer.Ordinal).Select(c => Row(c, false, staged: staging ? false : null))]);
 
         groups = filled;
         branches = under;
@@ -909,15 +980,16 @@ public sealed class CommitView : DockPanel, IOwnKeys
             prefilled = null;
         }
         Recount();
+        Listed?.Invoke(this, EventArgs.Empty);
 
-        CommitRow Row(FileChange change, bool byDefault)
+        CommitRow Row(FileChange change, bool byDefault, bool? staged = null)
         {
-            if (kept.Remove(change, out CommitRow? same))
+            if (kept.Remove((change, staged), out CommitRow? same))
             {
                 return same;
             }
-            // A file in conflict never goes into a commit as it is, nor a submodule with nothing to commit here.
-            CommitRow row = new(change, chosen.TryGetValue(change.Path, out bool before) ? before : byDefault);
+            // A conflicted file or a submodule with nothing to commit here never goes in; one listed under Staged does.
+            CommitRow row = new(change, staged ?? (chosen.TryGetValue(change.Path, out bool before) ? before : byDefault), staged);
             row.PropertyChanged += (_, e) =>
             {
                 if (!choosing && e.PropertyName != nameof(CommitRow.Depth))
@@ -1010,6 +1082,42 @@ public sealed class CommitView : DockPanel, IOwnKeys
             return top;
         }
     }
+
+    /// <summary>The group of the files git's index holds changes of, while it holds staged changes.</summary>
+    public const string StagedGroup = "Staged";
+
+    /// <summary>The group of the files with changes git's index does not hold, while it holds staged changes.</summary>
+    public const string UnstagedGroup = "Unstaged";
+
+    /// <summary>Files to stage (true) or unstage, from their boxes, Space or their menu, each once.</summary>
+    public event EventHandler<(IReadOnlyList<FileChange> Changes, bool Stage)>? StageRequested;
+
+    /// <summary>The list filled again, after a read of the status.</summary>
+    public event EventHandler? Listed;
+
+    /// <summary>Stages the rows' files not staged yet (<paramref name="stage"/>), or unstages those staged.</summary>
+    private void Restage(IReadOnlyList<CommitRow> chosen, bool stage)
+    {
+        FileChange[] changes = [.. chosen.Where(r => r.Staged != stage || r.Staged is null).Select(r => r.Change).Distinct()];
+        if (changes.Length > 0)
+        {
+            StageRequested?.Invoke(this, (changes, stage));
+        }
+    }
+
+    /// <summary>Why files can't be staged (or unstaged): git's index holds them whole already (or holds nothing of them), or
+    /// they can't be at all (<see cref="VcsController.WhyNotStage"/>).</summary>
+    public string? WhyNotStage(IReadOnlyList<FileChange> changes, bool stage) => vcs.WhyNotStage(changes)
+        ?? (stage && changes.All(c => c.Staged == StagedState.Whole && !c.MovedOnlyInIndex) ? $"{Core.Plural.Agreeing(changes.Count, "It is", "They are")} staged whole already"
+        : !stage && changes.All(c => c.Staged == StagedState.None) ? $"Nothing of {Core.Plural.Agreeing(changes.Count, "it", "them")} is staged"
+        : null);
+
+    /// <summary>The files selected and those under the groups and folders selected, for Stage and Unstage's keys.</summary>
+    public IReadOnlyList<FileChange> SelectedChanges => [.. SelectedFiles().Select(r => r.Change).Distinct()];
+
+    /// <summary>Whether the files selected are staged whole, as their row under Staged shows them, so Stage's keys unstage them.</summary>
+    public bool SelectedStaged => SelectedFiles().ToArray() is { Length: > 0 } selected
+        && (staging ? selected.All(r => r.Staged == true) : selected.All(r => r.Change.Staged == StagedState.Whole && r.Change.HoldsStaged));
 
     /// <summary>Whether rows' boxes are being set together, so no row's change counts the groups until all have.</summary>
     private bool choosing;
@@ -1111,7 +1219,16 @@ public sealed class CommitView : DockPanel, IOwnKeys
             {
                 return;
             }
-            if (row.DataContext is CommitBranch branch)
+            if (staging && row.DataContext is ITreeRow shownRow)
+            {
+                // The index answers: the box shows what it holds until the status read after the stage says otherwise.
+                bool stage = box.IsChecked != false;
+                setting = true;
+                box.IsChecked = shownRow is CommitRow one ? one.CheckState : (shownRow as CommitBranch)?.IsChosen;
+                setting = false;
+                Restage(shownRow is CommitBranch rows ? [.. rows.Rows.Where(r => r.CanChoose)] : [(CommitRow)shownRow], stage);
+            }
+            else if (row.DataContext is CommitBranch branch)
             {
                 Choose(branch.Rows.Where(r => r.CanChoose), box.IsChecked != false);
             }

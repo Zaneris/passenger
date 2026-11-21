@@ -33,6 +33,7 @@ public partial class MainWindow
     private bool Request(string action, ActionContext? context = null)
     {
         context ??= actions!.Context();
+        action = ByPlace(action, context);
         if (actions!.Run(action, FromDiff(action, context) ?? context) is not { } why)
         {
             return true;

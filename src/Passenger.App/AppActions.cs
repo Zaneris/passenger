@@ -587,6 +587,10 @@ public static class AppActions
     public const string NextChange = "app.vcs.nextChange";
     public const string PreviousChange = "app.vcs.previousChange";
     public const string RollbackLines = "app.vcs.rollbackLines";
+    // Rider's Git.Stage.Add, which takes ChangesView.AddUnversioned's keys ($default's Ctrl+Alt+A); Unstage takes them
+    // where what they act on is staged whole, as the change's own button turns.
+    public const string Stage = "app.vcs.stage";
+    public const string Unstage = "app.vcs.unstage";
     public const string ShowDiff = "app.vcs.showDiff";
 
     // Rider's Diff.ShowSettingsPopup, a diff's Settings: $default's Ctrl+Shift+D, none in its VS Code keymaps.
@@ -813,6 +817,7 @@ public static class AppActions
                 .Bind(NextChange, "shift meta alt N")
                 .Bind(PreviousChange, "shift meta alt P")
                 .Bind(RollbackLines, "meta alt Z")
+                .Bind(Stage, "meta alt A")
                 .Bind(DiffSettings, "meta shift D")
                 .Bind(ShowGit, "meta 9")
                 .Bind(ShowTerminal, "meta control 1")
@@ -945,6 +950,7 @@ public static class AppActions
             .Bind(NextChange, "shift control alt N")
             .Bind(PreviousChange, "shift control alt P")
             .Bind(RollbackLines, "control alt Z")
+            .Bind(Stage, "control alt A")
             .Bind(DiffSettings, "control shift D")
             .Bind(ShowGit, "alt 9")
             .Bind(ShowTerminal, "control alt 1")
@@ -1114,6 +1120,7 @@ public static class AppActions
                 .Bind(NextChange, "alt F3", "alt F5")
                 .Bind(PreviousChange, "alt shift F3", "alt shift F5")
                 .Bind(RollbackLines, "meta alt Z")
+                .Bind(Stage, "meta alt A")
                 .Bind(ShowGit, "control shift G")
                 .Bind(RecentChanges, "alt shift C");
         }
@@ -1231,6 +1238,7 @@ public static class AppActions
             .Bind(NextChange, "alt F5")
             .Bind(PreviousChange, "alt shift F5")
             .Bind(RollbackLines, "control alt Z")
+            .Bind(Stage, "control alt A")
             .Bind(ShowGit, "control shift G");
     }
 
@@ -1359,6 +1367,7 @@ public static class AppActions
                 .Bind(NextChange, "control alt shift DOWN")
                 .Bind(PreviousChange, "control alt shift UP")
                 .Bind(RollbackLines, "meta alt Z")
+                .Bind(Stage, "meta alt A")
                 .Bind(DiffSettings, "meta shift D")
                 .Bind(RecentChanges, "alt shift C");
         }
@@ -1480,6 +1489,7 @@ public static class AppActions
             .Bind(NextChange, "control alt shift DOWN")
             .Bind(PreviousChange, "control alt shift UP")
             .Bind(RollbackLines, "control alt Z")
+            .Bind(Stage, "control alt A")
             .Bind(DiffSettings, "control shift D")
             .Bind(RecentChanges, "alt shift C");
     }

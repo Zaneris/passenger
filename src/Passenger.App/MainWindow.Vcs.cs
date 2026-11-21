@@ -135,6 +135,7 @@ public partial class MainWindow
         view.IgnoreRequested += (_, path) => IdeErrors.Observe(IgnoreAsync(path));
         view.ResolveRequested += (_, _) => ShowConflicts();
         view.MergeRequested += (_, path) => IdeErrors.Observe(MergeAsync(path));
+        view.StageRequested += (_, asked) => IdeErrors.Observe(StageFilesAsync(asked.Changes, asked.Stage));
         view.Confirm = (title, text, yes) => Confirm(title, text, yes);
         return view;
     }
@@ -517,6 +518,10 @@ public partial class MainWindow
             {
                 CommitView.ConfigureDiff(path, view);
             }
+            if (version == "HEAD" && other is null)
+            {
+                StageIn(path, view);
+            }
             return view;
         })
         { Again = again };
@@ -833,6 +838,18 @@ public partial class MainWindow
             WhyNot = context => DiffWithKeys(context) is { } diff ? diff.WhyNotRollBack : NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : Refusals.NeedsFile(context)),
             Menus = [new MenuPlace("Git", 2, 2)],
         });
+        // In a diff, the changes at its carets; in the Commit window, the files chosen there.
+        actions!.Add(new IdeAction(AppActions.Stage, "Stage", "Git", context => Staging(context, stage: true))
+        {
+            WhyNot = context => NeedsFolder(context) ?? WhyNotStaging(context, stage: true),
+            Menus = [new MenuPlace("Git", 2, 3)],
+        });
+        actions.Add(new IdeAction(AppActions.Unstage, "Unstage", "Git", context => Staging(context, stage: false))
+        {
+            WhyNot = context => NeedsFolder(context) ?? WhyNotStaging(context, stage: false),
+            Menus = [new MenuPlace("Git", 2, 4)],
+            KeysOf = () => AppActions.Stage,
+        });
         Add(AppActions.NextChange, "Next Change", _ => GoToChange(1), new("Navigate", 3, 2), onFile: true);
         Add(AppActions.PreviousChange, "Previous Change", _ => GoToChange(-1), new("Navigate", 3, 3), onFile: true);
         // A diff's own, whatever it compares: how its differences are highlighted.
@@ -1031,6 +1048,134 @@ public partial class MainWindow
         }
         Editors.CodeEditor.ApplyEdits([diff.Restore(hunk)]);
         return (true, $"Rolled back the change at line {hunk.NewStart + 1} of {document.Name}");
+    }
+
+    /// <summary>A diff of a changed text file against the last commit stages its changes into git's index: a change's own
+    /// button and Stage's keys turn as the index holds it, read again whenever the status is.</summary>
+    private void StageIn(string path, DiffView view)
+    {
+        VcsController vcs = session.Vcs;
+        if (vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, path)) is not { Kind: ChangeKind.Modified or ChangeKind.Renamed, Submodule: SubmoduleChange.None })
+        {
+            return;
+        }
+        view.StageWith(diff => HeldInIndexAsync(vcs, path, diff));
+        view.StageRequested += (_, asked) => IdeErrors.Observe(StageChangesAsync(view, path, asked.Changes, asked.Stage));
+        void Follow(object? sender, EventArgs e) => view.RefreshStaged();
+        view.AttachedToVisualTree += (_, _) => vcs.Changed += Follow;
+        view.DetachedFromVisualTree += (_, _) => vcs.Changed -= Follow;
+    }
+
+    /// <summary>Which changes of a file's diff git's index holds whole, its text there read in the file's encoding; null
+    /// where it holds no text of it.</summary>
+    private static async Task<bool[]?> HeldInIndexAsync(VcsController vcs, string path, FileDiff diff)
+    {
+        if (await vcs.IndexTextAsync(path) is not { } index)
+        {
+            return null;
+        }
+        TextSnapshot text = diff.Text;
+        bool alike = diff.BreaksStoredAlike;
+        return await BackgroundWork.Run(() => diff.HeldIn(FileDiff.Compare(index, text).StoringBreaksAlike(alike)));
+    }
+
+    /// <summary>Stage or Unstage: in a diff that stages, the changes at its carets; in the Commit window, the files chosen
+    /// there, said once done.</summary>
+    private void Staging(ActionContext context, bool stage)
+    {
+        if (DiffWithKeys(context) is { } diff)
+        {
+            if (diff.StageAtCarets(stage) is { } refused)
+            {
+                status.Text = refused;
+            }
+            return;
+        }
+        IdeErrors.Observe(StageFilesAsync(CommitView.SelectedChanges, stage));
+    }
+
+    /// <summary>Why Stage (or Unstage) can't run: no diff that stages nor the Commit window has the keys, or nothing chosen
+    /// there can be.</summary>
+    private string? WhyNotStaging(ActionContext context, bool stage) =>
+        DiffWithKeys(context) is { } diff ? diff.Stages ? null : "Only a diff of the working tree against the last commit stages its changes"
+        : context.ToolWindow?.Id == ToolWindowIds.Commit && commitView is { } commit ? commit.WhyNotStage(commit.SelectedChanges, stage)
+        : $"No diff or Commit window has the keys to {(stage ? "stage" : "unstage")} what they show";
+
+    /// <summary>Stage's keys where what they act on is staged whole already (the changes at a diff's carets, the files chosen
+    /// in the Commit window) run Unstage, as the change's own button turns.</summary>
+    private string ByPlace(string action, ActionContext context) =>
+        action == AppActions.Stage && windowKeys.Pressing is not null
+            && (DiffWithKeys(context) is { Stages: true } diff ? diff.ChangesAtCarets() is { Count: > 0 } changes && changes.All(c => diff.HeldAt(diff.Hunks.ToList().IndexOf(c)) == true)
+                : context.ToolWindow?.Id == ToolWindowIds.Commit && commitView is { SelectedStaged: true })
+            ? AppActions.Unstage : action;
+
+    /// <summary>The Commit window's Undo and Redo take back or make again the last command, a stage or unstage among them, as
+    /// the Explorer's do.</summary>
+    private bool CommitTakes(string action, object? focused) =>
+        action is EditorActions.Undo or EditorActions.Redo && commitView is { } commit && focused is Visual inside && commit.IsVisualAncestorOf(inside)
+        && UndoCommand(action == EditorActions.Redo, null);
+
+    /// <summary>Stages or unstages files whole, from the Commit window, one command of global Undo where git's index changed.</summary>
+    private async Task StageFilesAsync(IReadOnlyList<FileChange> changes, bool stage)
+    {
+        using Working? work = BeginWork(stage ? AppActions.Stage : AppActions.Unstage, stage ? "Staging…" : "Unstaging…");
+        if (work is null)
+        {
+            return;
+        }
+        if (session.Vcs.WhyNotStage(changes) is { } refused)
+        {
+            work.Tell(false, status.Text = refused);
+            return;
+        }
+        string[] paths = [.. changes.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path])];
+        VcsOutcome outcome = await IndexChangedAsync($"{(stage ? "Stage" : "Unstage")} {Plural.Listed([.. changes.Select(c => c.Name)])}", paths,
+            () => session.Vcs.StageAsync(changes, stage));
+        work.Tell(outcome.Succeeded, outcome.Message);
+    }
+
+    /// <summary>Stages or unstages some of a file's changes from its diff, one command of global Undo where git's index changed.</summary>
+    private async Task StageChangesAsync(DiffView view, string path, IReadOnlyList<DiffHunk> changes, bool stage)
+    {
+        using Working? work = BeginWork(stage ? AppActions.Stage : AppActions.Unstage, stage ? "Staging…" : "Unstaging…");
+        if (work is null)
+        {
+            return;
+        }
+        if (session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, path)) is not { } change)
+        {
+            work.Tell(false, status.Text = $"{Path.GetFileName(path)} has no change to {(stage ? "stage" : "unstage")}");
+            return;
+        }
+        FileDiff diff = view.Compared;
+        string[] paths = change.From is { } from ? [path, from] : [path];
+        string which = changes.Count == 1 ? $"change {diff.Hunks.ToList().IndexOf(changes[0]) + 1}" : Plural.Of(changes.Count, "change");
+        VcsOutcome outcome = await IndexChangedAsync($"{(stage ? "Stage" : "Unstage")} {which} of {change.Name}", paths,
+            () => stage ? session.Vcs.StageChangesAsync(path, new PartialCommit(diff, changes, change.From)) : session.Vcs.UnstageChangesAsync(change, changes));
+        work.Tell(outcome.Succeeded, outcome.Message);
+        view.RefreshStaged();
+    }
+
+    /// <summary>Runs a change of git's index over <paramref name="paths"/>, kept as one command of global Undo named
+    /// <paramref name="command"/> where the index changed: its Undo puts each entry back as it was, its Redo as it left
+    /// it, while the index still holds them as the other left them. What came of it, said in the status bar.</summary>
+    private async Task<VcsOutcome> IndexChangedAsync(string command, IReadOnlyList<string> paths, Func<Task<VcsOutcome>> change)
+    {
+        VcsController vcs = session.Vcs;
+        IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)> before = await vcs.IndexEntriesAsync(paths);
+        VcsOutcome outcome = await change();
+        IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)> after = await vcs.IndexEntriesAsync(paths);
+        status.Text = outcome.Message;
+        if (outcome.Succeeded && !before.SequenceEqual(after) && vcs == session.Vcs)
+        {
+            using CommandHistory.Recording made = Editors.Commands.Record(command);
+            made.Also(new CommandHistory.Part($"Git's index of {Plural.Listed([.. paths.Select(Path.GetFileName).OfType<string>().Distinct()])}", _ => null,
+                redo => vcs.PutIndexEntriesAsync(redo ? after : before))
+            {
+                Read = async redo => (await vcs.IndexEntriesAsync(paths)).SequenceEqual(redo ? before : after) ? null : "Git's index has changed since",
+            });
+        }
+        return outcome;
     }
 
     /// <summary>Add to .gitignore: a line of the repository's top .gitignore matching that file alone (<see

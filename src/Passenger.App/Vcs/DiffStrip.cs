@@ -13,10 +13,11 @@ namespace Passenger.App.Vcs;
 public readonly record struct DiffBand(int Index, double LeftTop, double LeftBottom, double RightTop, double RightBottom, ChangeMarkKind Kind);
 
 /// <summary>The strip between two panes of a diff or a merge: each change a band from its lines on the left to its lines
-/// on the right, tinted by its kind, with the button whose arrow takes it (pointing away from the icons' side) and the one
-/// whose X ignores it at that side's end, while what made the strip allows them, each named by its tip, the arrow's naming
-/// the keys of the action that does its work at the caret where one does. Only the changes in view have buttons, so a diff of thousands scrolls as lightly as one of a few; <see cref="Refresh"/> follows a scroll or
-/// a change of the bands.</summary>
+/// on the right, tinted by its kind, with the button whose arrow takes it (pointing away from the icons' side) and beside
+/// it the one whose X ignores it, or whose plus stages it and minus unstages it, while what made the strip allows them,
+/// each named by its tip, which names the keys of the action doing its work at the caret where one does. Only the changes
+/// in view have buttons, so a diff of thousands scrolls as lightly as one of a few; <see cref="Refresh"/> follows a scroll
+/// or a change of the bands.</summary>
 public sealed class DiffStrip : Control
 {
     private const double IconSize = 9;
@@ -24,7 +25,7 @@ public sealed class DiffStrip : Control
     /// <summary>How far round its icon a button takes the pointer.</summary>
     private const double Reach = 3;
 
-    /// <summary>A band's two buttons, the arrow's and the X's.</summary>
+    /// <summary>A band's two buttons, the arrow's and the one beside it (the X, or the stage button).</summary>
     private static readonly bool[] Ignoring = [false, true];
 
     private readonly Func<IEnumerable<DiffBand>> bands;
@@ -35,18 +36,22 @@ public sealed class DiffStrip : Control
     private readonly Func<DiffBand, bool, (string Words, string? Keys)> tip;
     private readonly Action<DiffBand, bool, KeyModifiers> pressed;
     private readonly string? arrowAction;
+    private readonly Func<DiffBand, bool?>? staged;
+    private readonly string? stageAction;
     private readonly List<BandButton> buttons = [];
 
-    /// <param name="iconSide">The side whose end has the icons, the arrow pointing away from it.</param>
-    /// <param name="pane">The pane at <paramref name="iconSide"/>, whose line the icons stand beside.</param>
-    /// <param name="tip">What a change's arrow (false) or X (true) does, and the keys that do it to the change at the caret.</param>
-    /// <param name="pressed">A click on a change's arrow (false) or X (true), with the keys held.</param>
-    /// <param name="arrowAction">The action doing an arrow's work at the caret, whose keys its tip names as the keymap has them.</param>
+    /// <param name="iconSide">The side whose end has the icons, the arrow pointing away from it; <paramref name="pane"/> is its pane.</param>
+    /// <param name="tip">What a change's arrow (false) or other button (true) does, and the keys that do it at the caret.</param>
+    /// <param name="pressed">A click on a change's arrow (false) or other button (true), with the keys held.</param>
+    /// <param name="staged">In place of the X, a stage button: whether the index holds the change (a minus), or null for none.</param>
+    /// <param name="arrowAction">The action doing an arrow's work at the caret, whose keys its tip names; <paramref name="stageAction"/> a stage button's.</param>
     public DiffStrip(Func<IEnumerable<DiffBand>> bands, MergeSide iconSide, CodeEditor pane, Func<bool> takes, bool ignores,
         Func<DiffBand, bool, (string Words, string? Keys)> tip, Action<DiffBand, bool, KeyModifiers> pressed,
-        string? arrowAction = null)
+        string? arrowAction = null, Func<DiffBand, bool?>? staged = null, string? stageAction = null)
     {
         this.arrowAction = arrowAction;
+        this.staged = staged;
+        this.stageAction = stageAction;
         this.bands = bands;
         this.iconSide = iconSide;
         this.pane = pane;
@@ -131,10 +136,11 @@ public sealed class DiffStrip : Control
     public Rect? Icon(int index, bool ignore) =>
         bands().Where(b => b.Index == index).Select(b => Icon(b, ignore)).FirstOrDefault();
 
-    /// <summary>A band's arrow or X beside its first line at the icons' end, the arrow nearest the pane and the X after it.</summary>
+    /// <summary>A band's arrow or X (or stage button) beside its first line at the icons' end, the arrow nearest the pane
+    /// and the other after it.</summary>
     private Rect? Icon(DiffBand band, bool ignore)
     {
-        if (ignore ? !ignores : !takes())
+        if (ignore ? !ignores && staged?.Invoke(band) is null : !takes())
         {
             return null;
         }
@@ -161,7 +167,8 @@ public sealed class DiffStrip : Control
                 }
                 BandButton button = used < buttons.Count ? buttons[used] : Made();
                 used++;
-                button.Show(band, ignore, iconSide, Colours(band.Kind).Edge, icon.Inflate(Reach), tip, ignore ? null : arrowAction);
+                int mark = !ignore ? (iconSide == MergeSide.Left ? 1 : -1) : staged?.Invoke(band) is not { } held ? 0 : held ? BandGlyph.Minus : BandGlyph.Plus;
+                button.Show(band, ignore, mark, Colours(band.Kind).Edge, icon.Inflate(Reach), tip, ignore ? stageAction : arrowAction);
             }
         }
         for (int i = used; i < buttons.Count; i++)
@@ -230,18 +237,22 @@ public sealed class DiffStrip : Control
 
         public bool Ignore { get; private set; }
 
+        /// <summary>What it is drawn as (<see cref="BandGlyph"/>).</summary>
+        public int Mark { get; private set; }
+
         /// <summary>Where it stands in the strip.</summary>
         public Rect At { get; private set; }
 
-        /// <summary>Stands beside a change's icon at <paramref name="at"/>, named for that change and drawn in its colour, its
-        /// tip naming <paramref name="action"/>'s keys where it does that action's work.</summary>
-        public void Show(DiffBand shown, bool ignore, MergeSide iconSide, string edge, Rect at, Func<DiffBand, bool, (string Words, string? Keys)> tip, string? action)
+        /// <summary>Stands beside a change's icon at <paramref name="at"/> drawn as <paramref name="mark"/> says, named for
+        /// that change and drawn in its colour, its tip naming <paramref name="action"/>'s keys where it does that action's work.</summary>
+        public void Show(DiffBand shown, bool ignore, int mark, string edge, Rect at, Func<DiffBand, bool, (string Words, string? Keys)> tip, string? action)
         {
             band = shown;
-            if (Index != shown.Index || Ignore != ignore)
+            if (Index != shown.Index || Ignore != ignore || Mark != mark)
             {
                 Index = shown.Index;
                 Ignore = ignore;
+                Mark = mark;
                 (string words, string? keys) = tip(shown, ignore);
                 if (action is not null)
                 {
@@ -252,17 +263,20 @@ public sealed class DiffStrip : Control
                     ToolButtons.Tip(Button, words, keys);
                 }
             }
-            glyph.Show(ignore ? 0 : iconSide == MergeSide.Left ? 1 : -1, edge);
+            glyph.Show(mark, edge);
             At = at;
             Button.IsVisible = true;
         }
     }
 
     /// <summary>A band button's icon in its change's colour: ">>" from the left, "<<" from the right (the lines toward the
-    /// other pane), or the X.</summary>
+    /// other pane), the X, or the stage button's plus or minus.</summary>
     private sealed class BandGlyph : Control
     {
-        /// <summary>Which way the arrow points, 1 rightward and -1 leftward; 0 for the X.</summary>
+        public const int Plus = 2;
+        public const int Minus = 3;
+
+        /// <summary>Which way the arrow points, 1 rightward and -1 leftward; 0 for the X, <see cref="Plus"/> or <see cref="Minus"/>.</summary>
         private int pointing;
         private string edge = TokenKeys.Vcs_Modified;
 
@@ -294,6 +308,15 @@ public sealed class DiffStrip : Control
                 Rect x = icon.Deflate(1);
                 context.DrawLine(pen, x.TopLeft, x.BottomRight);
                 context.DrawLine(pen, x.TopRight, x.BottomLeft);
+                return;
+            }
+            if (pointing is Plus or Minus)
+            {
+                context.DrawLine(pen, new Point(icon.X, icon.Center.Y), new Point(icon.Right, icon.Center.Y));
+                if (pointing == Plus)
+                {
+                    context.DrawLine(pen, new Point(icon.Center.X, icon.Y), new Point(icon.Center.X, icon.Bottom));
+                }
                 return;
             }
             for (int k = 0; k < 2; k++)

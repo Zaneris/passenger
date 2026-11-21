@@ -33,12 +33,12 @@ public class GitStatusTests
         Assert.Equal(
         [
             new FileChange(Full("src/Shop.cs"), ChangeKind.Modified),
-            new FileChange(Full("src/New File.cs"), ChangeKind.Added),
-            new FileChange(Full("src/Gone.cs"), ChangeKind.Deleted),
+            new FileChange(Full("src/New File.cs"), ChangeKind.Added) { Staged = StagedState.Whole },
+            new FileChange(Full("src/Gone.cs"), ChangeKind.Deleted) { Staged = StagedState.Whole },
             new FileChange(Full("tools/run.sh"), ChangeKind.Modified, Mode: new ModeChange("100644", "100755")),
             new FileChange(Full("lib/sub"), ChangeKind.Modified,
                 Submodule: SubmoduleChange.Submodule | SubmoduleChange.Commit | SubmoduleChange.Modified | SubmoduleChange.Untracked),
-            new FileChange(Full("src/Renamed.cs"), ChangeKind.Renamed, Full("src/Old.cs")),
+            new FileChange(Full("src/Renamed.cs"), ChangeKind.Renamed, Full("src/Old.cs")) { Staged = StagedState.Whole, MovedOnlyInIndex = true },
             new FileChange(Full("src/Both.cs"), ChangeKind.Conflicted),
             new FileChange(Full("src/Theirs.cs"), ChangeKind.Conflicted),
             new FileChange(Full("notes/todo café.txt"), ChangeKind.Unversioned),
@@ -46,6 +46,33 @@ public class GitStatusTests
         Assert.Equal([new GitConflict(Full("src/Both.cs"), true, true, true), new GitConflict(Full("src/Theirs.cs"), true, false, true)], read.Conflicts);
         string[][] stages = [["b1", "b2", "b3"], ["c1", "c3"]];
         Assert.Equal(stages, read.Stages);
+    }
+
+    /// <summary>How much of each change the index holds is read from its two letters: nothing, part (the working tree changed
+    /// it further) or all of it; a rename whose blob and mode are the last commit's holds the move alone.</summary>
+    [Fact]
+    public void How_much_of_each_change_the_index_holds_is_read_with_a_move_held_alone()
+    {
+        string written = string.Join('\0',
+            "1 .M N... 100644 100644 100644 aaaa aaaa src/Unstaged.cs",
+            "1 MM N... 100644 100644 100644 aaaa bbbb src/Part.cs",
+            "1 M. N... 100644 100644 100644 aaaa cccc src/Whole.cs",
+            "1 AM N... 000000 100644 100644 0000 dddd src/Added.cs",
+            "2 RM N... 100644 100644 100644 1111 1111 R100 src/Moved.cs", "src/Was.cs",
+            "2 RM N... 100644 100644 100644 1111 2222 R90 src/Edited.cs", "src/Before.cs",
+            string.Empty);
+
+        Git.StatusRead read = Git.StatusOf(Encoding.UTF8.GetBytes(written), new Git.DiskNames(Root));
+
+        Assert.Equal(
+        [
+            (StagedState.None, false, false),
+            (StagedState.Part, false, true),
+            (StagedState.Whole, false, true),
+            (StagedState.Part, false, true),
+            (StagedState.Part, true, false),
+            (StagedState.Part, false, true),
+        ], read.Changes.Select(c => (c.Staged, c.MovedOnlyInIndex, c.HoldsStaged)));
     }
 
     [Fact]
