@@ -166,6 +166,11 @@ public partial class MainWindow
             status.Text = session.Vcs.NoRepository;
             return null;
         }
+        using Working? reading = BeginWork(AppActions.CompareWithBranch, "Reading the branches and tags…");
+        if (reading is null)
+        {
+            return null;
+        }
         IReadOnlyList<GitRef> refs = await repository.RefNamesAsync();
         string? current = session.Vcs.Branch;
         ChoicePopup popup = new($"Compare {Path.GetFileName(path)} with Branch or Tag", "Search for branches and tags",
@@ -191,7 +196,8 @@ public partial class MainWindow
     /// opens its text of the file, under the name it had then, beside the file's.</summary>
     public async Task<ChoicePopup?> ShowCompareWithRevisionAsync(string path)
     {
-        if (await ScopeOrSayAsync(path, null) is not { IsFolder: false } scope)
+        using Working? reading = BeginWork(AppActions.CompareWithRevision, $"Reading the history of {Path.GetFileName(path)}…");
+        if (reading is null || await ScopeOrSayAsync(path, null) is not { IsFolder: false } scope)
         {
             return null;
         }

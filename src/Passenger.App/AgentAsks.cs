@@ -99,28 +99,40 @@ public static class AgentAsks
     }
 
     /// <summary>Refuses a popup in an agent's action's flow, the action ending there as one canceled, the agent told why
-    /// where it was asked for as the action ran.</summary>
+    /// (<see cref="Said"/>).</summary>
     public static void Popup()
     {
-        if (acting.Value is not null)
+        if (acting.Value is { } act)
         {
+            Said(act);
             throw new AgentRefusedException(Refusals.AsksThePerson);
         }
     }
 
-    /// <summary>Whether a popup is refused, being asked for in an agent's action's flow, the agent told why where the action
-    /// still runs: its host then answers it as the person's Escape would, without showing it.</summary>
+    /// <summary>Whether a popup is refused, being asked for in an agent's action's flow, the agent told why (<see cref="Said"/>):
+    /// its host then answers it as the person's Escape would, without showing it.</summary>
     public static bool Refused()
     {
         if (acting.Value is not { } act)
         {
             return false;
         }
+        Said(act);
+        return true;
+    }
+
+    /// <summary>Tells the agent its action asked the person: as its refusal while the action still runs, else to the work it
+    /// holds, which its ide_action waits for (<see cref="ActionWork.Tell"/>).</summary>
+    private static void Said(Acting act)
+    {
         if (act.Running)
         {
             act.Refused = Refusals.AsksThePerson;
         }
-        return true;
+        else
+        {
+            ActionWork.Tell(false, Refusals.AsksThePerson);
+        }
     }
 
     /// <summary>For a dialog or window that asks the person: refused as an agent's action runs, the agent told why; asked
@@ -154,11 +166,13 @@ public static class AgentAsks
         }
     }
 
-    /// <summary>Refuses a modal dialog an agent's action would show, as it runs or later, before it shows.</summary>
+    /// <summary>Refuses a modal dialog an agent's action would show, as it runs or later, before it shows, the agent told why
+    /// (<see cref="Said"/>).</summary>
     private static void Modal(Window window)
     {
-        if (acting.Value is not null && window.IsDialog)
+        if (acting.Value is { } act && window.IsDialog)
         {
+            Said(act);
             throw new AgentRefusedException(Refusals.AsksThePerson);
         }
     }

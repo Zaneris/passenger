@@ -1578,6 +1578,51 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Signed by an agent", (await TestGit.RunAsync(repository, "log", "-1", "--format=%s")).Trim());
     }
 
+    /// <summary>An agent's ide_action of an action that reads before it asks is answered once it has asked, as one asking at
+    /// once is: Commit Signing's dialog, opened once git's config is read, closed unanswered and said, none left open, and
+    /// Unstash Changes' list of the stashes shown as the action answers. One that does its work at once says what it came to:
+    /// Convert Indentation the lines it converted, or that none needed it, Save once the file is saved, and Check for Updates
+    /// why it could not check.</summary>
+    [Fact]
+    public async Task An_agents_action_that_reads_before_it_asks_answers_once_it_asks_and_one_that_works_says_what_it_came_to()
+    {
+        string repository = TestFolders.Create("mcp-asks-");
+        DeleteAtEnd(repository);
+        TestFolders.Write(repository, "Notes.txt", "notes\n");
+        TestFolders.Write(repository, "Indented.cs", "class Indented\n{\n    int one;\n}\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(Path.Combine(repository, "Notes.txt"), "notes, stashed\n");
+        await TestGit.RunAsync(repository, "stash");
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        await Call(client, McpTools.VcsStatus);
+
+        CallToolResult signing = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.CommitSigning });
+        Assert.True(signing.IsError == true && Text(signing).Contains("which nobody is at this IDE to answer: it was closed unanswered", StringComparison.Ordinal),
+            $"Commit Signing… in an agent's own IDE answered before its dialog asked: {Text(signing)}");
+        Assert.True(await Waiting.UntilAsync(async () => (await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" })).GetProperty("windows").GetArrayLength() == 1, TimeSpan.FromSeconds(10), Cancel),
+            $"Commit Signing's dialog was left open: {(await Call(client, McpTools.AppWindows, new() { ["app"] = "ide" })).GetRawText()}");
+
+        Assert.Equal($"Ran {AppActions.Unstash}", Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.Unstash })));
+        string listed = Text(await Call(client, McpTools.AppTree, new() { ["app"] = "ide", ["filter"] = "UnstashPopup" }));
+        Assert.False(listed.StartsWith("Nothing in", StringComparison.Ordinal), $"Unstash Changes answered before its list of stashes showed: {listed}");
+        await Call(client, McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "escape" });
+
+        await Call(client, McpTools.Open, new() { ["path"] = "Indented.cs" });
+        string converted = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ConvertIndentationToTabs }));
+        Assert.True(converted.StartsWith("Converted the indentation of 1 line of Indented.cs to tabs", StringComparison.Ordinal),
+            $"Convert Indentation to Tabs answered: {converted}");
+        Assert.Equal($"Ran {AppActions.Save}", Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.Save })));
+        Assert.True(File.ReadAllText(Path.Combine(repository, "Indented.cs")) == "class Indented\n{\n\tint one;\n}\n",
+            $"Save answered before the file was saved: {File.ReadAllText(Path.Combine(repository, "Indented.cs"))}");
+        string again = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ConvertIndentationToTabs }));
+        Assert.True(again.StartsWith("Every line of Indented.cs outside its strings already indents with tabs", StringComparison.Ordinal),
+            $"Convert Indentation to Tabs with nothing to convert answered: {again}");
+
+        CallToolResult updates = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.CheckForUpdates });
+        Assert.True(updates.IsError == true && Text(updates).Contains("Could not check for updates", StringComparison.Ordinal),
+            $"Check for Updates… with no release feed to ask answered: {Text(updates)}");
+    }
+
     /// <summary>A renamed file's diff names where it was and where it is; vcs_commit takes a folder's path as every change
     /// under it, the untracked folder vcs_status lists as one entry and a tracked folder's new file among them, the rest
     /// left; and Push run as an action where the repository has no remote answers why it did not push.</summary>

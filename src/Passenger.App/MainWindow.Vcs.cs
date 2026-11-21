@@ -231,6 +231,11 @@ public partial class MainWindow
 
     private async Task ShowBranchesAsync(Button widget)
     {
+        using Working? listing = BeginWork(AppActions.Branches, "Reading the branches…");
+        if (listing is null)
+        {
+            return;
+        }
         ContextMenu menu = new();
         ActionContext context = actions!.Context();
         MenuItem Action(string id)
@@ -417,6 +422,11 @@ public partial class MainWindow
         if (session.Vcs.Repository is null)
         {
             status.Text = session.Vcs.NoRepository;
+            return null;
+        }
+        using Working? reading = BeginWork(AppActions.Unstash, "Reading the stashes…");
+        if (reading is null)
+        {
             return null;
         }
         UnstashPopup popup = new(await session.Vcs.StashesAsync(), async (stash, pop) => (await session.Vcs.UnstashAsync(stash, pop)).Succeeded,
@@ -848,12 +858,20 @@ public partial class MainWindow
     private async Task ShowCommitSigningAsync()
     {
         VcsController vcs = session.Vcs;
+        using Working? reading = BeginWork(AppActions.CommitSigning, "Reading how commits are signed…");
+        if (reading is null)
+        {
+            return;
+        }
         SigningSetup setup = await vcs.SigningAsync();
         CommitSigningDialog dialog = new(setup, vcs.Repository, VcsController.GlobalAllowedSigners);
         CommitSigning = dialog;
         try
         {
-            await dialog.ShowDialog(this);
+            Task asked = dialog.ShowDialog(this);
+            // The answer is the person's, however long they take: the work ends as the dialog asks.
+            reading.Dispose();
+            await asked;
         }
         finally
         {

@@ -144,6 +144,11 @@ public partial class MainWindow
             status.Text = Refusals.NoFolder;
             return null;
         }
+        using Working? reading = BeginWork(AppActions.RecentChanges, "Reading the recent changes…");
+        if (reading is null)
+        {
+            return null;
+        }
         IReadOnlyList<HistoryEvent> events = history.Snapshot().Events;
         IReadOnlyList<HistoryRow> rows = await BackgroundWork.Run(() => HistoryRows.OfFolder(events, open));
         ChoicePopup popup = new("Recent Changes", "Search by name",
