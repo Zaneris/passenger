@@ -95,11 +95,14 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     public void Within(double room) => MaxWidth = Math.Min(Widest, Math.Max(0, room));
 
     /// <summary>A value's rows, which open in the card: it takes the pointer and the keys, a width of the popups'
-    /// (<see cref="PopupFrame.Fitting"/>), growing as rows open, and scrolls past <see cref="MostRows"/> rows or the room it is given.</summary>
-    public void AddValues(Debugging.VariablesList values, double room)
+    /// (<see cref="PopupFrame.Fitting"/>), growing as rows open, and scrolls past <see cref="MostRows"/> rows or the room it is given,
+    /// at least four rows but in an editor whose rows hold fewer (<paramref name="whole"/>, its height), as many as they hold.</summary>
+    public void AddValues(Debugging.VariablesList values, double room, double whole)
     {
         Values = values;
-        values.MaxHeight = Math.Max(ListRow.Height * 4, Math.Min(ListRow.Height * MostRows, room - Padding.Top - Padding.Bottom)) + values.Padding.Top + values.Padding.Bottom;
+        double rows = Math.Max(ListRow.Height * 4, Math.Min(ListRow.Height * MostRows, room - Padding.Top - Padding.Bottom));
+        double holds = whole - Padding.Top - Padding.Bottom - BorderThickness.Top - BorderThickness.Bottom - values.Padding.Top - values.Padding.Bottom;
+        values.MaxHeight = Math.Max(ListRow.Height, Math.Min(rows, holds)) + values.Padding.Top + values.Padding.Bottom;
         parts.Children.Add(values);
         IsHitTestVisible = true;
         values.Tree.Rows.CollectionChanged += (_, _) =>

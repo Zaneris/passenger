@@ -40,8 +40,8 @@ internal sealed class PopupPlacement
 
     private Passenger.Editor.CodeEditor Editor => context.Editor;
 
-    /// <summary>The size of the layer the popups are placed in.</summary>
-    public Size Room => layer.Bounds.Size;
+    /// <summary>Where a popup placed at a line of the active editor is held, in its layer's coordinates (<see cref="HeldIn"/>).</summary>
+    public Rect Held => HeldIn(Editor, layer);
 
     /// <summary>The widest a popup placed at a line is shown whole in the editor (<see cref="Place(Control, Point, bool)"/>).</summary>
     public double Widest => Math.Max(0, layer.Bounds.Width - RightEdge);
@@ -114,10 +114,10 @@ internal sealed class PopupPlacement
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
     /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or when there is no
-    /// room below, kept inside the editor. A card, a list of choices, Rename's box or the colour picker
-    /// (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one that fits neither under nor
-    /// over its line goes where there is more room, lowered to it where it gives way in height (<see cref="IGivesWayInHeight"/>),
-    /// else moved in as far as it must to show whole, though it then hides some of the line.</summary>
+    /// room below, kept inside the editor, below the bars over it (<see cref="HeldIn"/>). A card, a list of choices, Rename's
+    /// box or the colour picker (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one that
+    /// fits neither under nor over its line goes where there is more room, lowered to it where it gives way in height
+    /// (<see cref="IGivesWayInHeight"/>), else moved in as far as it must to show whole, though it then hides some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
         if (cards.Contains(popup))
@@ -156,25 +156,41 @@ internal sealed class PopupPlacement
         (popup as IHeldToEditor)?.Within(Math.Max(0, onto.Bounds.Width - RightEdge));
         (popup as IGivesWayInHeight)?.WithinHeight(double.PositiveInfinity);
         Size size = Measured(popup);
-        Size room = onto.Bounds.Size;
+        Rect room = HeldIn(editor, onto);
         double lineHeight = editor.LineHeight;
         double below = at.Y + lineHeight + 2;
         double over = at.Y - size.Height - 2;
-        if (popup is IGivesWayInHeight lowered && over < 0 && below + size.Height > room.Height)
+        if (popup is IGivesWayInHeight lowered && over < room.Top && below + size.Height > room.Bottom)
         {
-            lowered.WithinHeight(Math.Max(room.Height - below, at.Y - 2));
+            lowered.WithinHeight(Math.Max(room.Bottom - below, at.Y - 2 - room.Top));
             size = Measured(popup);
             over = at.Y - size.Height - 2;
         }
-        double x = Math.Clamp(at.X - 4, 0, Math.Max(0, room.Width - size.Width - RightEdge));
-        double y = above ? (over >= 0 ? over : below) : (below + size.Height <= room.Height || over < 0 ? below : over);
-        if (popup is IHeldToEditor && over < 0 && below + size.Height > room.Height)
+        bool fitsOver = over >= room.Top;
+        bool fitsUnder = below + size.Height <= room.Bottom;
+        double x = Math.Clamp(at.X - 4, room.Left, Math.Max(room.Left, room.Right - size.Width - RightEdge));
+        double y = above ? (fitsOver ? over : below) : (fitsUnder || !fitsOver ? below : over);
+        if (popup is IHeldToEditor && !fitsOver && !fitsUnder)
         {
-            y = Math.Clamp(room.Height - below >= at.Y ? below : over, 0, Math.Max(0, room.Height - size.Height));
+            y = Math.Clamp(room.Bottom - below >= at.Y - room.Top ? below : over, room.Top, Math.Max(room.Top, room.Bottom - size.Height));
         }
         Canvas.SetLeft(popup, x);
         Canvas.SetTop(popup, y);
         lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
+    }
+
+    /// <summary>Where a popup placed at a line of an editor is held, in the coordinates of the layer it is placed on: across
+    /// the layer, and down only the editor's own rows, never over the bars above it (its group's tabs, the navigation bar,
+    /// a banner, Find) nor below it; the whole layer where the editor is not under it.</summary>
+    private static Rect HeldIn(Passenger.Editor.CodeEditor editor, Canvas onto)
+    {
+        Rect whole = new(onto.Bounds.Size);
+        if (editor.TranslatePoint(default, onto) is not { } top)
+        {
+            return whole;
+        }
+        double from = Math.Clamp(top.Y, 0, whole.Height);
+        return new Rect(0, from, whole.Width, Math.Clamp(top.Y + editor.Bounds.Height, from, whole.Height) - from);
     }
 
     /// <summary>The size a popup takes as it is now held, measured again.</summary>
@@ -207,7 +223,7 @@ internal sealed class PopupPlacement
             beside.Measure(Size.Infinity);
         }
         Size popup = beside.Bounds.Width > 0 ? beside.Bounds.Size : beside.DesiredSize;
-        Rect room = new Rect(layer.Bounds.Size).Deflate(Edge);
+        Rect room = HeldIn(Editor, layer).Deflate(Edge);
         double left = Canvas.GetLeft(beside);
         double top = Canvas.GetTop(beside);
         double toRight = room.Right - (left + popup.Width + Gap);

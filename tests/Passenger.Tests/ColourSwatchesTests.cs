@@ -15,7 +15,8 @@ namespace Passenger.Tests;
 
 /// <summary>A C# colour's swatch picked while its file changes: the colour chosen is written where the call is as the
 /// file now stands, a line an agent added above it kept, and refused, writing nothing, where the call's own text was
-/// changed meanwhile; and picked in an editor at the window's smallest width, where the picker shows whole.</summary>
+/// changed meanwhile; and picked in an editor at the window's smallest, where the picker shows whole under its line, or
+/// over it below the navigation bar.</summary>
 public sealed class ColourSwatchesTests : IDisposable
 {
     private const string Palette = "class Palette\n{\n    static object Brand = Avalonia.Media.Color.FromRgb(0x33, 0x66, 0x99);\n}\n";
@@ -89,6 +90,35 @@ public sealed class ColourSwatchesTests : IDisposable
         Ui.Settle();
         string now = editor.Document.Snapshot.ToString();
         Assert.True(now.Contains("FromRgb(170, 0, 0)", StringComparison.Ordinal), $"Choose in the narrowed picker did not write the colour typed ({window.Status}):\n{now}");
+        window.Close();
+    }
+
+    /// <summary>A popup placed over its line keeps below the bars over the editor: in a window at its smallest, a swatch low
+    /// in the editor, with too little room under it, opens the picker over its line, lowered to the room between the
+    /// navigation bar's foot and the line, so it covers neither the bar nor the tabs nor the line, and shows whole.</summary>
+    [AvaloniaFact]
+    public void A_picker_over_its_line_keeps_below_the_navigation_bar_lowered_to_the_room_there()
+    {
+        string low = TestFolders.Write(folder, "Low.cs", "class Low\n{\n" + new string('\n', 11) + "    static object Shade = Avalonia.Media.Color.FromRgb(0x11, 0x22, 0x33);\n}\n");
+        (MainWindow window, CodeEditor editor) = Open(MainWindow.SmallestWidth, MainWindow.SmallestHeight);
+        window.OpenFile(low);
+        OpenDocument shown = window.EditorArea.Active!;
+        Ui.WaitFor(() => shown.ColourMarks.Any(m => m.Line == 13), "the swatch of Low's colour");
+        NavigationBar bar = window.EditorArea.ActiveGroup.Navigation;
+        Ui.WaitFor(() => bar.Bar.IsVisible, () => $"the navigation bar over the editor, naming {string.Join(" › ", bar.Shown)}");
+        Ui.Click(editor, editor.GutterColumnPoint(editor.Gutter!.Marks, 13));
+        Assert.Equal("#112233", window.PickingColour);
+        Ui.Settle();
+        Passenger.App.Xaml.ColourPicker picker = window.GetVisualDescendants().OfType<Passenger.App.Xaml.ColourPicker>().Single(p => p.IsEffectivelyVisible);
+        Rect at = In(window, picker);
+        Rect barAt = In(window, bar.Bar);
+        double line = editor.TranslatePoint(new Point(0, editor.PointOf(editor.Document.Snapshot.GetLineStart(13)).Y), window)!.Value.Y;
+        Assert.True(at.Bottom <= line + 0.5, $"The picker at {at} was to stand over the swatch's line, whose top is at {line}, the room under it too short");
+        Assert.True(at.Y >= barAt.Bottom - 0.5, $"The picker at {at} covers the navigation bar at {barAt}, over the editor it was to keep to");
+        Assert.True(CodeAssistTests.Layer(window).Inflate(0.5).Contains(at), $"The picker at {at} runs past the editor's edge");
+        Button[] answers = [.. picker.GetVisualDescendants().OfType<Button>().Where(b => b.Content is "Choose" or "Cancel")];
+        Assert.True(answers.Length == 2 && answers.All(b => at.Contains(In(window, b))),
+            $"The picker at {at}, lowered, cuts its answers: {string.Join(", ", answers.Select(b => $"{b.Content} at {In(window, b)}"))}");
         window.Close();
     }
 

@@ -342,15 +342,16 @@ internal sealed class QuickInfo
     private void PlaceValues(Debugging.VariablesList values, Point at)
     {
         at = popups.InLayer(at);
-        double below = popups.Room.Height - (at.Y + Editor.LineHeight + 2) - 8;
-        double over = at.Y - 2 - 8;
+        Rect held = popups.Held;
+        double below = held.Bottom - (at.Y + Editor.LineHeight + 2) - 8;
+        double over = at.Y - held.Top - 2 - 8;
         bool above = below < ListRow.Height * 8 && over > below;
-        hoverCard.AddValues(values, above ? over : below);
+        hoverCard.AddValues(values, above ? over : below, held.Height);
         hoverCard.Within(popups.Widest);
         valuesPlace = (at, above);
         hoverCard.Measure(Size.Infinity);
         Size size = hoverCard.DesiredSize;
-        Avalonia.Controls.Canvas.SetLeft(hoverCard, Math.Clamp(at.X - 4, 0, Math.Max(0, popups.Room.Width - size.Width - 8)));
+        Avalonia.Controls.Canvas.SetLeft(hoverCard, Math.Clamp(at.X - 4, held.Left, Math.Max(held.Left, held.Right - size.Width - 8)));
         Avalonia.Controls.Canvas.SetTop(hoverCard, ValuesTop(at, above, size.Height));
     }
 
@@ -362,7 +363,8 @@ internal sealed class QuickInfo
             return;
         }
         Size size = hoverCard.Bounds.Size;
-        double x = Math.Clamp(Avalonia.Controls.Canvas.GetLeft(hoverCard), 0, Math.Max(0, popups.Room.Width - size.Width - 8));
+        Rect held = popups.Held;
+        double x = Math.Clamp(Avalonia.Controls.Canvas.GetLeft(hoverCard), held.Left, Math.Max(held.Left, held.Right - size.Width - 8));
         if (x != Avalonia.Controls.Canvas.GetLeft(hoverCard))
         {
             Avalonia.Controls.Canvas.SetLeft(hoverCard, x);
@@ -377,8 +379,8 @@ internal sealed class QuickInfo
     /// <summary>Where a card of a value's rows stands, over or under the line whose top is <paramref name="line"/>: in an
     /// editor too short for its least rows, moved in to end at its edge, over some of the line.</summary>
     private double ValuesTop(Point line, bool above, double height) => above
-        ? Math.Max(0, line.Y - height - 2)
-        : Math.Max(0, Math.Min(line.Y + Editor.LineHeight + 2, popups.Room.Height - height));
+        ? Math.Max(popups.Held.Top, line.Y - height - 2)
+        : Math.Max(popups.Held.Top, Math.Min(line.Y + Editor.LineHeight + 2, popups.Held.Bottom - height));
 
     /// <summary>The pointer left a card of a value, or its word, or the keys left the card: it goes after a pause unless
     /// the pointer comes back to it or it is in use.</summary>
