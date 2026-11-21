@@ -291,7 +291,8 @@ public sealed class ExplorerFilesTests : IDisposable
         {
             released.TrySetResult();
         }
-        Assert.Null(Ui.Await(renaming, "the rename"));
+        string? refused = Ui.Await(renaming, "the rename");
+        Assert.True(refused is null, $"Lib's rename was refused once the walk of its build output had ended: {refused}{Holders(window, lib)}");
         Assert.True(File.Exists(Path.Combine(folder, "Core", "Lib.csproj")), $"Lib's rename did not take it to Core: {window.Status}");
         window.Close();
     }
