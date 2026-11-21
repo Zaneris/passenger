@@ -112,8 +112,7 @@ public sealed class AttachToProcessDialog : IdeWindow
 
         rows = new ListBox { Classes = { StyleClasses.Tree } };
         ReusedRows.Use(rows, Row);
-        // A heading is never chosen; a container shows a heading and a program in turn as the list is filled again.
-        rows.ContainerPrepared += (_, e) => e.Container.IsEnabled = e.Container.DataContext is not AttachRow { Process: null };
+        ListRow.Headings(rows, item => item is AttachRow { Process: null });
         ListKeys.Act(rows, new ListActs { Open = Attach, Keys = e => ListKeys.Move(rows, e, i => Rows[i].Process is not null) });
         rows.SelectionChanged += (_, _) => attach!.IsEnabled = Chosen is { WhyNot: null };
         empty = new EmptyState { Text = "Looking for .NET processes…" };
@@ -299,10 +298,7 @@ public sealed class AttachToProcessDialog : IdeWindow
     /// and in its tip).</summary>
     private static Control Row()
     {
-        TextBlock heading = new()
-        {
-            Classes = { StyleClasses.Muted, StyleClasses.Caption, StyleClasses.Strong }, Margin = new Thickness(Gaps.Tight, Gaps.Small, 0, Gaps.Hair), TextWrapping = TextWrapping.Wrap,
-        };
+        TextBlock heading = ListRow.Heading();
         TextBlock name = Cell(0, muted: false);
         TextBlock id = Cell(1, muted: false);
         TextBlock user = Cell(2, muted: true);

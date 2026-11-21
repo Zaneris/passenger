@@ -23,6 +23,9 @@ public sealed class StateStore
     /// <summary>The settings' file at the store's top.</summary>
     public const string SettingsFile = "settings.json";
 
+    /// <summary>The file of the templates New Solution and New Project made something from lately (<see cref="Templates"/>).</summary>
+    public const string TemplatesFile = "recentTemplates.json";
+
     /// <summary>The stores open in this process by their folder, each shared by the windows keeping their state there. UI
     /// thread only.</summary>
     private static readonly Dictionary<string, StateStore> Shared = new(StringComparer.Ordinal);
@@ -47,6 +50,7 @@ public sealed class StateStore
         LiveTree = new(Path.Combine(root, "liveTree.json"));
         Dotnet = new(Path.Combine(root, "dotnet.json"));
         Trust = new(Path.Combine(root, "trust.json"));
+        Templates = new(Path.Combine(root, TemplatesFile));
         // Before this process writes any: a change is written a moment after it is made, and only through this store.
         UsedBefore = new[] { Path.Combine(root, SettingsFile), Layout.Path, Recent.Path, Updates.Path }.Any(File.Exists)
             || Directory.Exists(Path.Combine(root, "workspaces"));
@@ -163,6 +167,9 @@ public sealed class StateStore
     /// <summary>The folders the person trusted, and those they opened without trusting.</summary>
     public StateDocument<TrustState> Trust { get; }
 
+    /// <summary>The templates New Solution and New Project made something from lately, which their lists show first.</summary>
+    public StateDocument<Passenger.App.Templates.RecentTemplatesState> Templates { get; }
+
     /// <summary>A folder's own documents, held for a window that has the folder open or is opening it until it lets them go
     /// (<see cref="LetGo"/>); every window holding the folder shares them.</summary>
     public ProjectState Hold(string folder)
@@ -208,6 +215,7 @@ public sealed class StateStore
         LiveTree.Flush();
         Dotnet.Flush();
         Trust.Flush();
+        Templates.Flush();
         foreach ((ProjectState documents, _) in projects.Values)
         {
             documents.Flush();

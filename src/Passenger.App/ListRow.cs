@@ -34,6 +34,21 @@ public static class ListRow
         [DockPanel.DockProperty] = Dock.Right,
     };
 
+    /// <summary>The heading over a group of a list's rows (Recent, Other processes) as every list draws it: muted strong
+    /// words at the caption's size, a small step above them and a hair below, wrapping where the list is narrow.</summary>
+    public static TextBlock Heading() => new()
+    {
+        Classes = { StyleClasses.Muted, StyleClasses.Caption, StyleClasses.Strong },
+        Margin = new Thickness(Gaps.Tight, Gaps.Small, 0, Gaps.Hair),
+        TextWrapping = TextWrapping.Wrap,
+    };
+
+    /// <summary>Has a list's heading rows never chosen, by the pointer or the list's own keys: each container showing an item
+    /// <paramref name="isHeading"/> takes for one is disabled, and enabled again as it shows another. Keys moving the choice
+    /// from a field pass over them through <see cref="ListKeys.Move"/>.</summary>
+    public static void Headings(ListBox list, Func<object?, bool> isHeading) =>
+        list.ContainerPrepared += (_, e) => e.Container.IsEnabled = !isHeading(e.Container.DataContext);
+
     /// <summary>The room above and below a list's rows inside a popup of its own.</summary>
     public static readonly Thickness PopupList = new(0, Gaps.Tight);
 

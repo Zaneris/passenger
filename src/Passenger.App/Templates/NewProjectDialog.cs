@@ -19,6 +19,10 @@ namespace Passenger.App.Templates;
 /// AppHost's name, null for none.</summary>
 public sealed record ProjectTarget(string Solution, string? Folder, IReadOnlyList<string> Projects, string? AppHost = null);
 
+/// <summary>A row of New Project's list: the heading over a group (Recent, All templates), a family, or under Recent one of
+/// a family's Types something was made from lately.</summary>
+public sealed record TemplateRow(string? Heading, TemplateFamily? Family = null, ProjectTemplate? Recent = null);
+
 /// <summary>What Create made, canonical: New Solution's solution (null for Add New Project's), the projects, the folder it
 /// made them in, and how the first is to run, set up once it is open.</summary>
 public sealed record CreatedProjects(string? Solution, IReadOnlyList<string> Projects, string Folder, ProjectSetup Setup)
@@ -144,6 +148,9 @@ public sealed class NewProjectDialog : IdeWindow
     private TemplateCatalog? catalog;
     private IReadOnlyList<TemplateFamily> families = [];
     private IReadOnlyList<TemplateFamily> listed = [];
+
+    /// <summary>The list's rows as shown: Recent's and its heading where there are any, then the families listed.</summary>
+    private IReadOnlyList<TemplateRow> rows = [];
     private TemplateFamily? family;
     private ProjectTemplate? template;
 
@@ -182,8 +189,10 @@ public sealed class NewProjectDialog : IdeWindow
     /// <param name="target">The solution a project is added to; null for New Solution.</param>
     /// <param name="containers">Why no container can be set up here, asked off the window's thread; null for no question.</param>
     /// <param name="godot">The Godot Settings names for a Godot game, its command line; null for the one found.</param>
-    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null, string? godot = null)
+    /// <param name="recent">The templates something was made from lately, the newest first (<see cref="Recent"/>).</param>
+    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null, string? godot = null, IReadOnlyList<string>? recent = null)
     {
+        Recent = recent ?? [];
         followFolder = new Passenger.Editor.Debounce(TimeSpan.FromMilliseconds(400), FollowFolderAsync);
         godotFound = BackgroundWork.Run(() => GodotLaunch.Found(godot));
         runtimes = BackgroundWork.Run(() => DotnetMachine.Read().Installation?.Runtimes ?? []);
@@ -205,15 +214,16 @@ public sealed class NewProjectDialog : IdeWindow
             Padding = new Thickness(Gaps.Normal, 0),
         };
         ReusedRows.Use(list, Item);
+        ListRow.Headings(list, item => item is TemplateRow { Heading: not null });
         list.SelectionChanged += (_, _) =>
         {
-            if (!setting && list.SelectedItem is TemplateFamily chosen)
+            if (!setting && list.SelectedItem is TemplateRow { Family: { } chosen } row)
             {
-                ChooseFamily(chosen, named.GetValueOrDefault(chosen.Name));
+                ChooseFamily(chosen, row.Recent ?? named.GetValueOrDefault(chosen.Name));
             }
         };
         search.TextChanged += (_, _) => Filter(searched: true);
-        ListKeys.Search(search, list);
+        ListKeys.Search(search, list, choosable: i => rows[i].Heading is null);
         loading = new TextBlock { Classes = { StyleClasses.Muted }, Text = "Loading templates…", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(Gaps.Wide) };
         DockPanel leftPanel = new();
         search.Margin = new Thickness(Gaps.Normal, Gaps.Normal, Gaps.Normal, Gaps.Small);
@@ -397,6 +407,16 @@ public sealed class NewProjectDialog : IdeWindow
     /// <summary>The families listed, those the search finds.</summary>
     public IReadOnlyList<TemplateFamily> Listed => listed;
 
+    /// <summary>The templates something was made from lately, by the name each is known by (<see cref="KnownBy"/>), the
+    /// newest first: what the list shows under Recent, as the search finds them.</summary>
+    public IReadOnlyList<string> Recent { get; }
+
+    /// <summary>The list's rows as shown, headings and all.</summary>
+    public IReadOnlyList<TemplateRow> Rows => rows;
+
+    /// <summary>The list's row chosen: a family's, or one under Recent; null for none.</summary>
+    public TemplateRow? ChosenRow => list.SelectedItem as TemplateRow;
+
     /// <summary>Every template the dialog offers, family by family: those installed, and the known packages' kinds dotnet
     /// new has not got (<see cref="ProjectTemplate.Pack"/>).</summary>
     public IReadOnlyList<ProjectTemplate> Templates => [.. families.SelectMany(f => f.Types)];
@@ -408,9 +428,13 @@ public sealed class NewProjectDialog : IdeWindow
     public ProjectTemplate? Chosen => template;
 
     /// <summary>The list's row for a family, by its name, for a click on it; null when it is not listed.</summary>
-    public Control? FamilyRow(string name)
+    public Control? FamilyRow(string name) => RowAt(rows.ToList().FindIndex(r => r.Recent is null && r.Family?.Name == name));
+
+    /// <summary>The list's row under Recent for a template, by its name, for a click on it; null when it is not listed.</summary>
+    public Control? RecentRow(string name) => RowAt(rows.ToList().FindIndex(r => r.Recent?.Name == name));
+
+    private Control? RowAt(int at)
     {
-        int at = listed.ToList().FindIndex(f => f.Name == name);
         if (at < 0)
         {
             return null;
@@ -1281,8 +1305,9 @@ public sealed class NewProjectDialog : IdeWindow
         Filter(searched: false);
     }
 
-    /// <summary>Lists the families the search finds. A search typed opens the family chosen, or else the first found, on
-    /// the Type it names; a read shown keeps the Type chosen, else its family, else takes the first.</summary>
+    /// <summary>Lists the families the search finds, under Recent the templates made from lately that it finds. A search
+    /// typed opens the family chosen, or else the first row found, on the Type it names; a read shown keeps the Type
+    /// chosen, else its family, else takes the first row, the newest of Recent where it has any.</summary>
     private void Filter(bool searched)
     {
         string[] words = Query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -1301,18 +1326,32 @@ public sealed class NewProjectDialog : IdeWindow
             }
         }
         listed = found;
-        string? key = lastChosen is null ? null : KnownBy(lastChosen);
-        int at = searched || key is null ? -1 : found.FindIndex(f => f.Types.Any(t => KnownBy(t) == key));
-        if (at < 0 && lastChosen is not null)
+        List<TemplateRow> shown = [];
+        if (RecentRows(words) is { Count: > 0 } recent)
         {
-            at = found.FindIndex(f => f.Name == lastChosen.Family);
+            shown.Add(new TemplateRow(RecentHeading));
+            shown.AddRange(recent);
+            shown.Add(new TemplateRow(AllHeading));
         }
-        if (at < 0 && found.Count > 0)
+        int first = shown.Count;
+        shown.AddRange(found.Select(f => new TemplateRow(null, f)));
+        string? key = lastChosen is null ? null : KnownBy(lastChosen);
+        // A read shown keeps a row of Recent chosen as that row, rather than its family's.
+        int at = !searched && key is not null && (list.SelectedItem as TemplateRow)?.Recent is { } recentWas && KnownBy(recentWas) == key
+            ? shown.FindIndex(r => r.Recent is { } type && KnownBy(type) == key)
+            : -1;
+        if (at < 0)
         {
-            at = 0;
+            at = searched || key is null ? -1 : found.FindIndex(f => f.Types.Any(t => KnownBy(t) == key));
+            if (at < 0 && lastChosen is not null)
+            {
+                at = found.FindIndex(f => f.Name == lastChosen.Family);
+            }
+            at = at >= 0 ? first + at : found.Count > 0 ? shown.FindIndex(r => r.Family is not null) : -1;
         }
         setting = true;
-        list.ItemsSource = found;
+        rows = shown;
+        list.ItemsSource = shown;
         list.SelectedIndex = at;
         setting = false;
         if (catalog is not null)
@@ -1325,10 +1364,30 @@ public sealed class NewProjectDialog : IdeWindow
             ChooseFamily(null, null);
             return;
         }
-        TemplateFamily chosen = found[at];
+        TemplateFamily chosen = shown[at].Family!;
         ProjectTemplate? kept = key is null ? null : chosen.Types.FirstOrDefault(t => KnownBy(t) == key);
-        ChooseFamily(chosen, searched ? named.GetValueOrDefault(chosen.Name) ?? kept : kept);
+        ChooseFamily(chosen, shown[at].Recent ?? (searched ? named.GetValueOrDefault(chosen.Name) ?? kept : kept));
         list.ScrollIntoView(at);
+    }
+
+    private const string RecentHeading = "Recent";
+
+    private const string AllHeading = "All templates";
+
+    /// <summary>The rows under Recent: each template made from lately that the dialog offers and the search finds (by its
+    /// family's name or its own names), in its family, the newest first.</summary>
+    private List<TemplateRow> RecentRows(IReadOnlyList<string> words)
+    {
+        List<TemplateRow> found = [];
+        foreach (string key in Recent)
+        {
+            if (families.SelectMany(f => f.Types.Where(t => KnownBy(t) == key).Select(t => new TemplateRow(null, f, t))).FirstOrDefault() is { Family: { } family, Recent: { } type } row
+                && new TemplateFamily(family.Name, [type]).Matches(words, out _))
+            {
+                found.Add(row);
+            }
+        }
+        return found;
     }
 
     /// <summary>A family chosen, on a Type: the one given, else the one last chosen in it, else its first; the chooser
@@ -1354,7 +1413,7 @@ public sealed class NewProjectDialog : IdeWindow
     }
 
     /// <summary>What a Type is known by across reads: its short name, which a package's kind keeps once installed.</summary>
-    private static string KnownBy(ProjectTemplate type) => type.ShortName.ToLowerInvariant();
+    internal static string KnownBy(ProjectTemplate type) => type.ShortName.ToLowerInvariant();
 
     /// <summary>A Type chosen: its names (unless the person typed their own), languages (the one chosen kept where it has
     /// it), frameworks and options, or for one not installed, the offer of its package.</summary>
@@ -1661,20 +1720,36 @@ public sealed class NewProjectDialog : IdeWindow
         }
     }
 
-    /// <summary>A row for whichever family the list hands its container: its name, its Types on hover, and "Not installed"
-    /// for one none of whose Types is, or "Windows only" for one whose every Type's app runs only on Windows.</summary>
+    /// <summary>A row for whichever row the list hands its container: a group's heading; a family's name, its Types on hover,
+    /// and "Not installed" for one none of whose Types is, or "Windows only" for one whose every Type's app runs only on
+    /// Windows; or under Recent a template's own name, marked so for itself.</summary>
     private static Control Item()
     {
         (DockPanel named, TextBlock name, TextBlock mark) = TemplateList.Named();
         Border item = TemplateList.Row(named);
-        return item.Showing<TemplateFamily>(row =>
+        TextBlock heading = ListRow.Heading();
+        Panel shown = new() { Children = { heading, item } };
+        return shown.Showing<TemplateRow>(each =>
         {
-            string types = row.Types.Count > 1 ? $": {string.Join(", ", row.Types.Select(t => t.TypeName))}" : row.Name == row.Types[0].Name ? string.Empty : $": {row.Types[0].Name}";
-            bool windows = row.Types.All(t => t.WindowsOnly is not null);
-            ToolTip.SetTip(item, row.NotInstalled ? $"{row.Name}{types}, from {row.Types[0].Pack!.Named}, which is not installed"
-                : windows ? $"{row.Name}{types}: they build here but run only on Windows" : $"{row.Name}{types}");
-            name.Text = row.Name;
-            Mark(mark, row.NotInstalled ? NotInstalled : windows ? WindowsOnly : null);
+            heading.IsVisible = each.Heading is not null;
+            item.IsVisible = each.Family is not null;
+            heading.Text = each.Heading;
+            if (each is { Family: { } row, Recent: { } type })
+            {
+                ToolTip.SetTip(item, type.Pack is not null ? $"{type.Name}, from {type.Pack.Named}, which is not installed" : $"{row.Name}: {type.Name}");
+                name.Text = type.Name;
+                Mark(mark, type.Pack is not null ? NotInstalled : type.WindowsOnly is not null ? WindowsOnly : null);
+            }
+            else if (each.Family is { } family)
+            {
+                string types = family.Types.Count > 1 ? $": {string.Join(", ", family.Types.Select(t => t.TypeName))}"
+                    : family.Name == family.Types[0].Name ? string.Empty : $": {family.Types[0].Name}";
+                bool windows = family.Types.All(t => t.WindowsOnly is not null);
+                ToolTip.SetTip(item, family.NotInstalled ? $"{family.Name}{types}, from {family.Types[0].Pack!.Named}, which is not installed"
+                    : windows ? $"{family.Name}{types}: they build here but run only on Windows" : $"{family.Name}{types}");
+                name.Text = family.Name;
+                Mark(mark, family.NotInstalled ? NotInstalled : windows ? WindowsOnly : null);
+            }
         });
     }
 

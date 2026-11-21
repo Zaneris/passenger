@@ -47,9 +47,13 @@ public partial class MainWindow
     /// <summary>New Solution: the dialog over this window, and the solution opened, built, once it is made.</summary>
     public NewProjectDialog ShowNewSolution()
     {
-        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync };
+        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable, RecentTemplates())
+        {
+            Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync,
+        };
         dialog.Closed += (_, _) =>
         {
+            KeepTemplate(dialog);
             // What Passenger made is the person's own code, opened trusted, but in a Git repository only the person trusts.
             if (dialog.Created is { } created && (created.Solution is not null || created.Game)
                 && PathNames.Canonical(created.Solution is { } named ? Path.GetDirectoryName(named)! : created.Folder) is { } own
@@ -71,6 +75,23 @@ public partial class MainWindow
         return dialog;
     }
 
+    /// <summary>The templates New Solution and New Project made something from lately, the newest first: those the person's
+    /// window keeps, or in a window nobody sees those kept where PASSENGER_SETTINGS names, read as its settings are there,
+    /// keeping nothing; none in any other.</summary>
+    private IReadOnlyList<string> RecentTemplates() => keepsWorkspace ? state!.Templates.Value.Newest()
+        : Unseen && State.StateStore.Named is { } named
+        ? new State.StateDocument<RecentTemplatesState>(Path.Combine(named, State.StateStore.TemplatesFile)).KeptNow()?.Newest() ?? []
+        : [];
+
+    /// <summary>Keeps the template a dialog made something from among the recent ones, in the person's window.</summary>
+    private void KeepTemplate(NewProjectDialog dialog)
+    {
+        if (keepsWorkspace && dialog.Created is not null && dialog.Chosen is { } made)
+        {
+            state!.Templates.Set(state.Templates.Value.Made(NewProjectDialog.KnownBy(made), DateTimeOffset.UtcNow));
+        }
+    }
+
     /// <summary>New Project's Install of a workload, the person's ask: the window's one install of workloads, asking nothing more.</summary>
     public Task<(bool Installed, string Said, string? ToRun)> InstallAskedWorkloadsAsync(IReadOnlyList<string> ids, Action<string> stages, Action<string> lines, CancellationToken stop) =>
         InstallWorkloadsAsync(ids, asks: false, stages, lines, stop);
@@ -86,9 +107,13 @@ public partial class MainWindow
         }
         ProjectTarget target = new(solution.Path, into, [.. solution.Projects.Select(p => Path.GetFileNameWithoutExtension(p.Path))],
             Projects.FirstOrDefault(p => p.Exists && p.IsAspireHost)?.Name);
-        NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target, ContainersWhyNot(), settings.GodotExecutable) { Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync };
+        NewProjectDialog dialog = new(ProjectFolderFor(solution, into), target, ContainersWhyNot(), settings.GodotExecutable, RecentTemplates())
+        {
+            Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync,
+        };
         dialog.Closed += (_, _) =>
         {
+            KeepTemplate(dialog);
             if (dialog.Created is { } made && Solution?.Path == solution.Path)
             {
                 Task<string?> adding = AddMadeAsync(made);

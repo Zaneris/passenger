@@ -114,6 +114,61 @@ public sealed class TemplateFamiliesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The templates something was made from lately stand under Recent, the newest first, over every family under
+    /// All templates: New Solution opens on the newest, the keys pass over the headings, the search finds a recent one by
+    /// its family's name or its own, one chosen there opens its family on its Type, and the template Create makes from
+    /// comes first under Recent the next time.</summary>
+    [AvaloniaFact]
+    public void The_templates_made_from_lately_stand_under_Recent_the_newest_first_and_the_last_made_comes_first()
+    {
+        using IDisposable theme = TestsTheme();
+        AvaloniaApp.UseFeed(place);
+        File.WriteAllText(Path.Combine(settings, "recentTemplates.json"),
+            """{"version": 1, "used": {"xunit": "2026-01-01T00:00:00+00:00", "console": "2026-01-02T00:00:00+00:00"}}""");
+        MainWindow window = Started();
+        // Read ahead, so the dialog chooses a row before its own read of the templates lists them again.
+        Ui.WaitFor(() => ProjectTemplates.Ready(place) is not null, "the templates to be read ahead of New Solution", TimeSpan.FromMinutes(2));
+        Ui.Click(window.Welcome.NewSolutionButton);
+        NewProjectDialog dialog = Opened(window);
+        dialog.Folder = place;
+        Assert.Equal(["Recent", "Console App", "xUnit Test Project", "All templates", "Console"], dialog.Rows.Take(5).Select(Said));
+        Assert.True(dialog.ChosenRow == dialog.Rows[1] && dialog.Chosen is { ShortName: "console" } && dialog.Family?.Name == "Console",
+            $"New Solution opened on {(dialog.ChosenRow is { } row ? Said(row) : "nothing")}, not the newest made from under Recent");
+
+        Ui.Click(dialog.SearchBox);
+        Press(dialog, Key.Down);
+        Assert.True(dialog.ChosenRow == dialog.Rows[2] && dialog.Chosen?.ShortName == "xunit", $"Down chose {dialog.Chosen?.Name}, not Recent's xUnit");
+        Assert.Equal(["xUnit", "NUnit", "MSTest"], dialog.TypeNames.Take(3));
+        Press(dialog, Key.Down);
+        Assert.True(dialog.ChosenRow == dialog.Rows[4] && dialog.Chosen?.ShortName == "console" && dialog.Family?.Name == "Console",
+            $"Down from Recent's last chose {(dialog.ChosenRow is { } past ? Said(past) : "nothing")}, not past the All templates heading to the Console family");
+        Press(dialog, Key.Up);
+        Assert.True(dialog.ChosenRow == dialog.Rows[2], $"Up from the Console family chose {(dialog.ChosenRow is { } back ? Said(back) : "nothing")}, not past the heading back to Recent's xUnit");
+
+        Search(dialog, "test");
+        Assert.Equal(["Recent", "xUnit Test Project", "All templates"], dialog.Rows.Take(3).Select(Said));
+        Assert.DoesNotContain(dialog.Rows, r => r.Recent?.ShortName == "console");
+        Search(dialog, string.Empty);
+
+        Ui.Click(dialog.FamilyRow("Class Library")!);
+        Assert.Equal("classlib", dialog.Chosen?.ShortName);
+        dialog.SolutionName = "Shelf";
+        Created(dialog, "the class library");
+
+        Ui.Run(window, AppActions.NewProject);
+        NewProjectDialog adding = Opened(window);
+        Assert.Equal(["Recent", "Class Library", "Console App", "xUnit Test Project", "All templates"], adding.Rows.Take(5).Select(Said));
+        Ui.Click(adding.RecentRow("xUnit Test Project")!);
+        Assert.True(adding.Chosen?.ShortName == "xunit" && adding.Family?.Name == "Unit Test", $"Recent's xUnit opened {adding.Family?.Name}, {adding.Chosen?.Name}");
+        // The list's own keys, the row clicked having them, pass over the heading too.
+        Press(adding, Key.Down);
+        Assert.True(adding.ChosenRow is { Recent: null, Family.Name: "Console" }, $"Down in the list from Recent's last chose {(adding.ChosenRow is { } next ? Said(next) : "nothing")}");
+        adding.Close();
+        window.Close();
+
+        static string Said(TemplateRow row) => row.Heading ?? row.Recent?.Name ?? row.Family!.Name;
+    }
+
     [AvaloniaFact]
     public void Unit_Test_shows_each_frameworks_options_keeps_a_value_set_where_the_next_Type_has_it_and_makes_that_kind_of_project()
     {
