@@ -495,9 +495,10 @@ public class VimTests
         Assert.Equal(after, Run(before, keys));
 
     /// <summary>is and as over a longer stretch go as Vim's do: back, a sentence or the white before it at a time, from
-    /// the one before where the cursor begins its own, a line break alone being no white; as takes a white with the
-    /// sentence before it, and a sentence with the white before it where the cursor stood inside that sentence. On, onto
-    /// an empty line a sentence follows, but not onto the empty lines ending the text.</summary>
+    /// the one before where the cursor begins its own, a line break alone being no white, a run of empty lines stopping
+    /// only at its last; as takes a white with the sentence before it, and a sentence with the white before it where the
+    /// cursor stood inside that sentence or at the white after it. On, onto an empty line a sentence follows, and into the
+    /// empty lines ending the text but for the last.</summary>
     [Theory]
     [InlineData("x ab! Th|ree", "vh2isd", "x ab!|ee")]
     [InlineData("  x. T|hree! ", "vh2asd", "|ree! ")]
@@ -514,6 +515,16 @@ public class VimTests
     [InlineData("four\n\nx.  Thr|ee\n\nx?", "vasisd", "four\n\nx.|x?")]
     [InlineData("one.  x.  o|ne? x\n\none x.)", "v3isasd", "one.  x.  |one x.)")]
     [InlineData("Thr|ee\ntwo\n\n", "visisd", "|\n\n")]
+    [InlineData("|a b\n\n\n\n", "v$isisd", "|\n")]
+    [InlineData("|a. b.\n\n\n", "vlisisisd", "|\n")]
+    [InlineData("\n\n\naa b|b", "vkisisd", "\n\n|")]
+    [InlineData("\n\n\naa b|b", "vggisd", "\n\n|")]
+    [InlineData("\n\n\nfour| two", "vk3asasd", "\n\n|two")]
+    [InlineData("x. y.\n\n\nfour| two", "vkisisd", "x.|two")]
+    [InlineData("w. x. y.\n\n\n\naa b|b", "vkkisd", "w. x. y.\n\n\n|")]
+    [InlineData("w. x. y.\n\n\n\naa b|b", "vkk2isd", "w. x.| ")]
+    [InlineData("x. y. \n\n\naa b|b", "vkisd", "x.| ")]
+    [InlineData("one.  ab one \n\none four.|) ", "v0asisasd", "one.| ")]
     public void Sentences_carry_a_visual_stretch_as_vims_do(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 

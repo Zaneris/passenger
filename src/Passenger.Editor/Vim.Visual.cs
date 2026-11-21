@@ -726,9 +726,10 @@ public sealed partial class Vim
     }
 
     /// <summary>is and as in visual mode: the sentence at a single place; over a longer stretch its cursor carried to
-    /// the end of the sentences after it (onto an empty line where a sentence follows it), or back a sentence or the white
-    /// before it at a time from the one before where the cursor begins its own; as takes a white with the sentence before
-    /// it, and a sentence with the white before it where the cursor stood inside that sentence.</summary>
+    /// the end of the sentences after it (onto an empty line a sentence follows, short of the text's last empty line), or
+    /// back a sentence or the white before it at a time from the one before where the cursor begins its own, from an empty
+    /// line before the last of its run to that line first; as takes a white with the sentence before it, and a sentence
+    /// with the white before it where the cursor stood inside that sentence or at the white after it.</summary>
     private Region? SentencesOver(TextSnapshot text, Region r, bool inner, int n)
     {
         if (r.Anchor == r.Cursor)
@@ -737,20 +738,27 @@ public sealed partial class Vim
         }
         if (r.Cursor < r.Anchor)
         {
-            // A line break alone between two sentences is no white: each is a step of its own.
             int at = r.Cursor;
-            for (int left = n; left > 0 && at > 0; left--)
+            int left = n;
+            if (VimTextObjects.Of(text, at, "s", inner: true, 1, breakEnds) is { } run && run.Start > at && VimMotions.NextSentenceStart(text, run.Start) < text.Length)
+            {
+                // An empty line before the last of its run, a sentence following, steps on to that last line first.
+                at = run.Start;
+                left--;
+            }
+            // A line break alone between two sentences is no white: each is a step of its own.
+            for (; left > 0 && at > 0; left--)
             {
                 (int Start, bool White) here = SentenceUnit(text, at);
                 bool inside = here.Start < at;
                 (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
                 at = start;
-                if (!inner && (white || inside) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before && before.White != white)
+                if (!inner && (white || inside || here.White) && at > 0 && SentenceUnit(text, VimMotions.StepBack(text, at)) is var before && before.White != white)
                 {
                     at = before.Start;
                 }
             }
-            return at < r.Cursor ? r with { Cursor = at } : null;
+            return at != r.Cursor ? r with { Cursor = at } : null;
         }
         int after = CharEnd(text, r.Cursor);
         LineSpan line = VimMotions.LineOf(text, after);
@@ -763,22 +771,37 @@ public sealed partial class Vim
         {
             return null;
         }
-        // The empty lines ending the text are none to go to.
         VimSpan own = OwnLine(text, next);
-        if (own.End == own.Start)
+        if (own.End == own.Start && VimMotions.NextSentenceStart(text, own.Start) < text.Length)
         {
-            return VimMotions.NextSentenceStart(text, own.Start) < text.Length && own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
+            return own.Start > r.Cursor ? r with { Cursor = own.Start } : null;
         }
+        // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : null;
     }
 
     /// <summary>Where the sentence or the white between two that an offset is in begins, as is takes it there, and
-    /// whether it is the white (an empty line being a sentence).</summary>
+    /// whether it is the white (an empty line being a sentence, but one before the last of its run).</summary>
     private (int Start, bool White) SentenceUnit(TextSnapshot text, int offset)
     {
-        if (VimTextObjects.Of(text, offset, "s", inner: true, 1, breakEnds) is not { } unit || unit.Start > offset)
+        if (VimTextObjects.Of(text, offset, "s", inner: true, 1, breakEnds) is not { } unit)
         {
             return (offset, false);
+        }
+        if (unit.Start > offset)
+        {
+            // An empty line before the last of its run goes with the sentence before the run, the blanks ending its line too.
+            int line = text.GetLineFromOffset(offset);
+            while (line > 0 && VimMotions.Blank(text, line - 1))
+            {
+                line--;
+            }
+            if (line == 0)
+            {
+                return (0, false);
+            }
+            (int Start, bool White) before = SentenceUnit(text, VimMotions.StepBack(text, text.GetLineStart(line)));
+            return before.White && before.Start > 0 ? SentenceUnit(text, VimMotions.StepBack(text, before.Start)) : before;
         }
         bool white = VimMotions.LineOf(text, unit.Start).Length > 0;
         for (int p = unit.Start; p < unit.End && white; p++)
