@@ -12,6 +12,7 @@ using Passenger.App.Settings;
 using Passenger.App.Telemetry;
 using Passenger.App.ToolWindows;
 using Passenger.Editor;
+using Passenger.Terminal;
 
 namespace Passenger.Tests;
 
@@ -474,9 +475,13 @@ public sealed class KeymapChoiceTests : IDisposable
             Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
             Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the floating terminal");
             Ui.WaitFor(() => window.TerminalPanel.Active!.Screen.CursorColumn > 0, "the shell's prompt");
+            long prompted = CursorLine(window);
 
             Ui.Press(floating, "control J");
             Assert.True(floating.IsVisible && window.TerminalPanel.View.IsFocused, "Ctrl+J, pressed in the floating terminal, hid it rather than going to the shell");
+            // Typed before the shell's next prompt, the command is echoed ahead of it and its output follows the prompt.
+            Ui.WaitFor(() => CursorLine(window) > prompted && window.TerminalPanel.Active!.Screen.CursorColumn > 0,
+                "the shell's prompt a row lower, the empty line Ctrl+J entered read");
             floating.KeyTextInput("echo floated");
             Ui.Press(floating, "ENTER");
             Ui.WaitFor(() => window.TerminalPanel.Active!.Screen.ScreenText().Contains("\nfloated", StringComparison.Ordinal), "what was typed run in the floating terminal");
@@ -489,6 +494,13 @@ public sealed class KeymapChoiceTests : IDisposable
             window.ApplySettings(new AppSettings());
             window.Close();
         }
+    }
+
+    /// <summary>The line of the terminal's output the cursor stands on, counted from the first ever written.</summary>
+    private static long CursorLine(MainWindow window)
+    {
+        TerminalScreen screen = window.TerminalPanel.Active!.Screen;
+        return screen.ScreenTop + screen.CursorRow;
     }
 
     [AvaloniaFact]
