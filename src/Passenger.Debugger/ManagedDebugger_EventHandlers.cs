@@ -281,6 +281,7 @@ public partial class ManagedDebugger
             // Made with CoreLib, which loads before any stop.
             RuntimeAssemblyPrimitiveTypeClasses runtimeAssemblyPrimitiveTypeClasses = new RuntimeAssemblyPrimitiveTypeClasses(CorElementToValueClassMap, CorVoidClass, CorDecimalClass);
             _expressionEvaluator = new CilExpressionEvaluator(runtimeAssemblyPrimitiveTypeClasses, this);
+            _coreLibCame.TrySetResult();
         }
 
         OnModuleLoaded?.Invoke(modulePath, Path.GetFileName(modulePath), modulePath);

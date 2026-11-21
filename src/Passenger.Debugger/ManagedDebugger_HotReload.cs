@@ -68,6 +68,24 @@ public partial class ManagedDebugger
     /// <summary>Whether the program, running, is stopped for an update being made (<see cref="HoldForHotReload"/>).</summary>
     private bool _heldForHotReload;
 
+    /// <summary>Ends as the program's runtime loads its CoreLib, or the program ends.</summary>
+    private readonly TaskCompletionSource _coreLibCame = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Waits, up to <paramref name="limit"/>, for the program's runtime to load its CoreLib, which names the edits it
+    /// takes (<see cref="HotReloadCapabilities"/>): a program let go at its start loads it a moment after the attach. Ends
+    /// at once where it is loaded or the program has ended; past the limit, the capabilities are said unknown.</summary>
+    public async Task CoreLibLoadedAsync(TimeSpan limit)
+    {
+        try
+        {
+            await _coreLibCame.Task.WaitAsync(limit).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            _logger?.Invoke($"The program's runtime had not loaded its CoreLib {limit.TotalSeconds:0.#} s after an update asked what it takes");
+        }
+    }
+
     /// <summary>The edits the program's runtime can take, as its CoreLib names them (MetadataUpdater.GetCapabilities),
     /// or why they are unknown.</summary>
     public (IReadOnlyList<string>? Capabilities, string? Unknown) HotReloadCapabilities()

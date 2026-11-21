@@ -319,6 +319,7 @@ public partial class ManagedDebugger
         if (e is ExitProcessCorDebugManagedCallbackEventArgs)
         {
             _exited.Set();
+            _coreLibCame.TrySetResult();
         }
         else if (e is EvalCompleteCorDebugManagedCallbackEventArgs or EvalExceptionCorDebugManagedCallbackEventArgs)
         {

@@ -32,6 +32,10 @@ public sealed class DebugAdapter
     /// <summary>The longest the client may take to start a program in its terminal.</summary>
     private static readonly TimeSpan RunInTerminalLimit = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long a Hot Reload update waits for a program let go at its start to load its CoreLib, longer on a slower
+    /// machine as <see cref="Waits"/> says.</summary>
+    private static readonly TimeSpan CoreLibLimit = TimeSpan.FromSeconds(10);
+
     /// <summary>The engine's lock as configurationDone leaves it, held until its answer has been written.</summary>
     private IDisposable? configuring;
 
@@ -221,20 +225,25 @@ public sealed class DebugAdapter
             };
         });
         // Hot Reload: what the language's Edit and Continue needs of the program (a running one held for it), and its updates applied.
-        connection.Handle<HotReloadStateArguments, HotReloadStateResponse>(DapCommands.HotReloadState, async arguments => await Locked(() =>
+        connection.Handle<HotReloadStateArguments, HotReloadStateResponse>(DapCommands.HotReloadState, async arguments =>
         {
-            bool held = arguments.Hold == true && debugger.HoldForHotReload();
-            (IReadOnlyList<string>? capabilities, string? unknown) = debugger.HotReloadCapabilities();
-            return new HotReloadStateResponse
+            // Outside the engine's lock, which the CoreLib's load takes.
+            await debugger.CoreLibLoadedAsync(Waits.Of(CoreLibLimit));
+            return await Locked(() =>
             {
-                Held = held,
-                Capabilities = capabilities,
-                CapabilitiesUnknown = unknown,
-                Modules = [.. debugger.HotReloadModules().Select(m => new DapHotReloadModule(m.Mvid, m.Name, m.Path, m.Editable, m.WhyNot))],
-                ActiveStatements = [.. debugger.ActiveStatements().Select(s => new DapActiveStatement(s.Module, s.Token, s.Version, s.ILOffset, s.Document,
-                    s.StartLine, s.StartColumn, s.EndLine, s.EndColumn, s.Flags))],
-            };
-        }));
+                bool held = arguments.Hold == true && debugger.HoldForHotReload();
+                (IReadOnlyList<string>? capabilities, string? unknown) = debugger.HotReloadCapabilities();
+                return new HotReloadStateResponse
+                {
+                    Held = held,
+                    Capabilities = capabilities,
+                    CapabilitiesUnknown = unknown,
+                    Modules = [.. debugger.HotReloadModules().Select(m => new DapHotReloadModule(m.Mvid, m.Name, m.Path, m.Editable, m.WhyNot))],
+                    ActiveStatements = [.. debugger.ActiveStatements().Select(s => new DapActiveStatement(s.Module, s.Token, s.Version, s.ILOffset, s.Document,
+                        s.StartLine, s.StartColumn, s.EndLine, s.EndColumn, s.Flags))],
+                };
+            });
+        });
         connection.Handle<ApplyChangesArguments, ApplyChangesResponse>(DapCommands.ApplyChanges, async arguments =>
         {
             List<ModuleUpdate> updates = [.. arguments.Updates.Select(u => new ModuleUpdate(u.Module, u.Name, u.Metadata, u.IL, u.Pdb, u.UpdatedMethods, u.UpdatedTypes,

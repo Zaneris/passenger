@@ -211,6 +211,7 @@ public partial class ManagedDebugger
             if (callbackEvent is ExitProcessCorDebugManagedCallbackEventArgs)
             {
                 _exited.Set();
+                _coreLibCame.TrySetResult();
             }
             events.Add(callbackEvent);
         };
