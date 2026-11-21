@@ -399,6 +399,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.HotReloadOnSave);
         Add(Declared.XamlHotReloadOnSave);
         Add(Declared.RestartOnRudeEdit);
+        Add(Declared.WhenDebuggerStops);
         Add(Declared.ConsoleBufferKb);
         Add(Declared.Browser);
 

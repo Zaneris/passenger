@@ -389,6 +389,13 @@ public static class Declared
     public static readonly ToggleSetting RestartOnRudeEdit = new(s => s.RestartOnRudeEdit, (s, v) => s with { RestartOnRudeEdit = v },
         new(D.HotReloadPage, "Always restart for a change it cannot apply", "hot reload rude edit restart ask always never dotnet watch"));
 
+    public static readonly ChoiceSetting<DebuggerStop> WhenDebuggerStops = new(s => s.WhenDebuggerStops, (s, v) => s with { WhenDebuggerStops = v },
+        [(DebuggerStop.ComeForward, "Bring Passenger to the front"), (DebuggerStop.AskForAttention, "Ask for attention"), (DebuggerStop.Nothing, "Nothing")],
+        new(D.RunPage, "When the debugger stops", "debugger debug stop stopped breakpoint hit exception step paused front foreground activate focus raise bring window attention bounce dock taskbar flash",
+            "What a breakpoint, an exception or a step's end does while you are in another program, such as the app you debug: Passenger's window "
+            + $"comes to the front, or, where the system keeps that program in front, asks for your attention ({(OperatingSystem.IsMacOS() ? "its Dock icon bounces" : "its taskbar button flashes")}), "
+            + "as Ask for attention always does. An agent's debugging never brings the window forward."));
+
     public static readonly NumberSetting ConsoleBufferKb = new(s => s.ConsoleBufferKb, (s, v) => s with { ConsoleBufferKb = (int)v }, 16, 102_400, 64,
         new(D.RunPage, "Console buffer size", "console cycle buffer size output limit lines run debug build kb"), "KB");
 

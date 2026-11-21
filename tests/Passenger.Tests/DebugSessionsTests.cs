@@ -111,6 +111,49 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         }
     }
 
+    /// <summary>A stop the person's own resume or start comes to brings the window in front of the program they went to;
+    /// one an agent's resume comes to leaves the window where it is, asking nothing; and with When the debugger stops set to
+    /// Ask for attention, a stop asks for the person until the window is active, without bringing it forward.</summary>
+    [AvaloniaFact]
+    public void A_stop_the_person_set_going_brings_the_window_forward_and_an_agents_never_does()
+    {
+        MainWindow window = pair.Open(Counter, languageServer: false, seen: true);
+        AppSettings before = window.Settings;
+        try
+        {
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(Pair.Next, 8));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            DebugSession first = Debug(window, "First");
+
+            Ui.Leave(window);
+            Assert.True(window.Perform(AppActions.Resume), $"Resume could not run: {Ui.Said(window)}");
+            Ui.WaitFor(() => first is { State: DebugState.Paused, Stops: 2 }, $"the person's resume to stop at the breakpoint again (it is {first.State})");
+            Assert.True(window.IsActive, "The stop the person's resume came to left the window behind the program they went to");
+
+            Ui.Leave(window);
+            Assert.Null(window.Actions.RunForAgent(AppActions.Resume));
+            Ui.WaitFor(() => first is { State: DebugState.Paused, Stops: 3 }, $"the agent's resume to stop at the breakpoint again (it is {first.State})");
+            Assert.True(!window.IsActive && !window.AsksAttention,
+                $"The stop an agent's resume came to {(window.IsActive ? "brought the window forward" : "asked for the person")}, taking them from what they were in");
+
+            window.ApplySettings(window.Settings with { WhenDebuggerStops = DebuggerStop.AskForAttention });
+            DebugSession second = Debug(window, "Second");
+            Assert.True(!window.IsActive && window.AsksAttention,
+                $"With Ask for attention, the stop {(window.IsActive ? "brought the window forward" : "asked nothing of the person")}");
+            window.Activate();
+            Ui.Settle();
+            Assert.False(window.AsksAttention, "The window still asks for the person once they came to it");
+
+            Assert.True(window.Perform(AppActions.StopAll), $"Stop All could not run: {Ui.Said(window)}");
+            Ui.WaitFor(() => first.State == DebugState.Ended && second.State == DebugState.Ended, "every program to end");
+        }
+        finally
+        {
+            window.ApplySettings(before);
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void Additional_launches_with_the_same_name_keep_separate_native_tabs_and_capture_output_from_the_start()
     {

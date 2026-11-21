@@ -32,6 +32,9 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     public Func<HotReloadOutcome, Task<bool>>? RestartFor { get; set; }
 
     internal bool OpeningStopped { get; set; }
+
+    /// <summary>Which of its session's stops the debugger last told the window of (<see cref="DebugSession.Stops"/>).</summary>
+    internal int StopTold { get; set; }
     internal void OnProgramOutput(OutputEvent output) => ProgramOutput?.Invoke(this, output);
     internal void OnStateChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
 

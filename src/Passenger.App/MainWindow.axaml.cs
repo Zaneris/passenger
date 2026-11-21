@@ -727,6 +727,47 @@ public partial class MainWindow : IdeWindow
         ShowHotReloadButtons();
     }
 
+    /// <summary>A program the person debugs stopped: the window comes to the front or asks for them, as Settings says
+    /// (<see cref="AppSettings.WhenDebuggerStops"/>); never for an agent's debugging, nor where nobody sees the window.</summary>
+    private void FollowStop(Debugging.DebugSession stopped)
+    {
+        if (Unseen || AgentsOwn || stopped.AgentDrives || settings.WhenDebuggerStops == DebuggerStop.Nothing)
+        {
+            return;
+        }
+        CallPerson(forward: settings.WhenDebuggerStops == DebuggerStop.ComeForward);
+    }
+
+    /// <summary>The system's request for the person's attention to this window, until it is active (<see cref="Attention"/>);
+    /// null when none stands.</summary>
+    private IDisposable? asked;
+
+    /// <summary>Whether the window asks for the person's attention, until it is active.</summary>
+    public bool AsksAttention => asked is not null;
+
+    /// <summary>Calls the person to the window: brought in front of the rest with <paramref name="forward"/>, and where it
+    /// is still not active (macOS keeps another program in front) their attention asked for it until it is.</summary>
+    public void CallPerson(bool forward)
+    {
+        UiThread.Check();
+        if (forward)
+        {
+            PassengerApp.BringForward(this);
+        }
+        if (IsActive || asked is not null)
+        {
+            return;
+        }
+        asked = Attention.Ask(this);
+        void Came(object? sender, EventArgs e)
+        {
+            Activated -= Came;
+            asked?.Dispose();
+            asked = null;
+        }
+        Activated += Came;
+    }
+
     /// <summary>Opens a tool window in its place (one of <see cref="ToolWindowIds"/>).</summary>
     public void ShowToolWindow(string id) => Dock.Show(id);
 

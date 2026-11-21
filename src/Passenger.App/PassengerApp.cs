@@ -349,18 +349,7 @@ public static class PassengerApp
         IdeErrors.Write($"Launch: handed over for {launch.Workspace ?? launch.Folder ?? (launch.NewWindow ? "a new window" : "no folder")}"
             + $"{(launch.Files.Count > 0 ? $", {Plural.Listed(launch.Files)}" : string.Empty)}, taken by the window on {into.FolderHeld ?? "no folder"}");
         into.OnceOpen(() => into.TakeLaunch(launch.Files, launch.Caret));
-        BringForward(into);
-        if (!into.IsActive)
-        {
-            // Where the system keeps the program in front there (macOS's cooperative activation), the window asks for the person.
-            IDisposable asked = Attention.Ask(into);
-            void Came(object? sender, EventArgs e)
-            {
-                into.Activated -= Came;
-                asked.Dispose();
-            }
-            into.Activated += Came;
-        }
+        into.CallPerson(forward: true);
         return HandedLaunch.Answer(into.FolderHeld, null);
     }
 

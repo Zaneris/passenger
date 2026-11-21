@@ -594,6 +594,13 @@ public partial class MainWindow
                 OnDebugStateChanged();
             }
         };
+        debugger.Stopped += (_, stopped) =>
+        {
+            if (session == next && next.Debug == debugger)
+            {
+                FollowStop(stopped);
+            }
+        };
     }
 
     /// <summary>A new language server (or none) for the open folder: the status bar, the usages and Problems follow it.</summary>

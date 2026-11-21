@@ -192,6 +192,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// configuration and breakpoints, without asking; off, the restart is asked first.</summary>
     public bool RestartOnRudeEdit { get; init; } = true;
 
+    /// <summary>"When the debugger stops": what a stop of a program the person debugs (a breakpoint, an exception, a step's
+    /// end) does while they are in another program: the window comes to the front, asking for them where the system keeps
+    /// the other in front; only asks for them; or nothing. An agent's debugging never brings it forward.</summary>
+    public DebuggerStop WhenDebuggerStops { get; init; } = DebuggerStop.ComeForward;
+
     /// <summary>"Tool Window: when build is explicitly invoked, open the build progress view in a tool window": the
     /// Build menu's builds, rebuilds and cleans open the Build window as they start.</summary>
     public bool OpenBuildWindowOnBuild { get; init; } = true;
@@ -685,6 +690,14 @@ public enum ToolConfiguration
 
     /// <summary>The package Settings names, for every file the glob covers.</summary>
     Manual,
+}
+
+/// <summary>The choices for "When the debugger stops", in the order Settings lists them.</summary>
+public enum DebuggerStop
+{
+    ComeForward,
+    AskForAttention,
+    Nothing,
 }
 
 /// <summary>The choices for "Open project in", in the order Settings lists them.</summary>

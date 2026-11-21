@@ -280,6 +280,10 @@ public sealed class DebugController : IDisposable
     /// <summary>The session started, stopped, ran on or ended.</summary>
     public event EventHandler? StateChanged;
 
+    /// <summary>A session's program came to a stop of its own (a breakpoint, an exception, a step's end, a pause), once each
+    /// stop, its tab chosen or not.</summary>
+    public event EventHandler<DebugSession>? Stopped;
+
     /// <summary>Another tab is chosen, or none is, or a tab came or went: what follows the chosen tab's app looks again.</summary>
     public event EventHandler? TabsChanged;
     /// <summary>The native tab chosen in the Debug window changed.</summary>
@@ -2577,6 +2581,11 @@ public sealed class DebugController : IDisposable
         if (disposed || !view.Sessions.Contains(tab))
         {
             return;
+        }
+        if (session.State == DebugState.Paused && session.Stops != tab.StopTold)
+        {
+            tab.StopTold = session.Stops;
+            Stopped?.Invoke(this, session);
         }
         // XAML applied while the program was paused, whose UI answers once it runs.
         if (session.State == DebugState.Running && tab.App?.Xaml is { Waiting: true, Changed: true })

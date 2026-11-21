@@ -104,6 +104,12 @@ public sealed class DebugSession
     /// <summary>How many stops the adapter has told of, the one paused at now the last.</summary>
     public int Stops => stops;
 
+    /// <summary>Whether an attached agent set the program going last (its start, a resume, a step or a pause came from an
+    /// agent's tool call, an action it ran or its input into Passenger's windows), so the stop it comes to is the agent's.</summary>
+    public bool AgentDrives { get; private set; } = AgentsFlow;
+
+    private static bool AgentsFlow => AgentAsks.Beside || AgentAsks.Inputting;
+
     /// <summary>The stop last taken, shown again when the continue or step that left it is refused.</summary>
     private StoppedEvent? stoppedAt;
     private volatile bool killed;
@@ -246,6 +252,7 @@ public sealed class DebugSession
             return Task.CompletedTask;
         }
         Quiet = false;
+        AgentDrives = AgentsFlow;
         JoinBreakpoints();
         Task sending = SendChangedAsync();
         Sending(sending);
@@ -599,6 +606,7 @@ public sealed class DebugSession
         UiThread.Check();
         if (State == DebugState.Running && disconnected is null)
         {
+            AgentDrives = AgentsFlow;
             await connection.RequestAsync(DapCommands.Pause, new ThreadArguments(0));
         }
     }
@@ -1026,6 +1034,7 @@ public sealed class DebugSession
             return;
         }
         int stop = stops;
+        AgentDrives = AgentsFlow;
         SetState(DebugState.Running);
         // Sent with the request, never awaited before it: the adapter takes the two in turn, ahead of the stop's reads.
         Task placed = before?.Invoke() ?? Task.CompletedTask;
