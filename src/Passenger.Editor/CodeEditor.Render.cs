@@ -264,8 +264,8 @@ public sealed partial class CodeEditor
         DrawShape(context, null, palette.PenOf(palette.SoftWrapSign, 1), sign, left, top);
     }
 
-    /// <summary>Squiggles under errors, warnings and suggestions; unnecessary code is faded by laying
-    /// the background over it, half see-through.</summary>
+    /// <summary>The line under an error, a warning or a suggestion, each its own shape as well as its colour
+    /// (<see cref="Underlines"/>); unnecessary code is faded by laying the background over it, half see-through.</summary>
     private void DrawMarkers(DrawingContext context, LineView view, Gap[] gaps, double left, double y, double clipLeft, double clipRight)
     {
         RowSpan span = view.Span;
@@ -302,7 +302,7 @@ public sealed partial class CodeEditor
                 MarkerKind.Warning => palette.Warning,
                 _ => palette.Info,
             };
-            DrawWave(context, brush, x1, x2, y + metrics.LineHeight - 3, clipLeft, clipRight);
+            DrawUnderline(context, Underlines.Of(marker.Kind), brush, x1, x2, y + metrics.LineHeight - 3, clipLeft, clipRight);
         }
     }
 
@@ -330,38 +330,31 @@ public sealed partial class CodeEditor
         }
     }
 
-    /// <summary>A squiggle from x1 to x2, drawn only where it can be seen: whole waves off either edge are left out, so
-    /// one under a line of a million characters costs the screen's width. Made at the origin for its length and placed
-    /// there, so a scroll draws again the squiggles it moved without making them.</summary>
-    private void DrawWave(DrawingContext context, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
+    /// <summary>An underline from x1 to x2 in its shape, drawn only where it can be seen: whole repeats of its pattern off
+    /// either edge are left out, so one under a line of a million characters costs the screen's width. Made at the origin
+    /// for its length and placed there, so a scroll draws again the underlines it moved without making them.</summary>
+    private void DrawUnderline(DrawingContext context, Underline shape, IBrush brush, double x1, double x2, double y, double clipLeft, double clipRight)
     {
-        const double Step = 2.5;
-        double skipped = Math.Floor((clipLeft - (Step * 2) - x1) / (Step * 2));
+        double period = Underlines.Period(shape);
+        double skipped = Math.Floor((clipLeft - period - x1) / period);
         if (skipped > 0)
         {
-            x1 += skipped * Step * 2;
+            x1 += skipped * period;
         }
-        x2 = Math.Min(x2, clipRight + (Step * 2));
+        x2 = Math.Min(x2, clipRight + period);
         if (x2 <= x1)
         {
             return;
         }
         double length = x2 - x1;
-        ShapeKey key = new(ShapeKind.Wave, length, 0, 0, 0);
-        if (!shapes.TryGet(key, out StreamGeometry? wave))
+        ShapeKey key = new(ShapeKind.Underline, length, (int)shape, 0, 0);
+        if (!shapes.TryGet(key, out StreamGeometry? line))
         {
-            wave = shapes.Add(key, new StreamGeometry());
-            using StreamGeometryContext path = wave.Open();
-            path.BeginFigure(new Point(0, 0), false);
-            bool up = true;
-            for (double x = Step; x < length + Step; x += Step)
-            {
-                path.LineTo(new Point(Math.Min(x, length), up ? -2 : 0));
-                up = !up;
-            }
-            path.EndFigure(false);
+            line = shapes.Add(key, new StreamGeometry());
+            using StreamGeometryContext path = line.Open();
+            Underlines.Trace(path, shape, length);
         }
-        DrawShape(context, null, palette.PenOf(brush, 1), wave, x1, y);
+        DrawShape(context, null, palette.PenOf(brush, 1), line, x1, y);
     }
 
     /// <summary>A shape made at the origin, drawn with its origin at a point: the text's and the gutter columns' alike.</summary>
@@ -385,7 +378,7 @@ public sealed partial class CodeEditor
 
     private enum ShapeKind
     {
-        Wave,
+        Underline,
         Tab,
         Wrap,
         Open,

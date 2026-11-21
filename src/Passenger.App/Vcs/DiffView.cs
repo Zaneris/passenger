@@ -68,6 +68,8 @@ public sealed class DiffView : DockPanel, IOwnKeys
         Left.Show(head, SelectionSet.Single(0), default);
         Right = new CodeEditor { IsReadOnly = !editable, ChangeBackgrounds = true };
         Right.Show(mine, SelectionSet.Single(0), default);
+        DiffSigns.Give(Left);
+        DiffSigns.Give(Right);
         named = (titles?.Left ?? "HEAD", titles?.Right ?? (editable ? "Your version" : "Your version (read-only)"));
         bands = new DiffStrip(Bands, MergeSide.Left, Left, () => IsEditable, ignores: false, (band, _) => ($"Roll back change {band.Index + 1} to {named.Left}", null),
             (band, _, _) => Revert(Hunks[band.Index]), AppActions.RollbackLines) { Width = 36 };

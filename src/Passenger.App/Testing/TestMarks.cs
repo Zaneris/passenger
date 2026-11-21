@@ -17,9 +17,20 @@ public enum TestMarkKind
 /// <summary>A test's run icon on a line (from zero), right of the line numbers; a click on it asks for its menu.</summary>
 public readonly record struct TestMark(int Line, TestMarkKind Kind);
 
-/// <summary>A test's run icon as the gutter draws it.</summary>
+/// <summary>A test's run icon as the gutter draws it, each result a shape of its own as well as its colour
+/// (<see cref="ShapeOf"/>): the run triangle alone before it has run, with a tick once passed and a dot once failed, and a
+/// dot alone while it runs.</summary>
 public static class TestMarks
 {
+    /// <summary>The shape a test's mark takes, apart from its colour.</summary>
+    public static TestMarkShape ShapeOf(TestMarkKind kind) => kind switch
+    {
+        TestMarkKind.Passed => TestMarkShape.Ticked,
+        TestMarkKind.Failed => TestMarkShape.Dotted,
+        TestMarkKind.Running => TestMarkShape.Dot,
+        _ => TestMarkShape.Triangle,
+    };
+
     /// <summary>The run icon from a column's left edge, in its last result's colour; a dot while it runs.</summary>
     public static void Draw(GutterFrame frame, TestMarkKind kind, double left, double top)
     {
@@ -34,7 +45,8 @@ public static class TestMarks
         double size = Math.Min(frame.LineHeight - 8, 11);
         double x = left + 6;
         double y = top + ((frame.LineHeight - size) / 2);
-        if (kind == TestMarkKind.Running)
+        TestMarkShape shape = ShapeOf(kind);
+        if (shape == TestMarkShape.Dot)
         {
             context.DrawEllipse(brush, null, new Point(x + (size / 2), y + (size / 2)), size / 2.6, size / 2.6);
             return;
@@ -50,12 +62,37 @@ public static class TestMarks
             path.EndFigure(true);
         }
         frame.DrawShape(triangle, brush, null, x, y);
-        if (kind == TestMarkKind.Failed)
+        if (shape == TestMarkShape.Dotted)
         {
             // A failed test: the run icon with a red mark on it.
             context.DrawEllipse(frame.Brush(TokenKeys.Editor_Error), frame.Pen(TokenKeys.Editor_Gutter, 1.2), new Point(x + size, y + size - 1), 2.6, 2.6);
         }
+        else if (shape == TestMarkShape.Ticked)
+        {
+            GutterShape ticked = new($"{nameof(TestMarks)}.tick", size);
+            if (!frame.TryShape(ticked, out StreamGeometry? tick))
+            {
+                tick = frame.AddShape(ticked);
+                using StreamGeometryContext path = tick.Open();
+                path.BeginFigure(new Point(-2.4, 0), false);
+                path.LineTo(new Point(-0.6, 1.8));
+                path.LineTo(new Point(2.6, -2));
+                path.EndFigure(false);
+            }
+            // Over a ring of the gutter's ground, so it stands apart from the triangle under it.
+            frame.DrawShape(tick, null, frame.Pen(TokenKeys.Editor_Gutter, 4, PenLineCap.Round, PenLineJoin.Round), x + size, y + size - 1);
+            frame.DrawShape(tick, null, frame.Pen(TokenKeys.Test_Passed, 1.6, PenLineCap.Round, PenLineJoin.Round), x + size, y + size - 1);
+        }
     }
+}
+
+/// <summary>A test's mark in the gutter: the run triangle alone, with a tick, with a dot, or a dot alone.</summary>
+public enum TestMarkShape
+{
+    Triangle,
+    Ticked,
+    Dotted,
+    Dot,
 }
 
 /// <summary>How a feature's step went in the run that last took it, beside its line (from zero), and what its failure said

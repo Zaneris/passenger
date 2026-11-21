@@ -84,6 +84,7 @@ public sealed class MergeView : DockPanel
         foreach (CodeEditor pane in (CodeEditor[])[Left, Result, Right])
         {
             ThemeLanguages.Follow(pane, language);
+            DiffSigns.Give(pane);
         }
         state = [.. chunks.Select(c => new Resolution(c.BaseStart, c.BaseEnd, !c.LeftChanged, !c.RightChanged, false))];
         states[started] = state;

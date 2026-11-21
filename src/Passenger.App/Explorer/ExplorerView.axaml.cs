@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -629,8 +630,10 @@ public partial class ExplorerView : UserControl
         RowGlyphs glyphs = new();
         glyphs.ChevronPressed += OnChevronPressed;
         TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        // How version control says the file changed, as its name's colour does (ChangedFileRow's letter).
+        TextBlock change = new() { Classes = { StyleClasses.Caption, StyleClasses.Strong }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, detail } };
+        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, change, detail } };
         return row.Showing<ExplorerNode>(node =>
         {
             row.Margin = node.Indent;
@@ -641,10 +644,17 @@ public partial class ExplorerView : UserControl
             glyphs.Icon = node.Icon;
             glyphs.IconBrush = node.IconBrush;
             name.Text = node.Name;
-            name.Classes.Set(StyleClasses.VcsModified, node.IsVcsModified);
-            name.Classes.Set(StyleClasses.VcsAdded, node.IsVcsAdded);
-            name.Classes.Set(StyleClasses.VcsUnversioned, node.IsVcsUnversioned);
-            name.Classes.Set(StyleClasses.VcsConflicted, node.IsVcsConflicted);
+            foreach (TextBlock coloured in (TextBlock[])[name, change])
+            {
+                coloured.Classes.Set(StyleClasses.VcsModified, node.IsVcsModified);
+                coloured.Classes.Set(StyleClasses.VcsAdded, node.IsVcsAdded);
+                coloured.Classes.Set(StyleClasses.VcsUnversioned, node.IsVcsUnversioned);
+                coloured.Classes.Set(StyleClasses.VcsConflicted, node.IsVcsConflicted);
+            }
+            change.Text = node.Change is { } kind ? Vcs.ChangedFileRow.LetterOf(kind) : null;
+            change.IsVisible = node.Change is not null;
+            ToolTip.SetTip(change, node.Change is { } said ? Vcs.ChangedFileRow.WordOf(said) : null);
+            AutomationProperties.SetName(change, node.Change is { } named ? Vcs.ChangedFileRow.WordOf(named) : null);
             detail.Text = node.Detail;
         });
     }

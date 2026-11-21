@@ -593,14 +593,16 @@ public sealed partial class CodeEditor
                 _ => palette.LineNumberCurrent,
             };
 
-        /// <summary>What a mark fills across the track at its span: a problem, a match or a use most of its breadth, a
+        /// <summary>What a mark fills across the track at its span: an error, a match or a use most of its breadth, a
+        /// warning its right half and a suggestion its right quarter, so each is told by its breadth as well as its colour, a
         /// bookmark a dot at its right, a change a strip down its left edge.</summary>
         public static Rect Drawn(StripeMark mark, (double Top, double Height) span, Rect track)
         {
             (double left, double width) = mark.Kind switch
             {
-                StripeMarkKind.Error or StripeMarkKind.Warning => (2.0, track.Width - 4),
-                StripeMarkKind.Info => (5.0, track.Width - 10),
+                StripeMarkKind.Error => (2.0, track.Width - 4),
+                StripeMarkKind.Warning => (track.Width / 2, (track.Width / 2) - 2),
+                StripeMarkKind.Info => (track.Width * 3 / 4, (track.Width / 4) - 2),
                 StripeMarkKind.SearchMatch or StripeMarkKind.Usage or StripeMarkKind.WriteUsage => (3.0, track.Width - 6),
                 StripeMarkKind.Bookmark => (track.Width - 4, 3.0),
                 StripeMarkKind.Change => (0.0, 2.0),

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -10,9 +11,10 @@ namespace Passenger.App.Vcs;
 
 /// <summary>A changed file's line, as every list of changed files shows one (the Commit window's, a commit's in the Git
 /// log, the changes between a branch and the working tree, a folder's Local History): its icon, its name in its change's
-/// colour (struck through when deleted), where a moved file came from ("← Shop.cs"), and its folder, which gives way
-/// first in a narrow list, then where it came from, then the name, each ending in an ellipsis. Made once with its list's
-/// container and shown another file in place.</summary>
+/// colour (struck through when deleted), the change's letter in that colour (<see cref="LetterOf"/>, so it reads without
+/// the colour), where a moved file came from ("← Shop.cs"), and its folder, which gives way first in a narrow list, then
+/// where it came from, then the name, each ending in an ellipsis. Made once with its list's container and shown another
+/// file in place.</summary>
 public sealed class ChangedFileRow
 {
     /// <summary>How far the icon sits from its list's edge where nothing comes before it.</summary>
@@ -20,6 +22,8 @@ public sealed class ChangedFileRow
 
     private readonly RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0) };
     private readonly TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock letter = new() { Classes = { StyleClasses.Caption, StyleClasses.Strong }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
+    private string? letterColour;
     private readonly TextBlock came = MutedText.Of(string.Empty);
     private readonly TextBlock folder = MutedText.Of(string.Empty);
     private string? colour;
@@ -32,7 +36,8 @@ public sealed class ChangedFileRow
             muted.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
         }
         came.IsVisible = false;
-        Line = new ShrinkingRow { Height = ListRow.Height, Margin = new Thickness(Inset, 0, 0, 0), Children = { icon, name, came, folder } };
+        ShrinkingRow.SetKeepsWidth(letter, true);
+        Line = new ShrinkingRow { Height = ListRow.Height, Margin = new Thickness(Inset, 0, 0, 0), Children = { icon, name, letter, came, folder } };
     }
 
     /// <summary>The line, <see cref="Inset"/> from its list's edge (none where a box comes before it).</summary>
@@ -47,6 +52,10 @@ public sealed class ChangedFileRow
         name.Text = Path.GetFileName(path);
         name.Resource(TextBlock.ForegroundProperty, ref colour, KindToken(kind));
         name.TextDecorations = kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;
+        letter.Text = LetterOf(kind);
+        letter.Resource(TextBlock.ForegroundProperty, ref letterColour, KindToken(kind));
+        ToolTip.SetTip(letter, WordOf(kind));
+        AutomationProperties.SetName(letter, WordOf(kind));
         folder.Text = where;
         came.IsVisible = false;
         ToolTip.SetTip(came, null);
@@ -78,6 +87,25 @@ public sealed class ChangedFileRow
     /// <summary>The folder a path from a top folder (a repository's, the one a history is of) names, with '/' between its
     /// names.</summary>
     public static string Folder(string relative) => Path.GetDirectoryName(relative) is { } folder ? PathNames.Slashed(folder) : string.Empty;
+
+    /// <summary>The letter beside a changed file's name saying how it changed, as its colour does.</summary>
+    public static string LetterOf(ChangeKind kind) => kind switch
+    {
+        ChangeKind.Added => "A",
+        ChangeKind.Deleted => "D",
+        ChangeKind.Renamed => "R",
+        ChangeKind.Unversioned => "U",
+        ChangeKind.Conflicted => "!",
+        _ => "M",
+    };
+
+    /// <summary>How a file changed, in a word.</summary>
+    public static string WordOf(ChangeKind kind) => kind switch
+    {
+        ChangeKind.Unversioned => "Unversioned",
+        ChangeKind.Conflicted => "In conflict",
+        _ => kind.ToString(),
+    };
 
     /// <summary>A changed file's colour by how it changed (modified, added, deleted, new, conflicted).</summary>
     public static string KindToken(ChangeKind kind) => kind switch
