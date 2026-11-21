@@ -2749,11 +2749,13 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
                 $"ide_actions cut short said of what it left out: {more}");
             foreach (Match group in Regex.Matches(more, "\"([^\"]+)\""))
             {
-                listed.AddRange((await Call(client, McpTools.IdeActions, new() { ["query"] = group.Groups[1].Value })).EnumerateArray().Select(a => a.GetString()!)
-                    .Where(line => line.Contains($" [{group.Groups[1].Value}]", StringComparison.Ordinal)));
+                // A group read on is listed whole, with those of it the first answer listed before it was cut.
+                HashSet<string> had = [.. listed.Select(Id)];
+                listed.AddRange([.. (await Call(client, McpTools.IdeActions, new() { ["query"] = group.Groups[1].Value })).EnumerateArray().Select(a => a.GetString()!)
+                    .Where(line => line.Contains($" [{group.Groups[1].Value}]", StringComparison.Ordinal) && !had.Contains(Id(line)))]);
             }
         }
-        HashSet<string> ids = [.. listed.Select(line => line[..line.IndexOf(": ", StringComparison.Ordinal)])];
+        HashSet<string> ids = [.. listed.Select(Id)];
         string[] declared = [.. typeof(AppActions).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
         string[] missing = [.. declared.Where(id => !ids.Contains(id))];
@@ -2773,6 +2775,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         // A console app's folder holds no Godot project, which the Game window serves.
         string game = Assert.Single(listed, l => l.StartsWith($"{AppActions.ShowGame}: ", StringComparison.Ordinal));
         Assert.Contains($" - cannot run: {Refusals.NoGodotProject}", game, StringComparison.Ordinal);
+
+        // An action's id, which its line begins with.
+        static string Id(string line) => line[..line.IndexOf(": ", StringComparison.Ordinal)];
     }
 
     /// <summary>debug_state of processes says each program's command line as Attach to Process shows it, its secrets masked:
