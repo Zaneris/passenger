@@ -237,6 +237,10 @@ internal sealed class PopupPlacement
     /// <summary>The narrowest a card beside a popup is made, its words a few to a line; narrower, it goes over or under it.</summary>
     private const double LeastBeside = 200;
 
+    /// <summary>The room a card beside a popup against the editor's edge takes on the popup's other side, at its narrowest:
+    /// the card, its gap from the popup and its own from the editor's edge.</summary>
+    public const double BesideRoom = LeastBeside + Gap + Edge;
+
     /// <summary>The top of the line each popup placed at a line was placed at, in the layer's coordinates, kept no longer
     /// than the popup.</summary>
     private readonly ConditionalWeakTable<Control, StrongBox<double>> lines = [];

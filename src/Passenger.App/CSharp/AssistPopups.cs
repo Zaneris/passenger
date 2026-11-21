@@ -366,10 +366,11 @@ internal sealed class CompletionPopup : Border, IHeardPopup
     /// <summary>Held to a room narrower than it would be, even than its least width, its names and details ending in an
     /// ellipsis rather than past the editor's edge; as wide as its rows make it, from the popups' Narrow to their Wide
     /// (<see cref="PopupFrame"/>), in a wider one: it hugs its rows rather than taking a width of the scale, measured once
-    /// as a key changes them.</summary>
+    /// as a key changes them. Its least gives way in a room too narrow for it and a card beside it, so the list against
+    /// either edge of the editor leaves its item's card room on the other side (<see cref="PopupPlacement.BesideRoom"/>).</summary>
     public void Within(double room)
     {
-        MinWidth = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
+        MinWidth = Math.Clamp(room - PopupPlacement.BesideRoom, 0, PopupFrame.Narrow);
         MaxWidth = Math.Min(PopupFrame.Wide, Math.Max(0, room));
     }
 
