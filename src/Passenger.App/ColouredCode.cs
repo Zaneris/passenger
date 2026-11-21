@@ -15,7 +15,7 @@ namespace Passenger.App;
 /// let go as it leaves, else plain; selectable and wrapped rather than cut.</summary>
 public sealed class ColouredCode : Border
 {
-    private readonly SelectableTextBlock text;
+    private readonly SelectableWords text;
     private readonly Languages.Language? language;
     private TextDocument? document;
     private IHighlighter? highlighter;
@@ -27,7 +27,7 @@ public sealed class ColouredCode : Border
         Code = code;
         this.language = language;
         Classes.Add(StyleClasses.Code);
-        text = new SelectableTextBlock
+        text = new SelectableWords
         {
             TextWrapping = TextWrapping.Wrap,
             FontFeatures = CSharp.Fonts.NoLigatures,

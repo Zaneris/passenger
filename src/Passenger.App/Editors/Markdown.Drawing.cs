@@ -224,7 +224,7 @@ internal static partial class Markdown
 
 /// <summary>A block of Markdown's words, selectable to copy: its strong, emphasis and code drawn as such, and its links
 /// in the link colour, the hand over them and a click opening one (when it selected nothing), through the window.</summary>
-public sealed class MarkdownText : SelectableTextBlock
+public sealed class MarkdownText : SelectableWords
 {
     /// <summary>The pointer over a link, made once for every block: a move over one makes none.</summary>
     private static Cursor? hand;
@@ -232,8 +232,6 @@ public sealed class MarkdownText : SelectableTextBlock
     private readonly List<(int Start, int End, Uri Target)> links = [];
     private readonly StringBuilder shown = new();
     private readonly MarkdownPage page;
-
-    protected override Type StyleKeyOverride => typeof(SelectableTextBlock);
 
     private MarkdownText(MarkdownPage page)
     {

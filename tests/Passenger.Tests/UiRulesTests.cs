@@ -3761,6 +3761,23 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.Matches(byHand, "                <TextBlock Name=\"Hint\" Classes=\"emptyText\" Text=\"Nothing open\" />");
     }
 
+    /// <summary>Words to read and copy are SelectableWords, laid out whole at the width they measured at every display
+    /// scale: a SelectableTextBlock made or derived from anywhere else fails here, naming its line (#2046).</summary>
+    [Fact]
+    public void Every_selectable_text_is_SelectableWords()
+    {
+        Regex byHand = new(@"\bnew SelectableTextBlock\b|:\s*SelectableTextBlock\b|\bSelectableTextBlock\s+\w+\s*=\s*new\(|<SelectableTextBlock\b");
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/SelectableWords.cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} selectable texts are Avalonia's own, which at a display scale where their width falls on a pixel "
+            + $"wrap their last word out of sight: make each a SelectableWords:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "        text = new SelectableTextBlock");
+        Assert.Matches(byHand, "public sealed class MarkdownText : SelectableTextBlock");
+        Assert.Matches(byHand, "        SelectableTextBlock words = new()");
+        Assert.DoesNotMatch(byHand, "    <Style Selector=\"SelectableTextBlock.mdText\">");
+    }
+
     /// <summary>A tree row's chevron is a RowExpander, one column wide in every tree, turned while its row is open and kept
     /// for a row with nothing under it: a chevron of a row's own (RowIcon.Chevron or a chevron's key given to a RowIcon,
     /// swapped Right for Down) fails here, naming its line. A fold of a form's (FormFold) is no tree's row.</summary>

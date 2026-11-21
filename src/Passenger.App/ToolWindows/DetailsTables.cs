@@ -140,9 +140,9 @@ public class DetailsTables : DockPanel
         .OfType<string>());
 
     /// <summary>A value to read and copy, wrapped rather than cut; a program's words in the editor's font.</summary>
-    public static SelectableTextBlock Words(string text, bool code = false, string? brush = null)
+    public static SelectableWords Words(string text, bool code = false, string? brush = null)
     {
-        SelectableTextBlock words = new()
+        SelectableWords words = new()
         {
             Text = text, TextWrapping = TextWrapping.Wrap, MinHeight = ListRow.Height, Padding = new Thickness(0, Gaps.Tight), VerticalAlignment = VerticalAlignment.Top,
         };

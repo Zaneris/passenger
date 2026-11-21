@@ -2500,6 +2500,38 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private static string Said(TextBlock block) =>
         block.Text is { Length: > 0 } text ? text : string.Concat(block.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(r => r.Text) ?? []);
 
+    /// <summary>Parameter Info after a target-typed new's first argument shows the constructor's signature whole, the second
+    /// parameter the one heard as current, at every display scale: code whose width falls on the screen's pixels at a scale
+    /// (1.25's, 2's) was laid out a rounding error short of it, its last word wrapped to a line the card had no room for, so
+    /// the signature read "Greeter(string name, int" (#2046).</summary>
+    [AvaloniaFact]
+    public void Parameter_info_at_a_target_typed_new_shows_the_constructors_signature_whole_at_every_display_scale()
+    {
+        MainWindow window = project.Open("Greeters.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        List<(string Words, Avalonia.Automation.AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
+        const string Signature = "Greeter(string name, int times)";
+        foreach (double scale in (double[])[1, 1.25, 1.5, 2, 2.5])
+        {
+            window.SetRenderScaling(scale);
+            Ui.PlaceAfter(editor, "new(name, ");
+            editor.Focus();
+            heard.Clear();
+            Ui.Run(window, AppActions.ParameterInfo);
+            Ui.WaitFor(() => window.Assist.SignatureText == Signature, () => $"Parameter Info at new(name, to show {Signature}; it shows '{window.Assist.SignatureText}'");
+            Ui.Settle();
+            Assert.True(heard is [(var said, _)] && said == $"Parameter Info, {Signature}, parameter times",
+                $"Parameter Info at new(name, was heard as {AccessibilityTests.Said(heard)}, not the signature with its second parameter current");
+            TextBlock code = window.Assist.SignatureCard!.GetVisualDescendants().OfType<TextBlock>().Single(t => Said(t) == Signature);
+            Avalonia.Media.TextFormatting.TextLayout laid = code.TextLayout;
+            Assert.True(laid.TextLines.Count == 1 && laid.TextLines[0].Length >= Signature.Length && laid.Height <= code.Bounds.Height + 0.5,
+                $"At a display scale of {scale} Parameter Info draws '{Signature}' as [{string.Join(" | ", laid.TextLines.Select(l => Signature.Substring(l.FirstTextSourceIndex, Math.Min(l.Length, Signature.Length - l.FirstTextSourceIndex))))}] "
+                + $"in {code.Bounds.Width:R} by {code.Bounds.Height:R}, {laid.Height:R} tall: the signature is cut short");
+            Ui.Press(window, "ESCAPE");
+        }
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()
@@ -3743,6 +3775,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             // Each one test's own, which no other file uses: written by the test, it cost the warm server before and after it.
             File.WriteAllText(PathOf("Pairs.cs"), "class Counter(int start)\n{\n    public int Start => start;\n}\n\nrecord Pair(int Left, int Right)\n{\n"
                 + "    public static int Sum(Pair pair) => pair.Left + new Counter(pair.Right).Start;\n}\n");
+            File.WriteAllText(PathOf("Greeters.cs"), "class Greeter(string name, int times)\n{\n    public string Name => name;\n\n    public int Times => times;\n\n"
+                + "    public static Greeter Of(string name)\n    {\n        Greeter made = new(name, 2);\n        return made;\n    }\n}\n");
             File.WriteAllText(PathOf("Releases.cs"), "record Release(string Version, int Downloads);\n");
             File.WriteAllText(PathOf("ReleaseReaders.cs"), "static class ReleaseReaders\n{\n    public static string Of(Release release) => release.Version;\n\n"
                 + "    public static Release Next(Release release) => release with { Version = \"2.0\" };\n}\n");

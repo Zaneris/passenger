@@ -181,7 +181,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
         JsonMembers.Properties(resource.Data, "healthReports").Count > 0 ? resource.HealthStatus?.ToLowerInvariant() : null;
 
     /// <summary>A health report: its status, what it says, and an exception it carries.</summary>
-    private static SelectableTextBlock Report(JsonElement report)
+    private static SelectableWords Report(JsonElement report)
     {
         string status = JsonMembers.Text(report, "status")?.ToLowerInvariant() ?? "no status";
         string words = string.Join(": ", ((string?[])[status, JsonMembers.Text(report, "description"), JsonMembers.Text(report, "exceptionMessage")]).Where(w => w is { Length: > 0 }));
@@ -190,7 +190,7 @@ public sealed class AspireDetailsPane(Action<Uri> browse, Action<string> open, A
 
     /// <summary>A variable's or property's value, a secret's masked whatever the AppHost sent (a list's items as a program's
     /// arguments, the word after a flag naming a secret among them); none said so.</summary>
-    private static SelectableTextBlock Value(string name, JsonElement value) => value.ValueKind switch
+    private static SelectableWords Value(string name, JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.Null or JsonValueKind.Undefined => Words("No value", brush: TokenKeys.TextMuted),
         JsonValueKind.String => Words(ContainerSecrets.Shown(name, value.GetString() ?? string.Empty), code: true),
