@@ -169,7 +169,7 @@ public sealed class TerminalTests
             Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
             Assert.Equal(background, Ui.Pixel(window, CursorCentre(window)));
             Run(window, $"printf '\\033[2 q'; read x; printf '{reset}'");
-            WaitForScreen(window, shell, s => s.CursorColumn == 0, "the program waiting with its block cursor");
+            WaitForScreen(window, shell, s => s.CursorColumn == 0 && s.RequestedCursorShape == CursorShape.Block, "the program waiting with its block cursor");
             Assert.NotEqual(background, Ui.Pixel(window, CursorCentre(window)));
             Ui.Press(window, "ENTER");
             WaitForScreen(window, shell, s => s.CursorColumn > 0, "the prompt after the program resets the terminal");
