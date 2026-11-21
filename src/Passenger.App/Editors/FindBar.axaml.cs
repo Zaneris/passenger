@@ -84,6 +84,9 @@ public partial class FindBar : UserControl
         OptionToggles.Give(MatchCase, OptionToggles.MatchCase);
         OptionToggles.Give(WholeWords, OptionToggles.Words);
         OptionToggles.Give(UseRegex, OptionToggles.Regex);
+        // The arrows do what Find Previous and Find Next do, so their tips name those actions' keys.
+        ActionTips.Set(PreviousButton, AppActions.FindPrevious, "Previous occurrence");
+        ActionTips.Set(NextButton, AppActions.FindNext, "Next occurrence");
         // On the way down, so an option's key never types into the field it is pressed in.
         AddHandler(KeyDownEvent, (_, e) => OptionToggles.Hear(e, (OptionToggles.MatchCase, MatchCase), (OptionToggles.Words, WholeWords), (OptionToggles.Regex, UseRegex)),
             RoutingStrategies.Tunnel);
