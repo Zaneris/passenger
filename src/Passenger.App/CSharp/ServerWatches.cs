@@ -12,10 +12,10 @@ namespace Passenger.App.CSharp;
 /// registered with what is under it; with no folder watcher, every folder registered. Each is watched as the folder's
 /// watcher watches its folder (<see cref="WatchedTree"/>), recorded only as deep as the registrations over it reach and
 /// only the files they match, so what a burst lost is found. A watcher starts as its registration comes, and what was
-/// written in its folder since the server, or a design-time build it was given, may have read it is told once its first
-/// walk has listed it (<see cref="WatchedFiles.Since"/>). What changed reaches the server from the thread pool, one
-/// notification for each batch, in the order each watcher saw it, each watcher in a turn of its own. The folders watched,
-/// and any that cannot be, are said in the IDE's log.</summary>
+/// written in its folder since the server, or a design-time build it was given, may have read it, or since the server was
+/// handed over (<see cref="TellsSince"/>), is told once its first walk has listed it. What changed reaches the server from
+/// the thread pool, one notification for each batch, in the order each watcher saw it, each watcher in a turn of its own.
+/// The folders watched, and any that cannot be, are said in the IDE's log.</summary>
 public sealed class ServerWatches : IDisposable
 {
     /// <summary>How far a file system's clock may round a file's time down: one written as the server, or a build, began
@@ -50,6 +50,11 @@ public sealed class ServerWatches : IDisposable
     /// <summary>Watchers no longer needed, stopped once those replacing them watch: one under a folder about to go stops at once.</summary>
     private readonly HashSet<Watched> retiring = [];
     private string? folder;
+
+    /// <summary>When the server was last handed over (<see cref="Follow"/>), whose watchers before told it what they heard
+    /// until then: a watcher started since tells what was written from then on, not since the server's start.</summary>
+    private DateTime? handed;
+
     private bool refreshRunning;
     private bool refreshAgain;
     private bool disposed;
@@ -104,9 +109,23 @@ public sealed class ServerWatches : IDisposable
         lock (gate)
         {
             this.folder = folder;
+            handed = DateTime.UtcNow;
             DropOutputs();
         }
         RefreshNow();
+    }
+
+    /// <summary>Since when a watcher starting now tells what was written in its folder: the server's hand-over, else since
+    /// the server, or a build it was given, may have read it (<see cref="WatchedFiles.Since"/>).</summary>
+    private DateTime TellsSince
+    {
+        get
+        {
+            lock (gate)
+            {
+                return handed ?? watched.Since;
+            }
+        }
     }
 
     /// <summary>What the folder's watcher saw: each file told as made, changed or gone, every file of the folder too when
@@ -620,12 +639,12 @@ public sealed class ServerWatches : IDisposable
 
     /// <summary>A folder watched for the server as the folder's watcher watches the open folder, kept to the folders the
     /// registrations over it reach and recording only the files they match: a change the server never asked for (a
-    /// build's churn) counts toward a burst but is never told; what was written since the server, or a build it was given,
-    /// may have read it is told as its first walk ends, from the walk's own listings, but what stands as it did when the
-    /// server was given its project's builds (<see cref="WatchedFiles.StandsAsGiven"/>); and with changes lost there, every
-    /// file in it is told, those its record held now gone too. One outside the open folder walks apart from the IDE's
-    /// quiet: it holds nothing the window shows, and on a cold disk the walk of one as large as the references' packs
-    /// went on for minutes.</summary>
+    /// build's churn) counts toward a burst but is never told; what was written since it may have been read or handed over
+    /// (<see cref="TellsSince"/>) is told as its first walk ends, from the walk's own listings, but what stands as it did
+    /// when the server was given its project's builds (<see cref="WatchedFiles.StandsAsGiven"/>); and with changes lost
+    /// there, every file in it is told, those its record held now gone too. One outside the open folder walks apart from
+    /// the IDE's quiet: it holds nothing the window shows, and on a cold disk the walk of one as large as the references'
+    /// packs went on for minutes.</summary>
     private sealed class Watched : WatchedTree
     {
         private readonly ServerWatches owner;
@@ -641,7 +660,7 @@ public sealed class ServerWatches : IDisposable
             Recursive = recursive;
             Apart = apart;
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
-            Begin(owner.watched.Since - Rounding, walked: written =>
+            Begin(owner.TellsSince - Rounding, walked: written =>
             {
                 if (IsDisposed)
                 {
