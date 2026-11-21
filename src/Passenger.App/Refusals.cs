@@ -688,6 +688,19 @@ public static class Refusals
     /// reading its input.</summary>
     public const string OutputReadOnly = "The output is read-only";
 
+    /// <summary>Input for a program the debugger attached to rather than launched, which reads its standard input
+    /// <paramref name="from"/> (<see cref="ToolWindows.DebugTab.InputFrom"/>), never from its Debug console.</summary>
+    public static string InputFromStarter(string name, string from) =>
+        $"{name}'s Debug console takes no input: the debugger attached to it, so it reads its standard input {from}";
+
+    /// <summary>Input for a session debugging another part of a program beside <paramref name="companion"/>'s (a game's
+    /// GDScript, an app's code in the browser), which takes the program's input.</summary>
+    public static string InputBeside(string name, string companion) =>
+        $"{name}'s Debug console takes no input: the program's input goes to {companion}'s session";
+
+    /// <summary>Input for a launched program whose input was ended in its Debug console (Ctrl+D).</summary>
+    public static string InputEnded(string name) => $"{name}'s Debug console takes no more input: its input was ended (Ctrl+D), so it reads none";
+
     /// <summary>A merge's own sides, which it takes changes from into the result between them.</summary>
     public const string MergeSideReadOnly = "A merge's sides are read-only: edit the result between them";
 

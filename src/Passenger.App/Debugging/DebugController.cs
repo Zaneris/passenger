@@ -804,7 +804,7 @@ public sealed class DebugController : IDisposable
                 throw new InvalidOperationException(Ended(failed is DapException dap ? dap.Reason : failed.Message), failed);
             }
         }, plan.Name, launched: false, plan: plan, edits: edits, starts: (() => plan.Placed(ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Environment)),
-            process => starter = process), attachedWords: $"{plan.Name} runs as {by} starts it, whose output is shown here");
+            process => starter = process), attachedWords: $"{plan.Name} runs as {by} starts it, whose output is shown here", inputFrom: $"from {by}, which started it");
 
         // What the starter started would wait for a debugger that never comes, so the starter ends with the start.
         string Ended(string why) => $"{why}; {by} and all it started end, as {plan.Name} would wait for the debugger";
@@ -835,7 +835,7 @@ public sealed class DebugController : IDisposable
         string where = plan.Device?.Target.Name ?? (plan.MacCatalyst is not null ? "this Mac" : "its device");
         return OpenAsync((built, log, output, starting) => DebugSession.AttachThroughRelayAsync(plan.Name, relay, Breakpoints, Own(), built, log, output, ColumnOf, starting, hotReloadOn),
             plan.Name, launched: false, hotReloadOn: hotReloadOn, plan: plan, edits: edits, app: app, hook: hotReloadOn ? handlers : Unheld(handlers),
-            attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here");
+            attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here", inputFrom: $"on {where}");
     }
 
     /// <summary>What no session will tell of an update (a hook, a browser refresh), let go of: null.</summary>
@@ -1045,17 +1045,17 @@ public sealed class DebugController : IDisposable
         }
     }
 
-    /// <summary>Starts a session in a tab of its own, its output in the tab's Console, which a program it launched reads
-    /// what is typed into. The tab is chosen, and its session <see cref="Session"/> from its first moment, so Stop is there
-    /// as soon as a session begins: its start waits for the program's runtime as long as that takes. A start that failed
-    /// leaves its tab ended, with no session. Tabs of one <paramref name="group"/> (a container run's services) take Hot
-    /// Reload's changes together; its tab holds an inspected <paramref name="app"/> and given <paramref name="edits"/>.</summary>
+    /// <summary>Starts a session in a tab of its own, its output in the tab's Console, which a program it launched reads what is
+    /// typed into (one attached to reads its input <paramref name="inputFrom"/>, by default its container or its starter). The
+    /// tab is chosen, and its session <see cref="Session"/> from its first moment, so Stop is there as soon as a session begins.
+    /// A start that failed leaves its tab ended, with no session. Tabs of one <paramref name="group"/> (a container run's
+    /// services) take Hot Reload's changes together; its tab holds an inspected <paramref name="app"/> and given edits.</summary>
     private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
         BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false,
         bool stopLetsGo = false, (Func<System.Diagnostics.ProcessStartInfo> Start, Action<System.Diagnostics.Process> Started)? starts = null,
-        ProgramBuild? builds = null)
+        ProgramBuild? builds = null, string? inputFrom = null)
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
@@ -1099,6 +1099,7 @@ public sealed class DebugController : IDisposable
         tab.StopLetsGo = stopLetsGo;
         tab.App = app ?? tab.App;
         tab.Plan = plan;
+        tab.InputFrom = launched ? null : inputFrom ?? (place is { } there ? $"in its container, {there.Where}" : "from what started it");
         view.TelemetryChanged();
         tab.LetGoOfHooks();
         tab.Handlers = hook;

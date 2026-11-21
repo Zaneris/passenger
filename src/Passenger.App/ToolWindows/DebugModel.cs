@@ -57,6 +57,10 @@ public sealed class DebugTab(string name, OutputView console) : Observable, IHot
     /// <summary>The plan Debug launched its program by, where it serves; null for a program attached to.</summary>
     public Run.LaunchPlan? Plan { get; internal set; }
 
+    /// <summary>Where its program reads its standard input when the debugger attached to it rather than launching it, as a
+    /// clause ("in its container, shop-web-1"): its console types into nothing. Null for one launched.</summary>
+    public string? InputFrom { get; internal set; }
+
     /// <summary>Passenger's hook in its program, told of each update Hot Reload applied so the program's update handlers run;
     /// null for a program launched without it.</summary>
     internal Debugging.UpdateHandlerHook? Handlers { get; set; }

@@ -2827,6 +2827,20 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             inTerminal.Session.Write(newline ? text + "\r" : text);
             return $"Typed into {inTerminal.Name}'s tab of the Terminal window";
         }
+        // What the Debug console types into nothing is refused, saying where the program reads its input.
+        ToolWindows.DebugTab tab = TabFor(session)!;
+        if (tab.Companion is { IsLive: true } beside)
+        {
+            throw new InvalidOperationException($"{Refusals.InputBeside(tab.Name, beside.Name)} ({McpTools.DebugInput} with session \"{beside.Name}\")");
+        }
+        if (tab.InputFrom is { } from)
+        {
+            throw new InvalidOperationException(Refusals.InputFromStarter(tab.Name, from));
+        }
+        if (tab.Console.InputEnded)
+        {
+            throw new InvalidOperationException(Refusals.InputEnded(tab.Name));
+        }
         await debugged.InputAsync(newline ? text + "\n" : text);
         return "Sent";
     });

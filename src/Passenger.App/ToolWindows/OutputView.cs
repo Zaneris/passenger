@@ -310,6 +310,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         {
             UiThread.Check();
             input = value;
+            InputEnded = false;
             if (value is null)
             {
                 // What was typed and never sent stays as text, no longer a line being typed.
@@ -317,6 +318,9 @@ public sealed class OutputView : DockPanel, IOwnKeys
             }
         }
     }
+
+    /// <summary>Whether the program's input was ended here (Ctrl+D), so it reads no more, until another input is given.</summary>
+    public bool InputEnded { get; private set; }
 
     /// <summary>The console's menu: Copy the selection, Select All, and Clear All.</summary>
     private void ShowMenu(Point? at)
@@ -851,6 +855,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         }
         typedFrom = text.Length;
         Input = null;
+        InputEnded = true;
         Append("^D\n");
         ending.Close();
     }
