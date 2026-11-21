@@ -4859,6 +4859,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         _ => false,
     };
 
+    /// <summary>A kind's badge is one letter on one colour wherever it shows, Go to Symbol's and completion's alike: each
+    /// is drawn from KindBadges, the one map from a kind to its badge, never a letter and colour written beside each other
+    /// elsewhere, which would let one kind read two ways.</summary>
+    [Fact]
+    public void Every_kinds_badge_is_drawn_from_the_one_map()
+    {
+        Regex pair = new(@"\(\s*""[^""]{1,2}"",\s*TokenKeys\.[A-Za-z_]+\s*\)", RegexOptions.NonBacktracking);
+        string[] written = [.. UiFiles().Where(f => f.Path != "src/Passenger.App/KindBadges.cs")
+            .SelectMany(f => pair.Matches(f.Text).Select(m => $"{f.Path}: {m.Value}"))];
+        Assert.True(written.Length == 0, $"A badge's letter and colour written outside KindBadges, so its kind may read otherwise there than elsewhere:\n{string.Join("\n", written)}");
+    }
+
     private static string UiSource() => string.Join("\n", UiFiles().Select(f => f.Text));
 
     /// <summary>The C# and XAML of the projects that draw the window, less the theme files unless <paramref name="theme"/>.</summary>

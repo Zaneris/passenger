@@ -46,14 +46,14 @@ internal static class MemberKindsOf
     };
 
     /// <summary>The badge's letter and colour a kind's items show, which its filter shows too.</summary>
-    public static (string Letter, string Brush) Badge(MemberKinds kind) => kind switch
+    public static (string Letter, string Brush) Badge(MemberKinds kind) => KindBadges.Of(kind switch
     {
-        MemberKinds.Properties => ("p", TokenKeys.Syntax_Property),
-        MemberKinds.Methods => ("m", TokenKeys.Syntax_Method),
-        MemberKinds.ExtensionMethods => ("x", TokenKeys.Syntax_Method),
-        MemberKinds.Fields => ("f", TokenKeys.Syntax_Field),
-        _ => ("e", TokenKeys.Syntax_Event),
-    };
+        MemberKinds.Properties => BadgeKind.Property,
+        MemberKinds.Methods => BadgeKind.Method,
+        MemberKinds.ExtensionMethods => BadgeKind.ExtensionMethod,
+        MemberKinds.Fields => BadgeKind.Field,
+        _ => BadgeKind.Event,
+    });
 }
 
 /// <summary>The completion list's filters by the kind of member its items name, under a list of a type's members of more

@@ -1185,41 +1185,17 @@ internal sealed partial class CodeCompletion
     /// beside the label (an item's namespace), else the type its value has or its method returns.</summary>
     private static CompletionRow Row(CompletionItem item)
     {
-        (string letter, string brush) = item.Names switch
+        (string letter, string brush) = KindBadges.Of(item.Names switch
         {
-            Roslyn.Extension.CompletionKind.Local => ("v", TokenKeys.TextMuted),
-            Roslyn.Extension.CompletionKind.Parameter => ("a", TokenKeys.TextMuted),
-            Roslyn.Extension.CompletionKind.NamedArgument => ("n", TokenKeys.TextMuted),
-            Roslyn.Extension.CompletionKind.ExtensionMethod => MemberKindsOf.Badge(MemberKinds.ExtensionMethods),
-            _ => KindBadge(item.Kind),
-        };
+            Roslyn.Extension.CompletionKind.Local => BadgeKind.Local,
+            Roslyn.Extension.CompletionKind.Parameter => BadgeKind.Parameter,
+            Roslyn.Extension.CompletionKind.NamedArgument => BadgeKind.NamedArgument,
+            Roslyn.Extension.CompletionKind.ExtensionMethod => BadgeKind.ExtensionMethod,
+            _ => KindBadges.Of(item.Kind),
+        });
         string detail = item.LabelDetails?.Description ?? item.TypeShown ?? item.Detail ?? string.Empty;
         return new CompletionRow(item, letter, brush, detail);
     }
-
-    /// <summary>The letter and colour of a kind of completion item.</summary>
-    private static (string Letter, string Brush) KindBadge(CompletionItemKind? kind) =>
-        kind switch
-        {
-            CompletionItemKind.Method or CompletionItemKind.Function => ("m", TokenKeys.Syntax_Method),
-            CompletionItemKind.Constructor => ("c", TokenKeys.Syntax_Class),
-            CompletionItemKind.Field => ("f", TokenKeys.Syntax_Field),
-            CompletionItemKind.Variable => ("v", TokenKeys.TextMuted),
-            CompletionItemKind.Class => ("C", TokenKeys.Syntax_Class),
-            CompletionItemKind.Interface => ("I", TokenKeys.Syntax_Interface),
-            CompletionItemKind.Module => ("N", TokenKeys.Syntax_Keyword),
-            CompletionItemKind.Property => ("p", TokenKeys.Syntax_Property),
-            CompletionItemKind.Enum => ("E", TokenKeys.Syntax_Enum),
-            CompletionItemKind.Keyword => ("k", TokenKeys.Syntax_Keyword),
-            CompletionItemKind.Snippet => ("s", TokenKeys.TextMuted),
-            CompletionItemKind.EnumMember => ("e", TokenKeys.Syntax_EnumMember),
-            CompletionItemKind.Constant => ("c", TokenKeys.Syntax_Constant),
-            CompletionItemKind.Struct => ("S", TokenKeys.Syntax_Struct),
-            CompletionItemKind.Event => ("e", TokenKeys.Syntax_Event),
-            CompletionItemKind.Operator => ("o", TokenKeys.TextMuted),
-            CompletionItemKind.TypeParameter => ("T", TokenKeys.Syntax_TypeParameter),
-            _ => ("·", TokenKeys.TextMuted),
-        };
 
     /// <summary>An open completion list: its items, where the name it completes starts, the characters that commit an
     /// item that names none of its own, and whether the server left items out until more is typed.</summary>

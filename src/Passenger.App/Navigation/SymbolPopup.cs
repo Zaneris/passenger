@@ -167,26 +167,12 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         return badge;
     }
 
-    /// <summary>The letter and colour of a symbol of each kind (the protocol's SymbolKind).</summary>
-    public static (string Letter, string Brush) Badge(SymbolKind kind) => kind switch
+    /// <summary>The letter and colour of a symbol of each kind (the protocol's SymbolKind), a Godot node's and a Markdown
+    /// heading's their own, as every badge has them (<see cref="KindBadges"/>).</summary>
+    public static (string Letter, string Brush) Badge(SymbolKind kind) => KindBadges.Of(kind switch
     {
-        SymbolKind.Namespace => ("N", TokenKeys.Syntax_Keyword),
-        SymbolKind.Class => ("C", TokenKeys.Syntax_Class),
-        SymbolKind.Method or SymbolKind.Function => ("m", TokenKeys.Syntax_Method),
-        SymbolKind.Property => ("p", TokenKeys.Syntax_Property),
-        SymbolKind.Field => ("f", TokenKeys.Syntax_Field),
-        SymbolKind.Constructor => ("m", TokenKeys.Syntax_Method),
-        SymbolKind.Enum => ("E", TokenKeys.Syntax_Enum),
-        SymbolKind.Interface => ("I", TokenKeys.Syntax_Interface),
-        SymbolKind.Variable => ("v", TokenKeys.TextMuted),
-        SymbolKind.Constant => ("c", TokenKeys.Syntax_Constant),
-        SymbolKind.EnumMember => ("e", TokenKeys.Syntax_EnumMember),
-        SymbolKind.Struct => ("S", TokenKeys.Syntax_Struct),
-        SymbolKind.Event => ("e", TokenKeys.Syntax_Event),
-        SymbolKind.Operator => ("o", TokenKeys.TextMuted),
-        SymbolKind.TypeParameter => ("T", TokenKeys.Syntax_TypeParameter),
-        SymbolRow.NodeKind => ("n", TokenKeys.Syntax_Class),
-        SymbolRow.HeadingKind => ("H", TokenKeys.Syntax_Heading),
-        _ => ("·", TokenKeys.TextMuted),
-    };
+        SymbolRow.NodeKind => BadgeKind.Node,
+        SymbolRow.HeadingKind => BadgeKind.Heading,
+        _ => KindBadges.Of(kind),
+    });
 }
