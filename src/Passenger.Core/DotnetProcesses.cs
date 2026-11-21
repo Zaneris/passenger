@@ -479,6 +479,29 @@ public static partial class DotnetProcesses
         return started;
     }
 
+    /// <summary>Whether a terminal's shell has the terminal to itself, no program it started running in front of it: on
+    /// macOS and Linux its process group is the terminal's foreground one (a job it runs takes the terminal while it runs),
+    /// on Windows it runs no program it started. Null where the system will not say (the process gone, no terminal). Off
+    /// the UI thread: on Windows each process's parent is a call into the system.</summary>
+    public static unsafe bool? ShellInFront(int shell)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            byte* info = stackalloc byte[BsdInfoSize];
+            if (ProcPidInfo(shell, ProcPidTbsdInfo, 0, info, BsdInfoSize) != BsdInfoSize)
+            {
+                return null;
+            }
+            uint front = *(uint*)(info + BsdTerminalGroupOffset);
+            return front == 0 ? null : front == *(uint*)(info + BsdGroupOffset);
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            return StartedBy(shell).Count == 0;
+        }
+        return ProcStat.Of(shell) is { TerminalGroup: > 0 } stat ? stat.TerminalGroup == stat.Group : null;
+    }
+
     /// <summary>How many parents up from a process its ancestor is, or null when it is none of its nearest few.</summary>
     private static int? Depth(int id, int ancestor)
     {
@@ -581,6 +604,8 @@ public static partial class DotnetProcesses
     private const int NoSuchProcess = 3;
 
     private const int BsdUidOffset = 20;
+    private const int BsdGroupOffset = 100;
+    private const int BsdTerminalGroupOffset = 112;
     private const int BsdStartOffset = 120;
 
     private static unsafe int? ParentMac(int id)

@@ -1276,6 +1276,35 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("gamma", (await Call(client, McpTools.TerminalRun, new() { ["command"] = "echo gamma" })).GetString()!, StringComparison.Ordinal);
     }
 
+    /// <summary>terminal_run waits up to waitSeconds for the shell to prompt again: a command quiet for longer than a moment
+    /// answers what it printed once it ended; one still running as the wait ends says so, leaving out what it prints later;
+    /// and a cd typed behind it, whose prompt names another folder, answers once it has run, its output there too.</summary>
+    [Fact]
+    public async Task An_agents_terminal_command_is_waited_for_until_the_shell_prompts_and_one_still_running_says_so()
+    {
+        string folder = TestFolders.Create("mcp-terminal-wait-");
+        DeleteAtEnd(folder);
+        TestFolders.Write(folder, "Inner/inner-marker.txt", "inner\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        // Each prints a number its command does not hold, so a line of it is the command's output, never its echo wrapped.
+        string sleep = OperatingSystem.IsWindows() ? "Start-Sleep" : "sleep";
+        string Product(int factor) => OperatingSystem.IsWindows() ? $"echo ({factor}*1001)" : $"echo $(({factor}*1001))";
+        static bool Printed(string answer, int factor) => answer.Split('\n').Any(line => line.Trim() == $"{factor * 1001}");
+        string slept = (await Call(client, McpTools.TerminalRun, new() { ["command"] = $"{sleep} 4; {Product(41)}", ["waitSeconds"] = 60 })).GetString()!;
+        Assert.True(Printed(slept, 41) && !slept.Contains("Still running", StringComparison.Ordinal),
+            $"terminal_run of a command quiet for 4 s, given 60 s, answered before it ended:\n{slept}");
+
+        string held = (await Call(client, McpTools.TerminalRun, new() { ["command"] = $"{sleep} 6; {Product(42)}", ["waitSeconds"] = 2 })).GetString()!;
+        Assert.True(held.Contains($"\nStill running after 2 s: {McpTools.Output} of terminal shows what it prints from here", StringComparison.Ordinal) && !Printed(held, 42),
+            $"terminal_run of a command running past its 2 s answered as if it had ended:\n{held}");
+
+        string moved = (await Call(client, McpTools.TerminalRun, new() { ["command"] = "cd Inner", ["waitSeconds"] = 60 })).GetString()!;
+        Assert.True(Printed(moved, 42) && !moved.Contains("Still running", StringComparison.Ordinal),
+            $"terminal_run of a cd typed while a command ran, which prompts in another folder, did not answer once both had run:\n{moved}");
+        string listed = (await Call(client, McpTools.TerminalRun, new() { ["command"] = "ls" })).GetString()!;
+        Assert.True(listed.Contains("inner-marker.txt", StringComparison.Ordinal), $"The cd did not run in the Agent Shell, whose ls answered:\n{listed}");
+    }
+
     /// <summary>What a program and a terminal say reaches an agent with its secrets masked by the one rule: a password a
     /// program writes and a token the folder's .env holds, in run's answer and output of run, and a password a command
     /// echoes and that token, in terminal_run's answer and output of terminal, each shown as the mask, the rest as written.</summary>

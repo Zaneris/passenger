@@ -896,14 +896,14 @@ public sealed partial class PassengerTools
 
     [McpServerTool(Name = McpTools.TerminalRun, Title = "Run in the terminal", Destructive = true), Description(
         "Types a command into a shell of the agents' own in the IDE's Terminal window (its Agent Shell tab, started if need be) " +
-        "and presses Enter, then waits until the shell prompts again or the output has been quiet for 2 s, and returns what " +
-        "it printed. While a terminal configuration's program this agent ran (run) runs in its tab, the line goes to it.")]
+        "and presses Enter, then waits up to waitSeconds for the shell to prompt again and returns what it printed, saying so " +
+        "where the command still runs. While a terminal configuration's program this agent ran (run) runs in its tab, the line goes to it.")]
     public Task<string> TerminalRun(string command, int waitSeconds = 15, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         (TerminalSession shell, SemaphoreSlim turn) = await TerminalTurnAsync(cancel);
         try
         {
-            return Masked(await TypedAsync(shell, command, waitSeconds, cancel));
+            return Masked(await TypedAsync(shell, command, waitSeconds, atShell: shell == window.TerminalPanel.AgentShell, cancel));
         }
         finally
         {
@@ -941,9 +941,11 @@ public sealed partial class PassengerTools
         }
     }
 
-    /// <summary>Types a command into a terminal and presses Enter, then answers what it printed once the terminal prompts
-    /// again, has been quiet for 2 s, or <paramref name="waitSeconds"/> have passed.</summary>
-    private static async Task<string> TypedAsync(TerminalSession shell, string command, int waitSeconds, CancellationToken cancel)
+    /// <summary>Types a command into a terminal and presses Enter, then answers what it printed once it has ended (the
+    /// terminal prompts again, or its program ended), or once <paramref name="waitSeconds"/> have passed, saying then that it
+    /// still runs. A shell (<paramref name="atShell"/>) prompting otherwise than it did (a cd's new folder) has ended the
+    /// command once quiet with nothing it started in front of it (<see cref="DotnetProcesses.ShellInFront"/>).</summary>
+    private static async Task<string> TypedAsync(TerminalSession shell, string command, int waitSeconds, bool atShell, CancellationToken cancel)
     {
         TerminalScreen screen = shell.Screen;
         // By its number, which stays the line's own as the scrollback's oldest drop past its limit.
@@ -951,11 +953,14 @@ public sealed partial class PassengerTools
         string prompt = ToolWindows.TerminalPanel.Prompt(screen);
         int version = screen.Version;
         shell.Write(command + "\r");
-        AgentCall.Say($"Waiting up to {Math.Clamp(waitSeconds, 1, 600)} s for the terminal's command to finish");
-        Deadline until = Deadline.In(TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600)));
+        TimeSpan limit = TimeSpan.FromSeconds(Math.Clamp(waitSeconds, 1, 600));
+        AgentCall.Say($"Waiting up to {Durations.Said(limit)} for the terminal's command to finish");
+        Deadline until = Deadline.In(limit);
         long last = Stopwatch.GetTimestamp();
+        long looked = last;
         bool answered = false;
-        while (!until.Passed)
+        bool ended = false;
+        while (!ended && !until.Passed && shell.IsRunning)
         {
             await Task.Delay(100, cancel);
             if (screen.Version != version)
@@ -965,11 +970,20 @@ public sealed partial class PassengerTools
                 answered = true;
                 continue;
             }
-            // Its prompt back below it ends a command; one that leaves another prompt (a cd) or none (a server) ends once quiet.
-            bool prompted = prompt.Length > 0 && screen.ScreenTop + screen.CursorRow > before && ToolWindows.TerminalPanel.Prompt(screen) == prompt;
-            if (answered && Stopwatch.GetElapsedTime(last) > (prompted ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(2)))
+            string now = ToolWindows.TerminalPanel.Prompt(screen);
+            if (!answered || screen.ScreenTop + screen.CursorRow <= before || now.Trim().Length == 0)
             {
-                break;
+                continue;
+            }
+            TimeSpan quiet = Stopwatch.GetElapsedTime(last);
+            if (prompt.Length > 0 && now == prompt)
+            {
+                ended = quiet > TimeSpan.FromMilliseconds(200);
+            }
+            else if (atShell && quiet > TimeSpan.FromSeconds(2) && Stopwatch.GetElapsedTime(looked) > TimeSpan.FromSeconds(1) && shell.ProcessId is int id)
+            {
+                looked = Stopwatch.GetTimestamp();
+                ended = await BackgroundWork.Run(() => DotnetProcesses.ShellInFront(id), cancel) == true;
             }
         }
         long end = screen.ScreenTop + screen.CursorRow;
@@ -978,7 +992,9 @@ public sealed partial class PassengerTools
         {
             lines.Add(screen.LineAt(line).Text());
         }
-        return string.Join('\n', lines).TrimEnd();
+        string printed = string.Join('\n', lines).TrimEnd();
+        return ended || !shell.IsRunning ? printed
+            : $"{printed}\nStill running after {Durations.Said(limit)}: {McpTools.Output} of terminal shows what it prints from here, and the next {McpTools.TerminalRun}'s line goes to it";
     }
 
     /// <summary>The shell of the agents' own (<see cref="ToolWindows.TerminalPanel.AgentShell"/>) at its first prompt, one

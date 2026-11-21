@@ -2,9 +2,10 @@ using System.Globalization;
 
 namespace Passenger.Core;
 
-/// <summary>What Linux's <c>/proc/ID/stat</c> says of a process: its state (<c>Z</c> a zombie), its parent, and its start
-/// in clock ticks since boot. Read into the stack and parsed where it lies, allocating nothing.</summary>
-internal readonly record struct ProcStat(char State, int Parent, long Started)
+/// <summary>What Linux's <c>/proc/ID/stat</c> says of a process: its state (<c>Z</c> a zombie), its parent, its start in
+/// clock ticks since boot, its process group and the foreground process group of its controlling terminal (-1 with none).
+/// Read into the stack and parsed where it lies, allocating nothing.</summary>
+internal readonly record struct ProcStat(char State, int Parent, long Started, int Group, int TerminalGroup)
 {
     /// <summary>The longest of a stat's text read: the name, at most 64 bytes, and the 20 fields up to the start, each at
     /// most 20 digits, fit well within it.</summary>
@@ -51,18 +52,23 @@ internal readonly record struct ProcStat(char State, int Parent, long Started)
         ReadOnlySpan<byte> rest = stat[(named + 2)..];
         char state = (char)rest[0];
         int parent = 0;
-        // The state is the 3rd field, the parent the 4th and the start the 22nd.
+        int group = 0;
+        int terminalGroup = 0;
+        // The state is the 3rd field, the parent the 4th, the group the 5th, the terminal's group the 8th and the start the 22nd.
         for (int field = 3; ; field++)
         {
             int end = rest.IndexOfAny((byte)' ', (byte)'\n');
             ReadOnlySpan<byte> value = end < 0 ? rest : rest[..end];
-            if (field == 4 && !int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out parent))
+            if ((field == 4 && !int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out parent))
+                || (field == 5 && !int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out group))
+                || (field == 8 && !int.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out terminalGroup)))
             {
                 return null;
             }
             if (field == 22)
             {
-                return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long started) ? new ProcStat(state, parent, started) : null;
+                return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long started)
+                    ? new ProcStat(state, parent, started, group, terminalGroup) : null;
             }
             if (end < 0 || rest[end] == (byte)'\n')
             {

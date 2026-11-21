@@ -3,21 +3,31 @@ using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
 
-/// <summary>How a Linux process's /proc stat is read (<see cref="ProcStat"/>): its state, parent and start, after a name
-/// that may hold spaces and parentheses, with nothing allocated, as a kill reads it of each process it ends until it has gone.</summary>
+/// <summary>How a Linux process's /proc stat is read (<see cref="ProcStat"/>): its state, parent, start, group and its
+/// terminal's foreground group, after a name that may hold spaces and parentheses, with nothing allocated, as a kill reads it
+/// of each process it ends until it has gone.</summary>
 public class ProcStatTests
 {
-    /// <summary>A stat as Linux writes one: 52 fields, the start the 22nd, a line break after.</summary>
-    private const string Written = "4242 (sleep) S 4100 4242 4100 34817 4242 4194304 98 0 0 0 0 0 0 0 20 0 1 0 98765432 8519680 230 "
+    /// <summary>A stat as Linux writes one: 52 fields, the start the 22nd, a line break after; its terminal's foreground
+    /// group (the 8th) another's, as a shell's is while a job it started runs in front.</summary>
+    private const string Written = "4242 (sleep) S 4100 4242 4100 34817 4300 4194304 98 0 0 0 0 0 0 0 20 0 1 0 98765432 8519680 230 "
         + "18446744073709551615 1 1 0 0 0 0 0 0 0 0 0 0 17 3 0 0 0 0 0 0 0 0 0 0 0 0 0\n";
 
     [Fact]
-    public void A_stat_gives_its_state_parent_and_start()
+    public void A_stat_gives_its_state_parent_start_group_and_its_terminals_foreground_group()
     {
         ProcStat? stat = ProcStat.Read(Encoding.ASCII.GetBytes(Written));
 
-        Assert.True(stat == new ProcStat('S', 4100, 98765432),
-            $"The stat read as {stat}: a killed program's runtime files would be taken for another's, or left");
+        Assert.True(stat == new ProcStat('S', 4100, 98765432, 4242, 4300),
+            $"The stat read as {stat}: a killed program's runtime files would be taken for another's, or left, or a shell running a job taken for one at its prompt");
+    }
+
+    [Fact]
+    public void A_process_with_no_terminal_reads_its_terminals_group_as_none()
+    {
+        ProcStat? stat = ProcStat.Read(Encoding.ASCII.GetBytes(Written.Replace(" 34817 4300 ", " 0 -1 ", StringComparison.Ordinal)));
+
+        Assert.True(stat is { TerminalGroup: -1, Group: 4242 }, $"The stat of a process with no terminal read as {stat}, a terminal made up");
     }
 
     [Theory]
@@ -31,7 +41,7 @@ public class ProcStatTests
 
         ProcStat? stat = ProcStat.Read(Encoding.UTF8.GetBytes(written));
 
-        Assert.True(stat == new ProcStat('S', 4100, 98765432), $"The stat of a process named \"{name}\" read as {stat}");
+        Assert.True(stat == new ProcStat('S', 4100, 98765432, 4242, 4300), $"The stat of a process named \"{name}\" read as {stat}");
     }
 
     [Fact]
