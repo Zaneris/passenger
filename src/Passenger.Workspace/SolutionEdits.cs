@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Passenger.Core;
 using Passenger.Text;
@@ -242,12 +241,6 @@ public static class SolutionEdits
     /// added end the same way.</summary>
     private sealed class SlnText : SolutionText
     {
-        private const string FolderType = "{2150E333-8FDC-42A3-9474-1A3956D46DE8}";
-
-        private static readonly Regex ProjectLine = new(@"^Project\(""(?<type>\{[^}]+\})""\)\s*=\s*""(?<name>[^""]*)"",\s*""(?<path>[^""]*)"",\s*""(?<id>\{[^}]+\})""");
-        private static readonly Regex PairLine = new(@"^\s*(?<left>\{[^}]+\})\s*=\s*(?<right>\{[^}]+\})");
-        private static readonly Regex ItemLine = new(@"^\s*[^=]*?\s*=\s*(?<path>.+?)\s*$");
-
         private readonly List<string> lines;
         private readonly string cr;
 
@@ -259,60 +252,19 @@ public static class SolutionEdits
 
         protected override string Written() => string.Join('\n', lines);
 
-        /// <summary>One Project ... EndProject block: the lines it starts and ends on.</summary>
-        private sealed record Entry(string Type, string Name, string RelativePath, string Id, int Start, int End)
-        {
-            public bool IsFolder => Type.Equals(FolderType, StringComparison.OrdinalIgnoreCase);
-        }
+        private List<SlnProject> Entries() => SlnLines.Projects(lines);
 
-        private List<Entry> Entries()
-        {
-            List<Entry> found = [];
-            for (int i = 0; i < lines.Count; i++)
-            {
-                if (ProjectLine.Match(lines[i]) is { Success: true } m)
-                {
-                    int end = lines.FindIndex(i + 1, l => l.Trim() == "EndProject");
-                    end = end < 0 ? i : end;
-                    found.Add(new Entry(m.Groups["type"].Value, m.Groups["name"].Value, m.Groups["path"].Value, m.Groups["id"].Value, i, end));
-                    i = end;
-                }
-            }
-            return found;
-        }
+        private (int Start, int End)? Section([IdentifierOf(typeof(SlnLines))] string name) => SlnLines.GlobalSection(lines, name);
 
-        /// <summary>A global section's first and last lines, or null when the file has none.</summary>
-        private (int Start, int End)? Section(string name)
-        {
-            int start = lines.FindIndex(l => l.TrimStart().StartsWith($"GlobalSection({name})", StringComparison.Ordinal));
-            int end = start < 0 ? -1 : lines.FindIndex(start + 1, l => l.Trim() == "EndGlobalSection");
-            return end < 0 ? null : (start, end);
-        }
-
-        /// <summary>Each entry's parent folder, from NestedProjects.</summary>
-        private Dictionary<string, string> Parents()
-        {
-            Dictionary<string, string> parents = new(StringComparer.OrdinalIgnoreCase);
-            if (Section("NestedProjects") is { } nested)
-            {
-                for (int i = nested.Start + 1; i < nested.End; i++)
-                {
-                    if (PairLine.Match(lines[i]) is { Success: true } pair)
-                    {
-                        parents[pair.Groups["left"].Value] = pair.Groups["right"].Value;
-                    }
-                }
-            }
-            return parents;
-        }
+        private Dictionary<string, string> Parents() => SlnLines.Parents(lines);
 
         /// <summary>The folder a path in the solution names, found as <see cref="SolutionModel"/> reads one: each name inside
         /// the folder NestedProjects puts it in.</summary>
-        private Entry? Folder(string path)
+        private SlnProject? Folder(string path)
         {
-            List<Entry> entries = Entries();
+            List<SlnProject> entries = Entries();
             Dictionary<string, string> parents = Parents();
-            Entry? at = null;
+            SlnProject? at = null;
             foreach (string part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
             {
                 at = entries.FirstOrDefault(e => e.IsFolder && e.Name == part && string.Equals(parents.GetValueOrDefault(e.Id), at?.Id, StringComparison.OrdinalIgnoreCase));
@@ -324,7 +276,7 @@ public static class SolutionEdits
             return at;
         }
 
-        private IEnumerable<Entry> Children(string? folder)
+        private IEnumerable<SlnProject> Children(string? folder)
         {
             Dictionary<string, string> parents = Parents();
             return Entries().Where(e => string.Equals(parents.GetValueOrDefault(e.Id), folder, StringComparison.OrdinalIgnoreCase));
@@ -332,7 +284,7 @@ public static class SolutionEdits
 
         public override string? AddFolder(string? parent, string name)
         {
-            Entry? into = parent is null ? null : Folder(parent);
+            SlnProject? into = parent is null ? null : Folder(parent);
             if (parent is not null && into is null)
             {
                 return NoFolder(parent);
@@ -342,7 +294,7 @@ public static class SolutionEdits
                 return $"{name} is already there";
             }
             string id = NewId();
-            InsertEntry(FolderType, name, name, id);
+            InsertEntry(SlnLines.FolderType, name, name, id);
             if (into is not null)
             {
                 Nest(id, into.Id);
@@ -365,20 +317,12 @@ public static class SolutionEdits
             return null;
         }
 
-        /// <summary>An entry's Project line with a new name and path, the rest of it as it was.</summary>
-        private void Respell(Entry entry, string name, string path)
-        {
-            string line = lines[entry.Start];
-            Match m = ProjectLine.Match(line);
-            Group oldName = m.Groups["name"];
-            Group oldPath = m.Groups["path"];
-            lines[entry.Start] = $"{line[..oldName.Index]}{name}{line[(oldName.Index + oldName.Length)..oldPath.Index]}{path}{line[(oldPath.Index + oldPath.Length)..]}";
-        }
+        private void Respell(SlnProject entry, string name, string path) => lines[entry.Start] = SlnLines.Respelled(lines[entry.Start], name, path);
 
         public override bool Move(Func<string, string> moved)
         {
             bool changed = false;
-            foreach (Entry entry in Entries())
+            foreach (SlnProject entry in Entries())
             {
                 if (entry.IsFolder)
                 {
@@ -386,23 +330,23 @@ public static class SolutionEdits
                     (int Start, int End) items = Items(entry) ?? (0, 0);
                     for (int i = items.Start + 1; i < items.End; i++)
                     {
-                        if (ItemLine.Match(lines[i]) is { Success: true } item && Resolve(item.Groups["path"].Value) is var path && moved(path) is var to && to != path)
+                        if (SlnLines.ItemPath(lines[i]) is { } item && Resolve(item) is var path && moved(path) is var to && to != path)
                         {
-                            string written = Followed(item.Groups["path"].Value, to, '\\');
+                            string written = Followed(item, to, '\\');
                             lines[i] = $"{lines[i][..(lines[i].Length - lines[i].TrimStart().Length)]}{written} = {written}{cr}";
                             changed = true;
                         }
                     }
                     continue;
                 }
-                string was = Resolve(entry.RelativePath);
+                string was = Resolve(entry.Path);
                 if (moved(was) is var now && now == was)
                 {
                     continue;
                 }
                 // Visual Studio names a project after its file, so one that was takes its file's new name.
-                bool named = entry.Name.Equals(Path.GetFileNameWithoutExtension(entry.RelativePath.Replace('\\', '/')), StringComparison.OrdinalIgnoreCase);
-                Respell(entry, named ? NameOf(now) : entry.Name, Followed(entry.RelativePath, now, '\\'));
+                bool named = entry.Name.Equals(Path.GetFileNameWithoutExtension(entry.Path.Replace('\\', '/')), StringComparison.OrdinalIgnoreCase);
+                Respell(entry, named ? NameOf(now) : entry.Name, Followed(entry.Path, now, '\\'));
                 changed = true;
             }
             return changed;
@@ -430,12 +374,12 @@ public static class SolutionEdits
 
         public override string? AddProject(string? folder, string project)
         {
-            Entry? into = folder is null ? null : Folder(folder);
+            SlnProject? into = folder is null ? null : Folder(folder);
             if (folder is not null && into is null)
             {
                 return NoFolder(folder);
             }
-            if (Entries().Any(e => !e.IsFolder && Resolve(e.RelativePath) == project))
+            if (Entries().Any(e => !e.IsFolder && Resolve(e.Path) == project))
             {
                 return $"{NameOf(project)} is already in the solution";
             }
@@ -443,7 +387,7 @@ public static class SolutionEdits
             if (SharedProjects.Is(project))
             {
                 string shared = SharedProjects.GuidOf(project) ?? NewId();
-                InsertEntry(TypeOf(project), NameOf(project), Relative(project).Replace('/', '\\'), shared);
+                InsertEntry(SlnLines.ProjectType(project), NameOf(project), Relative(project).Replace('/', '\\'), shared);
                 if (into is not null)
                 {
                     Nest(shared, into.Id);
@@ -451,13 +395,13 @@ public static class SolutionEdits
                 return null;
             }
             string id = NewId();
-            InsertEntry(TypeOf(project), NameOf(project), Relative(project).Replace('/', '\\'), id);
+            InsertEntry(SlnLines.ProjectType(project), NameOf(project), Relative(project).Replace('/', '\\'), id);
             // A project the configurations do not name is never built with the solution: each builds it as Any CPU.
-            (int Start, int End) configurations = Section("SolutionConfigurationPlatforms")
-                ?? AddSection("SolutionConfigurationPlatforms", "preSolution", null, ["Debug|Any CPU = Debug|Any CPU", "Release|Any CPU = Release|Any CPU"]);
+            (int Start, int End) configurations = Section(SlnLines.SolutionConfigurationPlatforms)
+                ?? AddSection(SlnLines.SolutionConfigurationPlatforms, SlnLines.PreSolution, null, ["Debug|Any CPU = Debug|Any CPU", "Release|Any CPU = Release|Any CPU"]);
             List<string> names = [.. lines.GetRange(configurations.Start + 1, configurations.End - configurations.Start - 1).Select(l => l.Split('=')[0].Trim()).Where(l => l.Length > 0)];
-            (int Start, int End) platforms = Section("ProjectConfigurationPlatforms")
-                ?? AddSection("ProjectConfigurationPlatforms", "postSolution", configurations.End + 1, []);
+            (int Start, int End) platforms = Section(SlnLines.ProjectConfigurationPlatforms)
+                ?? AddSection(SlnLines.ProjectConfigurationPlatforms, SlnLines.PostSolution, configurations.End + 1, []);
             lines.InsertRange(platforms.End, names.SelectMany(n => new[]
             {
                 $"\t\t{id}.{n}.ActiveCfg = {n.Split('|')[0]}|Any CPU{cr}",
@@ -472,7 +416,7 @@ public static class SolutionEdits
 
         public override string? RemoveProject(string project)
         {
-            if (Entries().FirstOrDefault(e => !e.IsFolder && Resolve(e.RelativePath) == project) is not { } removed)
+            if (Entries().FirstOrDefault(e => !e.IsFolder && Resolve(e.Path) == project) is not { } removed)
             {
                 return $"{NameOf(project)} is not in the solution";
             }
@@ -497,7 +441,7 @@ public static class SolutionEdits
             }
             else
             {
-                lines.InsertRange(into.End, [$"\tProjectSection(SolutionItems) = preProject{cr}", $"\t\t{item} = {item}{cr}", $"\tEndProjectSection{cr}"]);
+                lines.InsertRange(into.End, [$"{SlnLines.ProjectSectionLine(SlnLines.SolutionItems, SlnLines.PreProject)}{cr}", $"\t\t{item} = {item}{cr}", $"\t{SlnLines.EndProjectSection}{cr}"]);
             }
             return null;
         }
@@ -522,49 +466,43 @@ public static class SolutionEdits
             return null;
         }
 
-        /// <summary>A folder's ProjectSection(SolutionItems): its first and last lines.</summary>
-        private (int Start, int End)? Items(Entry folder)
-        {
-            int start = lines.FindIndex(folder.Start, folder.End - folder.Start, l => l.Contains("ProjectSection(SolutionItems)", StringComparison.Ordinal));
-            int end = start < 0 ? -1 : lines.FindIndex(start, folder.End - start, l => l.Trim() == "EndProjectSection");
-            return end < 0 ? null : (start, end);
-        }
+        private (int Start, int End)? Items(SlnProject folder) => SlnLines.ProjectSection(lines, folder, SlnLines.SolutionItems);
 
-        private string? ItemPath(int line) => ItemLine.Match(lines[line]) is { Success: true } m ? Resolve(m.Groups["path"].Value) : null;
+        private string? ItemPath(int line) => SlnLines.ItemPath(lines[line]) is { } item ? Resolve(item) : null;
 
         /// <summary>A Project block after the last one, before Global.</summary>
         private void InsertEntry(string type, string name, string path, string id)
         {
             int at = Entries().LastOrDefault() is { } last ? last.End + 1 : GlobalStart();
-            lines.InsertRange(at, [$"Project(\"{type}\") = \"{name}\", \"{path}\", \"{id}\"{cr}", $"EndProject{cr}"]);
+            lines.InsertRange(at, [$"{SlnLines.ProjectLine(type, name, path, id)}{cr}", $"{SlnLines.EndProject}{cr}"]);
         }
 
         private void Nest(string child, string parent)
         {
-            (int Start, int End) nested = Section("NestedProjects")
-                ?? AddSection("NestedProjects", "preSolution", Section("ExtensibilityGlobals")?.Start, []);
+            (int Start, int End) nested = Section(SlnLines.NestedProjects)
+                ?? AddSection(SlnLines.NestedProjects, SlnLines.PreSolution, Section(SlnLines.ExtensibilityGlobals)?.Start, []);
             lines.Insert(nested.End, $"\t\t{child} = {parent}{cr}");
         }
 
         /// <summary>A new global section, at a line or before EndGlobal, the Global block itself made when there is none.</summary>
-        private (int Start, int End) AddSection(string name, string when, int? at, IReadOnlyList<string> content)
+        private (int Start, int End) AddSection([IdentifierOf(typeof(SlnLines))] string name, [IdentifierOf(typeof(SlnLines))] string when, int? at, IReadOnlyList<string> content)
         {
-            int end = lines.FindIndex(l => l.Trim() == "EndGlobal");
+            int end = lines.FindIndex(l => SlnLines.Is(l, SlnLines.EndGlobal));
             if (end < 0)
             {
                 end = GlobalStart();
-                lines.InsertRange(end, [$"Global{cr}", $"EndGlobal{cr}"]);
+                lines.InsertRange(end, [$"{SlnLines.Global}{cr}", $"{SlnLines.EndGlobal}{cr}"]);
                 end++;
             }
             int start = at ?? end;
-            lines.InsertRange(start, [$"\tGlobalSection({name}) = {when}{cr}", .. content.Select(c => $"\t\t{c}{cr}"), $"\tEndGlobalSection{cr}"]);
+            lines.InsertRange(start, [$"{SlnLines.GlobalSectionLine(name, when)}{cr}", .. content.Select(c => $"\t\t{c}{cr}"), $"\t{SlnLines.EndGlobalSection}{cr}"]);
             return (start, start + content.Count + 1);
         }
 
         /// <summary>Where Global begins, or would: before the empty line after the file's last line break.</summary>
         private int GlobalStart()
         {
-            int global = lines.FindIndex(l => l.Trim() == "Global");
+            int global = lines.FindIndex(l => SlnLines.Is(l, SlnLines.Global));
             return global >= 0 ? global : lines.Count > 0 && lines[^1].Length == 0 ? lines.Count - 1 : lines.Count;
         }
 
@@ -573,7 +511,8 @@ public static class SolutionEdits
         private void RemoveEntries(HashSet<string> ids)
         {
             SortedSet<int> gone = [];
-            foreach (Entry entry in Entries().Where(e => ids.Contains(e.Id)))
+            List<SlnProject> entries = Entries();
+            foreach (SlnProject entry in entries.Where(e => ids.Contains(e.Id)))
             {
                 for (int i = entry.Start; i <= entry.End; i++)
                 {
@@ -581,7 +520,7 @@ public static class SolutionEdits
                 }
             }
             List<(int Start, int End)> emptied = [];
-            foreach (string name in new[] { "NestedProjects", "ProjectConfigurationPlatforms" })
+            foreach (string name in new[] { SlnLines.NestedProjects, SlnLines.ProjectConfigurationPlatforms })
             {
                 if (Section(name) is not { } section)
                 {
@@ -594,13 +533,13 @@ public static class SolutionEdits
                     emptied.Add(section);
                 }
             }
-            for (int i = 0; i < lines.Count; i++)
+            foreach (SlnProject entry in entries)
             {
-                if (lines[i].Contains("ProjectSection(ProjectDependencies)", StringComparison.Ordinal))
+                if (SlnLines.ProjectSection(lines, entry, SlnLines.ProjectDependencies) is { } dependencies)
                 {
-                    for (i++; i < lines.Count && lines[i].Trim() != "EndProjectSection"; i++)
+                    for (int i = dependencies.Start + 1; i < dependencies.End; i++)
                     {
-                        if (PairLine.Match(lines[i]) is { Success: true } pair && ids.Contains(pair.Groups["left"].Value))
+                        if (SlnLines.Pair(lines[i]) is { } pair && ids.Contains(pair.Left))
                         {
                             gone.Add(i);
                         }
@@ -618,20 +557,11 @@ public static class SolutionEdits
             }
 
             bool Names(string line) =>
-                PairLine.Match(line) is { Success: true } pair ? ids.Contains(pair.Groups["left"].Value) || ids.Contains(pair.Groups["right"].Value)
-                : line.TrimStart() is { Length: > 38 } entry && entry[0] == '{' && entry[38] == '.' && ids.Contains(entry[..38]);
+                SlnLines.Pair(line) is { } pair ? ids.Contains(pair.Left) || ids.Contains(pair.Right)
+                : SlnLines.ConfiguredId(line) is { } configured && ids.Contains(configured);
         }
 
         private static string NewId() => Guid.NewGuid().ToString("B").ToUpperInvariant();
-
-        /// <summary>The project type Visual Studio and dotnet sln give a project file of its kind.</summary>
-        private static string TypeOf(string project) => Path.GetExtension(project).ToLowerInvariant() switch
-        {
-            ".fsproj" => "{F2A71F9B-5D33-465A-A702-920D77279786}",
-            ".vbproj" => "{F184B08F-C81C-45F6-A57F-5ABD9991F28F}",
-            SharedProjects.Extension => "{D954291E-2A0B-460D-934E-DC6B0785DB48}",
-            _ => "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}",
-        };
     }
 
     /// <summary>A .slnx, changed through <see cref="XmlText"/>: an element added is indented as its neighbours are, one
