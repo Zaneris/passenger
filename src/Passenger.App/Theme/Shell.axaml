@@ -1,7 +1,8 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:app="using:Passenger.App"
-        xmlns:editors="using:Passenger.App.Editors">
+        xmlns:editors="using:Passenger.App.Editors"
+        xmlns:editor="using:Passenger.Editor">
     <!-- The shell's controls over the Fluent theme. Fluent paints a button's hover and press on its
          content presenter, so each state is restyled there. A later style wins over an earlier one, so the base
          styles come first and a class's style after them says only how it differs. -->
@@ -1672,7 +1673,7 @@
     </Style>
     <!-- Code in a pane, at the pane's step whatever size the editor's code is; a framed Border.code's words too. -->
     <Style Selector=":is(Control).code">
-        <Setter Property="TextElement.FontFamily" Value="{DynamicResource Passenger.CodeFont}" />
+        <Setter Property="TextElement.FontFamily" Value="{DynamicResource {x:Static editor:CodeFonts.Key}}" />
         <Setter Property="TextElement.FontSize" Value="12" />
     </Style>
     <!-- A name that stands out in its row: a group's, or what the row is about. -->
