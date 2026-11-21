@@ -4,11 +4,8 @@
 # desktop entry, and Passenger.ico at the sizes Windows draws Passenger.exe's and every window's icon, each a PNG inside.
 # Every picture the three files hold is read back, failing the script unless its corner is fully transparent.
 set -eu
-fail() {
-    echo "app-icon: $*" >&2
-    exit 1
-}
-root=$(cd "$(dirname "$0")/.." && pwd)
+. "$(dirname "$0")/release-common.sh"
+root=$(checkout_root)
 assets="$root/src/Passenger.App/Assets"
 svg="$assets/passenger.svg"
 work=$(mktemp -d)

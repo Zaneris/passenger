@@ -2,13 +2,18 @@
 """Writes src/Passenger.App/Theme/Icons.axaml from Microsoft's Fluent UI System Icons (MIT), a few made of two of them,
 and, where an icon is taken from Visual Studio Code, its Codicons (CC BY 4.0).
 
-Each icon is fetched once into artifacts/icons/ and kept there; the lists below are the only places an icon is named.
+Each icon is fetched once into artifacts/icons/ and kept there (tools/fetched.py); the lists below are the only places an
+icon is named.
 """
+import importlib.util
 import os
 import re
 import sys
 import urllib.parse
-import urllib.request
+
+_spec = importlib.util.spec_from_file_location("fetched", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetched.py"))
+fetched = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetched)
 
 # The repository's commit the icons come from, so every run draws the same ones.
 COMMIT = "41089846ad80c5749df505aef35a68712c1561b9"
@@ -163,25 +168,13 @@ CODICONS = [
 
 def fetch(folder, stem, cache):
     name = f"ic_fluent_{folder.lower().replace(' ', '_')}_{stem}.svg"
-    return fetched(os.path.join(cache, name), f"{BASE}/{urllib.parse.quote(folder)}/SVG/{name}")
-
-
-def fetched(path, url):
-    if not os.path.exists(path):
-        with urllib.request.urlopen(url) as response:
-            data = response.read()
-        with open(path, "wb") as out:
-            out.write(data)
-    with open(path, encoding="utf-8") as svg:
-        return svg.read()
+    return fetched.text(f"{BASE}/{urllib.parse.quote(folder)}/SVG/{name}", os.path.join(cache, name))
 
 
 def main():
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = fetched.ROOT
     cache = os.path.join(root, "artifacts", "icons", COMMIT)
     codicons = os.path.join(root, "artifacts", "icons", "codicons-" + CODICONS_COMMIT)
-    os.makedirs(cache, exist_ok=True)
-    os.makedirs(codicons, exist_ok=True)
     lines = [
         '<ResourceDictionary xmlns="https://github.com/avaloniaui"',
         '                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">',
@@ -191,7 +184,7 @@ def main():
     for key, folder, stem in ICONS:
         lines.append(geometry(key, f"{folder} {stem}", fetch(folder, stem, cache)))
     for key, name in CODICONS:
-        lines.append(geometry(key, name, fetched(os.path.join(codicons, name + ".svg"), f"{CODICONS_BASE}/{name}.svg")))
+        lines.append(geometry(key, name, fetched.text(f"{CODICONS_BASE}/{name}.svg", os.path.join(codicons, name + ".svg"))))
     for key, (folder, stem), (badged, badge_stem) in COMPOSED:
         shape = [p for p in parts(f"{folder} {stem}", fetch(folder, stem, cache)) if not in_badge(p, stem)]
         badge = [p for p in parts(f"{badged} {badge_stem}", fetch(badged, badge_stem, cache)) if in_badge(p, badge_stem)]

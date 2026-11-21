@@ -4,23 +4,27 @@ DashboardServiceGrpc.cs, from dashboard_service.proto beside them, with protoc a
 
 The generated code is checked in, so no build runs protoc. The proto changes only with the Aspire version Passenger
 speaks to; then `just aspire-protocol` and the two files' changes seen in review. Grpc.Tools is fetched once from
-nuget.org into artifacts/aspire-protocol/, checked against the SHA-512 below, and never restored.
+nuget.org into artifacts/aspire-protocol/ (tools/fetched.py), checked against the SHA-512 below, and never restored.
 """
 import base64
 import hashlib
+import importlib.util
 import os
 import platform
 import stat
 import subprocess
 import sys
-import urllib.request
 import zipfile
+
+_spec = importlib.util.spec_from_file_location("fetched", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetched.py"))
+fetched = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetched)
 
 VERSION = "2.85.0"
 # The SHA-512 of nuget.org's Grpc.Tools.VERSION.nupkg, as NuGet's package cache records it (grpc.tools.VERSION.nupkg.sha512).
 SHA512 = "2jKm1yx1zXk37Xjr0Y5lQljW0MomMoZjw2j2afOmD83WGZdE4jFJWWKVfM1ldp67GxoZ+deATvKYhpbJBWNp+g=="
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = fetched.ROOT
 APP = os.path.join(ROOT, "src", "Passenger.App")
 PROTO = "Aspire/Protocol/dashboard_service.proto"
 WORK = os.path.join(ROOT, "artifacts", "aspire-protocol")
@@ -39,15 +43,8 @@ def tools_folder():
 
 
 def package():
-    path = os.path.join(WORK, f"grpc.tools.{VERSION}.nupkg")
-    if not os.path.exists(path):
-        os.makedirs(WORK, exist_ok=True)
-        url = f"https://api.nuget.org/v3-flatcontainer/grpc.tools/{VERSION}/grpc.tools.{VERSION}.nupkg"
-        with urllib.request.urlopen(url) as answer:
-            data = answer.read()
-        with open(path + ".part", "wb") as part:
-            part.write(data)
-        os.replace(path + ".part", path)
+    url = f"https://api.nuget.org/v3-flatcontainer/grpc.tools/{VERSION}/grpc.tools.{VERSION}.nupkg"
+    path = fetched.cached(url, os.path.join(WORK, f"grpc.tools.{VERSION}.nupkg"))
     with open(path, "rb") as nupkg:
         actual = base64.b64encode(hashlib.sha512(nupkg.read()).digest()).decode()
     if actual != SHA512:

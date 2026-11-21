@@ -6,17 +6,20 @@ Godot's own sources at one commit (MIT, named in THIRD_PARTY_NOTICES.md):
   and "constants", offered in every function), the stage functions each may call, and its render and stencil modes;
 - servers/rendering/shader_language.cpp: the uniform hints (its keywords between "// hints" and the list's end), the
   built-in functions (builtin_func_defs, but the constructors) and, for Passenger's compiler, every entry of it in order.
-The table only proposes: the Godot found decides which candidates it takes. The sources are fetched once into
-artifacts/godot-shader-types/<commit>/; COMMIT is Godot 4.8 beta 2's (godotengine/godot-builds names it).
+The table only proposes: the Godot found decides which candidates it takes. The sources are Godot's at tools/fetched.py's
+GODOT_COMMIT, fetched once into artifacts/godot-source/<commit>/.
 """
+import importlib.util
 import json
 import os
 import re
-import urllib.request
 
-COMMIT = "cafc17a192acf67903910a68aeb3c076c0907a4b"
+_spec = importlib.util.spec_from_file_location("fetched", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetched.py"))
+fetched = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetched)
+
 FILES = ["servers/rendering/shader_types.cpp", "servers/rendering/shader_language.cpp"]
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = fetched.ROOT
 OUT = os.path.join(ROOT, "src", "Passenger.Workspace", "GodotShaderTypes.json")
 
 MODES = {"SHADER_SPATIAL": "spatial", "SHADER_CANVAS_ITEM": "canvas_item", "SHADER_PARTICLES": "particles",
@@ -31,19 +34,6 @@ STAGE = re.compile(r'shader_modes\[RSE::(\w+)\]\.functions\["(\w+)"\]\.stage_fun
 STAGE_DECLARED = re.compile(r'ShaderLanguage::StageFunctionInfo\s+(\w+);')
 KEYWORD = re.compile(r'\{\s*TK_\w+,\s*"(\w+)",')
 FUNCTION = re.compile(r'\{\s*"(\w+)",\s*TYPE_(\w+),\s*\{([^}]*)\},\s*\{([^}]*)\},\s*TAG_(\w+),\s*(true|false)\s*\}')
-
-
-def fetch(path):
-    cache = os.path.join(ROOT, "artifacts", "godot-shader-types", COMMIT)
-    os.makedirs(cache, exist_ok=True)
-    local = os.path.join(cache, os.path.basename(path))
-    if not os.path.exists(local):
-        with urllib.request.urlopen(f"https://raw.githubusercontent.com/godotengine/godot/{COMMIT}/{path}") as response:
-            data = response.read()
-        with open(local, "wb") as out:
-            out.write(data)
-    with open(local, encoding="utf-8") as text:
-        return text.read()
 
 
 def type_name(token):
@@ -122,9 +112,9 @@ def written(value, depth):
 
 
 def main():
-    types_source, language_source = (fetch(path) for path in FILES)
+    types_source, language_source = (fetched.godot(path) for path in FILES)
     table = {
-        "source": f"https://github.com/godotengine/godot/tree/{COMMIT}",
+        "source": f"https://github.com/godotengine/godot/tree/{fetched.GODOT_COMMIT}",
         "types": shader_types(types_source),
         "hints": hints(language_source),
         "functions": functions(language_source),

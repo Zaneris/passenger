@@ -18,7 +18,7 @@ case $rid in
 esac
 # Git's sh would rewrite signtool's /fd as one of its paths; every path here is made Windows' own by cygpath instead.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(checkout_root)
 if command -v cygpath >/dev/null 2>&1; then
     root=$(cygpath -m "$root")
 fi

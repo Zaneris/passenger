@@ -35,7 +35,7 @@ if [ -n "$identity" ] && [ -z "$dry_run" ]; then
     security find-identity -v -p codesigning | grep -qF "$identity" || fail "no code signing identity '$identity' in the keychains"
 fi
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(checkout_root)
 out="$root/artifacts/package"
 work="$out/$rid"
 publish="$work/publish"

@@ -3,19 +3,23 @@
 (https://github.com/file-icons) draws with: its own icons (ISC), MFixx (MIT) and GitHub's Octicons (MIT), plus the few
 drawn here.
 
-Each SVG is fetched once into artifacts/file-icons/ and kept there under its set's pinned URL; the list below is the only
-place a shape is named.
+Each SVG is fetched once into artifacts/file-icons/ and kept there under its set's pinned URL (tools/fetched.py); the list
+below is the only place a shape is named.
 
 The icons are drawn at one weight, Octicons' outline: a logo that is a solid badge (a block, shield or disc with its
 letters cut out of it, OUTLINED) keeps its outer edge as a ring and its letters filled, so it reads as light as the rest.
 """
 import hashlib
+import importlib.util
 import math
 import os
 import re
 import sys
 import urllib.parse
-import urllib.request
+
+_spec = importlib.util.spec_from_file_location("fetched", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetched.py"))
+fetched = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetched)
 
 # Each set's commit, so every run draws the same shapes: a newer one is a new commit here, its changes seen in review.
 SETS = {
@@ -443,18 +447,11 @@ def fetch(source, name, cache):
     # Kept by the URL it came from, so a set whose pin moves is fetched again.
     pinned = hashlib.sha256(SETS[source].encode()).hexdigest()[:16]
     path = os.path.join(cache, f"{source}-{pinned}", re.sub(r"[^\w.+#-]", "_", name) + ".svg")
-    if not os.path.exists(path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with urllib.request.urlopen(SETS[source].format(urllib.parse.quote(name))) as response:
-            data = response.read()
-        with open(path, "wb") as out:
-            out.write(data)
-    with open(path, encoding="utf-8") as svg:
-        return svg.read()
+    return fetched.text(SETS[source].format(urllib.parse.quote(name)), path)
 
 
 def main():
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = fetched.ROOT
     cache = os.path.join(root, "artifacts", "file-icons")
     lines = [
         '<ResourceDictionary xmlns="https://github.com/avaloniaui"',

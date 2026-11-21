@@ -6,19 +6,26 @@
 # On macOS only.
 #   tools/debug-relay.sh [android] [apple]
 set -e
-root=$(cd "$(dirname "$0")/.." && pwd)
+. "$(dirname "$0")/release-common.sh"
+root=$(checkout_root)
 src=$root/src/Passenger.DebugRelay/relay.c
 out=$root/artifacts/debug-relay
-packs=${DOTNET_ROOT:-$HOME/.dotnet}/packs
+# The Android workload is in the .NET that installed it: DOTNET_ROOT's, the dotnet on PATH's or ~/.dotnet, the first with it.
+on_path=$(command -v dotnet || true)
+[ -z "$on_path" ] || on_path=$(dirname "$(realpath "$on_path")")
+for dotnet_root in ${DOTNET_ROOT:+"$DOTNET_ROOT"} ${on_path:+"$on_path"} "$HOME/.dotnet"; do
+  packs=$dotnet_root/packs
+  bin=$(ls -d "$packs"/Microsoft.Android.Sdk.Darwin/*/tools/Darwin/binutils/bin 2>/dev/null | tail -1)
+  [ -z "$bin" ] || break
+done
 for target in ${@:-android apple}; do
   case $target in
     android)
-      bin=$(ls -d "$packs"/Microsoft.Android.Sdk.Darwin/*/tools/Darwin/binutils/bin 2>/dev/null | tail -1)
-      [ -n "$bin" ] || { echo "No Android workload in $packs: dotnet workload install android" >&2; exit 1; }
+      [ -n "$bin" ] || fail "no Android workload in DOTNET_ROOT's .NET, the dotnet on PATH's or ~/.dotnet: dotnet workload install android"
       for abi in arm64:aarch64 x64:x86_64; do
         rid=${abi%%:*}; triple=${abi##*:}
         libs=$(ls -d "$packs"/Microsoft.Android.Runtime.CoreCLR.*.android-$rid/*/runtimes/android-$rid/native 2>/dev/null | tail -1)
-        [ -n "$libs" ] || { echo "No CoreCLR runtime pack for android-$rid in $packs: dotnet workload install android" >&2; exit 1; }
+        [ -n "$libs" ] || fail "no CoreCLR runtime pack for android-$rid in $packs: dotnet workload install android"
         mkdir -p "$out/android-$rid"
         clang -target $triple-linux-android24 -ffreestanding -fPIC -O2 -Wall -Werror -fvisibility=hidden -c "$src" -o "$out/android-$rid/relay.o"
         "$bin/ld" -shared -o "$out/android-$rid/libpassenger-debug.so" -soname libpassenger-debug.so "$libs/crtbegin_so.o" \

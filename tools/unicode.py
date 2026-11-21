@@ -1,28 +1,24 @@
 """What tools/unicode-widths.py and tools/unicode-identifiers.py share of reading the Unicode Character Database: its
-files fetched once into artifacts/unicode/<version>/, their rows, a row's code points, and runs of code points."""
+files fetched once into artifacts/unicode/<version>/ (tools/fetched.py), their rows, a row's code points, and runs of
+code points."""
+import importlib.util
 import os
-import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_spec = importlib.util.spec_from_file_location("fetched", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetched.py"))
+fetched = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetched)
+
+ROOT = fetched.ROOT
 
 
 def cache(version):
-    """The folder a version's files are kept in, made if missing."""
-    folder = os.path.join(ROOT, "artifacts", "unicode", version)
-    os.makedirs(folder, exist_ok=True)
-    return folder
+    """The folder a version's files are kept in."""
+    return os.path.join(ROOT, "artifacts", "unicode", version)
 
 
 def fetch(files, name, folder):
     """A file's text, fetched from its address in files the first time and kept in folder; a byte order mark is dropped."""
-    path = os.path.join(folder, name)
-    if not os.path.exists(path):
-        with urllib.request.urlopen(files[name]) as response:
-            data = response.read()
-        with open(path, "wb") as out:
-            out.write(data)
-    with open(path, encoding="utf-8-sig") as text:
-        return text.read()
+    return fetched.text(files[name], os.path.join(folder, name), encoding="utf-8-sig")
 
 
 def rows(text):

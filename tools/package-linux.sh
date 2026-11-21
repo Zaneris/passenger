@@ -15,7 +15,7 @@ esac
 command -v file > /dev/null 2>&1 || fail "the check needs file(1), to read each ELF file's processor"
 app=io.github.zaneris.passenger
 
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(checkout_root)
 out="$root/artifacts/package"
 work="$out/$rid"
 publish="$work/publish"

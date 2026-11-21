@@ -8,12 +8,9 @@
 # the line "<!-- Security release -->" and a Security section ("## Security"), whose first line, what it fixes, every
 # Passenger's update notice says (ReleaseNotes.SecurityOf); notes so marked without that line fail.
 set -eu
-fail() {
-    echo "release-notes: $*" >&2
-    exit 1
-}
+. "$(dirname "$0")/release-common.sh"
 tag=${1:-}
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(checkout_root)
 repository=${GITHUB_REPOSITORY:-Zaneris/passenger}
 
 if [ -n "$tag" ]; then

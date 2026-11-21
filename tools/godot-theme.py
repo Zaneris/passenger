@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """Writes src/Passenger.Workspace/GodotDefaultTheme.json, the table of Godot's default theme Passenger carries, from Godot's
-own sources at one commit (MIT, named in THIRD_PARTY_NOTICES.md), fetched once into artifacts/godot-theme/<commit>/:
+own sources at one commit (MIT, named in THIRD_PARTY_NOTICES.md), fetched once into artifacts/godot-source/<commit>/:
 - scene/theme/default_theme.cpp: each theme type's items by kind (colors, constants, fonts, font_sizes, icons, styles)
   and the type variations it makes (HeaderSmall of Label);
 - scene/scene_string_names.h and core/core_string_names.h: the names its StringName constants stand for;
 - scene/gui's and scene/main's headers: each Control's or Window's class's base (GDCLASS), along which it looks items up;
 - doc/classes/<class>.xml: the class reference's description of each theme item a class documents, its BBCode made words.
 Each later release's theme is told from the one before it (versions, what it added and removed), so an older Godot's
-project is read by its own: RELEASES are each version's last. COMMIT is Godot 4.8 beta 2's, as tools/godot-shader-types.py's.
+project is read by its own: RELEASES are each version's last, 4.8's tools/fetched.py's GODOT_COMMIT.
 """
+import importlib.util
 import json
 import os
 import re
 import urllib.error
-import urllib.request
 import xml.etree.ElementTree as ElementTree
 
-COMMIT = "cafc17a192acf67903910a68aeb3c076c0907a4b"
+_spec = importlib.util.spec_from_file_location("fetched", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fetched.py"))
+fetched = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(fetched)
+
+COMMIT = fetched.GODOT_COMMIT
 RELEASES = {"4.2": "4.2.2-stable", "4.3": "4.3-stable", "4.4": "4.4.1-stable", "4.5": "4.5.2-stable", "4.6": "4.6.3-stable", "4.7": "4.7.2-stable", "4.8": COMMIT}
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = fetched.ROOT
 OUT = os.path.join(ROOT, "src", "Passenger.Workspace", "GodotDefaultTheme.json")
 CACHE = os.path.join(ROOT, "artifacts", "godot-theme")
 
@@ -42,7 +46,7 @@ def words(text):
 def documented(name):
     """The theme items a class's reference describes, by kind and name; none where the class has no page."""
     try:
-        root = ElementTree.fromstring(fetch(f"doc/classes/{name}.xml"))
+        root = ElementTree.fromstring(fetched.godot(f"doc/classes/{name}.xml"))
     except urllib.error.HTTPError as missing:
         if missing.code == 404:
             return {}
@@ -55,33 +59,11 @@ def documented(name):
     return items
 
 
-def fetch(path, at=COMMIT):
-    cache = os.path.join(CACHE, at)
-    os.makedirs(cache, exist_ok=True)
-    local = os.path.join(cache, path.replace("/", "_"))
-    if not os.path.exists(local):
-        with urllib.request.urlopen(f"https://raw.githubusercontent.com/godotengine/godot/{at}/{path}") as response:
-            data = response.read()
-        with open(local, "wb") as out:
-            out.write(data)
-    with open(local, encoding="utf-8") as text:
-        return text.read()
-
-
 def headers():
-    """The headers of scene/gui and scene/main at the commit, listed once by GitHub's tree of it."""
-    cache = os.path.join(CACHE, COMMIT)
-    local = os.path.join(cache, "headers.json")
-    if not os.path.exists(local):
-        os.makedirs(cache, exist_ok=True)
-        url = f"https://api.github.com/repos/godotengine/godot/git/trees/{COMMIT}?recursive=1"
-        with urllib.request.urlopen(url) as response:
-            tree = json.load(response)
-        listed = [e["path"] for e in tree["tree"] if re.match(r"scene/(gui|main)/[^/]+\.h$", e["path"])]
-        with open(local, "w", encoding="utf-8") as out:
-            json.dump(sorted(listed), out)
-    with open(local, encoding="utf-8") as text:
-        return json.load(text)
+    """The headers of scene/gui and scene/main at the commit, as GitHub's tree of it lists them."""
+    url = f"https://api.github.com/repos/godotengine/godot/git/trees/{COMMIT}?recursive=1"
+    tree = json.loads(fetched.text(url, os.path.join(CACHE, COMMIT, "tree.json")))
+    return sorted(e["path"] for e in tree["tree"] if re.match(r"scene/(gui|main)/[^/]+\.h$", e["path"]))
 
 
 def theme(at):
@@ -89,7 +71,7 @@ def theme(at):
     names = {}
     for path in ["scene/scene_string_names.h", "core/core_string_names.h", "core/string/core_string_names.h"]:
         try:
-            names.update(CONSTANT.findall(fetch(path, at)))
+            names.update(CONSTANT.findall(fetched.godot(path, at)))
         except urllib.error.HTTPError as missing:
             if missing.code != 404:
                 raise
@@ -97,7 +79,7 @@ def theme(at):
     def said(quoted, constant):
         return quoted if quoted else names.get(constant, constant)
 
-    source = fetch("scene/theme/default_theme.cpp", at)
+    source = fetched.godot("scene/theme/default_theme.cpp", at)
     types = {}
     for m in SET.finditer(source):
         item, kind = said(m[2], m[3]), KINDS[m[1]]
@@ -128,7 +110,7 @@ def main():
 
     bases = {}
     for path in headers():
-        for derived, base in CLASS.findall(fetch(path)):
+        for derived, base in CLASS.findall(fetched.godot(path)):
             bases[derived] = base
 
     def themed(name):

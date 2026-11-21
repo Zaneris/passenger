@@ -6,7 +6,7 @@
 #   tools/container-tools.sh [linux-x64|linux-arm64|linux-musl-x64|linux-musl-arm64] [--archive]
 set -eu
 . "$(dirname "$0")/release-common.sh"
-cd "$(dirname "$0")/.."
+cd "$(checkout_root)"
 
 rid=
 archive=no
@@ -32,10 +32,7 @@ if [ -z "$rid" ]; then
     case $processor in
         amd64 | x86_64) rid=linux-x64 ;;
         arm64 | aarch64) rid=linux-arm64 ;;
-        *)
-            echo "No container tools are made for a $processor engine" >&2
-            exit 1
-            ;;
+        *) fail "no container tools are made for a $processor engine" ;;
     esac
 fi
 
@@ -45,16 +42,12 @@ version=$(release_version .)
 out=artifacts/container-tools/$rid
 rm -rf "$out"
 # An artifacts root of its own: a RID's publish restores what it references for that RID, which a build restores back.
-AVALONIA_TELEMETRY_OPTOUT=1 dotnet publish src/Passenger.ContainerTools -c Release -r "$rid" --self-contained -p:Version="$version" \
-    --artifacts-path artifacts/container-tools/build -o "$out" -nologo -v:q
+publish_project . Passenger.ContainerTools "$rid" "$version" --artifacts-path artifacts/container-tools/build -o "$out" -nologo -v:q
 test -x "$out/passenger-tools"
 # Its licence and notices, which must name the runtime and the dbgshim it carries for its system (musl's on a musl one).
 test -s "$out/LICENSE.txt"
 for package in Microsoft.NETCore.App.Runtime.$rid Microsoft.Diagnostics.DbgShim.$rid; do
-    if ! grep -q "^$package " "$out/THIRD-PARTY-NOTICES.txt"; then
-        echo "$out/THIRD-PARTY-NOTICES.txt does not name $package, which the tools carry" >&2
-        exit 1
-    fi
+    grep -q "^$package " "$out/THIRD-PARTY-NOTICES.txt" || fail "$out/THIRD-PARTY-NOTICES.txt does not name $package, which the tools carry"
 done
 echo "$out: $(du -sh "$out" | cut -f1)"
 
