@@ -52,16 +52,27 @@ public sealed class FileDiff
     /// <summary>The change bars for the file's side: lines added, lines modified, and a mark where lines went.</summary>
     public IReadOnlyList<ChangeMark> Marks { get; }
 
-    public static FileDiff Compare(string head, TextSnapshot text) => Compare(head, LineDiff.Lines(head), new LineStarts(head), text);
+    /// <summary>Whether git stores the file's lines alike whichever of LF and CRLF ends them, as it stores the last
+    /// commit's (<see cref="Git.BreaksStoredAlikeAsync"/>): then a line's separator changing between the two is nothing git
+    /// keeps, and <see cref="SeparatorChanges"/> says none.</summary>
+    public bool BreaksStoredAlike { get; private init; }
 
-    /// <summary>Another text of the file compared with the same last commit, whose lines are split already.</summary>
-    public FileDiff Compare(TextSnapshot text) => Compare(Head, headLines, headStarts, text);
+    public static FileDiff Compare(string head, TextSnapshot text) => Compare(head, LineDiff.Lines(head), new LineStarts(head), text, breaksAlike: false);
 
-    private static FileDiff Compare(string head, string[] headLines, LineStarts headStarts, TextSnapshot text) =>
-        new(head, headLines, headStarts, text, LineDiff.Hunks(headLines, LineDiff.Lines(text.ToString())));
+    /// <summary>Another text of the file compared with the same last commit, whose lines are split already, its separators
+    /// stored as this one's are.</summary>
+    public FileDiff Compare(TextSnapshot text) => Compare(Head, headLines, headStarts, text, BreaksStoredAlike);
+
+    private static FileDiff Compare(string head, string[] headLines, LineStarts headStarts, TextSnapshot text, bool breaksAlike) =>
+        new(head, headLines, headStarts, text, LineDiff.Hunks(headLines, LineDiff.Lines(text.ToString()))) { BreaksStoredAlike = breaksAlike };
+
+    /// <summary>This comparison with git's answer for whether it stores the file's lines alike whichever of LF and CRLF ends
+    /// them (<see cref="BreaksStoredAlike"/>).</summary>
+    public FileDiff StoringBreaksAlike(bool alike) =>
+        alike == BreaksStoredAlike ? this : new(Head, headLines, headStarts, Text, Hunks) { BreaksStoredAlike = alike };
 
     /// <summary>How the lines alike on both sides changed their separators, in words, which the hunks never show (a file
-    /// turned from LF to CRLF); null where none did.</summary>
+    /// turned from LF to CRLF); null where none did, or none git keeps.</summary>
     public string? SeparatorChanges()
     {
         TextSnapshot text = Text;
@@ -71,7 +82,7 @@ public sealed class FileDiff
             0 => string.Empty,
             1 => "LF",
             _ => "CRLF",
-        });
+        }, BreaksStoredAlike);
     }
 
     /// <summary>A line of the last commit's text's separator: "LF", "CRLF", or empty for a last line that ends with none.</summary>

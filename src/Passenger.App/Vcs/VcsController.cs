@@ -1905,6 +1905,35 @@ public sealed class VcsController : IDisposable
         return read.Version;
     }
 
+    /// <summary>Whether git stores a file's lines alike whichever of LF and CRLF ends them, as it stores the last commit's
+    /// (<see cref="Git.BreaksStoredAlikeAsync"/>): asked once of the last commit's text as read, until HEAD moves or the
+    /// open file's encoding changes, never of an edit.</summary>
+    public async Task<bool> BreaksStoredAlikeAsync(string path)
+    {
+        UiThread.Check();
+        Task<FileVersion?> version = HeadAsync(path);
+        if (git is not { } repository || !heads.TryGetValue(path, out HeadBytes? head))
+        {
+            return false;
+        }
+        if (head.Breaks is not { } asked || asked.Of != version)
+        {
+            head.Breaks = asked = (version, BreaksStoredAlikeAsync(repository, textsOf ?? "HEAD", [path, Origin(path)], path, version));
+        }
+        return await asked.Alike;
+    }
+
+    /// <summary>Whether git stores a file's lines alike whichever of LF and CRLF ends them, as it stores a revision's
+    /// <paramref name="version"/> of it, which it has at <paramref name="stored"/>.</summary>
+    public async Task<bool> BreaksStoredAlikeAsync(string revision, string stored, FileVersion version, string path)
+    {
+        UiThread.Check();
+        return git is { } repository && await BreaksStoredAlikeAsync(repository, revision, [stored], path, Task.FromResult<FileVersion?>(version));
+    }
+
+    private static async Task<bool> BreaksStoredAlikeAsync(Git repository, string revision, IReadOnlyList<string> paths, string path, Task<FileVersion?> version) =>
+        await version is { Stored: { } text } && await repository.BreaksStoredAlikeAsync(revision, paths, path, text);
+
     /// <summary>How a file's bytes differ from the last commit's where either is binary, which have no lines to compare;
     /// null where both are text, or the file is in neither. The disk's are read as they come, and a binary file's in the
     /// last commit, never kept, as git writes them again: a large asset costs a probe and a buffer rather than its size.</summary>
@@ -2158,6 +2187,9 @@ public sealed class VcsController : IDisposable
     {
         public Task<StoredBytes?> Bytes { get; } = bytes;
         public (System.Text.Encoding? In, Task<FileVersion?> Version)? Read { get; set; }
+
+        /// <summary>Whether git stores the file's lines alike whichever of LF and CRLF ends them, asked of the version read.</summary>
+        public (Task<FileVersion?> Of, Task<bool> Alike)? Breaks { get; set; }
     }
 }
 

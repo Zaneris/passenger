@@ -1644,6 +1644,53 @@ public sealed partial class Git
         return Encoding.UTF8.GetString(check ?? []).TrimEnd('\n').Split(' ') is [{ } blob, "blob", _] && blob.All(char.IsAsciiHexDigit) ? blob : null;
     }
 
+    /// <summary>Whether git stores a file as a revision has it whichever of LF and CRLF ends its lines (core.autocrlf, a
+    /// text or eol attribute), asked of git rather than of its settings: the revision's text (<paramref name="version"/>, as
+    /// checking it out writes it) with each, hashed as git would store it at <paramref name="path"/>, against the blob the
+    /// revision has at the first of <paramref name="paths"/> it has. False where either is stored otherwise, the text has
+    /// no line break to ask by, a filter's program would take it in (one is never run for this), or git cannot say.</summary>
+    public Task<bool> BreaksStoredAlikeAsync(string revision, IReadOnlyList<string> paths, string path, FileText version) => BackgroundWork.Run(async () =>
+    {
+        if (version.CrBreaks || !version.Text.Contains('\n', StringComparison.Ordinal) || !IsInside(path))
+        {
+            return false;
+        }
+        string name = GitForm(Relative(path), await ComposesAsync());
+        Task<string?> blob = BlobOfAsync();
+        // A text made only to ask is handed to no filter's program, which may keep what it is given.
+        GitResult attributes = await RunAsync(Root, ["check-attr", "-z", "--stdin", "filter"], $"{name}\0");
+        if (await blob is not { } stored || !attributes.Succeeded || attributes.Output.Split('\0') is not [_, _, "unspecified" or "unset" or "set", ..])
+        {
+            return false;
+        }
+        string?[] hashes = await Task.WhenAll(HashAsync(LineEndings.In(version.Text, "\n")), HashAsync(LineEndings.In(version.Text, "\r\n")));
+        return hashes.All(hash => hash == stored);
+
+        async Task<string?> BlobOfAsync()
+        {
+            foreach (string at in paths.Distinct().Where(IsInside))
+            {
+                string relative = Relative(at);
+                // The batch takes a name per line.
+                if (relative.AsSpan().IndexOfAny('\n', '\r') >= 0)
+                {
+                    return null;
+                }
+                if (await BlobAtAsync(revision, relative) is { } found)
+                {
+                    return found;
+                }
+            }
+            return null;
+        }
+
+        // A path on git's command line, as hash-object takes none on stdin beside the bytes: --path picks their conversions.
+        async Task<string?> HashAsync(string text) =>
+            await RunAsync(Root, ["hash-object", "--stdin", $"--path={name}"], TextAsync, FileText.Encoded(text, version.Encoding, version.HasBom)) is ({ Succeeded: true }, { } hash)
+                ? hash.Trim()
+                : null;
+    });
+
     /// <summary>Whether a path is in the working tree, where git has a last commit's text for it.</summary>
     public bool IsInside(string path) => PathNames.Within(path, Root);
 

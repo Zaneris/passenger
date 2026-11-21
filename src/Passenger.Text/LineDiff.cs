@@ -163,23 +163,25 @@ public static class LineDiff
 
     /// <summary>How the lines two texts have alike (those no hunk takes in) changed their separators, in words ("Line
     /// separators changed: 3 lines from LF to CRLF; LF added at the end"), which a comparison of their lines alone never
-    /// sees; null where none did.</summary>
-    public static string? SeparatorChanges(string before, string after)
+    /// sees; null where none did. With <paramref name="storedAlike"/>, LF and CRLF count as one separator, so only one
+    /// added or removed at the end is said.</summary>
+    public static string? SeparatorChanges(string before, string after, bool storedAlike)
     {
         string[] a = Lines(before);
         string[] b = Lines(after);
-        return SeparatorChanges(Hunks(a, b), a.Length, b.Length, Separators(before, a.Length), Separators(after, b.Length));
+        return SeparatorChanges(Hunks(a, b), a.Length, b.Length, Separators(before, a.Length), Separators(after, b.Length), storedAlike);
     }
 
-    /// <summary><see cref="SeparatorChanges(string, string)"/> over each side's lines' separators as their texts end them:
-    /// "LF", "CRLF", or empty for a last line that ends with none.</summary>
-    public static string? SeparatorChanges(IReadOnlyList<DiffHunk> hunks, int beforeLines, int afterLines, Func<int, string> before, Func<int, string> after)
+    /// <summary><see cref="SeparatorChanges(string, string, bool)"/> over each side's lines' separators as their texts end
+    /// them: "LF", "CRLF", or empty for a last line that ends with none.</summary>
+    public static string? SeparatorChanges(IReadOnlyList<DiffHunk> hunks, int beforeLines, int afterLines, Func<int, string> before, Func<int, string> after,
+        bool storedAlike)
     {
         List<(string From, string To, int Lines)> changed = [];
         void Pair(int line, int other)
         {
             (string from, string to) = (before(line), after(other));
-            if (from == to)
+            if (from == to || (storedAlike && from.Length > 0 && to.Length > 0))
             {
                 return;
             }
@@ -221,7 +223,7 @@ public static class LineDiff
         }));
     }
 
-    /// <summary>Each of a text's <see cref="Lines"/>' separator, as <see cref="SeparatorChanges(IReadOnlyList{DiffHunk}, int, int, Func{int, string}, Func{int, string})"/> takes them.</summary>
+    /// <summary>Each of a text's <see cref="Lines"/>' separator, as <see cref="SeparatorChanges(IReadOnlyList{DiffHunk}, int, int, Func{int, string}, Func{int, string}, bool)"/> takes them.</summary>
     private static Func<int, string> Separators(string text, int lines)
     {
         string[] separators = new string[lines];

@@ -467,6 +467,7 @@ public partial class MainWindow
         }
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
         Task<string?> encoding = session.Vcs.EncodingChangeAsync(path);
+        Task<bool> breaksAlike = session.Vcs.BreaksStoredAlikeAsync(path);
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         // An open file's differences are its change bars' own when they are of its text now.
         if (open is null || await session.Vcs.DiffAsync(open) is not { } diff)
@@ -475,6 +476,7 @@ public partial class MainWindow
             TextSnapshot text = mine.Snapshot;
             diff = await BackgroundWork.Run(() => FileDiff.Compare(head, text));
         }
+        diff = diff.StoringBreaksAlike(await breaksAlike);
         string[] besides = [.. new[] { await encoding, mode?.Said }.OfType<string>()];
         return LocalDiff(path, open, mine, diff, "HEAD", note: besides.Length == 0 ? null : string.Join("; ", besides), again: () => ShowDiffAsync(path));
     }

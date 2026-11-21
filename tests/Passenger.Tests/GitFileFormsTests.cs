@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Vcs;
 using Passenger.App.Workspace;
+using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Vcs;
 
@@ -170,6 +171,57 @@ public sealed class GitFileFormsTests : IDisposable
             Assert.Equal(said, Ui.Await(agent.VcsStatus(name), $"vcs_status of {name}"));
         }
         window.Close();
+    }
+
+    /// <summary>Under core.autocrlf=input, which stores CRLF as LF: a file committed with LF and edited with CRLF line
+    /// ends, which git takes as one line changed, shows that line alone in Show Diff (closed, then open and edited again in
+    /// the diff), in Compare with Revision and in an agent's vcs_status, where each said its separators changed too; while
+    /// a file beside it git stores as written (-text), turned from LF to CRLF, still says its separators changed.</summary>
+    [AvaloniaFact]
+    public void Under_core_autocrlf_input_a_CRLF_files_diff_shows_only_its_edited_lines_and_a_file_stored_as_written_its_separators()
+    {
+        Git("config", "core.autocrlf", "input");
+        File.WriteAllText(Path.Combine(folder, ".gitattributes"), "kept.txt -text\n");
+        File.WriteAllText(Path.Combine(folder, "lines.txt"), "one\ntwo\nthree\nfour\nfive\n");
+        File.WriteAllText(Path.Combine(folder, "kept.txt"), "one\ntwo\nthree\n");
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "Lines");
+        string commit = Git("rev-parse", "HEAD").Trim();
+        File.WriteAllText(Path.Combine(folder, "lines.txt"), "one\r\nTWO\r\nthree\r\nfour\r\nfive\r\n");
+        File.WriteAllText(Path.Combine(folder, "kept.txt"), "one\r\ntwo\r\nthree\r\n");
+        Assert.Equal("3\t3\tkept.txt\n1\t1\tlines.txt\n", Git("diff", "--numstat"));
+
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Ui.Landed(() => window.Vcs.Changes.Count == 2, "lines.txt and kept.txt listed as changed");
+        Passenger.App.Mcp.PassengerTools agent = new(window);
+        string lines = Changed(window, "lines.txt");
+        Saying(window.ShowDiffAsync(lines), "1 difference", "Show Diff on lines.txt, not open");
+        Saying(window.CompareWithAsync(lines, commit, GitHashes.Short(commit)!, lines), "1 difference", "Compare with Revision on lines.txt");
+        Assert.Equal("--- a/lines.txt\n+++ b/lines.txt\n@@ -1,5 +1,5 @@\n one\n-two\n+TWO\n three\n four\n five\n", Ui.Await(agent.VcsStatus("lines.txt"), "vcs_status of lines.txt"));
+
+        window.OpenFile(lines);
+        Ui.Settle();
+        IDiffHost open = Ui.Landed(window.ShowDiffAsync(lines), "Show Diff on lines.txt, open")!;
+        Ui.Landed(() => OpenDiffs.ViewOf(open).Said == "1 difference", $"Show Diff on lines.txt, open, saying 1 difference, where it says \"{OpenDiffs.ViewOf(open).Said}\"");
+        CodeEditor right = OpenDiffs.ViewOf(open).Right;
+        right.GoTo(new TextPosition(4, 0));
+        right.Focus();
+        OpenDiffs.KeysOf(open).KeyTextInput("5 ");
+        Ui.Landed(() => OpenDiffs.ViewOf(open).Said == "2 differences", $"lines.txt's diff, edited, saying 2 differences, where it says \"{OpenDiffs.ViewOf(open).Said}\"");
+        open.Close();
+
+        string kept = Changed(window, "kept.txt");
+        Saying(window.ShowDiffAsync(kept), "Line separators changed: 3 lines from LF to CRLF", "Show Diff on kept.txt");
+        Assert.Equal("Line separators changed: 3 lines from LF to CRLF", Ui.Await(agent.VcsStatus("kept.txt"), "vcs_status of kept.txt"));
+        window.Close();
+    }
+
+    /// <summary>The diff <paramref name="opening"/> opens, once its bar says <paramref name="said"/>, closed.</summary>
+    private static void Saying(Task<IDiffHost?> opening, string said, string what)
+    {
+        IDiffHost diff = Ui.Landed(opening, what)!;
+        Ui.Landed(() => OpenDiffs.ViewOf(diff).Said == said, $"{what} saying \"{said}\", where it says \"{OpenDiffs.ViewOf(diff).Said}\"");
+        diff.Close();
     }
 
     private static string Changed(MainWindow window, string name) => window.Vcs.Changes.Single(c => c.Name == name).Path;

@@ -122,12 +122,13 @@ public sealed partial class PassengerTools
         }
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
         string? encoding = await Session.Vcs.EncodingChangeAsync(full);
+        bool breaksAlike = await Session.Vcs.BreaksStoredAlikeAsync(full);
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.
         (string diff, string? separators) = await BackgroundWork.Run(() =>
         {
             string mine = texts.Text(full) ?? string.Empty;
-            return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head, mine));
+            return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head, mine, breaksAlike));
         }, cancel);
         return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff);
 
