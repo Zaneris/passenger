@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `FindInFilesTests`' `Replace_all_past_the_lists_thousand_matches_replaces_every_match_in_the_scope_and_says_how_many`
+  and `…_is_stopped_by_Stop_while_it_finds_them_replacing_nothing`, `BindingErrorsTests`'
+  `An_app_failing_thousands_of_bindings_…` and `GitFileFormsBytesTests`' `A_changed_large_binary_file_costs_its_probe_…`,
+  CI 44953680429 (every system): "Expected: "Replaced 1100 matches in 110 files" Actual: "Replaced 1,100 matches in 110
+  files"", a Problems row of "N more binding failures" not found, and "Waited 180 s for the Commit window's Show Diff …
+  where the status says "… asset.bin is 104,858,624 bytes now …"". **The tests were written before what they read**:
+  #1734 had every count and size said to a person go through `Numbers`, a comma between its thousands, and these still
+  wrote theirs as plain digits. They write each through `Numbers.Said` (ec38b0cbf); the binding failures' other counts,
+  still plain beside the row's ("its first 1000 failed bindings"), go through it too (70793e126, #2091).
 - `KeymapChoiceTests`' `A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through`, CI 44953680429 (Windows
   report shard 3): "Waited 225 s for the shell's prompt a row lower, the empty line Ctrl+J entered read". **#2080's fix
   missed a case**, the shell marks having changed no prompt it waits for: the fix (76fe95e93) waited after Ctrl+J for the
