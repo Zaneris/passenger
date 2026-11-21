@@ -197,6 +197,10 @@ public partial class MainWindow
         {
             BackgroundWork.End();
         }
+        if (held is not null || saving.Any(d => d.IsModified && Editors.Documents.Contains(d)))
+        {
+            Cue(SoundCue.SaveRefused);
+        }
         if (ActionWork.Heard is not null)
         {
             await EditorArea.LandedAsync(saving.Select(d => d.Path), null);

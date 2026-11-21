@@ -12,8 +12,8 @@ namespace Passenger.Tests;
 /// <summary>The sound cues as a person moving through code hears them, the window's record of what it played standing in
 /// for the speakers: one as the caret comes to a line holding a change, a folded region, an error, a breakpoint or a warning,
 /// nothing along a line nor on lines holding none; Settings turning a cue off, the cues off, or on only while a screen
-/// reader runs; a command failing in each shell Passenger marks the commands of, which Read as Text reads the last of by
-/// its marks. A build's and a test run's cues are UnitTestsTests'.</summary>
+/// reader runs; a save refused; a command failing in each shell Passenger marks the commands of, which Read as Text reads
+/// the last of by its marks. A build's and a test run's cues are UnitTestsTests', the debugger's DebugSessionsTests'.</summary>
 public sealed class SoundCuesTests : IDisposable
 {
     private const string Head = "class Shop\n{\n    int count;\n\n    void Add()\n    {\n        count++;\n    }\n\n    void Clear() { count = 0; }\n    void Reset() { count = 1; }\n}\n";
@@ -102,6 +102,41 @@ public sealed class SoundCuesTests : IDisposable
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_save_refused_plays_its_cue_once_and_a_save_that_lands_none()
+    {
+        string path = Path.Combine(folder, "Locked.cs");
+        File.WriteAllText(path, "class Locked { }\n");
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        File.WriteAllText(Path.Combine(folder, "Open.cs"), "class Open { }\n");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.ApplySettings(window.Settings with { SoundCues = SoundCuesPlayed.Always });
+            window.Confirm = (_, _, _) => Task.FromResult(false);
+            window.OpenFile(path);
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("public ");
+            Ui.Settle();
+            Assert.Empty(window.CuesPlayed);
+            Ui.Press(window, Ui.Shortcut(AppActions.Save));
+            Ui.Settle();
+            Assert.True(window.CuesPlayed.SequenceEqual([SoundCue.SaveRefused]), $"Save of a read-only file played {Said(window, 0)}, not the save refused cue once");
+
+            window.OpenFile(Path.Combine(folder, "Open.cs"));
+            window.EditorArea.CodeEditor.Focus();
+            window.KeyTextInput("public ");
+            Ui.Press(window, Ui.Shortcut(AppActions.Save));
+            Ui.Settle();
+            Assert.True(window.CuesPlayed.Count == 1 && !window.EditorArea.Active!.IsModified, $"A save that landed played {Said(window, 1)}");
+        }
+        finally
+        {
+            window.Close();
+            File.SetAttributes(path, FileAttributes.Normal);
         }
     }
 

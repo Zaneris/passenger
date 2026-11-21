@@ -463,6 +463,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>A sound as a command the person ran in the terminal fails, where its shell tells.</summary>
     public bool SoundOnTerminalFailure { get; init; } = true;
 
+    /// <summary>A sound as a save the person asked for is refused (a read-only file, one another program holds, a write
+    /// the system refused).</summary>
+    public bool SoundOnSaveRefused { get; init; } = true;
+
     /// <summary>"Show files with the same names as nested": the Solution view nests files by their nesting rules
     /// (Counter.razor.cs under Counter.razor), on until the Explorer's File Nesting... turns it off.</summary>
     public bool NestFiles { get; init; } = true;

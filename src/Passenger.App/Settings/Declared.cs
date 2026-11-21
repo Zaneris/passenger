@@ -108,6 +108,9 @@ public static class Declared
     public static readonly ToggleSetting SoundOnTerminalFailure = Cue(s => s.SoundOnTerminalFailure, (s, v) => s with { SoundOnTerminalFailure = v },
         "A command in the terminal failing", "terminal shell command failed exit status code error");
 
+    public static readonly ToggleSetting SoundOnSaveRefused = Cue(s => s.SoundOnSaveRefused, (s, v) => s with { SoundOnSaveRefused = v },
+        "A save refused", "save saving refused read-only held locked write failed");
+
     /// <summary>A sound cue's row on the Accessibility page, voided while the cues play never.</summary>
     private static ToggleSetting Cue(Func<AppSettings, bool> get, Func<AppSettings, bool, AppSettings> set, string label, string words) =>
         new(get, set, new(D.AccessibilityPage, label, $"sound cue audio signal {words}")
