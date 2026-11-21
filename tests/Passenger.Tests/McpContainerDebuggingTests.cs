@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Client;
 using Passenger.App.Mcp;
 
@@ -151,6 +152,57 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
             foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
                 await Docker.RunAsync("rmi", "-f", image);
+            }
+        }
+    }
+
+    /// <summary>debug_start of a Dockerfile configuration's web app answers once it serves, at the address its container's
+    /// 8080 is published on here, as workspace lists its port, never the one the app says it listens at inside its container,
+    /// and the app answers there; debug_input to it, which reads its input in its container, is refused, saying so.</summary>
+    [Fact]
+    public async Task An_agents_debug_start_of_a_container_configuration_answers_the_address_published_here_and_refuses_its_input()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string shop, _) = ContainerRunsTests.Shop("agentserves");
+        DeleteAtEnd(shop);
+        await using McpClient client = await Start(["--mcp", shop], languageServer: false);
+        string? project = null;
+        try
+        {
+            JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Dockerfile", ["waitSeconds"] = 180 });
+            JsonElement run = (await Call(client, McpTools.Workspace)).GetProperty("containerRun");
+            project = run.GetProperty("project").GetString();
+            JsonElement web = run.GetProperty("resources").EnumerateArray().Single(r => r.GetProperty("type").GetString() == "Project");
+            Match published = Regex.Match(web.TryGetProperty("ports", out JsonElement ports) ? ports.GetString() ?? string.Empty : string.Empty, @"(\d+)->8080/tcp");
+            Assert.True(published.Success, $"workspace listed the debugged service with no port published for its 8080: {web}");
+            string address = $"http://localhost:{published.Groups[1].Value}";
+            string status = started.GetProperty("status").GetString() ?? string.Empty;
+            Assert.True(started.GetProperty("state").GetString() == "running" && status.EndsWith($", listening at {address}", StringComparison.Ordinal),
+                $"debug_start of a container configuration did not answer the address its 8080 is published on here ({address}): {started.GetRawText()}");
+            using (HttpClient http = new())
+            {
+                Assert.Equal("web 1", await http.GetStringAsync(new Uri(address), TestContext.Current.CancellationToken));
+            }
+
+            string session = web.GetProperty("session").GetString()!;
+            ModelContextProtocol.Protocol.CallToolResult typed = await Result(client, McpTools.DebugInput, new() { ["text"] = "hello" });
+            Assert.True(typed.IsError == true && Text(typed).Contains($"{session}'s Debug console takes no input: the debugger attached to it, so it reads its standard input in its container, ",
+                StringComparison.Ordinal), $"debug_input to a service the debugger attached to in its container did not refuse, saying where it reads its input: {Text(typed)}");
+
+            Assert.Equal("Stopped", Text(await Call(client, McpTools.Stop)));
+            Assert.True(await Waiting.UntilAsync(() => Docker.NoneLeftAsync(project!), TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken),
+                "stop left the configuration's container behind");
+        }
+        finally
+        {
+            await Call(client, McpTools.Stop);
+            if (project is not null)
+            {
+                // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
+                foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    await Docker.RunAsync("rmi", "-f", image);
+                }
             }
         }
     }

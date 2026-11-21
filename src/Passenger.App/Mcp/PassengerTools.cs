@@ -2571,7 +2571,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 : started.Debugged != DebugState.Running ? started
                 : app is { State: LiveTree.LiveAppState.Connected } ? started with { Status = $"{started.Status}, {UiUp(app)}" }
                 : game is { State: LiveTree.LiveAppState.Connected, Monitors: not null } ? started with { Status = $"{started.Status}, {GameUp}" }
-                : serving.Said is { } said ? started with { Status = $"{started.Status}, {said}" }
+                : serving.Said is { } said ? started with { Status = $"{started.Status}, {await ServedFromHereAsync(said, cancel)}" }
                 : process is not null && device?.Plan?.Device is { App: { } onIt } launch
                     ? started with { Status = $"{started.Status}, {onIt.Package} started on {launch.Target.Name} as process {process}" }
                 : started;
@@ -2583,6 +2583,45 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             call?.Waited(Session.Debug.Session?.State.ToString().ToLowerInvariant() ?? "no session");
         }
+    }
+
+    /// <summary>Where the program the debugger shows serves, in an agent's words, once it has said (<paramref name="heard"/>):
+    /// a service of a run of services where its run reaches it from this machine (a container's published port, an AppHost's
+    /// endpoint), as the window's own links do (<see cref="ServiceRun.AddressAsync"/>); the program's own words for any other.
+    /// A container's own address reaches nothing here, so one whose run gives none says so rather than naming it.</summary>
+    private async Task<string> ServedFromHereAsync(string heard, CancellationToken cancel)
+    {
+        if (Session.Debug.Session is not { } shown || ServiceDebuggedBy(shown) is not { } debugged)
+        {
+            return heard;
+        }
+        (ServiceRun run, IRunService service) = debugged;
+        try
+        {
+            if (await run.AddressAsync(service, cancel) is { } address)
+            {
+                return $"listening at {address}";
+            }
+        }
+        catch (Exception unread) when (run.Refused(unread) || unread is InvalidOperationException or System.Text.Json.JsonException or TimeoutException)
+        {
+            return run is Containers.ContainerRun ? $"its host started in its container, whose published port could not be read: {unread.Message}" : heard;
+        }
+        return run is Containers.ContainerRun ? "its host started in its container, which publishes none of its ports to this machine" : heard;
+    }
+
+    /// <summary>The run of services and the service of it a session debugs, as its run names the session debugging each; null
+    /// for a program of no run of services.</summary>
+    private (ServiceRun Run, IRunService Service)? ServiceDebuggedBy(DebugSession session)
+    {
+        foreach (ServiceRun run in Session.ServiceRuns)
+        {
+            if (run.Services.FirstOrDefault(s => run.SessionOf(Session.Debug, s) == session) is { } service)
+            {
+                return (run, service);
+            }
+        }
+        return null;
     }
 
     /// <summary>What a launch under the debugger is waited for at a phase of its start, within <paramref name="limit"/> in
