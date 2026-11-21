@@ -26,6 +26,7 @@ public static class IgnoredFolders
 
     /// <summary>Godot's own cache and build output beside its project.godot (imports, the editor's state, Godot.NET.Sdk's
     /// <c>mono/temp</c> bin and obj).</summary>
+    [IdentifierHome]
     public const string GodotCache = ".godot";
 
     /// <summary>The test runner GdUnit4's adapter writes into a Godot project as its tests run, build output to the person,

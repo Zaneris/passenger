@@ -666,7 +666,7 @@ public sealed class CodeAssist
             {
                 // .http requests, Godot scenes' paths, shaders' names and features' steps are read with no language server.
                 WhyNot = action => (http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
-                    || shader && action.File is { } file && Godot.GodotShaderMarks.IsShader(file.Path)
+                    || shader && action.File is { } file && GodotFileKinds.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? action.ReadOnlyWhy
                     : WhyNot(action, server, syntax, xaml, markup, msbuild) is { } why && !(link && action.File is not null && action.Editor.LinkOn(action.Editor.Selections.Primary.Caret) is not null) ? why : null)
@@ -722,7 +722,7 @@ public sealed class CodeAssist
 
     /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
     private bool IsGodotScene(OpenDocument? file) =>
-        file is not null && GodotFile.IsText(file.Path) && context.GodotOf(file.Path) is not null;
+        file is not null && GodotFileKinds.IsText(file.Path) && context.GodotOf(file.Path) is not null;
 
     /// <summary>Why an action of a XAML file's alone cannot run: no file, a file not XAML of a project Passenger reads, or
     /// one that cannot be edited.</summary>

@@ -6,6 +6,7 @@ using Passenger.App.Testing;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -60,7 +61,7 @@ public sealed class GdUnit4Tests : IDisposable
     /// <summary>The person's editor layout, as Godot's editor keeps it in the project.</summary>
     private const string Layout = "[docks]\n\ndock_split_1=0\ndock_filesystem_split=1234\n";
 
-    private string LayoutPath => Path.Combine(folder, ".godot", "editor", "editor_layout.cfg");
+    private string LayoutPath => Path.Combine(folder, IgnoredFolders.GodotCache, "editor", "editor_layout.cfg");
 
     /// <summary>Both tests are in the tree before any build; Run All Tests passes the one without the engine and fails the
     /// one Godot ran at its assertion's line, which its details link, leaving the person's editor layout as it was; Debug of

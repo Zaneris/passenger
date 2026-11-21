@@ -66,8 +66,12 @@ public static class GodotIdeMessaging
 
     private static readonly Regex ServerHandshake = new(@"^GodotIdeServer,Version=([0-9]+)\.([0-9]+)\.([0-9]+),([_a-zA-Z][_a-zA-Z0-9]{0,63})$", RegexOptions.CultureInvariant);
 
-    /// <summary>The meta file a project's .NET editor writes its port and executable into while it runs.</summary>
-    public static string MetaPath(string project) => Path.Combine(project, ".godot", "mono", "metadata", "ide_messaging_meta.txt");
+    /// <summary>The meta file a project's .NET editor writes its port and executable into while it runs, from the project's
+    /// folder.</summary>
+    public static readonly string MetaFile = Path.Combine(IgnoredFolders.GodotCache, "mono", "metadata", "ide_messaging_meta.txt");
+
+    /// <summary>The meta file of a project (<see cref="MetaFile"/>).</summary>
+    public static string MetaPath(string project) => Path.Combine(project, MetaFile);
 
     /// <summary>The port and executable a meta file's text names; null for a text that names no port.</summary>
     public static (int Port, string Executable)? MetaOf(string text)

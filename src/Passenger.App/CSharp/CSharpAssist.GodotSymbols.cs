@@ -136,7 +136,7 @@ internal sealed partial class CSharpAssist
     /// (<see cref="KindUsesAsync"/>), as places for the Find window; none for a member neither does.</summary>
     internal async Task<IReadOnlyList<LspLocation>> GodotUsesAsync(OpenDocument document, LspDocument lsp, int offset)
     {
-        if (GodotScriptDeclarations.IsScript(document.Path))
+        if (GodotFileKinds.IsScript(document.Path))
         {
             return await GodotScriptUsesAsync(document, offset);
         }
@@ -326,7 +326,7 @@ internal sealed partial class CSharpAssist
     }
 
     /// <summary>Whether a script of a resource is a GDScript whose class takes in another.</summary>
-    private static bool TakesIn(GodotScenes scenes, string running, string script) => GodotScriptDeclarations.IsScript(running) && scenes.ChainOf(running).Runs(script);
+    private static bool TakesIn(GodotScenes scenes, string running, string script) => GodotFileKinds.IsScript(running) && scenes.ChainOf(running).Runs(script);
 
     /// <summary>Each key of the project's files setting a GDScript's variable (<paramref name="script"/>, a res:// path) on a
     /// node whose class takes in the script, its section's own or a scene's instancing it, or on a resource whose does, each once.</summary>
@@ -620,7 +620,7 @@ internal sealed partial class CSharpAssist
             List<(string Path, string From)> texts = [.. scenes.Files.Keys.Select(scenes.FileOf).OfType<string>().Select(f => (f, f)), (Path.Combine(folder, "project.godot"), Path.Combine(folder, "project.godot")),
                 .. beside.Where(b => b.Item1.EndsWith(".import", StringComparison.OrdinalIgnoreCase)).Select(b => (b.Item2, b.Item1))];
             // A script's or shader's text is read at its path now, its paths written from the folder it was in.
-            List<(string Path, string Res)> scripts = [.. scenes.Texts.Keys.Where(res => GodotScriptDeclarations.IsScript(res) || Godot.GodotShaderMarks.IsShader(res))
+            List<(string Path, string Res)> scripts = [.. scenes.Texts.Keys.Where(res => GodotFileKinds.IsScript(res) || GodotFileKinds.IsShader(res))
                 .Select(res => (Path: scenes.FileOf(res), res)).Where(s => s.Path is not null).Select(s => (s.Path!, s.res))];
             List<(string, string)> back = [.. paths.Select(p => (p.To, p.From))];
             string Was(string res) => GodotScenes.Moved(back, res) ?? res;
@@ -628,7 +628,7 @@ internal sealed partial class CSharpAssist
                 [.. texts.Select(t => (t.Path, Text: open.Text(t.From))).Where(t => t.Text is not null)
                     .Select(t => (t.Path, t.Text!, GodotScenes.MovedEdits(GodotFile.Parse(t.Text!), paths, Was(GodotResPaths.Of(folder, t.Path) ?? GodotResPaths.Scheme)))).Where(t => t.Item3.Count > 0),
                 .. scripts.Select(s => (s.Path, s.Res, Text: open.Text(s.Path))).Where(s => s.Text is not null)
-                    .Select(s => (s.Path, s.Text!, GodotScriptDeclarations.IsScript(s.Res) ? GodotScenes.MovedScriptEdits(s.Text!, Was(s.Res), paths) : GodotScenes.MovedShaderEdits(s.Text!, Was(s.Res), paths)))
+                    .Select(s => (s.Path, s.Text!, GodotFileKinds.IsScript(s.Res) ? GodotScenes.MovedScriptEdits(s.Text!, Was(s.Res), paths) : GodotScenes.MovedShaderEdits(s.Text!, Was(s.Res), paths)))
                     .Where(s => s.Item3.Count > 0)]);
             foreach ((string path, string text, IReadOnlyList<TextEdit> edits) in edited)
             {
@@ -670,7 +670,7 @@ internal sealed partial class CSharpAssist
         List<GodotRewritten> rewritten = [];
         List<string> left = [];
         IEnumerable<string> now = listed.Select(f => File.Exists(f) ? f : moved.FirstOrDefault(m => PathNames.Within(f, m.From)) is { From: not null } move ? PathNames.Moved(f, move.From, move.To) : f);
-        foreach (string path in now.Concat(moved.Select(m => m.To)).Where(f => !GodotFile.IsText(f) && !GodotUids.IsBeside(f)).Distinct(PathNames.Comparer))
+        foreach (string path in now.Concat(moved.Select(m => m.To)).Where(f => !GodotFileKinds.IsText(f) && !GodotUids.IsBeside(f)).Distinct(PathNames.Comparer))
         {
             try
             {
@@ -838,7 +838,7 @@ internal sealed partial class CSharpAssist
                 List<(GodotCopy Copy, string Path, FileText? Text, FileText? Uid, FileText? Import)> read = [];
                 foreach ((string from, string to) in pairs)
                 {
-                    FileText? text = GodotFile.IsText(to) ? FileText.Load(to) : null;
+                    FileText? text = GodotFileKinds.IsText(to) ? FileText.Load(to) : null;
                     FileText? uid = Read(Beside(from, to, ".uid"));
                     FileText? import = Read(Beside(from, to, ".import"));
                     byte[]? binary = text is null && import is null ? GodotBinaryOf(to) : null;

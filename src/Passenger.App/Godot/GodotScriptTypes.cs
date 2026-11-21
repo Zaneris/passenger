@@ -46,7 +46,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     public sealed record Typed(int Version, GDScriptTree Tree, GDScriptAnalysis Analysis, GDScriptAnalyzer Analyzer, string Text, HintList Hints,
         IReadOnlyList<GDScriptFinding> Findings, Marker[] Marks, SyntaxSpan[] Colours, TextRange? ColoursDiffer);
 
-    public static bool IsScript(string path) => GodotScriptDeclarations.IsScript(path);
+    public static bool IsScript(string path) => GodotFileKinds.IsScript(path);
 
     /// <summary>Godot's class reference for the engine's words on cards; null where none is found (<see cref="GodotEngineApis.ReferenceAsync"/>).</summary>
     public Task<GodotClassReference?> ReferenceAsync() => apis.ReferenceAsync();
@@ -149,13 +149,13 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         return await BackgroundWork.Run(() =>
         {
             Dictionary<string, string> texts = new(StringComparer.Ordinal);
-            foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)))
+            foreach ((string res, string text) in scenes.Texts.Where(t => GodotFileKinds.IsScript(t.Key)))
             {
                 texts[res] = scenes.FileOf(res) is { } file && open.TryGetValue(file, out string? typed) ? typed : text;
             }
             foreach ((string file, string text) in open)
             {
-                if (scenes.ResPathOf(file) is { } res && GodotScriptDeclarations.IsScript(res))
+                if (scenes.ResPathOf(file) is { } res && GodotFileKinds.IsScript(res))
                 {
                     texts[res] = text;
                 }
@@ -184,7 +184,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
     {
         DateTime since = DateTime.UtcNow - Telling;
         List<string> unheard = [];
-        foreach ((string res, string text) in scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).Concat(scenes.Files.Select(f => KeyValuePair.Create(f.Key, f.Value.Text))))
+        foreach ((string res, string text) in scenes.Texts.Where(t => GodotFileKinds.IsScript(t.Key)).Concat(scenes.Files.Select(f => KeyValuePair.Create(f.Key, f.Value.Text))))
         {
             if (scenes.FileOf(res) is { } file && !open.ContainsKey(file) && FileStamp.WrittenAt(file) >= since && EditorArea.ReadText(file) is { } now && now != text)
             {
@@ -203,7 +203,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             GodotScenes scenes = await index.ScenesAsync(folder);
             foreach (GodotDefined autoload in scenes.Defined.Autoloads)
             {
-                if (scenes.AutoloadFile(autoload.Name) is { } file && GodotScriptDeclarations.IsScript(file))
+                if (scenes.AutoloadFile(autoload.Name) is { } file && GodotFileKinds.IsScript(file))
                 {
                     autoloads[autoload.Name] = file;
                 }
@@ -313,7 +313,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
             GDScriptAnalyzer analyzer = new(project);
             GDScriptAnalysis analysis = analyzer.Analyze(parsed, res);
             HintList hints = HintList.Of([.. analysis.Inferred().Select(i => new InlayHint(i.Offset, $": {i.Type}", Kind: InlayHintKind.Type))]);
-            GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault(GodotDefinitions.ProjectRes));
+            GDScriptWarningSettings settings = GDScriptWarningSettings.Of(scenes?.Texts.GetValueOrDefault(GodotResPaths.Project));
             IReadOnlyList<GDScriptFinding> findings = [.. analysis.Findings(settings).Where(f => f.End <= text.Length)];
             // In the order of their places, as the editor keeps them, those at one place in Godot's.
             Marker[] marks = [.. findings.OrderBy(f => f.Start).Select(f => Marker.Coded(TextRange.FromBounds(f.Start, f.End),
@@ -369,14 +369,14 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal) { [res] = own };
         GDScriptTree? Tree(string path)
         {
-            if (!trees.TryGetValue(path, out GDScriptTree? tree) && scenes.Texts.TryGetValue(path, out string? text) && GodotScriptDeclarations.IsScript(path))
+            if (!trees.TryGetValue(path, out GDScriptTree? tree) && scenes.Texts.TryGetValue(path, out string? text) && GodotFileKinds.IsScript(path))
             {
                 trees[path] = tree = Parsed.Of(text);
             }
             return tree;
         }
         Dictionary<string, string> classNames = new(StringComparer.Ordinal);
-        foreach (string script in scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript))
+        foreach (string script in scenes.Texts.Keys.Where(GodotFileKinds.IsScript))
         {
             if (scenes.ScriptOf(script)?.ClassName is { } named)
             {

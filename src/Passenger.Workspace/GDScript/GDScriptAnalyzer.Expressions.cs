@@ -735,7 +735,7 @@ public sealed partial class GDScriptAnalyzer
     private GDScriptType Preloaded(string written)
     {
         string path = project.Resolved(written);
-        return path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && Tree(path) is { } tree ? ScriptClass(tree, path) with { Meta = true }
+        return GodotFileKinds.IsScript(path) && Tree(path) is { } tree ? ScriptClass(tree, path) with { Meta = true }
             : project.ClassPath(project.ResourceClass(path)) is { } scripted && Tree(scripted) is { } scriptedTree ? ScriptClass(scriptedTree, scripted)
             : project.ResourceClass(path) is "Resource" ? GDScriptType.Native("Resource").Soft : GDScriptType.Native(project.ResourceClass(path));
     }
@@ -1540,7 +1540,7 @@ public sealed partial class GDScriptAnalyzer
                 {
                     MethodMissing(call, attribute, owner, method, context);
                 }
-                if (method.Name == "free" && attribute.Base is GDScriptSelf && Engine?.Version >= new Version(4, 8) && context.Analysis.Tree is not null && Knows(context.Class))
+                if (method.Name == "free" && attribute.Base is GDScriptSelf && Since48 && context.Analysis.Tree is not null && Knows(context.Class))
                 {
                     Error(context, call, "Calling \"self.free()\" can lead to bugs and crashes. Consider using \"queue_free()\" instead.");
                 }

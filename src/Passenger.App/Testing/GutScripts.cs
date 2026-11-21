@@ -21,7 +21,7 @@ public static partial class GutScripts
     public const string Framework = "GUT";
 
     /// <summary>Whether a Godot project carries GUT.</summary>
-    public static bool Carried(string folder) => File.Exists(Path.Combine(folder, "addons", "gut", "gut_cmdln.gd"));
+    public static bool Carried(string folder) => File.Exists(Path.Combine(folder, GodotResPaths.AddonsFolder, "gut", "gut_cmdln.gd"));
 
     /// <summary>The file GUT's command line reads its options from, in the project's folder.</summary>
     public const string ConfigFile = ".gutconfig.json";
@@ -42,7 +42,7 @@ public static partial class GutScripts
                 IReadOnlyList<string> dirs = [.. JsonMembers.Texts(root, "dirs").Where(d => d.Length > 0).Select(d => d.EndsWith('/') ? d : d + "/")];
                 IReadOnlyList<string> tests = JsonMembers.Texts(root, "tests");
                 return dirs.Count == 0 && tests.Count == 0 ? null
-                    : new Config(dirs, JsonMembers.Bool(root, "include_subdirs") ?? false, JsonMembers.Text(root, "prefix") ?? "test_", JsonMembers.Text(root, "suffix") ?? ".gd", tests);
+                    : new Config(dirs, JsonMembers.Bool(root, "include_subdirs") ?? false, JsonMembers.Text(root, "prefix") ?? "test_", JsonMembers.Text(root, "suffix") ?? GodotFileKinds.Script, tests);
             }
             catch (JsonException)
             {
@@ -109,8 +109,8 @@ public static partial class GutScripts
     /// <summary>Whether a file is a GDScript file a project's tests may be in: not GUT's own nor another addon's, nor
     /// Godot's build folder's.</summary>
     public static bool Holds(string folder, string path) =>
-        Path.GetExtension(path).Equals(".gd", StringComparison.OrdinalIgnoreCase) && PathNames.IsUnder(path, folder)
-        && Path.GetRelativePath(folder, path).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] is not ("addons" or ".godot");
+        GodotFileKinds.IsScript(path) && PathNames.IsUnder(path, folder)
+        && Path.GetRelativePath(folder, path).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] is not (GodotResPaths.AddonsFolder or IgnoredFolders.GodotCache);
 
     /// <summary>The project's GDScript files <see cref="Holds"/> takes, folder by folder: none of a hidden folder, nor of one
     /// Godot's .gdignore leaves out. A worker's: it walks the disk.</summary>
@@ -127,7 +127,7 @@ public static partial class GutScripts
     public static (string Path, string? Inner) ScriptOf(string folder, string type, string? path)
     {
         int plus = type.IndexOf('+', StringComparison.Ordinal);
-        return (path ?? Path.Combine(folder, (plus < 0 ? type : type[..plus]).Replace('.', Path.DirectorySeparatorChar) + ".gd"), plus < 0 ? null : type[(plus + 1)..]);
+        return (path ?? Path.Combine(folder, (plus < 0 ? type : type[..plus]).Replace('.', Path.DirectorySeparatorChar) + GodotFileKinds.Script), plus < 0 ? null : type[(plus + 1)..]);
     }
 
     /// <summary>What the project's script at <paramref name="path"/> declares for testing (<see cref="FileTests"/>, its

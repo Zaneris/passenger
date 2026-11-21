@@ -21,7 +21,7 @@ public static class GodotPlugins
     /// lists its res:// path; one whose plugin.cfg cannot be read named by its folder.</summary>
     public static IReadOnlyList<GodotPlugin> Read(string folder, IReadOnlyList<string> enabled)
     {
-        string addons = Path.Combine(folder, "addons");
+        string addons = Path.Combine(folder, GodotResPaths.AddonsFolder);
         List<GodotPlugin> plugins = [];
         try
         {
@@ -36,7 +36,7 @@ public static class GodotPlugins
                 {
                     continue;
                 }
-                string res = $"res://addons/{Path.GetFileName(own)}/{ConfigName}";
+                string res = $"{GodotResPaths.Addons}{Path.GetFileName(own)}/{ConfigName}";
                 GodotSection? plugin = null;
                 try
                 {

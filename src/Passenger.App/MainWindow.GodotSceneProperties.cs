@@ -31,7 +31,7 @@ public partial class MainWindow
         {
             return;
         }
-        if (view.Outlined is not { } scene || !GodotProject.IsScene(scene) || GodotOfFile(scene) is not { } folder)
+        if (view.Outlined is not { } scene || !GodotFileKinds.IsScene(scene) || GodotOfFile(scene) is not { } folder)
         {
             view.Details = null;
             sceneProperties?.Show(null);
@@ -64,7 +64,7 @@ public partial class MainWindow
             exports = [.. ((await service.GodotSceneCodeAsync(request, CancellationToken.None))?.Classes.FirstOrDefault(c => c.Scripts.Contains(script))?.Exports ?? [])
                 .Where(e => e.Inspected is not null).Select(e => new GodotScriptExport(e.Name, e.Inspected!.Type, e.Inspected.Hint, e.Inspected.HintString, e.Inspected.Default))];
         }
-        else if (script is not null && script.EndsWith(".gd", StringComparison.Ordinal) && scenes.FileOf(script) is { } gdscript && Editors.TextOf(gdscript)?.ToString() is { } source)
+        else if (script is not null && GodotFileKinds.IsScript(script) && scenes.FileOf(script) is { } gdscript && Editors.TextOf(gdscript)?.ToString() is { } source)
         {
             exports = await session.GodotScriptTypes.ExportsAsync(scenes, script, source);
         }
@@ -85,7 +85,7 @@ public partial class MainWindow
     /// (none known with no Godot; a GDExtension's classes are its own, so with one in the project a class is left to Godot).</summary>
     private static GodotVariantBounds BoundsOf(string folder, GodotEngineApi? api) => new(api?.Version,
         file => GodotResPaths.FileOf(folder, file) is { } named && File.Exists(named),
-        api is null || File.Exists(Path.Combine(folder, ".godot", "extension_list.cfg")) ? null : named => api.Classes.TryGetValue(named, out GodotApiClass? made) && made.Instantiable);
+        api is null || File.Exists(Path.Combine(folder, IgnoredFolders.GodotCache, "extension_list.cfg")) ? null : named => api.Classes.TryGetValue(named, out GodotApiClass? made) && made.Instantiable);
 
     /// <summary>The node a row of a scene's outline stands for: a node's own, or the node a row under it is of (its script,
     /// the scene it instances, a connection it sends), so the caret on such a line still shows that node's properties.</summary>

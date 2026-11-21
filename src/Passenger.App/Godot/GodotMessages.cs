@@ -336,7 +336,7 @@ public sealed record GodotError(long Milliseconds, string File, string Function,
     /// <c>res://</c> path into one), outside the build's output in <c>.godot</c>; no file where none is (an engine error).</summary>
     public (string? Path, int Line) PlaceIn(string folder, Func<string, string?> local)
     {
-        string output = Path.Combine(folder, ".godot");
+        string output = Path.Combine(folder, IgnoredFolders.GodotCache);
         foreach ((string file, int line) in Frames.Select(f => (f.File, f.Line)).Prepend((File, Line)))
         {
             string path = file.Length > 0 ? local(file) ?? string.Empty : string.Empty;

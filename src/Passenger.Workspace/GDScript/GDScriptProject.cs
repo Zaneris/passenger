@@ -45,14 +45,14 @@ public sealed class GDScriptProject(GodotEngineApi? engine, Func<string, GDScrip
     /// <summary>The class Godot loads a file as by its extension, as its importers do by default; null for any other file.</summary>
     public static string? LoadedAs(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
-        ".tscn" or ".scn" => "PackedScene",
-        ".gd" => "GDScript",
+        GodotFileKinds.TextScene or GodotFileKinds.BinaryScene => "PackedScene",
+        GodotFileKinds.Script => "GDScript",
         ".cs" => "CSharpScript",
         ".png" or ".jpg" or ".jpeg" or ".webp" or ".svg" or ".bmp" or ".tga" or ".exr" or ".hdr" => "CompressedTexture2D",
         ".wav" => "AudioStreamWAV",
         ".ogg" => "AudioStreamOggVorbis",
         ".mp3" => "AudioStreamMP3",
-        ".gdshader" or ".shader" => "Shader",
+        GodotFileKinds.Shader or GodotFileKinds.OlderShader => "Shader",
         ".ttf" or ".otf" or ".woff" or ".woff2" or ".fnt" => "FontFile",
         _ => null,
     };

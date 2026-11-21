@@ -33,7 +33,7 @@ internal sealed class GodotSceneMarks(GodotSceneIndex index, Func<string, string
     /// <summary>Who checks a scene, as an agent is told while a check is under way.</summary>
     private const string Checker = "Passenger's reading of its scene";
 
-    protected override (string Checker, Scene Kept)? Follow(OpenDocument document) => GodotFile.IsText(document.Path) ? (Checker, new Scene()) : null;
+    protected override (string Checker, Scene Kept)? Follow(OpenDocument document) => GodotFileKinds.IsText(document.Path) ? (Checker, new Scene()) : null;
 
     /// <summary>A C# file of a project was written on disk: each open scene read again now, once the server has read it.</summary>
     public void CodeWritten() => CheckAll();

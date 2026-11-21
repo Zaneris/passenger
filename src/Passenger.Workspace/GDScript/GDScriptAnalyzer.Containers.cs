@@ -53,7 +53,7 @@ public sealed partial class GDScriptAnalyzer
         "Basis" or "Vector2" or "Vector2i" or "Vector3" or "Vector3i" or "Vector4" or "Vector4i" or "Transform2D" or "Transform3D" or "Projection" =>
             index is "int" or "float" or "String" or "StringName",
         "Color" => index is "int" or "String" or "StringName",
-        "Dictionary" when based.Elements is [{ } key, ..] && !(Engine?.Version >= new Version(4, 8) && (key.IsVariant || !key.Hard)) => index switch
+        "Dictionary" when based.Elements is [{ } key, ..] && !(Since48 && (key.IsVariant || !key.Hard)) => index switch
         {
             // Null stands for an object, and an int for a float.
             "Nil" => key.Kind is GDScriptTypeKind.Native or GDScriptTypeKind.Class,

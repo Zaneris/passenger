@@ -1,4 +1,5 @@
 using Passenger.Workspace.GodotShader;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 
@@ -95,7 +96,7 @@ public class GodotShaderPreprocessorTests
 
     private static GodotShaderPreprocessed Read(string code, string method = "forward_plus") =>
         GodotShaderPreprocessor.Preprocess(code, Shader, method,
-            path => Files.TryGetValue(path, out string? text) ? new GodotShaderIncluded(true, path.EndsWith(".gdshaderinc", StringComparison.Ordinal), text) : null);
+            path => Files.TryGetValue(path, out string? text) ? new GodotShaderIncluded(true, GodotFileKinds.IsShaderInclude(path), text) : null);
 
     /// <summary>A line with its spaces taken out but one between words.</summary>
     private static string Compact(string line) => string.Join(' ', line.Split(' ', StringSplitOptions.RemoveEmptyEntries))

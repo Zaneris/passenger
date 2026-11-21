@@ -1505,7 +1505,7 @@ public sealed class ProjectSession : IAsyncDisposable
         : document.Language == Languages.Language.Gherkin ? new Editors.FeatureOutline(document.Text, () => FeatureProjectFolder(document.Path))
         : Godot.GodotScriptTypes.IsScript(document.Path) ? new Godot.GDScriptOutline(document.Text)
         : (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
-        : Passenger.Workspace.GodotFile.IsText(document.Path) && GodotOf(document.Path) is { } folder ? new Godot.GodotSceneOutline.Source(GodotScenes, folder)
+        : Passenger.Workspace.GodotFileKinds.IsText(document.Path) && GodotOf(document.Path) is { } folder ? new Godot.GodotSceneOutline.Source(GodotScenes, folder)
         : null;
 
     /// <summary>The folder of the project a .feature file belongs to, whose configuration says the language it is read in;

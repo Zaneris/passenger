@@ -230,7 +230,7 @@ public sealed class GodotScenes
         classes = new(() =>
         {
             Dictionary<string, string> all = new(StringComparer.Ordinal);
-            foreach (string res in Texts.Keys.Where(GodotScriptDeclarations.IsScript).Order(StringComparer.Ordinal))
+            foreach (string res in Texts.Keys.Where(GodotFileKinds.IsScript).Order(StringComparer.Ordinal))
             {
                 if (ScriptOf(res)?.ClassName is { } name)
                 {
@@ -289,7 +289,7 @@ public sealed class GodotScenes
                 return kept;
             }
         }
-        GodotScriptDeclarations? read = GodotScriptDeclarations.IsScript(res) && Texts.TryGetValue(res, out string? text) ? GodotScriptDeclarations.Read(text) : null;
+        GodotScriptDeclarations? read = GodotFileKinds.IsScript(res) && Texts.TryGetValue(res, out string? text) ? GodotScriptDeclarations.Read(text) : null;
         lock (building)
         {
             scripts[res] = read;
@@ -703,7 +703,7 @@ public sealed class GodotScenes
     public IReadOnlyList<TextEdit>? ScriptRenames(string script, string text, IReadOnlyList<GodotTreeNode> nodes, string name)
     {
         List<GodotTreeNode> runners = [.. Files.Where(f => f.Value.Header?.Tag == "gd_scene").SelectMany(f => Tree(f.Key)?.Below() ?? [])
-            .Where(n => n.Script is { } running && GodotScriptDeclarations.IsScript(running) && ChainOf(running).Runs(script))];
+            .Where(n => n.Script is { } running && GodotFileKinds.IsScript(running) && ChainOf(running).Runs(script))];
         List<TextEdit> edits = [];
         foreach (GDScriptNodePath path in GDScriptNodePaths.In(GDScriptTree.Parse(text)))
         {

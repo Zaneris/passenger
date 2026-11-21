@@ -192,7 +192,7 @@ public static partial class GoDotTests
     /// <summary>The scenes C# names by a string of a res:// path, which it may change to.</summary>
     private static IEnumerable<string> ScenesNamed(string code, CSharpParseOptions? parsing) =>
         CSharpParsing.Parse(code, parsing ?? CSharpParsing.Default).GetRoot().DescendantTokens().Where(t => t.IsKind(SyntaxKind.StringLiteralToken))
-            .Select(t => t.ValueText).Where(v => v.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && v.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase));
+            .Select(t => t.ValueText).Where(v => v.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) && GodotFileKinds.Is(v, GodotFileKinds.TextScene));
 
     /// <summary>A run's tests as GoDotTest's lines of them are heard: each test's start, then its end with the time between,
     /// from when each line came (<paramref name="at"/>, since the run began).</summary>

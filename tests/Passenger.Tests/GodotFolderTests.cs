@@ -23,8 +23,8 @@ public sealed class GodotFolderTests
         string folder = TestFolders.Create("godot-cache-");
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n");
         string source = TestFolders.Write(folder, Path.Combine("Scripts", "Needle.cs"), "// needle\n");
-        TestFolders.Write(folder, Path.Combine(".godot", "mono", "temp", "obj", "NeedleGenerated.cs"), "// needle\n");
-        TestFolders.Write(folder, Path.Combine(".godot", "editor", "needle.cfg"), "needle\n");
+        TestFolders.Write(folder, Path.Combine(IgnoredFolders.GodotCache, "mono", "temp", "obj", "NeedleGenerated.cs"), "// needle\n");
+        TestFolders.Write(folder, Path.Combine(IgnoredFolders.GodotCache, "editor", "needle.cfg"), "needle\n");
         MainWindow window = new() { Width = 1200, Height = 800, Watching = eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, StartsLanguageServer = false };
         window.Show();
         window.OpenFolder(folder);
@@ -48,7 +48,7 @@ public sealed class GodotFolderTests
         Assert.True(found.SequenceEqual([expected]), $"Find in Files found needle in [{string.Join(", ", found)}], where only {expected} is the person's");
         Ui.Press(window, "ESCAPE");
 
-        TestFolders.Write(folder, Path.Combine(".godot", "imported", "later.cs"), "// later\n");
+        TestFolders.Write(folder, Path.Combine(IgnoredFolders.GodotCache, "imported", "later.cs"), "// later\n");
         TestFolders.Write(folder, Path.Combine("Scripts", "Later.cs"), "// later\n");
         Ui.WaitFor(() => window.FileIndex.Files.Contains(Path.Combine("Scripts", "Later.cs")), "the script made later in Go to File");
         Assert.True(!window.FileIndex.Files.Any(f => f.StartsWith(IgnoredFolders.GodotCache, StringComparison.Ordinal)),

@@ -21,8 +21,8 @@ public static class GodotScripts
 {
     /// <summary>What a headless editor writes into the project as it starts that is the person's: the project's settings (a
     /// plugin's save writes the .NET editor's assembly name, a newer Godot's features) and their editor's own files.</summary>
-    private static readonly string[] Kept = [GodotProject.FileName, Path.Combine(".godot", "editor", "editor_layout.cfg"),
-        Path.Combine(".godot", "editor", "script_editor_cache.cfg"), Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt")];
+    private static readonly string[] Kept = [GodotProject.FileName, Path.Combine(IgnoredFolders.GodotCache, "editor", "editor_layout.cfg"),
+        Path.Combine(IgnoredFolders.GodotCache, "editor", "script_editor_cache.cfg"), GodotIdeMessaging.MetaFile];
 
     /// <summary>The ports the IDE messaging servers of Passenger's own headless editors were heard on, as each wrote its meta
     /// file over the person's, which is put back.</summary>
@@ -226,7 +226,7 @@ public static class GodotScripts
                 {
                     return true;
                 }
-                if (extension.Equals(".gd", StringComparison.OrdinalIgnoreCase) && (cached is null || File.GetLastWriteTimeUtc(file) > cached)
+                if (extension.Equals(GodotFileKinds.Script, StringComparison.OrdinalIgnoreCase) && (cached is null || File.GetLastWriteTimeUtc(file) > cached)
                     && GodotResPaths.Of(project, file) is { } script)
                 {
                     scripts.Add(script);
@@ -366,7 +366,7 @@ public static class GodotScripts
 
     /// <summary>The files beside which a headless editor makes one of its own where there is none: a script's or shader's
     /// <c>.uid</c>, an asset's <c>.import</c>.</summary>
-    private static readonly HashSet<string> Uided = new(StringComparer.OrdinalIgnoreCase) { ".gd", ".cs", ".gdshader", ".gdshaderinc" };
+    private static readonly HashSet<string> Uided = new(StringComparer.OrdinalIgnoreCase) { GodotFileKinds.Script, ".cs", GodotFileKinds.Shader, GodotFileKinds.ShaderInclude };
 
     private static readonly HashSet<string> Imported = new(StringComparer.OrdinalIgnoreCase)
     {

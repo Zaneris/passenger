@@ -175,7 +175,7 @@ public class GodotProtocolTests
         string script = Path.Combine(root, "Main.cs");
         const string Glue = "/root/godot/modules/mono/glue/GodotSharp/GodotSharp/Core/";
         GodotFrame push = new(Glue + "GD.cs", "void Godot.GD.PushError(string)", 366);
-        GodotFrame trampoline = new(Path.Combine(root, ".godot", "mono", "temp", "obj", "Main_ScriptMethods.generated.cs"), "Main+GodotInternal.trampoline_1__Process", 38);
+        GodotFrame trampoline = new(Path.Combine(root, Passenger.Workspace.IgnoredFolders.GodotCache, "mono", "temp", "obj", "Main_ScriptMethods.generated.cs"), "Main+GodotInternal.trampoline_1__Process", 38);
         GodotFrame bridge = new(Glue + "Bridge/CSharpInstanceBridge.cs", "Godot.Bridge.CSharpInstanceBridge.CallViaTrampoline", 161);
         GodotError Raised(string file, int line, int at, params GodotFrame[] frames) =>
             new(5, file, "f", line, "Every frame", string.Empty, false, [.. frames.Select(f => f.Function.StartsWith("void Main", StringComparison.Ordinal) ? f with { Line = at } : f)]);

@@ -1,4 +1,5 @@
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -7,7 +8,7 @@ namespace Passenger.App.Godot;
 /// shader, a script of its own language, a resource file of the class; or by a file hint's patterns (<c>*.png</c>).</summary>
 public static partial class GodotResources
 {
-    private static readonly string[] Resources = [".tres", ".res"];
+    private static readonly string[] Resources = [GodotFileKinds.TextResource, GodotFileKinds.BinaryResource];
 
     /// <summary>The classes a property may name of what a file loads as, past that class itself.</summary>
     private static readonly Dictionary<string, string[]> Bases = new(StringComparer.Ordinal)
@@ -64,7 +65,7 @@ public static partial class GodotResources
     public static IReadOnlyList<string> Under(string folder, IReadOnlyList<string> classes, int most = 2000)
     {
         string root = PathNames.Canonical(folder);
-        string output = Path.Combine(root, ".godot");
+        string output = Path.Combine(root, IgnoredFolders.GodotCache);
         List<string> found = [];
         foreach ((_, IReadOnlyList<string> files) in PathNames.FilesUnder(root, f => !PathNames.Same(f, output) && !Path.GetFileName(f).StartsWith('.')))
         {

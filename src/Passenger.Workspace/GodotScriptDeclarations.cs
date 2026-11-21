@@ -59,9 +59,6 @@ public sealed class GodotScriptDeclarations
     /// <summary>Its members in the order written.</summary>
     public IReadOnlyList<GodotScriptDeclared> Members { get; }
 
-    /// <summary>Whether a file is a GDScript.</summary>
-    public static bool IsScript(string path) => path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>The member of a kind it declares by a name; null for none.</summary>
     public GodotScriptDeclared? Member(GodotScriptKind kind, string name) => Members.FirstOrDefault(m => m.Kind == kind && m.Name == name);
 

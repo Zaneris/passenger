@@ -345,7 +345,7 @@ public partial class MainWindow
         // A scene's tree takes in the scenes it instances and the scripts it names, written on disk or typed.
         next.GodotScenes.Changed += (_, _) =>
         {
-            if (session == next && Editors.Active is { } shown && Passenger.Workspace.GodotFile.IsText(shown.Path) && next.GodotOf(shown.Path) is not null)
+            if (session == next && Editors.Active is { } shown && Passenger.Workspace.GodotFileKinds.IsText(shown.Path) && next.GodotOf(shown.Path) is not null)
             {
                 structure?.Invalidate();
             }

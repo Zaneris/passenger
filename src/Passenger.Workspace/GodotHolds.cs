@@ -18,7 +18,7 @@ public static class GodotHolds
     public static GodotHold? Of(string res, IReadOnlyCollection<string> open, IReadOnlyCollection<string> unsaved, bool saysUnsaved, string? inspected) =>
         unsaved.Contains(res, StringComparer.Ordinal) ? GodotHold.Unsaved
         : !saysUnsaved && open.Contains(res, StringComparer.Ordinal) ? GodotHold.PerhapsUnsaved
-        : res == inspected && !GodotProject.IsScene(res) ? GodotHold.Inspected
+        : res == inspected && !GodotFileKinds.IsScene(res) ? GodotHold.Inspected
         : null;
 
     /// <summary>Whether a write of the file, once made, may have Godot's editor read it again: a scene it has open and saved.</summary>

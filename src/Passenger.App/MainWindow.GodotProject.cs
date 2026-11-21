@@ -86,7 +86,7 @@ public partial class MainWindow
         return await BackgroundWork.Run(async () =>
         {
             GodotDefinitions defined = scenes.Defined;
-            GodotProject project = GodotProject.Parse(folder, defined.TextOf(GodotDefinitions.ProjectRes) ?? string.Empty);
+            GodotProject project = GodotProject.Parse(folder, defined.TextOf(GodotResPaths.Project) ?? string.Empty);
             int Line(GodotPlace place) => defined.LineOf(place.Res, place.Start);
             // A file project.godot names by its uid, opened, and an autoload's shown, by its res:// path where the uid is known.
             string? Named(string? res) => res is not null && res.StartsWith(GodotUids.Scheme, StringComparison.Ordinal) ? scenes.ResOfUid(res) ?? res : res;

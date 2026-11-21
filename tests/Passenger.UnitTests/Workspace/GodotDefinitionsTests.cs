@@ -124,7 +124,7 @@ public class GodotDefinitionsTests
         ["res://moves.tres"] = GodotFile.Parse(Moves),
     }, texts: new Dictionary<string, string>
     {
-        ["res://project.godot"] = Project,
+        [GodotResPaths.Project] = Project,
         ["res://tint.gdshader"] = Shader,
         ["res://common.gdshaderinc"] = "uniform float shade;\n",
         ["res://text.csv"] = Csv,
@@ -157,7 +157,7 @@ public class GodotDefinitionsTests
     {
         GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string>
         {
-            ["res://project.godot"] = $"config_version=5\n\n[application]\n\nconfig/name=\"Probe\"\n\n{settings}",
+            [GodotResPaths.Project] = $"config_version=5\n\n[application]\n\nconfig/name=\"Probe\"\n\n{settings}",
         });
         Assert.Equal(method, scenes.Defined.RenderingMethod);
     }
@@ -289,7 +289,7 @@ public class GodotDefinitionsTests
     [Fact]
     public void A_translation_project_godot_lists_that_is_not_read_leaves_the_translations_partial()
     {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = Project });
         Assert.False(scenes.Defined.TranslationsWhole, "a listed translation no file gives is not read");
         Assert.Empty(scenes.Defined.Translations);
     }
@@ -410,7 +410,7 @@ public class GodotDefinitionsTests
         """;
 
     private static GodotScenes NamedScenes() => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Tree) },
-        texts: new Dictionary<string, string> { ["res://project.godot"] = Named, ["res://player.gd"] = Script, ["res://wind.gdshader"] = WindShader });
+        texts: new Dictionary<string, string> { [GodotResPaths.Project] = Named, ["res://player.gd"] = Script, ["res://wind.gdshader"] = WindShader });
 
     [Fact]
     public void Project_godots_layer_names_name_each_layer_by_its_number_among_godots_32_or_20()
@@ -432,9 +432,9 @@ public class GodotDefinitionsTests
     {
         GodotDefined wind = Assert.Single(NamedScenes().Defined.ShaderGlobals);
         Assert.Equal("wind", wind.Name);
-        Assert.Equal([("res://project.godot", true), ("res://wind.gdshader", false), ("res://wind.gdshader", false), ("res://player.gd", false)],
+        Assert.Equal([(GodotResPaths.Project, true), ("res://wind.gdshader", false), ("res://wind.gdshader", false), ("res://player.gd", false)],
             wind.Places.Select(p => (p.Res, p.Defines)));
-        Assert.All(wind.Places, p => Assert.Equal("wind", (p.Res == "res://project.godot" ? Named : p.Res == "res://player.gd" ? Script : WindShader)[p.Start..p.End]));
+        Assert.All(wind.Places, p => Assert.Equal("wind", (p.Res == GodotResPaths.Project ? Named : p.Res == "res://player.gd" ? Script : WindShader)[p.Start..p.End]));
     }
 
     [Fact]
@@ -502,7 +502,7 @@ public class GodotDefinitionsTests
             	unknown.chain.is_action("jump")
 
             """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { ["res://project.godot"] = Named, ["res://player.gd"] = script });
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = Named, ["res://player.gd"] = script });
         GodotDefined jump = scenes.Defined.Actions.Single();
         string[] lines = script.Split('\n');
         IReadOnlyList<string> Said(bool unsure) => [.. jump.Places.Where(p => p.Res == "res://player.gd" && p.Unsure == unsure).Select(p => lines[script[..p.Start].Count(c => c == '\n')].Trim())];
@@ -523,7 +523,7 @@ public class GodotDefinitionsTests
             + "func local():\n\tvar Globals = 1\n\tprint(Globals)\n\n\nfunc after():\n\tprint(Globals)\n\tfor Globals in []:\n\t\tprint(Globals)\n";
         const string member = "extends Node\n\n\nfunc Globals():\n\treturn 1\n\n\nfunc go():\n\tGlobals()\n\tself.Globals()\n";
         const string built = "extends \"res://member.gd\"\n\n\nfunc again():\n\tGlobals()\n";
-        Dictionary<string, string> texts = new(StringComparer.Ordinal) { ["res://project.godot"] = project, ["res://uses.gd"] = uses, ["res://member.gd"] = member, ["res://built.gd"] = built };
+        Dictionary<string, string> texts = new(StringComparer.Ordinal) { [GodotResPaths.Project] = project, ["res://uses.gd"] = uses, ["res://member.gd"] = member, ["res://built.gd"] = built };
         GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: texts);
         GodotDefined globals = scenes.Defined.Autoloads.Single(a => a.Name == "Globals");
         string[] lines = uses.Split('\n');
@@ -539,7 +539,7 @@ public class GodotDefinitionsTests
     {
         const string project = "config_version=5\n\n[autoload]\n\nनमस्ते=\"*res://globals.gd\"\n\n[input]\n\njump={\n\"deadzone\": 0.5,\n\"events\": []\n}\n";
         const string uses = "extends Node\n\n\nfunc go(घटना: InputEvent):\n\tनमस्ते.score += 1\n\tघटना.is_action(\"jump\")\n";
-        Dictionary<string, string> texts = new(StringComparer.Ordinal) { ["res://project.godot"] = project, ["res://uses.gd"] = uses };
+        Dictionary<string, string> texts = new(StringComparer.Ordinal) { [GodotResPaths.Project] = project, ["res://uses.gd"] = uses };
         GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: texts);
         string[] lines = uses.Split('\n');
         string Line(GodotPlace place) => lines[uses[..place.Start].Count(c => c == '\n')].Trim();
@@ -555,7 +555,7 @@ public class GodotDefinitionsTests
     public void A_new_name_is_written_for_the_quotes_of_each_string_it_goes_in()
     {
         const string script = "extends Node\n\n\nfunc _process(_delta):\n\tInput.is_action_pressed('jump')\n\tInput.is_action_pressed(\"jump\")\n\tInput.is_action_pressed(r'jump')\n";
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { ["res://project.godot"] = Named, ["res://player.gd"] = script });
+        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = Named, ["res://player.gd"] = script });
         Assert.Equal(["player's_jump", "player\\'s_jump", "player's_jump", null], scenes.Defined.Actions.Single().Places.Select(p => p.Written("player's_jump")));
     }
 
@@ -564,11 +564,11 @@ public class GodotDefinitionsTests
     {
         GodotDefinitions defined = NamedScenes().Defined;
         GodotDefined jump = defined.Actions.Single();
-        Assert.Equal(["res://project.godot", "res://player.gd", "res://player.gd"], jump.Places.Select(p => p.Res));
+        Assert.Equal([GodotResPaths.Project, "res://player.gd", "res://player.gd"], jump.Places.Select(p => p.Res));
         Assert.Equal(["project.godot:9", "player.gd:5", "player.gd:5"], jump.Places.Select(p => p.Shown));
         Assert.All(jump.Places.Skip(1), p => Assert.Equal("jump", Script[p.Start..p.End]));
         GodotDefined globals = defined.Autoloads.Single();
-        Assert.Equal(["res://project.godot", "res://player.gd", "res://player.gd", "res://main.tscn"], globals.Places.Select(p => p.Res));
+        Assert.Equal([GodotResPaths.Project, "res://player.gd", "res://player.gd", "res://main.tscn"], globals.Places.Select(p => p.Res));
         Assert.Equal(["Globals", "Globals"], globals.Places.Where(p => p.Res == "res://player.gd").Select(p => Script[p.Start..p.End]));
         Assert.Equal("Globals", At(Tree, globals.Places[^1]));
     }

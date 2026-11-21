@@ -100,7 +100,7 @@ public class GodotProjectTests
 
         Assert.True(GodotProject.Uses(Scene, "res://Scripts/Player.cs") && !GodotProject.Uses(Scene, "res://Scripts/Enemy.cs") && !GodotProject.Uses(Scene, "res://Player.cs"),
             "A scene was taken to use a script none of its external resources names, or not the one it names, so Godot's editor would open the wrong scene");
-        Assert.True(GodotProject.IsScene("res://main.tscn") && GodotProject.IsScene("Level.SCN") && !GodotProject.IsScene("Main.cs"),
+        Assert.True(GodotFileKinds.IsScene("res://main.tscn") && GodotFileKinds.IsScene("Level.SCN") && !GodotFileKinds.IsScene("Main.cs"),
             "A scene was not told from a script by its extension");
     }
 

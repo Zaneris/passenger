@@ -98,7 +98,7 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
     private const string Prefix = "debug/gdscript/warnings/";
 
     /// <summary>Godot's own: every warning at its default level, the addons' scripts giving none.</summary>
-    public static GDScriptWarningSettings Default { get; } = new(true, new Dictionary<string, GDScriptWarnLevel>(StringComparer.Ordinal), [("res://addons/", true)]);
+    public static GDScriptWarningSettings Default { get; } = new(true, new Dictionary<string, GDScriptWarnLevel>(StringComparer.Ordinal), [(GodotResPaths.Addons, true)]);
 
     /// <summary>Every warning given, as Godot's own test runner sets them.</summary>
     public static GDScriptWarningSettings Every { get; } = new(true, GDScriptWarnings.Names.ToDictionary(n => n, _ => GDScriptWarnLevel.Warn, StringComparer.Ordinal), []);
@@ -120,14 +120,14 @@ public sealed record GDScriptWarningSettings(bool Enabled, IReadOnlyDictionary<s
                 levels[name] = level;
             }
         }
-        Dictionary<string, bool> rules = new(StringComparer.Ordinal) { ["res://addons/"] = true };
+        Dictionary<string, bool> rules = new(StringComparer.Ordinal) { [GodotResPaths.Addons] = true };
         if (values.TryGetValue(Prefix + "directory_rules", out string? written))
         {
             rules = RulesOf(written);
         }
         if (values.TryGetValue(Prefix + "exclude_addons", out string? addons) && GodotProject.Truth(addons) is { } exclude)
         {
-            rules["res://addons/"] = exclude;
+            rules[GodotResPaths.Addons] = exclude;
         }
         // The deepest folder's rule decides, as Godot sorts them.
         return new GDScriptWarningSettings(enabled, levels, [.. rules.OrderByDescending(r => r.Key.Count(c => c == '/')).Select(r => (r.Key, r.Value))]);

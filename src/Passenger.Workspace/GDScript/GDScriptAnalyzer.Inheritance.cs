@@ -20,7 +20,7 @@ public sealed partial class GDScriptAnalyzer
         }
         Dictionary<GDScriptClass, bool?> state = [];
         Dictionary<GDScriptClass, GDScriptType?> based = [];
-        bool newer = Engine?.Version >= new Version(4, 8);
+        bool newer = Since48;
         bool said = false;
         foreach (GDScriptClass node in order)
         {
@@ -106,7 +106,7 @@ public sealed partial class GDScriptAnalyzer
             if (project.Autoload(name) is { } autoload)
             {
                 string script = project.Resolved(autoload);
-                return !script.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) ? Failed(at, first, $"Singleton {name} is not a GDScript.")
+                return !GodotFileKinds.IsScript(script) ? Failed(at, first, $"Singleton {name} is not a GDScript.")
                     : Tree(script) is { } autoloadTree ? ScriptClass(autoloadTree, script) : GDScriptType.Variant;
             }
             if (Engine?.Classes.ContainsKey(name) == true)

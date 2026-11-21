@@ -271,7 +271,7 @@ public sealed class TestFinder
     {
         UiThread.Check();
         // GUT come to a Godot project, or gone from one, makes it a test project, or no longer one.
-        if (changes.Paths.Any(path => godotFolders.Any(folder => PathNames.IsUnder(path, Path.Combine(folder, "addons")))
+        if (changes.Paths.Any(path => godotFolders.Any(folder => PathNames.IsUnder(path, Path.Combine(folder, GodotResPaths.AddonsFolder)))
             && godotFolders.Any(folder => GutScripts.Carried(folder) != Projects.Any(p => p.IsScriptGame && PathNames.Same(p.Folder, folder)))))
         {
             Scan(Folder, every, godotFolders);

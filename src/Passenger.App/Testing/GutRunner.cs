@@ -112,7 +112,7 @@ public sealed class GutRunner(Func<string, IReadOnlyList<TestItem>>? declared = 
             return null;
         }
         string config = Path.Combine(folder, GutScripts.ConfigFile);
-        string hook = GodotTestRuns.TemporaryFile(GutScripts.Framework, ".gd");
+        string hook = GodotTestRuns.TemporaryFile(GutScripts.Framework, GodotFileKinds.Script);
         AtomicFile.Write(hook, Encoding.UTF8.GetBytes(GutRuns.Hook(kept, File.Exists(config) ? GutScripts.PreRunScript(File.ReadAllText(config)) : null)));
         return hook;
     }

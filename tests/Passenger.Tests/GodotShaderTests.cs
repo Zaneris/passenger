@@ -369,7 +369,7 @@ public sealed class GodotShaderTests
             window.Show();
             window.OpenFolder(project);
             Ui.Settle();
-            foreach ((string name, _) in Compared.Where(c => c.Name.EndsWith(".gdshader", StringComparison.Ordinal)))
+            foreach ((string name, _) in Compared.Where(c => c.Name.EndsWith(GodotFileKinds.Shader, StringComparison.Ordinal)))
             {
                 Assert.Null(window.OpenFile(Path.Combine(project, name)));
                 Ui.WaitFor(() => !window.EditorArea.Active!.IsChecking, () => $"{name} to be checked under {method}: {Said(window)}", TimeSpan.FromSeconds(60));

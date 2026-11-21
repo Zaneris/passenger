@@ -208,10 +208,10 @@ public sealed class GodotSceneIndex
 
     /// <summary>Whether a file of a Godot project is one the index reads: a text scene or resource, a file beside another
     /// giving it its uid, one defining names its code's strings give (project.godot, a shader, a translation), or a GDScript.</summary>
-    private static bool Read(string path) => GodotFile.IsText(path) || GodotUids.IsBeside(path) || Raw(path);
+    private static bool Read(string path) => GodotFileKinds.IsText(path) || GodotUids.IsBeside(path) || Raw(path);
 
     /// <summary>Whether a file the index reads is kept as text: one defining names, or a GDScript.</summary>
-    private static bool Raw(string path) => GodotDefinitions.Reads(path) || GodotScriptDeclarations.IsScript(path);
+    private static bool Raw(string path) => GodotDefinitions.Reads(path) || GodotFileKinds.IsScript(path);
 
     /// <summary>A file the index reads, from its open text or the disk: a scene or resource parsed, the uid a file beside
     /// another gives it, or another's text; none for one that cannot be read.</summary>
@@ -220,7 +220,7 @@ public sealed class GodotSceneIndex
         string? text = open?.ToString() ?? EditorArea.ReadText(path);
         return text is null ? (path, open, null, null, null)
             : GodotUids.IsBeside(path) ? (path, open, null, GodotUids.OfBeside(path, text), null)
-            : GodotFile.IsText(path) ? (path, open, GodotFile.Parse(text), null, null)
+            : GodotFileKinds.IsText(path) ? (path, open, GodotFile.Parse(text), null, null)
             : (path, open, null, null, text);
     }
 
@@ -332,7 +332,7 @@ public sealed class GodotSceneIndex
     /// <summary>A file the editor opened: a scene's, resource's, GDScript's or other defining file's typing, once it pauses, is a change of its project's.</summary>
     public void Attach(OpenDocument document)
     {
-        if (!(GodotFile.IsText(document.Path) || Raw(document.Path)) || typed.ContainsKey(document))
+        if (!(GodotFileKinds.IsText(document.Path) || Raw(document.Path)) || typed.ContainsKey(document))
         {
             return;
         }

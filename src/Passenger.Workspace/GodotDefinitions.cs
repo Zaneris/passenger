@@ -44,9 +44,6 @@ public sealed record GodotThemeItem(string Type, string Kind, string Name, Godot
 /// its scenes' node paths, among them. Pure, built from <see cref="GodotScenes"/>, so it is read off the UI thread.</summary>
 public sealed class GodotDefinitions
 {
-    /// <summary>The res:// path of the file that makes a folder a Godot project.</summary>
-    public const string ProjectRes = "res://project.godot";
-
     /// <summary>The prefix a ShaderMaterial gives each of its shader's parameters it sets.</summary>
     public const string ShaderParameter = "shader_parameter/";
 
@@ -96,8 +93,8 @@ public sealed class GodotDefinitions
     public GodotDefinitions(GodotScenes scenes)
     {
         this.scenes = scenes;
-        project = new(() => scenes.Texts.TryGetValue(ProjectRes, out string? text) ? GodotFile.Parse(text) : null);
-        scripts = new(() => [.. scenes.Texts.Where(t => GodotScriptDeclarations.IsScript(t.Key)).OrderBy(t => t.Key, StringComparer.Ordinal)
+        project = new(() => scenes.Texts.TryGetValue(GodotResPaths.Project, out string? text) ? GodotFile.Parse(text) : null);
+        scripts = new(() => [.. scenes.Texts.Where(t => GodotFileKinds.IsScript(t.Key)).OrderBy(t => t.Key, StringComparer.Ordinal)
             .Select(t => (t.Key, GodotScriptStrings.Read(t.Value)))]);
         actions = new(() => Scripted(Keys("input", "input action"), ActionCalls, ActionUse));
         autoloads = new(() => Autoloaded(Keys("autoload", "autoload")));
@@ -106,7 +103,7 @@ public sealed class GodotDefinitions
         translations = new(ReadTranslations);
         animations = new(ReadAnimations);
         themes = new(ReadThemes);
-        theme = new(() => GodotThemeTable.Carried.For(scenes.Texts.TryGetValue(ProjectRes, out string? text) ? GodotProject.GodotOf(text) : null));
+        theme = new(() => GodotThemeTable.Carried.For(scenes.Texts.TryGetValue(GodotResPaths.Project, out string? text) ? GodotProject.GodotOf(text) : null));
     }
 
     /// <summary>The functions a GDScript gives an input action's name to, at the arguments that take it.</summary>
@@ -144,7 +141,7 @@ public sealed class GodotDefinitions
     /// a CSV or PO translation.</summary>
     public static bool Reads(string path) =>
         Path.GetFileName(path).Equals(GodotProject.FileName, StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".gdshader", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".gdshaderinc", StringComparison.OrdinalIgnoreCase)
+        || GodotFileKinds.IsShader(path)
         || path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".po", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>project.godot's input actions, each by its key.</summary>
@@ -181,7 +178,7 @@ public sealed class GodotDefinitions
         {
             return null;
         }
-        return (new GodotPlace(ProjectRes, property.KeyStart, property.KeyStart + property.Key.Length, true, $"{GodotProject.FileName}:{file.LineOf(property.KeyStart) + 1}"),
+        return (new GodotPlace(GodotResPaths.Project, property.KeyStart, property.KeyStart + property.Key.Length, true, $"{GodotProject.FileName}:{file.LineOf(property.KeyStart) + 1}"),
             property.Value.Text);
     }
 
@@ -242,7 +239,7 @@ public sealed class GodotDefinitions
             string shown = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (named?.Property(key) is { Value.Text: { Length: > 0 } name } property && project.Value is { } file)
             {
-                numbered.Add(new GodotDefined(shown, name, [new GodotPlace(ProjectRes, property.KeyStart, property.KeyStart + key.Length, true, $"{GodotProject.FileName}:{file.LineOf(property.KeyStart) + 1}")]));
+                numbered.Add(new GodotDefined(shown, name, [new GodotPlace(GodotResPaths.Project, property.KeyStart, property.KeyStart + key.Length, true, $"{GodotProject.FileName}:{file.LineOf(property.KeyStart) + 1}")]));
             }
             else
             {
@@ -445,7 +442,7 @@ public sealed class GodotDefinitions
 
     /// <summary>The binary file an external resource's value names; null for any other value.</summary>
     private string? BinaryOf(string res, GodotValue value) => value is { Call: "ExtResource", Text: { } id } && scenes.Files.TryGetValue(res, out GodotFile? file)
-        && file.External(id)?.Path is { } path && GodotFile.IsBinary(path) ? path : null;
+        && file.External(id)?.Path is { } path && GodotFileKinds.IsBinary(path) ? path : null;
 
     /// <summary>The libraries a player's sections give it, by name, each with the file and value naming it.</summary>
     private Dictionary<string, (string Res, GodotValue Value)> LibrariesOf(GodotTreeNode player)
@@ -768,7 +765,7 @@ public sealed class GodotDefinitions
 
     /// <summary>The shaders a project's files hold: each .gdshader file and each Shader a scene or resource writes.</summary>
     public IReadOnlyList<string> Shaders =>
-        [.. scenes.Texts.Keys.Where(k => k.EndsWith(".gdshader", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal),
+        [.. scenes.Texts.Keys.Where(k => GodotFileKinds.Is(k, GodotFileKinds.Shader)).Order(StringComparer.Ordinal),
             .. scenes.Files.OrderBy(f => f.Key, StringComparer.Ordinal).SelectMany(f => f.Value.Sections.Where(s => s.Tag == "sub_resource" && s.Text("type") == "Shader")
                 .Select(s => $"{f.Key}::{s.Text("id")}"))];
 
@@ -794,7 +791,7 @@ public sealed class GodotDefinitions
             bool quoted = file.Text[property.KeyStart] == '"';
             int start = property.KeyStart + (quoted ? 1 : 0);
             bool plain = file.Text.AsSpan(start).StartsWith(property.Key, StringComparison.Ordinal);
-            keys.Add(new GodotDefined(property.Key, detail, [new GodotPlace(ProjectRes, start, start + property.Key.Length, true, $"{GodotProject.FileName}:{file.LineOf(start) + 1}") { Plain = plain }]));
+            keys.Add(new GodotDefined(property.Key, detail, [new GodotPlace(GodotResPaths.Project, start, start + property.Key.Length, true, $"{GodotProject.FileName}:{file.LineOf(start) + 1}") { Plain = plain }]));
         }
         return keys;
     }

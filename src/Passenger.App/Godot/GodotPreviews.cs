@@ -30,7 +30,7 @@ internal static class GodotPreviews
         {
             return new FilePreview(file, res, PreviewKind.Sound, $"{res}, a sound", []);
         }
-        if (!PathNames.HasExtension(file, [".tscn"]) || scenes.Tree(res) is not { } root)
+        if (!PathNames.HasExtension(file, [GodotFileKinds.TextScene]) || scenes.Tree(res) is not { } root)
         {
             return null;
         }

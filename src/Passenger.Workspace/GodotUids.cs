@@ -12,7 +12,7 @@ namespace Passenger.Workspace;
 public static partial class GodotUids
 {
     /// <summary>The cache's file under a project's folder.</summary>
-    public static readonly string CacheFile = Path.Combine(".godot", "uid_cache.bin");
+    public static readonly string CacheFile = Path.Combine(IgnoredFolders.GodotCache, "uid_cache.bin");
 
     private const int Letters = 'z' - 'a';
     private const int Base = Letters + ('9' - '0');

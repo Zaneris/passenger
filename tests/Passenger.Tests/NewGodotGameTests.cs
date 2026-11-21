@@ -211,7 +211,7 @@ public sealed class NewGodotGameTests : IDisposable
         int code = Ui.Await(window.RunEnd, "Godot's editor to build the game and quit", TimeSpan.FromMinutes(5));
         bool built = Directory.EnumerateFiles(place + "-home", "msbuild_log.txt", SearchOption.AllDirectories)
             .Any(log => File.ReadLines(log).LastOrDefault(l => l.StartsWith("Done building project", StringComparison.Ordinal)) == "Done building project \"Spinner.csproj\".");
-        return (Output(window) + BuildIssues(), code, built && File.Exists(Path.Combine(folder, ".godot", "mono", "temp", "bin", "Debug", "Spinner.dll")));
+        return (Output(window) + BuildIssues(), code, built && File.Exists(Path.Combine(folder, IgnoredFolders.GodotCache, "mono", "temp", "bin", "Debug", "Spinner.dll")));
     }
 
     /// <summary>What Passenger said in the Run window of why Godot's editor builds or runs no C# of the game; null for nothing.</summary>

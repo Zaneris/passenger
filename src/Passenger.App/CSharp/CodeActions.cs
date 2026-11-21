@@ -722,7 +722,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             edit = TypeRename.With(edit, CSharpAssist.GodotNameEdits(godot, written));
         }
         // A GDScript's member's uses its own language's server never reads: its scenes' connections, the C# strings naming it.
-        IReadOnlyList<PlacedEdits> scripted = Passenger.Workspace.GodotScriptDeclarations.IsScript(document.Path) ? await context.Languages.CSharp.GodotScriptRenameAsync(document, at.Offset, name) : [];
+        IReadOnlyList<PlacedEdits> scripted = Passenger.Workspace.GodotFileKinds.IsScript(document.Path) ? await context.Languages.CSharp.GodotScriptRenameAsync(document, at.Offset, name) : [];
         if (scripted.Count > 0)
         {
             edit = TypeRename.With(edit, scripted);

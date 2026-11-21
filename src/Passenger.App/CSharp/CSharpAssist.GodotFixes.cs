@@ -21,7 +21,7 @@ internal sealed partial class CSharpAssist
     public IReadOnlyList<EditorFix> GodotFixes(OpenDocument file, int offset, GodotSceneMarks marks)
     {
         Func<int?, IReadOnlyList<(TextRange Range, string Message, GodotOffer Offer)>> offers;
-        if (GodotFile.IsText(file.Path))
+        if (GodotFileKinds.IsText(file.Path))
         {
             offers = at => marks.OffersOn(file, at);
         }

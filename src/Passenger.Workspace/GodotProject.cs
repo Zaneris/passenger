@@ -48,7 +48,7 @@ public sealed partial record GodotProject(string Folder, string? Name, string? M
         string told = Decoded(generators) ?? written;
         string? scripts = !Path.IsPathRooted(told) ? $"Godot's source generators read {told} from the compiler's own folder, so no scene reaches its classes"
             : PathNames.Same(Path.TrimEndingDirectorySeparator(PathNames.Canonical(told)), godot) ? null : $"Godot's source generators name its scripts from {told}, so no scene reaches its classes";
-        string? built = target is { Length: > 0 } && !PathNames.IsUnder(PathNames.Canonical(Path.Combine(folder, target.Replace('\\', Path.DirectorySeparatorChar))), Path.Combine(godot, ".godot"))
+        string? built = target is { Length: > 0 } && !PathNames.IsUnder(PathNames.Canonical(Path.Combine(folder, target.Replace('\\', Path.DirectorySeparatorChar))), Path.Combine(godot, IgnoredFolders.GodotCache))
             ? $"its build goes to {Path.GetDirectoryName(target)}, where Godot looks for no assembly" : null;
         return (scripts, built) is (null, null) ? null
             : $"Godot.NET.Sdk does not build {project} for its Godot folder {Path.GetFileName(godot)}: {string.Join("; ", new[] { scripts, built }.OfType<string>())}. "
@@ -91,11 +91,6 @@ public sealed partial record GodotProject(string Folder, string? Name, string? M
     /// at the window's size in pixels whatever size it was made for.</summary>
     public bool Stretches { get; init; }
 
-    /// <summary>The scenes Godot's editor opens from its command line, as their extensions say.</summary>
-    public static bool IsScene(string path) =>
-        path.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".scn", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".escn", StringComparison.OrdinalIgnoreCase);
-
     /// <summary>The scene of a Godot project to open for a file of it: the file itself when it is a scene, else a text scene
     /// that uses it as a resource (a script attached to one of its nodes), the main scene first, then by path; null for none.
     /// Its own folders only, so neither Godot's cache (.godot) nor the build's output is read.</summary>
@@ -105,12 +100,12 @@ public sealed partial record GodotProject(string Folder, string? Name, string? M
         {
             return null;
         }
-        if (IsScene(file))
+        if (GodotFileKinds.IsScene(file))
         {
             return File.Exists(file) ? file : null;
         }
         List<string> scenes = [.. PathNames.FilesUnder(folder, ProjectFolders.Enters).SelectMany(f => f.Files)
-            .Where(f => f.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".escn", StringComparison.OrdinalIgnoreCase))
+            .Where(GodotFileKinds.IsTextScene)
             .OrderBy(f => mainScene is not null && GodotResPaths.Of(folder, f) == mainScene ? 0 : 1).ThenBy(f => f, StringComparer.Ordinal)];
         foreach (string scene in scenes)
         {

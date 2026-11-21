@@ -3,6 +3,7 @@ using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Workspace.Gherkin;
+using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
 
@@ -187,7 +188,7 @@ public sealed class TestGutter
         }
     }
 
-    private static bool IsScript(OpenDocument document) => Path.GetExtension(document.Path).Equals(".gd", StringComparison.OrdinalIgnoreCase);
+    private static bool IsScript(OpenDocument document) => GodotFileKinds.IsScript(document.Path);
 
     private static bool IsFeature(OpenDocument document) => Bdd.FeatureChecks.IsFeature(document.Path);
 

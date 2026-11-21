@@ -28,7 +28,7 @@ public class GodotIdeMessagingTests
         Assert.Null(GodotIdeMessaging.MetaOf(string.Empty));
         Assert.Null(GodotIdeMessaging.MetaOf("port\n/godot\n"));
         Assert.Null(GodotIdeMessaging.MetaOf("70000\n/godot\n"));
-        Assert.EndsWith(Path.Combine(".godot", "mono", "metadata", "ide_messaging_meta.txt"), GodotIdeMessaging.MetaPath("/game"), StringComparison.Ordinal);
+        Assert.EndsWith(Path.Combine(IgnoredFolders.GodotCache, "mono", "metadata", "ide_messaging_meta.txt"), GodotIdeMessaging.MetaPath("/game"), StringComparison.Ordinal);
     }
 
     [Fact]

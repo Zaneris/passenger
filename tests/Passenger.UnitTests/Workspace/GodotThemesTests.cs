@@ -98,7 +98,7 @@ public class GodotThemesTests
         {
             ["res://hud.tscn"] = GodotFile.Parse(scene),
             ["res://ui/theme.tres"] = GodotFile.Parse(theme),
-        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "[gui]\n\ntheme/custom=\"res://ui/theme.tres\"\n" });
+        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = "[gui]\n\ntheme/custom=\"res://ui/theme.tres\"\n" });
         GodotDefinitions defined = scenes.Defined;
 
         Assert.Equal("res://ui/theme.tres", defined.CustomTheme);

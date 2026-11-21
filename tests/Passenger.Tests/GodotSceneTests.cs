@@ -216,7 +216,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Ui.PlaceAfter(editor, "\"res://pl");
             Ui.Run(window, AppActions.Complete);
             Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("res://player.tscn"), () => $"the project's files to be offered: {string.Join(", ", window.Assist.CompletionLabels)}");
-            Assert.DoesNotContain(window.Assist.CompletionLabels, l => l.Contains(".godot", StringComparison.Ordinal));
+            Assert.DoesNotContain(window.Assist.CompletionLabels, l => l.Contains(IgnoredFolders.GodotCache, StringComparison.Ordinal));
             Ui.Press(window, "ESCAPE");
 
             Ui.Run(window, AppActions.GoToDeclaration);

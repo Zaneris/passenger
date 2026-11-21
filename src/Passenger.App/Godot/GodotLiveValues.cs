@@ -9,6 +9,7 @@ using Passenger.App.LiveTree;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Workspace;
 
 namespace Passenger.App.Godot;
 
@@ -326,7 +327,7 @@ public sealed class GodotLiveValues
     private GodotScriptMembers? MembersOf(OpenDocument document, GodotGame read)
     {
         bool csharp = document.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
-        if ((!csharp && !document.Path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase)) || !PathNames.IsUnder(document.Path, read.Folder))
+        if ((!csharp && !GodotFileKinds.IsScript(document.Path)) || !PathNames.IsUnder(document.Path, read.Folder))
         {
             return null;
         }

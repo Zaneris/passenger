@@ -26,7 +26,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     /// <summary>The words each item says beside the list, by the item.</summary>
     private readonly Dictionary<CompletionItem, string> described = [];
 
-    private static bool IsShader(OpenDocument? document) => document is not null && GodotShaderMarks.IsShader(document.Path);
+    private static bool IsShader(OpenDocument? document) => document is not null && GodotFileKinds.IsShader(document.Path);
 
     /// <summary>A name's first letter, or a mode list's, a hint list's or an include path's mark, opens the list.</summary>
     public override bool Typed(string text)
@@ -200,7 +200,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
         {
             return [];
         }
-        return [.. index.FilesUnder(folder).Where(f => f.EndsWith(".gdshaderinc", StringComparison.OrdinalIgnoreCase) && !PathNames.Same(f, shader.Path))
+        return [.. index.FilesUnder(folder).Where(f => GodotFileKinds.IsShaderInclude(f) && !PathNames.Same(f, shader.Path))
             .Select(f => GodotResPaths.Of(folder, f)).OfType<string>().Order(StringComparer.Ordinal)
             .Select(res => (new CompletionItem { Label = res, Kind = CompletionItemKind.File, Detail = "shader include", FilterText = res, SortText = res }, $"#include \"{res}\""))];
     }
@@ -475,7 +475,7 @@ internal sealed class GodotShaderAssist(AssistContext context, CodeCompletion co
     /// offset is in a string a <c>code = "</c> line opens.</summary>
     private static SceneCode? SceneCodeAt(OpenDocument document, int offset)
     {
-        if (!GodotFile.IsText(document.Path) || !InCodeString(document.Text.Snapshot, offset))
+        if (!GodotFileKinds.IsText(document.Path) || !InCodeString(document.Text.Snapshot, offset))
         {
             return null;
         }

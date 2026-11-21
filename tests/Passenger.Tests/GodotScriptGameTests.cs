@@ -7,6 +7,7 @@ using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -197,7 +198,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
         string folder = PathNames.Canonical(game.Folder);
         string settings = Path.Combine(folder, "project.godot");
         string icon = Path.Combine(folder, "icon.svg");
-        string marker = Path.Combine(folder, ".godot", "saver_saved");
+        string marker = Path.Combine(folder, IgnoredFolders.GodotCache, "saver_saved");
         string original = File.ReadAllText(settings);
         File.WriteAllText(settings, original + "\n[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/saver/plugin.cfg\")\n");
         TestFolders.Write(folder, Path.Combine("addons", "saver", "plugin.cfg"), "[plugin]\n\nname=\"Saver\"\ndescription=\"Saves the settings.\"\nauthor=\"Tests\"\nversion=\"1.0\"\nscript=\"plugin.gd\"\n");

@@ -545,7 +545,7 @@ internal sealed partial class CSharpAssist
                 placed.Add(code, text.ToString(), paths);
             }
         }
-        List<string> gdscripts = [.. copies.SelectMany(c => c.Node.Root.Below()).Select(n => n.Script).OfType<string>().Where(GodotScriptDeclarations.IsScript).Distinct(StringComparer.Ordinal)
+        List<string> gdscripts = [.. copies.SelectMany(c => c.Node.Root.Below()).Select(n => n.Script).OfType<string>().Where(GodotFileKinds.IsScript).Distinct(StringComparer.Ordinal)
             .SelectMany(s => scenes.ChainOf(s).Scripts.Select(c => c.Script)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
         OpenTexts open = context.Editors.Texts();
         List<(string File, string Text, IReadOnlyList<TextEdit>? Paths)> scripted = await BackgroundWork.Run(() => gdscripts.Select(s => (File: scenes.FileOf(s), Script: s))

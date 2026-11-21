@@ -73,7 +73,7 @@ public sealed partial class GDScriptAnalyzer
                 Said(0, $"Value of type '{held}' can't provide a length.");
                 break;
             case "char" when arguments.Count == 1 && IntegerOf(arguments[0]) is { } code:
-                if (Engine?.Version >= new Version(4, 8))
+                if (Since48)
                 {
                     if (code <= 0 || (code & 0xFFFFF800) == 0xD800 || code > 0x10FFFF)
                     {
@@ -98,7 +98,7 @@ public sealed partial class GDScriptAnalyzer
     /// <summary>From Godot 4.8, a Color made from a constant code that is no colour, said at the code; whether it was.</summary>
     private bool ColorCodeError(GDScriptCall call, Context context)
     {
-        if (Engine?.Version < new Version(4, 8) || Engine?.Builtins.GetValueOrDefault("Color") is not { } color || !Evaluated(call, context)
+        if (!Since48 || Engine?.Builtins.GetValueOrDefault("Color") is not { } color || !Evaluated(call, context)
             || call.Arguments is not [{ } first, ..] || BuiltinOf(first, context) is not "String" || ConstantText(first, context) is not { } code)
         {
             return false;

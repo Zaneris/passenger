@@ -99,11 +99,11 @@ public sealed partial class PassengerTools
                 ? new ServerServed(document, LanguageOf(document), server, web)
                 : throw new InvalidOperationException(languages.Unready("Its code help", document));
         }
-        if (Passenger.Workspace.GodotFile.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
+        if (Passenger.Workspace.GodotFileKinds.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
         {
             return new GodotServed(document);
         }
-        if (Godot.GodotShaderMarks.IsShader(document.Path))
+        if (Passenger.Workspace.GodotFileKinds.IsShader(document.Path))
         {
             return new ShaderServed(document);
         }

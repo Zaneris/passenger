@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Workspace.GDScript;
 
 namespace Passenger.App.Godot;
@@ -150,7 +151,7 @@ public static partial class GodotMembers
         written.Contains("://", StringComparison.Ordinal) ? written : $"{script[..(script.LastIndexOf('/') + 1)]}{written}";
 
     /// <summary>The file Godot lists a project's <c>class_name</c>s in.</summary>
-    private const string ClassCache = "res://.godot/global_script_class_cache.cfg";
+    private const string ClassCache = GodotClassCache.Res;
 
     [GeneratedRegex(@"""class"": &""([^""]+)""[^}]*?""path"": ""([^""]+)""")]
     private static partial Regex CachedClass();

@@ -200,5 +200,5 @@ public static class GodotLaunch
     }
 
     /// <summary>Whether arguments name a scene for Godot to start in: one of Godot's own, never one the game is given.</summary>
-    private static bool NamesScene(IReadOnlyList<string> arguments) => GodotExecutables.EngineArguments(arguments).Any(GodotProject.IsScene);
+    private static bool NamesScene(IReadOnlyList<string> arguments) => GodotExecutables.EngineArguments(arguments).Any(GodotFileKinds.IsScene);
 }

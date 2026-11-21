@@ -24,11 +24,7 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
 
     public GodotShaderChecker ShaderChecker => checker;
 
-    /// <summary>Whether a file is a shader or a shader include, by its name.</summary>
-    public static bool IsShader(string path) =>
-        path.EndsWith(".gdshader", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".gdshaderinc", StringComparison.OrdinalIgnoreCase);
-
-    protected override (string Checker, Shader Kept)? Follow(OpenDocument document) => IsShader(document.Path) ? (Checker, new Shader()) : null;
+    protected override (string Checker, Shader Kept)? Follow(OpenDocument document) => GodotFileKinds.IsShader(document.Path) ? (Checker, new Shader()) : null;
 
     /// <summary>What the last check of an open shader read of a uniform; null where it read none of that name.</summary>
     public GodotShaderUniform? UniformOf(OpenDocument document, string name) => KeptOf(document)?.Uniforms?.GetValueOrDefault(name);
@@ -39,7 +35,7 @@ internal sealed class GodotShaderMarks(GodotSceneIndex index, Func<string, strin
     public static (GodotShaderUnit Unit, string? Include)? UnitOf(GodotScenes scenes, string res, string text)
     {
         string? Read(string path) => path == res ? text : scenes.Texts.GetValueOrDefault(path) ?? ShaderCodeOf(scenes, path);
-        if (!res.EndsWith(".gdshaderinc", StringComparison.OrdinalIgnoreCase))
+        if (!GodotFileKinds.IsShaderInclude(res))
         {
             return (GodotShaderUnit.Of(res, text, Read), null);
         }

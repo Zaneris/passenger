@@ -7,6 +7,17 @@ namespace Passenger.Workspace;
 /// names there, and the path a file writes resolved as Godot resolves it. Pure.</summary>
 public static partial class GodotResPaths
 {
+    /// <summary>The project.godot that makes its folder a Godot project, by its res:// path.</summary>
+    [IdentifierHome]
+    public const string Project = Scheme + GodotProject.FileName;
+
+    /// <summary>The folder at a project's top that holds its addons, each in a folder of its own.</summary>
+    public const string AddonsFolder = "addons";
+
+    /// <summary>The addons' folder by its res:// path, as Godot's settings name a folder.</summary>
+    [IdentifierHome]
+    public const string Addons = Scheme + AddonsFolder + "/";
+
     /// <summary>The res:// path of a file under a Godot project's folder; null outside it, or for the folder itself.</summary>
     public static string? Of(string project, string file) =>
         PathNames.IsUnder(file, project) ? Scheme + PathNames.Relative(file, project) : null;

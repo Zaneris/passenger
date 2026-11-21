@@ -41,7 +41,7 @@ public static class GodotAddon
     {
         GodotPlugin? had = plugins.FirstOrDefault(Is);
         string folder = had is null ? FreeFolder(project, carried, read) : Path.GetDirectoryName(had.File)!;
-        string res = had?.Res ?? $"res://addons/{Path.GetFileName(folder)}/plugin.cfg";
+        string res = had?.Res ?? $"{GodotResPaths.Addons}{Path.GetFileName(folder)}/{GodotPlugins.ConfigName}";
         string? carriedVersion = carried.Where(c => c.Name == "plugin.cfg").Select(c => VersionIn(c.Text)).FirstOrDefault();
         if (had?.Version is { } version && Number(version) is int there && carriedVersion is not null && Number(carriedVersion) is int ours && there > ours)
         {
@@ -64,10 +64,10 @@ public static class GodotAddon
     /// the first where no file has one of the addon's names and other words, which are another addon's to keep.</summary>
     private static string FreeFolder(string project, IReadOnlyList<(string Name, string Text)> carried, Func<string, string?> read)
     {
-        string folder = Path.Combine(project, "addons", FolderName);
+        string folder = Path.Combine(project, GodotResPaths.AddonsFolder, FolderName);
         for (int next = 2; carried.Any(c => read(Path.Combine(folder, c.Name)) is { } now && Differs(now, c.Text)); next++)
         {
-            folder = Path.Combine(project, "addons", $"{FolderName}_{next.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            folder = Path.Combine(project, GodotResPaths.AddonsFolder, $"{FolderName}_{next.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         }
         return folder;
     }

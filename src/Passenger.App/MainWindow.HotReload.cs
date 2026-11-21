@@ -6,6 +6,7 @@ using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
@@ -353,7 +354,7 @@ public partial class MainWindow
             return [];
         }
         List<string> folders = [.. session.Games.Where(g => g.ReloadsScripts).Select(g => g.Folder)];
-        return [.. Editors.Documents.Where(d => d.IsModified && d.Path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && folders.Any(f => PathNames.IsUnder(d.Path, f)))];
+        return [.. Editors.Documents.Where(d => d.IsModified && GodotFileKinds.IsScript(d.Path) && folders.Any(f => PathNames.IsUnder(d.Path, f)))];
     }
 
     /// <summary>Saves a game's unsaved scripts, their writes landed, as Save All saves: Godot reloads each in the game as it

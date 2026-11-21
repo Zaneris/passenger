@@ -131,7 +131,7 @@ public class GodotProjectReadsTests
             }
 
             """;
-        GodotDefinitions defined = new GodotScenes("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotDefinitions.ProjectRes] = Project }).Defined;
+        GodotDefinitions defined = new GodotScenes("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = Project }).Defined;
         Assert.Equal(["Ctrl+Shift+Enter (physical)", "Right Mouse Button (double-click)", "Joypad Left Stick Up", "Ctrl/Cmd+Q"], defined.EventsOf("jump"));
         Assert.Empty(defined.EventsOf("idle"));
         Assert.Empty(defined.EventsOf("missing"));
@@ -167,7 +167,7 @@ public class GodotProjectReadsTests
     {
         string project = "config_version=5\n\n[autoload]\n\nKeychain=\"*uid://dgiia2xg7fsud\"\nGone=\"*uid://nothere\"\nPlain=\"*res://plain.gd\"\n";
         GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), new Dictionary<string, string> { ["uid://dgiia2xg7fsud"] = "res://addons/keychain/Keychain.gd" },
-            texts: new Dictionary<string, string> { [GodotDefinitions.ProjectRes] = project });
+            texts: new Dictionary<string, string> { [GodotResPaths.Project] = project });
         Assert.Equal("res://addons/keychain/Keychain.gd", scenes.AutoloadFile("Keychain"));
         Assert.Null(scenes.AutoloadFile("Gone"));
         Assert.Equal("res://plain.gd", scenes.AutoloadFile("Plain"));
@@ -306,5 +306,5 @@ public class GodotProjectReadsTests
     }
 
     private static GodotDefinitions Defined(string project) =>
-        new GodotScenes("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotDefinitions.ProjectRes] = project }).Defined;
+        new GodotScenes("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = project }).Defined;
 }

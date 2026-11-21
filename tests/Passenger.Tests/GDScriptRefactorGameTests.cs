@@ -7,6 +7,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Workspace.GDScript;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -178,7 +179,7 @@ public sealed class GDScriptRefactorGameTests : IClassFixture<GDScriptRefactorGa
     private void GodotParses()
     {
         string copy = PathNames.Canonical(TestFolders.Create("gdscript-refactor-game-"));
-        foreach (string file in Directory.EnumerateFiles(game.Folder).Where(f => Path.GetExtension(f) is ".gd" or ".tscn" or ".godot"))
+        foreach (string file in Directory.EnumerateFiles(game.Folder).Where(f => Path.GetExtension(f) is GodotFileKinds.Script or GodotFileKinds.TextScene || Path.GetFileName(f) == GodotProject.FileName))
         {
             File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
         }

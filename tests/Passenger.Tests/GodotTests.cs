@@ -8,6 +8,7 @@ using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -1014,7 +1015,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
                 </configuration>
                 """);
             // Godot's build output goes under .godot, made now so a reset takes no folder the first build makes for one a test added.
-            Directory.CreateDirectory(PathOf(Path.Combine(".godot", "mono", "temp")));
+            Directory.CreateDirectory(PathOf(Path.Combine(IgnoredFolders.GodotCache, "mono", "temp")));
         }
 
         /// <summary>The Godot found, or null.</summary>

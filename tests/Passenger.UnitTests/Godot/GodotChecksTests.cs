@@ -502,7 +502,7 @@ public class GodotChecksTests
         {
             ["res://main.tscn"] = GodotFile.Parse(scene),
             ["res://hud.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[node name=\"Hud\" type=\"CanvasLayer\"]\n\n[node name=\"Score\" type=\"Label\" parent=\".\"]\n"),
-        }, texts: new Dictionary<string, string> { ["res://project.godot"] = project });
+        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = project });
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotKindRead Read(GodotStringKind kind, string name, string? node = null, bool adds = false) => new(kind, name, At, End, true, adds, 0, node, null, null);
         GodotCodeFound found = Found(asked, [Call("/root/Hud/Score", null), Call("/root/Hud/Scor", null), Call("/root/Main", null), Call("/root/Gone", null)]) with
@@ -539,7 +539,7 @@ public class GodotChecksTests
         {
             ["res://main.tscn"] = GodotFile.Parse(Scene),
             ["res://hud.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[node name=\"Hud\" type=\"CanvasLayer\"]\n\n[node name=\"Score\" type=\"Label\" parent=\".\"]\n"),
-        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "[autoload]\n\nHud=\"*res://hud.tscn\"\n" });
+        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = "[autoload]\n\nHud=\"*res://hud.tscn\"\n" });
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotCodeFound found = Found(asked, [Call("/root/Optional", null, orNull: true), Call("/root/Hud/Optional", null, orNull: true)]);
         Assert.DoesNotContain(GodotChecks.Findings(scenes, asked, found, _ => true), f => f.Message.Contains("Optional", StringComparison.Ordinal));
@@ -578,7 +578,7 @@ public class GodotChecksTests
         {
             ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
             ["res://theme.tres"] = GodotFile.Parse("[gd_resource type=\"Theme\" format=3]\n\n[resource]\nLabel/colors/glow = Color(1, 1, 0, 1)\n"),
-        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "[gui]\n\ntheme/custom=\"res://theme.tres\"\n" });
+        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = "[gui]\n\ntheme/custom=\"res://theme.tres\"\n" });
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotKindRead Read(GodotStringKind kind, string name, string? type, bool adds = false) => new(kind, name, At, End, true, adds, 0, null, null, type);
         GodotCodeFound found = Found(asked, []) with
@@ -613,7 +613,7 @@ public class GodotChecksTests
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
         {
             ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
-        }, texts: new Dictionary<string, string> { ["res://project.godot"] = $"[application]\n\nconfig/features=PackedStringArray({godot}, \"C#\")\n" });
+        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = $"[application]\n\nconfig/features=PackedStringArray({godot}, \"C#\")\n" });
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotCodeFound found = Found(asked, []) with { Kinds = [new GodotKindRead(GodotStringKind.ThemeStyle, "focus", At, End, true, false, 0, null, null, "Label")] };
         IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
@@ -627,7 +627,7 @@ public class GodotChecksTests
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
         {
             ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
-        }, texts: new Dictionary<string, string> { ["res://project.godot"] = "config_version=5\n" });
+        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = "config_version=5\n" });
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotCodeFound found = Found(asked, []) with { Kinds = [new GodotKindRead(GodotStringKind.ThemeIcon, "color_okhsl_hue", At, End, true, false, 0, null, null, "ColorPicker")] };
         Assert.Empty(GodotChecks.Findings(scenes, asked, found, _ => true));
@@ -658,7 +658,7 @@ public class GodotChecksTests
             """;
         const string project = "[layer_names]\n\n2d_physics/layer_2=\"enemies\"\n\n[shader_globals]\n\nwind={\n\"type\": \"vec2\"\n}\n";
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
-            texts: new Dictionary<string, string> { ["res://project.godot"] = project });
+            texts: new Dictionary<string, string> { [GodotResPaths.Project] = project });
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
         GodotKindRead Read(GodotStringKind kind, string name, string? node = null, string? member = null) => new(kind, name, At, End, true, false, 0, node, null, member);
         GodotCodeFound found = Found(asked, []) with

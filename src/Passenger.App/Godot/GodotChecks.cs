@@ -75,7 +75,7 @@ internal static class GodotChecks
             {
                 written.Add(loaded!);
             }
-            foreach (GodotTreeNode below in loaded is not null && GodotProject.IsScene(loaded) && scenes.Tree(loaded) is { } tree ? tree.Below() : [])
+            foreach (GodotTreeNode below in loaded is not null && GodotFileKinds.IsScene(loaded) && scenes.Tree(loaded) is { } tree ? tree.Below() : [])
             {
                 if (below.Type is { } type)
                 {
@@ -302,7 +302,7 @@ internal static class GodotChecks
     /// <summary>The class of a node whose script is GDScript, or that has none (<see cref="GodotScriptChain"/>); null for a
     /// node of a C# script, or of another kind of script.</summary>
     public static GodotScriptChain? ChainOf(GodotScenes scenes, GodotTreeNode node) =>
-        node.Script is null ? GodotScriptChain.Of(node.Type) : GodotScriptDeclarations.IsScript(node.Script) ? scenes.ChainOf(node.Script) : null;
+        node.Script is null ? GodotScriptChain.Of(node.Type) : GodotFileKinds.IsScript(node.Script) ? scenes.ChainOf(node.Script) : null;
 
     /// <summary>The functions the scenes' connections of a GDScript's signal (of <paramref name="script"/>, a res:// path) call,
     /// from nodes whose class takes in its script, by the script each runs and its name; and the connections a change of the
@@ -323,7 +323,7 @@ internal static class GodotChecks
             {
                 unfollowed.Add(at with { What = "a scene's connection binds values to its handler" });
             }
-            else if (connected.To?.Script is not { } handlerScript || !GodotScriptDeclarations.IsScript(handlerScript))
+            else if (connected.To?.Script is not { } handlerScript || !GodotFileKinds.IsScript(handlerScript))
             {
                 unfollowed.Add(at with { What = $"a scene's connection calls {method} on a node no GDScript runs" });
             }
@@ -757,7 +757,7 @@ internal static class GodotChecks
     private static Candidates FromFiles(GodotScenes scenes, GodotStringKind kind, IReadOnlyList<string> scripts, string? node, string? export, string? member)
     {
         GodotDefinitions defined = scenes.Defined;
-        bool project = scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes);
+        bool project = scenes.Texts.ContainsKey(GodotResPaths.Project);
         if (IsTheme(kind))
         {
             return ThemeNamed(defined, kind, ThemeTypes(scenes, scripts, node, export, member));
@@ -1067,7 +1067,7 @@ internal static class GodotChecks
 
     /// <summary>Every declaration of a kind and name the project's GDScripts hold.</summary>
     private static IReadOnlyList<GodotScriptDeclared> Declarations(GodotScenes scenes, GodotScriptKind kind, string name) =>
-        [.. scenes.Texts.Keys.Where(GodotScriptDeclarations.IsScript).Select(s => scenes.ScriptOf(s)?.Member(kind, name)).OfType<GodotScriptDeclared>().Where(d => d.Parameters is not null)];
+        [.. scenes.Texts.Keys.Where(GodotFileKinds.IsScript).Select(s => scenes.ScriptOf(s)?.Member(kind, name)).OfType<GodotScriptDeclared>().Where(d => d.Parameters is not null)];
 
     /// <summary>Names of several players or shaders, each name once with every place of it.</summary>
     private static IReadOnlyList<GodotDefined> Merged(IEnumerable<GodotDefined> names) =>
@@ -1092,7 +1092,7 @@ internal static class GodotChecks
     /// is not known.</summary>
     private static Finding? AutoloadFinding(GodotScenes scenes, GodotCodeFound found, GodotNodeCall call)
     {
-        if (!call.Exact || AutoloadIn(call.Path) is not ({ } name, _, int end) || !scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes))
+        if (!call.Exact || AutoloadIn(call.Path) is not ({ } name, _, int end) || !scenes.Texts.ContainsKey(GodotResPaths.Project))
         {
             return null;
         }
@@ -1111,7 +1111,7 @@ internal static class GodotChecks
             };
         }
         string rest = call.Path[end..].TrimStart('/');
-        if (GodotProject.IsScene(loaded) && scenes.Tree(loaded) is { } tree)
+        if (GodotFileKinds.IsScene(loaded) && scenes.Tree(loaded) is { } tree)
         {
             GodotResolved resolved = GodotScenes.Resolve(tree, rest);
             if (resolved is { Found: null, Unknown: false, Missing: ({ } start, { } stop) })
@@ -1178,7 +1178,7 @@ internal static class GodotChecks
     /// writes them; null for a node of no GDScript.</summary>
     private static GodotScriptFunction? ScriptHandler(GodotScenes scenes, Connected connected, IReadOnlyList<(string Name, string Type)>? signal, GodotFile file)
     {
-        if (connected.To?.Script is not { } script || !GodotScriptDeclarations.IsScript(script) || !scenes.Texts.ContainsKey(script))
+        if (connected.To?.Script is not { } script || !GodotFileKinds.IsScript(script) || !scenes.Texts.ContainsKey(script))
         {
             return null;
         }
@@ -1320,11 +1320,11 @@ internal static class GodotChecks
     /// call is made on where the code tells it, else to the script's own, in each scene it runs in (three at most).</summary>
     private static IReadOnlyList<GodotDefine> Defines(GodotScenes scenes, GodotKindRead read, IReadOnlyList<string> scripts)
     {
-        bool project = scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes);
+        bool project = scenes.Texts.ContainsKey(GodotResPaths.Project);
         switch (read.Kind)
         {
             case GodotStringKind.Action:
-                return project && read.Name.Length > 0 ? [new GodotDefine(read.Kind, read.Name, GodotDefinitions.ProjectRes) { Section = "input" }] : [];
+                return project && read.Name.Length > 0 ? [new GodotDefine(read.Kind, read.Name, GodotResPaths.Project) { Section = "input" }] : [];
             case GodotStringKind.Autoload:
                 return AutoloadDefines(scenes, read.Name);
             case GodotStringKind.Group:
@@ -1351,13 +1351,12 @@ internal static class GodotChecks
     /// <summary>An autoload project.godot lacks defined of each of the project's scripts and scenes named as it is, letter case
     /// aside: a scene first, then a script.</summary>
     private static IReadOnlyList<GodotDefine> AutoloadDefines(GodotScenes scenes, string name) =>
-        !scenes.Texts.ContainsKey(GodotDefinitions.ProjectRes) || name.Length == 0 ? []
-            : [.. scenes.Known.Where(res => res.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || res.EndsWith(".scn", StringComparison.OrdinalIgnoreCase)
-                    || IsCSharp(res) || res.EndsWith(".gd", StringComparison.OrdinalIgnoreCase))
+        !scenes.Texts.ContainsKey(GodotResPaths.Project) || name.Length == 0 ? []
+            : [.. scenes.Known.Where(res => GodotFileKinds.IsScene(res) || IsCSharp(res) || GodotFileKinds.IsScript(res))
                 .Where(res => System.IO.Path.GetFileNameWithoutExtension(res.Split('/')[^1]).Replace("_", string.Empty, StringComparison.Ordinal)
                     .Equals(name.Replace("_", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase))
-                .OrderBy(res => GodotProject.IsScene(res) ? 0 : 1).ThenBy(res => res, StringComparer.Ordinal).Take(3)
-                .Select(res => new GodotDefine(GodotStringKind.Autoload, name, GodotDefinitions.ProjectRes) { Section = "autoload", Value = res })];
+                .OrderBy(res => GodotFileKinds.IsScene(res) ? 0 : 1).ThenBy(res => res, StringComparer.Ordinal).Take(3)
+                .Select(res => new GodotDefine(GodotStringKind.Autoload, name, GodotResPaths.Project) { Section = "autoload", Value = res })];
 
     /// <summary>The Godot type a scene's value is, for a member to hold it: an external or sub-resource's own type, a node
     /// path's node's (its C# script's res://, else its engine class), else as its text says (<see cref="TypeOfValue(string)"/>).</summary>

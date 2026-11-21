@@ -225,7 +225,7 @@ public class GoDotTestsTests
             files["res://a/Other.tscn"] = GodotFile.Parse(SceneOf("res://a/Other.cs"));
             code["res://a/Other.cs"] = other;
         }
-        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { [GodotResPaths.Project] = Project });
         return GoDotTests.StartOf(scenes, res => code.GetValueOrDefault(res));
     }
 
@@ -261,7 +261,7 @@ public class GoDotTestsTests
             + "        _ = Chickensoft.GoDotTest.GoTest.RunTests(GetType().Assembly, this);\n#endif\n    }\n}\n";
         Dictionary<string, GodotFile> files = new() { ["res://main.tscn"] = GodotFile.Parse(SceneOf("res://Main.cs")) };
         Dictionary<string, string> code = new() { ["res://Main.cs"] = guarded };
-        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { [GodotResPaths.Project] = Project });
         Assert.Equal(GoDotTests.Start.Main, GoDotTests.StartOf(scenes, code.GetValueOrDefault, parsing: Passenger.Languages.CSharp.CSharpParsing.Defining(["DEBUG", "RUN_TESTS"], null)));
         Assert.Equal(GoDotTests.StartProblem.NoScene, GoDotTests.StartOf(scenes, code.GetValueOrDefault).Problem);
     }
@@ -283,7 +283,7 @@ public class GoDotTestsTests
             ["res://ci/Plays.tscn"] = GodotFile.Parse(SceneOf("res://Main.cs")),
         };
         Dictionary<string, string> code = new() { ["res://Main.cs"] = Plays, ["res://test/Tests.cs"] = Runs };
-        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { ["res://project.godot"] = Project });
+        GodotScenes scenes = new("/game", files, texts: new Dictionary<string, string> { [GodotResPaths.Project] = Project });
         Assert.Equal(new GoDotTests.Start("res://test/Tests.tscn"), GoDotTests.StartOf(scenes, code.GetValueOrDefault, "res://test/Tests.tscn"));
         Assert.Equal(GoDotTests.StartProblem.ChosenMissing, GoDotTests.StartOf(scenes, code.GetValueOrDefault, "res://ci/Gone.tscn").Problem);
         Assert.Equal(GoDotTests.StartProblem.ChosenRunsNone, GoDotTests.StartOf(scenes, code.GetValueOrDefault, "res://ci/Plays.tscn").Problem);

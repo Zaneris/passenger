@@ -36,6 +36,12 @@ public sealed partial class GDScriptAnalyzer
     /// <summary>The engine's API the types are resolved against; null where none was dumped.</summary>
     public GodotEngineApi? Engine => project.Engine;
 
+    /// <summary>Whether the engine is Godot 4.8 or later, whose own errors and warnings are said only then: never for an engine
+    /// whose version is unknown.</summary>
+    private bool Since48 => Engine?.Version >= Godot48;
+
+    private static readonly Version Godot48 = new(4, 8);
+
     /// <summary>A script's analysis: every expression's and declaration's type, every name's declaration.</summary>
     public GDScriptAnalysis Analyze(GDScriptTree tree, string path)
     {
@@ -114,8 +120,8 @@ public sealed partial class GDScriptAnalyzer
     /// so in Godot's words.</summary>
     private bool BaseLacked(GDScriptClass node, string path, Context context)
     {
-        if (node.ExtendsPath is { } script && Engine?.Version >= new Version(4, 8) && !script.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)
-            && !script.EndsWith(".gd", StringComparison.OrdinalIgnoreCase))
+        if (node.ExtendsPath is { } script && Since48 && !script.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)
+            && !GodotFileKinds.IsScript(script))
         {
             Error(context, node, $"\"{GodotResPaths.Resolved(script, path)}\" is not a GDScript.");
             return true;
@@ -881,7 +887,7 @@ public sealed partial class GDScriptAnalyzer
         }
         if (found is null && Member(context.Class, first.Name) is { } notType)
         {
-            return Unfound(tells, node, Engine?.Version >= new Version(4, 8) ? $"\"{first.Name}\" is a {MemberWords(notType)}, so it can't be used as a type."
+            return Unfound(tells, node, Since48 ? $"\"{first.Name}\" is a {MemberWords(notType)}, so it can't be used as a type."
                 : $"\"{first.Name}\" is a {MemberWords(notType)} but does not contain a type.");
         }
         if (found is null)

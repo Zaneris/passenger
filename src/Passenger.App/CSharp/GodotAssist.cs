@@ -22,7 +22,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     private const string PathCharacters = "/.:-";
 
     /// <summary>Whether a file is a text scene or resource of a Godot project.</summary>
-    private bool IsScene(OpenDocument document) => GodotFile.IsText(document.Path) && context.GodotOf(document.Path) is not null;
+    private bool IsScene(OpenDocument document) => GodotFileKinds.IsText(document.Path) && context.GodotOf(document.Path) is not null;
 
     /// <summary>A '/' typed in a scene's res:// string opens its list of the project's files.</summary>
     public override bool Typed(string text)
@@ -108,7 +108,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     /// (the file among them as the editor has it), and the file read; null for any other file.</summary>
     private async Task<(GodotScenes Scenes, string Res, GodotFile File)?> SceneOfAsync(OpenDocument document)
     {
-        if (!GodotFile.IsText(document.Path) || context.GodotOf(document.Path) is not ({ } index, { } folder))
+        if (!GodotFileKinds.IsText(document.Path) || context.GodotOf(document.Path) is not ({ } index, { } folder))
         {
             return null;
         }
@@ -117,7 +117,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             ? (scenes, res, file) : null;
     }
 
-    public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset, shown => GodotFile.IsText(shown.Path));
+    public override Task<bool> DefinitionAsync(int offset) => GoToDeclarationAsync(context, navigation, offset, shown => GodotFileKinds.IsText(shown.Path));
 
     public override async Task<Declared?> DeclaredAsync(OpenDocument document, int offset)
     {
@@ -193,7 +193,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         GodotChecks.Connected connected = GodotChecks.Connections(scenes, res).First(c => c.Connection.Section == connection.Section);
         GodotTreeNode? node = method ? connected.To : connected.From;
         string what = method ? $"No method {connection.Method}" : $"No signal {connection.Signal}";
-        if (node?.Script is { } written && GodotScriptDeclarations.IsScript(written) && scenes.FileOf(written) is { } gd)
+        if (node?.Script is { } written && GodotFileKinds.IsScript(written) && scenes.FileOf(written) is { } gd)
         {
             string name = method ? connection.Method : connection.Signal;
             return await BackgroundWork.Run(() => GodotChecks.ScriptPlace(scenes, written, method ? GodotScriptKind.Function : GodotScriptKind.Signal, name)) is ({ } file, { } declared)
@@ -223,7 +223,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     /// <summary>Rename on a node's name in a scene: its box, then the node renamed everywhere that names it.</summary>
     public override bool Rename(int caret)
     {
-        if (context.Editors.Active is not { } shown || !GodotFile.IsText(shown.Path))
+        if (context.Editors.Active is not { } shown || !GodotFileKinds.IsText(shown.Path))
         {
             return false;
         }

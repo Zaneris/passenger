@@ -1,4 +1,5 @@
 using Passenger.Core;
+using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
 
@@ -373,7 +374,7 @@ public static class FileIconSet
         [".f"] = new("Fortran", Maroon),
         [".f90"] = new("Fortran", Maroon),
         [".ino"] = new("Arduino", Cyan),
-        [".gd"] = new("Godot", Blue),
+        [GodotFileKinds.Script] = new("Godot", Blue),
         [".hx"] = new("Haxe", Orange),
         [".g4"] = new("Antlr", Red),
         [".sol"] = new("Solidity", Grey),

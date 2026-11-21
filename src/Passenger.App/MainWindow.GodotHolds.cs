@@ -54,7 +54,7 @@ public partial class MainWindow
     /// <summary>A file Passenger wrote, from any thread: a scene Godot's editor has open and saved is read there again.</summary>
     private void WroteForGodot(string path)
     {
-        if (!GodotProject.IsScene(path))
+        if (!GodotFileKinds.IsScene(path))
         {
             return;
         }

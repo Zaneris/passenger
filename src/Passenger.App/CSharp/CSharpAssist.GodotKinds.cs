@@ -140,7 +140,7 @@ internal sealed partial class CSharpAssist
             string path = "/root/" + autoload.Name;
             string? loaded = read.Scenes.AutoloadFile(autoload.Name);
             items.Add(new CompletionItem { Label = path, Kind = CompletionItemKind.Module, Detail = $"autoload · {loaded}", FilterText = path, SortText = " " + path });
-            if (loaded is not null && GodotProject.IsScene(loaded) && read.Scenes.Tree(loaded) is { } tree)
+            if (loaded is not null && GodotFileKinds.IsScene(loaded) && read.Scenes.Tree(loaded) is { } tree)
             {
                 items.AddRange(GodotScenes.PathsFrom(tree).Where(p => !p.Path.StartsWith('%')).Select(p => new CompletionItem
                 {

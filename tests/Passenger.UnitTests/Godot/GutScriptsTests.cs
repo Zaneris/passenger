@@ -1,4 +1,5 @@
 using Passenger.App.Testing;
+using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Godot;
 
@@ -93,7 +94,7 @@ public sealed class GutScriptsTests
     [Fact]
     public void A_script_outside_guts_folders_tells_no_tests_and_passes_them_on_all_the_same()
     {
-        GutScripts.Config config = new(["res://elsewhere/"], false, "test_", ".gd", []);
+        GutScripts.Config config = new(["res://elsewhere/"], false, "test_", GodotFileKinds.Script, []);
         FileTests read = Read("class_name TurnTester\nextends SpinTester\n\n\nfunc test_turns():\n\tpass\n", "turn_tester.gd", config);
         Assert.Empty(read.Tests);
         Assert.Equal(["test_inherited", "test_turns"], GutBases.TestsOf(read.Attributes, "TurnTester").Select(t => t.Method));
@@ -103,7 +104,7 @@ public sealed class GutScriptsTests
     [Fact]
     public void A_script_keeps_the_code_of_each_test_it_declares_for_those_extending_it_outside_guts_folders_too()
     {
-        GutScripts.Config elsewhere = new(["res://elsewhere/"], false, "test_", ".gd", []);
+        GutScripts.Config elsewhere = new(["res://elsewhere/"], false, "test_", GodotFileKinds.Script, []);
         string Written(string said) => $"class_name TurnTester\nextends SpinTester\n\n\nfunc test_turns():\n\tassert_eq(1, {said})\n";
         FileTests read = Read(Written("1"), "turn_tester.gd", elsewhere);
         Assert.Equal(["test_turns"], read.PassedOn.Keys);

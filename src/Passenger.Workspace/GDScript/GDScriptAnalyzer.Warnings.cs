@@ -196,7 +196,7 @@ public sealed partial class GDScriptAnalyzer
         {
             Warn(context, variable, "ONREADY_WITH_EXPORT");
         }
-        if (onready && variable.Initializer is GDScriptCast { Operand: GDScriptGetNode path } cast && Engine?.Version >= new Version(4, 8))
+        if (onready && variable.Initializer is GDScriptCast { Operand: GDScriptGetNode path } cast && Since48)
         {
             Warn(context, cast, "ONREADY_WITH_CAST", (path.UsesDollar ? "$" : "%") + path.Path);
         }

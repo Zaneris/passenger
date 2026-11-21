@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Passenger.Text;
+using Passenger.Workspace;
 using Passenger.Workspace.GDScript;
 
 namespace Passenger.GodotSweep;
@@ -11,7 +12,7 @@ namespace Passenger.GodotSweep;
 /// parse take, what each allocates and what a tree holds.</summary>
 public static class Program
 {
-    private static readonly HashSet<string> Skipped = new(StringComparer.Ordinal) { ".godot", ".git", ".import", "node_modules" };
+    private static readonly HashSet<string> Skipped = new(StringComparer.Ordinal) { IgnoredFolders.GodotCache, ".git", ".import", "node_modules" };
 
     public static int Main(string[] args)
     {
@@ -131,7 +132,7 @@ public static class Program
         {
             inAutoloads = line.StartsWith('[') ? line == "[autoload]" : inAutoloads;
             int equals = line.IndexOf('=', StringComparison.Ordinal);
-            if (inAutoloads && equals > 0 && line[(equals + 1)..].Trim('"', '*') is { } loaded && (loaded.EndsWith(".gd", StringComparison.Ordinal) || loaded.StartsWith("uid://", StringComparison.Ordinal)))
+            if (inAutoloads && equals > 0 && line[(equals + 1)..].Trim('"', '*') is { } loaded && (GodotFileKinds.IsScript(loaded) || loaded.StartsWith(GodotUids.Scheme, StringComparison.Ordinal)))
             {
                 autoloads[line[..equals]] = loaded;
             }
@@ -145,7 +146,7 @@ public static class Program
             {
                 uids[File.ReadAllText(file).Trim()] = res[..^4];
             }
-            else if (file.EndsWith(".import", StringComparison.Ordinal) || file.EndsWith(".tres", StringComparison.Ordinal) || file.EndsWith(".tscn", StringComparison.Ordinal))
+            else if (file.EndsWith(".import", StringComparison.Ordinal) || GodotFileKinds.IsText(file))
             {
                 string head = string.Join('\n', File.ReadLines(file).Take(12));
                 string owner = file.EndsWith(".import", StringComparison.Ordinal) ? res[..^7] : res;
@@ -157,7 +158,7 @@ public static class Program
                 {
                     classes[owner] = scripted.Groups[1].Value;
                 }
-                else if (!file.EndsWith(".tscn", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.Match(head, "(?m)^\\[?(?:gd_resource )?type=\"([^\"]+)\"") is { Success: true } typed)
+                else if (!GodotFileKinds.Is(file, GodotFileKinds.TextScene) && System.Text.RegularExpressions.Regex.Match(head, "(?m)^\\[?(?:gd_resource )?type=\"([^\"]+)\"") is { Success: true } typed)
                 {
                     classes[owner] = typed.Groups[1].Value;
                 }
@@ -167,7 +168,7 @@ public static class Program
         {
             if (loaded.StartsWith("uid://", StringComparison.Ordinal))
             {
-                if (uids.GetValueOrDefault(loaded) is { } file && file.EndsWith(".gd", StringComparison.Ordinal))
+                if (uids.GetValueOrDefault(loaded) is { } file && GodotFileKinds.IsScript(file))
                 {
                     autoloads[name] = file;
                 }

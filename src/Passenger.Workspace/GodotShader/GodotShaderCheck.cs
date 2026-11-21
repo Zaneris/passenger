@@ -97,7 +97,7 @@ public static class GodotShaderCheck
 
     public static GodotShaderChecked Check(GodotShaderUnit unit, GodotShaderTable table, GodotShaderCheckOptions options)
     {
-        bool isInclude = unit.Res.EndsWith(".gdshaderinc", StringComparison.Ordinal);
+        bool isInclude = GodotFileKinds.IsShaderInclude(unit.Res);
         HashSet<string> passed = new(StringComparer.Ordinal);
         string? unanswered = null;
         GodotShaderPreprocessed preprocessed = Preprocessed();
@@ -145,7 +145,7 @@ public static class GodotShaderCheck
         {
             if (unit.Includes.TryGetValue(path, out string? text))
             {
-                return new GodotShaderIncluded(true, path.EndsWith(".gdshaderinc", StringComparison.Ordinal), text);
+                return new GodotShaderIncluded(true, GodotFileKinds.IsShaderInclude(path), text);
             }
             unanswered = path;
             return passed.Contains(path) ? new GodotShaderIncluded(true, true, string.Empty) : null;

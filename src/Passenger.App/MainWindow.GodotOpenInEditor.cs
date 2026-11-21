@@ -31,7 +31,7 @@ public partial class MainWindow
         actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, "Open in Godot Editor", "Godot", _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : Untrusted() is { } untrusted ? untrusted : GodotAtHand() is null ? Refusals.NoGodotProject
-                : Editors.Active?.Path is { } path && GodotOfFile(path) is not null && (GodotProject.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,
+                : Editors.Active?.Path is { } path && GodotOfFile(path) is not null && (GodotFileKinds.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,
             Menus = [new MenuPlace("Tools", 0, 8)],
             Words = ["Godot", "scene", "node", "editor", "select"],
             Works = AppActions.GodotOpenInEditor,
@@ -39,7 +39,7 @@ public partial class MainWindow
     }
 
     private static bool IsGodotScript(string path) =>
-        path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase);
+        path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || GodotFileKinds.IsScript(path);
 
     private async Task OpenInGodotEditorAsync()
     {
@@ -127,7 +127,7 @@ public partial class MainWindow
         {
             return (null, ".", null);
         }
-        if (GodotProject.IsScene(shown.Path))
+        if (GodotFileKinds.IsScene(shown.Path))
         {
             int line = text.GetLineFromOffset(Math.Min(caret, text.Length));
             Passenger.Workspace.GodotNode? at = GodotFile.Parse(text.ToString()) is { } parsed ? parsed.Nodes.LastOrDefault(n => n.Section.Line <= line) : null;
@@ -145,7 +145,7 @@ public partial class MainWindow
         int row = text.GetLineFromOffset(offset);
         int column = offset - text.GetLineStart(row);
         // A GDScript's own parser reads its $Path, %Unique and get_node strings.
-        string? path = shown.Path.EndsWith(".gd", StringComparison.OrdinalIgnoreCase)
+        string? path = GodotFileKinds.IsScript(shown.Path)
             ? await BackgroundWork.Run(() => GDScriptNodePaths.At(GDScriptTree.Parse(text.ToString()), offset))
             : NodePathCall.Matches(text.GetLineText(row)).FirstOrDefault(m => m.Index <= column && column <= m.Index + m.Length)?.Groups["path"].Value;
         if (path is null)

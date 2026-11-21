@@ -205,14 +205,6 @@ public sealed class GodotFile
     /// <summary>The line (from zero) an offset is on.</summary>
     public int LineOf(int offset) => lineStarts.LineOf(offset);
 
-    /// <summary>Whether a file is one Godot writes as text: a scene or a resource.</summary>
-    public static bool IsText(string path) =>
-        path.EndsWith(".tscn", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".tres", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Whether a file is a resource Godot writes as bytes, as it may an Animation or an AnimationLibrary.</summary>
-    public static bool IsBinary(string path) =>
-        path.EndsWith(".res", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".anim", StringComparison.OrdinalIgnoreCase);
-
     public static GodotFile Parse(string text)
     {
         LineStarts lineStarts = new(text);

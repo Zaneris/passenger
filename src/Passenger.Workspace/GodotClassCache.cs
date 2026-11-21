@@ -9,8 +9,14 @@ namespace Passenger.Workspace;
 /// Godot's editor reads one for the list. Pure.</summary>
 public static class GodotClassCache
 {
+    /// <summary>The file's name in Godot's cache folder (<see cref="IgnoredFolders.GodotCache"/>).</summary>
+    public const string FileName = "global_script_class_cache.cfg";
+
     /// <summary>The file's path from its project's folder.</summary>
-    public static readonly string RelativePath = Path.Combine(".godot", "global_script_class_cache.cfg");
+    public static readonly string RelativePath = Path.Combine(IgnoredFolders.GodotCache, FileName);
+
+    /// <summary>The file by its res:// path.</summary>
+    public const string Res = $"{GodotResPaths.Scheme}{IgnoredFolders.GodotCache}/{FileName}";
 
     /// <summary>The base Godot lists for a class that extends nothing.</summary>
     private const string Unextended = "RefCounted";
@@ -101,7 +107,7 @@ public static class GodotClassCache
                 return at.Extends.Count == 1 ? at.Extends[0].Name : string.Empty;
             }
             // Godot opens the path as written, so a relative one from the project's folder, where its editor runs.
-            string target = GodotResPaths.Resolved(written, ProjectTop);
+            string target = GodotResPaths.Resolved(written, GodotResPaths.Project);
             if (at.Extends.Count == 0)
             {
                 return read(target) is { } extended ? BaseOf(GDScriptTree.Preamble(extended), read, depth + 1) : string.Empty;
@@ -115,9 +121,6 @@ public static class GodotClassCache
         }
         return string.Empty;
     }
-
-    /// <summary>A file at a project's top, from which a relative path names what it names from the project's folder.</summary>
-    private static readonly string ProjectTop = GodotResPaths.Scheme + GodotProject.FileName;
 
     /// <summary>The inner class a chain of names reaches in a script, each among the members of the one before; null where
     /// one is not there.</summary>

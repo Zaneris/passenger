@@ -12,6 +12,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
@@ -46,7 +47,7 @@ public sealed class GDScriptTests
         TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n\n"
             + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n");
         TestFolders.Write(folder, "main.gd", Script);
-        TestFolders.Write(folder, Path.Combine(".godot", "editor", "editor_layout.cfg"), Layout);
+        TestFolders.Write(folder, Path.Combine(IgnoredFolders.GodotCache, "editor", "editor_layout.cfg"), Layout);
     }
 
     [AvaloniaFact]
@@ -55,7 +56,7 @@ public sealed class GDScriptTests
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.Equal(TokenKind.Keyword, KindOf(editor, "func"));
-        string layout = Path.Combine(PathNames.Canonical(folder), ".godot", "editor", "editor_layout.cfg");
+        string layout = Path.Combine(PathNames.Canonical(folder), IgnoredFolders.GodotCache, "editor", "editor_layout.cfg");
         // By the log, since until the headless editor writes its own the file holds the person's layout anyway.
         Ui.WaitFor(() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Contains($"GDScript: {layout}, which Godot's headless editor wrote over, is put back as it was", StringComparison.Ordinal),
             () => $"the layout the headless editor writes over the person's to be put back ({Shown(layout)})", TimeSpan.FromSeconds(90));
@@ -204,7 +205,7 @@ public sealed class GDScriptTests
             + "\tProjectSettings.save()\n\tFileAccess.open(\"res://.godot/saver_saved\", FileAccess.WRITE).store_string(\"saved\")\n"
             + "\tawait get_tree().create_timer(20.0).timeout\n\tProjectSettings.set_setting(\"application/config/description\", \"saved later\")\n\tProjectSettings.save()\n");
         byte[] before = File.ReadAllBytes(settings);
-        string marker = Path.Combine(folder, ".godot", "saver_saved");
+        string marker = Path.Combine(folder, IgnoredFolders.GodotCache, "saver_saved");
         bool recovering = GodotExecutables.HasRecoveryMode(Ui.Await(GodotExecutables.VersionAsync(godot!), "the Godot's version"));
         MainWindow window = Open();
         if (recovering)
@@ -263,7 +264,7 @@ public sealed class GDScriptTests
         Restore.Run(Path.Combine(folder, "Spinner.csproj"));
         string uid = Path.Combine(folder, "Main.cs.uid");
         string theirs = Path.Combine(folder, "turner.gd.uid");
-        string assembly = Path.Combine(folder, ".godot", "mono", "temp", "bin", "Debug", "Spinner.dll");
+        string assembly = Path.Combine(folder, IgnoredFolders.GodotCache, "mono", "temp", "bin", "Debug", "Spinner.dll");
         string project = PathNames.Canonical(folder);
         string Log() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
         MainWindow window = Open();
@@ -453,7 +454,7 @@ public sealed class GDScriptTests
         string project = PathNames.Canonical(folder);
         string other = project + "-old";
         TestFolders.Write(other, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Turns (old)\"\n");
-        string layout = Path.Combine(project, ".godot", "editor", "editor_layout.cfg");
+        string layout = Path.Combine(project, IgnoredFolders.GodotCache, "editor", "editor_layout.cfg");
         string Log() => Ui.Shared(IdeLog.PathOf(IdeLog.Ide));
         bool Kept() => Log().Contains($"GDScript: {layout} was written by another program", StringComparison.Ordinal);
         Process persons = PersonsEditor(other);

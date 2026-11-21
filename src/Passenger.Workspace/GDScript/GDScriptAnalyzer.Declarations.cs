@@ -268,7 +268,7 @@ public sealed partial class GDScriptAnalyzer
                 functions.TryAdd(name.Name, function);
             }
         }
-        bool newer = Engine?.Version >= new Version(4, 8);
+        bool newer = Since48;
         foreach ((GDScriptNode node, int offset) in all)
         {
             if (node is not GDScriptVariable { GetterName: not null } and not GDScriptVariable { SetterName: not null } || node is not GDScriptVariable variable)

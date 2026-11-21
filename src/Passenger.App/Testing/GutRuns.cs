@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
 
@@ -29,7 +30,7 @@ public static partial class GutRuns
             int names = key.LastIndexOf("::", StringComparison.Ordinal);
             string suite = key[..names];
             int dot = suite.LastIndexOf('.');
-            bool inner = !suite.EndsWith(".gd", StringComparison.OrdinalIgnoreCase) && dot >= 0;
+            bool inner = !GodotFileKinds.IsScript(suite) && dot >= 0;
             return new Chosen($"res://{(inner ? suite[..dot] : suite)}", inner ? suite[(dot + 1)..] : null, key[(names + 2)..]);
         }
     }
