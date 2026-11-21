@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI 44953680429
+  (Windows, report shard 1, three test processes at once): "web: Its metrics could not be read: its runtime took no
+  session in 10 s (process 11428 runs, and its diagnostic port … answered another request at once)", web having answered
+  no request yet. **Most likely the test run's limit, shorter than the IDE's own**: since #2028 the run held every live
+  session's start to 4 s, 10 s at the Windows runner's scale, where the IDE gives 10 s, 25 s there, and the port's next
+  request, answered at once once the start was given up, shows the runtime still turning its metrics on as web started,
+  not held up for good (a held-up port answers nothing, as in the .NET 10 hang below). Every real session in the run has
+  the IDE's limit again; only a test standing in for a silent runtime shortens it, in its own process while its
+  `SilentPort` stands (`SessionStarts.HoldLimit`), so an agent's Passenger a class beside starts keeps the IDE's
+  (85366e457, #2091). Passes on the Windows VM with the silent-port tests of MetricsPaneTests and LiveRequestsTests.
 - `FindInFilesTests`' `Replace_all_past_the_lists_thousand_matches_replaces_every_match_in_the_scope_and_says_how_many`
   and `…_is_stopped_by_Stop_while_it_finds_them_replacing_nothing`, `BindingErrorsTests`'
   `An_app_failing_thousands_of_bindings_…` and `GitFileFormsBytesTests`' `A_changed_large_binary_file_costs_its_probe_…`,
