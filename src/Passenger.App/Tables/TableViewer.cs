@@ -176,7 +176,7 @@ public sealed class TableViewer
         message.Text = file.Problem ?? (file.IsReading ? "Reading…" : string.Empty);
         View.IsVisible = file.Table is not null;
         size.Text = file.Table is { } table && file.ShowsTable
-            ? $"{table.RowCount.ToString("N0", CultureInfo.CurrentCulture)} {Core.Plural.Noun(table.RowCount, "row")} × {table.ColumnCount.ToString("N0", CultureInfo.CurrentCulture)} {Core.Plural.Noun(table.ColumnCount, "column")}"
+            ? $"{table.RecordCount.ToString("N0", CultureInfo.CurrentCulture)} {Core.Plural.Noun(table.RecordCount, "row")} × {table.ColumnCount.ToString("N0", CultureInfo.CurrentCulture)} {Core.Plural.Noun(table.ColumnCount, "column")}"
             : file.IsReading ? "Reading…" : string.Empty;
         painting = false;
     }

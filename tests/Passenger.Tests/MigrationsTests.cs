@@ -1065,6 +1065,53 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>Add Migration… run from Find Action in a fresh window, before the Migrations window has listed anything, lists
+    /// the context first, so its question names the context and where its migrations are (Migrations/Sqlite, beside which
+    /// dotnet ef puts the next), never dotnet ef's default as for a context with none.</summary>
+    [AvaloniaFact]
+    public void Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in()
+    {
+        string folder = ShopApp.Make(design: true, tool: ShopApp.Version);
+        TestFolders.Write(folder, "Migrations/Sqlite/20260101000000_Initial.cs", """
+            using Microsoft.EntityFrameworkCore.Infrastructure;
+            using Microsoft.EntityFrameworkCore.Migrations;
+
+            namespace Shop.Migrations.Sqlite;
+
+            [DbContext(typeof(ShopContext))]
+            [Migration("20260101000000_Initial")]
+            public partial class Initial : Migration
+            {
+                protected override void Up(MigrationBuilder migrationBuilder)
+                {
+                }
+
+                protected override void Down(MigrationBuilder migrationBuilder)
+                {
+                }
+            }
+
+            """);
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Assert.False(window.Migrations.Listed, "The Migrations window listed its context before it was shown or asked");
+            Ui.Run(window, AppActions.FindAction);
+            window.KeyTextInput("Add Migration");
+            Ui.Press(window, "ENTER", settle: false);
+            AddMigrationDialog asked = Asked<AddMigrationDialog>(window, "Add Migration's question", Slow);
+            Assert.True(asked.Title == "Add Migration to ShopContext" && asked.Into == "Empty: beside its last migration, in Shop/Migrations/Sqlite"
+                && asked.FolderBox.ItemsSource is IEnumerable<string> offered && offered.SequenceEqual(["Migrations/Sqlite"]),
+                $"Add Migration asked before any listing was titled '{asked.Title}', its note '{asked.Into}', offering [{string.Join(", ", (asked.FolderBox.ItemsSource as IEnumerable<string>) ?? [])}]: "
+                + "ShopContext's Initial, in Migrations/Sqlite, was to be named");
+            asked.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Add Migration… from the window's button, its question waited for.</summary>
     private static AddMigrationDialog Open(MainWindow window)
     {

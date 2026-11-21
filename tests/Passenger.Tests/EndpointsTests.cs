@@ -118,6 +118,36 @@ public sealed class EndpointsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Test says what it came to in the status bar, in place of its last stage: the answer's status and how long
+    /// it took, one that met none of its criteria said so, and a request no server took said failed with why.</summary>
+    [AvaloniaFact]
+    public void Test_says_in_the_status_bar_what_its_answer_or_failure_came_to()
+    {
+        string folder = Folder();
+        File.AppendAllText(Path.Combine(folder, "api.http"), "\n\n### Nowhere\nGET http://127.0.0.1:1/\n");
+        MainWindow window = Open(folder);
+        window.ShowToolWindow(ToolWindowIds.Endpoints);
+        Ui.WaitFor(() => window.Endpoints.Requests.Count == 4, "the requests");
+
+        EndpointRequest all = window.Endpoints.Requests[0];
+        Said(all, $"{all.Title}: 200 OK in ");
+        Assert.DoesNotContain("not as its checks expect", window.Status, StringComparison.Ordinal);
+        EndpointRequest missing = window.Endpoints.Requests[2];
+        Said(missing, $"{missing.Title}: 404 ");
+        Assert.EndsWith(", not as its checks expect", window.Status, StringComparison.Ordinal);
+        Said(window.Endpoints.Requests.Single(r => r.Name == "Nowhere"), "Nowhere failed: ");
+        window.Close();
+
+        void Said(EndpointRequest request, string start)
+        {
+            Ui.Click(RowButton(window, request, "endpointTest"));
+            Ui.WaitFor(() => window.Endpoints.Busy is null && window.Endpoints.Response.Summary.Length > 0 && !window.Endpoints.Response.Summary.StartsWith("Sending ", StringComparison.Ordinal),
+                $"{request.Title}'s answer");
+            Assert.True(window.Status?.StartsWith(start, StringComparison.Ordinal) == true,
+                $"The status bar said '{window.Status}' once {request.Title}'s test came to '{window.Endpoints.Response.Summary}'");
+        }
+    }
+
     /// <summary>An <c>@expect</c> that does not read is marked in the editor where it is written, saying why, and its
     /// request's Test fails on it though the answer is a 200, so a typo never turns a check off.</summary>
     [AvaloniaFact]

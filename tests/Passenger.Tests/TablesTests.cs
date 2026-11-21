@@ -82,6 +82,7 @@ public sealed class TablesTests : IDisposable
         Assert.Equal(["Name", "Value", "Comment"], Enumerable.Range(0, table.ColumnCount).Select(table.Header));
         Assert.Equal([("Greeting", "Hello", "On the first page", "1"), ("Title", "Shop", "", "2"), ("", "", "", "+")],
             Enumerable.Range(0, table.RowCount).Select(row => (table.Cell(row, 0), table.Cell(row, 1), table.Cell(row, 2), table.RowLabel(row))));
+        Assert.Equal("2 rows × 3 columns", Size(window));
         Point Cell(int row, int column) => grid.SortArrow(column).Center + new Vector(-20, ListRow.Height * (row + 1));
         string expected = Text;
         ResourceEntry EntryOf(string text, string key) => ResourceFiles.Parse(path, string.Empty, ResourceFormat.Resx, text).Entry(key)!;
@@ -107,6 +108,7 @@ public sealed class TablesTests : IDisposable
         expected = ResourceFiles.WithEntry(expected, "Farewell", string.Empty)!;
         Assert.Equal(expected, Shown());
         Ui.WaitFor(() => grid.Table?.RowCount == 4 && grid.Table.Cell(2, 0) == "Farewell", "the key made in the new row, and a new row below it");
+        Assert.Equal("3 rows × 3 columns", Size(window));
         Assert.Equal((2, 1), grid.Caret);
         Ui.Press(window, "ENTER");
         window.KeyTextInput("Goodbye");
@@ -174,6 +176,8 @@ public sealed class TablesTests : IDisposable
         Assert.Equal(["ID", "Source", "Target", "State", "Note"], Enumerable.Range(0, table.ColumnCount).Select(table.Header));
         Assert.Equal(["Greeting", "Hello", "Hello", "new", "On the first page"], Enumerable.Range(0, table.ColumnCount).Select(column => table.Cell(0, column)));
         Assert.Equal(1, table.RowCount);
+        Assert.Equal("1 row × 5 columns", Size(window));
+        Assert.True(window.EditorArea.Active!.Language == Passenger.Languages.Language.Xml, $"An XLIFF file opened as {window.EditorArea.Active.Language.Name}, not as XML");
 
         Ui.Click(grid, grid.SortArrow(1).Center + new Vector(-20, ListRow.Height));
         Ui.Press(window, "ENTER");
@@ -515,4 +519,8 @@ public sealed class TablesTests : IDisposable
             + "<row r=\"9\" ht=\"20\" customHeight=\"1\"/></sheetData></worksheet>");
         Part("xl/worksheets/sheet2.xml", $"<worksheet {Ns}><sheetData><row r=\"2\"><c r=\"B2\"><v>42</v></c></row></sheetData></worksheet>");
     }
+
+    /// <summary>The table's size, as the line over it says it.</summary>
+    private static string Size(MainWindow window) =>
+        window.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(t => t.IsEffectivelyVisible && t.Text?.EndsWith(" columns", StringComparison.Ordinal) == true)?.Text ?? "no size shown";
 }

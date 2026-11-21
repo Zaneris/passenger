@@ -9,6 +9,9 @@ public abstract class Table
     /// <summary>The body's rows, the header's not counted.</summary>
     public abstract int RowCount { get; }
 
+    /// <summary>The rows that hold something, as the table's size counts them: a row standing empty for a new one left out.</summary>
+    public virtual int RecordCount => RowCount;
+
     public abstract int ColumnCount { get; }
 
     /// <summary>A cell's text as shown, empty for none.</summary>

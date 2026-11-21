@@ -172,7 +172,7 @@ public sealed class Language
         LanguageService.MSBuild);
 
     public static readonly Language Xml = XmlKind("xml", "XML",
-        ["*.xml", "*.slnx", "*.resx", "*.config", "*.nuspec", "*.manifest", "*.runsettings", "*.xsd", "*.xslt", "*.xsl", "*.svg", "*.plist", "*.storyboard"],
+        ["*.xml", "*.slnx", "*.resx", "*.xlf", "*.xliff", "*.config", "*.nuspec", "*.manifest", "*.runsettings", "*.xsd", "*.xslt", "*.xsl", "*.svg", "*.plist", "*.storyboard"],
         LanguageService.None);
 
     /// <summary>JSON, told to its server as JSON with comments where the file's reader takes them: the files VS Code reads

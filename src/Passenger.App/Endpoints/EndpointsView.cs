@@ -305,6 +305,7 @@ public sealed class EndpointsView : DockPanel
             if (call is null)
             {
                 shown.Refused(problem!);
+                Told(false, problem!);
                 return EndpointSent.Refused;
             }
             EndpointGrants grants = parts.Grants();
@@ -313,6 +314,7 @@ public sealed class EndpointsView : DockPanel
                 if (owner is null)
                 {
                     shown.Refused($"Not sent: nothing could ask whether {call.Host} may have what it reads");
+                    Told(false, shown.Summary);
                     return EndpointSent.Withheld;
                 }
                 testing.Say($"Waiting for your answer: may {request.Title} send what it reads to {call.Host}?");
@@ -331,6 +333,7 @@ public sealed class EndpointsView : DockPanel
                 if (!allowed)
                 {
                     shown.Refused($"Not sent: what it reads was not allowed to go to {call.Host}");
+                    Told(false, shown.Summary);
                     return EndpointSent.Withheld;
                 }
                 grants.Allow(call, question.Always.IsChecked == true);
@@ -343,11 +346,14 @@ public sealed class EndpointsView : DockPanel
                 ? await of(sent, mine.Token) : null;
             IReadOnlyList<SchemaBreak> breaks = document is null ? [] : OpenApiSources.Check(document, call.Method, call.Url, response);
             shown.Show(response, [.. criteria.Select(c => c.Check(response))], breaks);
+            Told(shown.Passed, response.Error is { } error ? $"{request.Title} failed: {error}"
+                : $"{request.Title}: {response.Status} {response.Reason} in {Durations.Said(response.Elapsed)}{(shown.Passed ? string.Empty : ", not as its checks expect")}");
             return EndpointSent.Answered;
         }
         catch (OperationCanceledException)
         {
             shown.Refused("Stopped before an answer came");
+            Told(false, shown.Summary);
             return EndpointSent.Withheld;
         }
         finally
@@ -356,6 +362,13 @@ public sealed class EndpointsView : DockPanel
             {
                 sending = null;
             }
+        }
+
+        // What it came to, said in the status bar in place of its last stage, and to an agent's action.
+        void Told(bool passed, string said)
+        {
+            testing.Tell(passed, said);
+            parts.Say(said);
         }
     }
 

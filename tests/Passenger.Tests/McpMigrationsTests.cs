@@ -55,8 +55,8 @@ public sealed class McpMigrationsTests : McpRig
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
 
         string added = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial Data/Migrations" }));
-        // Before any listing dotnet ef takes the project's one context, which the answer then names.
-        Assert.True(added.StartsWith("Added migration Initial to Shop, in Shop/Data/Migrations\nShopContext of Shop", StringComparison.Ordinal)
+        // Asked before any listing, it lists the context first, so its answer names it.
+        Assert.True(added.StartsWith("Added migration Initial to ShopContext, in Shop/Data/Migrations\nShopContext of Shop", StringComparison.Ordinal)
             && added.Contains("1 migration in Data/Migrations; Add Migration's output folder Data/Migrations", StringComparison.Ordinal), $"Add Migration into Data/Migrations answered: {added}");
         Assert.Single(Directory.GetFiles(Path.Combine(folder, "Data", "Migrations"), "*_Initial.cs"));
         string again = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Second" }));

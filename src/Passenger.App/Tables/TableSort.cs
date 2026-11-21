@@ -67,6 +67,8 @@ public sealed class SortedTable(Table source, int by, bool descending, int[] ord
 {
     public override int RowCount => source.RowCount;
 
+    public override int RecordCount => source.RecordCount;
+
     public override int ColumnCount => source.ColumnCount;
 
     public override string Cell(int row, int column) => source.Cell(order[row], column);

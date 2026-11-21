@@ -40,6 +40,8 @@ public sealed class ResourceTable : Table
 
     public override int RowCount => File.Entries.Count + (IsResx ? 1 : 0);
 
+    public override int RecordCount => File.Entries.Count;
+
     public override int ColumnCount => IsResx ? ResxColumns.Length : XliffColumns.Length;
 
     public override string Header(int column) => IsResx ? ResxColumns[column] : XliffColumns[column];

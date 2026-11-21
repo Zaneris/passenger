@@ -239,11 +239,12 @@ public partial class MainWindow
     }
 
     /// <summary>Add Migration…: its name and output folder asked (<see cref="AddMigrationDialog"/>), then added to the chosen
-    /// context.</summary>
+    /// context; the context and the folders its migrations are in are read first where the window has not listed them, so
+    /// the question names them however it was opened.</summary>
     private async Task AddMigrationAsync()
     {
         MigrationsController controller = migrations!;
-        if (controller.Project is not { } project)
+        if (await ListedForAsync(controller, A.MigrationsRefresh) is not null || controller.Project is not { } project)
         {
             return;
         }
@@ -276,6 +277,19 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>The chosen context and its migrations made known for a question about them: listed first (as
+    /// <paramref name="action"/>'s work) where the window has not and nothing dotnet ef lacks is to be fixed first (the
+    /// command asks that), the project's migrations then read wherever they are kept. Null once known, else the listing that failed.</summary>
+    private async Task<EfDone?> ListedForAsync(MigrationsController controller, string action, CancellationToken cancel = default)
+    {
+        if (!controller.Listed && controller.Gaps.Count == 0 && await controller.ListAsync(action, cancel) is { Done: false } failed)
+        {
+            return failed;
+        }
+        await session.EfProjects.WholeAsync(() => session.Projects);
+        return null;
+    }
+
     /// <summary>A Migrations action an agent runs (ide_action), with what it would ask the person as <paramref name="input"/>:
     /// Refresh's context, Add's name (then its output folder), Update's or Update to's migration (0 for none), Script's
     /// FROM..TO, the environment's name (none answering the one in force and those offered). Answers what it came to with
@@ -301,6 +315,10 @@ public partial class MainWindow
                 done = await controller.ListAsync(action, cancel);
                 break;
             case A.AddMigration:
+                if (await ListedForAsync(controller, action, cancel) is { } unlisted)
+                {
+                    throw new InvalidOperationException($"{action} did not run: {unlisted.Said}\n{MigrationsShown(controller)}");
+                }
                 // Its name, then the folder its files go in, else the one last given for the context, as the question fills in.
                 string[] named = given?.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
                 (string? folder, string? unfit) = named.Length > 1 && controller.Project is { } project
