@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `ColourSwatchesTests`' `The_colour_picker_in_an_editor_at_the_windows_smallest_width_shows_whole_under_its_line_and_chooses_there`,
+  CI 44948517766 and 44953680429 (report lane, every system): "The picker at 341, 170, 251, 304 covers the swatch's
+  line, whose foot is at 173, where it was to hang under it". **A regression in the IDE**: #1969's navigation bar takes
+  32 of the editor's height, which left 301 under the palette's third line in a window at its smallest, short of the
+  306 the picker narrowed to that editor needs with its gap, and a popup fitting neither under nor over its line was
+  only moved in to show whole, so the picker covered the foot of the line whose colour it edits. It now gives way in
+  height, its square of shades lowered to the room on the side with more, and the test checks the window as before
+  (23f5176be, #1969).
 - `KeymapChoiceTests`' `A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through`, the Linux VM in a run of
   308 tests landing #2034 (#2080): "Waited 180 s for what was typed run in the floating terminal". **The test waited
   wrong**: it typed `echo floated` as soon as its Ctrl+J had gone to the shell, and Linux's /bin/sh (dash) edits no line
