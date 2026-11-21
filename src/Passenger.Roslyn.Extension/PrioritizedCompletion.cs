@@ -45,7 +45,7 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options,
         if (request.Parts != true || !completion.ShouldShowItemsFromUnimportedNamespaces)
         {
             return await CompletionHandler.GetCompletionListAsync(document, position, request.Context, options, capabilities, kept, cancellationToken).ConfigureAwait(false) is { } whole
-                ? Prioritized(whole, kept, laterPart: false)
+                ? await PrioritizedAsync(document, whole, kept, laterPart: false, cancellationToken).ConfigureAwait(false)
                 : null;
         }
         // As the server's own handler begins, the trigger asked of the whole list once.
@@ -76,13 +76,13 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options,
             }
             // In the whole list's selection, which the first part's providers say (a lambda's parameter being named).
             bool hard = first.Result is { } before ? before.isHardSelection : listed.isHardSelection;
-            return Prioritized(await CompletionResultFactory.ConvertToLspCompletionListAsync(document, capabilities, listed.CompletionList, listed.IsIncomplete, hard,
-                listed.ResultId, cancel).ConfigureAwait(false), kept, laterPart: true);
+            return await PrioritizedAsync(document, await CompletionResultFactory.ConvertToLspCompletionListAsync(document, capabilities, listed.CompletionList,
+                listed.IsIncomplete, hard, listed.ResultId, cancel).ConfigureAwait(false), kept, laterPart: true, cancel).ConfigureAwait(false);
         });
         (RoslynCompletionList CompletionList, bool IsIncomplete, bool isHardSelection, long ResultId)? scoped = await first.ConfigureAwait(false);
         PrioritizedCompletionList? answer = scoped is { } inScope
-            ? Prioritized(await CompletionResultFactory.ConvertToLspCompletionListAsync(document, capabilities, inScope.CompletionList, inScope.IsIncomplete,
-                inScope.isHardSelection, inScope.ResultId, cancellationToken).ConfigureAwait(false), kept, laterPart: false)
+            ? await PrioritizedAsync(document, await CompletionResultFactory.ConvertToLspCompletionListAsync(document, capabilities, inScope.CompletionList,
+                inScope.IsIncomplete, inScope.isHardSelection, inScope.ResultId, cancellationToken).ConfigureAwait(false), kept, laterPart: false, cancellationToken).ConfigureAwait(false)
             : null;
         if (scoped is { CompletionList.IsExclusive: true })
         {
@@ -93,9 +93,10 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options,
         return answer;
     }
 
-    /// <summary>A list answered with its sort texts keeping its order, a later part's after any first part's, and how well
-    /// each item fits.</summary>
-    private PrioritizedCompletionList Prioritized(LspCompletionList list, CompletionListCache kept, bool laterPart)
+    /// <summary>A list answered with its sort texts keeping its order, a later part's after any first part's, how well each
+    /// item fits, what each names (<see cref="CompletionKinds"/>) and the types its values have and its methods return.</summary>
+    private async Task<PrioritizedCompletionList> PrioritizedAsync(Document document, LspCompletionList list, CompletionListCache kept, bool laterPart,
+        CancellationToken cancellationToken)
     {
         if (CompletionOrder.Widened([.. list.Items.Select(i => i.SortText)], laterPart) is { } widened)
         {
@@ -105,12 +106,16 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options,
             }
         }
         int[]? priorities = null;
+        int[]? kinds = null;
+        Dictionary<int, string>? types = null;
         if (options.GetOption(LspOptionsStorage.MaxCompletionListSize) < 0
             && (list.ItemDefaults?.Data ?? list.Items.FirstOrDefault()?.Data) is CompletionResolveData resolving
             && kept.GetCachedEntry(resolving.ResultId)?.CompletionList is RoslynCompletionList listed
             && listed.ItemsList.Count == list.Items.Length)
         {
             priorities = CompletionPriorities.Runs(list.Items.Length, i => listed.ItemsList[i].Rules.MatchPriority);
+            kinds = CompletionKinds.Runs(list.Items.Length, i => CompletionItemKinds.Of(listed.ItemsList[i]));
+            types = await CompletionItemKinds.TypesAsync(document, listed.ItemsList, cancellationToken).ConfigureAwait(false);
         }
         return new PrioritizedCompletionList
         {
@@ -118,6 +123,8 @@ internal sealed class PrioritizedCompletionHandler(IGlobalOptionService options,
             ItemDefaults = list.ItemDefaults,
             Items = list.Items,
             MatchPriorities = priorities,
+            ItemKinds = kinds,
+            ItemTypes = types,
         };
     }
 }
@@ -132,13 +139,21 @@ internal sealed class PartedCompletionParams : TextDocumentPositionParams
     public bool? Parts { get; set; }
 }
 
-/// <summary>A completion list with how well each item fits (<see cref="CompletionPriorities"/>), and the id its later part
-/// is asked by (<see cref="CompletionParts.Later"/>).</summary>
+/// <summary>A completion list with how well each item fits (<see cref="CompletionPriorities"/>), what each names and the
+/// types they give (<see cref="CompletionKinds"/>), and the id its later part is asked by (<see cref="CompletionParts.Later"/>).</summary>
 internal sealed class PrioritizedCompletionList : LspCompletionList
 {
     [JsonPropertyName(CompletionPriorities.Member)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int[]? MatchPriorities { get; init; }
+
+    [JsonPropertyName(CompletionKinds.Member)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int[]? ItemKinds { get; init; }
+
+    [JsonPropertyName(CompletionKinds.TypesMember)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<int, string>? ItemTypes { get; init; }
 
     [JsonPropertyName(CompletionParts.Later)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

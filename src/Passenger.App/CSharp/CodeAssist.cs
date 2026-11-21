@@ -296,6 +296,15 @@ public sealed class CodeAssist
     /// <summary>The completion list's rows, in order, each with the detail it shows on its right, while it shows.</summary>
     public IReadOnlyList<(string Label, string Detail)> CompletionDetails => completion.Details;
 
+    /// <summary>The completion list's rows, in order, each with its badge's letter, while it shows.</summary>
+    public IReadOnlyList<(string Label, string Letter)> CompletionBadges => completion.Badges;
+
+    /// <summary>The completion list's filters by the kind of member, by their names, as shown under its rows while it shows.</summary>
+    public IReadOnlyList<string> CompletionFilters => completion.FilterNames;
+
+    /// <summary>The completion list's filter of the kind of member it names, shown or not.</summary>
+    public Avalonia.Controls.Primitives.ToggleButton CompletionFilter(string named) => completion.Filter(named);
+
     /// <summary>What was typed of the name the completion list shows its rows for, while it shows.</summary>
     public string? CompletionNarrowedBy => completion.NarrowedBy;
 

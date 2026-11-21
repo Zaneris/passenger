@@ -49,8 +49,9 @@ public sealed class CompletionRanking
 
     /// <summary>The indices of the best <paramref name="most"/> items matching what was typed, the best first. An item with
     /// filter text of its own is matched by <paramref name="typed"/>, any other by <paramref name="bare"/> (what was typed
-    /// less what came before the name); <paramref name="alike"/> is how alike two scores must be to rank as one.</summary>
-    public int[] Shown(string typed, string bare, int alike, int most)
+    /// less what came before the name); <paramref name="alike"/> is how alike two scores must be to rank as one. Where
+    /// <paramref name="kept"/> is given, only the items it keeps are shown, the rest matched as ever for the next query.</summary>
+    public int[] Shown(string typed, string bare, int alike, int most, Func<int, bool>? kept = null)
     {
         lock (gate)
         {
@@ -76,6 +77,10 @@ public sealed class CompletionRanking
                     continue;
                 }
                 room[found++] = i;
+                if (kept is not null && !kept(i))
+                {
+                    continue;
+                }
                 (int, int, int) ranked = (prioritized ? FuzzyMatch.LabelWay(query, entry.Matched, score) : 0, score / alike, i);
                 if (best.Count < most)
                 {

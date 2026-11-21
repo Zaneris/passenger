@@ -118,6 +118,16 @@ public sealed class CompletionList
     [JsonPropertyName(Roslyn.Extension.CompletionPriorities.Member)]
     public int[]? MatchPriorities { get; init; }
 
+    /// <summary>What each item names where its kind says too little, as runs (<see cref="Roslyn.Extension.CompletionKinds"/>),
+    /// which <see cref="WithPriorities"/> gives each item; only Passenger's extension to Roslyn's server says them.</summary>
+    [JsonPropertyName(Roslyn.Extension.CompletionKinds.Member)]
+    public int[]? ItemKinds { get; init; }
+
+    /// <summary>The type each item of a value gives, or a method returns, by its place among the items; only Passenger's
+    /// extension to Roslyn's server says them.</summary>
+    [JsonPropertyName(Roslyn.Extension.CompletionKinds.TypesMember)]
+    public Dictionary<int, string>? ItemTypes { get; init; }
+
     /// <summary>The id the list's later part is asked by, where it was asked in parts and one may come
     /// (<see cref="Roslyn.Extension.CompletionParts"/>).</summary>
     [JsonPropertyName(Roslyn.Extension.CompletionParts.Later)]
@@ -142,7 +152,9 @@ public sealed class CompletionList
         return this;
     }
 
-    /// <summary>Each item given how well it fits (<see cref="CompletionItem.MatchPriority"/>), as the list's runs say.</summary>
+    /// <summary>Each item given how well it fits (<see cref="CompletionItem.MatchPriority"/>), what it names
+    /// (<see cref="CompletionItem.Names"/>) and the type it gives (<see cref="CompletionItem.TypeShown"/>), as the list says
+    /// them beside its items.</summary>
     public CompletionList WithPriorities()
     {
         if (Roslyn.Extension.CompletionPriorities.Each(MatchPriorities, Items.Count) is { } each)
@@ -150,6 +162,20 @@ public sealed class CompletionList
             for (int i = 0; i < each.Length; i++)
             {
                 Items[i].MatchPriority = each[i];
+            }
+        }
+        if (Roslyn.Extension.CompletionKinds.Each(ItemKinds, Items.Count) is { } kinds)
+        {
+            for (int i = 0; i < kinds.Length; i++)
+            {
+                Items[i].Names = kinds[i];
+            }
+        }
+        foreach ((int at, string type) in ItemTypes ?? [])
+        {
+            if (at >= 0 && at < Items.Count && type.Length > 0)
+            {
+                Items[at].TypeShown = type;
             }
         }
         return this;
@@ -219,6 +245,16 @@ public sealed class CompletionItem
     /// 0 where it says nothing (<see cref="CompletionList.WithPriorities"/>). Never sent back.</summary>
     [JsonIgnore]
     public int MatchPriority { get; internal set; }
+
+    /// <summary>What the item names where its <see cref="Kind"/> says too little (a parameter, a local, a named argument, an
+    /// extension method); as listed where the server says nothing more. Never sent back.</summary>
+    [JsonIgnore]
+    public Roslyn.Extension.CompletionKind Names { get; internal set; }
+
+    /// <summary>The type the value the item names has, or the method it names returns, as code shows it; null where the
+    /// server says none. Never sent back.</summary>
+    [JsonIgnore]
+    public string? TypeShown { get; internal set; }
 
     private InsertTextFormat? insertTextFormat;
     private LspTextEdit? textEdit;

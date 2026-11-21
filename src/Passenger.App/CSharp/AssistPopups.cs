@@ -354,10 +354,15 @@ internal sealed class CompletionPopup : Border, IHeardPopup
         };
         // Heard on its way in, before the list's own view, which a fraction of a pixel's rounding lets take it.
         AddHandler(PointerWheelChangedEvent, OnWheel, RoutingStrategies.Tunnel);
-        Child = new Panel { Children = { List, bar } };
+        Filters.Margin = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Normal, 0);
+        DockPanel.SetDock(Filters, Dock.Bottom);
+        Child = new DockPanel { Children = { Filters, new Panel { Children = { List, bar } } } };
     }
 
     public ListBox List { get; }
+
+    /// <summary>The filters by the kind of member under the rows, shown for a list of members of more than one kind.</summary>
+    public CompletionFilters Filters { get; } = new();
 
     public AutomationControlType Role => AutomationControlType.List;
 

@@ -66,6 +66,33 @@ public class CompletionAnswerTests
         Assert.All(Read($$"""{"isIncomplete":false,"items":[{{items}}]}""").Items, i => Assert.Equal(0, i.MatchPriority));
     }
 
+    /// <summary>What each item names where its kind says too little, and the type it gives, read from beside the list's
+    /// items by their places, never sent back; kinds that miscount the list say nothing.</summary>
+    [Fact]
+    public void Each_item_reads_what_it_names_and_its_type_from_beside_the_list_and_never_sends_them_back()
+    {
+        Passenger.Roslyn.Extension.CompletionKind[] kinds =
+        [
+            Passenger.Roslyn.Extension.CompletionKind.Local, Passenger.Roslyn.Extension.CompletionKind.Parameter,
+            Passenger.Roslyn.Extension.CompletionKind.NamedArgument, Passenger.Roslyn.Extension.CompletionKind.AsListed,
+            Passenger.Roslyn.Extension.CompletionKind.AsListed, Passenger.Roslyn.Extension.CompletionKind.ExtensionMethod,
+        ];
+        int[] runs = Passenger.Roslyn.Extension.CompletionKinds.Runs(kinds.Length, i => kinds[i])!;
+        Assert.Equal([1, 1, 2, 1, 3, 1, 0, 2, 4, 1], runs);
+        Assert.Null(Passenger.Roslyn.Extension.CompletionKinds.Runs(3, _ => Passenger.Roslyn.Extension.CompletionKind.AsListed));
+        string items = string.Join(",", kinds.Select((_, i) => $$"""{"label":"Item{{i}}","kind":6}"""));
+        CompletionList list = Read($$"""{"isIncomplete":false,"itemKinds":[{{string.Join(",", runs)}}],"itemTypes":{"0":"string?","2":"int","5":"IEnumerable<char>","9":"lost"},"items":[{{items}}]}""");
+        Assert.Equal(kinds, list.Items.Select(i => i.Names));
+        Assert.Equal(["string?", null, "int", null, null, "IEnumerable<char>"], list.Items.Select(i => i.TypeShown));
+        string sentBack = JsonSerializer.Serialize(list.Items[0], Json.Options);
+        Assert.DoesNotContain("string?", sentBack, StringComparison.Ordinal);
+
+        CompletionList miscounted = Read($$"""{"isIncomplete":false,"itemKinds":[1,2],"items":[{{items}}]}""");
+        Assert.All(miscounted.Items, i => Assert.Equal(Passenger.Roslyn.Extension.CompletionKind.AsListed, i.Names));
+        CompletionList unknown = Read($$"""{"isIncomplete":false,"itemKinds":[9,6],"items":[{{items}}]}""");
+        Assert.All(unknown.Items, i => Assert.Equal(Passenger.Roslyn.Extension.CompletionKind.AsListed, i.Names));
+    }
+
     /// <summary>A list asked again as a name is typed lists its items anew, each with that answer's sort text, range and
     /// data: an item is the one chosen before by what it is, and two of one name are told apart by what else the server
     /// says of them.</summary>

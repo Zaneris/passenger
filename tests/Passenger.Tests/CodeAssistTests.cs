@@ -460,6 +460,69 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>A method whose places each take a type, one local of that type and one of another type beginning as its
     /// name does.</summary>
+    private const string KindsCode = "using System.Linq;\n\nstatic class Kinds\n{\n    public static int Totalled(int first, string label)\n    {\n"
+        + "        var count = label.Length;\n        double half = first / 2.0;\n        int Doubled(int value, bool loud) => loud ? value * 2 : value;\n"
+        + "        _ = label;\n        return Doubled(count, false) + (int)half;\n    }\n}\n";
+
+    /// <summary>A call's list names each value by what it is, its type beside it: a local (the inferred one too) apart from
+    /// a parameter, and a named argument apart from both, a method with what it returns, each with the badge of its kind.</summary>
+    [AvaloniaFact]
+    public void A_calls_list_badges_a_local_a_parameter_and_a_named_argument_apart_each_with_its_type()
+    {
+        MainWindow window = project.Open("Kinds.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "return Doubled(");
+        editor.Focus();
+        Ui.Run(window, AppActions.Complete);
+        string[] named = ["count", "half", "first", "label", "value:", "loud:", "Doubled"];
+        Ui.WaitFor(() => named.All(window.Assist.CompletionLabels.Contains),
+            () => $"the call's values and named arguments in its list: {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
+        Dictionary<string, (string Letter, string Detail)> rows = window.Assist.CompletionBadges.Zip(window.Assist.CompletionDetails)
+            .Where(r => named.Contains(r.First.Label)).ToDictionary(r => r.First.Label, r => (r.First.Letter, r.Second.Detail));
+        Assert.Equal(("v", "int"), rows["count"]);
+        Assert.Equal(("v", "double"), rows["half"]);
+        Assert.Equal(("a", "int"), rows["first"]);
+        Assert.Equal(("a", "string"), rows["label"]);
+        Assert.Equal(("n", "int"), rows["value:"]);
+        Assert.Equal(("n", "bool"), rows["loud:"]);
+        Assert.Equal(("m", "int"), rows["Doubled"]);
+        window.Close();
+    }
+
+    /// <summary>A type's members after its dot are offered filters by kind under the rows, the kinds its items are of: turned
+    /// on, the list shows only members of the kinds on, narrowed as typed within them, every member again once each is off;
+    /// the keys stay in the editor throughout.</summary>
+    [AvaloniaFact]
+    public void A_members_list_narrows_to_the_kinds_turned_on_under_it_and_leaves_the_keys_in_the_editor()
+    {
+        MainWindow window = project.Open("Kinds.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "_ = label");
+        editor.Focus();
+        window.KeyTextInput(".");
+        Ui.WaitFor(() => window.Assist.CompletionFilters.Count > 0, () => $"the filters under string's members: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        Assert.Equal(["Properties", "Methods", "Extension methods"], window.Assist.CompletionFilters);
+
+        Ui.Click(window.Assist.CompletionFilter("Properties"));
+        Ui.WaitFor(() => window.Assist.CompletionBadges.All(b => b.Letter == "p") && window.Assist.CompletionLabels.Contains("Length"),
+            () => $"string's properties alone: {string.Join(", ", window.Assist.CompletionBadges.Take(8))}");
+        Ui.Click(window.Assist.CompletionFilter("Methods"));
+        Ui.WaitFor(() => window.Assist.CompletionBadges.Any(b => b.Letter == "m"), "string's methods with its properties");
+        Assert.All(window.Assist.CompletionBadges, b => Assert.Contains(b.Letter, new[] { "p", "m" }));
+        Assert.True(editor.IsKeyboardFocusWithin, "A filter's click took the keys from the editor");
+
+        window.KeyTextInput("Su");
+        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Su" && window.Assist.CompletionLabels.Contains("Substring"),
+            () => $"Substring among the properties and methods narrowed by Su: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        Assert.DoesNotContain(window.Assist.CompletionLabels, label => label.StartsWith("Sum", StringComparison.Ordinal));
+        Ui.Click(window.Assist.CompletionFilter("Properties"));
+        Ui.Click(window.Assist.CompletionFilter("Methods"));
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Any(label => label.StartsWith("Sum", StringComparison.Ordinal)) && window.Assist.CompletionLabels.Contains("Substring"),
+            () => $"every member narrowed by Su once the filters are off: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        Assert.Equal("        _ = label.Su;", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        window.Close();
+    }
+
     private const string FitsCode = "static class Fits\n{\n    public static bool Check()\n    {\n        int abc = 1;\n        bool aef = true;\n"
         + "        int count = 2;\n        string caption = \"\";\n        if ()\n        {\n        }\n        Name();\n        return ;\n    }\n\n"
         + "    private static void Name(string text)\n    {\n    }\n}\n";
@@ -3786,6 +3849,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "        int total = 0;\n        int count = 0;\n        foreach (int value in values)\n        {\n            total += value;\n            count++;\n        }\n"
                 + "        return total / count;\n    }\n}\n");
             File.WriteAllText(PathOf("Casts.cs"), "static class Casts\n{\n    public static int Three() => (int)3;\n}\n");
+            File.WriteAllText(PathOf("Kinds.cs"), KindsCode);
             File.WriteAllText(PathOf("Ragged.cs"), Ragged);
             File.WriteAllText(PathOf("Fits.cs"), FitsCode);
             File.WriteAllText(PathOf("Marks.cs"), "static class Marks\n{\n    public static int Greet()\n    {\n        int नमस्ते = 1;\n        int twice = ;\n        return ;\n    }\n}\n");

@@ -53,6 +53,42 @@ public class CompletionRankingTests
         }
     }
 
+    /// <summary>A list filtered to some of its items (members of one kind), the filter changed between keys as a person
+    /// turns one on and off: the rows are those the whole list shows, less those the filter leaves out, in its order.</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void Filtered_key_by_key_the_rows_are_the_whole_lists_less_those_the_filter_leaves_out(int seed)
+    {
+        Random random = new(seed);
+        for (int list = 0; list < 8; list++)
+        {
+            CompletionRanking.Entry[] entries = RandomList(random, random.Next(200, 2000), prioritized: random.Next(3) == 0);
+            int[] kindOf = [.. entries.Select(_ => random.Next(4))];
+            CompletionRanking ranking = new(entries);
+            int kept = 0;
+            string typed = string.Empty;
+            for (int key = 0; key < 40; key++)
+            {
+                if (random.Next(3) == 0)
+                {
+                    kept = random.Next(16);
+                }
+                else
+                {
+                    typed = NextTyped(random, entries, typed, string.Empty);
+                }
+                int[] expected = [.. Reference(entries, typed, typed, 1, int.MaxValue).Where(i => kept == 0 || (kept & (1 << kindOf[i])) != 0).Take(MostShown)];
+                int[] shown = ranking.Shown(typed, typed, 1, MostShown, kept == 0 ? null : i => (kept & (1 << kindOf[i])) != 0);
+                Assert.True(expected.SequenceEqual(shown),
+                    $"Seed {seed}, list {list}, key {key}: '{typed}' kept by {kept} showed [{string.Join(", ", shown.Take(8).Select(i => entries[i].Matched))}…] where "
+                    + $"the whole list less what the filter leaves out shows [{string.Join(", ", expected.Take(8).Select(i => entries[i].Matched))}…]: a filter would hide or reorder what it keeps");
+            }
+        }
+    }
+
     [Fact]
     public void Of_the_names_the_letters_begin_the_one_that_fits_goes_first_after_the_name_typed_whole()
     {

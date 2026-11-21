@@ -50,9 +50,15 @@ internal sealed partial class CodeCompletion
             {
                 TellChosen(opening: false);
             }
+            if (completion.Selected is null)
+            {
+                // Filtered to no row: no item to describe.
+                itemCard.IsVisible = false;
+            }
             IdeErrors.Observe(DescribeSelected());
         };
         completion.Swatch = item => open?.Own?.Swatch(item);
+        completion.Filters.Changed += (_, _) => Filter();
     }
 
     /// <summary>The list closed, however it closed: what a language kept of it goes.</summary>
@@ -86,6 +92,17 @@ internal sealed partial class CodeCompletion
 
     /// <summary>The completion list's rows, in order, each with the detail it shows on its right, while it shows.</summary>
     public IReadOnlyList<(string Label, string Detail)> Details => completion.IsVisible ? [.. completion.Rows.Select(r => (r.Item.Label, r.Detail))] : [];
+
+    /// <summary>The completion list's rows, in order, each with its badge's letter, while it shows.</summary>
+    public IReadOnlyList<(string Label, string Letter)> Badges => completion.IsVisible ? [.. completion.Rows.Select(r => (r.Item.Label, r.Letter))] : [];
+
+    /// <summary>The filters by the kind of member shown under the list's rows, by their names, while it shows.</summary>
+    public IReadOnlyList<string> FilterNames => completion.IsVisible && completion.Filters.IsVisible
+        ? [.. MemberKindsOf.All.Where(k => completion.Filters.Offered.HasFlag(k)).Select(MemberKindsOf.Words)]
+        : [];
+
+    /// <summary>The filter of the kind of member it names.</summary>
+    public Avalonia.Controls.Primitives.ToggleButton Filter(string named) => completion.Filters.Of(MemberKindsOf.All.Single(k => MemberKindsOf.Words(k) == named));
 
     /// <summary>What was typed of the name the completion list shows its rows for, while it shows.</summary>
     public string? NarrowedBy => completion.IsVisible ? filtered?.Typed : null;
@@ -133,6 +150,10 @@ internal sealed partial class CodeCompletion
                 case EditorActions.PageDown:
                     Move(9);
                     return true;
+                case EditorActions.NewLine or EditorActions.Indent when completion.Selected is null:
+                    // Filtered to no row: the key is the editor's.
+                    Close();
+                    return false;
                 case EditorActions.NewLine or EditorActions.Indent:
                     IdeErrors.Observe(Commit());
                     return true;
@@ -166,7 +187,7 @@ internal sealed partial class CodeCompletion
         {
             return;
         }
-        string said = PopupPlacement.Chosen(row.Item.Label, KindWords(row.Item.Kind), completion.ChosenAt, completion.Rows.Count);
+        string said = PopupPlacement.Chosen(row.Item.Label, KindWords(row.Item), completion.ChosenAt, completion.Rows.Count);
         popups.Tell(opening ? $"Completion, {said}" : said, moving ? Urgency.Assertive : Urgency.Polite, completion);
     }
 
@@ -199,6 +220,15 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>What a kind of item is called, said after its name.</summary>
+    private static string? KindWords(CompletionItem item) => item.Names switch
+    {
+        Roslyn.Extension.CompletionKind.Local => "local",
+        Roslyn.Extension.CompletionKind.Parameter => "parameter",
+        Roslyn.Extension.CompletionKind.NamedArgument => "named argument",
+        Roslyn.Extension.CompletionKind.ExtensionMethod => "extension method",
+        _ => KindWords(item.Kind),
+    };
+
     private static string? KindWords(CompletionItemKind? kind) => kind switch
     {
         CompletionItemKind.Method or CompletionItemKind.Function => "method",
@@ -601,15 +631,16 @@ internal sealed partial class CodeCompletion
     }
 
     /// <summary>What a list is narrowed by: the text typed since it opened, what of it an item with no filter text of its
-    /// own is matched by, how alike two scores must be to keep the list's own order, and the list's ranking.</summary>
-    private readonly record struct Narrowing(Completion List, string Typed, string Bare, int Alike, RankedList Ranked);
+    /// own is matched by, how alike two scores must be to keep the list's own order, the list's ranking, and the kinds of
+    /// member its filters keep (none for every item).</summary>
+    private readonly record struct Narrowing(Completion List, string Typed, string Bare, int Alike, RankedList Ranked, MemberKinds Kinds);
 
     /// <summary>How many filters were asked for, the last the only one shown when it lands; what the last asked was for,
     /// so the same name asked again (a key's caret move after its text) is not filtered twice; and what the rows shown were
     /// filtered by.</summary>
     private int filters;
-    private (Completion List, string Typed, int Filter)? lastAsked;
-    private (Completion List, string Typed)? filtered;
+    private (Completion List, string Typed, MemberKinds Kinds, int Filter)? lastAsked;
+    private (Completion List, string Typed, MemberKinds Kinds)? filtered;
 
     /// <summary>The open list's ranking, made for it once.</summary>
     private RankedList? ranked;
@@ -659,7 +690,7 @@ internal sealed partial class CodeCompletion
         {
             ranked = new RankedList(open);
         }
-        return new Narrowing(open, typed, led ? typed[skip..] : typed, open.Alike, ranked);
+        return new Narrowing(open, typed, led ? typed[skip..] : typed, open.Alike, ranked, completion.Filters.On);
     }
 
     /// <summary>The list narrowed to what has been typed since it opened: prefix matches first (an exact-case one first of
@@ -667,11 +698,11 @@ internal sealed partial class CodeCompletion
     /// statement's list is every type in reach, and shown as it lands unless a later key's filter was asked for since.</summary>
     private void Filter()
     {
-        if (NarrowedTo() is not { } narrowing || lastAsked == (narrowing.List, narrowing.Typed, filters))
+        if (NarrowedTo() is not { } narrowing || lastAsked == (narrowing.List, narrowing.Typed, narrowing.Kinds, filters))
         {
             return;
         }
-        lastAsked = (narrowing.List, narrowing.Typed, ++filters);
+        lastAsked = (narrowing.List, narrowing.Typed, narrowing.Kinds, ++filters);
         IdeErrors.Observe(FilterAsync(narrowing, filters));
     }
 
@@ -694,11 +725,11 @@ internal sealed partial class CodeCompletion
     /// landed yet: what commits or moves the choice must find the rows of the name as typed.</summary>
     private void FilterNow(int? end = null)
     {
-        if (NarrowedTo(end) is not { } narrowing || filtered == (narrowing.List, narrowing.Typed))
+        if (NarrowedTo(end) is not { } narrowing || filtered == (narrowing.List, narrowing.Typed, narrowing.Kinds))
         {
             return;
         }
-        lastAsked = (narrowing.List, narrowing.Typed, ++filters);
+        lastAsked = (narrowing.List, narrowing.Typed, narrowing.Kinds, ++filters);
         ShowRows(narrowing, Rows(narrowing));
     }
 
@@ -711,11 +742,15 @@ internal sealed partial class CodeCompletion
                 completion.Show([]);
                 completion.IsVisible = false;
                 itemCard.IsVisible = false;
-                filtered = (narrowing.List, narrowing.Typed);
+                filtered = (narrowing.List, narrowing.Typed, narrowing.Kinds);
                 return;
             }
-            Close();
-            return;
+            if (narrowing.Kinds == MemberKinds.None || !completion.IsVisible)
+            {
+                Close();
+                return;
+            }
+            // Filtered to no row: the filters stay to be turned off.
         }
         bool opening = !completion.IsVisible;
         // A list the person's Enter would commit from, which an agent's action never opens.
@@ -724,9 +759,14 @@ internal sealed partial class CodeCompletion
             Close();
             return;
         }
-        // The rows of the name as shown, the list grown or answered again, keep the item chosen and the place scrolled to.
-        completion.Show(rows, sameName: !opening && filtered is { } shown && shown.Typed == narrowing.Typed && shown.List.Start == narrowing.List.Start);
-        filtered = (narrowing.List, narrowing.Typed);
+        // The rows of the name as shown, the list grown, answered again or filtered, keep the item chosen and the place scrolled to.
+        bool sameList = filtered is { } shown && ReferenceEquals(shown.List, narrowing.List);
+        completion.Show(rows, sameName: !opening && filtered is { } before && before.Typed == narrowing.Typed && before.List.Start == narrowing.List.Start);
+        if (opening || !sameList)
+        {
+            completion.Filters.Offer(AfterDot(narrowing.List) ? narrowing.Ranked.Kinds : MemberKinds.None, fresh: opening);
+        }
+        filtered = (narrowing.List, narrowing.Typed, narrowing.Kinds);
         completion.IsVisible = true;
         completion.Within(popups.Widest);
         popups.Place(completion, narrowing.List.Start, above: false);
@@ -740,7 +780,11 @@ internal sealed partial class CodeCompletion
 
     /// <summary>The rows a list shows narrowed (<see cref="RankedList.Rows"/>); reads nothing of the window's, so it runs
     /// off the UI thread.</summary>
-    private static CompletionRow[] Rows(Narrowing narrowing) => narrowing.Ranked.Rows(narrowing.Typed, narrowing.Bare, narrowing.Alike);
+    private static CompletionRow[] Rows(Narrowing narrowing) => narrowing.Ranked.Rows(narrowing.Typed, narrowing.Bare, narrowing.Alike, narrowing.Kinds);
+
+    /// <summary>Whether a list completes a member after its dot, where its filters by kind are offered.</summary>
+    private bool AfterDot(Completion list) =>
+        list.Own is null && Editor.Document.Snapshot is var text && list.Start > 0 && list.Start <= text.Length && text[list.Start - 1] == '.';
 
     /// <summary>The most rows the list shows.</summary>
     private const int MostShown = 200;
@@ -759,12 +803,23 @@ internal sealed partial class CodeCompletion
             new CompletionRanking.Entry(item.FilterText ?? item.Label, item.FilterText is not null, item.Preselect == true, item.SortText ?? item.Label, item.MatchPriority))]),
             new CompletionRow?[list.Items.Count]));
 
+        /// <summary>The kind of member each item names, and every kind among them.</summary>
+        private readonly Lazy<(MemberKinds[] Each, MemberKinds All)> kinds = new(() =>
+        {
+            MemberKinds[] each = [.. list.Items.Select(MemberKindsOf.Of)];
+            return (each, each.Aggregate(MemberKinds.None, (all, kind) => all | kind));
+        });
+
         public Completion List => list;
 
-        public CompletionRow[] Rows(string typed, string bare, int alike)
+        /// <summary>Every kind of member the list's items name.</summary>
+        public MemberKinds Kinds => kinds.Value.All;
+
+        public CompletionRow[] Rows(string typed, string bare, int alike, MemberKinds kept)
         {
             (CompletionRanking ranking, CompletionRow?[] rows) = ranked.Value;
-            int[] shown = ranking.Shown(typed, bare, alike, MostShown);
+            MemberKinds[] each = kinds.Value.Each;
+            int[] shown = ranking.Shown(typed, bare, alike, MostShown, kept == MemberKinds.None ? null : i => (each[i] & kept) != 0);
             CompletionRow[] made = new CompletionRow[shown.Length];
             for (int i = 0; i < shown.Length; i++)
             {
@@ -1125,10 +1180,26 @@ internal sealed partial class CodeCompletion
         return identifier;
     }
 
-    /// <summary>A row's badge: the letter and colour of each kind of completion.</summary>
+    /// <summary>A row's badge, the letter and colour of each kind of completion (a local, a parameter, a named argument and
+    /// an extension method each its own where the server says which), and the detail at its end: what the server says
+    /// beside the label (an item's namespace), else the type its value has or its method returns.</summary>
     private static CompletionRow Row(CompletionItem item)
     {
-        (string letter, string brush) = item.Kind switch
+        (string letter, string brush) = item.Names switch
+        {
+            Roslyn.Extension.CompletionKind.Local => ("v", TokenKeys.TextMuted),
+            Roslyn.Extension.CompletionKind.Parameter => ("a", TokenKeys.TextMuted),
+            Roslyn.Extension.CompletionKind.NamedArgument => ("n", TokenKeys.TextMuted),
+            Roslyn.Extension.CompletionKind.ExtensionMethod => MemberKindsOf.Badge(MemberKinds.ExtensionMethods),
+            _ => KindBadge(item.Kind),
+        };
+        string detail = item.LabelDetails?.Description ?? item.TypeShown ?? item.Detail ?? string.Empty;
+        return new CompletionRow(item, letter, brush, detail);
+    }
+
+    /// <summary>The letter and colour of a kind of completion item.</summary>
+    private static (string Letter, string Brush) KindBadge(CompletionItemKind? kind) =>
+        kind switch
         {
             CompletionItemKind.Method or CompletionItemKind.Function => ("m", TokenKeys.Syntax_Method),
             CompletionItemKind.Constructor => ("c", TokenKeys.Syntax_Class),
@@ -1149,9 +1220,6 @@ internal sealed partial class CodeCompletion
             CompletionItemKind.TypeParameter => ("T", TokenKeys.Syntax_TypeParameter),
             _ => ("·", TokenKeys.TextMuted),
         };
-        string detail = item.LabelDetails?.Description ?? item.Detail ?? string.Empty;
-        return new CompletionRow(item, letter, brush, detail);
-    }
 
     /// <summary>An open completion list: its items, where the name it completes starts, the characters that commit an
     /// item that names none of its own, and whether the server left items out until more is typed.</summary>
