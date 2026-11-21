@@ -440,6 +440,54 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = name })).EnumerateArray().Where(s => s.GetProperty("name").GetString() == name)];
     }
 
+    /// <summary>A closed file another program deletes, makes or writes in place, none of it heard by the folder's watcher,
+    /// is what find_symbol asked at once answers from: the deleted file's type gone, the made file's found, the type
+    /// written in place found and the one written over gone, whether the question comes a moment or seconds after and
+    /// whatever time the program set the file's write to (back a month, as a copy keeping its time does).</summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Find_symbol_asked_after_another_program_deleted_made_or_wrote_a_file_answers_from_the_files_as_they_stand(bool waited, bool backDated)
+    {
+        await TakeFolderAsync();
+        string shapes = Path.Combine(Folder, "Shapes.cs");
+        Write("Shapes.cs", "static class Shape0\n{\n}\n");
+        await using McpClient client = await Start(["--mcp", Folder], environment: new() { [WatchedTree.UnheardVariable] = "Shapes.cs" });
+        Assert.Single(await FoundAsync("Shape0"));
+
+        File.Delete(shapes);
+        await AfterAsync();
+        Assert.True(await FoundAsync("Shape0") is [], $"find_symbol right after Shapes.cs was deleted found Shape0 in it{Said()}");
+
+        Write("Shapes.cs", "static class Shape1\n{\n}\n");
+        await AfterAsync(TimeSpan.FromDays(30));
+        Assert.True(await FoundAsync("Shape1") is [_], $"find_symbol right after Shapes.cs was made again did not find Shape1 in it{Said()}");
+
+        Write("Shapes.cs", "static class Shape2\n{\n}\n");
+        await AfterAsync(TimeSpan.FromDays(60));
+        JsonElement[] written = await FoundAsync("Shape2");
+        JsonElement[] over = await FoundAsync("Shape1");
+        Assert.True(written.Length == 1 && over.Length == 0, $"find_symbol right after Shapes.cs was written in place found Shape2, written there, {written.Length} "
+            + $"times and Shape1, written over, {over.Length} times: an answer of the file as it stood before{Said()}");
+
+        // The file's write time set back where the case asks it, then the question asked at once or seconds later.
+        async Task AfterAsync(TimeSpan? back = null)
+        {
+            if (backDated && back is { } age)
+            {
+                File.SetLastWriteTimeUtc(shapes, DateTime.UtcNow - age);
+            }
+            if (waited)
+            {
+                await Waiting.ForAsync(TimeSpan.FromSeconds(3), "past the moments just after a write", TestContext.Current.CancellationToken);
+            }
+        }
+
+        async Task<JsonElement[]> FoundAsync(string name) =>
+            [.. (await Call(client, McpTools.FindSymbol, new() { ["query"] = name })).EnumerateArray().Where(s => s.GetProperty("name").GetString() == name)];
+    }
+
     /// <summary>Unload Project takes the project out of the language server: nothing is answered from the text the server
     /// read of it, so Go to Declaration from what references it finds the line where it is now, its symbols are found no
     /// more, and a file come under it is neither waited for nor brings it back; Reload Project has it loaded again.</summary>

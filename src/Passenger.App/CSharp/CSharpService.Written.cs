@@ -17,10 +17,10 @@ public sealed partial class CSharpService
     private static readonly TimeSpan ReadingEvery = TimeSpan.FromMilliseconds(50);
 
     /// <summary>Takes in what was written on disk that the server may hold as it was: each document it reads from disk
-    /// written since the last look (or its start), and each file heard changed, that it holds otherwise than the disk, those
-    /// no watcher heard told it as found, all waited for until it holds them as the disk has them, up to <paramref
-    /// name="within"/> from its start (<paramref name="waiting"/> told the first meanwhile). Null once it does, or where it
-    /// cannot say (not loaded, no Passenger extension); else the first it does not.</summary>
+    /// written or gone since the last look (or its start), and each file heard changed, that it holds otherwise than the
+    /// disk (one gone still held), those no watcher heard told it as found, all waited for until it holds them as the disk
+    /// has them, up to <paramref name="within"/> from its start (<paramref name="waiting"/> told the first meanwhile). Null
+    /// once it does, or where it cannot say (not loaded, no Passenger extension); else the first it does not.</summary>
     public async Task<string?> TakeInWrittenAsync(TimeSpan within, Action<string?>? waiting, CancellationToken cancel)
     {
         UiThread.Check();
@@ -37,7 +37,7 @@ public sealed partial class CSharpService
         try
         {
             lately = await asked.WrittenSinceAsync(since, cancel);
-            List<string> asking = [.. lately.Written.Where(w => !w.Gone).Select(w => w.Path).Concat(lately.Changed.Select(c => c.Path))
+            List<string> asking = [.. lately.Written.Select(w => w.Path).Concat(lately.Changed.Select(c => c.Path))
                 .Distinct(PathNames.Comparer).Where(p => !open.Contains(p))];
             texts = asking.Count == 0 ? [] : await asked.HeldTextsAsync(asking, cancel);
         }
@@ -49,7 +49,8 @@ public sealed partial class CSharpService
         writtenLook = (asked, began);
         List<string> unread = await Unread(texts, cancel);
         HashSet<string> heard = new(asked.Server.WatchedFiles.Changing().Paths, PathNames.Comparer);
-        List<FileEvent> untold = [.. unread.Where(p => !heard.Contains(p)).Select(p => new FileEvent(PathNames.Canonical(p), FileChangeType.Changed))];
+        List<FileEvent> untold = [.. unread.Where(p => !heard.Contains(p))
+            .Select(p => new FileEvent(PathNames.Canonical(p), File.Exists(p) ? FileChangeType.Changed : FileChangeType.Deleted))];
         if (untold.Count > 0)
         {
             // Matched against every watcher, so off the window's thread.
@@ -84,8 +85,8 @@ public sealed partial class CSharpService
         return unread.Count > 0 && session == asked ? unread[0] : null;
     }
 
-    /// <summary>The files of these the server holds otherwise than the disk has them, each read off the window's thread, as
-    /// they may be of any size.</summary>
+    /// <summary>The files of these the server holds otherwise than the disk has them, gone from it among them, each read off
+    /// the window's thread, as they may be of any size.</summary>
     private static Task<List<string>> Unread(IReadOnlyList<Roslyn.Extension.TextHeld> texts, CancellationToken cancel) =>
-        BackgroundWork.Run(() => texts.Where(t => t.Hash is { } hash && HeldTexts.OnDisk(t.Path, hash) == false).Select(t => t.Path).ToList(), cancel);
+        BackgroundWork.Run(() => texts.Where(t => t.Hash is { } hash && (HeldTexts.OnDisk(t.Path, hash) == false || !File.Exists(t.Path))).Select(t => t.Path).ToList(), cancel);
 }

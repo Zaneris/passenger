@@ -3555,6 +3555,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// with (<see cref="Unloadable"/>) or are still loading after the wait.</summary>
     private async Task<RoslynSession> Server(CancellationToken cancel)
     {
+        await LookedAgainForCodeAsync(cancel);
         if (Unloadable() is { } unloadable)
         {
             throw new InvalidOperationException(unloadable);
@@ -3619,6 +3620,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// it was waited for (false while the server still loads the workspace).</summary>
     private async Task<bool> TakenInAsync(string path, CancellationToken cancel)
     {
+        await LookedAgainForCodeAsync(cancel);
         if (Session.ProjectOf(Resolve(path)) is not null && Unloadable() is { } unloadable)
         {
             throw new InvalidOperationException(unloadable);
@@ -3638,6 +3640,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// server still loads the workspace.</summary>
     private async Task<IReadOnlyList<(string Path, string Project)>?> UntakenAsync(CancellationToken cancel)
     {
+        await LookedAgainForCodeAsync(cancel);
         if (Unloadable() is { } unloadable)
         {
             throw new InvalidOperationException(unloadable);
@@ -3708,6 +3711,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// brought still to come, and when the server's generators' wait ran out meanwhile with what it waited for unread.</summary>
     private async Task ServerSettledAsync(string path, Func<CSharpService, bool> held, CancellationToken cancel)
     {
+        await LookedAgainForCodeAsync(cancel);
         string? reloading = null;
         bool waited = false;
         bool settled = false;
@@ -3748,6 +3752,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new TimeoutException(Refusals.StillComing(ServerLimit, coming));
         }
         await WrittenTakenInAsync(cancel);
+    }
+
+    /// <summary>Waits, up to <see cref="LookLimit"/>, for the watchers to look again once in this call for what another program
+    /// made or deleted that the system never told of (<see cref="MainWindow.AgentAsksOfCode"/>), so a question of the code
+    /// waits for what they find.</summary>
+    private async Task LookedAgainForCodeAsync(CancellationToken cancel)
+    {
+        // A wait with no fault to leave behind: a look ends however it went.
+        await Task.WhenAny(window.AgentAsksOfCode(), Task.Delay(LookLimit, cancel));
+        cancel.ThrowIfCancellationRequested();
     }
 
     /// <summary>Waits for the C# language server to take in what another program wrote on disk that it may hold as it was,

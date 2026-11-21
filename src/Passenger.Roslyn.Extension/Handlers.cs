@@ -97,9 +97,13 @@ public sealed class DocumentTexts : IExtensionWorkspaceMessageHandler<TextsAsked
 
 /// <summary>The solution's documents written on disk since a time, or gone from it since, the nearest folder above that is
 /// still there written then, and the changed files asked of that are documents, with the texts held of them: those the
-/// server may hold as they were.</summary>
+/// server may hold as they were. A document whose length or write time moved since the last ask counts as written however
+/// its time was set (back to a time before, as a copy keeping its time sets it).</summary>
 public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<WrittenAsked, WrittenFound>
 {
+    /// <summary>Each document's length and write time as the last ask found them, by its path.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Length, DateTime Written)> Stamps = new(StringComparer.Ordinal);
+
     public async Task<WrittenFound> ExecuteAsync(WrittenAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         List<TextHeld> changed = [];
@@ -129,7 +133,17 @@ public sealed class DocumentsWritten : IExtensionWorkspaceMessageHandler<Written
                 try
                 {
                     FileInfo file = new(path);
-                    if (file.Exists ? file.LastWriteTimeUtc >= since : FolderWritten(path) >= since)
+                    (long, DateTime)? stamp = file.Exists ? (file.Length, file.LastWriteTimeUtc) : null;
+                    bool moved = Stamps.TryGetValue(path, out (long, DateTime) was) && stamp is { } now && now != was;
+                    if (stamp is { } kept)
+                    {
+                        Stamps[path] = kept;
+                    }
+                    else
+                    {
+                        Stamps.TryRemove(path, out _);
+                    }
+                    if (moved || (file.Exists ? file.LastWriteTimeUtc >= since : FolderWritten(path) >= since))
                     {
                         found.Add(new DocumentWritten(path, Gone: !file.Exists));
                     }

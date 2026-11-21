@@ -38,6 +38,9 @@ public partial class MainWindow
     private long agentCalled;
     private Task agentLook = Task.CompletedTask;
 
+    /// <summary>When the call the last look was asked in began, of <see cref="agentCalled"/>'s timestamps.</summary>
+    private long agentLookedIn;
+
     /// <summary>Back from another program, the window looks again (<see cref="LookAgainAsync"/>). It holds the system's
     /// watcher's beat (<see cref="WatchLag.Hold"/>) while it is in front, or, nobody seeing it, while it is open: in the
     /// background, the look as it comes in front finds what went unheard meanwhile.</summary>
@@ -78,8 +81,23 @@ public partial class MainWindow
         if (agentCalled == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(agentCalled, now) >= AgentAway)
         {
             agentLook = LookAgainAsync();
+            agentLookedIn = now;
         }
         agentCalled = now;
+        return agentLook;
+    }
+
+    /// <summary>An agent's question of the code, answered from the files as they stand: the watchers look again once in the
+    /// call it came in, however soon after the last that call began, as another program may have made or deleted a file
+    /// meanwhile that the system never told of. The look to wait for.</summary>
+    public Task AgentAsksOfCode()
+    {
+        UiThread.Check();
+        if (agentCalled != 0 && agentLookedIn != agentCalled)
+        {
+            agentLook = LookAgainAsync();
+            agentLookedIn = agentCalled;
+        }
         return agentLook;
     }
 
