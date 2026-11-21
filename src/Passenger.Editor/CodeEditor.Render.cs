@@ -17,8 +17,8 @@ namespace Passenger.Editor;
 /// placeholder, annotations) after its last.</summary>
 public sealed partial class CodeEditor
 {
-    private readonly LabelCache<(string Text, int Style)> labels = new();
-    private readonly LabelCache<(int Number, bool Current)> numbers = new();
+    private readonly FrameKept<(string Text, int Style), TextLine> labels = new();
+    private readonly FrameKept<(int Number, bool Current), TextLine> numbers = new();
     private readonly Dictionary<TokenKind, TextRunProperties> runProperties = [];
     private (TextRunProperties Current, TextRunProperties Other) numberRuns;
 
@@ -231,7 +231,7 @@ public sealed partial class CodeEditor
                     path.LineTo(new Point(head - tail - barb, barb));
                     path.EndFigure(false);
                 }
-                DrawShape(context, arrow, shape, tail, shaft);
+                DrawShape(context, null, arrow, shape, tail, shaft);
             }
         }
         finally
@@ -261,7 +261,7 @@ public sealed partial class CodeEditor
             path.LineTo(new Point(barb, size + barb));
             path.EndFigure(false);
         }
-        DrawShape(context, palette.PenOf(palette.SoftWrapSign, 1), sign, left, top);
+        DrawShape(context, null, palette.PenOf(palette.SoftWrapSign, 1), sign, left, top);
     }
 
     /// <summary>Squiggles under errors, warnings and suggestions; unnecessary code is faded by laying
@@ -361,19 +361,20 @@ public sealed partial class CodeEditor
             }
             path.EndFigure(false);
         }
-        DrawShape(context, palette.PenOf(brush, 1), wave, x1, y);
+        DrawShape(context, null, palette.PenOf(brush, 1), wave, x1, y);
     }
 
-    /// <summary>A shape made at the origin, drawn with its origin at a point.</summary>
-    private static void DrawShape(DrawingContext context, IPen pen, StreamGeometry shape, double x, double y)
+    /// <summary>A shape made at the origin, drawn with its origin at a point: the text's and the gutter columns' alike.</summary>
+    internal static void DrawShape(DrawingContext context, IBrush? brush, IPen? pen, StreamGeometry shape, double x, double y)
     {
         using (context.PushTransform(Matrix.CreateTranslation(x, y)))
         {
-            context.DrawGeometry(null, pen, shape);
+            context.DrawGeometry(brush, pen, shape);
         }
     }
 
-    private readonly ShapeCache shapes = new();
+    /// <summary>The shapes drawn (squiggles, tabs' arrows, wrap signs, fold chevrons), by what they are and how large.</summary>
+    private readonly FrameKept<ShapeKey, StreamGeometry> shapes = new();
 
     /// <summary>How many shapes (squiggles, tabs' arrows, wrap signs, fold chevrons, the gutter columns' marks) the editor
     /// has made to draw: what a frame that moved none should leave as it was.</summary>
@@ -389,53 +390,6 @@ public sealed partial class CodeEditor
         Wrap,
         Open,
         Folded,
-    }
-
-    /// <summary>The shapes drawn (squiggles, tabs' arrows, wrap signs, fold chevrons), by what they are and how large, each
-    /// with the frame that last drew it: a row drawn later draws again those the rows on screen drew without making them,
-    /// and a frame lets go of those no row on screen drew (<see cref="Begin"/>).</summary>
-    private sealed class ShapeCache
-    {
-        private readonly Dictionary<ShapeKey, (StreamGeometry Shape, long Drawn)> kept = [];
-        private long now;
-
-        public bool TryGet(ShapeKey key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
-        {
-            ref (StreamGeometry Shape, long Drawn) entry = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrNullRef(kept, key);
-            if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref entry))
-            {
-                shape = null;
-                return false;
-            }
-            entry.Drawn = now;
-            shape = entry.Shape;
-            return true;
-        }
-
-        /// <summary>How many shapes have been made: what drawing them has cost.</summary>
-        public long Made { get; private set; }
-
-        public StreamGeometry Add(ShapeKey key, StreamGeometry shape)
-        {
-            Made++;
-            kept[key] = (shape, now);
-            return shape;
-        }
-
-        /// <summary>Starts a frame, letting go of the shapes last drawn before <paramref name="keepFrom"/>.</summary>
-        public void Begin(long frame, long keepFrom)
-        {
-            now = frame;
-            foreach ((ShapeKey key, (StreamGeometry _, long drawn)) in kept)
-            {
-                if (drawn < keepFrom)
-                {
-                    kept.Remove(key);
-                }
-            }
-        }
-
-        public void Clear() => kept.Clear();
     }
 
     /// <summary>The text's I-beam and a link's hand, made once.</summary>

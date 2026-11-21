@@ -82,8 +82,7 @@ public sealed class GutterFrame
     private readonly CodeEditor editor;
     private readonly List<GutterLine> lines = [];
     private readonly HashSet<int> covered = [];
-    private readonly Dictionary<GutterShape, (StreamGeometry Shape, long Drawn)> shapes = [];
-    private long now;
+    private readonly FrameKept<GutterShape, StreamGeometry> shapes = new();
     private DrawingContext? context;
 
     internal GutterFrame(CodeEditor editor)
@@ -139,40 +138,17 @@ public sealed class GutterFrame
     public IBrush Brush(Color colour) => editor.GutterColour(colour);
 
     /// <summary>A shape the columns drew beside a row on screen, of the same kind and size, kept for this one.</summary>
-    public bool TryShape(GutterShape key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape)
-    {
-        ref (StreamGeometry Shape, long Drawn) entry = ref CollectionsMarshal.GetValueRefOrNullRef(shapes, key);
-        if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref entry))
-        {
-            shape = null;
-            return false;
-        }
-        entry.Drawn = now;
-        shape = entry.Shape;
-        return true;
-    }
+    public bool TryShape(GutterShape key, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out StreamGeometry? shape) => shapes.TryGet(key, out shape);
 
     /// <summary>A shape made at the origin, which a row drawn later draws again wherever it stands then
     /// (<see cref="DrawShape"/>), so a row come into view takes the columns' marks without making them again.</summary>
-    public StreamGeometry AddShape(GutterShape key)
-    {
-        StreamGeometry shape = new();
-        shapes[key] = (shape, now);
-        ShapesMade++;
-        return shape;
-    }
+    public StreamGeometry AddShape(GutterShape key) => shapes.Add(key, new StreamGeometry());
 
     /// <summary>A shape made at the origin, drawn with its origin at a point of the editor.</summary>
-    public void DrawShape(StreamGeometry shape, IBrush? brush, IPen? pen, double x, double y)
-    {
-        using (Context.PushTransform(Matrix.CreateTranslation(x, y)))
-        {
-            Context.DrawGeometry(brush, pen, shape);
-        }
-    }
+    public void DrawShape(StreamGeometry shape, IBrush? brush, IPen? pen, double x, double y) => CodeEditor.DrawShape(Context, brush, pen, shape, x, y);
 
     /// <summary>How many shapes the columns have made to draw.</summary>
-    internal long ShapesMade { get; private set; }
+    internal long ShapesMade => shapes.Made;
 
     /// <summary>Text in the editor's font, a scale of its size, in a token's colour, kept from frame to frame.</summary>
     public TextLine Label(string text, string brushKey, double scale = 1, bool bold = false) => editor.GutterLabel(text, brushKey, scale, bold);
@@ -210,17 +186,7 @@ public sealed class GutterFrame
     }
 
     /// <summary>Starts a frame, letting go of the shapes last drawn before <paramref name="keepFrom"/>.</summary>
-    internal void Keep(long frame, long keepFrom)
-    {
-        now = frame;
-        foreach ((GutterShape key, (StreamGeometry _, long drawn)) in shapes)
-        {
-            if (drawn < keepFrom)
-            {
-                shapes.Remove(key);
-            }
-        }
-    }
+    internal void Keep(long frame, long keepFrom) => shapes.Begin(frame, keepFrom);
 
     /// <summary>Lets go of the shapes kept, for a new look or font.</summary>
     internal void ForgetShapes() => shapes.Clear();

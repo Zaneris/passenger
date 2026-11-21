@@ -285,7 +285,7 @@ public sealed partial class CodeEditor
                     path.LineTo(new Point(8, -2));
                 }
             }
-            DrawShape(context, pen, chevron, x, middle);
+            DrawShape(context, null, pen, chevron, x, middle);
             return;
         }
     }

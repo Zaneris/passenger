@@ -33,7 +33,7 @@ public sealed partial class CodeEditor
     private readonly Dictionary<(string Key, double Scale, bool Bold), TextRunProperties> gutterRuns = [];
     private readonly Dictionary<(string Key, double Thickness, PenLineCap Cap, PenLineJoin Join), IPen> gutterPens = [];
     private readonly Dictionary<Color, IBrush> gutterColours = [];
-    private readonly LabelCache<(string Text, string Key, double Scale, bool Bold)> gutterLabels = new();
+    private readonly FrameKept<(string Text, string Key, double Scale, bool Bold), TextLine> gutterLabels = new();
 
     /// <summary>Sets the host's columns: those left of the numbers, outermost first, and those right of them, nearest first.</summary>
     public void SetGutterColumns(IReadOnlyList<IGutterColumn> left, IReadOnlyList<IGutterColumn> right)

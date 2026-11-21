@@ -151,7 +151,7 @@ public sealed partial class CodeEditor
             }
         }
         labels.Begin(now, keepFrom);
-        KeepRowGaps(keepFrom);
+        rowGaps.Begin(now, keepFrom);
         numbers.Begin(now, keepFrom);
         shapes.Begin(now, keepFrom);
         gutterLabels.Begin(now, keepFrom);
