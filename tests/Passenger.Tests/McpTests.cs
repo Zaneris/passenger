@@ -1601,7 +1601,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", repository]);
         string diff = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Renamed.txt" })).GetString()!;
         Assert.True(diff.Contains("--- a/Old.txt\n+++ b/Renamed.txt\n", StringComparison.Ordinal), $"The diff of Old.txt renamed Renamed.txt named it so:\n{diff}");
-        JsonElement fresh = Assert.Single((await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray(), c => c.GetProperty("path").GetString() == "Fresh/");
+        // An agent's paths are the system's, as every tool answers them.
+        JsonElement fresh = Assert.Single((await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray(),
+            c => c.GetProperty("path").GetString() == "Fresh" + Path.DirectorySeparatorChar);
         Assert.Equal(2, fresh.GetProperty("files").GetInt32());
 
         await Call(client, McpTools.VcsCommit, new() { ["message"] = "Fresh", ["paths"] = new[] { "Fresh/" } });
