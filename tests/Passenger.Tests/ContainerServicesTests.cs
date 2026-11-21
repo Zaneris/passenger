@@ -56,6 +56,9 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
         window.Debugger.Breakpoints.Toggle(Source(folder, "Api"), InRequest);
         Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
         string WebPublished() => Docker.Run("compose", "-p", project, "port", "web", "8080").Split('\n')[0].Trim();
+        // Kept in each container, so a service that ends as the debugger lets it go has the engine's last words to tell.
+        string? engineLog = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable);
+        Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, Path.Combine(TestFolders.Create("engine-"), "engine.log"));
         try
         {
             Ui.Launched(window, window.RunAsync(), "the services to come up", TimeSpan.FromMinutes(5));
@@ -111,6 +114,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
         }
         finally
         {
+            Environment.SetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable, engineLog);
             Docker.Stopped(window, project, "Stop to take every container down");
         }
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the sessions to end with Stop");
@@ -444,9 +448,18 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             string container = Docker.Ask(["ps", "-aq", "--filter", $"label=com.docker.compose.project={project}", "--filter", $"label=com.docker.compose.service={service}"]).Trim();
             Assert.Fail($"{service} gave no answer: {answer ?? "none in 90 s"}\nits container: {Docker.Ask(["inspect", "-f", "{{.State.Status}} {{.State.ExitCode}} {{.State.StartedAt}} {{.State.FinishedAt}}", container])}"
                 + $"\nits processes:\n{Docker.Ask(["top", container])}\nits log's end:\n{Docker.Ask(["logs", "--tail", "25", container])}\n"
-                + $"the debugger's log's end:\n{said[Math.Max(0, said.Length - 5000)..]}\nthe engine's log there (with PASSENGER_ENGINE_LOG):\n{Docker.Ask(["exec", container, "tail", "-n", "120", Passenger.App.Debugging.DebugSession.ContainerEngineLog])}");
+                + $"the debugger's log's end:\n{said[Math.Max(0, said.Length - 5000)..]}\nthe engine's log there (with PASSENGER_ENGINE_LOG):\n{EngineLogOf(container)}");
         }
         return answer;
+    }
+
+    /// <summary>The end of the debugger engine's log in a service's container (kept with PASSENGER_ENGINE_LOG), copied out,
+    /// as a container that has stopped runs nothing that could read it there.</summary>
+    private static string EngineLogOf(string container)
+    {
+        string copy = Path.Combine(TestFolders.Create("engine-"), "engine.log");
+        string said = Docker.Ask(["cp", $"{container}:{Passenger.App.Debugging.DebugSession.ContainerEngineLog}", copy]);
+        return File.Exists(copy) ? string.Join('\n', File.ReadLines(copy).TakeLast(120)) : said;
     }
 
     /// <summary>A request to a service's published port (<see cref="ContainerRunDebuggingTests.Get"/>), or, while it publishes
