@@ -287,13 +287,12 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
     /// runs, where held it would stand partway through compiling a method, inside the load of a type or the check of a
     /// call to inline, and an evaluation needing what it held there would wait past its time. An evaluation that has it
     /// compile a method again sees it do so, and the type that compile loads is there for the next: on the program's own
-    /// .NET and on the newest installed, each giving its worker a name of its own.</summary>
+    /// .NET and on the newest installed, each giving its worker a name of its own, which macOS keeps none of.</summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task An_evaluation_leaves_the_runtimes_tiering_worker_running_so_what_it_compiles_meanwhile_holds_none_up(bool onNewestRuntime)
     {
-        Assert.SkipWhen(OperatingSystem.IsMacOS(), "macOS keeps no name the runtime gives its tiering worker, the only word of it the debugger has, so an evaluation holds it there with the rest");
         const string looping = "LoopingConsoleApp";
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
@@ -307,6 +306,8 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
 
         EvaluateResponse warm = await host.EvaluateAsync(frame, "Warm()");
         Assert.True(warm.Result == "true", $"The tiering worker compiled nothing in the 2 s of an evaluation that called a method past its count ({warm.Result}): the evaluation held it partway; the engine's log:\n{host.EngineLog()}");
+        Assert.True(host.EngineLog().Contains("the runtime's tiering worker", StringComparison.Ordinal),
+            $"No thread was told as the runtime's tiering worker and left running; the engine's log:\n{host.EngineLog()}");
         EvaluateResponse rare = await host.EvaluateAsync(frame, "MakeOptimizedRare()");
         Assert.True(rare.Result == "2", $"The evaluation needing the type the tiering worker loaded was answered {rare.Result}");
         if (onNewestRuntime)

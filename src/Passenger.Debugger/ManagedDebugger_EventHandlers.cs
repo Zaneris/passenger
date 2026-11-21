@@ -114,10 +114,11 @@ public partial class ManagedDebugger
         {
             return;
         }
+        RuntimeThreads runtime = _runtimeThreads is { } known && known.ProcessId == (int)processId ? known : _runtimeThreads = new RuntimeThreads((int)processId);
         foreach (ICorDebugThread thread in process.EnumerateThreads())
         {
             int id = thread.Id;
-            if (!_threads.ContainsKey(id) && RuntimeThreads.IsTieringWorker((int)processId, id) && thread.TrySetDebugState(CorDebugThreadState.THREAD_RUN) is Cor.S_OK
+            if (!_threads.ContainsKey(id) && runtime.IsTieringWorker(process, thread) && thread.TrySetDebugState(CorDebugThreadState.THREAD_RUN) is Cor.S_OK
                 && _leftRunning.Add(id))
             {
                 _logger?.Invoke($"Left running during evaluations: thread {id}, the runtime's tiering worker");
@@ -162,6 +163,9 @@ public partial class ManagedDebugger
 
     /// <summary>The runtime's own threads left running during an evaluation, each said once in the engine's log.</summary>
     private readonly HashSet<int> _leftRunning = [];
+
+    /// <summary>What tells the program's runtime's own threads, made for the program as it is first held.</summary>
+    private RuntimeThreads? _runtimeThreads;
 
     /// <summary>Notes the thread running Main. The runtime announces it first, but to a debugger that takes hold once
     /// the program is under way it lists the threads in the order they were made, and Windows makes the finalizer's

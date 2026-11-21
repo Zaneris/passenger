@@ -104,6 +104,46 @@ public class MachOFileTests
         Assert.Equal([LibSystem], Linked(program));
     }
 
+    [Fact]
+    public void A_function_lies_from_its_symbol_to_the_next_of_its_section_as_offsets_into_its_image()
+    {
+        byte[] program = MachOBytes.Symbols(text: 0x1000, mapped: 0x9000,
+            ("_first", 0x0E, 1, 0x1100), ("_stab", 0x24, 1, 0x1140), ("_elsewhere", 0x0E, 2, 0x1160), ("_undefined", 0x01, 0, 0x1170),
+            ("_second", 0x0F, 1, 0x1180), ("_last", 0x0E, 1, 0x1200));
+        using MemoryStream stream = new(program);
+
+        IReadOnlyDictionary<string, (ulong Start, ulong End)>? functions = MachOFile.Functions(stream, ["_first", "_last", "_missing"]);
+
+        Assert.Equal(new Dictionary<string, (ulong Start, ulong End)> { ["_first"] = (0x100, 0x180), ["_last"] = (0x200, 0x9000) }, functions);
+    }
+
+    [Fact]
+    public void A_program_with_no_symbol_table_or_a_table_past_its_end_names_no_function()
+    {
+        using MemoryStream linking = new(MachOBytes.Thin(LibSystem));
+        Assert.Null(MachOFile.Functions(linking, ["_first"]));
+
+        byte[] cut = MachOBytes.Symbols(text: 0, mapped: 0x1000, ("_first", 0x0E, 1, 0x100));
+        using MemoryStream cutShort = new(cut[..^8]);
+        Assert.Null(MachOFile.Functions(cutShort, ["_first"]));
+        using MemoryStream universal = new(MachOBytes.Universal(cut));
+        Assert.Null(MachOFile.Functions(universal, ["_first"]));
+    }
+
+    /// <summary>The runtime's own library names the routine its tiering worker starts at, which the debugger tells that
+    /// thread by on macOS.</summary>
+    [Fact]
+    public void The_runtimes_own_library_names_where_its_tiering_worker_starts()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's runtime is a Mach-O library");
+        const string start = "__ZN24TieredCompilationManager29BackgroundWorkerBootstrapper0EPv";
+        using FileStream runtime = File.OpenRead(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "libcoreclr.dylib"));
+
+        (ulong Start, ulong End) routine = MachOFile.Functions(runtime, [start])![start];
+
+        Assert.True(routine.Start > 0 && routine.End > routine.Start && routine.End - routine.Start < 4096, $"The tiering worker's start lies at {routine}");
+    }
+
     /// <summary>The system's own builds, thin or universal, are the reader's real input: read, never run.</summary>
     [Fact]
     public void A_macs_own_tool_is_read_for_what_it_links()
@@ -145,6 +185,49 @@ internal static class MachOBytes
         BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(16), (uint)commands.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(20), (uint)body.Length);
         return [.. header, .. body.ToArray()];
+    }
+
+    /// <summary>A thin program of a __TEXT segment at an address and of a size, and a symbol table of the symbols given:
+    /// each its name, its type's byte, its section and its address.</summary>
+    public static byte[] Symbols(ulong text, ulong mapped, params (string Name, byte Type, byte Section, ulong Address)[] symbols)
+    {
+        const int Header = 32;
+        const int Segment = 72;
+        const int Table = 24;
+        using MemoryStream names = new();
+        names.WriteByte(0);
+        byte[] entries = new byte[16 * symbols.Length];
+        for (int symbol = 0; symbol < symbols.Length; symbol++)
+        {
+            Span<byte> entry = entries.AsSpan(16 * symbol);
+            BinaryPrimitives.WriteUInt32LittleEndian(entry, (uint)names.Length);
+            entry[4] = symbols[symbol].Type;
+            entry[5] = symbols[symbol].Section;
+            BinaryPrimitives.WriteUInt64LittleEndian(entry[8..], symbols[symbol].Address);
+            names.Write(Encoding.UTF8.GetBytes(symbols[symbol].Name + "\0"));
+        }
+        byte[] program = new byte[Header + Segment + Table + entries.Length + names.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(program, 0xFEEDFACF);
+        BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(4), 0x0100000C);
+        BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(12), 6);
+        BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(16), 2);
+        BinaryPrimitives.WriteUInt32LittleEndian(program.AsSpan(20), Segment + Table);
+        Span<byte> segment = program.AsSpan(Header, Segment);
+        BinaryPrimitives.WriteUInt32LittleEndian(segment, 0x19);
+        BinaryPrimitives.WriteUInt32LittleEndian(segment[4..], Segment);
+        Encoding.ASCII.GetBytes("__TEXT").CopyTo(segment[8..]);
+        BinaryPrimitives.WriteUInt64LittleEndian(segment[24..], text);
+        BinaryPrimitives.WriteUInt64LittleEndian(segment[32..], mapped);
+        Span<byte> table = program.AsSpan(Header + Segment, Table);
+        BinaryPrimitives.WriteUInt32LittleEndian(table, 0x02);
+        BinaryPrimitives.WriteUInt32LittleEndian(table[4..], Table);
+        BinaryPrimitives.WriteUInt32LittleEndian(table[8..], Header + Segment + Table);
+        BinaryPrimitives.WriteUInt32LittleEndian(table[12..], (uint)symbols.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(table[16..], (uint)(Header + Segment + Table + entries.Length));
+        BinaryPrimitives.WriteUInt32LittleEndian(table[20..], (uint)names.Length);
+        entries.CopyTo(program, Header + Segment + Table);
+        names.ToArray().CopyTo(program, Header + Segment + Table + entries.Length);
+        return program;
     }
 
     public static byte[] Universal(params byte[][] slices) => Universal(wide: false, slices);
