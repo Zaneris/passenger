@@ -265,7 +265,8 @@ public sealed partial class BuildRunController
     {
         UnfollowWatched();
         parts.Views.Run.SetRunning(false);
-        string said = session.ContainerRun is { } containers ? ContainersEnded(containers) : RunEnded(ran, code);
+        // The folder's last container run is said only while its log is what ran here, not a program run after it.
+        string said = session.ContainerRun is { } containers && containers.Name == ran ? ContainersEnded(containers) : RunEnded(ran, code);
         // What ran has ended: no configuration of it runs, whatever else does (an AppHost).
         ran = string.Empty;
         RunningChanged?.Invoke(this, EventArgs.Empty);

@@ -39,8 +39,6 @@ public partial class MainWindow
         Bottom.Tests.LinkClicked += (_, target) => OpenLink(target);
         // The project folder the Run window's program and the Debug window's came from is looked in first.
         Bottom.Run.Links.Folders = () => LinkFolders(buildRun.RunProject);
-        // A container run's images name their own paths, which are the workspace's files.
-        Bottom.Run.Links.Paths = () => session.ContainerRun?.Plan.Paths;
         Bottom.Debug.Console.Links.Folders = () => LinkFolders(buildRun.DebugProject);
         Bottom.Build.Links.Folders = () => LinkFolders(null);
         Bottom.Tests.Links.Folders = () => LinkFolders(null);

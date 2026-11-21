@@ -81,6 +81,8 @@ public sealed partial class ConsoleLinks : IHighlighter
 
     private Func<string?, Uri, Task<Uri?>>? reachedBy;
 
+    private Func<Containers.ContainerPaths?>? mappedBy;
+
     /// <summary>How many times what was found has been forgotten, so answers asked before are passed over.</summary>
     private int forgotten;
 
@@ -109,8 +111,21 @@ public sealed partial class ConsoleLinks : IHighlighter
     public Func<IReadOnlyList<string>> Folders { get; set; } = () => [];
 
     /// <summary>Where the paths of the containers whose output this is are the workspace's files (a container run's images),
-    /// tried first for a path that starts at the root; null for output from this machine alone.</summary>
-    public Func<Containers.ContainerPaths?> Paths { get; set; } = () => null;
+    /// tried first for a path that starts at the root: the run's own, given as it starts, which another program's output
+    /// takes with it (<see cref="Forget"/>); null for output of programs on this machine. Set, the lines' links are found
+    /// again.</summary>
+    public Func<Containers.ContainerPaths?>? Paths
+    {
+        get => mappedBy;
+        set
+        {
+            if (value != mappedBy)
+            {
+                mappedBy = value;
+                ForgetFound();
+            }
+        }
+    }
 
     /// <summary>Whether any path to a file is a link (hidden); a console links only frames and compiler messages.</summary>
     public bool FilePaths { get; init; }
@@ -133,13 +148,18 @@ public sealed partial class ConsoleLinks : IHighlighter
         }
     }
 
-    /// <summary>Forgets what was found, for output from another program (another project's relative paths, where it ran) or
-    /// a file made or deleted since, and the IDE's own claims with it.</summary>
-    public void Forget()
+    /// <summary>Forgets what was found, for output from another program (another project's relative paths, where it ran, its
+    /// containers' paths and addresses) or a file made or deleted since, and the IDE's own claims with it; the program's
+    /// containers kept where it is <paramref name="sameProgram"/>, whose console was emptied while it runs on.</summary>
+    public void Forget(bool sameProgram = false)
     {
         claimed.Clear();
         files.Clear();
-        reachedBy = null;
+        if (!sameProgram)
+        {
+            reachedBy = null;
+            mappedBy = null;
+        }
         ForgetFound();
     }
 
@@ -382,8 +402,9 @@ public sealed partial class ConsoleLinks : IHighlighter
     }
 
     /// <summary>An address the browser opens (www. taken as http), one a container's program names as its own where it is
-    /// reached from here (the container its line names, <paramref name="named"/>, or the console's); a file: URL opens its
-    /// file in the editor.</summary>
+    /// reached from here (the container its line names, <paramref name="named"/>, or the console's), one a program on this
+    /// machine listens at on every interface at localhost (<see cref="WebAddress.Callable"/>); a file: URL opens its file in
+    /// the editor.</summary>
     private LinkTarget? Web(string text, string? named)
     {
         if (WebAddresses.Parse(text) is not { } address)
@@ -398,7 +419,8 @@ public sealed partial class ConsoleLinks : IHighlighter
         {
             return Reached(named, address) is { } here ? new WebLink(here) : null;
         }
-        return new WebLink(address);
+        // Where a program on this machine listens on every interface, which no browser can name.
+        return new WebLink(WebAddress.Of(WebAddress.Callable(address.OriginalString)) ?? address);
     }
 
     /// <summary>Where an address a container's program names as its own is reached from here, once answered: null while it
@@ -480,7 +502,7 @@ public sealed partial class ConsoleLinks : IHighlighter
         {
             path = relative;
         }
-        else if (path.StartsWith('/') && Paths() is { IsEmpty: false } map && map.ToHost(path) is { } host)
+        else if (path.StartsWith('/') && mappedBy?.Invoke() is { IsEmpty: false } map && map.ToHost(path) is { } host)
         {
             yield return host;
         }

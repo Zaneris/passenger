@@ -337,7 +337,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
                 ListMenus.Keyed("Copy", EditorActions.Copy, () => Editor.TryExecute(EditorActions.Copy), Editor.Selections.Primary.IsEmpty ? Refusals.NothingSelected : null),
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Editor.TryExecute(EditorActions.SelectAll)),
                 new Separator(),
-                ListMenus.Item("Clear All", Clear),
+                ListMenus.Item("Clear All", () => Clear(sameProgram: true)),
             },
         };
         if (at is null)
@@ -366,14 +366,19 @@ public sealed class OutputView : DockPanel, IOwnKeys
         Insert(text, [new ConsoleRun(0, text.Length, error ? ConsoleStream.Error : ConsoleStream.System)]);
     }
 
-    /// <summary>Empties the console: its text, what is still on its way, and the line being typed.</summary>
-    public void Clear()
+    /// <summary>Empties the console: its text, what is still on its way, and the line being typed, for another program's
+    /// output.</summary>
+    public void Clear() => Clear(sameProgram: false);
+
+    /// <summary>Empties the console, for another program's output or, by Clear All, the same program's, whose containers' paths
+    /// and addresses its links keep (<see cref="ConsoleLinks.Forget"/>).</summary>
+    private void Clear(bool sameProgram)
     {
         UiThread.Check();
         Sink.Drop();
         Document.Clear();
         ShowOffer(null);
-        Links.Forget();
+        Links.Forget(sameProgram);
         ForgetFolds();
     }
 

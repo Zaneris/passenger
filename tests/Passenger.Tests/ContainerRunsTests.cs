@@ -432,6 +432,60 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>A program run on this machine after a container run has its output linked as this machine's: a deterministic
+    /// build's <c>/_/</c> path under its own project, where the image's map named the image's context; a path the image's
+    /// files had no link, as nothing is there here; and where it listens on every interface at localhost, which a click
+    /// opens.</summary>
+    [AvaloniaFact]
+    public void After_a_container_run_a_local_programs_paths_and_wildcard_addresses_link_on_this_machine()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string folder = PathNames.Canonical(TestFolders.Create("ctr-then-local-"));
+        string project = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}thenlocal";
+        TestFolders.Write(folder, "Program.cs", "Console.WriteLine(\"shop\");\n");
+        TestFolders.Write(folder, "Dockerfile", $"FROM {Docker.Image}\nCOPY . /app\nCMD [\"sh\", \"-c\", \"echo '   at Shop.Program.Main() in /app/Program.cs:line 1'; sleep 600\"]\n");
+        string own = $"{project}own:mine";
+        Docker.Run("tag", Docker.Image, own);
+        TestFolders.Write(folder, "compose.yaml", $"name: {project}\nservices:\n  shop:\n    build: .\n    image: {own}\n    init: true\n");
+        TestFolders.Write(folder, "Tool/Tool.csproj", TestProjects.Console());
+        TestFolders.Write(folder, "Tool/Program.cs", "System.Console.WriteLine(\"   at Tool.Program.Main() in /_/Program.cs:line 1\");\n"
+            + "System.Console.WriteLine(\"   at Shop.Program.Main() in /app/Program.cs:line 1\");\n"
+            + "System.Console.WriteLine(\"Now listening on: http://0.0.0.0:5000\");\nSystem.Console.WriteLine(\"Now listening on: http://[::]:5001/health\");\n");
+        MainWindow window = Open(folder);
+        window.SetConfigurations([window.Configurations.First(c => c.Kind == RunKind.Compose).Copied() with { Name = "Images", Mode = ContainerMode.Images, Generated = false }], "Images");
+        try
+        {
+            Launched(window, "the image to be built and run");
+            static bool Logged(string l) => l.Contains("at Shop.Program.Main()", StringComparison.Ordinal) && l.Contains("| ", StringComparison.Ordinal);
+            Ui.WaitFor(() => Run(window).Split('\n').Any(Logged), "the container's frame in the Run window", TimeSpan.FromMinutes(1));
+            FileLink image = Assert.IsType<FileLink>(Assert.Single(Ui.LinksIn(window.BottomPanel.Run.Links, Run(window).Split('\n').First(Logged))).Target);
+            Assert.Equal(Path.Combine(folder, "Program.cs"), image.Path);
+            Docker.Stopped(window, project, "Stop to take the container down");
+
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Tool"), () => $"Tool's configuration, not [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
+            Assert.True(window.SelectConfiguration("Tool"));
+            Launched(window, "Tool to build and run");
+            Ui.WaitFor(() => !window.IsRunning && Run(window).Contains("http://[::]:5001/health", StringComparison.Ordinal), () => $"Tool's output and end: {Run(window)}", TimeSpan.FromMinutes(1));
+            string[] lines = Run(window).Split('\n');
+            FileLink built = Assert.IsType<FileLink>(Assert.Single(Ui.LinksIn(window.BottomPanel.Run.Links, lines.First(l => l.Contains("/_/Program.cs", StringComparison.Ordinal)))).Target);
+            Assert.Equal(Path.Combine(folder, "Tool", "Program.cs"), built.Path);
+            Assert.Empty(Ui.LinksIn(window.BottomPanel.Run.Links, lines.First(l => l.Contains("/app/Program.cs", StringComparison.Ordinal))));
+            string anywhere = lines.First(l => l.Contains("http://0.0.0.0:5000", StringComparison.Ordinal));
+            Assert.Equal([new Uri("http://localhost:5000/")], Ui.LinksIn(window.BottomPanel.Run.Links, anywhere).Select(l => Assert.IsType<WebLink>(l.Target).Address));
+            Assert.Equal([new Uri("http://localhost:5001/health")],
+                Ui.LinksIn(window.BottomPanel.Run.Links, lines.First(l => l.Contains("http://[::]:5001", StringComparison.Ordinal))).Select(l => Assert.IsType<WebLink>(l.Target).Address));
+            Ui.ClickLink(window.BottomPanel.Run, anywhere, link => link.Target is WebLink);
+            Assert.Equal(new Uri("http://localhost:5000/"), window.Browsed[^1]);
+            Assert.Equal(BuildRunController.RunEnded("Tool", 0), window.Status);
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the container down");
+            window.Close();
+            Docker.Ask(["rmi", own]);
+        }
+    }
+
     /// <summary>Where a service's program says it listens in its container (<c>http://[::]:8080</c>, <c>http://0.0.0.0:8080</c>)
     /// links, in the Run window, the address its container's 8080 is published on here, as the Containers window links that
     /// port, and the page answers there; an address on a port it publishes nowhere is no link.</summary>

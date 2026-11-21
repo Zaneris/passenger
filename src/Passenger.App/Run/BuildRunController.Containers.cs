@@ -314,7 +314,8 @@ public sealed partial class BuildRunController
             Certificate = certificate,
             Tools = session.ContainerTools,
         };
-        // Its services' programs name their containers' addresses, reached here where those publish them.
+        // Its services' programs name their images' paths, the workspace's files where copied, and addresses, reached where published.
+        parts.Views.Run.Links.Paths = () => run.Plan.Paths;
         parts.Views.Run.Links.Reaching = run.ReachingAsync;
         run.Brought([.. holding.Select(h => ((IRunService)h.Service, h.How))]);
         run.ProblemFound += (_, found) =>
