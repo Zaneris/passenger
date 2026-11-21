@@ -193,11 +193,33 @@ internal sealed partial class CodeActions
         }
     }
 
+    /// <summary>The work of the refactoring that asks in a dialog, under way until the dialog asks (<see cref="ShowAsync"/>).</summary>
+    private Working? asking;
+
+    /// <summary>A refactoring that asks the person in a dialog or a list, its work held under its action's id from its first
+    /// moment until it asks or ends, so an agent's ide_action waits for what it reads first and hears what it asks.</summary>
+    internal async Task AskingAsync(string id, Func<Task> refactor)
+    {
+        using Working? reading = context.Work?.Begin(id, "Reading the code at the caret…", stoppable: false);
+        asking = reading;
+        try
+        {
+            await refactor();
+        }
+        finally
+        {
+            asking = null;
+        }
+    }
+
     internal async Task ShowAsync(RefactoringDialog dialog)
     {
         if (TopLevel.GetTopLevel(Editor) is Window owner)
         {
-            await dialog.ShowDialog<bool>(owner);
+            Task<bool> asked = dialog.ShowDialog<bool>(owner);
+            // The answer is the person's, however long they take: the work ends as the dialog asks.
+            asking?.Dispose();
+            await asked;
         }
     }
 

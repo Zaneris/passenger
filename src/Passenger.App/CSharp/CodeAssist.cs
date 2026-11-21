@@ -604,33 +604,33 @@ public sealed class CodeAssist
         Code(AppActions.RefactorThis, "Refactor This…", context => IdeErrors.Observe(actions.ShowFixes(AppActions.RefactorThis, a => a.Kind?.StartsWith("refactor", StringComparison.Ordinal) == true, "Refactor This")),
             new("Refactor", 0, 0), xaml: true, writes: true);
         // A GDScript's are Passenger's own, over its reading of the project's scripts (CodeActions.GDScriptRefactor).
-        Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.ChangeSignature)
-            : actions.ChangeSignature()), new("Refactor", 1, 1), gdscript: true, writes: true);
-        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.ExtractFunction)
+        Code(AppActions.ChangeSignature, "Change Signature…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ChangeSignature, () => actions.GDScriptRefactor(GDScriptRefactoring.ChangeSignature))
+            : actions.AskingAsync(AppActions.ChangeSignature, actions.ChangeSignature)), new("Refactor", 1, 1), gdscript: true, writes: true);
+        Code(AppActions.ExtractMethod, "Extract Method…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.ExtractMethod, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractFunction))
             : actions.Refactor(a => a.Title == RoslynNames.ExtractMethod, "Extract Method", renameMethod: true, AppActions.ExtractMethod)), new("Refactor", 1, 2), gdscript: true, writes: true);
-        Code(AppActions.IntroduceVariable, "Introduce Variable…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.ExtractVariable)
+        Code(AppActions.IntroduceVariable, "Introduce Variable…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceVariable, () => actions.GDScriptRefactor(GDScriptRefactoring.ExtractVariable))
             : actions.Refactor(a => a.Title.StartsWith(RoslynNames.IntroduceLocal, StringComparison.Ordinal), "Introduce Variable", renameMethod: false, AppActions.IntroduceVariable)),
             new("Refactor", 1, 3), gdscript: true, writes: true);
         Code(AppActions.IntroduceField, "Introduce Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.IntroduceField, AppActions.IntroduceField)), new("Refactor", 1, 4), writes: true);
-        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.IntroduceParameter)
+        Code(AppActions.IntroduceParameter, "Introduce Parameter…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.IntroduceParameter, () => actions.GDScriptRefactor(GDScriptRefactoring.IntroduceParameter))
             : actions.Refactor(CodeActions.IntroduceParameter, AppActions.IntroduceParameter)), new("Refactor", 1, 5), gdscript: true, writes: true);
-        Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.ExtractInterface()), new("Refactor", 1, 6), writes: true);
-        Code(AppActions.Inline, "Inline…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.Inline)
+        Code(AppActions.ExtractInterface, "Extract Interface…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractInterface, actions.ExtractInterface)), new("Refactor", 1, 6), writes: true);
+        Code(AppActions.Inline, "Inline…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Inline, () => actions.GDScriptRefactor(GDScriptRefactoring.Inline))
             : actions.Refactor(a => a.Kind == RoslynNames.InlineKind || a.Title.StartsWith(RoslynNames.Inline, StringComparison.Ordinal), "Inline", renameMethod: false, AppActions.Inline)),
             new("Refactor", 1, 7), gdscript: true, writes: true);
-        Code(AppActions.Move, "Move…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.Move) : actions.Move()),
+        Code(AppActions.Move, "Move…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.Move, () => actions.GDScriptRefactor(GDScriptRefactoring.Move)) : actions.AskingAsync(AppActions.Move, actions.Move)),
             new("Refactor", 2, 0), gdscript: true, writes: true);
-        Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete)
+        Code(AppActions.SafeDelete, "Safe Delete…", context => IdeErrors.Observe(CodeActions.IsGDScript(context.File) ? actions.AskingAsync(AppActions.SafeDelete, () => actions.GDScriptRefactor(GDScriptRefactoring.SafeDelete))
             : actions.SafeDelete()), new("Refactor", 2, 1), gdscript: true, writes: true);
-        Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.MoveMembers(up: true)), new("Refactor", 3, 0), writes: true);
-        Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.MoveMembers(up: false)), new("Refactor", 3, 1), writes: true);
+        Code(AppActions.PullMembersUp, "Pull Members Up…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PullMembersUp, () => actions.MoveMembers(up: true))), new("Refactor", 3, 0), writes: true);
+        Code(AppActions.PushMembersDown, "Push Members Down…", context => IdeErrors.Observe(actions.AskingAsync(AppActions.PushMembersDown, () => actions.MoveMembers(up: false))), new("Refactor", 3, 1), writes: true);
         Code(AppActions.EncapsulateField, "Encapsulate Field…", context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2), writes: true);
-        registry.Add(new IdeAction(AppActions.ExtractResource, "Extract Resource…", "Code", context => IdeErrors.Observe(actions.ExtractResource()))
+        registry.Add(new IdeAction(AppActions.ExtractResource, "Extract Resource…", "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractResource, actions.ExtractResource)))
         {
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 0)],
         });
-        registry.Add(new IdeAction(AppActions.ExtractStyle, "Extract Style…", "Code", context => IdeErrors.Observe(actions.ExtractStyle()))
+        registry.Add(new IdeAction(AppActions.ExtractStyle, "Extract Style…", "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractStyle, actions.ExtractStyle)))
         {
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 1)],
