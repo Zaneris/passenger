@@ -41,9 +41,11 @@ public sealed record ConsoleInput(Action<string> Send, Action Close);
 /// (SGR) kept with its text as runs and every other sequence left out, each stream's state (a pump's its own) kept from one
 /// write to the next, so a sequence split between two reads never shows as text, nor a "\r\n" split so as an extra line.
 /// What it costs is a run for each change of colour, never anything for each character. A program's output is read in by
-/// <see cref="PumpAsync"/>, the one loop from a reader into a console. The console takes what waits a batch at a time,
-/// at most once a frame and below the window's input and drawing, so a program that writes without pause never floods
-/// the window; what waits is never more than the console keeps, the oldest dropped first.</summary>
+/// <see cref="PumpAsync"/>, the one loop from a reader into a console. A line a program's output or errors begin waits
+/// for its end, at most <see cref="Unfinished"/>, so the other stream's lines written meanwhile come before it rather than
+/// inside it, and a prompt with no line end shows as it stands once that time is up. The console takes what waits a batch
+/// at a time, at most once a frame and below the window's input and drawing, so a program that writes without pause never
+/// floods the window; what waits is never more than the console keeps, the oldest dropped first.</summary>
 public sealed class ConsoleSink
 {
     /// <summary>A frame's time: batches come no closer together than this.</summary>
@@ -55,12 +57,23 @@ public sealed class ConsoleSink
     /// <summary>The most room, in characters, what waits keeps from one batch to the next once a flood is over.</summary>
     private const int KeptRoom = 64 * 1024;
 
+    /// <summary>The longest a line of a program's output or errors waits for its end before it shows as it stands: short
+    /// enough that a prompt shows at once, long enough for the second of two writes of a line to come, longer on a slower
+    /// machine.</summary>
+    private static readonly TimeSpan Unfinished = Waits.Of(TimeSpan.FromMilliseconds(100));
+
     private readonly object gate = new();
     private readonly Action take;
     private readonly ControlCodes[] streams = [new(), new(), new()];
 
     /// <summary>Each stream's way into what waits.</summary>
     private readonly Waiting[] into;
+
+    /// <summary>The line output and errors each began and have not ended, held back from what waits.</summary>
+    private readonly Unended[] unended = [new(), new()];
+
+    /// <summary>Whether a wait is under way for an unended line's time to be up.</summary>
+    private bool watching;
     private Pending waiting = new();
     private List<ConsoleRun> runs = [];
     private int limit;
@@ -178,6 +191,10 @@ public sealed class ConsoleSink
         {
             int before = waiting.Length;
             codes.End(into[(int)stream]);
+            if (stream != ConsoleStream.System)
+            {
+                unended[(int)stream].LetOut(this, stream);
+            }
             post = Added(before);
         }
         if (post)
@@ -456,11 +473,17 @@ public sealed class ConsoleSink
         }
     }
 
-    /// <summary>The waiting text and the streams it came from, taken for the console; null when nothing waits. UI thread.</summary>
-    internal (string Text, List<ConsoleRun> Runs)? Take()
+    /// <summary>The waiting text and the streams it came from, taken for the console, with the lines still unended where
+    /// <paramref name="unended"/> (before the IDE's own words, which come after all a program wrote); null when nothing
+    /// waits. UI thread.</summary>
+    internal (string Text, List<ConsoleRun> Runs)? Take(bool unended = false)
     {
         lock (gate)
         {
+            if (unended)
+            {
+                LetOutUnended(TimeSpan.Zero);
+            }
             queued = false;
             lastTaken = Stopwatch.GetTimestamp();
             if (waiting.Length == 0)
@@ -487,6 +510,8 @@ public sealed class ConsoleSink
         {
             waiting.Clear();
             runs.Clear();
+            unended[0].Clear();
+            unended[1].Clear();
         }
     }
 
@@ -511,9 +536,46 @@ public sealed class ConsoleSink
         return true;
     }
 
+    /// <summary>Text in a stream's colours as it comes: a program's whole lines after what waits, the line it begins after
+    /// them held back until it ends (<see cref="Unfinished"/>); the IDE's own words after every line held back. Under the gate.</summary>
+    private void Append(ReadOnlySpan<char> text, ConsoleStream stream, CellStyle style)
+    {
+        if (stream == ConsoleStream.System)
+        {
+            LetOutUnended(TimeSpan.Zero);
+            Add(text, stream, style);
+            return;
+        }
+        Unended line = unended[(int)stream];
+        int end = text.LastIndexOfAny('\n', '\r');
+        if (end >= 0)
+        {
+            line.LetOut(this, stream);
+            Add(text[..(end + 1)], stream, style);
+            text = text[(end + 1)..];
+        }
+        if (text.IsEmpty)
+        {
+            return;
+        }
+        if (line.Length + text.Length > LongestLine)
+        {
+            // A line that long is shown in pieces as it comes, as a pump tells it.
+            line.LetOut(this, stream);
+            Add(text, stream, style);
+            return;
+        }
+        if (line.Length == 0)
+        {
+            line.Since = Stopwatch.GetTimestamp();
+            Watch(Unfinished);
+        }
+        line.Hold(text, style);
+    }
+
     /// <summary>Text in a stream's colours put after what waits, the last run lengthened where it is the same stream's in
     /// the same colours; under the gate.</summary>
-    private void Append(ReadOnlySpan<char> text, ConsoleStream stream, CellStyle style)
+    private void Add(ReadOnlySpan<char> text, ConsoleStream stream, CellStyle style)
     {
         int before = waiting.Length;
         waiting.Append(text);
@@ -524,6 +586,73 @@ public sealed class ConsoleSink
         else
         {
             runs.Add(new ConsoleRun(before, text.Length, stream) { Style = style });
+        }
+    }
+
+    /// <summary>Lets out each unended line held <paramref name="atLeast"/> or longer, the one begun first first; under the gate.</summary>
+    private void LetOutUnended(TimeSpan atLeast)
+    {
+        long now = Stopwatch.GetTimestamp();
+        ConsoleStream first = unended[(int)ConsoleStream.Error].Since < unended[(int)ConsoleStream.Output].Since ? ConsoleStream.Error : ConsoleStream.Output;
+        foreach (ConsoleStream stream in (ReadOnlySpan<ConsoleStream>)[first, first == ConsoleStream.Output ? ConsoleStream.Error : ConsoleStream.Output])
+        {
+            Unended line = unended[(int)stream];
+            if (line.Length > 0 && Stopwatch.GetElapsedTime(line.Since, now) >= atLeast)
+            {
+                line.LetOut(this, stream);
+            }
+        }
+    }
+
+    /// <summary>Has the unended lines whose time is up let out once <paramref name="wait"/> has passed, unless a wait is
+    /// under way already; background work, so a screenshot or a test settles on what it shows. Under the gate.</summary>
+    private void Watch(TimeSpan wait)
+    {
+        if (watching)
+        {
+            return;
+        }
+        watching = true;
+        IDisposable held = BackgroundWork.Scope();
+        IdeErrors.Observe(Task.Delay(wait).ContinueWith(_ =>
+        {
+            try
+            {
+                Watched();
+            }
+            finally
+            {
+                held.Dispose();
+            }
+        }, TaskScheduler.Default));
+    }
+
+    /// <summary>Lets out the unended lines whose time is up, and waits again for one begun since.</summary>
+    private void Watched()
+    {
+        bool post;
+        lock (gate)
+        {
+            watching = false;
+            int before = waiting.Length;
+            LetOutUnended(Unfinished);
+            long? next = null;
+            foreach (Unended line in unended)
+            {
+                if (line.Length > 0 && (next is null || line.Since < next))
+                {
+                    next = line.Since;
+                }
+            }
+            if (next is { } since)
+            {
+                Watch(TimeSpan.FromTicks(Math.Max(TimeSpan.TicksPerMillisecond, (Unfinished - Stopwatch.GetElapsedTime(since)).Ticks)));
+            }
+            post = Added(before);
+        }
+        if (post)
+        {
+            Post();
         }
     }
 
@@ -636,6 +765,56 @@ public sealed class ConsoleSink
                 into = into[part.Length..];
             }
         });
+    }
+
+    /// <summary>A line a stream began and has not ended, in its colours, held back from what waits: kept from line to line,
+    /// nothing made for one but room where it outgrows what it kept.</summary>
+    private sealed class Unended
+    {
+        private readonly List<(int Length, CellStyle Style)> runs = [];
+        private char[] text = new char[256];
+
+        public int Length { get; private set; }
+
+        /// <summary>When its first text came (<see cref="Stopwatch.GetTimestamp"/>); the latest of all while it is empty.</summary>
+        public long Since { get; set; } = long.MaxValue;
+
+        public void Hold(ReadOnlySpan<char> more, CellStyle style)
+        {
+            if (Length + more.Length > text.Length)
+            {
+                Array.Resize(ref text, Math.Max(2 * text.Length, Length + more.Length));
+            }
+            more.CopyTo(text.AsSpan(Length));
+            Length += more.Length;
+            if (runs.Count > 0 && runs[^1].Style == style)
+            {
+                runs[^1] = runs[^1] with { Length = runs[^1].Length + more.Length };
+            }
+            else
+            {
+                runs.Add((more.Length, style));
+            }
+        }
+
+        /// <summary>Puts what it holds after what waits, in its colours, and empties it.</summary>
+        public void LetOut(ConsoleSink sink, ConsoleStream stream)
+        {
+            int at = 0;
+            foreach ((int length, CellStyle style) in runs)
+            {
+                sink.Add(text.AsSpan(at, length), stream, style);
+                at += length;
+            }
+            Clear();
+        }
+
+        public void Clear()
+        {
+            Length = 0;
+            Since = long.MaxValue;
+            runs.Clear();
+        }
     }
 
     /// <summary>Where a stream's text goes as it is read, a stretch of one style at a time.</summary>

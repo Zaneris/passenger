@@ -731,6 +731,56 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
+    /// <summary>A program whose errors begin a line its output writes a whole line into a moment before they end it, and
+    /// whose output begins a line its errors write a whole line into, shows each line whole in the Run window; and its
+    /// prompt, which ends with no line break, shows as written while it waits for its input (#2048).</summary>
+    [AvaloniaFact]
+    public void The_run_window_shows_each_streams_line_whole_whatever_the_other_writes_into_it_and_a_prompt_as_written()
+    {
+        Write("src/Hello/Program.cs", """
+            Console.Error.Write("dotnet watch : ");
+            Console.Out.WriteLine("the program's own line");
+            Thread.Sleep(20);
+            Console.Error.WriteLine("Waiting for changes");
+            Console.Out.Write("output begun, ");
+            Console.Error.WriteLine("an error between");
+            Thread.Sleep(20);
+            Console.Out.WriteLine("output ended");
+            Console.Out.Write("Name? ");
+            string? name = Console.ReadLine();
+            Console.Out.WriteLine($"Hello, {name}");
+
+            """);
+        MainWindow window = Open();
+        OutputView run = window.BottomPanel.Run;
+        try
+        {
+            window.Perform(AppActions.RunProgram);
+            Ui.WaitFor(() => Output(window).EndsWith("Name? ", StringComparison.Ordinal), () => $"the program's prompt, with no line break after it, where the Run window shows:\n{Output(window)}",
+                TimeSpan.FromMinutes(2));
+            Assert.True(window.Runner.IsRunning, "The program ended before its prompt showed, where it waits for its input");
+            string[] written = ["dotnet watch", "the program's own line", "Waiting for changes", "output begun", "an error between", "output ended", "Name?"];
+            string[] lines = [.. Output(window).Split('\n').Where(line => written.Any(part => line.Contains(part, StringComparison.Ordinal)))];
+            // Read apart, one stream's line may come before or after the other's written first; each stream's own order holds.
+            string[] output = ["the program's own line", "output begun, output ended", "Name? "];
+            string[] errors = ["dotnet watch : Waiting for changes", "an error between"];
+            Assert.True(lines.Where(output.Contains).SequenceEqual(output) && lines.Where(errors.Contains).SequenceEqual(errors) && lines.Length == output.Length + errors.Length,
+                $"The Run window shows a line of one stream inside the other's, as written between its two writes: [{string.Join(" | ", lines)}]");
+
+            Ui.Click(run.Editor, settle: false);
+            window.KeyTextInput("Ada");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to read the line typed and end");
+            Assert.Contains("Name? Ada\nHello, Ada\n", Output(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
+            window.Close();
+        }
+    }
+
     /// <summary>Run starts a project's apphost, as dotnet run does, so what only it carries (a Windows app's manifest, its
     /// icon, its name) reaches the program, which runs on the .NET Passenger builds with, never one the apphost finds
     /// itself (#1416).</summary>

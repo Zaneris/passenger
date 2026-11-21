@@ -350,7 +350,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
     public void Append(string text, bool error = false)
     {
         UiThread.Check();
-        Flush();
+        Flush(unended: true);
         if (fold?.LetGo() is { } unfinished)
         {
             Insert(unfinished, [new ConsoleRun(0, unfinished.Length, ConsoleStream.Error)]);
@@ -370,11 +370,14 @@ public sealed class OutputView : DockPanel, IOwnKeys
     }
 
     /// <summary>Takes in what waits in the sink now, rather than at the next frame: before the IDE says a program
-    /// ended or stopped, or reads what it wrote.</summary>
-    public void Flush()
+    /// ended or stopped, or reads what it wrote. A line a program has not ended yet stays held back for its end.</summary>
+    public void Flush() => Flush(unended: false);
+
+    /// <summary>Takes in what waits in the sink, with the lines a program has not ended where <paramref name="unended"/>.</summary>
+    private void Flush(bool unended)
     {
         UiThread.Check();
-        if (Sink.Take() is not { } batch)
+        if (Sink.Take(unended) is not { } batch)
         {
             return;
         }

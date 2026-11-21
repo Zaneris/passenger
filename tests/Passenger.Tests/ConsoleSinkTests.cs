@@ -218,6 +218,33 @@ public sealed class ConsoleSinkTests
         Assert.Null(ConsoleColoursTests.LookAt(console, "db | db line"));
     }
 
+    /// <summary>A line one stream begins shows whole though the other stream writes whole lines between its two writes,
+    /// those lines before it; a prompt with no line break shows as written once a moment passes with no end to it; and the
+    /// IDE's own words come after a line still unended, each stream's text in its order and its colour (#2048).</summary>
+    [AvaloniaFact]
+    public void A_line_the_other_stream_writes_into_shows_whole_after_it_and_a_prompt_with_no_line_break_as_written()
+    {
+        OutputView console = new(toolbar: false);
+        console.Sink.Write("dotnet watch : ", ConsoleStream.Error);
+        console.Sink.Write("the program's own line\n");
+        console.Sink.Write("Waiting for changes\n", ConsoleStream.Error);
+        console.Sink.Write("output begun, ");
+        console.Sink.Write("an error between\n", ConsoleStream.Error);
+        console.Sink.Write("output ended\nName? ");
+        const string Lines = "the program's own line\ndotnet watch : Waiting for changes\nan error between\noutput begun, output ended\n";
+        Assert.Equal(Lines, Shown(console));
+        Ui.WaitFor(() => Shown(console) == $"{Lines}Name? ", () => $"the prompt to show as written, where the console shows [{Shown(console)}]");
+
+        console.Sink.Write("half a line", ConsoleStream.Error);
+        console.Append("\nProcess finished.\n");
+        string shown = Shown(console);
+        Assert.Equal($"{Lines}Name? half a line\nProcess finished.\n", shown);
+        TextSnapshot text = console.Document.Snapshot;
+        string errors = string.Concat(console.Editor.Highlighter!.GetSpans(text, 0, text.Length).Where(s => s.Kind == TokenKind.ErrorOutput).Select(s => text.GetText(s.Start, s.Length)));
+        Assert.True(errors == "dotnet watch : Waiting for changes\nan error between\nhalf a line",
+            $"Standard error's text drawn in the error colour is [{errors}], not its lines alone, whole");
+    }
+
     private static string Shown(OutputView console)
     {
         console.Flush();
