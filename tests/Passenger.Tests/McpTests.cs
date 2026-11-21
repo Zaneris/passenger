@@ -2129,6 +2129,45 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             && tracked.GetProperty("ahead").GetInt32() == 1 && tracked.GetProperty("behind").GetInt32() == 0, $"vcs_status of a branch one commit ahead of its upstream answered: {tracked}");
     }
 
+    /// <summary>An agent stages into git's index as the person does: vcs_commit's stage stages a line of a change of several,
+    /// vcs_status then says the file is staged in part and shows what the index holds of it apart, stage false takes a
+    /// staged file back out, and vcs_commit with nothing named commits what the index holds alone.</summary>
+    [Fact]
+    public async Task An_agent_stages_lines_and_files_sees_what_is_staged_and_commits_it_alone()
+    {
+        string repository = TestFolders.Create("mcp-stage-");
+        DeleteAtEnd(repository);
+        string notes = Path.Combine(repository, "Notes.txt");
+        File.WriteAllText(notes, "one\ntwo\nthree\nfour\n");
+        File.WriteAllText(Path.Combine(repository, "Other.txt"), "old\n");
+        await TestGit.InitAsync(repository);
+        File.WriteAllText(notes, "ONE\nTWO\nTHREE\nfour\n");
+        File.WriteAllText(Path.Combine(repository, "Other.txt"), "new\n");
+
+        await using McpClient client = await Start(["--mcp", repository], languageServer: false);
+        string staged = Text(await Call(client, McpTools.VcsCommit, new() { ["stage"] = true, ["lines"] = new Dictionary<string, string> { ["Notes.txt"] = "2" } }));
+        Assert.Contains("Staged 1 line of Notes.txt", staged, StringComparison.Ordinal);
+        Assert.Equal("one\nTWO\nthree\nfour\n", await TestGit.RunAsync(repository, "show", ":Notes.txt"));
+        Text(await Call(client, McpTools.VcsCommit, new() { ["stage"] = true, ["paths"] = new[] { "Other.txt" } }));
+
+        JsonElement status = await Call(client, McpTools.VcsStatus);
+        string Staged(string name) => status.GetProperty("changes").EnumerateArray().First(c => c.GetProperty("path").GetString() == name)
+            .TryGetProperty("staged", out JsonElement held) ? held.GetString() ?? string.Empty : string.Empty;
+        Assert.True(Staged("Notes.txt") == "part" && Staged("Other.txt") == "whole", $"vcs_status answered: {status}");
+        string diff = Text(await Call(client, McpTools.VcsStatus, new() { ["path"] = "Notes.txt" }));
+        int apart = diff.IndexOf("Staged, git's index against the last commit:", StringComparison.Ordinal);
+        Assert.True(apart > 0 && diff[apart..].Contains("+TWO", StringComparison.Ordinal) && !diff[apart..].Contains("+ONE", StringComparison.Ordinal),
+            $"vcs_status of Notes.txt shows no staged part of TWO alone: {diff}");
+
+        Text(await Call(client, McpTools.VcsCommit, new() { ["stage"] = false, ["paths"] = new[] { "Other.txt" } }));
+        Assert.Equal("Notes.txt", (await TestGit.RunAsync(repository, "diff", "--cached", "--name-only")).Trim());
+        string made = Text(await Call(client, McpTools.VcsCommit, new() { ["message"] = "Capital two" }));
+        Assert.Contains("Capital two", made, StringComparison.Ordinal);
+        Assert.Equal("one\nTWO\nthree\nfour\n", await TestGit.RunAsync(repository, "show", "HEAD:Notes.txt"));
+        Assert.Equal("old\n", await TestGit.RunAsync(repository, "show", "HEAD:Other.txt"));
+        Assert.Equal("ONE\nTWO\nTHREE\nfour\n", File.ReadAllText(notes));
+    }
+
     /// <summary>vcs_commit's lines commit one change of a file whose index holds a change taken back out of the working
     /// tree since: the change only staged stays staged, the committed one taken in beside it, and the change left out
     /// stays in the working tree.</summary>

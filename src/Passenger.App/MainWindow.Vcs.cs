@@ -1158,7 +1158,7 @@ public partial class MainWindow
     /// <summary>Runs a change of git's index over <paramref name="paths"/>, kept as one command of global Undo named
     /// <paramref name="command"/> where the index changed: its Undo puts each entry back as it was, its Redo as it left
     /// it, while the index still holds them as the other left them. What came of it, said in the status bar.</summary>
-    private async Task<VcsOutcome> IndexChangedAsync(string command, IReadOnlyList<string> paths, Func<Task<VcsOutcome>> change)
+    internal async Task<VcsOutcome> IndexChangedAsync(string command, IReadOnlyList<string> paths, Func<Task<VcsOutcome>> change)
     {
         VcsController vcs = session.Vcs;
         IReadOnlyList<(string Path, (string Mode, string Blob)? Entry)> before = await vcs.IndexEntriesAsync(paths);

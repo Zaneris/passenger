@@ -28,8 +28,8 @@ public sealed partial class PassengerTools
         "branches yours and theirs are (in a rebase yours is the branch being rebased) and whether each side modified or " +
         "deleted each file in conflict; vcs_resolve resolves them. underWay names a merge, rebase, cherry-pick or revert still " +
         "in progress, its conflicts resolved or not, or a rebase stopped at an edit, break or exec, where vcs_commit commits " +
-        "and amends. With path, a folder's changes alone, or a file's since the last commit as a unified diff: the editor's " +
-        "text when it is open (unsaved changes included), else the file on disk.")]
+        "and amends. staged says how much of a change git's index holds: part or whole. With path, a folder's changes alone, or a file's since the last commit as a unified diff: the editor's " +
+        "text when it is open (unsaved changes included), else the file on disk, then what the index holds of it apart.")]
     public Task<object> VcsStatus(string? path = null, CancellationToken cancel = default) => OnUi<object>(cancel, async () =>
     {
         VcsController vcs = Session.Vcs;
@@ -77,7 +77,10 @@ public sealed partial class PassengerTools
 
         VcsChange Listed(ListedChange c) => c.Files is { } files
             ? new VcsChange(Relative(c.Change.Path) + Path.DirectorySeparatorChar, "unversioned", null) { Files = files }
-            : new VcsChange(Relative(c.Change.Path), c.Change.Kind.ToString().ToLowerInvariant(), c.Change.From is { } from ? Relative(from) : null, c.Change.Uncommittable);
+            : new VcsChange(Relative(c.Change.Path), c.Change.Kind.ToString().ToLowerInvariant(), c.Change.From is { } from ? Relative(from) : null, c.Change.Uncommittable)
+            {
+                Staged = c.Change.HoldsStaged ? c.Change.Staged.ToString().ToLowerInvariant() : null,
+            };
     }
 
     [McpServerTool(Name = McpTools.VcsResolve, Title = "Resolve a conflict", Destructive = true), Description(
@@ -130,7 +133,10 @@ public sealed partial class PassengerTools
             string mine = texts.Text(full) ?? string.Empty;
             return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head, mine, breaksAlike));
         }, cancel);
-        return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff);
+        // What git's index holds of it, where it holds a change the person or a tool staged.
+        string? staged = change is { HoldsStaged: true } && await Session.Vcs.IndexTextAsync(full) is { } index
+            ? await BackgroundWork.Run(() => LineDiff.Unified(head, index, name, from), cancel) : null;
+        return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff, staged is { Length: > 0 } ? $"Staged, git's index against the last commit:\n{staged}" : null);
 
         string Named(string path) => Session.Folder is { } folder && PathNames.Relative(path, folder) is { } below ? below : path;
 
@@ -138,14 +144,15 @@ public sealed partial class PassengerTools
     }
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
-        "Commits the paths given (a folder's, every change under it, new files too), else every changed file but the unversioned (saved first), with message; amend changes the " +
+        "Commits the paths given (a folder's, every change under it, new files too), else what git's index holds where it holds staged changes, else every changed file but the unversioned (saved first), with message; amend changes the " +
         "last commit (with paths [], its message alone), push pushes after; signed as git's config says and signed off as the Commit window's Sign-off is, " +
-        "as the window commits. lines maps a modified file to the lines of the changes of it to commit (\"3,12-14\", as vcs_status's diff " +
-        "numbers it now), each change they touch whole, the rest left uncommitted; with lines and no paths, only its files. With movesFirst, where git would no " +
+        "as the window commits. lines maps a modified file to its lines to commit (\"3,12-14\", as vcs_status's diff " +
+        "numbers it now), each changed line they name (a deletion beside one whole), the rest left uncommitted; with lines and no paths, only its files. " +
+        "stage true stages the paths and lines given into git's index instead (false unstages them), each one Undo in the window. With movesFirst, where git would no " +
         "longer see a moved file as moved once committed with its edits, the moves go first in a commit of their own with that message, as the Commit window offers. " +
         "Returns the commit (the moves' before it, where made) and how the push went; a push the remote refuses is an error with git's reason, the commit made all the same.")]
-    public Task<string> VcsCommit(string message, IReadOnlyList<string>? paths = null, Dictionary<string, string>? lines = null, bool amend = false, bool push = false,
-        string? movesFirst = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
+    public Task<string> VcsCommit(string? message = null, IReadOnlyList<string>? paths = null, Dictionary<string, string>? lines = null, bool amend = false, bool push = false,
+        string? movesFirst = null, bool? stage = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         if (movesFirst?.Trim().Length == 0)
         {
@@ -179,6 +186,7 @@ public sealed partial class PassengerTools
         chosen = [.. chosen.Distinct()];
         passed = [.. passed.Distinct()];
         Dictionary<string, PartialCommit> partial = new(PathNames.Comparer);
+        Dictionary<FileChange, PartialCommit> parts = [];
         List<string> left = [.. passed.Select(c => $"{Relative(c.Path)} ({c.Uncommittable})")];
         foreach ((string given, string ranges) in lines ?? [])
         {
@@ -195,14 +203,27 @@ public sealed partial class PassengerTools
             if (await ChosenChangesAsync(vcs, change, ranges) is { } some)
             {
                 partial[full] = some;
-                int rest = some.Diff.Hunks.Count - some.Hunks.Count;
+                parts[change] = some;
+                int rest = some.Diff.Hunks.Count(h => !some.Hunks.Contains(h));
                 left.Add($"{Plural.Of(rest, "change")} of {Relative(full)}");
             }
+        }
+        if (stage is { } staging)
+        {
+            return await StagedForAgentAsync(vcs, [.. chosen.Where(c => !parts.ContainsKey(c))], parts, staging);
+        }
+        // With nothing named, what the index holds goes in where it holds staged changes, as the Commit window commits.
+        if (paths is null && lines is not { Count: > 0 } && vcs.HoldsStaged)
+        {
+            chosen = [.. vcs.Changes.Where(c => c.Staged != StagedState.None && c.Kind is not (ChangeKind.Unversioned or ChangeKind.Conflicted))];
+            passed = [];
         }
         // The moves go first only where git would lose one, as the Commit window offers it.
         string? first = movesFirst is not null && !amend && (await vcs.LostMovesAsync(chosen, partial)).Count > 0 ? movesFirst : null;
         AgentCall.Say($"Committing {Plural.Of(chosen.Count, "file")}{(first is null ? string.Empty : ", their moves first")}{(push ? " and pushing" : string.Empty)}");
-        CommitResult result = await vcs.CommitAsync(chosen, message, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff), partial: partial, movesFirst: first);
+        bool index = paths is null && lines is not { Count: > 0 } && vcs.HoldsStaged;
+        CommitResult result = await vcs.CommitAsync(chosen, message ?? string.Empty, amend, push, ask: false, signing: new CommitSigning(SignOff: vcs.SignOff),
+            partial: index ? null : partial, movesFirst: index ? null : first, staged: index);
         if (!result.Commit.Succeeded)
         {
             // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
@@ -227,6 +248,32 @@ public sealed partial class PassengerTools
             { } refused => throw new InvalidOperationException($"Committed {made}, but the push did not go: {refused.Message}"),
         };
     });
+
+    /// <summary>vcs_commit's stage: the files named staged or unstaged whole, and the lines named of each file, each one command
+    /// of Undo in the window, said as the window says it.</summary>
+    private async Task<string> StagedForAgentAsync(VcsController vcs, IReadOnlyList<FileChange> whole, IReadOnlyDictionary<FileChange, PartialCommit> parts, bool stage)
+    {
+        if (vcs.WhyNotStage([.. whole, .. parts.Keys]) is { } refused)
+        {
+            throw new ArgumentException(refused);
+        }
+        string verb = stage ? "Stage" : "Unstage";
+        List<string> said = [];
+        if (whole.Count > 0)
+        {
+            string[] paths = [.. whole.SelectMany(c => c.From is { } from ? new[] { c.Path, from } : [c.Path])];
+            said.Add(Done(await window.IndexChangedAsync($"{verb} {Plural.Listed([.. whole.Select(c => c.Name)])}", paths, () => vcs.StageAsync(whole, stage))));
+        }
+        foreach ((FileChange change, PartialCommit chosen) in parts)
+        {
+            string[] paths = change.From is { } from ? [change.Path, from] : [change.Path];
+            said.Add(Done(await window.IndexChangedAsync($"{verb} {VcsController.Said(chosen.Diff, chosen.Hunks)} of {change.Name}", paths,
+                () => stage ? vcs.StageChangesAsync(change.Path, chosen) : vcs.UnstageChangesAsync(change, chosen.Diff, chosen.Hunks))));
+        }
+        return string.Join("; ", said);
+
+        static string Done(VcsOutcome outcome) => outcome.Succeeded ? outcome.Message : throw new InvalidOperationException(outcome.Message);
+    }
 
     /// <summary>The changes of a file that vcs_commit's lines touch, as the Commit window's partial commit chooses them, of
     /// the file's text as the editor holds it (saved before the commit): null where they touch all of them. Refused, saying
@@ -1081,6 +1128,9 @@ public sealed record VcsChange(string Path, string Kind, string? From, string? U
 {
     /// <summary>A folder of untracked files listed as one: how many files it holds.</summary>
     public int? Files { get; init; }
+
+    /// <summary>How much of the change git's index holds, part or whole; null for none (or its move alone).</summary>
+    public string? Staged { get; init; }
 }
 
 /// <summary>A commit as vcs_log lists it; with a path, what it did there.</summary>
