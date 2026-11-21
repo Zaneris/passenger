@@ -10,7 +10,8 @@ namespace Passenger.App;
 
 /// <summary>Code shown to read and copy (a card's, a Markdown page's fenced code, an agent's setup), drawn as the editor
 /// draws code: on its ground in its font, each stretch in its kind's colour and style, the theme's
-/// <c>Passenger.Syntax.*</c> and <c>Passenger.SyntaxStyle.*</c>, followed as the look changes. Coloured by the spans a server gives (C#'s,
+/// <c>Passenger.Syntax.*</c> and <c>Passenger.SyntaxStyle.*</c> as the theme gives them the code's language
+/// (<see cref="ThemeLanguages"/>), followed as the look changes. Coloured by the spans a server gives (C#'s,
 /// <see cref="Languages.CSharp.ServerCode"/>), else by its language's highlighter while it is on screen, let go as it
 /// leaves, else plain; selectable and wrapped rather than cut, a card's signature too long for its width laid out a
 /// parameter a line (<see cref="Signature"/>).</summary>
@@ -30,7 +31,7 @@ public sealed class ColouredCode : Border
 
     protected override Type StyleKeyOverride => typeof(Border);
 
-    private ColouredCode(string code, Languages.Language? language, IReadOnlyList<SyntaxSpan>? spans)
+    private ColouredCode(string code, Languages.Language? language, IReadOnlyList<SyntaxSpan>? spans, Languages.Language? coloursOf = null)
     {
         Code = code;
         this.language = language;
@@ -43,6 +44,10 @@ public sealed class ColouredCode : Border
         };
         text.Bind(TextElement.ForegroundProperty, text.GetResourceObservable(TokenKeys.Editor_Text));
         Child = text;
+        if ((coloursOf ?? language) is { } colours)
+        {
+            ThemeLanguages.Follow(this, colours.Id);
+        }
         if (spans is not null)
         {
             Colour(spans);
@@ -52,8 +57,9 @@ public sealed class ColouredCode : Border
     /// <summary>Code in a language, coloured by its highlighter once shown; plain for none.</summary>
     public static ColouredCode Of(string code, Languages.Language? language) => new(code, language, null);
 
-    /// <summary>Code in the colours a server gave it.</summary>
-    public static ColouredCode Of(string code, IReadOnlyList<SyntaxSpan> spans) => new(code, null, spans);
+    /// <summary>Code in the colours a server gave it, each kind's as the theme gives it <paramref name="language"/>; never
+    /// coloured again by that language's highlighter, which would read it as a file of its own.</summary>
+    public static ColouredCode Of(string code, IReadOnlyList<SyntaxSpan> spans, Languages.Language? language = null) => new(code, null, spans, language);
 
     /// <summary>Code of no language, in the code's own colour.</summary>
     public static ColouredCode Plain(string code) => new(code, null, null);

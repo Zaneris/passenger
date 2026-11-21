@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -153,6 +154,56 @@ public sealed class ThemeLooksTests : IDisposable
     }
 
     /// <summary>The keyword colour an editor finds where it is, its own resources first.</summary>
+    /// <summary>A card's C# takes the colours a theme gives C# of its own, as the editor showing the file draws them: the
+    /// hover card's keyword and method in the theme's C# colours for them, its class in the theme's own class colour, which
+    /// the theme leaves C#. A card's served code was coloured again by the language's own highlighter once it knew its
+    /// language, which reads the signature as a file of its own and loses what the server said of its names.</summary>
+    [AvaloniaFact]
+    public void A_hover_cards_code_takes_the_colours_a_theme_gives_its_language_as_the_editor_does()
+    {
+        File.WriteAllText(Path.Combine(folder, "Looks.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "static class Program\n{\n    static int Twice(int value) => value * 2;\n\n    static void Main() => Twice(2);\n}\n");
+        string theme = Path.Combine(themes, "Coded.json");
+        File.WriteAllText(theme, """
+            {"format": 1, "name": "Coded looks of the test",
+             "languages": {"csharp": {"dark": {"Syntax.Keyword": "#FF10A0", "Syntax.Method": "#10C0FF"},
+                                      "light": {"Syntax.Keyword": "#A01060", "Syntax.Method": "#0060A0"}}}}
+            """);
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        try
+        {
+            window.OpenFile(Path.Combine(folder, "Program.cs"));
+            Ui.Settle();
+            SettingsDialog dialog = window.ShowSettings();
+            Ui.Settle();
+            Assert.Null(Ui.Await(dialog.ThemePicker.AddFileAsync(theme), "a theme file with C# colours of its own added"));
+            dialog.Apply();
+            dialog.Close();
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            Color Drawn(string key) => editor.TryFindResource(key, editor.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush ? brush.Color : default;
+            bool dark = window.ActualThemeVariant == ThemeVariant.Dark;
+            Assert.Equal(Color.Parse(dark ? "#FF10A0" : "#A01060"), Drawn(TokenKeys.Syntax_Keyword));
+            Assert.Equal(Color.Parse(dark ? "#10C0FF" : "#0060A0"), Drawn(TokenKeys.Syntax_Method));
+
+            int at = editor.Document.Snapshot.ToString().IndexOf("=> Twice", StringComparison.Ordinal) + 5;
+            window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            (string Word, string Key)[] words = [("int", TokenKeys.Syntax_Keyword), ("Program", TokenKeys.Syntax_Class), ("Twice", TokenKeys.Syntax_Method)];
+            Avalonia.Controls.Documents.Run[] Runs() => [.. window.Assist.HoverCard?.GetVisualDescendants().OfType<ColouredCode>().SelectMany(c => c.Runs) ?? []];
+            Ui.WaitFor(() => words.All(w => Runs().Any(r => r.Text == w.Word && r.Foreground is ISolidColorBrush brush && brush.Color == Drawn(w.Key))),
+                () => $"the hover card's int, Program and Twice in the colours the editor draws C#'s in, where its runs are "
+                    + $"[{string.Join(", ", Runs().Select(r => $"'{r.Text}' {(r.Foreground as ISolidColorBrush)?.Color}"))}]: the card's code would read otherwise than the file's");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
     private static Color Keyword(Control editor) =>
         editor.TryFindResource(TokenKeys.Syntax_Keyword, editor.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush ? brush.Color : default;
 }

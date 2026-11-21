@@ -135,7 +135,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     {
         if (given is not null && Languages.CSharp.ServerCode.Of(given) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
         {
-            parts.Children.Add(Signed(ColouredCode.Of(shown, spans)));
+            parts.Children.Add(Signed(ColouredCode.Of(shown, spans, language)));
             return;
         }
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
