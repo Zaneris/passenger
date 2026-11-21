@@ -1174,6 +1174,10 @@ public partial class ManagedDebugger
         {
             return new VariableInfo { Name = named, Value = SymbolDisplay.FormatLiteral(text, quote: true), Type = "string", VariablesReference = 0 };
         }
+        if (result.Void)
+        {
+            return new VariableInfo { Name = named, Value = DapRows.RanWithNoValue, Type = "void", VariablesReference = 0 };
+        }
         VariableInfo row = await ValueRow(named, named, result.Value!, threadId, frameStackDepth, result.Declared);
         if (row.VariablesReference != 0)
         {

@@ -169,6 +169,10 @@ public static class DapRows
     /// <summary>The value the last step's last call returned, as an expression names it; the calls before it are this name
     /// followed by their place from one, in the order they returned.</summary>
     public const string ReturnValue = "$ReturnValue";
+
+    /// <summary>What an evaluation's row, of type void, says of an expression that ran and has no value: a call of a method
+    /// that returns nothing.</summary>
+    public const string RanWithNoValue = "Ran, with no value";
 }
 
 /// <summary>A value's presentation hint kinds, by the protocol's names, each written once for both ends.</summary>

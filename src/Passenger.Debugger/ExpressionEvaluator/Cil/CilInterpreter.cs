@@ -10,8 +10,9 @@ using Passenger.Debugger.Interop;
 namespace Passenger.Debugger.ExpressionEvaluator.Cil;
 
 /// <summary>An expression's value in the program, or a string the evaluation made that the program could not be given
-/// (<see cref="Text"/>: it runs no code where it is stopped), with no value in the program.</summary>
-internal readonly record struct CilInterpretationResult(ICorDebugValue? Value, ICorDebugHandleValue? OwnedResultHandle, string? Text = null);
+/// (<see cref="Text"/>: it runs no code where it is stopped), with no value in the program, or none at all where it is a
+/// call that returns nothing (<see cref="Void"/>).</summary>
+internal readonly record struct CilInterpretationResult(ICorDebugValue? Value, ICorDebugHandleValue? OwnedResultHandle, string? Text = null, bool Void = false);
 
 internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPrimitiveTypeClasses primitiveTypes)
 {
@@ -36,6 +37,10 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         try
         {
             CilValue result = await InterpretAsync(run, decoded, arguments, locals);
+            if (resolver.ResolveMethodReturnType(compiled.EntryMethod).Primitive is PrimitiveTypeCode.Void)
+            {
+                return new CilInterpretationResult(null, null, Void: true);
+            }
             ICorDebugValue value;
             try
             {

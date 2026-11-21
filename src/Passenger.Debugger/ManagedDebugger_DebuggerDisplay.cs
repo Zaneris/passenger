@@ -147,6 +147,10 @@ public partial class ManagedDebugger
             {
                 return (DisplayFormat.Shown(DisplayValue.OfText(text, SymbolDisplay.FormatLiteral(text, quote: true)), specifiers), false, "string");
             }
+            if (result.Void)
+            {
+                return (DapRows.RanWithNoValue, false, "void");
+            }
             if ((result.Error is not null || result.Value is null) && target is not null && IsDottedName(expression)
                 && await target.GetPropertyValue(ProcessRuntimeEventsUntilEvalEvent, EvalStatus, GetIlFrameForThreadIdAndStackDepth(threadId, frameStackDepth), expression) is { } implemented)
             {

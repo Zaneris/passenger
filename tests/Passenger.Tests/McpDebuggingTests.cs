@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 using Passenger.App;
 using Passenger.App.Mcp;
 using Passenger.Core;
+using Passenger.Dap;
 using Passenger.Lsp;
 
 namespace Passenger.Tests;
@@ -61,6 +62,9 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("1", Local(stop, "i"));
         Assert.Equal("0", Local(stop, "total"));
         Assert.Equal("42", (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "Helper.Twice(i) + 40" })).GetProperty("value").GetString());
+        JsonElement ran = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "System.GC.Collect()" });
+        Assert.True((ran.GetProperty("value").GetString(), ran.GetProperty("type").GetString()) == (DapRows.RanWithNoValue, "void"),
+            $"debug_evaluate of a call that returns nothing answered {ran}");
         int depth = stop.GetProperty("frames").GetArrayLength();
         foreach ((string tool, Dictionary<string, object?> arguments) in new (string, Dictionary<string, object?>)[]
         {

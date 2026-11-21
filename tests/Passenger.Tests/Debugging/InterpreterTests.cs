@@ -398,6 +398,18 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.True(timerType == "System.Threading.Timer", $"A timer made with a lambda reads {timer} ({timerType})");
     }
 
+    /// <summary>A call that returns nothing says it ran with no value, of type void, never a null of type object.</summary>
+    [Fact]
+    public async Task A_call_that_returns_nothing_says_it_ran_with_no_value()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        int frame = await StoppedInReadingAsync(host);
+
+        Assert.Equal((DapRows.RanWithNoValue, "void"), await Evaluate(host, frame, "GC.Collect()"));
+        Assert.Equal((DapRows.RanWithNoValue, "void"), await Evaluate(host, frame, "Console.Out.Flush()"));
+        Assert.Equal(("5", "int"), await Evaluate(host, frame, "word.Length"));
+    }
+
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
     /// <summary>PassengerCases launched and stopped in Reading.Run once its rounds are done; the top frame.</summary>
