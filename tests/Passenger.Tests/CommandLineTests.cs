@@ -68,7 +68,7 @@ public sealed class CommandLineTests : IDisposable
     [InlineData("--headless --mcp", "--headless is a person's window with nobody at it, a test run's")]
     [InlineData(". --new-window", "--new-window opens a window with nothing open, and takes nothing else, not .")]
     [InlineData("--new-window --theme dark", "--new-window opens a window with nothing open, and takes nothing else, not --theme")]
-    [InlineData("--screenshot out.png --look sakura", "--look takes passenger, cubicle, harbour")]
+    [InlineData("--screenshot out.png --look sakura", "--look takes passenger, cubicle, high contrast, harbour")]
     [InlineData("--screenshot out.png --look ::Sakura", "--look takes SOURCE::NAME, a source and a theme's name, not '::Sakura'")]
     [InlineData("--screenshot out.png --look Zaneris/passenger-themes::", "--look takes SOURCE::NAME, a source and a theme's name, not 'Zaneris/passenger-themes::'")]
     [InlineData("--screenshot out.png --scheme relative/../folder::Dusk", "--scheme 'relative/../folder::Dusk' names no source Passenger reads")]
