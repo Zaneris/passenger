@@ -30,6 +30,23 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `McpAttachTimingTests`' `An_attached_diagnostic_stops_waiting_on_a_suspended_server_when_cancelled_or_shut_out`,
+  both rows, every system, CI 44824859727: "Waited 10 s for the attached agent's diagnostic to wait on the suspended
+  server". **The test looked for the wrong request**: since b60508aea the call first asks the extension what was
+  written on disk, which a suspended server never answers, so the call never reached the pull; given up or shut out, it
+  still let the request go at once (af4664a63, #2049).
+- `LongFileAssistTests`' `Typing_through_completion_over_four_thousand_members_…`, macOS, same run: "The diagnostics
+  call failed: A task was canceled". **Another test's leftover**: the attached-diagnostic test's own call, unawaited
+  after it failed, faulted as its client was disposed and went unobserved into the next class; that test now dismisses
+  it (af4664a63, #2049).
+- `NewServiceSetupTests`' `New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes`, macOS, same run:
+  "Undo left the new project's folder: Waiting for the design-time build of Site…". **A turn the IDE took with nothing
+  held**: the let-go's wait ended on the thread pool even with nothing under way, so the settle ended before the Undo
+  went on (d3c81a831, #2050).
+- `ContainerServicesTests`' `A_services_Debug_Restart_Run_without_Debugger_and_Attach_…`, Linux, same run: web exited
+  132 (illegal instruction) 0.8 s after Run without Debugger detached it, as its first request arrived. **Cause not
+  found**, not met in 4 arm64 runs; the engine's log is now kept and read from the stopped container (921dd5120, #2050).
+
 - `BuildRunTests`' `With_hot_reload_edits_saved_one_after_another_each_reach_the_program_…`, CI 44763221323 (Windows
   report shard 2): "dotnet watch should have applied each of the 4 edits once", its lines holding "dotnet watch : said
   1". **The test read wrong**: dotnet watch writes "dotnet watch : " and its words to stderr in two writes, and the
