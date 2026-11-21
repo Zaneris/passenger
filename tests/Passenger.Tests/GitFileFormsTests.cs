@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Vcs;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Vcs;
@@ -270,8 +271,8 @@ public sealed class GitFileFormsBytesTests : IDisposable
         Avalonia.Controls.ListBox changes = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(commit).OfType<Avalonia.Controls.ListBox>().First(l => ReferenceEquals(l.ItemsSource, commit.Rows));
         Ui.Click(Ui.Row(changes, commit.Rows.OfType<Passenger.App.ToolWindows.CommitRow>().First(r => r.Change.Name == "asset.bin")));
         Ui.Press(window, $"{cmd} D");
-        const string Said = "Binary files differ: asset.bin is 104858624 bytes now and 104857600 bytes in the last commit";
-        Ui.WaitFor(() => window.Status == Said, () => $"the Commit window's Show Diff saying the binary files differ, where the status says \"{window.Status}\"");
+        string said = $"Binary files differ: asset.bin is {Numbers.Said(Size + 1024)} bytes now and {Numbers.Said(Size)} bytes in the last commit";
+        Ui.WaitFor(() => window.Status == said, () => $"the Commit window's Show Diff saying \"{said}\", where the status says \"{window.Status}\"");
         long allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
 
         Assert.Equal(["asset.bin modified"], status.Changes.Select(c => $"{c.Path} {c.Kind}"));

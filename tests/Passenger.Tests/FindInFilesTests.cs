@@ -251,11 +251,12 @@ public sealed class FindInFilesTests : IDisposable
         Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
         string[] left = [.. Directory.GetFiles(folder, "Tally*.txt").Where(f => File.ReadAllText(f).Contains("tally", StringComparison.Ordinal)).Select(Path.GetFileName).Order(StringComparer.Ordinal)!];
         Assert.True(left.Length == 0, $"Replace All left the matches past the list's 1,000 in {string.Join(", ", left)}");
-        Assert.Equal("Replaced 1100 matches in 110 files", window.Status);
-        Assert.StartsWith("Replace 1100 matches in 110 files with 'sum'?", Assert.Single(asked), StringComparison.Ordinal);
+        string every = $"{Numbers.Said(1100)} matches in 110 files";
+        Assert.Equal($"Replaced {every}", window.Status);
+        Assert.StartsWith($"Replace {every} with 'sum'?", Assert.Single(asked), StringComparison.Ordinal);
 
         Task<string> replacing = new Passenger.App.Mcp.PassengerTools(window).ReplaceInFiles("sum", "tally", mask: "*.txt");
-        Assert.StartsWith("Replaced 1100 matches in 110 files: ", Ui.Await(replacing, "replace_in_files' answer"), StringComparison.Ordinal);
+        Assert.StartsWith($"Replaced {every}: ", Ui.Await(replacing, "replace_in_files' answer"), StringComparison.Ordinal);
         Assert.DoesNotContain(Directory.GetFiles(folder, "Tally*.txt"), f => File.ReadAllText(f).Contains("sum", StringComparison.Ordinal));
         window.Close();
     }
@@ -299,7 +300,7 @@ public sealed class FindInFilesTests : IDisposable
 
             popup.RequestReplace();
             Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"Replace All asked again; the status says '{window.Status}'");
-            Assert.Equal("Replaced 1100 matches in 110 files", window.Status);
+            Assert.Equal($"Replaced {Numbers.Said(1100)} matches in 110 files", window.Status);
         }
         finally
         {

@@ -359,7 +359,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         window.Perform(AppActions.ShowProblems);
         problems.Shown = ProblemsTab.Bindings;
         Ui.Settle();
-        Assert.Contains(problems.Rows, r => r.Problem is null && r.Label == $"{app.Untold.Bindings} more binding failures, not listed"
+        Assert.Contains(problems.Rows, r => r.Problem is null && r.Label == $"{Numbers.Said(app.Untold.Bindings)} more binding failures, not listed"
             && r.Detail == "BindingErrorsApp lists its first 1000 failed bindings and only counts the failures of any after them");
 
         Ui.Run(window, AppActions.Stop);
