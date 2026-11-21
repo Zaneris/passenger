@@ -724,8 +724,8 @@ public abstract class WatchedTree : IDisposable
         }
         if (source.Path != Top && (error is DirectoryNotFoundException || !Directory.Exists(source.Path)))
         {
-            // A folder watched on its own was deleted or moved: the folder above it says so, and where it went.
-            Follow(() => Stop(source));
+            // Deleted or moved with the folders watched under it, which may be heard before the folder above says where it went.
+            Follow(() => Unwatch(source.Path, source));
             return;
         }
         if (error is InternalBufferOverflowException)
@@ -1322,19 +1322,24 @@ public abstract class WatchedTree : IDisposable
     }
 
     /// <summary>Lets go of a folder deleted or moved away and every folder watched under it, whose watches went with it
-    /// or now follow it under another name; one made again in its place is watched anew after.</summary>
-    private void Unwatch(string path)
+    /// or now follow it under another name; one made again in its place is watched anew after. Given the folder's own
+    /// watch, said gone (<paramref name="gone"/>), only while that watch still holds the folder's place.</summary>
+    private void Unwatch(string path, Watch? gone = null)
     {
         List<Watch> stopped = [];
         lock (gate)
         {
-            foreach (string watched in watches.Keys.Where(w => PathNames.Within(w, path)).ToList())
+            if (gone is null || watches.GetValueOrDefault(path) == gone)
             {
-                stopped.Add(watches[watched]);
-                watches.Remove(watched);
+                foreach (string watched in watches.Keys.Where(w => PathNames.Within(w, path)).ToList())
+                {
+                    stopped.Add(watches[watched]);
+                    watches.Remove(watched);
+                }
             }
         }
         stopped.ForEach(w => w.Dispose());
+        gone?.Dispose();
     }
 
     private bool IsWatched(string path)

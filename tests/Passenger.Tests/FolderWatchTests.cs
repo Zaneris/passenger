@@ -503,7 +503,7 @@ public sealed class FolderWatchTests : IDisposable
         {
             Directory.Move(Path.Combine(folder, "src", "Feature"), Path.Combine(folder, "src", "Moved"));
             Ui.WaitFor(() => Watched(window).Contains("src/Moved/Deep") && !Watched(window).Any(p => p.StartsWith("src/Feature", StringComparison.Ordinal)),
-                "the renamed folders to be watched under their new names alone");
+                () => $"the renamed folders to be watched under their new names alone, where {string.Join(", ", Watched(window))} are watched");
             Ui.Settle();
             string moved = Path.Combine("src", "Moved", "Deep", "Moved.cs");
             Write("src/Moved/Deep/Moved.cs", "class Moved { }\n");
@@ -513,6 +513,37 @@ public sealed class FolderWatchTests : IDisposable
             Ui.WaitFor(() => !Watched(window).Any(p => p.StartsWith("src/Moved", StringComparison.Ordinal)), "the deleted folders' watches to be let go of");
             Ui.WaitFor(() => !window.FileIndex.Files.Contains(moved), "the deleted file to leave Go to File");
         }
+        window.Close();
+    }
+
+    /// <summary>Where each folder is watched on its own, a folder moved away ends its own watch and the folder above it says
+    /// where it went, each heard on its own thread: heard ending first, the folder lets go of the folders watched under it
+    /// too, so none stays watched under its old name, and one made again there is watched anew. The system's watchers hear
+    /// nothing while the folder moves but the moved folder's own watch ending.</summary>
+    [AvaloniaFact]
+    public void A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows moves a watched folder only once its watch lets go");
+        Write("src/Feature/Deep/Deep.cs", "class Deep { }\n");
+        Write("src/Feature/obj/project.assets.json", "{}\n");
+        MainWindow window = Open(FolderWatching.Inotify, languageServer: false);
+        FolderWatcher watcher = window.FolderWatcher!;
+        Assert.Contains("src/Feature/Deep", Watched(window));
+        using (watcher.Deaf())
+        {
+            Directory.Move(Path.Combine(folder, "src", "Feature"), Path.Combine(folder, "src", "Moved"));
+            watcher.Fail(Path.Combine(folder, "src", "Feature"), new DirectoryNotFoundException($"{Path.Combine(folder, "src", "Feature")} was moved"));
+            Ui.Settle();
+        }
+        window.Activate();
+        Ui.WaitFor(() => Watched(window).Contains("src/Moved/Deep") && !Watched(window).Any(p => p.StartsWith("src/Feature", StringComparison.Ordinal)),
+            () => $"the moved folders to be watched under their new names alone, where {string.Join(", ", Watched(window))} are watched");
+
+        Directory.CreateDirectory(Path.Combine(folder, "src", "Feature", "Deep"));
+        Ui.WaitFor(() => Watched(window).Contains("src/Feature/Deep"), () => $"the folder made again under the old name to be watched, where {string.Join(", ", Watched(window))} are");
+        Write("src/Feature/Deep/Again.cs", "class Again { }\n");
+        string again = Path.Combine("src", "Feature", "Deep", "Again.cs");
+        Ui.WaitFor(() => window.FileIndex.Files.Contains(again), "the file made in the folder made again under the old name in Go to File, which only that folder's watch hears of");
         window.Close();
     }
 
