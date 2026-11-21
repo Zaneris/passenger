@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-20
 
+- `XamlTests`' `Passengers_own_xaml_which_compiles_is_marked_with_no_problem`, CI 44836100225 (gate, every system):
+  "Resource 'Passenger.CodeFont' is not found". **A bug in the IDE**: the type ramp's `code` style named the code
+  font's resource by its words, a key the app sets only from code, which Passenger's XAML check can't find; it names it
+  from its home through `x:Static CodeFonts.Key` now (571d4aabf).
+- `AspirePackageServicesTests`' `Orchestration_adds_a_service_to_Aspire_17s_AppHost_…`, same run (gate, every system):
+  a check row's name cut at the least width. **A bug in the IDE**: with its label now beside the list, Add Aspire
+  Orchestration at its least width cut a check row's name with no ellipsis; `CheckRows`' name ends in one now
+  (6d6e463e8).
+- `RetainedRowsTests`' `A_key_draws_again_only_the_rows_it_changed_…`, same run (gate, Linux): a row kept through a key
+  showed what it showed before. **A race in the test**: the caret blinked between the two captures it compares on the
+  slow runner; the class holds each caret steady (8c4acf342).
+- `HtmlPreviewTests`' `A_system_without_a_web_view_for_the_page_says_so_in_its_place`, same run (report, every
+  system). **The test read wrong**: the words moved into an `EmptyState`, and the test looked only at the preview's own
+  children (4c27446ea).
+
 - `McpAttachTimingTests`' `An_attached_diagnostic_stops_waiting_on_a_suspended_server_when_cancelled_or_shut_out`,
   both rows, every system, CI 44824859727: "Waited 10 s for the attached agent's diagnostic to wait on the suspended
   server". **The test looked for the wrong request**: since b60508aea the call first asks the extension what was
