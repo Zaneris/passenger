@@ -217,8 +217,9 @@ public partial class MainWindow
 
     /// <summary>A version of a file beside the file as it is now: <paramref name="revision"/>'s text of it at
     /// <paramref name="then"/> (where it was in that version), else at <paramref name="origin"/> (where the last commit has a
-    /// file renamed since), the right side the open file's own text when it is open.</summary>
-    public async Task<IDiffHost?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null)
+    /// file renamed since), the right side the open file's own text when it is open. A file <paramref name="added"/> since
+    /// that version, which has none of it, is beside an empty side.</summary>
+    public async Task<IDiffHost?> CompareWithAsync(string path, string revision, string version, string then, string? origin = null, bool added = false)
     {
         if (session.Vcs.Repository is null)
         {
@@ -231,7 +232,7 @@ public partial class MainWindow
             was = await session.Vcs.VersionAsync(revision, origin, path);
             then = origin;
         }
-        if (was?.Text is not { } theirs)
+        if ((was is null && added ? string.Empty : was?.Text) is not { } theirs)
         {
             status.Text = was is null ? $"{Path.GetFileName(then)} is not in {version}" : $"{Path.GetFileName(then)} is binary in {version}, so it has no lines to compare";
             return null;
@@ -239,8 +240,8 @@ public partial class MainWindow
         OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         TextSnapshot text = mine.Snapshot;
-        Task<bool> breaksAlike = session.Vcs.BreaksStoredAlikeAsync(revision, then, was, path);
+        Task<bool> breaksAlike = was is null ? Task.FromResult(false) : session.Vcs.BreaksStoredAlikeAsync(revision, then, was, path);
         FileDiff diff = (await ComparedAsync(theirs, text)).StoringBreaksAlike(await breaksAlike);
-        return OpenLocalDiff(path, open, mine, diff, version, again: () => CompareWithAsync(path, revision, version, then, origin));
+        return OpenLocalDiff(path, open, mine, diff, version, again: () => CompareWithAsync(path, revision, version, then, origin, added));
     }
 }

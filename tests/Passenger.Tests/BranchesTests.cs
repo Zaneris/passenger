@@ -496,6 +496,35 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Show Diff on an added row of the working tree's comparison with a branch, a file the branch has none of,
+    /// shows the file beside an empty side named for the branch: one committed since the branch (Notes.txt) and one git
+    /// does not track (Added.cs), each all added.</summary>
+    [AvaloniaFact]
+    public void Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side()
+    {
+        Commit("Notes.txt", "notes\n", "Notes on main");
+        File.WriteAllText(Path.Combine(folder, "Added.cs"), "class Added { }\n");
+        MainWindow window = Open();
+        BranchesPanel panel = window.GitBranches;
+        Choose(panel, List(panel), "feature", "Show Diff with Working Tree");
+        WorkingTreeDiffView changes = Assert.IsType<WorkingTreeDiffView>(window.GitWindow.Shown);
+        Ui.Landed(() => changes.Files.Any(f => f.Name == "Added.cs"), $"feature's comparison to list the untracked Added.cs, where it lists [{string.Join(", ", changes.Files.Select(f => f.Name))}]");
+        foreach ((string name, string text) in (ReadOnlySpan<(string, string)>)[("Notes.txt", "notes\n"), ("Added.cs", "class Added { }\n")])
+        {
+            Assert.Equal(Passenger.Vcs.ChangeKind.Added, changes.Files.Single(f => f.Name == name).Kind);
+            Ui.Click(Ui.Row(changes.List, changes.Files.Single(f => f.Name == name)));
+            Ui.Press(window, "ENTER");
+            IDiffHost diff = OpenDiffs.Landed(window, $"{name}'s diff with feature, which has none of it");
+            DiffView view = OpenDiffs.ViewOf(diff);
+            Assert.True(view.Left.Document.Snapshot.Length == 0 && view.Right.Document.Snapshot.ToString() == text,
+                $"{name}'s diff with feature showed [{view.Left.Document.Snapshot}] beside [{view.Right.Document.Snapshot}], not nothing beside the file; the status bar says \"{window.Status}\"");
+            Assert.Equal($"{name}: feature and your version", OpenDiffs.TitleOf(diff));
+            diff.Close();
+            Ui.Settle();
+        }
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_merge_from_the_panel_that_conflicts_opens_the_conflicts_dialog()
