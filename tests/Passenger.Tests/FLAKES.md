@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `AsyncStepTests`' `A_step_over_an_await_whose_question_of_the_run_that_went_on_is_held_unfinished_…`, the Mac under
+  load (#1899's runs): "the question of which run resumed was never held unfinished". **The test's await**:
+  `Task.Delay(10)`, whose returned value the step watches, stopping the thread at the call's return, a round trip to
+  the debugger that under load outlasted the 10 ms, so the await found its task complete and never left the method, no
+  run resuming to be asked of (1 of 12 steps in a loaded probe, its log ending the step with no yield). The test steps
+  over `Task.Yield`'s await, which always leaves it (877b5143c, #2078).
 - `McpAttachTimingTests`' `An_attached_diagnostic_stops_waiting_on_a_suspended_server_…(revokeConnection: False)`,
   CI 44896789551 (macOS, report, alone): "Waited 20 s for the diagnostic's request to clear while its server is still
   suspended". **The test waited wrong**: it waited for every request of the server's to clear, and the window's own pull
