@@ -118,7 +118,20 @@ public sealed class ExceptionBreakpoint(string? type) : Breakpoint
 
     public ExceptionScenarios Scenarios { get; internal set; } = type is null ? AnyExceptionScenarios : ExceptionScenarios.All;
 
+    /// <summary>Why it never stops in its scenarios (<see cref="InactiveIn"/>); null while it may.</summary>
+    public string? Inactive => InactiveIn(Scenarios);
+
     public override string Location => Type ?? AnyException;
+
+    /// <summary>Why an exception breakpoint in <paramref name="scenarios"/> never stops, the same wherever it is said (its
+    /// Suspend If, an agent's answer): it stops only when one of each row, thrown and handled, holds, so a row with none
+    /// leaves it inactive; null where each row has one.</summary>
+    public static string? InactiveIn(ExceptionScenarios scenarios) =>
+        (scenarios & ExceptionScenarios.Thrown) == 0
+            ? "Exception breakpoint is currently inactive because all 'Exception thrown in' options are disabled"
+            : (scenarios & (ExceptionScenarios.HandledInUserCode | ExceptionScenarios.HandledInExternalCode | ExceptionScenarios.Unhandled)) == 0
+                ? "Exception breakpoint is currently inactive because all 'Exception handler' options are disabled"
+                : null;
 }
 
 /// <summary>A data breakpoint (Set Data Breakpoint on a member in Variables): a field, an auto-property or an array

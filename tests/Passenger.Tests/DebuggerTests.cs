@@ -1181,6 +1181,12 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.Click(Scenario(breakpoints, "Exception handler", "User code"));
         Ui.Click(Scenario(breakpoints, "Exception handler", "External code"));
         Ui.Click(Scenario(breakpoints, "Exception handler", "Unhandled"));
+        // With no handler box checked it never stops, said in the words an agent's answer takes too.
+        Ui.Click(Scenario(breakpoints, "Exception handler", "User code"));
+        string inactive = ExceptionBreakpoint.InactiveIn(ExceptionScenarios.Thrown)!;
+        Assert.Contains(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == inactive && t.IsEffectivelyVisible);
+        Ui.Click(Scenario(breakpoints, "Exception handler", "User code"));
+        Assert.DoesNotContain(breakpoints.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == inactive && t.IsEffectivelyVisible);
         Ui.Click(Button(breakpoints, "Done"));
         Assert.Equal(ExceptionScenarios.Thrown | ExceptionScenarios.HandledInUserCode, operation.Scenarios);
         StartDebugging(window);

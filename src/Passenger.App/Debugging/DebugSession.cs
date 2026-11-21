@@ -1179,10 +1179,11 @@ public sealed class DebugSession
         Signatures.Of([.. breakpoints.In(path).Where(b => b.Enabled).Select(b => Signatures.Of(
             lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))]);
 
-    /// <summary>The exception breakpoints that are on, as the protocol's exception options; none while muted, so no exception
-    /// stops the program, not even one left unhandled.</summary>
+    /// <summary>The exception breakpoints that are on, as the protocol's exception options, but those whose scenarios never stop
+    /// (<see cref="ExceptionBreakpoint.Inactive"/>), which no debugger is to stop at; none while muted, so no exception stops
+    /// the program, not even one left unhandled.</summary>
     private List<(ExceptionBreakpoint Breakpoint, DapExceptionOptions Option)> ExceptionOptions() => breakpoints.Muted ? [] :
-        [.. breakpoints.Exceptions.Where(e => e.Enabled).Select(e => (e, new DapExceptionOptions(
+        [.. breakpoints.Exceptions.Where(e => e.Enabled && e.Inactive is null).Select(e => (e, new DapExceptionOptions(
             e.Type is { } type ? [new DapExceptionPathSegment(["CLR"]), new DapExceptionPathSegment([type])] : [new DapExceptionPathSegment(["CLR"])],
             e.Scenarios.HasFlag(ExceptionScenarios.HandledInUserCode) ? DapBreakModes.Always
                 : e.Scenarios.HasFlag(ExceptionScenarios.HandledInExternalCode) ? DapBreakModes.UserUnhandled : DapBreakModes.Unhandled)

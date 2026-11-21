@@ -155,12 +155,7 @@ public sealed class BreakpointProperties : UserControl
     /// <summary>Says that an exception breakpoint with no box of a row checked never stops.</summary>
     private void CheckScenarios()
     {
-        ExceptionScenarios chosen = Chosen();
-        inactive.Text = (chosen & ExceptionScenarios.Thrown) == 0
-            ? "Exception breakpoint is currently inactive because all 'Exception thrown in' options are disabled"
-            : (chosen & (ExceptionScenarios.HandledInUserCode | ExceptionScenarios.HandledInExternalCode | ExceptionScenarios.Unhandled)) == 0
-                ? "Exception breakpoint is currently inactive because all 'Exception handler' options are disabled"
-                : null;
+        inactive.Text = ExceptionBreakpoint.InactiveIn(Chosen());
         inactive.IsVisible = inactive.Text is not null;
     }
 

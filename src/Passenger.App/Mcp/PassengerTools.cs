@@ -3471,8 +3471,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         BindingErrorBreakpoint bindings = Session.Debug.Breakpoints.BindingErrors;
         ScriptErrorBreakpoint scripts = Session.Debug.Breakpoints.ScriptErrors;
-        return [.. Session.Debug.Breakpoints.Exceptions.Select(b => new BreakpointInfo(null, null, b.Enabled, b.Status.ToString().ToLowerInvariant(), b.Condition, b.HitCondition,
-                b.LogMessage, b.Suspend, b.Message, b.Location, ExceptionScenarioNames.Of(b.Scenarios))),
+        // One whose scenarios leave it never stopping is inactive, whatever a debugger said of it, in Suspend If's words.
+        return [.. Session.Debug.Breakpoints.Exceptions.Select(b => new BreakpointInfo(null, null, b.Enabled, b.Inactive is null ? b.Status.ToString().ToLowerInvariant() : "inactive",
+                b.Condition, b.HitCondition, b.LogMessage, b.Suspend, b.Inactive ?? b.Message, b.Location, ExceptionScenarioNames.Of(b.Scenarios))),
             new BreakpointInfo(null, null, bindings.Enabled, bindings.Status.ToString().ToLowerInvariant(), bindings.Condition, bindings.HitCondition, bindings.LogMessage,
                 bindings.Suspend, bindings.Message, BindingErrors: true),
             new BreakpointInfo(null, null, scripts.Enabled, scripts.Status.ToString().ToLowerInvariant(), scripts.Condition, scripts.HitCondition, scripts.LogMessage,

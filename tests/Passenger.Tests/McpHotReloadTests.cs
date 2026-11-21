@@ -17,9 +17,9 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's debugging with no window, its tools' answers each checked once: an exception breakpoint on a type,
-    /// listed and stopping where that type is thrown; Run to Cursor and Set Next Statement, moves in a row each answered
-    /// with its own line; and Hot Reload of an edit made while paused, then of one the runtime cannot take, named at its
-    /// line and the program restarted for it only when asked.</summary>
+    /// listed and stopping where that type is thrown, and one that never stops answered inactive; Run to Cursor and Set Next
+    /// Statement, moves in a row each answered with its own line; and Hot Reload of an edit made while paused, then of one
+    /// the runtime cannot take, named at its line and the program restarted for it only when asked.</summary>
     [Fact]
     public async Task An_agent_stops_at_an_exception_type_runs_to_a_line_moves_back_and_applies_hot_reload_changes_told_each_rude_edit_at_its_line()
     {
@@ -40,6 +40,14 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
 
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2 });
         Assert.StartsWith("Program.cs:2:", (await Call(client, McpTools.DebugStart)).GetProperty("location").GetString(), StringComparison.Ordinal);
+        // Set while debugging with no handler scenario, it never stops: answered inactive, never bound, and the turns' pass it.
+        JsonElement inactive = Assert.Single((await Call(client, McpTools.BreakpointSet, new()
+        {
+            ["exception"] = "System.ArgumentException", ["scenarios"] = new[] { "thrownInUserCode", "thrownInExternalCode" },
+        })).EnumerateArray(), b => b.TryGetProperty("exception", out JsonElement type) && type.GetString() == "System.ArgumentException");
+        Assert.True(inactive.GetProperty("status").GetString() == "inactive"
+            && inactive.GetProperty("message").GetString() == "Exception breakpoint is currently inactive because all 'Exception handler' options are disabled",
+            $"An exception breakpoint with no handler scenario was answered as one that stops: {inactive}");
         await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2, ["remove"] = true });
         JsonElement ranTo = await Call(client, McpTools.DebugContinue, new() { ["path"] = "Program.cs", ["line"] = 4 });
         Assert.StartsWith("Program.cs:4:", ranTo.GetProperty("location").GetString(), StringComparison.Ordinal);
