@@ -19,20 +19,28 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
         ContainerProfilingTests.Spins spins = await ContainerProfilingTests.Spins.SharedAsync();
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
         string container = await spins.StartAsync("agent");
-        await using McpClient client = await Start(["--mcp", spins.Folder], languageServer: false);
+        try
+        {
+            await using McpClient client = await Start(["--mcp", spins.Folder], languageServer: false);
 
-        CallToolResult unattached = await Result(client, McpTools.Profile, new() { ["container"] = container, ["seconds"] = 1 });
-        Assert.True(unattached.IsError == true && Text(unattached).Contains("attach", StringComparison.Ordinal), $"A container's profile without attach answered: {Text(unattached)}");
-        CallToolResult nowhere = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["container"] = $"{container}-not", ["seconds"] = 1 });
-        Assert.True(nowhere.IsError == true && Text(nowhere).Contains("debug_state of processes", StringComparison.Ordinal), $"A profile in no such container answered: {Text(nowhere)}");
+            CallToolResult unattached = await Result(client, McpTools.Profile, new() { ["container"] = container, ["seconds"] = 1 });
+            Assert.True(unattached.IsError == true && Text(unattached).Contains("attach", StringComparison.Ordinal), $"A container's profile without attach answered: {Text(unattached)}");
+            CallToolResult nowhere = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["container"] = $"{container}-not", ["seconds"] = 1 });
+            Assert.True(nowhere.IsError == true && Text(nowhere).Contains("debug_state of processes", StringComparison.Ordinal), $"A profile in no such container answered: {Text(nowhere)}");
 
-        JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["container"] = container, ["seconds"] = 2, ["memory"] = true });
-        Assert.True(profiled.GetProperty("samples").GetInt32() > 0, $"The profile in the container sampled nothing: {profiled.GetRawText()}");
-        JsonElement spin = Assert.Single(profiled.GetProperty("hotSpots").EnumerateArray(), h => h.GetProperty("method").GetString()!.StartsWith("Hot.Spin", StringComparison.Ordinal));
-        Assert.True(spin.TryGetProperty("source", out JsonElement source) && source.GetString() == $"Program.cs:{ContainerProfilingTests.Spins.SpinLine}",
-            $"The hot method in the container is not named at its line: {spin}");
-        Assert.Contains(profiled.GetProperty("heap").EnumerateArray(), t => t.GetProperty("type").GetString() == "Keepsake");
-        Assert.Equal("running", await Docker.StateAsync(container));
+            JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["container"] = container, ["seconds"] = 2, ["memory"] = true });
+            Assert.True(profiled.GetProperty("samples").GetInt32() > 0, $"The profile in the container sampled nothing: {profiled.GetRawText()}");
+            JsonElement spin = Assert.Single(profiled.GetProperty("hotSpots").EnumerateArray(), h => h.GetProperty("method").GetString()!.StartsWith("Hot.Spin", StringComparison.Ordinal));
+            Assert.True(spin.TryGetProperty("source", out JsonElement source) && source.GetString() == $"Program.cs:{ContainerProfilingTests.Spins.SpinLine}",
+                $"The hot method in the container is not named at its line: {spin}");
+            Assert.Contains(profiled.GetProperty("heap").EnumerateArray(), t => t.GetProperty("type").GetString() == "Keepsake");
+            Assert.Equal("running", await Docker.StateAsync(container));
+        }
+        finally
+        {
+            // Its program spins a core for as long as it runs, which every class after this one would share.
+            await Docker.RunAsync("rm", "-f", container);
+        }
     }
 
     /// <summary>An agent's profile of an Avalonia program in a container, recorded from its start, says it has no frames and
