@@ -5,10 +5,10 @@ A lane is a part of the suite: the gate's [Gate] tests and the unit tests, the r
 ONE_SYSTEM, but its classes marked [SameOnEverySystem]), or all. `list` writes a lane as `dotnet test --list-tests`
 prints it, asking again while a project names no test or says discovery failed. `split` deals its classes by their
 seconds on that system in TestTimes.json (else the others'), the longest first, each where its shard ends soonest by
-its kinds of class (one in another lane's job from that one's end), and to one of a job's test processes, the same in
-every shard; `check` fails unless every test is in exactly one. `test` runs a hand, keeping its console as it comes;
-`ended` names the classes it did not run whole; `cover` fails unless every test has one result; `failures` tables misses;
-`update` rewrites TestTimes.json."""
+its kinds of class (one in another lane's job from that one's end, one in a job building the check first from that
+build's end), and to one of a job's test processes, the same in every shard; `check` fails unless every test is in
+exactly one. `test` runs a hand, keeping its console as it comes; `ended` names the classes it did not run whole; `cover`
+fails unless every test has one result; `failures` tables misses; `update` rewrites TestTimes.json."""
 import argparse
 import ctypes
 import glob
@@ -47,6 +47,10 @@ ONE_SYSTEM = "Linux"
 PACED = {"macOS": 1.21, "Windows": 1.07, "Linux": 1.06}
 # How many test processes a job may run at once.
 PROCESSES = (1, 2)
+# How much later, in seconds, the job of a lane's first shard begins its tests than another job where it builds the
+# solution's check first (test.yml's Build: every analyzer and code-style rule) and lists each shard's hand (--check): the
+# median over CI 44836100225, 44848029756 and 44855772233 of that job's time before its tests against the others' median.
+CHECKED_FIRST = {"macOS": 270, "Windows": 120, "Linux": 60}
 # What xunit's adapter writes into the listing when it could not discover an assembly's tests.
 DISCOVERY_FAILED = "Exception discovering tests"
 # How much sooner the slowest shard must end, dealt from a run's own times, before the summary asks for a new deal.
@@ -569,13 +573,17 @@ def split(arguments):
     times = load(arguments.times, {})
     processes = arguments.processes
     # The last shards' jobs run another lane's shards first, one each, as dealt in those jobs: each starts as that ends.
+    checked = [CHECKED_FIRST[arguments.system] if arguments.checks_first else 0.0]
     starts = [0.0] * arguments.of
     if arguments.after:
         if not 0 < arguments.after_of <= arguments.of:
             sys.exit(f"test-shards: the last {arguments.after_of} of {arguments.of} shards cannot each follow a shard "
                      "of the lane run first")
-        first = dealt(listing(arguments.after), whole, arguments.system, times, arguments.after_of, None, processes)[6]
-        starts[arguments.of - arguments.after_of:] = [hand_time(part) for part in first]
+        begun = checked + [0.0] * (arguments.after_of - 1)
+        first = dealt(listing(arguments.after), whole, arguments.system, times, arguments.after_of, begun, processes)[6]
+        starts[arguments.of - arguments.after_of:] = [start + hand_time(part) for start, part in zip(begun, first)]
+    else:
+        starts[0] = checked[0]
     counts, seconds, borrowed, guessed, kind, hands, parts, places = dealt(tests, whole, arguments.system, times,
                                                                            arguments.of, starts, processes)
     whole = whole or counts
@@ -594,10 +602,11 @@ def split(arguments):
     for number, (hand, part, start) in enumerate(zip(hands, parts, starts), 1):
         first = number - (arguments.of - arguments.after_of) if arguments.after else 0
         print(f"\nShard {number}"
-              + (f", after that lane's shard {first} in its job (about {start / 60:.1f} minutes)" if first > 0 else "")
+              + (f", after that lane's shard {first} in its job (about {start / 60:.1f} minutes)" if first > 0 else
+                 f", its job building the check first (about {start / 60:.1f} minutes)" if start > 0 else "")
               + f": {len(hand)} classes, {sum(counts[c] for c in hand)} tests, about {hand_time(part) / 60:.1f} minutes ("
               + said_hand(part) + ")"
-              + (f", ending about {(start + hand_time(part)) / 60:.1f} minutes into its job's tests" if first > 0 else ""))
+              + (f", ending about {(start + hand_time(part)) / 60:.1f} minutes into the jobs' tests" if start > 0 else ""))
         for name in hand:
             print(f"  {name:<44} {seconds[name]:>7.1f}" + (f"  ({kind[name]})" if kind[name] in ("beside", "alone") else "")
                   + (f"  (process {places[name] + 1})" if processes > 1 and name in places else "")
@@ -605,7 +614,7 @@ def split(arguments):
                   + ("  (the other systems' time: TestTimes.json has none here)" if name in borrowed else "")
                   + ("  (a guess: TestTimes.json has none)" if name in guessed else ""))
     print(f"\nThe slowest shard ends about {max(s + hand_time(p) for s, p in zip(starts, parts)) / 60:.1f} minutes "
-          "into its job's tests")
+          "into the jobs' tests")
     if borrowed or guessed:
         say("notice", "Test times", f"TestTimes.json has no {arguments.system} seconds for "
             f"{', '.join(sorted(borrowed + guessed))}, so each is dealt by the other systems' or a guess: just test-times "
@@ -1238,6 +1247,9 @@ def main():
                          "last shards, one of its shards in each, so each of them begins once that one would end")
     command.add_argument("--after-of", type=int, default=0, help="how many shards that lane is dealt to: the last so many "
                          "of these follow them, in order")
+    command.add_argument("--checks-first", action="store_true", help="the job of the first shard of the lane run first "
+                         "(--after's, else this one's) builds the solution's check before its tests, so begins them "
+                         "CHECKED_FIRST later")
     command.add_argument("--out", help="a folder for each shard's dotnet test settings, shard-N.runsettings, and its "
                          "projects, shard-N.projects, and when each begins, starts.json")
     command.add_argument("--times", default=TIMES)

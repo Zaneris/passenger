@@ -142,7 +142,8 @@ jobs:
 
       # The build's check, every analyzer and code-style rule with warnings as errors, is the gate's first shard's on each
       # system, which every run has; the others build the same code without running the analyzers (generators still
-      # run), which change nothing that is built and take about half the build's time.
+      # run), which change nothing that is built and take about half the build's time. Both deals give that job's
+      # shards the less to run for the minutes the check takes (--checks-first).
       - name: Build
         env:
           CHECKS: ${{ matrix.lane == 'gate' && matrix.shard == 1 }}
@@ -241,7 +242,7 @@ jobs:
           check=
           [ "$SHARD" != 1 ] || check=--check
           "$python" -I tools/test-shards.py split "$results/suite.txt" --lane gate --whole "$results/whole.txt" \
-            --system "$SYSTEM" --of "$SHARDS" --processes "$PROCESSES" --out "$results/shards" $check
+            --system "$SYSTEM" --of "$SHARDS" --processes "$PROCESSES" --checks-first --out "$results/shards" $check
 
       # The same for the report lane, whose last shards run each in a gate job once its gate tests end (as the gate's deal
       # has them end), numbered after the report jobs' own. Nothing of it fails a gate job.
@@ -272,7 +273,7 @@ jobs:
           [ "$number" != 1 ] || check=--check
           "$python" -I tools/test-shards.py split "$results/suite.txt" --lane report --whole "$results/whole.txt" \
             --system "$SYSTEM" --of "$REPORT_SHARDS" --after artifacts/test-lists/gate.txt --after-of "$GATE_SHARDS" \
-            --processes "$PROCESSES" --out "$results/shards" $check
+            --processes "$PROCESSES" --checks-first --out "$results/shards" $check
           [ "$LANE" = gate ] || exit 0
           echo "shard=$number" >> "$GITHUB_OUTPUT"
           echo "label=Report, $NAME, shard $number of $REPORT_SHARDS, after the gate's shard $SHARD" >> "$GITHUB_OUTPUT"
