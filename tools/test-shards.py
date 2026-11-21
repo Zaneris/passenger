@@ -43,9 +43,9 @@ SAME = "SameOnEverySystem"
 ONE_SYSTEM = "Linux"
 # How long a class's tests take on each system in each of a job's test processes, by how many there are, for each of
 # their seconds in a process alone (TestTimes.json's): the deal's model of a job of several, and the measure by which
-# `update` keeps the seconds a lone process's. Two: the median `cover` reported for each system's report lane in CI
-# 44824859727. Three on Windows: an estimate, two having left most of its four processors idle, until `cover` reports it.
-PACED = {"macOS": {2: 1.21}, "Windows": {2: 1.07, 3: 1.2}, "Linux": {2: 1.06}}
+# `update` keeps the seconds a lone process's: the median `cover` reported for each system's report lane, for two in CI
+# 44824859727, for three on Windows in CI 44889105427.
+PACED = {"macOS": {2: 1.21}, "Windows": {2: 1.07, 3: 1.41}, "Linux": {2: 1.06}}
 # How many test processes a job may run at once.
 PROCESSES = (1, 2, 3)
 # How much later, in seconds, the job of a lane's first shard begins its tests than another job where it builds the
