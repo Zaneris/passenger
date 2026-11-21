@@ -3,12 +3,28 @@ using System.Text.RegularExpressions;
 namespace Passenger.Text;
 
 /// <summary>The web and file addresses written in text: mailto:, http, https, ftp, ftps, news and www. without a scheme, each
-/// to its last character that cannot end a sentence, and a file: URL. A scheme that is the end of another's is none (Aspire's
-/// service discovery, https+http://). What a console's lines and the editor's comments and strings link, read only within
-/// the stretch given. Pure.</summary>
+/// to its last character that cannot end a sentence, and a file: URL. An address takes in its balanced parentheses, two
+/// deep (Wikipedia's C_(programming_language)), so a ')' that only wraps it is left out. A scheme that is the end of another's
+/// is none (Aspire's service discovery, https+http://). What a console's lines and the editor's comments and strings link,
+/// read only within the stretch given. Pure.</summary>
 public static partial class WebAddresses
 {
-    [GeneratedRegex(@"(?:(?<![\w+.\-])(?:mailto:|(?:news|(?:ht|f)tps?)://)|(?<![\p{L}0-9_.])www\.)[-A-Za-z0-9+$&@#/%?=~_|!:,.;]*[-A-Za-z0-9+$&@#/%=~_|]|\bfile:(?:/|[A-Za-z]:)[^\s()\[\]]*[^\s()\[\]:;?!,.]")]
+    /// <summary>A web address's characters, and those it may end with.</summary>
+    private const string WebCharacter = "[-A-Za-z0-9+$&@#/%?=~_|!:,.;]";
+    private const string WebLast = "[-A-Za-z0-9+$&@#/%=~_|]";
+
+    /// <summary>A file address's characters, and those it may end with.</summary>
+    private const string FileCharacter = @"[^\s()\[\]]";
+    private const string FileLast = @"[^\s()\[\]:;?!,.]";
+
+    /// <summary>Parentheses that close in an address, one pair inside another at most.</summary>
+    private const string WebPair = $@"\((?:{WebCharacter}|\({WebCharacter}*\))*\)";
+    private const string FilePair = $@"\((?:{FileCharacter}|\({FileCharacter}*\))*\)";
+
+    private const string Address = $@"(?:(?<![\w+.\-])(?:mailto:|(?:news|(?:ht|f)tps?)://)|(?<![\p{{L}}0-9_.])www\.)(?:{WebCharacter}|{WebPair})*(?:{WebLast}|{WebPair})"
+        + $@"|\bfile:(?:/|[A-Za-z]:)(?:{FileCharacter}|{FilePair})*(?:{FileLast}|{FilePair})";
+
+    [GeneratedRegex(Address)]
     private static partial Regex Pattern();
 
     /// <summary>Where each address in a stretch of text stands in it, in order and apart, read without a copy of the text.</summary>

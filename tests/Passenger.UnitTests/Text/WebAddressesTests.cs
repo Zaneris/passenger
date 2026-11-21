@@ -4,7 +4,8 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Text;
 
 /// <summary>The addresses written in text (<see cref="WebAddresses"/>): each scheme's, www.'s and a file's, to the last
-/// character that cannot end a sentence, and none starting inside another scheme, as Aspire's service discovery writes one.</summary>
+/// character that cannot end a sentence, its balanced parentheses with it and a ')' that only wraps it left out, and none
+/// starting inside another scheme, as Aspire's service discovery writes one.</summary>
 public class WebAddressesTests
 {
     [Theory]
@@ -17,6 +18,14 @@ public class WebAddressesTests
     [InlineData("\"http+https://apiservice/weather\"", null)]
     [InlineData("a.http://example.com and x-https://example.com", null)]
     [InlineData("no address here, only www and http words", null)]
+    [InlineData("See https://en.wikipedia.org/wiki/C_(programming_language) for more.", "https://en.wikipedia.org/wiki/C_(programming_language)")]
+    [InlineData("(see https://en.wikipedia.org/wiki/C_(programming_language))", "https://en.wikipedia.org/wiki/C_(programming_language)")]
+    [InlineData("Read https://en.wikipedia.org/wiki/C_(programming_language).", "https://en.wikipedia.org/wiki/C_(programming_language)")]
+    [InlineData("[the docs](https://example.com/a_(b)_c), then", "https://example.com/a_(b)_c")]
+    [InlineData("at https://example.com/f(x_(y)) now", "https://example.com/f(x_(y))")]
+    [InlineData("open https://example.com/a(b c", "https://example.com/a")]
+    [InlineData("in (www.example.com/q?(a)=1).", "www.example.com/q?(a)=1")]
+    [InlineData("kept (file:///C:/Program%20Files%20(x86)/App/readme.txt).", "file:///C:/Program%20Files%20(x86)/App/readme.txt")]
     public void An_address_is_read_to_its_end_and_none_starts_inside_another_scheme(string text, string? address)
     {
         List<string> found = [];

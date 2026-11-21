@@ -16,14 +16,15 @@ public sealed class CodeLinksTests : IDisposable
 {
     private const string Issue = "https://github.com/Zaneris/passenger/issues/1903";
     private const string Docs = "https://learn.microsoft.com/dotnet/";
+    private const string Wiki = "https://en.wikipedia.org/wiki/C_(programming_language)";
 
     private readonly string folder = TestFolders.Create("code-links-");
 
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>Lines from zero: a comment's address, a comment of words alone, a string's address, an address in code the
-    /// build leaves out, file addresses, one on this machine and one on a share, and an Aspire service's address, which
-    /// service discovery reads and no browser opens.</summary>
+    /// build leaves out, file addresses, one on this machine and one on a share, an Aspire service's address, which service
+    /// discovery reads and no browser opens, and an address holding parentheses inside a pair that wraps it.</summary>
     private string Code => string.Join('\n',
         $"// See {Issue} for why.",                                     // 0
         "class Links",
@@ -35,6 +36,7 @@ public sealed class CodeLinksTests : IDisposable
         "#endif",
         $"    // Kept in {new Uri(Path.Combine(folder, "Links.cs")).AbsoluteUri}, never file://server/share/Links.cs.", // 8
         "    const string Api = \"https+http://apiservice\";",         // 9
+        $"    // The language (see {Wiki}).",                           // 10
         "}",
         "");
 
@@ -97,6 +99,30 @@ public sealed class CodeLinksTests : IDisposable
             Ui.Settle();
             Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
             Assert.True(window.Browsed.SequenceEqual([new Uri(Issue), new Uri(Docs)]), $"Go to Declaration's keys on a string's address opened [{string.Join(", ", window.Browsed)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>An address holding parentheses is linked whole, the ')' that wraps it and the sentence's '.' left out, and
+    /// Go to Declaration's click on its parentheses opens the whole address.</summary>
+    [AvaloniaFact]
+    public void An_address_holding_parentheses_is_linked_and_opened_whole_without_the_pair_that_wraps_it()
+    {
+        MainWindow window = Open(out CodeEditor editor);
+        try
+        {
+            TextSnapshot text = editor.Document.Snapshot;
+            int start = Place(text, 10, Wiki);
+            int inside = Place(text, 10, "programming") + 2;
+            Assert.Equal((new TextRange(start, Wiki.Length), new Uri(Wiki)), Linked(editor, inside));
+            Assert.True(editor.LinkOn(start + Wiki.Length) is null, "The ')' that wraps the comment's address is part of its link");
+
+            Point on = editor.PointOf(inside) + new Point(1, editor.LineHeight / 2);
+            Ui.Click(editor, on, OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control);
+            Assert.True(window.Browsed.SequenceEqual([new Uri(Wiki)]), $"Go to Declaration's click on the address's parentheses opened [{string.Join(", ", window.Browsed)}]");
         }
         finally
         {
