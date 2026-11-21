@@ -573,8 +573,8 @@ public sealed class ProfilerCommands
     public static string SnapshotSaid(string name, Snapshot snapshot, bool ended = false) => snapshot.FramesAlone
         ? $"Snapshot of {name}: {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them, no samples (GDScript alone), kept on the Performance Profiler's Snapshots page"
         : snapshot.CutShort is { } cut
-        ? $"{(ended ? $"{name} ended before its trace was whole" : $"The trace of {name} was cut short ({cut.TrimEnd('.')})")}: its snapshot holds what was written before, {snapshot.Samples:N0} samples, kept on the Performance Profiler's Snapshots page"
-        : $"Snapshot of {name}: {snapshot.Samples:N0} samples, kept on the Performance Profiler's Snapshots page";
+        ? $"{(ended ? $"{name} ended before its trace was whole" : $"The trace of {name} was cut short ({cut.TrimEnd('.')})")}: its snapshot holds what was written before, {Numbers.Said(snapshot.Samples)} samples, kept on the Performance Profiler's Snapshots page"
+        : $"Snapshot of {name}: {Numbers.Said(snapshot.Samples)} samples, kept on the Performance Profiler's Snapshots page";
 
     /// <summary>What Profile says of a Godot game of GDScript alone it runs, whose run is Godot's own frames.</summary>
     public static string FramesAloneSaid(string name) =>
@@ -1242,7 +1242,7 @@ public sealed class ProfilerCommands
             shownProcess = null;
             Show(snapshot, Path.GetFileNameWithoutExtension(path));
             ShowKill();
-            parts.Say($"{Path.GetFileName(path)}: {snapshot.Samples:N0} samples{(snapshot.CutShort is { } cut ? $", its trace cut short ({cut.TrimEnd('.')})" : string.Empty)}");
+            parts.Say($"{Path.GetFileName(path)}: {Numbers.Said(snapshot.Samples)} samples{(snapshot.CutShort is { } cut ? $", its trace cut short ({cut.TrimEnd('.')})" : string.Empty)}");
             return snapshot;
         }
         catch (Exception error) when (error is InvalidOperationException || TraceFailures.Of(error))

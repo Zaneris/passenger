@@ -127,6 +127,19 @@ internal static class Rules
             + "on the pool (a protocol's reads and answers, a request, an await) waits until the loop ends. ApartScheduler.ForEach "
             + "runs the loop on threads of its own, ended with it.");
 
+    public static readonly DiagnosticDescriptor CultureNumber = new(
+        "PSG0011",
+        "A number is written in the machine's culture",
+        "This {0} is written in the culture of the machine it runs on, so a German one reads 1,5 for 1.5 and 1.234 for 1,234: say it to a person through Numbers (Said, Fixed), or write it for a program with the invariant culture",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A number the IDE writes reads alike on every machine: its digits are the IDE's own, a comma between "
+            + "thousands and a point before a fraction, as sizes and whiles are said, whatever culture the system runs in. "
+            + "Numbers says a count or a measure to a person; a number written for a program (a command line, a file) is "
+            + "formatted with the invariant culture. A whole number with no format sets nothing apart and passes, as does a "
+            + "provider the code chose itself (content shown as its own program shows it, a program's values in its culture).");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

@@ -2,7 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:app="using:Passenger.App"
         xmlns:editors="using:Passenger.App.Editors"
-        xmlns:editor="using:Passenger.Editor">
+        xmlns:editor="using:Passenger.Editor"
+        xmlns:globalization="using:System.Globalization">
     <!-- The shell's controls over the Fluent theme. Fluent paints a button's hover and press on its
          content presenter, so each state is restyled there. A later style wins over an earlier one, so the base
          styles come first and a class's style after them says only how it differs. -->
@@ -495,8 +496,11 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
     </Style>
-    <!-- A number box likewise, its own height beside something taller; its text box no taller than the box. -->
+    <!-- A number box likewise, its own height beside something taller; its text box no taller than the box. Its number
+         in the IDE's own digits (Numbers), a point before a fraction, a comma typed refused rather than read as thousands. -->
     <Style Selector="NumericUpDown">
+        <Setter Property="NumberFormat" Value="{x:Static globalization:NumberFormatInfo.InvariantInfo}" />
+        <Setter Property="ParsingNumberStyle" Value="Float" />
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Padding" Value="{x:Static app:FieldInsets.Padding}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />

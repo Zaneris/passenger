@@ -1,3 +1,4 @@
+using System.Globalization;
 using Passenger.Core;
 
 namespace Passenger.UnitTests.Xaml;
@@ -38,7 +39,7 @@ public class PreviewWireTests
         string? said = PreviewWire.TooLarge(width, height, scale);
 
         Assert.True((said is not null) == large, $"A {width} × {height} design at {scale}× was {(said is null ? "drawn" : said)}");
-        Assert.True(said is null || said.Contains($"{width:0} × {height:0}", StringComparison.Ordinal), $"The design's size is missing from {said}");
+        Assert.True(said is null || said.Contains(string.Create(CultureInfo.InvariantCulture, $"{width:0} × {height:0}"), StringComparison.Ordinal), $"The design's size is missing from {said}");
     }
 
     private sealed record Asked : PreviewRequest;

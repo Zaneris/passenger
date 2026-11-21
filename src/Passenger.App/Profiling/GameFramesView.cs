@@ -205,7 +205,7 @@ public sealed class GameFramesView : DockPanel
         summary.Text = Said(game, over, within);
         frameLink.Content = Opened is not { } opened ? null
             : Chosen is not null ? $"Open frame {opened.Number}'s calls in the call tree"
-            : $"Open the slowest frame's calls in the call tree (frame {opened.Number}, {opened.FrameMs:N1} ms)";
+            : $"Open the slowest frame's calls in the call tree (frame {opened.Number}, {Numbers.Fixed(opened.FrameMs, 1)} ms)";
         frameLink.IsVisible = Opened is not null;
         foreach (GameRow kind in Kinds(game, over, within))
         {
@@ -244,7 +244,7 @@ public sealed class GameFramesView : DockPanel
         IReadOnlyList<RenderArea> rendered = GameProfile.Rendered(over);
         if (rendered.Count > 0)
         {
-            List<GameRow> stages = [.. rendered.Select(a => new GameRow(a.Name, $"GPU {a.GpuMs:N1} ms", a.CpuMs, null, null, null, [], 1))];
+            List<GameRow> stages = [.. rendered.Select(a => new GameRow(a.Name, $"GPU {Numbers.Fixed(a.GpuMs, 1)} ms", a.CpuMs, null, null, null, [], 1))];
             kinds.Add(new GameRow("Rendering (CPU)", game.Gpu, stages.Sum(s => s.Own), null, null, null, stages));
         }
         return kinds;
@@ -268,13 +268,13 @@ public sealed class GameFramesView : DockPanel
         double all = over.Sum(f => f.FrameMs);
         if (Chosen is { } one)
         {
-            return $"Frame {one.Number} at {one.StartMs - origin:N0} ms: {one.FrameMs:0.0} ms; physics {physics:0.0} ms, GDScript's own {script:0.0} ms, "
-                + $"C# {sharp:0.0} ms (sampled), Godot's own {Math.Max(0, all - physics - script - sharp):0.0} ms.{drawn}";
+            return $"Frame {one.Number} at {Numbers.Fixed(one.StartMs - origin, 0)} ms: {Numbers.Fixed(one.FrameMs, 1)} ms; physics {Numbers.Fixed(physics, 1)} ms, GDScript's own {Numbers.Fixed(script, 1)} ms, "
+                + $"C# {Numbers.Fixed(sharp, 1)} ms (sampled), Godot's own {Numbers.Fixed(Math.Max(0, all - physics - script - sharp), 1)} ms.{drawn}";
         }
         double[] times = [.. over.Select(f => f.FrameMs).Order()];
         GameFrame longest = over.MaxBy(f => f.FrameMs)!;
-        return $"{game.Engine}, {over.Count:N0} {Plural.Noun(over.Count, "frame")}: {UiFrames.Percentile(times, 0.5):0.0} ms at the median, {longest.FrameMs:0.0} ms at the longest "
-            + $"(frame {longest.Number}); physics {physics:N1} ms, GDScript's own {script:N1} ms, C# {sharp:N1} ms (sampled), Godot's own {Math.Max(0, all - physics - script - sharp):N1} ms "
+        return $"{game.Engine}, {Numbers.Said(over.Count)} {Plural.Noun(over.Count, "frame")}: {Numbers.Fixed(UiFrames.Percentile(times, 0.5), 1)} ms at the median, {Numbers.Fixed(longest.FrameMs, 1)} ms at the longest "
+            + $"(frame {longest.Number}); physics {Numbers.Fixed(physics, 1)} ms, GDScript's own {Numbers.Fixed(script, 1)} ms, C# {Numbers.Fixed(sharp, 1)} ms (sampled), Godot's own {Numbers.Fixed(Math.Max(0, all - physics - script - sharp), 1)} ms "
             + $"in all.{drawn} Choose a frame for its own.";
     }
 
@@ -313,10 +313,10 @@ public sealed class GameFramesView : DockPanel
             name.Classes.Set(StyleClasses.Strong, shown.Depth == 0);
             place.Text = shown.Place ?? string.Empty;
             named.Margin = new Thickness(shown.Depth * Gaps.Indent, 0, 0, 0);
-            FramesTable.Put(numbers[0], shown.Own is { } own ? $"{own:N1} ms" : string.Empty);
-            FramesTable.Put(numbers[1], shown.All is { } all ? $"{all:N1} ms" : string.Empty);
-            FramesTable.Put(numbers[2], shown.Calls is { } calls ? $"{calls:N0}" : string.Empty);
-            FramesTable.Put(numbers[3], shown.Engine is { } engine ? $"{engine:N1} ms" : string.Empty);
+            FramesTable.Put(numbers[0], shown.Own is { } own ? $"{Numbers.Fixed(own, 1)} ms" : string.Empty);
+            FramesTable.Put(numbers[1], shown.All is { } all ? $"{Numbers.Fixed(all, 1)} ms" : string.Empty);
+            FramesTable.Put(numbers[2], shown.Calls is { } calls ? Numbers.Said(calls) : string.Empty);
+            FramesTable.Put(numbers[3], shown.Engine is { } engine ? $"{Numbers.Fixed(engine, 1)} ms" : string.Empty);
         });
     }
 }

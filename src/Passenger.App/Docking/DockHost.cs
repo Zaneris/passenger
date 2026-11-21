@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -111,7 +112,7 @@ public sealed class DockHost : Grid
 
     public DockHost()
     {
-        ColumnDefinitions = new ColumnDefinitions($"{StripeWidth},0,0,*,0,0,{StripeWidth}");
+        ColumnDefinitions = new ColumnDefinitions(string.Create(CultureInfo.InvariantCulture, $"{StripeWidth},0,0,*,0,0,{StripeWidth}"));
         RowDefinitions = new RowDefinitions("*,0,0,0");
         leftStripe = new Stripe(this, ToolAnchor.LeftTop, ToolAnchor.LeftBottom, ToolAnchor.BottomLeft);
         rightStripe = new Stripe(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, ToolAnchor.BottomRight);

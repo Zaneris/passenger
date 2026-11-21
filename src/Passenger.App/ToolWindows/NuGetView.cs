@@ -859,7 +859,7 @@ public sealed partial class NuGetView : DockPanel
         }
         if (row.Authors.Length > 0 || row.Downloads > 0)
         {
-            TextBlock by = new() { Classes = { StyleClasses.Caption }, Text = row.Downloads > 0 ? $"{row.Authors}, {row.Downloads:N0} downloads" : row.Authors };
+            TextBlock by = new() { Classes = { StyleClasses.Caption }, Text = row.Downloads > 0 ? $"{row.Authors}, {Numbers.Said(row.Downloads)} downloads" : row.Authors };
             by.Classes.Add(StyleClasses.Muted);
             details.Children.Add(by);
         }

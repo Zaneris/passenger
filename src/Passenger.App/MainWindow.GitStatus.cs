@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Passenger.App.ToolWindows;
@@ -28,9 +27,9 @@ public partial class MainWindow
         GitChangesButton.IsVisible = tree;
         int changed = vcs.Changes.Count;
         int unversioned = vcs.Changes.Count(c => c.Kind is ChangeKind.Unversioned);
-        GitChangesText.Text = changed.ToString(CultureInfo.CurrentCulture);
+        GitChangesText.Text = Numbers.Said(changed);
         string files = changed == 0 ? "No changes to commit"
-            : $"{Plural.Of(changed, "changed file")} to commit{(unversioned > 0 ? $", {unversioned} of them unversioned" : string.Empty)}";
+            : $"{Plural.Of(changed, "changed file")} to commit{(unversioned > 0 ? $", {Numbers.Said(unversioned)} of them unversioned" : string.Empty)}";
         ToolTip.SetTip(GitChangesButton, $"{files}\n\nClick to open the Commit window");
         if (!tree || vcs.Branch is not { } branch || vcs.Upstream is not { } upstream || vcs.Divergence is not { } apart)
         {
@@ -38,8 +37,8 @@ public partial class MainWindow
             return;
         }
         GitSyncButton.IsVisible = true;
-        GitIncomingText.Text = apart.Behind.ToString(CultureInfo.CurrentCulture);
-        GitOutgoingText.Text = apart.Ahead.ToString(CultureInfo.CurrentCulture);
+        GitIncomingText.Text = Numbers.Said(apart.Behind);
+        GitOutgoingText.Text = Numbers.Said(apart.Ahead);
         ToolTip.SetTip(GitSyncButton, $"{Plural.Of(apart.Behind, "incoming commit")} from {upstream}, as last fetched\n"
             + $"{Plural.Of(apart.Ahead, "outgoing commit")} of {branch} to push\n\nClick to compare {branch} with {upstream} in the Git window");
     }

@@ -97,7 +97,7 @@ public sealed class GodotPinsTests : IClassFixture<GodotPinsTests.Game>
             Assert.True(Occurrences(console, "frame 10\n") == 1 && Occurrences(console, "frame 30\n") == 1, $"The game's own lines were not kept as written: {Tail(window)}");
             Assert.True(fold.Entries.Count == 2, $"The console folds other than two entries:\n{entries}");
             int folded = console.Split('\n').ToList().FindIndex(l => l.StartsWith("ERROR: Every frame", StringComparison.Ordinal));
-            Assert.Contains(run.FoldNotes, n => n.Line == folded && n.Text.StartsWith($"×{fold.Entries[0].Count:N0} · last at ", StringComparison.Ordinal));
+            Assert.Contains(run.FoldNotes, n => n.Line == folded && n.Text.StartsWith($"×{Numbers.Said(fold.Entries[0].Count)} · last at ", StringComparison.Ordinal));
             Ui.Click(run.FoldFilter);
             Assert.True(run.Filtered?.Snapshot.ToString() is { } only && only.StartsWith("ERROR: Every frame\n", StringComparison.Ordinal)
                 && Occurrences(only, "ERROR: Only once") == 1 && !only.Contains("frame 10", StringComparison.Ordinal),

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
@@ -572,8 +573,8 @@ public partial class ManagedDebugger
             CorElementType.U2 => BinaryPrimitives.ReadUInt16LittleEndian(room).ToString(),
             CorElementType.U4 => BinaryPrimitives.ReadUInt32LittleEndian(room).ToString(),
             CorElementType.U8 => BinaryPrimitives.ReadUInt64LittleEndian(room).ToString(),
-            CorElementType.R4 => BinaryPrimitives.ReadSingleLittleEndian(room).ToString(),
-            CorElementType.R8 => BinaryPrimitives.ReadDoubleLittleEndian(room).ToString(),
+            CorElementType.R4 => BinaryPrimitives.ReadSingleLittleEndian(room).ToString(CultureInfo.InvariantCulture),
+            CorElementType.R8 => BinaryPrimitives.ReadDoubleLittleEndian(room).ToString(CultureInfo.InvariantCulture),
             CorElementType.I => bytes.Length is 4 ? BinaryPrimitives.ReadInt32LittleEndian(room).ToString() : BinaryPrimitives.ReadInt64LittleEndian(room).ToString(),
             CorElementType.U => bytes.Length is 4 ? BinaryPrimitives.ReadUInt32LittleEndian(room).ToString() : BinaryPrimitives.ReadUInt64LittleEndian(room).ToString(),
             CorElementType.STRING or CorElementType.PTR or CorElementType.BYREF => throw new ArgumentOutOfRangeException(nameof(type)),

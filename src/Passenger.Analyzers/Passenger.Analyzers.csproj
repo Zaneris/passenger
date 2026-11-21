@@ -18,5 +18,6 @@
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
     <!-- A choice of names as Passenger says one, compiled in since netstandard2.0 takes no Passenger.Core. -->
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
+    <Compile Include="../Passenger.Core/Numbers.cs" Link="Numbers.cs" />
   </ItemGroup>
 </Project>

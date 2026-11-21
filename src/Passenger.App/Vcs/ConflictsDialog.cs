@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -26,7 +27,7 @@ public sealed class ConflictsDialog : IdeWindow
     private const double StatusWidth = 170;
 
     /// <summary>The name's column, then yours and theirs.</summary>
-    private static readonly string ColumnWidths = $"*,{StatusWidth},{StatusWidth}";
+    private static readonly string ColumnWidths = string.Create(CultureInfo.InvariantCulture, $"*,{StatusWidth},{StatusWidth}");
 
     /// <summary>Where a cell's words start in its column.</summary>
     private const double CellInset = Gaps.Normal;

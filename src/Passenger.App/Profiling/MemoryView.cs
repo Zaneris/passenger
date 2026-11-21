@@ -137,7 +137,7 @@ public sealed class MemoryView : DockPanel
             return typeTable.Row([name, .. numbers]).Showing<HeapType>(type =>
             {
                 Named(name, type.Name);
-                Put(numbers, $"{type.Count:N0}", Sizes.Said(type.Bytes), Sizes.Said(type.RetainedBytes));
+                Put(numbers, Core.Numbers.Said(type.Count), Sizes.Said(type.Bytes), Sizes.Said(type.RetainedBytes));
             });
         });
         ListKeys.Act(types, new ListActs { Open = OpenType });
@@ -151,8 +151,8 @@ public sealed class MemoryView : DockPanel
             return deltaTable.Row([name, .. numbers]).Showing<TypeDelta>(type =>
             {
                 Named(name, type.Name);
-                Put(numbers, Signed(type.ObjectsDelta, n => $"{n:N0}"), Signed(type.BytesDelta, Sizes.Said), $"{type.NewObjects:N0}", Sizes.Said(type.NewBytes),
-                    $"{type.DeadObjects:N0}", Sizes.Said(type.DeadBytes), $"{type.SurvivedObjects:N0}");
+                Put(numbers, Signed(type.ObjectsDelta, Core.Numbers.Said), Signed(type.BytesDelta, Sizes.Said), Core.Numbers.Said(type.NewObjects), Sizes.Said(type.NewBytes),
+                    Core.Numbers.Said(type.DeadObjects), Sizes.Said(type.DeadBytes), Core.Numbers.Said(type.SurvivedObjects));
             });
         });
         ListKeys.Act(deltas, new ListActs { Open = () => OpenDelta(Kind.New) });
@@ -183,7 +183,7 @@ public sealed class MemoryView : DockPanel
         paths = List<TreeList>(() =>
         {
             TextBlock[] numbers = Numbers(2);
-            return pathTable.Row([PathStep(), .. numbers]).Showing<RetentionRow>(row => Put(numbers, $"{row.Node.Objects:N0}", Sizes.Said(row.Node.RetainedBytes)));
+            return pathTable.Row([PathStep(), .. numbers]).Showing<RetentionRow>(row => Put(numbers, Core.Numbers.Said(row.Node.Objects), Sizes.Said(row.Node.RetainedBytes)));
         });
         paths.ItemsSource = pathRows;
         TreeKeys.Attach<RetentionRow>(paths, Toggle);
@@ -196,7 +196,7 @@ public sealed class MemoryView : DockPanel
             return keyTable.Row([name, .. numbers]).Showing<RetentionPath>(path =>
             {
                 Named(name, path.Text);
-                Put(numbers, $"{path.Objects:N0}", Sizes.Said(path.RetainedBytes));
+                Put(numbers, Core.Numbers.Said(path.Objects), Sizes.Said(path.RetainedBytes));
             });
         });
         keyPathsPage = Framed(keyTable, keyPaths);
@@ -398,7 +398,7 @@ public sealed class MemoryView : DockPanel
         switch (page)
         {
             case SnapshotPage { Snapshot: var snapshot }:
-                summary.Text = $"{snapshot.Objects:N0} objects, {Sizes.Said(snapshot.Bytes)} live, in {snapshot.Types.Count:N0} types; taken at "
+                summary.Text = $"{Core.Numbers.Said(snapshot.Objects)} objects, {Sizes.Said(snapshot.Bytes)} live, in {Core.Numbers.Said(snapshot.Types.Count)} types; taken at "
                     + $"{snapshot.Taken:HH:mm:ss} in {Durations.Said(snapshot.Took)} ({snapshot.Phases})"
                     + (snapshot.Lacks is { } lacks ? $". {lacks}" : string.Empty)
                     + (snapshot.Gone is { } gone ? $". {gone}: its types are listed, its objects no longer open" : string.Empty);
@@ -409,7 +409,7 @@ public sealed class MemoryView : DockPanel
                 ToolTip.SetTip(compare, "Compare this snapshot with another of the run: its new, dead and survived objects");
                 break;
             case ComparisonPage { Comparison: var comparison }:
-                summary.Text = $"{comparison.NewObjects:N0} new, {comparison.DeadObjects:N0} dead and {comparison.SurvivedObjects:N0} survived objects "
+                summary.Text = $"{Core.Numbers.Said(comparison.NewObjects)} new, {Core.Numbers.Said(comparison.DeadObjects)} dead and {Core.Numbers.Said(comparison.SurvivedObjects)} survived objects "
                     + $"from {comparison.Older.Name} to {comparison.Newer.Name}"
                     + (comparison.Inexact is { } inexact ? $". {inexact}: some objects may show as dead and new though they survived." : string.Empty);
                 deltas.ItemsSource = comparison.Types;
@@ -419,7 +419,7 @@ public sealed class MemoryView : DockPanel
                 Action("Open Survived Objects", () => OpenDelta(Kind.Survived));
                 break;
             case SetPage set:
-                summary.Text = $"{set.Set.Count:N0} {Core.Plural.Noun(set.Set.Count, "object")}, {Sizes.Said(set.Set.Bytes)}, retained {Sizes.Said(set.Set.RetainedBytes)}, in {set.Set.Snapshot.Name}";
+                summary.Text = $"{Core.Numbers.Said(set.Set.Count)} {Core.Plural.Noun(set.Set.Count, "object")}, {Sizes.Said(set.Set.Bytes)}, retained {Sizes.Said(set.Set.RetainedBytes)}, in {set.Set.Snapshot.Name}";
                 objects.ItemsSource = set.Set.Objects;
                 objects.SelectedIndex = set.Set.Count > 0 ? 0 : -1;
                 ShowPaths(set.Paths);
@@ -669,7 +669,7 @@ public sealed class MemoryView : DockPanel
             MemorySnapshot snapshot = listed.Snapshot;
             name.Text = snapshot.Name;
             letGo.IsVisible = listed.Gone is not null;
-            said.Text = $"{snapshot.Taken:HH:mm:ss} · {snapshot.Objects:N0} objects · {Sizes.Said(snapshot.Bytes)}";
+            said.Text = $"{snapshot.Taken:HH:mm:ss} · {Core.Numbers.Said(snapshot.Objects)} objects · {Sizes.Said(snapshot.Bytes)}";
             ToolTip.SetTip(row, listed.Gone);
         });
     }

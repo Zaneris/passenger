@@ -14,14 +14,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Paths compared, Razor files named and names listed in words as the rest of Passenger does, compiled in since
-         Passenger.Core's net11.0 is past the server's. -->
+    <!-- Paths compared, Razor files named, and names and counts listed in words as the rest of Passenger does, compiled
+         in since Passenger.Core's net11.0 is past the server's. -->
     <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
     <!-- The Windows calls PathNames makes, declared once. -->
     <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
     <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
     <Compile Include="../Passenger.Core/RazorFiles.cs" Link="RazorFiles.cs" />
     <Compile Include="../Passenger.Core/Plural.cs" Link="Plural.cs" />
+    <Compile Include="../Passenger.Core/Numbers.cs" Link="Numbers.cs" />
     <!-- A file nested past what a parser is given, left out of its project, read as the rest of Passenger reads it. -->
     <Compile Include="../Passenger.Core/DeepText.cs" Link="DeepText.cs" />
     <Compile Include="../Passenger.Core/Brackets.Code.cs" Link="Brackets.Code.cs" />

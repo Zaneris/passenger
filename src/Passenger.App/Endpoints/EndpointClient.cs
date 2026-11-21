@@ -75,7 +75,7 @@ public sealed record EndpointResponse
         {
             if (Body.Length > MostShown)
             {
-                return $"{Body[..MostShown]}\n… {Body.Length - MostShown:N0} more characters not shown";
+                return $"{Body[..MostShown]}\n… {Numbers.Said(Body.Length - MostShown)} more characters not shown";
             }
             string trimmed = Body.TrimStart();
             if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
@@ -131,7 +131,7 @@ public static class EndpointClient
         string resolvedBody = HttpVariables.Resolve(body, variables, filling);
         if (filling.Overflowed)
         {
-            return (null, $"The request's variables fill in more than {HttpVariables.MostFilledIn:N0} characters: does one name another over and over?");
+            return (null, $"The request's variables fill in more than {Numbers.Said(HttpVariables.MostFilledIn)} characters: does one name another over and over?");
         }
         HashSet<string> unresolved = filling.Unresolved;
         if (unresolved.Count > 0)

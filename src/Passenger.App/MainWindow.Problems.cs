@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Passenger.App.CSharp;
@@ -269,9 +268,9 @@ public partial class MainWindow
         fileCountsShown = (errors, warnings);
         FileCleanIcon.IsVisible = errors + warnings == 0;
         FileErrors.IsVisible = errors > 0;
-        FileErrorsText.Text = errors.ToString(CultureInfo.CurrentCulture);
+        FileErrorsText.Text = Numbers.Said(errors);
         FileWarnings.IsVisible = warnings > 0;
-        FileWarningsText.Text = warnings.ToString(CultureInfo.CurrentCulture);
+        FileWarningsText.Text = Numbers.Said(warnings);
         string counted = errors + warnings == 0 ? "No errors or warnings"
             : errors == 0 ? Plural.Of(warnings, "warning")
             : warnings == 0 ? Plural.Of(errors, "error")

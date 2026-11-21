@@ -176,7 +176,7 @@ internal static class AspireJson
         ? number : throw new InvalidDataException($"Aspire JSON field '{name}' must be a finite number.");
 
     public static string Duration(JsonElement value) => JsonMembers.Value(Object(value), "durationMs") is not { } duration
-        || duration.ValueKind == JsonValueKind.Null ? "Duration unavailable" : $"{Number(value, "durationMs"):0.###} ms";
+        || duration.ValueKind == JsonValueKind.Null ? "Duration unavailable" : $"{Numbers.Said(Number(value, "durationMs"), 3)} ms";
 
     public static IReadOnlyList<JsonElement> Array(JsonElement value, string? name = null, bool required = false)
     {

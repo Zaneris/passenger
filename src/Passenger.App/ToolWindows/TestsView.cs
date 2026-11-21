@@ -395,11 +395,11 @@ public sealed class TestsView : DockPanel
     private void ShowFilters()
     {
         int[] counts = Model.Counts();
-        allCount.Text = counts.Sum().ToString(System.Globalization.CultureInfo.CurrentCulture);
+        allCount.Text = Numbers.Said(counts.Sum());
         all.IsChecked = Model.Outcomes.Count == 0;
         foreach ((TestState state, (ToggleButton button, TextBlock count)) in filters)
         {
-            count.Text = counts[(int)state].ToString(System.Globalization.CultureInfo.CurrentCulture);
+            count.Text = Numbers.Said(counts[(int)state]);
             button.IsChecked = Model.Outcomes.Contains(state);
             button.IsVisible = counts[(int)state] > 0 || Model.Outcomes.Contains(state);
         }

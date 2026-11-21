@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -82,7 +83,7 @@ public static class PreviewWire
 
     /// <summary>Why a design of this size, in its units, is not drawn at this scale; null for one that is.</summary>
     public static string? TooLarge(double width, double height, double scale) =>
-        width * scale > Largest || height * scale > Largest ? $"The design is too large to draw: {width:0} × {height:0}" : null;
+        width * scale > Largest || height * scale > Largest ? string.Create(CultureInfo.InvariantCulture, $"The design is too large to draw: {width:0} × {height:0}") : null;
 
     /// <summary>The previewer's start: an exception that ends it said whole on standard error, then in the one line Passenger
     /// shows of a previewer that ended; standard output the protocol's alone, in UTF-8, whatever else writes to the console

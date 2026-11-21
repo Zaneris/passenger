@@ -114,8 +114,8 @@ public sealed class ExplorerFilterTests : IDisposable
             TestContext.Current.TestOutputHelper?.WriteLine($"A one-letter filter allocated {few / 1024} KB over 2,000 files, {many / 1024} KB over 20,000");
             Assert.True(fewShown == ExplorerFilter.Most && manyShown == ExplorerFilter.Most,
                 $"A filter every file matches showed {fewShown} files over 2,000 and {manyShown} over 20,000, where the tree shows the first {ExplorerFilter.Most}");
-            Assert.Equal($"{1500:N0} more files match: a longer filter narrows them", fewMore);
-            Assert.Equal($"{19_500:N0} more files match: a longer filter narrows them", manyMore);
+            Assert.Equal("1,500 more files match: a longer filter narrows them", fewMore);
+            Assert.Equal("19,500 more files match: a longer filter narrows them", manyMore);
             Assert.True(many - few < 8 * 18_000,
                 $"A one-letter filter over 20,000 files allocated {many / 1024} KB on the UI thread, against {few / 1024} KB over 2,000: 8 bytes or more for each file more");
             window.Close();

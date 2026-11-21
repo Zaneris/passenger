@@ -1,10 +1,8 @@
-using System.Globalization;
-
 namespace Passenger.Core;
 
 /// <summary>A while as a person reads it, one way wherever it is said: in milliseconds under a second, seconds under a
 /// minute, minutes under an hour, then hours, each to a tenth and in the largest unit it reaches once so rounded ("0.4 ms",
-/// "250 ms", "1.5 s", "1 minute", "2.5 hours"), its digits as the IDE's words write them whatever the person's culture.</summary>
+/// "250 ms", "1.5 s", "1 minute", "2.5 hours"), its digits the IDE's own (Numbers).</summary>
 public static class Durations
 {
     private const double Second = 1000;
@@ -21,7 +19,7 @@ public static class Durations
             : (Tenth(milliseconds / Hour), "hour");
         string plural = unit is "minute" or "hour" && shown != 1 ? "s" : string.Empty;
         string sign = time < TimeSpan.Zero && shown > 0 ? "-" : string.Empty;
-        return string.Create(CultureInfo.InvariantCulture, $"{sign}{shown:#,0.#} {unit}{plural}");
+        return $"{sign}{Numbers.Said(shown, 1)} {unit}{plural}";
     }
 
     private static double Tenth(double value) => Math.Round(value, 1, MidpointRounding.AwayFromZero);

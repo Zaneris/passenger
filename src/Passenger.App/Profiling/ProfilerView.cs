@@ -470,7 +470,7 @@ public sealed class ProfilerView : DockPanel
             Fill(whole);
             return;
         }
-        status.Text = $"{snapshotName}: reading {span.From - whole.StartMs:N0} to {span.To - whole.StartMs:N0} ms…";
+        status.Text = $"{snapshotName}: reading {Numbers.Fixed(span.From - whole.StartMs, 0)} to {Numbers.Fixed(span.To - whole.StartMs, 0)} ms…";
         // Shown on a later turn of the window's loop even when worked out already, so a choice never fills the views itself.
         Snapshot within = await BackgroundWork.Run(() => whole.Within(span.From, span.To)).ConfigureAwait(ConfigureAwaitOptions.ContinueOnCapturedContext | ConfigureAwaitOptions.ForceYielding);
         if (chosen == choosing)
@@ -488,8 +488,8 @@ public sealed class ProfilerView : DockPanel
         status.Text = snapshot.FramesAlone
             ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.GameFrames.Count, "frame")} as Godot's profiler measured them; no samples, as a game of GDScript alone runs no .NET code"
             : ReferenceEquals(whole, snapshot)
-            ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.Threads.Count, "thread")}, {snapshot.Samples:N0} samples{(snapshot.CutShort is null ? string.Empty : ", its trace cut short")}"
-            : $"{snapshotName}: {snapshot.StartMs - whole.StartMs:N0} to {snapshot.EndMs - whole.StartMs:N0} ms of {whole.Duration.TotalMilliseconds:N0}, {snapshot.Samples:N0} samples";
+            ? $"{snapshotName}: {Durations.Said(snapshot.Duration)}, {Plural.Of(snapshot.Threads.Count, "thread")}, {Numbers.Said(snapshot.Samples)} samples{(snapshot.CutShort is null ? string.Empty : ", its trace cut short")}"
+            : $"{snapshotName}: {Numbers.Fixed(snapshot.StartMs - whole.StartMs, 0)} to {Numbers.Fixed(snapshot.EndMs - whole.StartMs, 0)} ms of {Numbers.Fixed(whole.Duration.TotalMilliseconds, 0)}, {Numbers.Said(snapshot.Samples)} samples";
         foreach (ToggleButton page in pages.Toggles)
         {
             page.IsEnabled = true;
@@ -545,7 +545,7 @@ public sealed class ProfilerView : DockPanel
         collectionsSummary.Text = gcs.Count == 0
             ? "No garbage collections ran"
             : $"{gcs.Count} collections ({string.Join(", ", gcs.GroupBy(c => c.Generation).OrderBy(g => g.Key).Select(g => $"{g.Count()} of generation {g.Key}"))}), "
-              + $"the program paused {gcs.Sum(c => c.PauseMs):0.0} ms in all, {gcs.Max(c => c.PauseMs):0.0} ms at the longest";
+              + $"the program paused {Numbers.Fixed(gcs.Sum(c => c.PauseMs), 1)} ms in all, {Numbers.Fixed(gcs.Max(c => c.PauseMs), 1)} ms at the longest";
         ShowPage(shownPage);
     }
 
@@ -609,8 +609,8 @@ public sealed class ProfilerView : DockPanel
         return row.Showing<Collection>(gc =>
         {
             what.Text = $"#{gc.Number}  generation {gc.Generation}";
-            when.Text = $"at {gc.AtMs:N0} ms";
-            pause.Text = $"paused {gc.PauseMs:0.00} ms";
+            when.Text = $"at {Numbers.Fixed(gc.AtMs, 0)} ms";
+            pause.Text = $"paused {Numbers.Fixed(gc.PauseMs, 2)} ms";
             why.Text = gc.Reason;
         });
     }
@@ -752,7 +752,7 @@ public sealed class ProfilerView : DockPanel
         timelineBand.IsVisible = timeline.Snapshot is not null && page is not (ProfilerPage.Snapshots or ProfilerPage.Frames);
     }
 
-    private string Share(int samples) => Snapshot is { Samples: > 0 } shot ? $"{100.0 * samples / shot.Samples,5:0.0}%" : "";
+    private string Share(int samples) => Snapshot is { Samples: > 0 } shot ? $"{Numbers.Fixed(100.0 * samples / shot.Samples, 1),5}%" : "";
 
     /// <summary>A row for whichever call the list hands its container: its chevron, its share and weight, and its method.</summary>
     private Control Row()
@@ -766,8 +766,8 @@ public sealed class ProfilerView : DockPanel
             line.Margin = new Thickness(row.Depth * Gaps.Indent, 0, 0, 0);
             chevron.Expands = row.Node.Children.Count > 0;
             chevron.IsOpen = row.IsExpanded;
-            string percent = row.Whole > 0 ? $"{100.0 * row.Node.Total / row.Whole,5:0.0}%" : string.Empty;
-            share.Text = $"{percent}  {row.Node.Total * row.Scale,7:N0} {row.Unit}";
+            string percent = row.Whole > 0 ? $"{Numbers.Fixed(100.0 * row.Node.Total / row.Whole, 1),5}%" : string.Empty;
+            share.Text = $"{percent}  {Numbers.Fixed(row.Node.Total * row.Scale, 0),7} {row.Unit}";
             method.Show(row.Node.Name, row.Depth == 0);
         });
     }
@@ -783,8 +783,8 @@ public sealed class ProfilerView : DockPanel
         return row.Showing<HotSpot>(spot =>
         {
             double sampleMs = Snapshot?.SampleMs ?? 1;
-            own.Text = $"{Share(spot.Self)}  {spot.Self * sampleMs,7:N0} ms";
-            total.Text = $"{spot.Total * sampleMs,7:N0} ms in all";
+            own.Text = $"{Share(spot.Self)}  {Numbers.Fixed(spot.Self * sampleMs, 0),7} ms";
+            total.Text = $"{Numbers.Fixed(spot.Total * sampleMs, 0),7} ms in all";
             method.Show(spot.Name, false);
         });
     }

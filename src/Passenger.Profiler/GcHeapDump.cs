@@ -66,7 +66,7 @@ internal static class GcHeapDump
         }
         if (source.EventsLost > 0)
         {
-            throw new InvalidOperationException($"The runtime's heap dump lost {source.EventsLost:N0} of its events, more than its buffer held: try again with the program quieter");
+            throw new InvalidOperationException($"The runtime's heap dump lost {Numbers.Said(source.EventsLost)} of its events, more than its buffer held: try again with the program quieter");
         }
         TimeSpan took = System.Diagnostics.Stopwatch.GetElapsedTime(began);
         HeapGraph graph = await BackgroundWork.Run(() => heard.Graph(cancel), cancel);

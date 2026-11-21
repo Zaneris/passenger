@@ -250,11 +250,11 @@ public sealed class TestNode : Observable, ITreeRow
         int Ended(TestState state) => results.Count(r => r.State == state);
         string[] counted = [.. new[]
         {
-            left > 0 ? $"{left:N0} more {Plural.Noun(left, "row")} failed" : null,
-            Ended(TestState.Passed) is > 0 and int passed ? $"{passed:N0} other {Plural.Noun(passed, "row")} passed" : null,
-            Ended(TestState.Skipped) is > 0 and int skipped ? $"{skipped:N0} skipped" : null,
-            Ended(TestState.NotRun) is > 0 and int notRun ? $"{notRun:N0} not run" : null,
-            Ended(TestState.Running) is > 0 and int running ? $"{running:N0} still running" : null,
+            left > 0 ? $"{Numbers.Said(left)} more {Plural.Noun(left, "row")} failed" : null,
+            Ended(TestState.Passed) is > 0 and int passed ? $"{Numbers.Said(passed)} other {Plural.Noun(passed, "row")} passed" : null,
+            Ended(TestState.Skipped) is > 0 and int skipped ? $"{Numbers.Said(skipped)} skipped" : null,
+            Ended(TestState.NotRun) is > 0 and int notRun ? $"{Numbers.Said(notRun)} not run" : null,
+            Ended(TestState.Running) is > 0 and int running ? $"{Numbers.Said(running)} still running" : null,
         }.OfType<string>()];
         IEnumerable<string> written = failed.Take(MostFailuresWritten).Select(r => DetailOf(r, named: true, outputTail));
         string rest = string.Join(", ", counted) + (left > 0 ? ": the Unit Tests window shows each" : string.Empty);
@@ -295,7 +295,7 @@ public sealed class TestNode : Observable, ITreeRow
             return output;
         }
         int left = output.AsSpan(0, start).Count('\n') + (output[start - 1] == '\n' ? 0 : 1);
-        return $"[{Plural.Of(left, "earlier line")} of output ({start:N0} characters) left out; the Unit Tests window shows them]\n{output[start..]}";
+        return $"[{Plural.Of(left, "earlier line")} of output ({Numbers.Said(start)} characters) left out; the Unit Tests window shows them]\n{output[start..]}";
     }
 
     /// <summary>The pictures its results carry, the frames of a failing headless test's windows among them, in its results'

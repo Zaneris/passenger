@@ -476,9 +476,9 @@ public static partial class ThemeFiles
         ThemeTokenKind.Gradient => $"a gradient, {{\"start\": [x, y], \"end\": [x, y], \"stops\": [{{\"offset\": 0, \"colour\": \"#RRGGBB\"}}, …]}} "
             + $"with 2 to {MostStops} stops in order from 0 to 1, or a colour: \"#RRGGBB\", \"#AARRGGBB\" or {{\"colour\": \"#RRGGBB\", \"opacity\": 0 to 1}}",
         ThemeTokenKind.Shadow => $"shadows: \"X Y BLUR SPREAD #AARRGGBB\" each (BLUR and SPREAD may be left out, \"inset\" may lead), up to {MostShadows} joined by commas, or \"none\"",
-        ThemeTokenKind.Radius => $"a radius: a number for every corner, or four [top left, top right, bottom right, bottom left], each 0 to {Farthest}",
-        ThemeTokenKind.Thickness => $"a thickness: a number for every side, or four [left, top, right, bottom], each -{Farthest} to {Farthest}",
-        ThemeTokenKind.Number => $"a number, 0 to {Farthest}",
+        ThemeTokenKind.Radius => string.Create(CultureInfo.InvariantCulture, $"a radius: a number for every corner, or four [top left, top right, bottom right, bottom left], each 0 to {Farthest}"),
+        ThemeTokenKind.Thickness => string.Create(CultureInfo.InvariantCulture, $"a thickness: a number for every side, or four [left, top, right, bottom], each -{Farthest} to {Farthest}"),
+        ThemeTokenKind.Number => string.Create(CultureInfo.InvariantCulture, $"a number, 0 to {Farthest}"),
         ThemeTokenKind.TextStyle => Listed(Styles),
         _ => kind.ToString(),
     };

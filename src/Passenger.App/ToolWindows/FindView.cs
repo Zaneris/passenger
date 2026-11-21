@@ -537,8 +537,8 @@ public sealed class FindView : DockPanel
     private void DrawSides()
     {
         sides.IsVisible = current?.Generated is not null;
-        yoursCount.Text = (current?.YoursCount ?? 0).ToString(System.Globalization.CultureInfo.CurrentCulture);
-        generatedCount.Text = (current?.GeneratedCount ?? 0).ToString(System.Globalization.CultureInfo.CurrentCulture);
+        yoursCount.Text = Numbers.Said(current?.YoursCount ?? 0);
+        generatedCount.Text = Numbers.Said(current?.GeneratedCount ?? 0);
         YourCode.IsChecked = sides.IsVisible && alone == UsageSide.Yours;
         GeneratedCode.IsChecked = sides.IsVisible && alone == UsageSide.Generated;
         noneShown.IsVisible = rows.Count == 0 && current is { Generated: not null } && alone == UsageSide.Yours;

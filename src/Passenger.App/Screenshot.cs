@@ -85,7 +85,7 @@ public static class Screenshot
             }
         }
 
-        double elapsed = Stopwatch.GetElapsedTime(Program.StartedAt).TotalMilliseconds;
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(Program.StartedAt);
         // A program or a build the steps started ends with the windows, as it does with the person's.
         string? folder = window.Folder;
         PassengerApp.Quit();
@@ -97,7 +97,7 @@ public static class Screenshot
             Console.Error.WriteLine($"screenshot: {options.Path} taken with background work still pending after {Durations.Said(SettleLimit)}");
             return 1;
         }
-        Console.WriteLine($"screenshot: {options.Path} after {elapsed:F0} ms");
+        Console.WriteLine($"screenshot: {options.Path} after {Durations.Said(elapsed)}");
         return 0;
     }
 

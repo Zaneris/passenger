@@ -182,7 +182,7 @@ internal sealed class TracedStream(Stream inner, int server, string direction, F
         body.SetLength(0);
         if (size > MostRead)
         {
-            tracer?.Invoke(server, $"{direction} a message of {size:N0} bytes, over the {MostRead:N0} the connection reads of one");
+            tracer?.Invoke(server, $"{direction} a message of {Numbers.Said(size)} bytes, over the {Numbers.Said(MostRead)} the connection reads of one");
         }
         if (remaining == 0)
         {
@@ -201,7 +201,7 @@ internal sealed class TracedStream(Stream inner, int server, string direction, F
         if (tracing && trace() is { } tracer)
         {
             string message = Encoding.UTF8.GetString(body.GetBuffer(), 0, (int)body.Length);
-            tracer(server, length > Kept ? $"{direction} {message}… ({length:N0} bytes in all)" : $"{direction} {message}");
+            tracer(server, length > Kept ? $"{direction} {message}… ({Numbers.Said(length)} bytes in all)" : $"{direction} {message}");
         }
         body.SetLength(0);
     }

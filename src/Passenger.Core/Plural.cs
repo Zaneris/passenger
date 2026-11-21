@@ -1,11 +1,11 @@
 namespace Passenger.Core;
 
-/// <summary>A count and its noun: "1 file", "3 files", "0 files", never "1 files" or "2 file"; the words agreeing with it ("1
-/// file is", "0 files are"); and names as a sentence lists them.</summary>
+/// <summary>A count and its noun: "1 file", "3 files", "1,500 files", never "1 files" or "2 file"; the words agreeing with it
+/// ("1 file is", "0 files are"); and names as a sentence lists them.</summary>
 public static class Plural
 {
     /// <summary>The count and its noun, the noun's plural <paramref name="many"/> or else the noun with an s.</summary>
-    public static string Of(long count, string one, string? many = null) => $"{count} {Noun(count, one, many)}";
+    public static string Of(long count, string one, string? many = null) => $"{Numbers.Said(count)} {Noun(count, one, many)}";
 
     /// <summary>The noun alone, for a count written its own way ("1,024 objects").</summary>
     public static string Noun(long count, string one, string? many = null) => count == 1 ? one : many ?? one + "s";

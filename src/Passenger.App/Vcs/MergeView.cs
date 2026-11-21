@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -91,7 +92,7 @@ public sealed class MergeView : DockPanel
         leftStrip = Strip(MergeSide.Left);
         rightStrip = Strip(MergeSide.Right);
 
-        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions($"*,{StripWidth},*,{StripWidth},*"), RowDefinitions = new RowDefinitions("Auto,*") };
+        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions(string.Create(CultureInfo.InvariantCulture, $"*,{StripWidth},*,{StripWidth},*")), RowDefinitions = new RowDefinitions("Auto,*") };
         sides.Children.Add(DiffLines.Title(texts.Sides.LeftTitle, 0));
         sides.Children.Add(DiffLines.Title("Result", 2));
         sides.Children.Add(DiffLines.Title(texts.Sides.RightTitle, 4));

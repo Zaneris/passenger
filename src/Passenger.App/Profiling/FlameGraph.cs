@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Media.TextFormatting;
+using Passenger.Core;
 using Passenger.Profiler;
 
 namespace Passenger.App.Profiling;
@@ -191,7 +192,7 @@ public sealed class FlameGraph : Control
             return;
         }
         tipped = node;
-        ToolTip.SetTip(this, node is null ? null : $"{node.Name}\n{node.Total * SampleMs:N0} ms ({Percent(node)}), {node.Self * SampleMs:N0} ms in itself");
+        ToolTip.SetTip(this, node is null ? null : $"{node.Name}\n{Numbers.Fixed(node.Total * SampleMs, 0)} ms ({Percent(node)}), {Numbers.Fixed(node.Self * SampleMs, 0)} ms in itself");
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -226,7 +227,7 @@ public sealed class FlameGraph : Control
         InvalidateVisual();
     }
 
-    private string Percent(CallNode node) => root is { Total: > 0 } top ? $"{100.0 * node.Total / top.Total:0.0}%" : "0%";
+    private string Percent(CallNode node) => root is { Total: > 0 } top ? $"{Numbers.Fixed(100.0 * node.Total / top.Total, 1)}%" : "0%";
 
     private static int Ancestors(CallNode node)
     {

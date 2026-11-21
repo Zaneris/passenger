@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Passenger.App.Docking;
 using Passenger.Core;
@@ -154,6 +155,7 @@ public static partial class ThemeFiles
             return null;
         }
         return Number(given, LeastArea, MostArea)
-            ?? throw new FormatException($"gives layout's {side} size as {ThemeJson.Shown(given)}: an area's size is a number of pixels, {LeastArea} to {MostArea}");
+            ?? throw new FormatException(string.Create(CultureInfo.InvariantCulture,
+                $"gives layout's {side} size as {ThemeJson.Shown(given)}: an area's size is a number of pixels, {LeastArea} to {MostArea}"));
     }
 }

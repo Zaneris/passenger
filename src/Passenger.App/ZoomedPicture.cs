@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -6,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -171,7 +171,7 @@ public sealed class ZoomedPicture : ScrollViewer
             image.Height = picture.Size.Height * Zoom;
         }
         RenderOptions.SetBitmapInterpolationMode(image, Zoom >= 1 ? BitmapInterpolationMode.None : BitmapInterpolationMode.HighQuality);
-        zoomText.Text = string.Create(CultureInfo.CurrentCulture, $"{Zoom * 100:0}%");
+        zoomText.Text = $"{Numbers.Fixed(Zoom * 100, 0)}%";
     }
 
     /// <summary>The command modifier with the wheel zooms; the wheel alone scrolls.</summary>

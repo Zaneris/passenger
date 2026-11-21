@@ -31,7 +31,7 @@ public sealed record MotionAsked(bool ReducesMotion, CaretBlink Blink)
     public const uint WindowsNeverBlinks = uint.MaxValue;
 
     public override string ToString() => $"{(ReducesMotion ? "less motion" : "full motion")}, "
-        + (Blink.Blinks ? $"carets blinking {Blink.Shown.TotalMilliseconds:0} ms shown and {Blink.Hidden.TotalMilliseconds:0} ms hidden" : "carets steady");
+        + (Blink.Blinks ? $"carets blinking {Durations.Said(Blink.Shown)} shown and {Durations.Said(Blink.Hidden)} hidden" : "carets steady");
 
     /// <summary>Reads a stand-in's words: <c>full</c> or <c>reduced</c> and <c>blink=none</c>, <c>blink=MS</c> or
     /// <c>blink=SHOWN/HIDDEN</c>, comma-separated, each left out standing as Passenger's own; throws

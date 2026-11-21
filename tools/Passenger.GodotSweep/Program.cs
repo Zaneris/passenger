@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
 using Passenger.Workspace.GDScript;
@@ -44,7 +45,7 @@ public static class Program
                 GDScriptTree.Parse(script);
                 parse = Math.Min(parse, clock.Elapsed.TotalMilliseconds);
             }
-            Console.WriteLine($"{Path.GetFileName(timed)}: format {least:F1} ms ({unwrapped:F1} ms not wrapping), one parse {parse:F1} ms");
+            Console.WriteLine($"{Path.GetFileName(timed)}: format {Numbers.Fixed(least, 1)} ms ({Numbers.Fixed(unwrapped, 1)} ms not wrapping), one parse {Numbers.Fixed(parse, 1)} ms");
             return 0;
         }
         if (args is ["--format-one", var one] && File.Exists(one))

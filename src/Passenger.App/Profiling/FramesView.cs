@@ -164,15 +164,15 @@ public sealed class FramesView : DockPanel
             return string.Empty;
         }
         UiFrame longest = all.MaxBy(f => f.DurationMs)!;
-        return $"{all.Count:N0} {Plural.Noun(all.Count, "frame")}: {UiFrames.MedianMs(all):0.0} ms on the UI thread at the median, {longest.DurationMs:0.0} ms at the longest (frame {longest.Number}); "
-            + $"measuring {all.Sum(f => f.MeasureMs):N1} ms, arranging {all.Sum(f => f.ArrangeMs):N1} ms, rendering {all.Sum(f => f.RecordMs):N1} ms, the compositor {all.Sum(f => f.CompositeMs):N1} ms in all. "
+        return $"{Numbers.Said(all.Count)} {Plural.Noun(all.Count, "frame")}: {Numbers.Fixed(UiFrames.MedianMs(all), 1)} ms on the UI thread at the median, {Numbers.Fixed(longest.DurationMs, 1)} ms at the longest (frame {longest.Number}); "
+            + $"measuring {Numbers.Fixed(all.Sum(f => f.MeasureMs), 1)} ms, arranging {Numbers.Fixed(all.Sum(f => f.ArrangeMs), 1)} ms, rendering {Numbers.Fixed(all.Sum(f => f.RecordMs), 1)} ms, the compositor {Numbers.Fixed(all.Sum(f => f.CompositeMs), 1)} ms in all. "
             + "Choose a frame for its own.";
     }
 
     private string Said(UiFrame frame) =>
-        $"Frame {frame.Number} at {frame.StartMs - origin:N0} ms: {frame.DurationMs:0.0} ms on the UI thread, {frame.MeasurePasses:N0} {Plural.Noun(frame.MeasurePasses, "measure pass", "measure passes")} and "
-        + $"{frame.ArrangePasses:N0} {Plural.Noun(frame.ArrangePasses, "arrange pass", "arrange passes")} ({frame.Measures:N0} {Plural.Noun(frame.Measures, "measure")}, {frame.Arranges:N0} {Plural.Noun(frame.Arranges, "arrange")}); "
-        + $"measuring {frame.MeasureMs:0.0} ms, arranging {frame.ArrangeMs:0.0} ms, rendering {frame.RecordMs:0.0} ms, then the compositor {frame.CompositeMs:0.0} ms.";
+        $"Frame {frame.Number} at {Numbers.Fixed(frame.StartMs - origin, 0)} ms: {Numbers.Fixed(frame.DurationMs, 1)} ms on the UI thread, {Numbers.Said(frame.MeasurePasses)} {Plural.Noun(frame.MeasurePasses, "measure pass", "measure passes")} and "
+        + $"{Numbers.Said(frame.ArrangePasses)} {Plural.Noun(frame.ArrangePasses, "arrange pass", "arrange passes")} ({Numbers.Said(frame.Measures)} {Plural.Noun(frame.Measures, "measure")}, {Numbers.Said(frame.Arranges)} {Plural.Noun(frame.Arranges, "arrange")}); "
+        + $"measuring {Numbers.Fixed(frame.MeasureMs, 1)} ms, arranging {Numbers.Fixed(frame.ArrangeMs, 1)} ms, rendering {Numbers.Fixed(frame.RecordMs, 1)} ms, then the compositor {Numbers.Fixed(frame.CompositeMs, 1)} ms.";
 
 
     /// <summary>A control's row opened: its XAML, or its place in the Live Visual Tree; false for a type's row.</summary>
@@ -204,11 +204,11 @@ public sealed class FramesView : DockPanel
                 : Plural.Of(shown.Cost.Controls.Count, "control"));
             named.Margin = new Thickness(shown.Depth * Gaps.Indent, 0, 0, 0);
             LayoutWork work = shown.Cost.Work;
-            FramesTable.Put(numbers[0], $"{work.SelfMs:N1} ms");
-            FramesTable.Put(numbers[1], $"{work.Measures:N0}");
-            FramesTable.Put(numbers[2], $"{work.MeasureMs:N1} ms");
-            FramesTable.Put(numbers[3], $"{work.Arranges:N0}");
-            FramesTable.Put(numbers[4], $"{work.ArrangeMs:N1} ms");
+            FramesTable.Put(numbers[0], $"{Numbers.Fixed(work.SelfMs, 1)} ms");
+            FramesTable.Put(numbers[1], Numbers.Said(work.Measures));
+            FramesTable.Put(numbers[2], $"{Numbers.Fixed(work.MeasureMs, 1)} ms");
+            FramesTable.Put(numbers[3], Numbers.Said(work.Arranges));
+            FramesTable.Put(numbers[4], $"{Numbers.Fixed(work.ArrangeMs, 1)} ms");
         });
     }
 }

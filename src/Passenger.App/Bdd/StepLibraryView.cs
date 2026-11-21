@@ -234,7 +234,7 @@ public sealed class StepLibraryView : DockPanel
             {
                 case Heading shown:
                     title.Text = shown.Title;
-                    count.Text = shown.Count.ToString(System.Globalization.CultureInfo.CurrentCulture);
+                    count.Text = Numbers.Said(shown.Count);
                     break;
                 case LibraryStep shown:
                     showStep(shown);

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Passenger.App.State;
+using Passenger.Core;
 
 namespace Passenger.App.Testing;
 
@@ -79,9 +80,9 @@ public sealed record TestResultsState : IStateDocument<TestResultsState>
     /// is never cut again.</summary>
     private const int Slack = 64;
 
-    private static string? Start(string? text, int most) => text is { } whole && whole.Length > most + Slack ? $"{whole[..most]}\n[{whole.Length - most:N0} more characters left out]" : text;
+    private static string? Start(string? text, int most) => text is { } whole && whole.Length > most + Slack ? $"{whole[..most]}\n[{Numbers.Said(whole.Length - most)} more characters left out]" : text;
 
-    private static string? End(string? text, int most) => text is { } whole && whole.Length > most + Slack ? $"[{whole.Length - most:N0} earlier characters left out]\n{whole[^most..]}" : text;
+    private static string? End(string? text, int most) => text is { } whole && whole.Length > most + Slack ? $"[{Numbers.Said(whole.Length - most)} earlier characters left out]\n{whole[^most..]}" : text;
 }
 
 /// <summary>A method's results as one run left them: when the run began, the method's code then

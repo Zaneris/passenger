@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Run;
+using Passenger.Core;
 
 namespace Passenger.App.ToolWindows;
 
@@ -130,8 +131,7 @@ public sealed class ProblemsView : DockPanel
         (int errors, int warnings, int messages) = model.SeverityCounts();
         foreach ((ProblemSeverity severity, (ToggleButton button, TextBlock count)) in severities)
         {
-            count.Text = (severity switch { ProblemSeverity.Error => errors, ProblemSeverity.Warning => warnings, _ => messages })
-                .ToString(System.Globalization.CultureInfo.CurrentCulture);
+            count.Text = Numbers.Said(severity switch { ProblemSeverity.Error => errors, ProblemSeverity.Warning => warnings, _ => messages });
             button.IsChecked = model.Filter.Shows(severity);
         }
     }

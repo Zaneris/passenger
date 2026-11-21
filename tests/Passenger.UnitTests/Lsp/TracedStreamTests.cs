@@ -1,4 +1,5 @@
 using System.Text;
+using Passenger.Core;
 using Passenger.Lsp;
 
 namespace Passenger.UnitTests.Lsp;
@@ -29,7 +30,7 @@ public class TracedStreamTests
         string large = $"\"{new string('x', 100_000)}\"";
         (_, List<string> traced, TracedStream stream) = await ReadAllAsync(Concat(Framed(large), Framed("{}")), 8_192);
         Assert.Equal(2, traced.Count);
-        Assert.Equal($"<-- {large[..(64 * 1024)]}… ({Encoding.UTF8.GetByteCount(large):N0} bytes in all)", traced[0]);
+        Assert.Equal($"<-- {large[..(64 * 1024)]}… ({Numbers.Said(Encoding.UTF8.GetByteCount(large))} bytes in all)", traced[0]);
         Assert.Equal("<-- {}", traced[1]);
         Assert.Equal(2, stream.Crossed);
     }
@@ -42,7 +43,7 @@ public class TracedStreamTests
         byte[] sent = Concat(Encoding.ASCII.GetBytes("Content-Length: 3000000000\r\n\r\n"), Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","result":["""));
         (byte[] read, List<string> traced, TracedStream stream) = await ReadAllAsync(sent, 5);
         Assert.Equal(sent, read);
-        Assert.Equal([$"<-- a message of {3_000_000_000L:N0} bytes, over the {(long)int.MaxValue:N0} the connection reads of one"], traced);
+        Assert.Equal(["<-- a message of 3,000,000,000 bytes, over the 2,147,483,647 the connection reads of one"], traced);
         Assert.Equal(0, stream.Crossed);
     }
 

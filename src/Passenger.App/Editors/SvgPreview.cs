@@ -124,7 +124,7 @@ public sealed class SvgPreview : DockPanel, IOwnKeys
         {
             picture.Picture = read;
             leftOut.Say(read.LeftOut);
-            size.Text = string.Create(CultureInfo.CurrentCulture, $"{read.Size.Width:0.##} × {read.Size.Height:0.##}");
+            size.Text = string.Create(CultureInfo.InvariantCulture, $"{read.Size.Width:0.##} × {read.Size.Height:0.##}");
         }
     }
 }

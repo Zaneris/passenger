@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -176,7 +175,7 @@ public sealed class TableViewer
         message.Text = file.Problem ?? (file.IsReading ? "Reading…" : string.Empty);
         View.IsVisible = file.Table is not null;
         size.Text = file.Table is { } table && file.ShowsTable
-            ? $"{table.RecordCount.ToString("N0", CultureInfo.CurrentCulture)} {Core.Plural.Noun(table.RecordCount, "row")} × {table.ColumnCount.ToString("N0", CultureInfo.CurrentCulture)} {Core.Plural.Noun(table.ColumnCount, "column")}"
+            ? $"{Core.Numbers.Said(table.RecordCount)} {Core.Plural.Noun(table.RecordCount, "row")} × {Core.Numbers.Said(table.ColumnCount)} {Core.Plural.Noun(table.ColumnCount, "column")}"
             : file.IsReading ? "Reading…" : string.Empty;
         painting = false;
     }

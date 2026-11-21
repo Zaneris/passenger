@@ -287,7 +287,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 int after = last - at;
                 return string.Create(System.Globalization.CultureInfo.InvariantCulture,
                     $"{shown}\nLine {at + 1} is cut short, {line.Length - from - kept:N0} of its {line.Length:N0} characters left out"
-                    + $"{(after > 0 ? $" and {after:N0} more {Plural.Noun(after, "line")} after it" : string.Empty)}: from {at + 1} with column {from + kept + 1} reads on");
+                    + $"{(after > 0 ? $" and {Numbers.Said(after)} more {Plural.Noun(after, "line")} after it" : string.Empty)}: from {at + 1} with column {from + kept + 1} reads on");
             }
             room -= length + 1;
         }
