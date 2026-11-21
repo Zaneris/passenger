@@ -93,11 +93,20 @@ public sealed partial class PassengerTools
         }
         if (Session.Web is { } languages && languages.For(document) is { } web)
         {
+            bool waited = web.Lsp is null && !languages.CannotStart(document);
+            if (waited)
+            {
+                AgentCall.Say($"Waiting for the {WebLanguages.Name(web.Kind)} language server to start");
+            }
             // Looked at every 50 ms: a web server's document comes as the server starts, raising nothing.
             await Until(() => web.Lsp is not null || languages.CannotStart(document), ServerLimit, cancel);
-            return web.Lsp is { } server
-                ? new ServerServed(document, LanguageOf(document), server, web)
-                : throw new InvalidOperationException(languages.Unready("Its code help", document));
+            if (waited)
+            {
+                AgentCall.Say(null);
+            }
+            return web.Lsp is { } server ? new ServerServed(document, LanguageOf(document), server, web)
+                : languages.CannotStart(document) ? throw new InvalidOperationException(languages.Unready("Its code help", document))
+                : throw new TimeoutException(Refusals.StillStarting(WebLanguages.Name(web.Kind), ServerLimit));
         }
         if (Passenger.Workspace.GodotFileKinds.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
         {

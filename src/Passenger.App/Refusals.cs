@@ -234,6 +234,11 @@ public static class Refusals
         $"The C# language server is still loading the folder's projects after {Durations.Said(waited)} ({(state.Length > 0 ? state : "starting")}), "
         + "so it has nothing of them to answer from yet: ask again once workspace says languageServer is ready";
 
+    /// <summary>A code tool asked of a file whose language server (<paramref name="server"/>, "YAML") is still starting
+    /// after the wait.</summary>
+    public static string StillStarting(string server, TimeSpan waited) =>
+        $"The {server} language server is still starting after {Durations.Said(waited)}, so it has nothing to answer from yet: ask again in a moment";
+
     /// <summary>A C# code tool asked while what a restore brought, or a load again, is still to reach the language server
     /// after the wait: <paramref name="coming"/> says what, as the agent was told it waited for.</summary>
     public static string StillComing(TimeSpan waited, string coming) =>

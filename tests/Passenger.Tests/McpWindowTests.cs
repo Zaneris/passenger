@@ -1045,6 +1045,56 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's definition on a compose file asked as the YAML language server starts (held here, as a first start
+    /// on a loaded machine holds it) waits, saying so, and past the agent's wait is refused as the server still starting
+    /// after it; asked again once the server is up, it answers. Skipped without a Node.js that runs the YAML server.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_on_a_compose_file_waits_saying_so_for_the_yaml_server_to_start_and_past_the_wait_is_refused_as_still_starting()
+    {
+        DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
+        const string Compose = "services:\n  web:\n    image: nginx:1.27\n    depends_on: [api]\n  api:\n    build: .\n";
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-yaml-start-"));
+        DeleteAtEnd(folder);
+        File.WriteAllText(Path.Combine(folder, "compose.yaml"), Compose);
+        string? limitWas = Environment.GetEnvironmentVariable(PassengerTools.ServerLimitVariable);
+        TimeSpan limit = Waits.Of(TimeSpan.FromSeconds(4));
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        TaskCompletionSource starting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int> held = window.Session.Web!.HoldNextConfigure(starting.Task);
+        McpClient? client = null;
+        Environment.SetEnvironmentVariable(PassengerTools.ServerLimitVariable, ((int)limit.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        try
+        {
+            client = Ui.AwaitPumped(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching", AgentLimit);
+            Dictionary<string, object?> onApi = new() { ["path"] = "compose.yaml", ["line"] = 4, ["column"] = 20 };
+            Heard heard = new();
+            Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, onApi, heard: heard));
+            CallToolResult refused = Ui.AwaitPumped(asked, "the agent's definition, asked as the YAML server's start is held", AgentLimit);
+            Assert.True(held.IsCompleted, $"The YAML server's start was never held, the definition answering: {Text(refused)}");
+            Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.StillStarting("YAML", limit), StringComparison.Ordinal),
+                $"definition on a compose file, asked while the YAML server's start was held past the agent's wait, answered: {Text(refused)}");
+            Assert.True(heard.Told.Any(t => t.Message?.Contains("Waiting for the YAML language server to start", StringComparison.Ordinal) == true),
+                $"The agent was not told its definition waited for the YAML server to start: {heard}");
+
+            starting.SetResult();
+            Ui.PumpUntil(() => window.Session.Web.Node is not null && window.EditorArea.Documents.Any(d => window.Session.Web.For(d)?.Lsp is not null),
+                "the YAML server to start once let go", AgentLimit);
+            CallToolResult answered = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.Definition, onApi)), "the agent's definition once the YAML server is up", AgentLimit);
+            Assert.True(answered.IsError != true && Text(answered).Contains("\"line\":5", StringComparison.Ordinal),
+                $"definition of the service api, asked once the YAML server was up, did not lead to its declaration on line 5: {Text(answered)}");
+        }
+        finally
+        {
+            starting.TrySetResult();
+            if (client is not null)
+            {
+                Gone(client);
+            }
+            window.Close();
+            Environment.SetEnvironmentVariable(PassengerTools.ServerLimitVariable, limitWas);
+        }
+    }
+
     /// <summary>A MAUI page's folder whose load after its first restore waits for its design-time builds (held back here)
     /// longer than an agent's code tools wait for the C# language server, given this window a little past the time the
     /// server may say nothing of a load under way: the agent's definition of the InitializeComponent MAUI's generator
