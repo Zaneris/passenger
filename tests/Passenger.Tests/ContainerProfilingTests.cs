@@ -59,6 +59,8 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         finally
         {
             window.Close();
+            // Its program spins a core for as long as it runs, which every test after this one would share.
+            Docker.Remove(container);
         }
     }
 
@@ -125,6 +127,8 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         finally
         {
             window.Close();
+            // Its program spins a core for as long as it runs, which every test after this one would share.
+            Docker.Remove(container);
             // The folder's snapshots are the class's other tests' too.
             blocking.ForEach(Directory.Delete);
         }
@@ -162,6 +166,8 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         finally
         {
             window.Close();
+            // Its program spins a core for as long as it runs, which every test after this one would share.
+            Docker.Remove(container);
         }
     }
 
@@ -188,6 +194,8 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         finally
         {
             window.Close();
+            // Its program spins a core for as long as it runs, which every test after this one would share.
+            Docker.Remove(container);
         }
     }
 

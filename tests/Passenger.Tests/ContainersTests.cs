@@ -299,6 +299,14 @@ internal static class Docker
         return (named, [.. words, Image, "sh", "-c", command]);
     }
 
+    /// <summary>Removes containers a test started, as its end does in its finally, whatever came of the test: what docker says
+    /// is passed over, the test's own failure being the one to tell, and one left running fails it all the same
+    /// (<see cref="LeftBy"/>). From the UI thread, the window's loop running as it waits.</summary>
+    public static void Remove(params string[] containers) => Ask(["rm", "-f", .. containers]);
+
+    /// <inheritdoc cref="Remove"/>
+    public static Task RemoveAsync(params string[] containers) => AskAsync(["rm", "-f", .. containers]);
+
     /// <summary>A container's state as docker inspect says it (running, exited, paused), or null when there is none.</summary>
     public static string? State(string name) => Answer(Ask(["inspect", "-f", "{{.State.Status}}", name], TimeSpan.FromSeconds(30).Scaled()));
 
@@ -307,6 +315,79 @@ internal static class Docker
 
     /// <summary>Whether a volume of that name is there.</summary>
     public static bool VolumeExists(string name) => Ask(["volume", "inspect", name], TimeSpan.FromSeconds(30).Scaled()).Succeeded;
+
+    /// <summary>The engine commands that start a container (run, create, start, restart, unpause, Compose's up), which a test
+    /// or the IDE as it ran started, counted (<see cref="Begin"/>, <see cref="LeftBy"/>).</summary>
+    private static long starts;
+
+    private static int counting;
+
+    /// <summary>How many containers had been started as each test under way began, by its id.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> StartsAtBegin = new(StringComparer.Ordinal);
+
+    /// <summary>Notes how many containers had been started as a test begins, for <see cref="LeftBy"/> at its end; the first
+    /// begins the count.</summary>
+    public static void Begin(Xunit.v3.IXunitTest test)
+    {
+        if (Interlocked.Exchange(ref counting, 1) == 0)
+        {
+            ChildProcesses.Started += (_, start) =>
+            {
+                if (start.Start is { } started && Path.GetFileNameWithoutExtension(started.FileName) is "docker" or "podman"
+                    && started.ArgumentList.Any(word => word is "run" or "create" or "start" or "restart" or "unpause" or "up"))
+                {
+                    Interlocked.Increment(ref starts);
+                }
+            };
+        }
+        StartsAtBegin[test.UniqueID] = Interlocked.Read(ref starts);
+    }
+
+    /// <summary>The run's containers a test left running (those carrying its label, and those its IDE labelled with the run's
+    /// state), removed now, each named with its image: looked for only where the test or the IDE started a container as it
+    /// ran, and where an engine runs. A test of a class that runs beside others (<see cref="Beside"/>, the debug adapter's)
+    /// starts none, and would find theirs.</summary>
+    public static IReadOnlyList<string> LeftBy(Xunit.v3.IXunitTest test)
+    {
+        if (!StartsAtBegin.TryRemove(test.UniqueID, out long before) || Interlocked.Read(ref starts) == before
+            || test.TestCase.TestCollection.TestCollectionDisplayName is Beside.Name or Debugging.Helpers.DebugSession.Collection)
+        {
+            return [];
+        }
+        Task<IReadOnlyList<string>> removing = Waiting.Apart(RemoveRunningAsync);
+        TimeSpan limit = TimeSpan.FromMinutes(2).Scaled();
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            return Ui.AwaitPumped(removing, "the run's containers left running, removed", limit);
+        }
+        Waiting.Until(() => removing.IsCompleted, limit, scaled: false);
+        return removing.IsCompleted ? removing.GetAwaiter().GetResult()
+            : throw new TimeoutException($"The run's containers left running were not removed within {limit.TotalSeconds:0} s");
+    }
+
+    /// <summary>Removes the run's containers running now (<see cref="LeftBy"/>), each named with its image; none where no
+    /// engine runs.</summary>
+    private static async Task<IReadOnlyList<string>> RemoveRunningAsync()
+    {
+        if (await Unusable.Value is not null)
+        {
+            return [];
+        }
+        Dictionary<string, string> running = new(StringComparer.Ordinal);
+        foreach (string label in (string[])[RunLabel, $"{ContainerLabels.State}={ContainerLabels.StateValue}"])
+        {
+            ChildResult listed = await AskAsync(["ps", "--filter", $"label={label}", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}"], TimeSpan.FromSeconds(30).Scaled());
+            foreach (string[] row in listed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(l => l.Split('\t')).Where(r => r.Length == 3))
+            {
+                running[row[0]] = $"{row[1]} ({Short(row[2])})";
+            }
+        }
+        if (running.Count > 0)
+        {
+            await AskAsync(["rm", "-f", .. running.Keys], TimeSpan.FromSeconds(60).Scaled());
+        }
+        return [.. running.Values.Order(StringComparer.Ordinal)];
+    }
 
     /// <summary>Removes every container, network, volume and image the run's tests made or had the IDE make (the run's state's label), as
     /// the run ends; quiet where there is no engine.</summary>
@@ -505,40 +586,48 @@ public sealed class ContainersTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("solo", "trap 'exit 0' TERM; echo 'from inside' > /tmp/note.txt; while true; do :; done");
-        MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-solo-"));
-        ContainersView view = Shown(window);
-        Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
+        try
+        {
+            MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-solo-"));
+            ContainersView view = Shown(window);
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
 
-        view.ShowTab("Stats");
-        Ui.WaitFor(() => view.Stats.Latest.Count == 1 && view.Stats.Latest[0].Memory.Length > 0 && view.Stats.Latest[0].Cpu > 0, "the engine's numbers for the busy container");
-        ContainerStatsSample sample = view.Stats.Latest[0];
-        Assert.Equal(name, sample.Name);
-        Assert.Contains("/", sample.Memory, StringComparison.Ordinal);
-        view.ShowTab("Log");
-        Ui.Settle();
-        Assert.Empty(view.Stats.Latest);
+            view.ShowTab("Stats");
+            Ui.WaitFor(() => view.Stats.Latest.Count == 1 && view.Stats.Latest[0].Memory.Length > 0 && view.Stats.Latest[0].Cpu > 0, "the engine's numbers for the busy container");
+            ContainerStatsSample sample = view.Stats.Latest[0];
+            Assert.Equal(name, sample.Name);
+            Assert.Contains("/", sample.Memory, StringComparison.Ordinal);
+            view.ShowTab("Log");
+            Ui.Settle();
+            Assert.Empty(view.Stats.Latest);
 
-        view.ShowTab("Files");
-        Ui.WaitFor(() => view.Files.Entries.Any(f => f.Path == "/tmp" && f.IsFolder), "the container's root listed");
-        _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/tmp"));
-        Ui.WaitFor(() => view.Files.Entries.Any(f => f.Path == "/tmp/note.txt"), "/tmp's files listed under it");
-        _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/tmp/note.txt"));
-        Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith("note.txt", StringComparison.Ordinal) == true, "note.txt open in the editor");
-        Passenger.App.Workspace.OpenDocument note = window.EditorArea.Active!;
-        Assert.True(note.IsReadOnly, "A container's file opened editable");
-        Assert.Equal("from inside\n", note.Text.Snapshot.ToString());
+            view.ShowTab("Files");
+            Ui.WaitFor(() => view.Files.Entries.Any(f => f.Path == "/tmp" && f.IsFolder), "the container's root listed");
+            _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/tmp"));
+            Ui.WaitFor(() => view.Files.Entries.Any(f => f.Path == "/tmp/note.txt"), "/tmp's files listed under it");
+            _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/tmp/note.txt"));
+            Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith("note.txt", StringComparison.Ordinal) == true, "note.txt open in the editor");
+            Passenger.App.Workspace.OpenDocument note = window.EditorArea.Active!;
+            Assert.True(note.IsReadOnly, "A container's file opened editable");
+            Assert.Equal("from inside\n", note.Text.Snapshot.ToString());
 
-        Assert.True(window.Perform(AppActions.ContainerStop), "Stop did not run");
-        Ui.WaitFor(() => Docker.State(name) == "exited" && Row(view, name)?.Container?.State == "exited", $"{name} stopped, and shown so");
-        Assert.True(window.Perform(AppActions.ContainerStart), "Start did not run");
-        Ui.WaitFor(() => Docker.State(name) == "running" && Row(view, name)?.Container?.IsRunning == true, $"{name} started again");
-        string started = Docker.Run("inspect", "-f", "{{.State.StartedAt}}", name);
-        Assert.True(window.Perform(AppActions.ContainerRestart), "Restart did not run");
-        Ui.WaitFor(() => Docker.Said("inspect", "-f", "{{.State.StartedAt}}", name) is { } now && now != started, $"{name} restarted");
-        Assert.True(window.Perform(AppActions.ContainerRemove), "Remove did not run");
-        Ui.WaitFor(() => Docker.State(name) is null && Row(view, name) is null, $"{name} removed, and gone from the window");
-        Assert.Null(window.Asked);
-        window.Close();
+            Assert.True(window.Perform(AppActions.ContainerStop), "Stop did not run");
+            Ui.WaitFor(() => Docker.State(name) == "exited" && Row(view, name)?.Container?.State == "exited", $"{name} stopped, and shown so");
+            Assert.True(window.Perform(AppActions.ContainerStart), "Start did not run");
+            Ui.WaitFor(() => Docker.State(name) == "running" && Row(view, name)?.Container?.IsRunning == true, $"{name} started again");
+            string started = Docker.Run("inspect", "-f", "{{.State.StartedAt}}", name);
+            Assert.True(window.Perform(AppActions.ContainerRestart), "Restart did not run");
+            Ui.WaitFor(() => Docker.Said("inspect", "-f", "{{.State.StartedAt}}", name) is { } now && now != started, $"{name} restarted");
+            Assert.True(window.Perform(AppActions.ContainerRemove), "Remove did not run");
+            Ui.WaitFor(() => Docker.State(name) is null && Row(view, name) is null, $"{name} removed, and gone from the window");
+            Assert.Null(window.Asked);
+            window.Close();
+        }
+        finally
+        {
+            // Its shell spins a core for as long as it runs, which every test after this one would share.
+            Docker.Remove(name);
+        }
     }
 
     [AvaloniaFact]
@@ -555,14 +644,21 @@ public sealed class ContainersTests
         File.WriteAllText(compose, $"name: {project}\nservices:\n  web:\n    image: {Docker.Image}\n    command: [\"sleep\", \"600\"]\n    labels: {{ {ours} }}\n"
             + $"  db:\n    image: {Docker.Image}\n    command: [\"sleep\", \"600\"]\n    labels: {{ {run} }}\nnetworks:\n  default:\n    labels: {{ {run} }}\n");
         Docker.Run("compose", "-f", compose, "up", "-d");
-        window.Session.Containers.StartedProject(["compose", "-p", project, "-f", compose]);
-        string web = $"{project}-web-1";
-        string db = $"{project}-db-1";
-        Assert.Null(window.CloseSolution());
-        Ui.Settle();
-        Ui.WaitFor(() => Docker.State(web) is null, $"{web}, which Passenger's labels are on, removed as the folder ended");
-        Assert.Equal("running", Docker.State(db));
-        window.Close();
+        try
+        {
+            window.Session.Containers.StartedProject(["compose", "-p", project, "-f", compose]);
+            string web = $"{project}-web-1";
+            string db = $"{project}-db-1";
+            Assert.Null(window.CloseSolution());
+            Ui.Settle();
+            Ui.WaitFor(() => Docker.State(web) is null, $"{web}, which Passenger's labels are on, removed as the folder ended");
+            Assert.Equal("running", Docker.State(db));
+            window.Close();
+        }
+        finally
+        {
+            Docker.Remove($"{project}-web-1", $"{project}-db-1");
+        }
     }
 
     [AvaloniaFact]
@@ -761,42 +857,49 @@ public sealed class ContainersTests
         string name = Docker.Container("escape",
             $"echo first > /note.txt; dd if=/dev/zero of=/big bs=1048576 count=20 2>/dev/null; mkdir -p '/{outside.TrimStart('/')}'; " +
             $"echo inside > '/{outside.TrimStart('/')}/escaped.txt'; rm /bin/ls; printf '%s\\n' {ls} > /bin/ls; chmod +x /bin/ls; sleep 600");
-        MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-escape-window-"));
-        ContainersView view = Shown(window);
-        Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
-        view.ShowTab("Files");
-        Ui.WaitFor(() => view.Files.Entries.Count > 0, "the container's root listed");
-        Assert.Equal(["/big", "/note.txt"], view.Files.Entries.Select(f => f.Path).Order(StringComparer.Ordinal));
-
-        // Asked for by its path all the same (as a test or a stale row could), it is refused and nothing is written.
-        Assert.NotNull(Ui.Await(view.Files.OpenAsync("/" + made), "the made-up path's answer"));
-        Assert.False(File.Exists(escaped), $"A container's made-up file name had Passenger write {escaped}, outside its cache");
-
-        Assert.Equal("/big is larger than 16 MB", Ui.Await(view.Files.OpenAsync("/big"), "the large file's answer"));
-        string cache = Path.Combine(window.StateFolder, "cache", "containers");
-        Assert.Empty(Directory.Exists(cache) ? Directory.EnumerateFiles(cache, "*big*", SearchOption.AllDirectories) : []);
-
-        _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/note.txt"));
-        Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith("note.txt", StringComparison.Ordinal) == true, "note.txt open in the editor");
-        Passenger.App.Workspace.OpenDocument note = window.EditorArea.Active!;
-        Assert.Equal("first\n", note.Text.Snapshot.ToString());
-        Assert.True(PathNames.IsUnder(note.Path, PathNames.Canonical(cache)), $"note.txt's copy {note.Path} is not under the cache {cache}");
-        if (!OperatingSystem.IsWindows())
+        try
         {
-            const UnixFileMode Folder = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
-            for (string? at = Path.GetDirectoryName(note.Path); at is not null && PathNames.Within(at, PathNames.Canonical(cache)); at = Path.GetDirectoryName(at))
+            MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-escape-window-"));
+            ContainersView view = Shown(window);
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
+            view.ShowTab("Files");
+            Ui.WaitFor(() => view.Files.Entries.Count > 0, "the container's root listed");
+            Assert.Equal(["/big", "/note.txt"], view.Files.Entries.Select(f => f.Path).Order(StringComparer.Ordinal));
+
+            // Asked for by its path all the same (as a test or a stale row could), it is refused and nothing is written.
+            Assert.NotNull(Ui.Await(view.Files.OpenAsync("/" + made), "the made-up path's answer"));
+            Assert.False(File.Exists(escaped), $"A container's made-up file name had Passenger write {escaped}, outside its cache");
+
+            Assert.Equal("/big is larger than 16 MB", Ui.Await(view.Files.OpenAsync("/big"), "the large file's answer"));
+            string cache = Path.Combine(window.StateFolder, "cache", "containers");
+            Assert.Empty(Directory.Exists(cache) ? Directory.EnumerateFiles(cache, "*big*", SearchOption.AllDirectories) : []);
+
+            _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/note.txt"));
+            Ui.WaitFor(() => window.EditorArea.Active?.Path.EndsWith("note.txt", StringComparison.Ordinal) == true, "note.txt open in the editor");
+            Passenger.App.Workspace.OpenDocument note = window.EditorArea.Active!;
+            Assert.Equal("first\n", note.Text.Snapshot.ToString());
+            Assert.True(PathNames.IsUnder(note.Path, PathNames.Canonical(cache)), $"note.txt's copy {note.Path} is not under the cache {cache}");
+            if (!OperatingSystem.IsWindows())
             {
-                Assert.True(File.GetUnixFileMode(at) == Folder, $"The cache's folder {at} is {File.GetUnixFileMode(at)}, so another user may enter it");
+                const UnixFileMode Folder = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+                for (string? at = Path.GetDirectoryName(note.Path); at is not null && PathNames.Within(at, PathNames.Canonical(cache)); at = Path.GetDirectoryName(at))
+                {
+                    Assert.True(File.GetUnixFileMode(at) == Folder, $"The cache's folder {at} is {File.GetUnixFileMode(at)}, so another user may enter it");
+                }
+                Assert.True(File.GetUnixFileMode(note.Path) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+                    $"note.txt's copy is {File.GetUnixFileMode(note.Path)}, so another user may read a container's secret the person looked at");
             }
-            Assert.True(File.GetUnixFileMode(note.Path) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
-                $"note.txt's copy is {File.GetUnixFileMode(note.Path)}, so another user may read a container's secret the person looked at");
+            Docker.Run("exec", name, "sh", "-c", "echo second > /note.txt");
+            _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/note.txt"));
+            Ui.WaitFor(() => note.Text.Snapshot.ToString() == "second\n", $"note.txt's new text in its tab, not {note.Text.Snapshot}");
+            Assert.Same(note, window.EditorArea.Active);
+            Assert.True(note.IsReadOnly, "A container's file opened again became editable");
+            window.Close();
         }
-        Docker.Run("exec", name, "sh", "-c", "echo second > /note.txt");
-        _ = view.Files.ActivateAsync(view.Files.Entries.First(f => f.Path == "/note.txt"));
-        Ui.WaitFor(() => note.Text.Snapshot.ToString() == "second\n", $"note.txt's new text in its tab, not {note.Text.Snapshot}");
-        Assert.Same(note, window.EditorArea.Active);
-        Assert.True(note.IsReadOnly, "A container's file opened again became editable");
-        window.Close();
+        finally
+        {
+            Docker.Remove(name);
+        }
     }
 
     [AvaloniaFact]
@@ -839,6 +942,7 @@ public sealed class ContainersTests
         finally
         {
             window.Close();
+            Docker.Remove(name);
         }
 
         static byte[] Frame(byte kind, long length, byte[] body)
@@ -926,6 +1030,7 @@ public sealed class ContainersTests
         ContainerToolsSource source = new([stale], new Passenger.App.Updates.ReleaseFeed(new Uri("http://127.0.0.1:9/repos/Zaneris/passenger/releases"),
             TimeSpan.FromSeconds(5)), TestFolders.Create("ctr-tools-cache-"));
         string bare = Docker.Container("bare", "sleep 600");
+        List<string> made = [bare];
         MainWindow window = new() { Width = 1200, Height = 800, ContainerToolsFrom = source };
         window.Show();
         window.OpenFolder(TestFolders.Create("ctr-attach-"));
@@ -939,12 +1044,14 @@ public sealed class ContainersTests
 
             // Tools of this version whose list of programs names none by an id: no program is taken for one.
             string listing = Docker.Container("listing", "sleep 600");
+            made.Add(listing);
             Docker.Run("cp", Path.Combine(StandInTools("[{\"name\":\"Spins\",\"commandLine\":\"dotnet /app/Spins.dll\"},{\"id\":\"seven\"},3]"), "."), $"{listing}:{ContainerTools.Copied}");
             string? none = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = listing }), "the attach's answer");
             Assert.True(none?.Contains($"no longer runs in {listing}", StringComparison.Ordinal) == true, $"Attaching to a program the tools named by no id answered: {none}");
 
             // Tools whose list runs on past what any list takes: refused, never read into the IDE whole.
             string flooding = Docker.Container("flooding", "sleep 600");
+            made.Add(flooding);
             Docker.Run("cp", Path.Combine(StandInTools("[]", "head -c 6000000 /dev/zero | tr '\\0' ' '; echo '[]'"), "."), $"{flooding}:{ContainerTools.Copied}");
             string? flood = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = flooding }), "the attach's answer");
             Assert.True(flood?.Contains("more than the 4 MB a list of programs takes", StringComparison.Ordinal) == true, $"Attaching where the tools' list ran on answered: {flood}");
@@ -952,6 +1059,7 @@ public sealed class ContainersTests
         finally
         {
             window.Close();
+            Docker.Remove([.. made]);
         }
     }
 
@@ -988,6 +1096,7 @@ public sealed class ContainersTests
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -1020,18 +1129,25 @@ public sealed class ContainersTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("shell", "sleep 600");
-        MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-shell-"));
-        ContainersView view = Shown(window);
-        Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
-        Assert.True(window.Perform(AppActions.ContainerShell), "Open Shell did not run");
-        Ui.WaitFor(() => window.TerminalPanel.Tabs.Any(t => t.Name == $"{name} (shell)" && !t.HasEnded), "the shell's terminal tab");
-        Terminal.TerminalSession shell = window.TerminalPanel.Tabs.First(t => t.Name == $"{name} (shell)").Session;
-        Ui.WaitFor(() => Screen(shell).Contains('#', StringComparison.Ordinal), "the container's shell prompt");
-        shell.Write("echo inside-$((6*7)) $(hostname)\r");
-        Ui.WaitFor(() => Screen(shell).Contains("inside-42", StringComparison.Ordinal), "the command's answer in the shell");
-        shell.Write("exit\r");
-        Ui.WaitFor(() => window.TerminalPanel.Tabs.First(t => t.Name == $"{name} (shell)").HasEnded, "the shell to end");
-        window.Close();
+        try
+        {
+            MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-shell-"));
+            ContainersView view = Shown(window);
+            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == name), $"{name}'s row");
+            Assert.True(window.Perform(AppActions.ContainerShell), "Open Shell did not run");
+            Ui.WaitFor(() => window.TerminalPanel.Tabs.Any(t => t.Name == $"{name} (shell)" && !t.HasEnded), "the shell's terminal tab");
+            Terminal.TerminalSession shell = window.TerminalPanel.Tabs.First(t => t.Name == $"{name} (shell)").Session;
+            Ui.WaitFor(() => Screen(shell).Contains('#', StringComparison.Ordinal), "the container's shell prompt");
+            shell.Write("echo inside-$((6*7)) $(hostname)\r");
+            Ui.WaitFor(() => Screen(shell).Contains("inside-42", StringComparison.Ordinal), "the command's answer in the shell");
+            shell.Write("exit\r");
+            Ui.WaitFor(() => window.TerminalPanel.Tabs.First(t => t.Name == $"{name} (shell)").HasEnded, "the shell to end");
+            window.Close();
+        }
+        finally
+        {
+            Docker.Remove(name);
+        }
     }
 
     [AvaloniaFact]

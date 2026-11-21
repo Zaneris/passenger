@@ -504,7 +504,8 @@ public static partial class Nice
 /// test, every window it left open is closed (one that failed before its own close) and what its windows started (a
 /// language server, a build, a debugger, a program) is waited out, those it closed itself too, then the folders the test
 /// made as it ran are removed, the windows that used them gone first. Any test fails where the person's Godot user folders
-/// were written as it ran (<see cref="PersonsGodot"/>), or left a game running of a Godot editor it ended (<see cref="TestGodotEditors"/>).</summary>
+/// were written as it ran (<see cref="PersonsGodot"/>), or left a game running of a Godot editor it ended (<see cref="TestGodotEditors"/>)
+/// or a container of the run's running (<see cref="Docker.LeftBy"/>), each ended.</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -520,12 +521,14 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
             OpenWindows.Watch();
         }
         TestFolders.Begin(test.UniqueID);
+        Docker.Begin(test);
     }
 
     public override void After(MethodInfo methodUnderTest, IXunitTest test)
     {
         // Read before the windows close, said once they have.
         string? unlike = IsWindowTest(methodUnderTest) ? SameOnEverySystemAttribute.Unlike(methodUnderTest, OpenWindows.RanUnlike) : null;
+        IReadOnlyList<string> containers;
         try
         {
             if (IsWindowTest(methodUnderTest) && !OpenWindows.CloseAll())
@@ -536,6 +539,12 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         finally
         {
             TestFolders.End(test.UniqueID);
+            // Removed whatever else the test failed on: one left running slows every test after it.
+            containers = Docker.LeftBy(test);
+        }
+        if (containers.Count > 0)
+        {
+            throw new InvalidOperationException($"{test.TestDisplayName} left the run's containers running, removed now: {string.Join("; ", containers)}");
         }
         if (unlike is not null)
         {

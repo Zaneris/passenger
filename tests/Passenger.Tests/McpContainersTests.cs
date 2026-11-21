@@ -24,24 +24,31 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
     {
         await Docker.SkipWithoutEngineAsync();
         string name = await Docker.ContainerAsync("agent", "echo agent-hello; trap 'exit 0' TERM; while true; do sleep 1; done");
-        await TakeFolderAsync();
-        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        try
+        {
+            await TakeFolderAsync();
+            await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
 
-        JsonElement listed = await Call(client, McpTools.Containers);
-        Assert.Equal("Ready", listed.GetProperty("status").GetString());
-        JsonElement mine = listed.GetProperty("containers").EnumerateArray().Single(c => c.GetProperty("name").GetString() == name);
-        Assert.Equal("running", mine.GetProperty("state").GetString());
-        Assert.Equal(Docker.Image, Docker.Short(mine.GetProperty("image").GetString()!));
+            JsonElement listed = await Call(client, McpTools.Containers);
+            Assert.Equal("Ready", listed.GetProperty("status").GetString());
+            JsonElement mine = listed.GetProperty("containers").EnumerateArray().Single(c => c.GetProperty("name").GetString() == name);
+            Assert.Equal("running", mine.GetProperty("state").GetString());
+            Assert.Equal(Docker.Image, Docker.Short(mine.GetProperty("image").GetString()!));
 
-        Assert.Contains("agent-hello", Text(await Call(client, McpTools.Containers, new() { ["container"] = name })), StringComparison.Ordinal);
+            Assert.Contains("agent-hello", Text(await Call(client, McpTools.Containers, new() { ["container"] = name })), StringComparison.Ordinal);
 
-        Assert.Equal($"{name}: stop done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = name, ["action"] = "stop" })));
-        Assert.Equal("exited", await Docker.StateAsync(name));
-        Assert.Equal($"{name}: start done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = name, ["action"] = "start" })));
-        Assert.Equal("running", await Docker.StateAsync(name));
+            Assert.Equal($"{name}: stop done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = name, ["action"] = "stop" })));
+            Assert.Equal("exited", await Docker.StateAsync(name));
+            Assert.Equal($"{name}: start done", Text(await Call(client, McpTools.ContainerAction, new() { ["container"] = name, ["action"] = "start" })));
+            Assert.Equal("running", await Docker.StateAsync(name));
 
-        CallToolResult unknown = await Result(client, McpTools.ContainerAction, new() { ["container"] = $"{name}-not", ["action"] = "stop" });
-        Assert.True(unknown.IsError == true && Text(unknown).Contains("containers lists them", StringComparison.Ordinal), $"A stop of no such container answered: {Text(unknown)}");
+            CallToolResult unknown = await Result(client, McpTools.ContainerAction, new() { ["container"] = $"{name}-not", ["action"] = "stop" });
+            Assert.True(unknown.IsError == true && Text(unknown).Contains("containers lists them", StringComparison.Ordinal), $"A stop of no such container answered: {Text(unknown)}");
+        }
+        finally
+        {
+            await Docker.RemoveAsync(name);
+        }
     }
 
     /// <summary>An agent publishes a project's container image through build's publish with the SDK's own container profile,
@@ -126,6 +133,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         {
             Gone(client);
             window.Close();
+            Docker.Remove(name);
         }
     }
 
@@ -237,6 +245,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         {
             Gone(client);
             window.Close();
+            Docker.Remove(left, living, elsewhere);
         }
     }
 }

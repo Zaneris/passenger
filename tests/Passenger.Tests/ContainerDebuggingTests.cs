@@ -76,6 +76,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -111,6 +112,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -142,6 +144,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container, Named("alpineoff"));
         }
     }
 
@@ -173,6 +176,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -205,6 +209,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -230,6 +235,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -264,7 +270,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     }
 
     /// <summary>Attaches to the program in a container from a window on a folder, the breakpoint set in its Turns/Program.cs
-    /// and the file closed: the stop opens that file at its line, the top frame naming it.</summary>
+    /// and the file closed: the stop opens that file at its line, the top frame naming it; the container removed at the end.</summary>
     private static void StopsInTheFoldersFile(string folder, string container)
     {
         string source = Path.Combine(folder, "Turns", "Program.cs");
@@ -292,6 +298,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
 
@@ -327,6 +334,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             refused.Close();
+            Docker.Remove(refusing);
         }
 
         github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData(archive))}  {asset}\n"));
@@ -347,13 +355,17 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         finally
         {
             window.Close();
+            Docker.Remove(container);
         }
     }
+
+    /// <summary>The name of the container <see cref="Start"/> starts.</summary>
+    private static string Named(string name) => $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}turns{name}";
 
     /// <summary>A container of the image, started as a person would start one (not by Passenger), labelled as the run's.</summary>
     private static string Start(string name, string image, params string[] options)
     {
-        string named = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}turns{name}";
+        string named = Named(name);
         Docker.Run(["run", "-d", .. Docker.AnyPids, "--name", named, "--label", Docker.RunLabel, .. options, image]);
         if (!options.Contains(Held))
         {
