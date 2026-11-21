@@ -667,6 +667,7 @@ public sealed partial class Vim
         int lastAt = 0;
         int shift = 0;
         string added = string.Empty;
+        int addedLines = 0;
         bool endsBroken = text.Length > 0 && text.GetLine(text.LineCount - 1).Length == 0 && text.LineCount - 1 > last;
         for (int i = 0; i < value.Parts.Count; i++)
         {
@@ -678,7 +679,7 @@ public sealed partial class Vim
             if (line > last)
             {
                 at = text.Length;
-                lead = (endsBroken && added.Length == 0 ? string.Empty : eol) + new string(' ', column);
+                lead = (endsBroken && addedLines == 0 ? string.Empty : eol) + new string(' ', column);
                 followed = false;
             }
             else
@@ -703,6 +704,7 @@ public sealed partial class Vim
             if (line > last)
             {
                 added += put;
+                addedLines++;
                 continue;
             }
             edits.Add(new TextEdit(at, 0, put));
@@ -713,7 +715,7 @@ public sealed partial class Vim
             lastAt = at + shift + lead.Length;
             shift += put.Length;
         }
-        if (added.Length > 0)
+        if (addedLines > 0)
         {
             // Lines added past a file that kept its final break keep it after them.
             edits.Add(new TextEdit(text.Length, 0, endsBroken ? added + eol : added));

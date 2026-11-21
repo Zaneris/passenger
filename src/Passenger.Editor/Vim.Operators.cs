@@ -145,7 +145,6 @@ public sealed partial class Vim
             ? BlockTaken(text, sorted, columns, tab)
             : new([.. Merged(sorted, pieces: true).Select(m => Taken(text, m))], sorted[0].Lines) { Blockwise = block };
 
-    /// <summary>The text a stretch takes, as a register keeps it: line breaks "\n", whole lines each ending with one.</summary>
     /// <summary>A block's text as a register keeps it: a piece for each of its lines, a line ending where the block
     /// begins giving an empty one and a line short of it as many spaces as the block is wide (one more after $), the
     /// block as wide as its columns or after $ its longest piece.</summary>
@@ -161,6 +160,7 @@ public sealed partial class Vim
         return new VimRegister([.. found.Select(p => p ?? new string(' ', toEnd ? longest + 1 : width))], false) { Blockwise = true, Width = width };
     }
 
+    /// <summary>The text a stretch takes, as a register keeps it: line breaks "\n", whole lines each ending with one.</summary>
     private static string Taken(TextSnapshot text, Stretch s)
     {
         if (s.Lines)

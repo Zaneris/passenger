@@ -2308,7 +2308,8 @@ public class VimTests
         Assert.Equal(after, Run(before, keys));
 
     /// <summary>A block yanked or deleted keeps a piece for each of its lines, a line short of it as many spaces as the
-    /// block is wide (one more after $), and a put pads each line out to its column, as Vim's do.</summary>
+    /// block is wide (one more after $), and a put pads each line out to its column, adding a line past the text's end
+    /// for each piece left, an empty one too, as Vim's do.</summary>
     [Theory]
     [InlineData("|abcdef\n\nghijkl\nmn", "<C-v>$jyp", "a|abcdefbcdef\n \nghijkl\nmn")]
     [InlineData("|abcdef\n\nghijkl\nmn", "<C-v>$jyjp", "abcdef\n|abcdef\n      ghijkl\nmn")]
@@ -2320,6 +2321,10 @@ public class VimTests
     [InlineData("abc|def\n\nghijkl\nmn\nopqrstuvwx\ny", "<C-v>$jjyGp", "abcdef\n\nghijkl\nmn\nopqrstuvwx\ny|def\n     \n jkl")]
     [InlineData("a|bcdef\n\nghijkl\nmn\nopq", "<C-v>$jjdjjp", "a\n\ng|bcdef\nm      n\nohijklpq")]
     [InlineData("abc|def\nab\nghijkl\nmnopqrs", "<C-v>lljjdGp", "abc\nab\nghi\nm|defnopqrs\n    \n jkl")]
+    [InlineData("|x\n\ny\n", "<C-v>jyGP", "x\n\n|xy\n\n")]
+    [InlineData("|x\n\n\ny\n", "<C-v>jjyGP", "x\n\n\n|xy\n\n\n")]
+    [InlineData("|x\n\ny", "<C-v>jyGP", "x\n\n|xy\n")]
+    [InlineData("abcdef\nab\n|\ntwo\n", "l<C-v>jyk<C-v>jlyGP", "abcdef\nab\n\n|atwo\n\n")]
     public void A_block_keeps_a_piece_for_each_line_and_puts_each_out_to_its_column(string before, string keys, string after) =>
         Assert.Equal(after, Run(before, keys));
 
