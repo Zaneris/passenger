@@ -30,6 +30,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `AspireStandInTests`' `An_edit_made_after_the_AppHosts_build_as_its_service_starts_is_applied_once_the_service_runs`,
+  CI 44940279906 (Windows, report shard 3): "The edit made before the API started was not applied: The program's
+  runtime has not loaded its CoreLib yet". **A race in the IDE**: the quiet attach for Hot Reload lets a program held
+  at its runtime's start go before the runtime loads CoreLib, which names the edits it takes, and Apply Hot Reload
+  Changes asked at once found nothing to read them from. The debug adapter now waits for CoreLib's load, outside the
+  engine's lock, before it says what the program takes (9b0d4c0c7, #947).
+- `NuGetTests`' `At_the_smallest_window_a_rows_id_gives_way_to_its_version_and_mark_and_the_details_version_picker_wraps_under_it`,
+  CI 44940279906 (macOS report shard 3): "Waited 180 s for Passenger.Legacy.Storage.Client.Extensions listed
+  deprecated: 1 package installed". **Most likely a race in the IDE**, not reproduced: a list marks its rows with the
+  deprecations read so far, then asks for the read, and passed over one that had ended by then as marked already, so a
+  read the list before it began, ending between those two steps, marked no list. A read found ended is now taken as one
+  ending then, the rows marked again where it says otherwise, as is the details' word on a version chosen (fe31af057, #2041).
 - `CommandLineTests`' `A_malformed_value_or_a_flag_…(--look sakura)`, CI 44940279906 (gate, every system): "--look takes
   passenger, cubicle, high contrast, harbour, …". **The test was written before what it reads**: #1851 carried High
   Contrast, which `--look`'s refusal lists after Cubicle, and the test still expected Harbour there. It now reads the
