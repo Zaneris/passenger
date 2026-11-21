@@ -162,23 +162,25 @@ public sealed class SoundCuesTests : IDisposable
             _ => ((string?, string[]))(OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "cmd.exe") : null, []),
         };
         Assert.SkipWhen(program is null || !File.Exists(program), $"{kind} is not installed here");
-        (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, program!, arguments);
+        List<string>? answered = kind == "pwsh" && !OperatingSystem.IsWindows() ? [] : null;
+        (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, program!, arguments, answered);
         try
         {
             window.ApplySettings(window.Settings with { SoundCues = SoundCuesPlayed.Always });
             Ui.WaitFor(() => shell.Screen.Command is not null, () => $"{kind}'s first prompt marked; the terminal shows:\n{shell.Screen.ScreenText()}");
+            LineEditorReading(window, shell, answered);
             bool tells = kind is not "cmd";
             if (kind == "bash")
             {
-                Run(window, shell, "echo v${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}");
+                Run(window, shell, "echo v${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}", answered);
                 string version = ScreenLines(shell).Last(l => l.StartsWith('v'));
                 tells = Version.Parse(version[1..]) >= new Version(4, 4);
             }
-            Run(window, shell, "echo first");
-            Run(window, shell, OperatingSystem.IsWindows() ? "cmd /c exit 3" : "false");
+            Run(window, shell, "echo first", answered);
+            Run(window, shell, OperatingSystem.IsWindows() ? "cmd /c exit 3" : "false", answered);
             Assert.True(Failed(window) == (tells ? 1 : 0), $"A command failing in {kind} played its cue {Failed(window)} times, not {(tells ? "once" : "never, as it tells no run")}");
-            Run(window, shell, string.Empty);
-            Run(window, shell, "echo second");
+            Run(window, shell, string.Empty, answered);
+            Run(window, shell, "echo second", answered);
             Assert.True(Failed(window) == (tells ? 1 : 0), $"An empty line and a command passing in {kind} played the failure's cue again");
 
             PlainTextView view = ReadAsTextTests.Opened(window, window, $"{kind}'s terminal");
@@ -195,10 +197,12 @@ public sealed class SoundCuesTests : IDisposable
         static string? Found(string at, string name) => File.Exists(at) ? at : Programs.OnPath(name);
     }
 
-    /// <summary>Types a command (or nothing) and presses Enter, then waits for the shell's next prompt, marked below the last.</summary>
-    private static void Run(MainWindow window, TerminalSession shell, string command)
+    /// <summary>Types a command (or nothing) and presses Enter, then waits for the shell's next prompt, marked below the last,
+    /// and where the screen's answers are heard, for the shell's line editor to read keys there.</summary>
+    private static void Run(MainWindow window, TerminalSession shell, string command, List<string>? answered)
     {
         long before = shell.Screen.Command?.Prompt ?? -1;
+        answered?.Clear();
         if (command.Length > 0)
         {
             window.KeyTextInput(command);
@@ -206,7 +210,20 @@ public sealed class SoundCuesTests : IDisposable
         Ui.Press(window, "ENTER");
         TerminalTests.WaitForScreen(window, shell, s => s.Command is { Entered: false } next && next.Prompt > before && s.CursorColumn > 0,
             $"the shell's next prompt after '{command}'");
+        LineEditorReading(window, shell, answered);
         Ui.Settle();
+    }
+
+    /// <summary>Waits for PowerShell's line editor to take the terminal at the prompt, asking where its line begins (a cursor
+    /// position report at the prompt's end): its host draws the prompt first, and on macOS the editor first runs a program
+    /// that has the terminal echo what is typed and read Enter as Ctrl+J, which leaves the line unrun.</summary>
+    private static void LineEditorReading(MainWindow window, TerminalSession shell, List<string>? answered)
+    {
+        if (answered is not null)
+        {
+            TerminalTests.WaitForScreen(window, shell, s => answered.Contains($"\u001b[{s.CursorRow + 1};{s.CursorColumn + 1}R"),
+                "PowerShell's line editor asking where its line begins, at the prompt's end");
+        }
     }
 
     private static string[] ScreenLines(TerminalSession shell) =>

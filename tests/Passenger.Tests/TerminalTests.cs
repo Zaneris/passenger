@@ -829,7 +829,7 @@ public sealed class TerminalTests
             }
             string project = TestFolders.Write(folder, "Listed/Listed.csproj", TestProjects.Console());
             window = Ui.OpenFolder(folder, languageServer: false);
-            TerminalSession shell = OpenTerminal(window, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
+            TerminalSession shell = OpenTerminal(window, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh", []);
             // Only these variables listed, so nothing else of the machine's environment reaches the screen.
             Run(window, OperatingSystem.IsWindows()
                 ? "set TMUX& set STY& set WINDOW& set TERM_PROGRAM& echo listed-933"
@@ -2127,17 +2127,28 @@ public sealed class TerminalTests
     private static (MainWindow Window, TerminalSession Shell) Open(string folder) => Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
 
     /// <summary>The window over a folder, its Terminal open on a shell of the test's and the keys going to it.</summary>
-    internal static (MainWindow Window, TerminalSession Shell) Open(string folder, string shell, params string[] arguments)
+    internal static (MainWindow Window, TerminalSession Shell) Open(string folder, string shell, params string[] arguments) =>
+        Open(folder, shell, arguments, answered: null);
+
+    /// <summary>The window over a folder, its Terminal open on a shell of the test's and the keys going to it, each answer
+    /// its screen gives the shell (a cursor position report) added to <paramref name="answered"/> from the shell's start.</summary>
+    internal static (MainWindow Window, TerminalSession Shell) Open(string folder, string shell, string[] arguments, List<string>? answered)
     {
         MainWindow window = Ui.OpenFolder(folder);
-        return (window, OpenTerminal(window, shell, arguments));
+        return (window, OpenTerminal(window, shell, arguments, answered));
     }
 
-    /// <summary>The window's Terminal open on a shell of the test's, the keys going to it.</summary>
-    private static TerminalSession OpenTerminal(MainWindow window, string shell, params string[] arguments)
+    /// <summary>The window's Terminal open on a shell of the test's, the keys going to it, its screen's answers to the shell
+    /// added to <paramref name="answered"/> where given, heard from the session's first moment.</summary>
+    private static TerminalSession OpenTerminal(MainWindow window, string shell, string[] arguments, List<string>? answered = null)
     {
         window.TerminalPanel.Shell = (shell, arguments);
-        Ui.Run(window, AppActions.ShowTerminal);
+        Ui.Run(window, AppActions.ShowTerminal, settle: answered is null);
+        if (answered is not null)
+        {
+            Ui.PumpUntil(() => window.TerminalPanel.Active is not null, "the terminal's session");
+            window.TerminalPanel.Active!.Screen.Reply += answered.Add;
+        }
         Ui.WaitFor(() => window.TerminalPanel.Active is { IsRunning: true }, "the shell to start");
         Ui.WaitFor(() => window.TerminalPanel.View.IsFocused, "the keys to go to the terminal");
         Ui.WaitFor(() => window.TerminalPanel.Active!.Screen.CursorColumn > 0, "the shell's prompt");
