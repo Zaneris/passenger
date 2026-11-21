@@ -209,9 +209,10 @@ public sealed partial class VcsTests
         window.Close();
     }
 
-    /// <summary>The Commit window's rows of moved files name where each came from after its name: its old name where it was
-    /// renamed in its folder, its old path where it went to another folder, renamed or not, the tip saying the old path
-    /// whole; a file only modified names none.</summary>
+    /// <summary>The Commit window's rows of moved files name where each came from after its name and its change's letter
+    /// (R, saying Renamed on its tip and to a screen reader): its old name where it was renamed in its folder, its old path
+    /// where it went to another folder, renamed or not, the tip saying the old path whole; a file only modified, its
+    /// letter M, names none.</summary>
     [AvaloniaFact]
     public void A_renamed_and_a_moved_files_rows_in_the_Commit_window_name_where_each_came_from()
     {
@@ -232,18 +233,21 @@ public sealed partial class VcsTests
         Ui.WaitFor(() => commit.Rows.OfType<CommitRow>().Count() == 4, () => $"the four changes listed in the Commit window, where Git lists {Listed(window)}");
         Avalonia.Controls.ListBox list = Find(commit, commit.Rows);
 
-        Assert.Equal(("Store.cs  ← Shop.cs", "Renamed from Shop.cs"), Shown("Store.cs"));
-        Assert.Equal(("Basket.cs  ← Old/Basket.cs  New", "Moved from Old/Basket.cs"), Shown("Basket.cs"));
-        Assert.Equal(("Register.cs  ← Old/Till.cs  New", "Moved from Old/Till.cs"), Shown("Register.cs"));
-        Assert.Equal(("Price.cs  Old", null), Shown("Price.cs"));
+        Assert.Equal(("Store.cs  R  ← Shop.cs", "Renamed", "Renamed from Shop.cs"), Shown("Store.cs"));
+        Assert.Equal(("Basket.cs  R  ← Old/Basket.cs  New", "Renamed", "Moved from Old/Basket.cs"), Shown("Basket.cs"));
+        Assert.Equal(("Register.cs  R  ← Old/Till.cs  New", "Renamed", "Moved from Old/Till.cs"), Shown("Register.cs"));
+        Assert.Equal(("Price.cs  M  Old", "Modified", null), Shown("Price.cs"));
         window.Close();
 
-        // The words a file's row shows, in order, and the tip of where it came from.
-        (string Words, string? Tip) Shown(string name)
+        // The words a file's row shows, in order, its letter's word (its tip, and what a screen reader says) and the tip of where it came from.
+        (string Words, string? Letter, string? Tip) Shown(string name)
         {
             Avalonia.Controls.Control row = Ui.Row(list, commit.Rows.OfType<CommitRow>().First(r => r.Change.Name == name));
             Avalonia.Controls.TextBlock[] words = [.. row.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Where(t => t.IsEffectivelyVisible && t.Text is { Length: > 0 })];
-            return (string.Join("  ", words.Select(t => t.Text)), words.FirstOrDefault(t => t.Text!.StartsWith('←')) is { } came ? Avalonia.Controls.ToolTip.GetTip(came) as string : null);
+            Avalonia.Controls.TextBlock letter = words[1];
+            string? said = Avalonia.Controls.ToolTip.GetTip(letter) as string;
+            Assert.Equal(said, Avalonia.Automation.AutomationProperties.GetName(letter));
+            return (string.Join("  ", words.Select(t => t.Text)), said, words.FirstOrDefault(t => t.Text!.StartsWith('←')) is { } came ? Avalonia.Controls.ToolTip.GetTip(came) as string : null);
         }
     }
 
