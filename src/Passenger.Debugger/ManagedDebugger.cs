@@ -74,6 +74,14 @@ public partial class ManagedDebugger
     /// or attaches: their code, however built, is never the user's, so Just My Code steps through it and over it.</summary>
     public void Carry(IReadOnlyList<string> assemblies) => _carried = new HashSet<string>(assemblies, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The folders whose source is the user's own (<see cref="Own"/>).</summary>
+    private IReadOnlyList<string> _ownFolders = [];
+
+    /// <summary>Takes the folders whose source the user writes for this session, before it launches or attaches: a module
+    /// whose symbols name a file under one of them is the user's code however it was built, a Release build's compiled
+    /// unoptimized as it loads where the runtime still lets it be (<see cref="OwnUnoptimized"/>).</summary>
+    public void Own(IReadOnlyList<string> folders) => _ownFolders = [.. folders.Where(f => f.Length > 0)];
+
     private bool _stopAtEntry;
     private EntryBreakpoint? _entryBreakpoint;
     private sealed record EntryBreakpoint(ICorDebugFunctionBreakpoint CorBreakpoint, ModuleInfo Module, int MethodToken, int IlOffset);

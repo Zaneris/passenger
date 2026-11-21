@@ -75,6 +75,11 @@ public sealed record LaunchArguments
     /// Reload and test hooks), which the debugger never takes for the user's code, however they were built.</summary>
     public IReadOnlyList<string>? Carried { get; init; }
 
+    /// <summary>Passenger's own: the folders whose source the user writes (the open folder and the projects lent beside it): a
+    /// module whose symbols name a file under one of them is the user's code however it was built, a Release build's
+    /// compiled unoptimized as it loads where the runtime still lets it be, so steps stop in it as in a Debug build.</summary>
+    public IReadOnlyList<string>? Own { get; init; }
+
     /// <summary>Passenger's own: no one is to see the program's windows (an agent's Godot game, drawn for its frames, or a
     /// desktop app a Passenger nobody sees runs): on Windows it runs on a desktop of its own, which nobody switches to.</summary>
     public bool? Unseen { get; init; }
@@ -95,6 +100,11 @@ public sealed record AttachArguments
     /// <summary>Passenger's own: the assemblies, by name, that Passenger carries into the program (its inspectors, its Hot
     /// Reload and test hooks), which the debugger never takes for the user's code, however they were built.</summary>
     public IReadOnlyList<string>? Carried { get; init; }
+
+    /// <summary>Passenger's own: the folders whose source the user writes (the open folder and the projects lent beside it): a
+    /// module whose symbols name a file under one of them is the user's code however it was built, a Release build's
+    /// compiled unoptimized as it loads where the runtime still lets it be, so steps stop in it as in a Debug build.</summary>
+    public IReadOnlyList<string>? Own { get; init; }
 
     /// <summary>Passenger's own: an app on a device or simulator, reached through Passenger's relay inside it at this
     /// host:port, in place of <see cref="ProcessId"/>.</summary>

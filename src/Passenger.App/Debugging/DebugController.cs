@@ -292,6 +292,10 @@ public sealed class DebugController : IDisposable
     /// <summary>The folder open, which the Debug console names its files from.</summary>
     public string? Folder { get; init; }
 
+    /// <summary>The folders whose source the user writes, the open folder and the projects lent beside it, whose modules the
+    /// debugger takes for the user's code however they were built (a Release build's compiled unoptimized as it loads).</summary>
+    public Func<IReadOnlyList<string>> Own { get; init; } = () => [];
+
     /// <summary>The C# language server whose Edit and Continue computes Hot Reload's updates, when it runs.</summary>
     public Func<Lsp.RoslynSession?> Server { get; init; } = () => null;
 
@@ -709,7 +713,7 @@ public sealed class DebugController : IDisposable
         }
         // A web app's pages kept up with its static files and its updates, through the SDK's own browser refresh.
         (BrowserRefresh? browser, Run.LaunchPlan refreshed, string? unkept) = hotReloadOn && !elsewhere && place is null ? await BrowserRefresh.ForAsync(plan) : (null, plan, null);
-        return await OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(refreshed, Breakpoints, built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
+        return await OpenAsync((built, log, output, starting) => DebugSession.LaunchAsync(refreshed, Breakpoints, Own(), built, log, output, inTerminal, ColumnOf, hotReloadOn, starting, elsewhere, place),
             plan.Name, launched: true, inTerminal: inTerminal is not null, hotReloadOn: hotReloadOn, group: copies, tab: tab, app: app, plan: refreshed, edits: edits, hook: hook,
             browser: browser, unkept: unkept, copy: copies is not null);
     }
@@ -767,7 +771,7 @@ public sealed class DebugController : IDisposable
         return OpenAsync((built, log, output, starting) =>
         {
             TakeRefusal(name);
-            return DebugSession.AttachAsync(processId, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place);
+            return DebugSession.AttachAsync(processId, Breakpoints, Own(), built, log, output, ColumnOf, starting, hotReloadOn, elsewhere, place);
         }, name,
             launched: false, hotReloadOn: hotReloadOn, place: place, group: group, app: app, edits: edits, hook: hotReloadOn ? handlers : Unheld(handlers),
             browser: hotReloadOn ? browser : Unheld(browser), attachedWords: startedElsewhere, stopLetsGo: startedElsewhere is not null, builds: builds);
@@ -793,7 +797,7 @@ public sealed class DebugController : IDisposable
             try
             {
                 TakeRefusal(plan.Name);
-                return await DebugSession.AttachAsync(debuggee, Breakpoints, built, log, output, ColumnOf, starting);
+                return await DebugSession.AttachAsync(debuggee, Breakpoints, Own(), built, log, output, ColumnOf, starting);
             }
             catch (Exception failed) when (failed is DapException or IOException or InvalidOperationException or TimeoutException)
             {
@@ -829,7 +833,7 @@ public sealed class DebugController : IDisposable
     {
         bool hotReloadOn = HotReloadOn();
         string where = plan.Device?.Target.Name ?? (plan.MacCatalyst is not null ? "this Mac" : "its device");
-        return OpenAsync((built, log, output, starting) => DebugSession.AttachThroughRelayAsync(plan.Name, relay, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn),
+        return OpenAsync((built, log, output, starting) => DebugSession.AttachThroughRelayAsync(plan.Name, relay, Breakpoints, Own(), built, log, output, ColumnOf, starting, hotReloadOn),
             plan.Name, launched: false, hotReloadOn: hotReloadOn, plan: plan, edits: edits, app: app, hook: hotReloadOn ? handlers : Unheld(handlers),
             attachedWords: $"{plan.Name} runs on {where}; what it logs there is shown here");
     }
@@ -966,7 +970,7 @@ public sealed class DebugController : IDisposable
         bool hotReloadOn = reload is not null && HotReloadOn();
         UpdateHandlerHook? hook = hotReloadOn ? reload : Unheld(reload);
         return OpenAdditionalAsync(name, tab => OpenAsync((built, log, output, starting) =>
-            DebugSession.AttachAsync(pid, Breakpoints, built, log, output, ColumnOf, starting, hotReloadOn), name, launched: false, hotReloadOn: hotReloadOn, hook: hook, tab: tab),
+            DebugSession.AttachAsync(pid, Breakpoints, Own(), built, log, output, ColumnOf, starting, hotReloadOn), name, launched: false, hotReloadOn: hotReloadOn, hook: hook, tab: tab),
             pid, cancellation, configure);
     }
 
@@ -1348,7 +1352,7 @@ public sealed class DebugController : IDisposable
     public Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
         CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null,
         LiveTree.LiveApp? app = null, ProgramBuild? builds = null) =>
-        AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachAsync(processId, Breakpoints, built, _ => { }, _ => { }, starting: starting, hotReload: true, place: place,
+        AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachAsync(processId, Breakpoints, Own(), built, _ => { }, _ => { }, starting: starting, hotReload: true, place: place,
             quiet: true), says, cancellation, edits, handlers, browser, app, builds);
 
     /// <summary>Attaches quietly for Hot Reload alone, as <see cref="AttachForHotReloadAsync"/> does, to an app Run started on
@@ -1356,7 +1360,7 @@ public sealed class DebugController : IDisposable
     /// there until the attach lets it go, each update told to <paramref name="handlers"/>. Null once attached, else why not.</summary>
     public Task<string?> AttachForHotReloadThroughRelayAsync(Run.Devices.RelaySession relay, string name, Action<string, bool> says, CancellationToken cancellation,
         BuiltEdits? edits, LiveTree.LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers) =>
-        AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachThroughRelayAsync(name, relay, Breakpoints, built, _ => { }, _ => { }, starting: starting, hotReload: true,
+        AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachThroughRelayAsync(name, relay, Breakpoints, Own(), built, _ => { }, _ => { }, starting: starting, hotReload: true,
             quiet: true), says, cancellation, edits, handlers, null, app, builds);
 
     /// <summary>A quiet session for Hot Reload alone, opened by <paramref name="attach"/> over the lines built and handed the

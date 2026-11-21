@@ -383,6 +383,7 @@ public sealed class DebugAdapter
             };
             debugger.Present(arguments.Presentations ?? []);
             debugger.Carry(arguments.Carried ?? []);
+            debugger.Own(arguments.Own ?? []);
             await Locked(() => debugger.Launch(launch, arguments.JustMyCode ?? true));
         }
         catch (Exception error)
@@ -398,6 +399,7 @@ public sealed class DebugAdapter
             bool justMyCode = arguments.JustMyCode ?? true;
             debugger.Present(arguments.Presentations ?? []);
             debugger.Carry(arguments.Carried ?? []);
+            debugger.Own(arguments.Own ?? []);
             if (arguments.Relay is { } relay)
             {
                 await Locked(() => debugger.AttachThroughRelay(relay, arguments.RelayModules, arguments.RelayToken, justMyCode, arguments.HotReload ?? false));

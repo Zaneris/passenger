@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
 using Passenger.Debugger.ExpressionEvaluator.Cil;
@@ -238,9 +239,10 @@ public partial class ManagedDebugger
             return;
         }
 
-        // Unoptimized code (a Debug build's, Edit and Continue's) is the user's; emitted code, with no source, never, nor what the client carries in.
+        // Unoptimized code (Debug's, Edit and Continue's, the folder's own Release build's) is the user's; emitted or carried in, never.
+        bool builtUnoptimized = Unoptimized(corModule);
         bool isUserCode = !emitted && !(AssemblyNameOf(metadataReader) is { } assembly && _carried.Contains(assembly))
-            && corModule.JITCompilerFlags is CorDebugJITCompilerFlags.CORDEBUG_JIT_DISABLE_OPTIMIZATION or CorDebugJITCompilerFlags.CORDEBUG_JIT_ENABLE_ENC;
+            && (builtUnoptimized || OwnUnoptimized(corModule, metadataReader, moduleName));
         if (_justMyCode && isUserCode && metadataReader.HasSymbols)
         {
             // The module is the user's, but not the methods its own code says are not: steppers pass over them.
@@ -254,7 +256,10 @@ public partial class ManagedDebugger
             }
         }
 
-        ModuleInfo moduleInfo = new ModuleInfo(corModule, modulePath, metadataReader, isUserCode, emitted ? new CORDB_ADDRESS(_lastEmittedModuleKey--) : null);
+        ModuleInfo moduleInfo = new ModuleInfo(corModule, modulePath, metadataReader, isUserCode, emitted ? new CORDB_ADDRESS(_lastEmittedModuleKey--) : null)
+        {
+            BuiltOptimized = isUserCode && !builtUnoptimized,
+        };
         _modules[corModule] = moduleInfo;
         if (!emitted)
         {
@@ -290,6 +295,32 @@ public partial class ManagedDebugger
         }
 
         Continue(clearVariables: false);
+    }
+
+    /// <summary>Whether the runtime compiles a module's code unoptimized, as a debugger steps through it and reads it.</summary>
+    private static bool Unoptimized(ICorDebugModule module) =>
+        module.JITCompilerFlags is CorDebugJITCompilerFlags.CORDEBUG_JIT_DISABLE_OPTIMIZATION or CorDebugJITCompilerFlags.CORDEBUG_JIT_ENABLE_ENC;
+
+    /// <summary>Whether a module built optimized is the folder's own, its symbols naming a source file under a folder the
+    /// client named (<see cref="Own"/>), and the runtime now compiles it unoptimized, as it is asked to as the module loads.
+    /// One whose code was compiled before the debugger came keeps it, and no step stops there: said once in the Debug
+    /// console.</summary>
+    private bool OwnUnoptimized(ICorDebugModule module, ModuleMetadataReader reader, string moduleName)
+    {
+        if (_ownFolders.Count == 0 || !reader.HasSymbols || !reader.GetSourceFiles().Any(file => _ownFolders.Any(folder => PathNames.IsUnder(file, folder))))
+        {
+            return false;
+        }
+        int set = module.Module2.TrySetJITCompilerFlags(CorDebugJITCompilerFlags.CORDEBUG_JIT_DISABLE_OPTIMIZATION);
+        if (set >= 0 && Unoptimized(module))
+        {
+            _logger?.Invoke($"  {moduleName} is the folder's own, built optimized: compiled unoptimized from here on");
+            return true;
+        }
+        _logger?.Invoke($"  {moduleName} is the folder's own, built optimized, and keeps the code compiled for it: 0x{set:X8}");
+        OnConsole?.Invoke($"{moduleName} is built optimized (a Release build), and its code was compiled before the debugger could have it compiled for debugging: "
+            + "steps pass over it and some of its locals cannot be read. Debug the program from its start to step through it.\n");
+        return false;
     }
 
     /// <summary>A type loaded: one emitted into a module made as the program runs adds to that module's metadata, which is
@@ -846,6 +877,18 @@ public partial class ManagedDebugger
                         _asyncStepper?.CaughtOn(corThread, caughtIn);
                     }
                     bool seen = _exceptionStates.TryGetValue(threadId, out ExceptionPropagationState? state);
+                    if (UnhandledThroughAwaits(corThread, exceptionEventArgs.Frame, exceptionEventArgs.NOffset) is { } goesOn)
+                    {
+                        // Caught only to fault a task nothing awaiting it catches: told once, where it was thrown, its frames still there.
+                        _exceptionStates.Remove(threadId);
+                        bool told = EndsUnhandledAlready(corThread);
+                        EndsUnhandled(corThread);
+                        bool unhandled = goesOn is Passenger.Dap.ExceptionScenarios.Unhandled;
+                        shouldStop = !told && (unhandled ? _exceptionRules is null : _justMyCode && MatchesExceptionBreakpoint(ExceptionBreakpointFilter.UserUnhandled, exceptionType));
+                        rules = told ? [] : MatchingRules(exceptionType, !seen || state!.ThrownInUserCode, goesOn);
+                        breakMode = unhandled ? ExceptionBreakMode.Unhandled : ExceptionBreakMode.UserUnhandled;
+                        break;
+                    }
                     shouldStop = _justMyCode && handlerIsUserCode is false && seen && state!.HasReachedUserCode && MatchesExceptionBreakpoint(ExceptionBreakpointFilter.UserUnhandled, exceptionType);
                     // Without Just My Code every frame is the user's, so an exception is handled in user code or not at all.
                     bool handledInUserCode = !_justMyCode || handlerIsUserCode;
@@ -871,9 +914,11 @@ public partial class ManagedDebugger
             case CorDebugExceptionCallbackType.DEBUG_EXCEPTION_UNHANDLED:
                 {
                     bool seen = _exceptionStates.Remove(threadId, out ExceptionPropagationState? state);
+                    // One told already where it was thrown, ending through what awaited it, has nothing new to tell.
+                    bool told = EndsUnhandledAlready(corThread);
                     // A client that gives no exception breakpoints has every unhandled exception stop; one that does, where they say.
-                    shouldStop = _exceptionRules is null;
-                    rules = MatchingRules(exceptionType, seen ? state!.ThrownInUserCode : !_justMyCode || IsUserCodeFrame(exceptionEventArgs.Frame),
+                    shouldStop = !told && _exceptionRules is null;
+                    rules = told ? [] : MatchingRules(exceptionType, seen ? state!.ThrownInUserCode : !_justMyCode || IsUserCodeFrame(exceptionEventArgs.Frame),
                         Passenger.Dap.ExceptionScenarios.Unhandled);
                     breakMode = ExceptionBreakMode.Unhandled;
                     break;

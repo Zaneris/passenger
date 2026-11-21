@@ -632,6 +632,78 @@ public partial class ModuleMetadataReader : IDisposable
     // https://github.com/dotnet/roslyn/blob/afd10305a37c0ffb2cfb2c2d8446154c68cfa87a/src/Dependencies/CodeAnalysis.Debugging/PortableCustomDebugInfoKinds.cs#L13
     private static readonly Guid _asyncMethodSteppingInformationBlob = new("54FD2AC5-E925-401A-9C2A-F94F171072F8");
 
+    /// <summary>The catch the compiler writes around an async method's body in its MoveNext, taking what the body throws to
+    /// fault the method's task, by its handler's IL offset, and whether the symbols record it, as Roslyn does an async void
+    /// method's and the async Main's, whose exceptions go unhandled; null where the method is no async state machine's.</summary>
+    public (int Offset, bool Recorded)? AsyncCatch(int moveNextToken, int? version = null)
+    {
+        if (DebugOf(moveNextToken, version) is { Reader: { } reader } debug)
+        {
+            foreach (CustomDebugInformationHandle handle in reader.GetCustomDebugInformation(debug.Handle))
+            {
+                CustomDebugInformation information = reader.GetCustomDebugInformation(handle);
+                // Recorded as the offset plus one, so 0 says it is not recorded.
+                if (reader.GetGuid(information.Kind) == _asyncMethodSteppingInformationBlob && reader.GetBlobReader(information.Value).ReadUInt32() is var recorded and > 0)
+                {
+                    return ((int)(recorded - 1), true);
+                }
+            }
+        }
+        if (GetStateMachineKickoffMethodToken(moveNextToken) is null || Body(moveNextToken, version) is not { } body)
+        {
+            return null;
+        }
+        // The builder's catch of Exception encloses the whole body, so it is the last region, the outermost.
+        return body.ExceptionRegions is [.., { Kind: ExceptionRegionKind.Catch } outermost]
+            && outermost.CatchType.Kind is HandleKind.TypeReference && MetadataTypeNames.Of(_imageMetadataReader, (TypeReferenceHandle)outermost.CatchType) == "System.Exception"
+            ? (outermost.HandlerOffset, false)
+            : null;
+    }
+
+    /// <summary>A method's body as built, null where it is not read (an update's, or a module's with no image).</summary>
+    private MethodBodyBlock? Body(int methodToken, int? version)
+    {
+        if (GenerationOf(methodToken, version) > 0 || _peReader is null)
+        {
+            return null;
+        }
+        MethodDefinitionHandle handle = MetadataTokens.MethodDefinitionHandle(methodToken);
+        return MetadataTokens.GetRowNumber(handle) <= _imageMetadataReader.GetTableRowCount(TableIndex.MethodDef)
+            && _imageMetadataReader.GetMethodDefinition(handle).RelativeVirtualAddress is > 0 and int rva
+            ? _peReader.GetMethodBody(rva)
+            : null;
+    }
+
+    /// <summary>Whether a catch of a method's, but the one whose handler starts at <paramref name="besides"/>, may take an
+    /// exception thrown at an IL offset inside its try, of <paramref name="thrown"/>'s types (full names, the exception's own
+    /// and each it derives from): a catch of one of them, of a type it cannot name (generic), or a filter, which only
+    /// running it would tell. True where the body is not read (an update's, or a module's with no image).</summary>
+    internal bool MayCatchAt(int methodToken, int ilOffset, int besides, IReadOnlySet<string> thrown, int? version = null)
+    {
+        if (Body(methodToken, version) is not { } body)
+        {
+            return true;
+        }
+        foreach (ExceptionRegion region in body.ExceptionRegions)
+        {
+            if (region.HandlerOffset == besides || ilOffset < region.TryOffset || ilOffset >= region.TryOffset + region.TryLength)
+            {
+                continue;
+            }
+            string? caught = region.CatchType.Kind switch
+            {
+                HandleKind.TypeReference => MetadataTypeNames.Of(_imageMetadataReader, (TypeReferenceHandle)region.CatchType),
+                HandleKind.TypeDefinition => MetadataTypeNames.Of(_imageMetadataReader, (TypeDefinitionHandle)region.CatchType),
+                _ => null,
+            };
+            if (region.Kind is ExceptionRegionKind.Filter || region.Kind is ExceptionRegionKind.Catch && (caught is null || thrown.Contains(caught)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>A method's async stepping information: its awaits' yield and resume offsets, and the last IL offset of
     /// its user code; null for a method without awaits.</summary>
     public AsyncMethodSteppingInfo? GetAsyncMethodSteppingInfo(int methodToken, int? version = null)

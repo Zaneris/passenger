@@ -608,17 +608,11 @@ public partial class ModuleMetadataReader
     /// blocks are not kept, and a module's with no image.</summary>
     internal bool InHandler(int methodToken, int ilOffset, int? version = null)
     {
-        if (GenerationOf(methodToken, version) > 0 || _peReader is null)
+        if (Body(methodToken, version) is not { } body)
         {
             return false;
         }
-        MethodDefinitionHandle handle = MetadataTokens.MethodDefinitionHandle(methodToken);
-        if (MetadataTokens.GetRowNumber(handle) > _imageMetadataReader.GetTableRowCount(TableIndex.MethodDef)
-            || _imageMetadataReader.GetMethodDefinition(handle).RelativeVirtualAddress is not (> 0 and int rva))
-        {
-            return false;
-        }
-        foreach (ExceptionRegion region in _peReader.GetMethodBody(rva).ExceptionRegions)
+        foreach (ExceptionRegion region in body.ExceptionRegions)
         {
             int start = region.Kind is ExceptionRegionKind.Filter ? region.FilterOffset : region.HandlerOffset;
             if (ilOffset >= start && ilOffset < region.HandlerOffset + region.HandlerLength)

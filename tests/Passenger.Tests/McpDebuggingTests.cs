@@ -267,6 +267,111 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Contains("Assert.Equal() Failure", failure.GetProperty("details").GetString(), StringComparison.Ordinal);
     }
 
+    /// <summary>A program whose top-level statements await, crashing three ways: an exception thrown in sync code they
+    /// call ("here"), or in an async method they await after its own awaits, through another awaiting it (none), which no
+    /// code catches; or the same, caught by the code awaiting it ("caught").</summary>
+    private const string Crashing = """
+        if (args is ["caught"])
+        {
+            try
+            {
+                await CrashesLaterAsync(1);
+            }
+            catch (InvalidOperationException e)
+            {
+                Console.WriteLine($"caught {e.Message}");
+            }
+            return;
+        }
+        await Task.Yield();
+        if (args is ["here"])
+        {
+            Crash(1);
+        }
+        await CrashesLaterAsync(1);
+
+        static async Task CrashesLaterAsync(int depth)
+        {
+            await Task.Yield();
+            if (depth > 0)
+            {
+                await CrashesLaterAsync(depth - 1);
+            }
+            string reached = $"crashing at {depth}";
+            throw new InvalidOperationException(reached);
+        }
+
+        static void Crash(int depth)
+        {
+            string here = $"here at {depth}";
+            throw new InvalidOperationException(here);
+        }
+
+        """;
+
+    /// <summary>An exception an async program leaves unhandled stops it where it was thrown, with that frame's locals, as a
+    /// synchronous program's does, and once: going on ends the program. One the code awaiting it catches stops nothing.</summary>
+    [Fact]
+    public async Task An_async_programs_unhandled_exception_stops_at_its_throw_with_its_locals_once_and_a_caught_one_stops_nothing()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-async-crash-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(folder, "Crashing.csproj"), TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
+            File.WriteAllText(Path.Combine(folder, "Program.cs"), Crashing);
+            await Restore.RunAsync(folder);
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        foreach ((string? arguments, string thrown, string local, string value) in new (string?, string, string, string)[]
+        {
+            (null, "throw new InvalidOperationException(reached);", "reached", "\"crashing at 0\""),
+            ("here", "throw new InvalidOperationException(here);", "here", "\"here at 1\""),
+        })
+        {
+            int line = Array.FindIndex(Crashing.Split('\n'), l => l.Trim() == thrown) + 1;
+            JsonElement stop = await Call(client, McpTools.DebugStart, arguments is null ? null : new() { ["arguments"] = arguments });
+            Assert.True(stop.GetProperty("state").GetString() == "paused" && stop.GetProperty("reason").GetString() == Passenger.Dap.StopReasons.Exception
+                && At(stop).StartsWith($"Program.cs:{line}:", StringComparison.Ordinal),
+                $"The async program{(arguments is null ? "" : $" run with {arguments}")} left its exception unhandled and did not stop at its throw on line {line}: {stop}");
+            Assert.True(Local(stop, local) == value, $"Stopped at the throw on line {line}, {local} did not read {value}: {stop}");
+            JsonElement ended = await Call(client, McpTools.DebugContinue);
+            Assert.True(ended.GetProperty("state").GetString() == "not debugging",
+                $"Going on from the unhandled exception's stop did not end the program, which stopped again: {ended}");
+        }
+        JsonElement caught = await Call(client, McpTools.DebugStart, new() { ["arguments"] = "caught" });
+        Assert.True(caught.GetProperty("state").GetString() == "not debugging",
+            $"An exception the awaiting code catches stopped the program: {caught}");
+        Assert.Contains("caught crashing at 0", Text(await Result(client, McpTools.Output, new() { ["of"] = "debug" })), StringComparison.Ordinal);
+    }
+
+    /// <summary>Where a stop is, as debug_start and its steps say; empty where it names no place of the folder's.</summary>
+    private static string At(JsonElement stop) => stop.TryGetProperty("location", out JsonElement location) ? location.GetString() ?? string.Empty : string.Empty;
+
+    /// <summary>The folder's own program built as Release is stepped through as a Debug build is: stopped in a method, a step
+    /// out stops in its caller with what the method returned, and a step over at the caller's next statement.</summary>
+    [Fact]
+    public async Task A_release_builds_step_out_stops_in_its_caller_and_a_step_over_at_its_next_statement()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ChooseBuildConfiguration, ["input"] = "Release|AnyCPU" });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Helper.cs", ["line"] = 6 });
+        JsonElement stop = await Call(client, McpTools.DebugStart);
+        Assert.True(At(stop).StartsWith("Helper.cs:6:", StringComparison.Ordinal), $"Debug did not stop at the breakpoint in Twice: {stop}");
+        Assert.True(Directory.Exists(Path.Combine(Folder, "bin", "Release")), "Debug under Release did not build the program as Release");
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Helper.cs", ["line"] = 6, ["remove"] = true });
+
+        stop = await Call(client, McpTools.DebugStep, new() { ["kind"] = "out" });
+        Assert.True(stop.GetProperty("state").GetString() == "paused" && At(stop).StartsWith("Program.cs:4:", StringComparison.Ordinal),
+            $"A step out of Twice in the Release build did not stop in its caller: {stop}");
+        Assert.True(Local(stop, "Twice() returned") == "2", $"The step out of Twice(1) did not list what it returned: {stop}");
+        stop = await Call(client, McpTools.DebugStep, new() { ["kind"] = "over" });
+        Assert.True(stop.GetProperty("state").GetString() == "paused" && At(stop).StartsWith("Program.cs:2:", StringComparison.Ordinal),
+            $"A step over in the Release build did not stop at the loop's next statement: {stop}");
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>An agent's stop ends a debug session still starting: while debug_start waits for a program whose runtime is
     /// held at its start (the test's own diagnostic port), stop ends the session and the program at once, and debug_start
     /// answers that it was stopped.</summary>

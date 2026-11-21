@@ -111,7 +111,7 @@ public partial class ManagedDebugger
         }
         info.Editable = flags == CorDebugJITCompilerFlags.CORDEBUG_JIT_ENABLE_ENC;
         info.WhyNotEditable = info.Editable ? null
-            : !info.IsUserCode ? $"{info.ModuleName} is optimized code, which the runtime does not let be edited"
+            : !info.IsUserCode || info.BuiltOptimized ? $"{info.ModuleName} is optimized code, which the runtime does not let be edited"
             : $"{info.ModuleName} was loaded without Edit and Continue: debug it with Hot Reload on";
         if (info.Editable && _heldUpdates.Remove(info.MetadataReader.Mvid, out List<ModuleUpdate>? held))
         {

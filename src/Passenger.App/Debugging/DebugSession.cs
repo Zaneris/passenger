@@ -393,7 +393,7 @@ public sealed class DebugSession
     /// <paramref name="output"/> on the connection's thread, in order; with <paramref name="runInTerminal"/> it runs in the
     /// terminal it starts, its output there. <paramref name="starting"/> is handed the session as it begins, so Stop can end
     /// it while it starts; with <paramref name="elsewhere"/> the program is on another machine.</summary>
-    public static Task<DebugSession> LaunchAsync(Run.LaunchPlan plan, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
+    public static Task<DebugSession> LaunchAsync(Run.LaunchPlan plan, BreakpointStore breakpoints, IReadOnlyList<string> own, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?, int?>? columns = null, bool hotReload = false,
         Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null)
     {
@@ -409,6 +409,7 @@ public sealed class DebugSession
             HotReload = hotReload,
             Presentations = Godot.GodotValues.Presentations,
             Carried = Carried,
+            Own = own,
             Unseen = plan.OnOwnDesktop ? true : null,
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere, place);
     }
@@ -418,13 +419,14 @@ public sealed class DebugSession
     /// <paramref name="hotReload"/> the program was started held for the debugger with DOTNET_MODIFIABLE_ASSEMBLIES=debug,
     /// so its code may change as a launch's may; with <paramref name="elsewhere"/> it is not on this machine, and with
     /// <paramref name="place"/> the adapter runs where it is (a container's, its process id that container's).</summary>
-    public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
+    public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, IReadOnlyList<string> own, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
         Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
         bool quiet = false) =>
         StartAsync(OwnAdapter(place, elsewhere), place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
             new AttachArguments
             {
                 ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations, Carried = Carried,
+                Own = own,
             },
             breakpoints, lines, log, output, null, columns, starting, elsewhere, place, quiet);
 
@@ -432,13 +434,14 @@ public sealed class DebugSession
     /// waiting for it there: the relay's local address and token, and the build's copies of the app's assemblies, with the
     /// store's breakpoints (none where <paramref name="quiet"/>, Run's for Hot Reload alone); <paramref name="starting"/> is
     /// handed the session as it begins.</summary>
-    public static Task<DebugSession> AttachThroughRelayAsync(string program, Run.Devices.RelaySession relay, BreakpointStore breakpoints, BuiltLines lines, Action<string> log,
+    public static Task<DebugSession> AttachThroughRelayAsync(string program, Run.Devices.RelaySession relay, BreakpointStore breakpoints, IReadOnlyList<string> own,
+        BuiltLines lines, Action<string> log,
         Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool quiet = false) =>
         StartAsync(OwnAdapter(null, elsewhere: true), program, DapCommands.Attach,
             new AttachArguments
             {
                 Relay = relay.Address, RelayModules = relay.Modules, RelayToken = relay.Token, JustMyCode = true, HotReload = hotReload ? true : null,
-                Presentations = Godot.GodotValues.Presentations, Carried = Carried,
+                Presentations = Godot.GodotValues.Presentations, Carried = Carried, Own = own,
             },
             breakpoints, lines, log, output, null, columns, starting, elsewhere: true, place: null, quiet);
 

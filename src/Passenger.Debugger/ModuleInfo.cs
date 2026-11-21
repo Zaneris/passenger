@@ -33,6 +33,10 @@ public class ModuleInfo : IDisposable
     public CORDB_ADDRESS BaseAddress { get; }
     public bool IsUserCode { get; }
 
+    /// <summary>The user's code built optimized (a Release build), which the runtime compiles unoptimized for the debugger as
+    /// it loads but never lets be edited.</summary>
+    public bool BuiltOptimized { get; init; }
+
     /// <summary>Made as the program runs (System.Reflection.Emit): no file, no image, its metadata the runtime's own.</summary>
     public bool IsDynamic { get; }
 
