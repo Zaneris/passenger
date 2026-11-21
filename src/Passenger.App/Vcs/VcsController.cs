@@ -1737,6 +1737,7 @@ public sealed class VcsController : IDisposable
             {
                 return Report(false, unsaved);
             }
+            using IDisposable? named = Activity?.Invoke(yours ? "Accept Yours" : "Accept Theirs");
             GitResult accepted = await repository.AcceptAsync(conflicts, theirs);
             ReloadOpenFiles();
             await RefreshAsync();
@@ -1800,6 +1801,7 @@ public sealed class VcsController : IDisposable
             {
                 return Report(false, unsaved);
             }
+            using IDisposable? named = Activity?.Invoke("Resolve Conflict");
             try
             {
                 if (InConflict(path) is { } before)

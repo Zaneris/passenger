@@ -290,6 +290,59 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A merge's conflicts resolved by Accept Yours, Accept Theirs and the merge window's Apply are each kept under
+    /// that resolution's name, never as an external change, with the file in conflict before it.</summary>
+    [AvaloniaFact]
+    public void A_conflict_resolved_each_way_is_kept_under_that_resolutions_name()
+    {
+        string[] names = ["Yours.txt", "Theirs.txt", "Merged.txt"];
+        foreach (string name in names)
+        {
+            Write(name, "one\n");
+        }
+        TestGit.Init(folder);
+        TestGit.Run(folder, "switch", "-q", "-c", "side");
+        foreach (string name in names)
+        {
+            Write(name, "side\n");
+        }
+        TestGit.Run(folder, "commit", "-q", "-am", "Side");
+        TestGit.Run(folder, "switch", "-q", "main");
+        foreach (string name in names)
+        {
+            Write(name, "main\n");
+        }
+        TestGit.Run(folder, "commit", "-q", "-am", "Main");
+        ChildResult merging = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["merge", "-q", "side"], folder), limit: TimeSpan.FromMinutes(1))),
+            "git merge side");
+        Assert.False(merging.Succeeded, $"The merge was to stop for its conflicts: {merging.Error}{merging.Output}");
+        string conflicted = File.ReadAllText(Path.Combine(folder, "Merged.txt"));
+        MainWindow window = Open("Yours.txt");
+        Ui.WaitFor(() => window.Vcs.Conflicts.Count == 3, "the merge's three conflicts");
+
+        GitConflict Of(string name) => window.Vcs.Conflicts.Single(c => Path.GetFileName(c.Path) == name);
+        Assert.True(Ui.Await(window.Vcs.AcceptAsync([Of("Yours.txt")], yours: true), "Accept Yours").Succeeded, window.Status);
+        Assert.True(Ui.Await(window.Vcs.AcceptAsync([Of("Theirs.txt")], yours: false), "Accept Theirs").Succeeded, window.Status);
+        Assert.True(Ui.Await(window.Vcs.ResolveAsync(Of("Merged.txt").Path, "main\nside\n"), "the merge window's Apply").Succeeded, window.Status);
+        Assert.Equal(("main\n", "side\n", "main\nside\n"),
+            (File.ReadAllText(Path.Combine(folder, "Yours.txt")), File.ReadAllText(Path.Combine(folder, "Theirs.txt")), File.ReadAllText(Path.Combine(folder, "Merged.txt"))));
+        foreach ((string name, string title) in (ReadOnlySpan<(string, string)>)[("Yours.txt", "Accept Yours"), ("Theirs.txt", "Accept Theirs"), ("Merged.txt", "Resolve Conflict")])
+        {
+            window.OpenFile(Path.Combine(folder, name));
+            Ui.Settle();
+            HistoryTab history = ShowFromFileMenu(window, "Show History…");
+            Ui.WaitFor(() => history.Rows.Count > 0 && history.Rows[0].Title != LocalHistory.ExternalChange || history.Rows.Count > 1,
+                () => $"{name}'s resolution kept, its history listing [{string.Join(", ", history.Rows.Select(r => r.Title))}]");
+            Assert.True(history.Rows[0].Title == title, $"{name} resolved by {title} is kept as [{string.Join(", ", history.Rows.Select(r => r.Title))}]");
+            if (name == "Merged.txt")
+            {
+                history.Select(history.Rows[0]);
+                Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == conflicted, "the file as it stood in conflict, before the merge window's Apply");
+            }
+        }
+        window.Close();
+    }
+
     /// <summary>What a file holds once Local History reads a change heard while a Git checkout was the folder's activity, but
     /// written after the checkout's moment was over (read late, behind other work), is an external change of its own at
     /// the time it was read, never kept under the checkout's name and earlier time: the checkout's row still shows, and

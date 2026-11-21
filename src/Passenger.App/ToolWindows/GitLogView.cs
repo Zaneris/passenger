@@ -480,17 +480,19 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         List<(Border Tag, TextBlock Text)> tags = [];
         TextBlock author = Muted();
         TextBlock date = Muted();
+        // The graph leads the subject's column, so the author and date stand alike on every row whatever its lanes.
+        DockPanel lead = new();
+        DockPanel.SetDock(graph, Dock.Left);
+        lead.Children.Add(graph);
+        lead.Children.Add(subject);
         // The author and the date at most 150 and 180 wide, and never more than half of a narrow log between them.
         Grid line = new() { Height = RowHeight };
-        line.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
         line.ColumnDefinitions.Add(new ColumnDefinition(2, GridUnitType.Star));
         line.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star) { MaxWidth = 150 });
         line.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star) { MaxWidth = 180 });
-        Grid.SetColumn(subject, 1);
-        Grid.SetColumn(author, 2);
-        Grid.SetColumn(date, 3);
-        line.Children.Add(graph);
-        line.Children.Add(subject);
+        Grid.SetColumn(author, 1);
+        Grid.SetColumn(date, 2);
+        line.Children.Add(lead);
         line.Children.Add(author);
         line.Children.Add(date);
         EventHandler landed = (_, _) => Mark();
@@ -619,7 +621,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
                     // A lane that waited for this commit comes into its dot.
                     context.DrawLine(lanes.Lines[i % Keys.Length], new Point(X(i), 0), new Point(X(row.Lane), mid));
                 }
-                else if (IndexOf(row.Below, waiting) is int j and >= 0)
+                else if (Below(i, waiting) is int j and >= 0)
                 {
                     context.DrawLine(lanes.Lines[i % Keys.Length], new Point(X(i), 0), new Point(X(i), mid));
                     context.DrawLine(lanes.Lines[i % Keys.Length], new Point(X(i), mid), new Point(X(j), bottom));
@@ -627,7 +629,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             }
             for (int p = 0; p < row.Joins.Count; p++)
             {
-                if (IndexOf(row.Below, row.Joins[p]) is int j and >= 0)
+                if ((p == 0 ? Below(row.Lane, row.Joins[p]) : IndexOf(row.Below, row.Joins[p])) is int j and >= 0)
                 {
                     context.DrawLine(lanes.Lines[j % Keys.Length], new Point(X(row.Lane), mid), new Point(X(j), bottom));
                 }
@@ -673,6 +675,10 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         }
 
         private static double X(int lane) => 10 + (lane * LaneWidth);
+
+        /// <summary>The lane below the row that goes on from a lane waiting for a commit: its own where it still waits for
+        /// it, as two lanes may wait for one commit until its row joins them, else the first that does; -1 for none.</summary>
+        private int Below(int lane, string hash) => lane < row!.Below.Count && row.Below[lane] == hash ? lane : IndexOf(row.Below, hash);
 
         private static int IndexOf(IReadOnlyList<string?> lanes, string hash)
         {
