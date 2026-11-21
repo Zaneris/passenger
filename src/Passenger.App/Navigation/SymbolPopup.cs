@@ -52,11 +52,16 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     private readonly Debounce typing;
     private CancellationTokenSource? asking;
 
+    /// <param name="initial">Which of the first rows to choose before anything is typed (the caret's member), given here so
+    /// a search that answers at once chooses it too.</param>
+    /// <param name="width">How wide it is, a step of the popups' scale: wide for the files and places of a solution, less for
+    /// a file's own few (a navigation bar's list).</param>
     public SymbolPopup(string title, string placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search, string? initialQuery = null,
-        (string Label, bool Checked)? option = null)
-        : base(title, placeholder, PopupFrame.Wide, initialQuery, option)
+        (string Label, bool Checked)? option = null, Func<IReadOnlyList<SymbolRow>, int>? initial = null, double width = PopupFrame.Wide)
+        : base(title, placeholder, width, initialQuery, option)
     {
         this.search = search;
+        Initial = initial;
         typing = new Debounce(Pause, Refresh);
         IdeErrors.Observe(Refresh());
     }
@@ -68,7 +73,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     public bool IsSettled { get; private set; }
 
     /// <summary>Which of the first rows to choose (the caret's member), before anything is typed.</summary>
-    public Func<IReadOnlyList<SymbolRow>, int>? Initial { get; init; }
+    public Func<IReadOnlyList<SymbolRow>, int>? Initial { get; }
 
     protected override void QueryChanged() => typing.Restart();
 

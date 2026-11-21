@@ -87,6 +87,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool Ligatures { get; init; }
     public bool ShowLineNumbers { get; init; } = true;
 
+    /// <summary>The navigation bar over each editor of a file with an outline, naming where its caret is.</summary>
+    public bool ShowNavigationBar { get; init; } = true;
+
     /// <summary>Rainbow braces: brackets coloured by how deeply they nest.</summary>
     public bool RainbowBraces { get; init; } = true;
 

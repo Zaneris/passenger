@@ -110,8 +110,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(Crumbs().SequenceEqual(made), "A caret move back into Main() made the path's buttons again, each with a handler of its own");
         window.Close();
 
-        // The path's buttons in the status bar, those hidden past the path shown too.
-        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Crumb))];
+        // The path's buttons in the status bar, those hidden past the path shown too; never the editor's navigation bar's.
+        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>()
+            .Where(b => b.Classes.Contains(StyleClasses.Crumb) && b.FindAncestorOfType<Passenger.App.Editors.EditorGroup>() is null)];
     }
 
     /// <summary>The status bar's path draws the class and the method the caret is in whole, as it draws the file, though they

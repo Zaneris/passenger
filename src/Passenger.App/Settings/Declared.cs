@@ -193,6 +193,10 @@ public static class Declared
     public static readonly ToggleSetting ShowLineNumbers = new(s => s.ShowLineNumbers, (s, v) => s with { ShowLineNumbers = v },
         new(D.EditorPage, "Show line numbers", "gutter appearance"));
 
+    public static readonly ToggleSetting ShowNavigationBar = new(s => s.ShowNavigationBar, (s, v) => s with { ShowNavigationBar = v },
+        new(D.EditorPage, "Show navigation bar", "breadcrumbs path namespace type member outline structure jump appearance",
+            "Over each editor, where its caret is: a C# file's namespace, type and member, each listing what stands beside it."));
+
     public static readonly ToggleSetting RainbowBraces = new(s => s.RainbowBraces, (s, v) => s with { RainbowBraces = v },
         new(D.EditorPage, "Rainbow braces", "brackets parentheses colour color nesting"));
 

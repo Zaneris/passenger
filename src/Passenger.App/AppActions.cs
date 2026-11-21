@@ -63,6 +63,11 @@ public static class AppActions
     public const string GoToEverything = "app.goToEverything";
     public const string FileStructure = "app.fileStructure";
 
+    // Rider's ShowNavBar (Jump to Navigation Bar): Ctrl+F2 in its Visual Studio keymap, Ctrl+Shift+; (Cmd+Shift+; on the
+    // Mac) in its VS Code keymaps, Alt+Home in $default's and Mac OS X 10.5+'s. Its Visual Studio OSX keymap gives its
+    // Cmd+F2 to Toggle Bookmark too, which keeps it here, and Mac OS X 10.5+'s Cmd+Up is the editor's Text Start here.
+    public const string JumpToNavigationBar = "app.jumpToNavigationBar";
+
     // Rider's GotoRelated (Related Symbol), here a XAML or Razor file's code-behind and back: its Visual Studio keymaps'
     // Ctrl+Alt+F7 and Cmd+Shift+F7, its VS Code keymaps' (from their parents) Ctrl+Alt+Home and Ctrl+Cmd+Up.
     public const string GoToRelated = "app.goToRelated";
@@ -923,6 +928,7 @@ public static class AppActions
             .Bind(ShowSettings, "control alt S")
             .Bind(ShowNuGet, "alt 7", "alt shift 7")
             .Bind(FileStructure, "alt BACK_SLASH")
+            .Bind(JumpToNavigationBar, "control F2")
             .Bind(GoToRelated, "control alt F7")
             .Bind(Find, "control F")
             .Bind(Replace, "control H")
@@ -1051,6 +1057,7 @@ public static class AppActions
                 .Bind(GoToLine, "control G")
                 .Bind(GoToSymbol, "meta T")
                 .Bind(FileStructure, "meta alt O", "meta shift O")
+                .Bind(JumpToNavigationBar, "meta shift SEMICOLON")
                 .Bind(GoToRelated, "control meta UP")
                 .Bind(FindAction, "F1", "meta shift P", "meta shift A")
                 .Bind(FindInFiles, "meta shift F")
@@ -1168,6 +1175,7 @@ public static class AppActions
             .Bind(GoToSymbol, "control T")
             .Bind(GoToEverything, "F1", "control shift A")
             .Bind(FileStructure, "control shift O")
+            .Bind(JumpToNavigationBar, "control shift SEMICOLON")
             .Bind(GoToRelated, "control alt HOME")
             .Bind(FindAction, "control shift P")
             .Bind(FindInFiles, "control shift F")
@@ -1295,6 +1303,7 @@ public static class AppActions
                 .Bind(GoToSymbol, "meta O", "meta alt O")
                 .Bind(GoToEverything, "shift , shift")
                 .Bind(FileStructure, "meta F12")
+                .Bind(JumpToNavigationBar, "alt HOME")
                 .Bind(GoToRelated, "control meta UP")
                 .Bind(FindAction, "meta shift A")
                 .Bind(FindInFiles, "meta shift F")
@@ -1414,6 +1423,7 @@ public static class AppActions
             .Bind(GoToSymbol, "control N", "control alt shift N")
             .Bind(GoToEverything, "shift , shift")
             .Bind(FileStructure, "control F12")
+            .Bind(JumpToNavigationBar, "alt HOME")
             .Bind(GoToRelated, "control alt HOME")
             .Bind(FindAction, "control shift A")
             .Bind(FindInFiles, "control shift F")

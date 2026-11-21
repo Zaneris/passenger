@@ -49,6 +49,37 @@ public sealed class DeclarationsOutlineTests
             """.ReplaceLineEndings("\n"), outline);
     }
 
+    /// <summary>The navigation bar's outline of the same file: rows nested as declared, each with the type it has or returns,
+    /// spanning its declaration, so the caret's line finds the member it is in, the type it is in between members and the
+    /// namespace above the types; a type's members are its rows' own, and the file read again unchanged is the outline it
+    /// had, which the bar then leaves as it is.</summary>
+    [Fact]
+    public void A_files_rows_nest_as_declared_so_a_line_finds_the_member_type_and_namespace_it_is_in()
+    {
+        ParsedText parsed = new(CSharpSyntaxTree.ParseText(Shop, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(Shop));
+        Outline<string> rows = Declarations.Rows(parsed, Row, cancel: TestContext.Current.CancellationToken);
+
+        int take = rows.InnermostAt(42);
+        Assert.Equal("2 Take<T>(List<T>, int) method: T", rows.Rows[take]);
+        int till = rows.ParentOf(take);
+        Assert.Equal("1 Till class", rows.Rows[till]);
+        Assert.Equal("0 Shop namespace", rows.Rows[rows.ParentOf(till)]);
+        Assert.Equal(-1, rows.ParentOf(rows.ParentOf(till)));
+        Assert.Equal(["2 Till(string) constructor", "2 ~Till() destructor", "2 Name property: string", "2 Rung event: EventHandler",
+            "2 Take<T>(List<T>, int) method: T", "2 Drawer class"], rows.ChildrenOf(till).Select(i => rows.Rows[i]));
+        Assert.Equal(till, rows.InnermostAt(37));
+        Assert.Equal("3 Count() method: int", rows.Rows[rows.InnermostAt(46)]);
+        Assert.Equal("0 Shop namespace", rows.Rows[rows.InnermostAt(1)]);
+        Assert.Equal(["0 Shop namespace"], rows.ChildrenOf(-1).Select(i => rows.Rows[i]));
+
+        ParsedText again = new(CSharpSyntaxTree.ParseText(Shop, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(Shop));
+        Assert.Same(rows, Declarations.Rows(again, Row, rows, TestContext.Current.CancellationToken));
+
+        // Its depth, its name, its kind and its type.
+        static string Row(Declarations.Declared declared, int depth) =>
+            $"{depth} {declared.Name} {declared.Kind}{(declared.Type is { } type ? $": {type}" : string.Empty)}";
+    }
+
     [Fact]
     public void A_file_declaring_nothing_has_an_empty_outline()
     {

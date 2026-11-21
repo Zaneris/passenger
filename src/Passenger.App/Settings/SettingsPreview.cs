@@ -73,6 +73,7 @@ public sealed class SettingsPreview : IDisposable
         CaretWidth = Shown(from.CaretWidth, to.CaretWidth, saved.CaretWidth),
         Ligatures = Shown(from.Ligatures, to.Ligatures, saved.Ligatures),
         ShowLineNumbers = Shown(from.ShowLineNumbers, to.ShowLineNumbers, saved.ShowLineNumbers),
+        ShowNavigationBar = Shown(from.ShowNavigationBar, to.ShowNavigationBar, saved.ShowNavigationBar),
         RainbowBraces = Shown(from.RainbowBraces, to.RainbowBraces, saved.RainbowBraces),
         ParameterHints = Shown(from.ParameterHints, to.ParameterHints, saved.ParameterHints),
         TypeHints = Shown(from.TypeHints, to.TypeHints, saved.TypeHints),

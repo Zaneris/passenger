@@ -497,11 +497,7 @@ public sealed class Navigator
             IReadOnlyList<SymbolRow> rows = outline.Rows;
             string filter = query.Trim();
             return filter.Length == 0 ? rows : await BackgroundWork.Run(() => FilterOutline(rows, filter), cancel);
-        })
-        {
-            // The innermost member the caret is in.
-            Initial = _ => outline is { } shown ? Math.Max(0, shown.InnermostAt(caretLine)) : 0,
-        };
+        }, initial: _ => outline is { } shown ? Math.Max(0, shown.InnermostAt(caretLine)) : 0);
         parts.Popups.Show(popup, row =>
         {
             if (row is not null)
@@ -522,7 +518,9 @@ public sealed class Navigator
         }
     }
 
-    private static IReadOnlyList<SymbolRow> FilterOutline(IReadOnlyList<SymbolRow> outline, string query)
+    /// <summary>An outline's rows whose names hold a query or match it by CamelHumps, each with the rows it is under, as File
+    /// Structure and the navigation bar's lists narrow as typed.</summary>
+    internal static IReadOnlyList<SymbolRow> FilterOutline(IReadOnlyList<SymbolRow> outline, string query)
     {
         if (query.Length == 0)
         {

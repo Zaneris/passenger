@@ -100,6 +100,37 @@ public sealed class Outline<T>
         return -1;
     }
 
+    /// <summary>The index of the row a row is under, -1 for one at the top.</summary>
+    public int ParentOf(int index) => places[index].Parent;
+
+    /// <summary>The indexes of the rows directly under a row (-1 for those at the top), in reading order: they follow it,
+    /// before the first row that is not under it.</summary>
+    public IReadOnlyList<int> ChildrenOf(int parent)
+    {
+        List<int> children = [];
+        for (int i = parent + 1; i < rows.Length && (parent < 0 || Under(i, parent)); i++)
+        {
+            if (places[i].Parent == parent)
+            {
+                children.Add(i);
+            }
+        }
+        return children;
+    }
+
+    /// <summary>Whether a row is under another, however deep.</summary>
+    private bool Under(int row, int above)
+    {
+        for (int i = places[row].Parent; i >= 0; i = places[i].Parent)
+        {
+            if (i == above)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>A row's parent's index (-1 at the top) and the lines it spans.</summary>
     private readonly record struct Place(int Parent, int First, int Last);
 }

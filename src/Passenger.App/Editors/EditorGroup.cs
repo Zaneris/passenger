@@ -43,9 +43,9 @@ public sealed class EditorTab(OpenDocument document) : Observable
     }
 }
 
-/// <summary>One editor of a split: its tabs (the pinned ones first), its find bar and its editor, which shows the
-/// active tab's file. A file may be open in two groups at once (Split Right on it), each with its own carets and scroll
-/// over the one text.</summary>
+/// <summary>One editor of a split: its tabs (the pinned ones first), its navigation bar, its find bar and its editor,
+/// which shows the active tab's file. A file may be open in two groups at once (Split Right on it), each with its own
+/// carets and scroll over the one text.</summary>
 public sealed class EditorGroup : DockPanel
 {
     private readonly EditorArea area;
@@ -144,7 +144,9 @@ public sealed class EditorGroup : DockPanel
         });
         mergeLink.Name = "MergeLink";
         mergeLink.IsVisible = false;
+        Navigation = new NavigationBar(area, this);
         Children.Add(tabBar);
+        Children.Add(Navigation.Bar);
         Children.Add(banner);
         Children.Add(Find);
         editorPlace = new Panel { Children = { Editor } };
@@ -195,6 +197,9 @@ public sealed class EditorGroup : DockPanel
     private event EventHandler? CurrentChanged;
 
     public CodeEditor Editor { get; }
+
+    /// <summary>The bar over the editor naming where its caret is in the file's outline.</summary>
+    public NavigationBar Navigation { get; }
 
     /// <summary>The columns of the editor's gutter, fed from the file it shows.</summary>
     public EditorGutter Gutter { get; }
@@ -557,6 +562,7 @@ public sealed class EditorGroup : DockPanel
             editorPlace.Children.Add(preview);
             ShowBanner(document);
             tabBar.IsVisible = true;
+            Navigation.Show(null);
             FollowSidePreview();
             return;
         }
@@ -578,6 +584,7 @@ public sealed class EditorGroup : DockPanel
         ShowBanner(document);
         Editor.IsVisible = true;
         tabBar.IsVisible = true;
+        Navigation.Show(document);
         ShowTable(document);
         ShowGodotPage(document);
         AttachFind();
@@ -729,6 +736,7 @@ public sealed class EditorGroup : DockPanel
                 Editor.IsVisible = false;
                 tabBar.IsVisible = false;
                 banner.IsVisible = false;
+                Navigation.Show(null);
                 tables?.Hide();
                 godotPage?.Hide();
                 Side = null;

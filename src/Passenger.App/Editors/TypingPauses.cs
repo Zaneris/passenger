@@ -15,8 +15,12 @@ public static class TypingPauses
     /// <summary>Before a C# file's diagnostics are pulled again, and the other C# files shown.</summary>
     public static TimeSpan Diagnostics => Of(TimeSpan.FromMilliseconds(600));
 
-    /// <summary>Before the path in the status bar asks for the file's outline again.</summary>
+    /// <summary>Before the path in the status bar asks for the file's outline again, and the navigation bar over an editor
+    /// reads again the outline of a file it has from no parse of its own.</summary>
     public static TimeSpan Outline => Of(TimeSpan.FromMilliseconds(400));
+
+    /// <summary>Before the navigation bar over an editor follows its caret into another part of the file's outline.</summary>
+    public static TimeSpan NavigationBar => Of(TimeSpan.FromMilliseconds(100));
 
     /// <summary>Before the uses of what the caret rests on are asked for, or a word chosen is looked for.</summary>
     public static TimeSpan Uses => Of(TimeSpan.FromMilliseconds(300));

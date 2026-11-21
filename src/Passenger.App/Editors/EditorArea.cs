@@ -194,6 +194,42 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
+    /// <summary>Where an open file's outline comes from for the navigation bar over its editors, null for a file with none.
+    /// Asked on the UI thread.</summary>
+    public Func<OpenDocument, Navigation.FileOutline?> NavigationOutlineOf { get; set; } = _ => null;
+
+    private bool showsNavigationBar = true;
+
+    /// <summary>Whether each group shows the navigation bar over its editor while its file has an outline.</summary>
+    public bool ShowsNavigationBar
+    {
+        get => showsNavigationBar;
+        set
+        {
+            if (value == showsNavigationBar)
+            {
+                return;
+            }
+            showsNavigationBar = value;
+            OutlinesMayHaveCome();
+        }
+    }
+
+    /// <summary>The files' outlines may have come, or gone, since the navigation bars last asked (a language server
+    /// started, or has a file now): each bar shows or hides again, and one without its file's outline asks for it.</summary>
+    public void OutlinesMayHaveCome()
+    {
+        foreach (EditorGroup group in AllGroups)
+        {
+            group.Navigation.FollowSource();
+        }
+    }
+
+    /// <summary>A navigation bar's part asked to list where it may go, for the window to show the list under it.</summary>
+    public event EventHandler<NavigationList>? NavigationListRequested;
+
+    internal void NavigationListAsked(NavigationList list) => NavigationListRequested?.Invoke(this, list);
+
     /// <summary>Whether a file is an SVG, which shows its picture beside its text.</summary>
     public static bool IsSvg(OpenDocument document) => document.Path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 

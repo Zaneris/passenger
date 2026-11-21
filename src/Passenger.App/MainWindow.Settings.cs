@@ -123,6 +123,7 @@ public partial class MainWindow
         {
             ApplyTo(group.Editor, next);
         }
+        Editors.ShowsNavigationBar = next.ShowNavigationBar;
         FollowViewSettings(visualSettings, next);
         FollowArrangement(next);
         FollowTitleBar(next);

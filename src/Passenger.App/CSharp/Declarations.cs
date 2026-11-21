@@ -3,12 +3,14 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.Languages.CSharp;
+using SymbolKind = Passenger.Lsp.SymbolKind;
+using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
 /// <summary>What an open file's own syntax says of its declarations: the override keyword Base Symbols asks the language
-/// server about, the types and member a place is in, which Recent Locations names, and the outline of a file the server
-/// does not hold.</summary>
+/// server about, the types and member a place is in, which Recent Locations names, the outline of a file the server does
+/// not hold, and the outline the navigation bar over a C# file's editor shows.</summary>
 internal static class Declarations
 {
     /// <summary>Where the override keyword is of the member whose name in its declaration is at an offset, if it has one:
@@ -67,12 +69,12 @@ internal static class Declarations
         {
             foreach (SyntaxNode child in node.ChildNodes())
             {
-                foreach ((string name, string kind, int at) in Parts(child))
+                foreach (Part part in Parts(child))
                 {
-                    text.Append(' ', depth * 2).Append(name).Append(" (").Append(kind).Append(", line ")
-                        .Append(syntax.Text.GetLineFromOffset(Math.Min(at, syntax.Text.Length)) + 1).Append(")\n");
+                    text.Append(' ', depth * 2).Append(part.Name).Append(" (").Append(part.Kind).Append(", line ")
+                        .Append(syntax.Text.GetLineFromOffset(Math.Min(part.At, syntax.Text.Length)) + 1).Append(")\n");
                 }
-                if (child is BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax or EnumDeclarationSyntax)
+                if (Holds(child))
                 {
                     Write(child, depth + 1);
                 }
@@ -80,28 +82,70 @@ internal static class Declarations
         }
     }
 
-    /// <summary>What a declaration declares, as an outline names each part: a field's or event's every variable.</summary>
-    private static IEnumerable<(string Name, string Kind, int At)> Parts(SyntaxNode node) => node switch
+    /// <summary>A file's namespaces, types and members as an outline's rows, each made by <paramref name="row"/> from what it
+    /// declares and its depth, spanning its declaration's lines in the editor's lines; a row the outline
+    /// <paramref name="before"/> has in its place unchanged is that one. Made off the window's thread.</summary>
+    public static Outline<T> Rows<T>(ParsedText syntax, Func<Declared, int, T> row, Outline<T>? before = null, CancellationToken cancel = default)
+        where T : class
     {
-        BaseNamespaceDeclarationSyntax space => [(space.Name.ToString(), "namespace", space.Name.SpanStart)],
-        RecordDeclarationSyntax record => [(Typed(record), record.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) ? "record struct" : "record", record.Identifier.SpanStart)],
-        ClassDeclarationSyntax type => [(Typed(type), "class", type.Identifier.SpanStart)],
-        StructDeclarationSyntax type => [(Typed(type), "struct", type.Identifier.SpanStart)],
-        InterfaceDeclarationSyntax type => [(Typed(type), "interface", type.Identifier.SpanStart)],
-        EnumDeclarationSyntax type => [(type.Identifier.Text, "enum", type.Identifier.SpanStart)],
-        DelegateDeclarationSyntax type => [($"{type.Identifier.Text}{type.TypeParameterList}({Parameters(type.ParameterList)})", "delegate", type.Identifier.SpanStart)],
-        MethodDeclarationSyntax method => [($"{method.Identifier.Text}{method.TypeParameterList}({Parameters(method.ParameterList)})", "method", method.Identifier.SpanStart)],
-        ConstructorDeclarationSyntax constructor => [($"{constructor.Identifier.Text}({Parameters(constructor.ParameterList)})", "constructor", constructor.Identifier.SpanStart)],
-        DestructorDeclarationSyntax destructor => [($"~{destructor.Identifier.Text}()", "destructor", destructor.Identifier.SpanStart)],
-        OperatorDeclarationSyntax operation => [($"operator {operation.OperatorToken.Text}({Parameters(operation.ParameterList)})", "operator", operation.OperatorToken.SpanStart)],
-        ConversionOperatorDeclarationSyntax conversion => [($"{conversion.ImplicitOrExplicitKeyword.Text} operator {conversion.Type}", "operator", conversion.Type.SpanStart)],
-        PropertyDeclarationSyntax property => [(property.Identifier.Text, "property", property.Identifier.SpanStart)],
-        IndexerDeclarationSyntax indexer => [($"this[{Parameters(indexer.ParameterList)}]", "indexer", indexer.ThisKeyword.SpanStart)],
-        EventDeclarationSyntax declared => [(declared.Identifier.Text, "event", declared.Identifier.SpanStart)],
-        EventFieldDeclarationSyntax field => [.. field.Declaration.Variables.Select(v => (Name: v.Identifier.Text, Kind: "event", At: v.Identifier.SpanStart))],
-        FieldDeclarationSyntax field => [.. field.Declaration.Variables.Select(v =>
-            (Name: v.Identifier.Text, Kind: field.Modifiers.Any(SyntaxKind.ConstKeyword) ? "constant" : "field", At: v.Identifier.SpanStart))],
-        EnumMemberDeclarationSyntax member => [(member.Identifier.Text, "enum member", member.Identifier.SpanStart)],
+        TextSnapshot text = syntax.Text;
+        return Outline<T>.Of<Node>([.. Under(syntax.Root)], node => Holds(node.Syntax) ? [.. Under(node.Syntax)] : null, (node, depth) =>
+        {
+            Part part = node.Part;
+            int last = Line(node.Syntax.Span.End);
+            Declared declared = new(part.Name, part.Kind, part.Symbol, text.GetPosition(Math.Min(part.At, text.Length)), part.Type?.ToString(), last);
+            return (row(declared, depth), Line(node.Syntax.SpanStart), last);
+        }, before, cancel);
+
+        int Line(int offset) => text.GetLineFromOffset(Math.Min(offset, text.Length));
+
+        static IEnumerable<Node> Under(SyntaxNode node) => node.ChildNodes().SelectMany(child => Parts(child).Select(part => new Node(child, part)));
+    }
+
+    /// <summary>What a declaration declares, as an outline's row shows it: its name, its kind in words and as a symbol's,
+    /// where its name is, the type it has or returns where it has one, and the last line (from zero) it spans.</summary>
+    public sealed record Declared(string Name, string Kind, SymbolKind Symbol, TextPosition At, string? Type, int LastLine);
+
+    /// <summary>Whether a declaration holds declarations of its own, which an outline lists under it.</summary>
+    private static bool Holds(SyntaxNode node) => node is BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax or EnumDeclarationSyntax;
+
+    /// <summary>A part of an outline and the declaration it is of.</summary>
+    private sealed record Node(SyntaxNode Syntax, Part Part);
+
+    /// <summary>What a declaration declares, as an outline names each: its name, its kind in words and as a symbol's, where
+    /// its name is, and the type it has or returns where it has one.</summary>
+    private readonly record struct Part(string Name, string Kind, SymbolKind Symbol, int At, TypeSyntax? Type = null);
+
+    /// <summary>What a declaration declares, as an outline names each part: a field's or event's every variable.</summary>
+    private static IEnumerable<Part> Parts(SyntaxNode node) => node switch
+    {
+        BaseNamespaceDeclarationSyntax space => [new(space.Name.ToString(), "namespace", SymbolKind.Namespace, space.Name.SpanStart)],
+        RecordDeclarationSyntax record => record.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword)
+            ? [new(Typed(record), "record struct", SymbolKind.Struct, record.Identifier.SpanStart)]
+            : [new(Typed(record), "record", SymbolKind.Class, record.Identifier.SpanStart)],
+        ClassDeclarationSyntax type => [new(Typed(type), "class", SymbolKind.Class, type.Identifier.SpanStart)],
+        StructDeclarationSyntax type => [new(Typed(type), "struct", SymbolKind.Struct, type.Identifier.SpanStart)],
+        InterfaceDeclarationSyntax type => [new(Typed(type), "interface", SymbolKind.Interface, type.Identifier.SpanStart)],
+        EnumDeclarationSyntax type => [new(type.Identifier.Text, "enum", SymbolKind.Enum, type.Identifier.SpanStart)],
+        DelegateDeclarationSyntax type => [new($"{type.Identifier.Text}{type.TypeParameterList}({Parameters(type.ParameterList)})", "delegate", SymbolKind.Function,
+            type.Identifier.SpanStart, type.ReturnType)],
+        MethodDeclarationSyntax method => [new($"{method.Identifier.Text}{method.TypeParameterList}({Parameters(method.ParameterList)})", "method", SymbolKind.Method,
+            method.Identifier.SpanStart, method.ReturnType)],
+        ConstructorDeclarationSyntax constructor => [new($"{constructor.Identifier.Text}({Parameters(constructor.ParameterList)})", "constructor", SymbolKind.Constructor,
+            constructor.Identifier.SpanStart)],
+        DestructorDeclarationSyntax destructor => [new($"~{destructor.Identifier.Text}()", "destructor", SymbolKind.Method, destructor.Identifier.SpanStart)],
+        OperatorDeclarationSyntax operation => [new($"operator {operation.OperatorToken.Text}({Parameters(operation.ParameterList)})", "operator", SymbolKind.Operator,
+            operation.OperatorToken.SpanStart, operation.ReturnType)],
+        ConversionOperatorDeclarationSyntax conversion => [new($"{conversion.ImplicitOrExplicitKeyword.Text} operator {conversion.Type}", "operator", SymbolKind.Operator,
+            conversion.Type.SpanStart)],
+        PropertyDeclarationSyntax property => [new(property.Identifier.Text, "property", SymbolKind.Property, property.Identifier.SpanStart, property.Type)],
+        IndexerDeclarationSyntax indexer => [new($"this[{Parameters(indexer.ParameterList)}]", "indexer", SymbolKind.Property, indexer.ThisKeyword.SpanStart, indexer.Type)],
+        EventDeclarationSyntax declared => [new(declared.Identifier.Text, "event", SymbolKind.Event, declared.Identifier.SpanStart, declared.Type)],
+        EventFieldDeclarationSyntax field => [.. field.Declaration.Variables.Select(v => new Part(v.Identifier.Text, "event", SymbolKind.Event, v.Identifier.SpanStart, field.Declaration.Type))],
+        FieldDeclarationSyntax field => [.. field.Declaration.Variables.Select(v => field.Modifiers.Any(SyntaxKind.ConstKeyword)
+            ? new Part(v.Identifier.Text, "constant", SymbolKind.Constant, v.Identifier.SpanStart, field.Declaration.Type)
+            : new Part(v.Identifier.Text, "field", SymbolKind.Field, v.Identifier.SpanStart, field.Declaration.Type))],
+        EnumMemberDeclarationSyntax member => [new(member.Identifier.Text, "enum member", SymbolKind.EnumMember, member.Identifier.SpanStart)],
         _ => [],
     };
 

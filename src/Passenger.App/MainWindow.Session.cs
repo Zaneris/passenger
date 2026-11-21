@@ -401,6 +401,7 @@ public partial class MainWindow
                 {
                     status.ShowLanguage(LanguageLabel());
                     structure?.FollowServer();
+                    Editors.OutlinesMayHaveCome();
                 }
             };
             // Each stop is logged with why, so the log is where to see more; one left stopped is started again from its words.
@@ -471,6 +472,7 @@ public partial class MainWindow
                 FindTests();
                 // A Godot project of GDScript alone the walk found outlines its open scene from now on.
                 structure?.FollowServer();
+                Editors.OutlinesMayHaveCome();
                 // Each Godot project the walk found has its editors taken from now on.
                 ListenForGodotEditors();
                 // Each file's project, which Problems lists the solution's under, as the projects now are.
@@ -614,8 +616,10 @@ public partial class MainWindow
             service.StateChanged += (_, _) => usages.Refresh();
             service.StateChanged += (_, _) => OutlineWhenUnseen();
             service.StateChanged += (_, _) => structure?.FollowServer();
+            service.StateChanged += (_, _) => Editors.OutlinesMayHaveCome();
             service.Connected += (_, _) => OutlineWhenUnseen();
             service.Connected += (_, _) => structure?.FollowServer();
+            service.Connected += (_, _) => Editors.OutlinesMayHaveCome();
             service.StateChanged += (_, _) => RoutesServerChanged(service);
             service.ProjectsLoaded += (_, _) => RoutesProjectsLoaded(service);
             service.StateChanged += (_, _) => StepsServerChanged(service);

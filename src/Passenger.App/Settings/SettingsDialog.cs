@@ -344,6 +344,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.CaretWidth);
         Add(Declared.Ligatures);
         Add(Declared.ShowLineNumbers);
+        Add(Declared.ShowNavigationBar);
         Add(Declared.RainbowBraces);
         Add(Declared.VimMode);
         Add(Declared.VimKeysToKeymap, Declared.VimKeysToKeymap.Box(Working, Change, stroke => KeymapDoes(actions, stroke)));

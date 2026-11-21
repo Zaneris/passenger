@@ -249,6 +249,7 @@ public partial class MainWindow
 
         AddTabActions();
         AddRegions();
+        AddNavigationBar();
         AddReadAsText();
         AddSoundCues();
 

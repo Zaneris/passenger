@@ -8,9 +8,9 @@ namespace Passenger.App;
 
 /// <summary>The window's regions, which Next Region and Previous Region take the keys round in one order, as they stand on
 /// the screen: the toolbar, the left edge's tabs of hidden tool windows, the tool windows docked on the left (the upper
-/// first), the editors, those on the right, the right edge's tabs, those along the bottom (the left first), the bottom
-/// edge's tabs, the status bar, and round to the toolbar again. A region where nothing can take the
-/// keys (no file open, a status bar with nothing to press) is passed over. Each takes them as by Tab, so what has them
+/// first), the active editor's navigation bar, the editors, those on the right, the right edge's tabs, those along the
+/// bottom (the left first), the bottom edge's tabs, the status bar, and round to the toolbar again. A region where nothing
+/// can take the keys (no file open, a status bar with nothing to press) is passed over. Each takes them as by Tab, so what has them
 /// draws the ring round it, and is told as it is entered, through the window's announcer ("Explorer, tool window").</summary>
 public partial class MainWindow
 {
@@ -53,6 +53,11 @@ public partial class MainWindow
         regions.AddRange(Dock.ShownAt(LeftPlaces).Where(shown => Laid(shown.Place)).Select(ToolRegion));
         if (Editors.Active is { } file && Laid(Editors))
         {
+            // Above its editor, and a part of the editors' room: the bar's region is found first while it has the keys.
+            if (Editors.ActiveGroup.Navigation is { Bar.IsEffectivelyVisible: true } bar)
+            {
+                regions.Add(new(Passenger.App.Editors.NavigationBar.Said, bar.Bar, bar.TakeKeys));
+            }
             regions.Add(new($"{file.Title}, editor", Editors, () => Editors.ActiveGroup.FocusShown(NavigationMethod.Tab)));
         }
         regions.AddRange(Dock.ShownAt(RightPlaces).Where(shown => Laid(shown.Place)).Select(ToolRegion));
