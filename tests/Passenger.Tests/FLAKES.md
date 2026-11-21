@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `SoundCuesTests`' `A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(kind: "pwsh")`,
+  CI 44948517766 (macOS report shard 4): "Waited 180 s for the shell's next prompt after 'echo first'", the screen
+  showing `PS …> echo first` and `echo first` again on the row below. **The test waited wrong**: it typed at pwsh's
+  first marked prompt, which PowerShell's host draws before its line editor takes the terminal, and on macOS PSReadLine's
+  first line first runs `/usr/bin/defaults` to ask whether VoiceOver is on, which .NET runs with the terminal back in
+  its line modes; the command typed meanwhile was echoed by the terminal and its Enter reached PSReadLine as Ctrl+J,
+  which leaves the line unrun. With the runner's pwsh 7.6.10, a probe typing at the first marked prompt lost its command
+  in 2 of 6 runs, and none of 6 once it waited for the line editor to ask where its line begins (a cursor position
+  report at the prompt's end), which the test now waits for at every pwsh prompt on macOS and Linux (1d17e3d7e).
 - `TerminalTests`' `Programs_override_the_configured_cursor_and_reset_restores_it(reset: "\033[0 q")`, CI 44948517766
   (macOS report shard 3): "Assert.NotEqual() Failure: Values are equal … #ff0f131c". **The test waited wrong**, not
   #1849's marks, which /bin/sh is given none of: it read the drawn cursor as soon as the cursor stood at the start of
