@@ -30,8 +30,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private readonly TextBox details;
     private readonly TextBox filter;
     private readonly EmptyState placeholder;
-    private readonly Border branchFilter;
-    private readonly TextBlock branchFilterText;
+    private readonly FilterChip branchFilter;
     private readonly EventHandler onHistoryChanged;
     private readonly EventHandler onSignatures;
 
@@ -132,22 +131,8 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         filter.TextChanged += (_, _) => Filter();
         Button refresh = ToolButtons.Of(AppActions.GitLogRefresh, IconKeys.Rerun, "Refresh", action => ActionRequested?.Invoke(this, action));
         // The Branch filter, shown while the log is filtered to a branch, its x showing every branch again.
-        branchFilterText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-        PathIcon clearGlyph = new() { Classes = { StyleClasses.Small } };
-        clearGlyph.Bind(PathIcon.DataProperty, clearGlyph.GetResourceObservable(IconKeys.Close));
-        Button clearBranch = new() { Classes = { StyleClasses.TabPin }, Content = clearGlyph, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
-        ToolButtons.Tip(clearBranch, "Clear Branch Filter");
-        clearBranch.Click += (_, _) => FilterBranch(null, all: true);
-        branchFilter = new Border
-        {
-            IsVisible = false,
-            Classes = { StyleClasses.Tag },
-            Padding = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Tight, Gaps.Hair),
-            Margin = new Thickness(0, 0, Gaps.Normal, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { branchFilterText, clearBranch } },
-        };
-        branchFilter.Bind(Border.BackgroundProperty, branchFilter.GetResourceObservable(TokenKeys.Selected));
+        branchFilter = new FilterChip("Clear Branch Filter") { Margin = new Thickness(0, 0, Gaps.Normal, 0) };
+        branchFilter.Cleared += (_, _) => FilterBranch(null, all: true);
         Border top = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Normal, Gaps.Hair), Children = { filter, branchFilter, refresh } });
 
         Grid right = new() { RowDefinitions = new RowDefinitions("*,1,*") };
@@ -218,8 +203,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     private void ShowBranchFilter((string? Revision, string? Name) filter)
     {
         (BranchFilter, BranchFilterName) = filter;
-        branchFilter.IsVisible = BranchFilter is not null;
-        branchFilterText.Text = $"Branch: {BranchFilterName}";
+        branchFilter.Words = BranchFilter is null ? null : $"Branch: {BranchFilterName}";
     }
 
     /// <summary>A history's tab closed: it stops following the history.</summary>
@@ -239,7 +223,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
         vcs.Signatures.Landed += onSignatures;
         Branches?.Bind(next);
         (BranchFilter, BranchFilterName) = (null, null);
-        branchFilter.IsVisible = false;
+        branchFilter.Words = null;
         most = Git.LogLength;
         onHistoryChanged(this, EventArgs.Empty);
     }
@@ -344,7 +328,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             {
                 // The branch filtered to is gone (deleted, renamed): every branch again.
                 (BranchFilter, BranchFilterName) = (null, null);
-                branchFilter.IsVisible = false;
+                branchFilter.Words = null;
             }
         }
         IReadOnlyList<HistoryCommit> history = repository is null || Scope is null ? [] : await repository.HistoryAsync(Scope);
@@ -520,12 +504,12 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             while (tags.Count < refs.Count)
             {
                 // A long branch's name ends in an ellipsis and leaves the subject room.
-                TextBlock text = new() { Classes = { StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis };
-                text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(TokenKeys.Vcs_RefText));
-                Border tag = new() { [DockProperty] = Dock.Left, Classes = { StyleClasses.Tag },  Margin = new Thickness(0, 0, Gaps.Small, 0), Child = text, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 160 };
-                tag.Bind(Border.BackgroundProperty, tag.GetResourceObservable(TokenKeys.Vcs_Ref));
+                Border tag = Tags.Of(null, TokenKeys.Vcs_RefText, TokenKeys.Vcs_Ref);
+                tag.Margin = new Thickness(0, 0, Gaps.Small, 0);
+                tag.MaxWidth = 160;
+                DockPanel.SetDock(tag, Dock.Left);
                 subject.Children.Insert(tags.Count, tag);
-                tags.Add((tag, text));
+                tags.Add((tag, Tags.WordsOf(tag)));
             }
             for (int i = 0; i < tags.Count; i++)
             {

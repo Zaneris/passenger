@@ -93,7 +93,7 @@ public sealed class GodotItemsEditor : Border
         keyType = hint.Key != GodotType.Nil ? hint.Key : keys.Kind == 0 ? GodotType.Nil : keys.Type;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
-        Padding = new Thickness(Gaps.Normal);
+        Padding = PopupFrame.Inset;
         empty = new EmptyState { Text = Entries ? "No entries" : "No items" };
         Button add = new() { Classes = { StyleClasses.Compact }, Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
         add.Click += (_, _) => IdeErrors.Observe(InTurnAsync(AddAsync));
@@ -496,7 +496,7 @@ public sealed class GodotResourceEditor : Border, IGodotTuner
         this.tuner = tuner;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Medium;
-        Padding = new Thickness(Gaps.Normal);
+        Padding = PopupFrame.Inset;
         title = new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = property, TextTrimming = TextTrimming.CharacterEllipsis };
         words.Text = $"Reading {property}'s properties…";
         Child = new StackPanel

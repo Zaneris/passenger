@@ -25,7 +25,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     {
         all = [.. usages.OrderBy(u => u.Generated).ThenBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];
         this.note = note;
-        FindWindow = new Button { Classes = { StyleClasses.Link }, Content = "Open in Find Window", Focusable = false, VerticalAlignment = VerticalAlignment.Center };
+        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", VerticalAlignment = VerticalAlignment.Center };
         FindWindow.Click += (_, _) => FindWindowRequested?.Invoke(this, EventArgs.Empty);
         AddToHeading(FindWindow);
         QueryChanged();

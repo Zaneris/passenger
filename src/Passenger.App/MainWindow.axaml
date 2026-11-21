@@ -122,8 +122,8 @@
                     </app:MainMenuPlace>
                     <Button Name="ProjectButton" Classes="widget" MinWidth="80" ToolTip.Tip="Open a solution, project or folder" Click="OnProjectClicked">
                         <DockPanel>
-                            <Border Name="ProjectBadge" Classes="projectBadge" DockPanel.Dock="Left" IsVisible="False" Width="20" Height="20">
-                                <TextBlock Name="ProjectBadgeText" Classes="projectBadgeText" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Border Name="ProjectBadge" Classes="initials small" DockPanel.Dock="Left" IsVisible="False">
+                                <TextBlock Name="ProjectBadgeText" Classes="badgeText" />
                             </Border>
                             <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
                             <TextBlock Name="ProjectName" Classes="projectName" Text="No solution" VerticalAlignment="Center"

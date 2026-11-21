@@ -220,7 +220,7 @@ public sealed class NewProjectDialog : IdeWindow
         DockPanel.SetDock(search, Dock.Top);
         leftPanel.Children.Add(search);
         leftPanel.Children.Add(new Panel { Children = { list, loading } });
-        Border left = new() { Width = 260, BorderThickness = Hairlines.After, Child = leftPanel };
+        Border left = new() { Width = TemplateList.Width, BorderThickness = Hairlines.After, Child = leftPanel };
         left.Bind(Border.BorderBrushProperty, left.GetResourceObservable(TokenKeys.Divider));
         ReusedRows.Use(typeChooser, TypeItem);
         typeChooser.SelectionChanged += (_, _) =>

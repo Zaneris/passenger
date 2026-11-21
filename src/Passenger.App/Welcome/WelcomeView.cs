@@ -272,8 +272,7 @@ public sealed class WelcomeView : UserControl
     /// longer on disk, its name and badge muted.</summary>
     private static Control Row()
     {
-        TextBlock letters = new() { Classes = { StyleClasses.WelcomeBadgeText }, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        Border badge = new() { Classes = { StyleClasses.WelcomeBadge }, Child = letters, VerticalAlignment = VerticalAlignment.Center };
+        Border badge = Tags.Initials(out TextBlock letters);
         TextBlock name = new() { Classes = { StyleClasses.WelcomeRowName }, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock where = new() { Classes = { StyleClasses.Muted, StyleClasses.WelcomeRowPath }, TextTrimming = TextTrimming.PathSegmentEllipsis };
         DockPanel line = new() { Classes = { StyleClasses.WelcomeRow } };
@@ -283,8 +282,8 @@ public sealed class WelcomeView : UserControl
         gone.Text = "Missing";
         gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
         line.Children.Add(gone);
-        TextBlock kindText = new() { Classes = { StyleClasses.WelcomeKindText } };
-        Border kind = new() { Classes = { StyleClasses.WelcomeKind }, Child = kindText, VerticalAlignment = VerticalAlignment.Center };
+        Border kind = Tags.Of(null, TokenKeys.Text, TokenKeys.Hover);
+        kind.Margin = new Thickness(Gaps.Wide, 0, Gaps.Tight, 0);
         DockPanel.SetDock(kind, Dock.Right);
         line.Children.Add(kind);
         line.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = Gaps.Hair, Children = { name, where } });
@@ -296,7 +295,7 @@ public sealed class WelcomeView : UserControl
             name.Classes.Set(StyleClasses.Muted, row.Missing);
             where.Text = row.Shown;
             gone.IsVisible = row.Missing;
-            kindText.Text = Kind(row.Path);
+            Tags.WordsOf(kind).Text = Kind(row.Path);
         });
     }
 

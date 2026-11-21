@@ -91,7 +91,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         find.Children.Add(toggles);
         find.Children.Add(query);
 
-        maskOn = new CheckBox { Classes = { StyleClasses.Caption }, Content = "File mask:", IsChecked = choices.Start.Mask is not null, MinHeight = 0, VerticalAlignment = VerticalAlignment.Center };
+        maskOn = PopupFrame.Option("File mask:", choices.Start.Mask is not null, takesKeys: true);
         ToolTip.SetTip(maskOn, "File mask (Alt+K)");
         maskBox = Field(choices.Masks.Count > 0 ? choices.Masks : ["*.cs"], editable: true);
         maskBox.Width = 150;
@@ -154,7 +154,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         Show(choices.Start.Kind);
 
         status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
-        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", Focusable = false, IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
+        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
         ToolTip.SetTip(FindWindow, $"Open in Find Window ({(OperatingSystem.IsMacOS() ? "⌘↩" : "Ctrl+Enter")})");
         ToolTip.SetShowOnDisabled(FindWindow, true);
         FindWindow.Click += (_, _) => KeepInFindWindow();

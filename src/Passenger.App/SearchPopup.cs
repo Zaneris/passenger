@@ -53,8 +53,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         if (option is { } shown)
         {
-            // Not focusable: the keys stay with the query.
-            this.option = new CheckBox { Classes = { StyleClasses.Caption }, Content = shown.Label, IsChecked = shown.Checked, Focusable = false, VerticalAlignment = VerticalAlignment.Center };
+            this.option = PopupFrame.Option(shown.Label, shown.Checked);
             this.option.IsCheckedChanged += (_, _) => OptionTurned();
             DockPanel.SetDock(this.option, Dock.Right);
             heading.Children.Add(this.option);

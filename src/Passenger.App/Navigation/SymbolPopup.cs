@@ -115,8 +115,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     public static Control ReusedRow()
     {
         RowIcon icon = new() { Margin = new Thickness(0, 0, Gaps.Small, 0), VerticalAlignment = VerticalAlignment.Center };
-        TextBlock letter = BadgeLetter();
-        Border badge = BadgeOf(letter);
+        Border badge = Tags.Kind(out TextBlock letter);
         badge.Margin = new Thickness(0, 0, Gaps.Small, 0);
         TextBlock where = ListRow.DetailText();
         where.MaxWidth = 260;
@@ -147,7 +146,6 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             {
                 (string kind, string brush) = Badge(symbol.Kind);
                 letter.Text = kind;
-                letter.Foreground = InfoCard.Brush(TokenKeys.BadgeText);
                 badge.Background = InfoCard.Brush(brush);
             }
             where.Text = symbol.Where ?? string.Empty;
@@ -163,29 +161,11 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// <summary>A kind's letter on its colour, marking a symbol or a kind of type.</summary>
     public static Control KindBadge(string letter, string brush)
     {
-        TextBlock shown = BadgeLetter();
+        Border badge = Tags.Kind(out TextBlock shown);
         shown.Text = letter;
-        shown.Foreground = InfoCard.Brush(TokenKeys.BadgeText);
-        Border badge = BadgeOf(shown);
         badge.Background = InfoCard.Brush(brush);
         return badge;
     }
-
-    private static TextBlock BadgeLetter() => new()
-    {
-        Classes = { StyleClasses.BadgeText },
-        HorizontalAlignment = HorizontalAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Center,
-    };
-
-    private static Border BadgeOf(TextBlock letter) => new()
-    {
-        Width = 16,
-        Height = 16,
-        Classes = { StyleClasses.KindBadge },
-        VerticalAlignment = VerticalAlignment.Center,
-        Child = letter,
-    };
 
     /// <summary>The letter and colour of a symbol of each kind (the protocol's SymbolKind).</summary>
     public static (string Letter, string Brush) Badge(SymbolKind kind) => kind switch

@@ -36,7 +36,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         StackPanel body = new() { Spacing = Gaps.Normal, Children = { new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = title }, name } };
         if (option is { } asked)
         {
-            this.option = new CheckBox { Classes = { StyleClasses.Caption }, Content = asked.Text, IsChecked = asked.On, Focusable = false, MinHeight = 0 };
+            this.option = PopupFrame.Option(asked.Text, asked.On);
             this.option.IsCheckedChanged += (_, _) => OptionChanged?.Invoke(this, this.option.IsChecked == true);
             body.Children.Add(this.option);
         }

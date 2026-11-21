@@ -19,9 +19,6 @@ namespace Passenger.App.CSharp;
 /// pointer and the keys for. A screen reader meets it as a tooltip called by what it is for (Parameter Info).</summary>
 internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 {
-    /// <summary>The most a card of words is wide; one of a value's rows takes a width of the popups' (<see cref="PopupFrame"/>).</summary>
-    private const double WordsWidth = 640;
-
     /// <summary>The most rows of a value the card shows before it scrolls.</summary>
     private const int MostRows = 16;
 
@@ -31,15 +28,12 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// under the pointer.</summary>
     private double fitted;
 
-    /// <summary>The most it is wide of itself, a card of words' or of a value's rows', before any narrower room holds it.</summary>
-    private double widest = WordsWidth;
-
     public InfoCard(string called)
     {
         Called = called;
         Classes.Add(StyleClasses.Popup);
         Padding = PopupFrame.CardInset;
-        MaxWidth = WordsWidth;
+        MaxWidth = PopupFrame.Wide;
         Child = parts;
         IsHitTestVisible = false;
     }
@@ -87,23 +81,21 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         Usable = false;
         fitted = 0;
         IsHitTestVisible = false;
-        widest = WordsWidth;
-        MaxWidth = WordsWidth;
+        MaxWidth = PopupFrame.Wide;
     }
 
-    /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself in a wider one.</summary>
-    public void Within(double room) => MaxWidth = Math.Min(widest, Math.Max(0, room));
+    /// <summary>Held to a room narrower than it would be, its words wrapping to it; as wide as it takes of itself, up to the
+    /// popups' <see cref="PopupFrame.Wide"/>, in a wider one.</summary>
+    public void Within(double room) => MaxWidth = Math.Min(PopupFrame.Wide, Math.Max(0, room));
 
-    /// <summary>A value's rows, which open in the card: it takes the pointer and the keys, a width of the popups', growing as
-    /// rows open, and scrolls past <see cref="MostRows"/> rows or the room it is given.</summary>
+    /// <summary>A value's rows, which open in the card: it takes the pointer and the keys, a width of the popups'
+    /// (<see cref="PopupFrame.Fitting"/>), growing as rows open, and scrolls past <see cref="MostRows"/> rows or the room it is given.</summary>
     public void AddValues(Debugging.VariablesList values, double room)
     {
         Values = values;
         values.MaxHeight = Math.Max(ListRow.Height * 4, Math.Min(ListRow.Height * MostRows, room - Padding.Top - Padding.Bottom)) + values.Padding.Top + values.Padding.Bottom;
         parts.Children.Add(values);
         IsHitTestVisible = true;
-        widest = PopupFrame.Wide;
-        MaxWidth = PopupFrame.Wide;
         values.Tree.Rows.CollectionChanged += (_, _) =>
         {
             if (Values == values)
@@ -121,7 +113,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         }
         // The narrowest of the popups' widths holding every row as laid out, else the widest; in a narrower room, the room.
         double natural = base.MeasureOverride(new Size(double.PositiveInfinity, availableSize.Height)).Width;
-        double wanted = PopupFrame.Widths.Where(w => w <= PopupFrame.Wide).FirstOrDefault(w => w >= natural, PopupFrame.Wide);
+        double wanted = PopupFrame.Fitting(natural);
         fitted = Math.Max(fitted, Math.Min(wanted, availableSize.Width));
         double width = Math.Min(fitted, availableSize.Width);
         return new Size(width, base.MeasureOverride(new Size(width, availableSize.Height)).Height);
@@ -315,15 +307,11 @@ internal sealed class CompletionPopup : Border, IHeardPopup
     /// <summary>Whether the list is being laid out ahead (<see cref="LayOutAhead"/>), its choice no one's to hear of.</summary>
     private bool ahead;
 
-    /// <summary>The least and the most a list is wide of itself, as its rows make it, in an editor that has the room.</summary>
-    private const double LeastWidth = 280;
-    private const double MostWidth = 620;
-
     public CompletionPopup()
     {
         Classes.Add(StyleClasses.Popup);
-        MinWidth = LeastWidth;
-        MaxWidth = MostWidth;
+        MinWidth = PopupFrame.Narrow;
+        MaxWidth = PopupFrame.Wide;
         Padding = ListRow.PopupList;
         // Its places stand in a plain panel, which lets go of none it hides; its own scrolling never moves them.
         List = new ListBox
@@ -376,11 +364,13 @@ internal sealed class CompletionPopup : Border, IHeardPopup
     public string Called => "Completion";
 
     /// <summary>Held to a room narrower than it would be, even than its least width, its names and details ending in an
-    /// ellipsis rather than past the editor's edge; as wide as its rows make it in a wider one.</summary>
+    /// ellipsis rather than past the editor's edge; as wide as its rows make it, from the popups' Narrow to their Wide
+    /// (<see cref="PopupFrame"/>), in a wider one: it hugs its rows rather than taking a width of the scale, measured once
+    /// as a key changes them.</summary>
     public void Within(double room)
     {
-        MinWidth = Math.Min(LeastWidth, Math.Max(0, room));
-        MaxWidth = Math.Min(MostWidth, Math.Max(0, room));
+        MinWidth = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
+        MaxWidth = Math.Min(PopupFrame.Wide, Math.Max(0, room));
     }
 
     /// <summary>The selection moved to another item (<see cref="Lsp.CompletionItem.Same"/>): another row chosen, or the row
@@ -564,22 +554,8 @@ internal sealed class CompletionRowView : DockPanel
     {
         this.popup = popup;
         Height = ListRow.Height;
-        letter = new TextBlock
-        {
-            Classes = { StyleClasses.BadgeText },
-            Foreground = InfoCard.Brush(TokenKeys.BadgeText),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        badge = new Border
-        {
-            Width = 16,
-            Height = 16,
-            Classes = { StyleClasses.KindBadge },
-            Margin = new Thickness(0, 0, Gaps.Normal, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = letter,
-        };
+        badge = Tags.Kind(out letter);
+        badge.Margin = new Thickness(0, 0, Gaps.Normal, 0);
         // The name first, the detail at the row's end in what it leaves: a list narrowed to its room cuts the detail first.
         label = new TextBlock
         {
@@ -618,7 +594,7 @@ internal sealed class CompletionRowView : DockPanel
 
 /// <summary>A titled list to choose from (fixes, definitions, usages, surround templates): Up and Down, Enter or a double
 /// click to choose, a choice's digit to choose it at once.</summary>
-internal sealed class ChoicePopup : Border, IHeardPopup
+public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 {
     private readonly ListBox list;
 
@@ -637,9 +613,6 @@ internal sealed class ChoicePopup : Border, IHeardPopup
         Titles = [.. choices.Select(c => c.Text)];
         Details = [.. choices.Select(c => c.Detail)];
         bool numbered = choices.Any(c => c.Mnemonic is not null);
-        Classes.Add(StyleClasses.Popup);
-        MinWidth = 320;
-        MaxWidth = 760;
         Padding = ListRow.PopupList;
         list = new ListBox
         {
@@ -675,6 +648,9 @@ internal sealed class ChoicePopup : Border, IHeardPopup
     public AutomationControlType Role => AutomationControlType.List;
 
     public string Called => Title;
+
+    /// <summary>Held to a room narrower than the width it takes, its words then ending in an ellipsis.</summary>
+    public void Within(double room) => MaxWidth = Math.Max(0, room);
 
     /// <summary>Where the choice selected stands among <see cref="Titles"/>; -1 with none.</summary>
     public int ChosenAt => list.SelectedIndex;
@@ -736,13 +712,13 @@ internal sealed class ChoicePopup : Border, IHeardPopup
 
 /// <summary>One thing to choose: what it says, a quieter detail beside it, what it stands for, and the digit that
 /// chooses it, if it has one.</summary>
-internal sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
+public sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
 /// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames (a new name's box, under its
 /// own caption, names what a refactoring makes). For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
-internal sealed class RenameBox : Border, IHeardPopup
+public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
 {
     private readonly TextBox name;
     private readonly StackPanel body;
@@ -752,8 +728,9 @@ internal sealed class RenameBox : Border, IHeardPopup
     {
         Called = caption;
         Classes.Add(StyleClasses.Popup);
-        Padding = new Thickness(Gaps.Normal, Gaps.Small);
-        name = new TextBox { Classes = { StyleClasses.Code }, Text = current, MinWidth = 220 };
+        Width = PopupFrame.Narrow;
+        Padding = PopupFrame.Inset;
+        name = new TextBox { Classes = { StyleClasses.Code }, Text = current };
         TextBlock captioned = new() { Text = caption, Classes = { StyleClasses.PaneTitle } };
         AutomationProperties.SetLabeledBy(name, captioned);
         body = new StackPanel
@@ -775,6 +752,9 @@ internal sealed class RenameBox : Border, IHeardPopup
     }
 
     public AutomationControlType Role => AutomationControlType.Group;
+
+    /// <summary>Held to a room narrower than a name's popup is wide.</summary>
+    public void Within(double room) => Width = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
 
     /// <summary>What the box asks for, its caption.</summary>
     public string Called { get; }
@@ -798,7 +778,7 @@ internal sealed class RenameBox : Border, IHeardPopup
     public void OfferFiles(IReadOnlyList<string> files, bool on)
     {
         Files = files;
-        renameFiles = new CheckBox { Classes = { StyleClasses.Caption }, Content = "Also rename files to reflect this change", IsChecked = on, Focusable = false, MinHeight = 0 };
+        renameFiles = PopupFrame.Option("Also rename files to reflect this change", on);
         renameFiles.IsCheckedChanged += (_, _) => RenamesFilesChanged?.Invoke(this, RenamesFiles);
         body.Children.Add(renameFiles);
         body.Children.Add(new TextBlock
@@ -806,7 +786,6 @@ internal sealed class RenameBox : Border, IHeardPopup
             Text = $"Corresponding files to be renamed: {string.Join(", ", files.Select(Path.GetFileName))}",
             Classes = { StyleClasses.Muted, StyleClasses.Caption },
             TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 360,
         });
         // Measured again now, as it grew, so it is placed for its new size before the next layout.
         InvalidateMeasure();

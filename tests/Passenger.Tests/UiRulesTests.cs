@@ -685,9 +685,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    /// <summary>A popup's frame as every popup's is: a width of the popups' scale (<see cref="PopupFrame"/>), its rows
-    /// <see cref="ListRow.Height"/> tall, and no word cut nor anything drawn over another in it (LayoutFaults); a popup
-    /// that lives elsewhere (the debugger's hover card) is held to it here too.</summary>
+    /// <summary>A popup's frame as every popup's is: a width of the popups' scale (<see cref="PopupFrame"/>), the frame's
+    /// room (none where its rows reach its sides and its parts set their own), its rows <see cref="ListRow.Height"/> tall,
+    /// and no word cut nor anything drawn over another in it (LayoutFaults); a popup that lives elsewhere (the debugger's
+    /// hover card) is held to it here too.</summary>
     internal static void HoldsToPopupRules(string what, Border frame)
     {
         Assert.True(frame.Classes.Contains(StyleClasses.Popup), $"{what} is not framed as the popups are (Border.popup)");
@@ -695,6 +696,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(faults.Count == 0, string.Join("\n", faults));
         Assert.True(PopupFrame.Widths.Any(w => Math.Abs(frame.Bounds.Width - w) < 0.5),
             $"{what} is {frame.Bounds.Width:0.#} px wide, not one of the popups' widths ({string.Join(", ", PopupFrame.Widths)})");
+        Thickness[] rooms = [PopupFrame.Inset, PopupFrame.CardInset, ListRow.PopupList, default];
+        Assert.True(rooms.Contains(frame.Padding),
+            $"{what} keeps {frame.Padding} round what it holds, where a popup's frame keeps PopupFrame.Inset (a card's CardInset, a list's ListRow.PopupList)");
         foreach (ListBoxItem row in frame.GetVisualDescendants().OfType<ListBoxItem>().Where(r => r.IsEffectivelyVisible))
         {
             Assert.True(Math.Abs(row.Bounds.Height - ListRow.Height) < 0.5,
@@ -763,6 +767,194 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>A popup's frame of a type of its own, as the colour picker and the code assist popups are.</summary>
     private sealed class OwnFrame : Border;
+
+    /// <summary>The popups made apart from the searches hold to the popups' rules as the searches do (HoldsToPopupRules):
+    /// Rename's box, a list of fixes, a change's lines, the colour picker, and Godot's resource picker, items form and keep
+    /// preview, each at a width of the scale with the frame's room, a list sized by what it holds at the narrowest width
+    /// that holds it.</summary>
+    [AvaloniaFact]
+    public void Every_popup_made_apart_from_the_searches_takes_a_width_of_the_scale_and_the_frames_room()
+    {
+        MainWindow window = Open(1400, 900);
+        try
+        {
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                Check("Rename's box", () => new Passenger.App.CSharp.RenameBox("Greeter"));
+                Check("A short list of fixes", () => new Passenger.App.CSharp.ChoicePopup("Fixes", [new("Add using System;", string.Empty, 1), new("Fully qualify", string.Empty, 2)]), PopupFrame.Narrow);
+                Check("A list of fixes with long words", () => new Passenger.App.CSharp.ChoicePopup("Fixes",
+                    [new($"Generate the method '{new string('x', 60)}' in the class it is called on", "the class", 1)]), PopupFrame.Wide);
+                Check("A change's lines", () => new Passenger.App.Vcs.ChangePopup("var greeting = \"Hello\";\n", false, () => { }, () => { }, () => { }, () => { }, _ => { }));
+                Check("The colour picker", () => new Passenger.App.Xaml.ColourPicker(new Passenger.Xaml.Features.Argb(255, 200, 40, 40)));
+                Check("Godot's resource picker", () => new Passenger.App.Godot.GodotResourcePicker(project.Folder, ["Texture2D"], null));
+                Check("Godot's items form", () => new Passenger.App.Godot.GodotItemsEditor("waves", Passenger.Workspace.GodotType.Array,
+                    new Passenger.App.Godot.GodotArray([1L, 2L]) { Element = Passenger.App.Godot.GodotElement.Of(Passenger.Workspace.GodotType.Int) },
+                    new Passenger.App.Godot.GodotHint(Passenger.App.Godot.GodotEditing.Items) { Element = Passenger.Workspace.GodotType.Int },
+                    new SilentTuner(), value => Task.FromResult(value), () => { }, (_, _) => new Border()));
+                Check("Godot's keep preview", () => new Passenger.App.Godot.GodotKeepPreview("Keep in the scene", [], ["position: the node is made by a script"]));
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Check(string what, Func<Control> make, double? width = null)
+        {
+            Control popup = make();
+            window.Popups.Show(popup, window.Popups.PointIn(window, new Point(100, 100)));
+            Ui.Settle();
+            Border frame = PopupFrame.FrameOf(popup) ?? throw new Xunit.Sdk.XunitException($"{what} shows in no popup's frame");
+            HoldsToPopupRules(what, frame);
+            Assert.True(width is null || Math.Abs(frame.Bounds.Width - width.Value) < 0.5,
+                $"{what} is {frame.Bounds.Width:0.#} px wide, where the narrowest of the popups' widths holding it is {width}");
+            window.Popups.Close();
+            Ui.Settle();
+        }
+    }
+
+    /// <summary>A Godot form's tuner that hears nothing: the form is shown, not used.</summary>
+    private sealed class SilentTuner : Passenger.App.Godot.IGodotTuner
+    {
+        public void Settled(long element)
+        {
+        }
+
+        public void Keep(Passenger.App.Godot.GodotTuned tuned, Control from)
+        {
+        }
+
+        public void ShowPopup(Control popup, Control from)
+        {
+        }
+
+        public void ClosePopup()
+        {
+        }
+
+        public void Say(string words)
+        {
+        }
+    }
+
+    /// <summary>A popup's frame takes its room and width from PopupFrame (Inset, CardInset, a width of its scale, Fitting, a
+    /// FittingFrame) or a list popup's ListRow.PopupList, never a number of its own: a frame whose own Padding, Width,
+    /// MinWidth or MaxWidth names neither fails here, naming its line, as does an option of a popup's made of its own.</summary>
+    [Fact]
+    public void Every_popups_frame_takes_its_room_and_width_from_PopupFrame()
+    {
+        string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/PopupFrame.cs", StringComparison.Ordinal) && !f.Path.EndsWith("/PopupHost.cs", StringComparison.Ordinal))
+            .SelectMany(f => OwnRoom(f.Path, f.Text))];
+        Assert.True(found.Length == 0, $"{found.Length} popups give their frame a room or width of its own, or make an option of their own, so they stand "
+            + $"apart from every other popup: take PopupFrame's (Inset, CardInset, a width, Fitting or a FittingFrame, Option) or ListRow.PopupList:\n{string.Join("\n", found)}");
+        Assert.Single(OwnRoom("a.cs", "Border popup = new()\n{\n    Width = 320,\n    Padding = PopupFrame.Inset,\n    Classes = { StyleClasses.Popup },\n    Child = new StackPanel { Width = 40 },\n};"));
+        Assert.Single(OwnRoom("a.cs", "    {\n        Classes.Add(StyleClasses.Popup);\n        Width = PopupFrame.Narrow;\n        Padding = new Thickness(Gaps.Normal);\n        x = new TextBox { MinWidth = 220 };\n    }"));
+        Assert.Empty(OwnRoom("a.cs", "Content = new Border { Classes = { StyleClasses.Popup }, Padding = PopupFrame.Inset, Child = content };"));
+        Assert.Single(OwnRoom("a.cs", "option = new CheckBox { Content = shown, Focusable = false };"));
+
+        static IEnumerable<string> OwnRoom(string path, string text)
+        {
+            Regex sized = new(@"^\s*(Padding|Width|MinWidth|MaxWidth)\s*=\s*(.+?)\s*[,;]?\s*$");
+            if (path.EndsWith(".axaml", StringComparison.Ordinal))
+            {
+                foreach (Match tag in Regex.Matches(text, @"<[\w:]+[^>]*\bClasses=""popup""[^>]*>"))
+                {
+                    foreach (Match own in Regex.Matches(tag.Value, @"\b(?:Padding|Width|MinWidth|MaxWidth)=""([^""]*)""").Where(a => !Named(a.Groups[1].Value)))
+                    {
+                        yield return $"{path}:{LineOf(text, tag.Index)}: {own.Value}";
+                    }
+                }
+                yield break;
+            }
+            foreach (Match popup in Regex.Matches(text, @"\bStyleClasses\.Popup\b"))
+            {
+                (int start, int end) = FrameBlock(text, popup.Index);
+                int depth = 0;
+                int line = start + 1;
+                int lineDepth = 0;
+                for (int i = start + 1; i <= end; i++)
+                {
+                    char c = i < end ? text[i] : '\n';
+                    if (c == '\n')
+                    {
+                        // Each member the line gives at the block's own depth, one-line initializers' too.
+                        foreach (string member in AtDepth(text[line..i], lineDepth))
+                        {
+                            if (sized.Match(member) is { Success: true } own && !Named(own.Groups[2].Value))
+                            {
+                                yield return $"{path}:{LineOf(text, line)}: {member.Trim()}";
+                            }
+                        }
+                        line = i + 1;
+                        lineDepth = depth;
+                    }
+                    depth += c is '{' or '(' or '[' ? 1 : c is '}' or ')' or ']' ? -1 : 0;
+                }
+            }
+            foreach (Match option in Regex.Matches(text, @"(?:\bnew\s+CheckBox\b|\bCheckBox\s+\w+\s*=\s*new\s*\(\s*\))[^;]*\bFocusable\s*=\s*false"))
+            {
+                yield return $"{path}:{LineOf(text, option.Index)}: an option's check box of its own";
+            }
+        }
+
+        // A line's pieces, split at its commas, that stand at the block's own depth (the line starting at depth).
+        static IEnumerable<string> AtDepth(string line, int depth)
+        {
+            int at = depth;
+            int from = 0;
+            for (int i = 0; i <= line.Length; i++)
+            {
+                char c = i < line.Length ? line[i] : ',';
+                if (c == ',' && at == 0)
+                {
+                    yield return line[from..i];
+                    from = i + 1;
+                }
+                at += c is '{' or '(' or '[' ? 1 : c is '}' or ')' or ']' ? -1 : 0;
+                if (at < 0)
+                {
+                    yield break;
+                }
+            }
+        }
+
+        static bool Named(string value) => value.Contains("PopupFrame.", StringComparison.Ordinal) || value.Contains("ListRow.PopupList", StringComparison.Ordinal);
+
+        // The braces whose members a frame's class is given among: an object's initializer, or the body that adds the class to itself.
+        static (int Start, int End) FrameBlock(string text, int at)
+        {
+            int start = Enclosing(text, at);
+            if (Regex.IsMatch(text[..start], @"\bClasses\s*=\s*$"))
+            {
+                start = Enclosing(text, start);
+            }
+            int depth = 0;
+            for (int i = start; i < text.Length; i++)
+            {
+                depth += text[i] == '{' ? 1 : text[i] == '}' ? -1 : 0;
+                if (depth == 0)
+                {
+                    return (start, i);
+                }
+            }
+            return (start, text.Length);
+        }
+
+        static int Enclosing(string text, int at)
+        {
+            int depth = 0;
+            for (int i = at - 1; i >= 0; i--)
+            {
+                depth += text[i] == '}' ? 1 : text[i] == '{' ? -1 : 0;
+                if (depth < 0)
+                {
+                    return i;
+                }
+            }
+            return 0;
+        }
+    }
 
     [Gate]
     [AvaloniaFact]
@@ -3431,6 +3623,40 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             }
             return text.Length;
         }
+    }
+
+    /// <summary>Every tag, symbol kind's badge, solution's initials and filter chip is made by Tags or FilterChip, so a tag's
+    /// words stand at one step and colour, a badge at one size, and a filter clears one way everywhere: their classes named
+    /// anywhere else fail here, naming the line. The title bar's project badge, made in its XAML, wears the initials' class.</summary>
+    [Fact]
+    public void Every_tag_badge_and_chip_is_made_by_Tags_or_FilterChip()
+    {
+        Regex byHand = new(@"\bStyleClasses\.(?:Tag|KindBadge|Initials|Chip)\b|Classes=""[^""]*\b(?:tag|kindBadge|initials|chip)\b");
+        string[] owners = ["/Tags.cs", "/FilterChip.cs"];
+        string[] found = [.. UiFiles().Where(f => !owners.Any(o => f.Path.EndsWith(o, StringComparison.Ordinal)))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text) && !(l.Path.EndsWith("/MainWindow.axaml", StringComparison.Ordinal) && l.Text.Contains("Name=\"ProjectBadge\"", StringComparison.Ordinal)))
+            .Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} tags, badges or chips are made by hand, so their words' size, colour and room drift from every "
+            + $"other's: make each with Tags (Of, Method, Kind, Initials) or a FilterChip:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "        return new Border { Classes = { StyleClasses.Tag }, Child = text };");
+        Assert.Matches(byHand, "                <Border Classes=\"kindBadge\" Width=\"16\">");
+        Assert.DoesNotMatch(byHand, "        Border tag = Tags.Of(words);");
+    }
+
+    /// <summary>A link stands at the size of the words beside it, by the type ramp's class, and takes the keys as every other
+    /// does (its shortcut, where it has one, still its own): a link given a font size or kept off the keys fails here,
+    /// naming its line.</summary>
+    [Fact]
+    public void Every_link_takes_a_step_of_the_ramp_and_the_keys()
+    {
+        Regex link = new(@"\bStyleClasses\.Link\b|Classes=""[^""]*\blink\b");
+        Regex own = new(@"\bFontSize\b|\bFocusable\s*=\s*false\b|\bFocusable=""False""");
+        string[] found = [.. UiFiles().SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => link.IsMatch(l.Text) && own.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} links take a size of their own or are kept off the keys, so they stand or answer apart from "
+            + $"every other: give each the ramp's class of the words it sits in, and leave it the keys:\n{string.Join("\n", found)}");
+        Assert.Matches(link, "        Button open = new() { Classes = { StyleClasses.Link }, Focusable = false };");
     }
 
     /// <summary>What a list or a pane says while it has nothing to show is an EmptyState, so its words stand, wrap and link

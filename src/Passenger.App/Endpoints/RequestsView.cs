@@ -223,7 +223,7 @@ public sealed class RequestsView : DockPanel
 
         public void Show(LiveRequest request)
         {
-            TextBlock verb = (TextBlock)method.Child!;
+            TextBlock verb = Tags.WordsOf(method);
             verb.Text = request.Method;
             verb.Resource(TextBlock.ForegroundProperty, ref methodColour, EndpointsView.MethodColour(request.Method));
             string time = request.Milliseconds is { } ms ? string.Create(CultureInfo.InvariantCulture, $"{ms:0} ms") : "…";
@@ -281,8 +281,8 @@ public sealed class RequestsView : DockPanel
 
     private static Border Marked(string words, string colour)
     {
-        TextBlock text = new() { Classes = { StyleClasses.BadgeText }, Text = words, VerticalAlignment = VerticalAlignment.Center };
-        text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(colour));
-        return new Border { Classes = { StyleClasses.Tag },  Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+        Border tag = Tags.Of(words, colour);
+        tag.Margin = new Thickness(Gaps.Small, 0, 0, 0);
+        return tag;
     }
 }

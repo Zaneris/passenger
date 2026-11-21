@@ -307,12 +307,8 @@ public sealed class ContainerDetailsPane : DetailsTables
         : Words($"Host port {port.HostPort}");
 
     /// <summary>A health check's state as a tag in its colour.</summary>
-    internal static Border HealthTag(string health)
-    {
-        TextBlock said = new() { Classes = { StyleClasses.Caption }, Text = health, VerticalAlignment = VerticalAlignment.Center };
-        said.Bind(TextBlock.ForegroundProperty, said.GetResourceObservable(health == "healthy" ? TokenKeys.Test_Passed : health == "unhealthy" ? TokenKeys.Error : TokenKeys.Warning));
-        return new Border { Classes = { StyleClasses.Tag },  VerticalAlignment = VerticalAlignment.Center, Child = said };
-    }
+    internal static Border HealthTag(string health) =>
+        Tags.Of(health, health == "healthy" ? TokenKeys.Test_Passed : health == "unhealthy" ? TokenKeys.Error : TokenKeys.Warning);
 
     private static string Condition(string condition) => condition switch
     {

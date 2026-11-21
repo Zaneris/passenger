@@ -28,9 +28,8 @@ public sealed partial class SettingsDialog
     private readonly DockPanel keymapHeader = new() { Margin = new Thickness(0, 0, 0, Gaps.Wide) };
     private readonly TextBlock keymapNote = new() { TextWrapping = TextWrapping.Wrap, IsVisible = false, Classes = { StyleClasses.Muted } };
     private readonly ShortcutPanel filterKeys = new("Second stroke");
+    private readonly FilterChip filterChip = new("Clear Filtering");
     private readonly Popup findPopup = new() { Placement = PlacementMode.BottomEdgeAlignedRight, IsLightDismissEnabled = true };
-    private readonly TextBlock filterText = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
-    private readonly Border filterChip = new() { IsVisible = false, Classes = { StyleClasses.Tag }, Padding = new Thickness(Gaps.Normal, Gaps.Hair, Gaps.Tight, Gaps.Hair), VerticalAlignment = VerticalAlignment.Center };
     private readonly Dictionary<KeymapPreset, Keymap> defaults = [];
     private Shortcut? shortcutFilter;
 
@@ -51,7 +50,7 @@ public sealed partial class SettingsDialog
     public ShortcutPanel FindShortcut => filterKeys;
 
     /// <summary>The x on the shortcut the page is narrowed to (Clear Filtering).</summary>
-    public Button ClearFiltering { get; } = new() { Classes = { StyleClasses.TabPin }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
+    public Button ClearFiltering => filterChip.Clear;
 
     /// <summary>The shortcut the Keymap page is narrowed to, or null while it lists every action.</summary>
     public Shortcut? ShortcutFilter => shortcutFilter;
@@ -222,19 +221,13 @@ public sealed partial class SettingsDialog
         FindByShortcut.Content = icon;
         ToolButtons.Tip(FindByShortcut, "Find Actions by Shortcut");
         FindByShortcut.Click += (_, _) => findPopup.IsOpen = true;
-
-        ClearFiltering.Content = Glyph(IconKeys.Close);
-        ((PathIcon)ClearFiltering.Content).Width = ((PathIcon)ClearFiltering.Content).Height = 10;
-        ToolButtons.Tip(ClearFiltering, "Clear Filtering");
-        ClearFiltering.Click += (_, _) => ClearShortcutFilter();
-        filterChip.Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { filterText, ClearFiltering } };
-        filterChip.Bind(Border.BackgroundProperty, filterChip.GetResourceObservable(TokenKeys.Selected));
+        filterChip.Cleared += (_, _) => ClearShortcutFilter();
 
         TextBlock title = new() { Classes = { StyleClasses.PaneTitle }, Text = "Find Shortcut" };
         Border popup = new()
         {
-            Width = 320,
-            Padding = new Thickness(Gaps.Wide),
+            Width = PopupFrame.Narrow,
+            Padding = PopupFrame.Inset,
             Classes = { StyleClasses.Popup },
             Child = new StackPanel { Spacing = Gaps.Normal, Children = { title, filterKeys } },
         };
@@ -403,8 +396,7 @@ public sealed partial class SettingsDialog
     private void FilterByShortcut(Shortcut? shortcut)
     {
         shortcutFilter = shortcut;
-        filterText.Text = shortcut?.Display();
-        filterChip.IsVisible = shortcut is not null;
+        filterChip.Words = shortcut?.Display();
         Filter();
         if (shortcut is not null)
         {

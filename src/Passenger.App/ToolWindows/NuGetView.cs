@@ -1244,9 +1244,9 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>A small tag after a row's words ("transitive").</summary>
     private static Border Tagged(string words)
     {
-        TextBlock text = new() { Classes = { StyleClasses.Caption }, Text = words, VerticalAlignment = VerticalAlignment.Center };
-        text.Classes.Add(StyleClasses.Muted);
-        return new Border { Classes = { StyleClasses.Tag }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+        Border tag = Tags.Of(words);
+        tag.Margin = new Thickness(Gaps.Small, 0, 0, 0);
+        return tag;
     }
 
     /// <summary>What a deprecated version's tag tells on hover: why, what to use instead, and its owner's own words.</summary>

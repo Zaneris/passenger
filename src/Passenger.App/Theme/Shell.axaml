@@ -232,16 +232,51 @@
         <Setter Property="Margin" Value="6,0" />
         <Setter Property="Background" Value="{DynamicResource Passenger.TitleBar.Rule}" />
     </Style>
-    <!-- A symbol kind's letter on its colour (Go to, completion), and a tag or chip of words (a Git ref, a filter), on
-         the look's badge radius; a box drawn round part of a pane or popup (a fragment, a diff's text, a drop zone, a key)
-         on the controls' radius. -->
+    <!-- A symbol kind's letter on its colour (Go to, completion), a tag of words (a Git ref, a method, a health), a filter's
+         chip and a solution's initials (Tags, FilterChip), on the look's badge radius; a box drawn round part of a pane or
+         popup (a fragment, a diff's text, a drop zone, a key) on the controls' radius. -->
     <Style Selector="Border.kindBadge">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
     </Style>
-    <!-- A tag's words (a method, a kind, a feature's tags) a small step in from its rounded ends: every tag's own. -->
+    <!-- A tag's words a small step in from its rounded ends, on no ground but one its tag is given. -->
     <Style Selector="Border.tag">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
         <Setter Property="Padding" Value="6,0" />
+    </Style>
+    <!-- A filter in force, on the chosen ground, its × nearer its end than its words are to its start. -->
+    <Style Selector="Border.chip">
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
+        <Setter Property="Padding" Value="8,2,4,2" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.Selected}" />
+    </Style>
+    <!-- A solution's initials on a badge, one look in two sizes: a recent one's on the Welcome screen, and the project
+         widget's in the title bar (small), on the title bar's own colours (the icon's amber dot in Passenger's theme). -->
+    <Style Selector="Border.initials">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
+        <Setter Property="Margin" Value="0,0,12,0" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.Welcome.Badge}" />
+    </Style>
+    <Style Selector="Border.initials > TextBlock">
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
+    </Style>
+    <Style Selector="Border.initials.small">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.TitleBar.Badge}" />
+    </Style>
+    <Style Selector="Border.initials.small > TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.BadgeText}" />
+    </Style>
+    <Style Selector="Border.initials.missing">
+        <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
+    </Style>
+    <Style Selector="Border.initials.missing > TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
     </Style>
     <Style Selector="Border.box">
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
@@ -251,17 +286,6 @@
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Passenger.FieldBorder}" />
         <Setter Property="BorderThickness" Value="1" />
-    </Style>
-    <!-- The project widget's initials on a badge: the icon's amber dot in Passenger's theme. -->
-    <Style Selector="Border.projectBadge">
-        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
-        <Setter Property="Background" Value="{DynamicResource Passenger.TitleBar.Badge}" />
-        <Setter Property="Margin" Value="0,0,6,0" />
-    </Style>
-    <Style Selector="TextBlock.projectBadgeText">
-        <Setter Property="FontSize" Value="11" />
-        <Setter Property="FontWeight" Value="Bold" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.BadgeText}" />
     </Style>
     <Style Selector="TextBlock.projectName">
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -372,6 +396,10 @@
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="Background" Value="{DynamicResource Passenger.Editor.Background}" />
         <Setter Property="Padding" Value="8,6" />
+    </Style>
+    <!-- Code in a card or a popup keeps the editor's ground its colours are read on, the popup's edge its only one. -->
+    <Style Selector=":is(Border).popup Border.code">
+        <Setter Property="BorderThickness" Value="0" />
     </Style>
     <!-- Selected text readable in both themes: Fluent's is the system's saturated blue, under black text in light. -->
     <!-- A field's caret blinks as every caret does (Carets), never where the system keeps carets shown. -->
@@ -1388,40 +1416,11 @@
     <Style Selector="DockPanel.welcomeRow">
         <Setter Property="Height" Value="44" />
     </Style>
-    <Style Selector="Border.welcomeBadge">
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
-        <Setter Property="Margin" Value="0,0,12,0" />
-        <Setter Property="Background" Value="{DynamicResource Passenger.Welcome.Badge}" />
-    </Style>
-    <Style Selector="Border.welcomeBadge.missing">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
-    </Style>
-    <Style Selector="TextBlock.welcomeBadgeText">
-        <Setter Property="FontSize" Value="11" />
-        <Setter Property="FontWeight" Value="Bold" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.AccentText}" />
-    </Style>
-    <Style Selector="Border.welcomeBadge.missing TextBlock.welcomeBadgeText">
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
-    </Style>
     <Style Selector="TextBlock.welcomeRowName">
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.welcomeRowPath">
         <Setter Property="FontSize" Value="12" />
-    </Style>
-    <!-- What a recent one opens as, a tag at the row's right. -->
-    <Style Selector="Border.welcomeKind">
-        <Setter Property="Padding" Value="6,0" />
-        <Setter Property="Margin" Value="12,0,4,0" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.BadgeRadius}" />
-        <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
-    </Style>
-    <Style Selector="TextBlock.welcomeKindText">
-        <Setter Property="FontSize" Value="12" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
 
     <!-- The first start's question (Welcome/FirstStartView.cs), over the window: the Welcome screen's hero, then large

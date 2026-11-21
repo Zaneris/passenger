@@ -113,10 +113,11 @@ internal sealed class PopupPlacement
 
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
-    /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked
-    /// or when there is no room below, kept inside the editor. A card or the colour picker (<see cref="IHeldToEditor"/>) is
-    /// held to the editor's width (<see cref="Widest"/>), and one that fits neither under nor over its line goes where there
-    /// is more room, moved in as far as it must to show whole, though it then hides some of the line.</summary>
+    /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or when there is no
+    /// room below, kept inside the editor. A card, a list of choices, Rename's box or the colour picker
+    /// (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>), and one that fits neither under
+    /// nor over its line goes where there is more room, moved in as far as it must to show whole, though it then hides
+    /// some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
         if (cards.Contains(popup))

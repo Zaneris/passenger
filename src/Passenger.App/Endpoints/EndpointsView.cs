@@ -562,7 +562,7 @@ public sealed class EndpointsView : DockPanel
     /// <summary>Shows a method in a tag <see cref="MethodTag"/> made, its colour bound anew only for another colour.</summary>
     private static void ShowMethod(Border tag, ref string? colour, string method)
     {
-        TextBlock text = (TextBlock)tag.Child!;
+        TextBlock text = Tags.WordsOf(tag);
         text.Text = method;
         text.Resource(TextBlock.ForegroundProperty, ref colour, MethodColour(method));
     }
@@ -570,9 +570,11 @@ public sealed class EndpointsView : DockPanel
     /// <summary>A method's tag, in its method's colour.</summary>
     internal static Border MethodTag(string method)
     {
-        TextBlock text = new TextBlock { Classes = { StyleClasses.BadgeText }, Text = method, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }.InCodeFont();
+        Border tag = Tags.Method(method);
+        TextBlock text = Tags.WordsOf(tag);
         text.Bind(TextBlock.ForegroundProperty, text.GetResourceObservable(MethodColour(method)));
-        return new Border { Classes = { StyleClasses.Tag }, MinWidth = 52,  Margin = new Thickness(0, 0, Gaps.Normal, 0), VerticalAlignment = VerticalAlignment.Center, Child = text };
+        tag.Margin = new Thickness(0, 0, Gaps.Normal, 0);
+        return tag;
     }
 
     /// <summary>The colour a method's tag shows its name in.</summary>

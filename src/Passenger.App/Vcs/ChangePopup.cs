@@ -52,11 +52,11 @@ public sealed class ChangePopup : UserControl
         {
             old = new TextBlock { Classes = { StyleClasses.Code }, Padding = new Thickness(Gaps.Normal, Gaps.Small) };
             ShowText();
-            Border text = new() { Classes = { StyleClasses.Box }, Child = new ScrollViewer { MaxHeight = 260, MaxWidth = 640, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
+            Border text = new() { Classes = { StyleClasses.Box }, Child = new ScrollViewer { MaxHeight = 260, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Content = old } };
             text.Bind(Border.BackgroundProperty, text.GetResourceObservable(TokenKeys.Diff_Modified));
             content.Children.Add(text);
         }
-        Content = new Border { Classes = { StyleClasses.Popup }, Padding = new Thickness(Gaps.Small), Child = content };
+        Content = new FittingFrame { Padding = PopupFrame.Inset, Child = content };
     }
 
     /// <summary>The lines the last commit had there, or null for lines that are new.</summary>

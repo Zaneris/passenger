@@ -271,10 +271,7 @@ public sealed class StepLibraryView : DockPanel
         TextBlock unused = new() { Classes = { StyleClasses.Caption }, Text = "Unused", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0) };
         unused.Bind(TextBlock.ForegroundProperty, unused.GetResourceObservable(TokenKeys.Warning));
         Panel use = new() { [DockPanel.DockProperty] = Dock.Right, Children = { uses, unused } };
-        TextBlock tagWords = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
-        tagWords.Classes.Add(StyleClasses.Muted);
-        Border tags = new() { [DockPanel.DockProperty] = Dock.Right, Classes = { StyleClasses.Tag },  Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, MaxWidth = 140, Child = tagWords };
-        tagWords.TextTrimming = TextTrimming.CharacterEllipsis;
+        Border tags = StepTags(out TextBlock tagWords);
         TextBlock phrase = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         // The phrase takes what the row leaves, so a narrow window ends it in an ellipsis and keeps its uses and Insert.
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Page, 0, Gaps.Tight, 0), Children = { insert, use, tags, phrase } };
@@ -293,15 +290,24 @@ public sealed class StepLibraryView : DockPanel
         });
     }
 
+    /// <summary>A step's or a hook's tags at its row's end, cut short where they run long.</summary>
+    private static Border StepTags(out TextBlock words)
+    {
+        Border tags = Tags.Of(null);
+        tags.Margin = new Thickness(Gaps.Small, 0, 0, 0);
+        tags.MaxWidth = 140;
+        DockPanel.SetDock(tags, Dock.Right);
+        words = Tags.WordsOf(tags);
+        return tags;
+    }
+
     /// <summary>A hook's line in a row: when it runs, its method (muted) and its tags.</summary>
     private static (DockPanel Line, Action<StepHook> Show) HookRow()
     {
         TextBlock when = new() { VerticalAlignment = VerticalAlignment.Center, [DockPanel.DockProperty] = Dock.Left };
         TextBlock method = MutedText.Caption(string.Empty);
         method.Margin = new Thickness(Gaps.Normal, 0, 0, 0);
-        TextBlock tagWords = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-        tagWords.Classes.Add(StyleClasses.Muted);
-        Border tags = new() { [DockPanel.DockProperty] = Dock.Right, Classes = { StyleClasses.Tag },  Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, MaxWidth = 140, Child = tagWords };
+        Border tags = StepTags(out TextBlock tagWords);
         DockPanel line = new() { Height = ListRow.Height, Margin = new Thickness(Gaps.Page, 0, Gaps.Normal, 0), Children = { tags, when, method } };
         return (line, hook =>
         {
