@@ -41,6 +41,26 @@ public class ExpressionTimeTests
     }
 
     [Fact]
+    public void The_making_of_its_lambdas_set_aside_moves_its_end_on_and_is_said_apart_from_its_own_time()
+    {
+        ExpressionTime time = Timed(0.2);
+        Deadline due = time.Due;
+        time.SetAside(TimeSpan.FromSeconds(2.5));
+        Assert.Equal(due.At + (long)(2.5 * System.Diagnostics.Stopwatch.Frequency), time.Due.At);
+        Assert.Equal("1 evaluation in the program took 200 ms, the longest 200 ms, and the debugger 300 ms; the making of its lambdas in the program took 2.5 s more, set aside",
+            time.Spent(TimeSpan.FromSeconds(3)));
+        Assert.Equal("500 ms of its own in the debugger, no evaluation having run in the program; the making of its lambdas in the program took 2.5 s more, set aside",
+            WithAside(2.5).Spent(TimeSpan.FromSeconds(3)));
+
+        static ExpressionTime WithAside(double seconds)
+        {
+            ExpressionTime time = Timed();
+            time.SetAside(TimeSpan.FromSeconds(seconds));
+            return time;
+        }
+    }
+
+    [Fact]
     public void A_clock_read_before_the_last_evaluation_counted_never_says_the_debugger_took_less_than_nothing()
     {
         Assert.Equal("1 evaluation in the program took 3 s, the longest 3 s, and the debugger 0 ms", Timed(3).Spent(TimeSpan.FromSeconds(2.999)));

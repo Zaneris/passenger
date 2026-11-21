@@ -104,6 +104,28 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("5", (await Evaluate(host, frame, "myInt + 1")).Value);
     }
 
+    /// <summary>The debugger's making of an expression's lambda in the program, its own code compiled and loaded there, is
+    /// no part of the expression's time: held as long as an expression may take, as a busy machine once took it, the
+    /// session's first lambda still answers, and so does the next, on the run's own limit.</summary>
+    [Fact]
+    public async Task The_making_of_a_sessions_first_lambda_in_the_program_is_not_counted_in_the_expressions_time()
+    {
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { [AdapterEnvironment.HoldLambdaVariable] = "1" });
+        await host
+            .InitializeAsync()
+            .LaunchAsync(Debuggees.Program("DebuggableConsoleApp"), stopAtEntry: false, justMyCode: true)
+            .WaitForInitializedEvent();
+        // Stopped in MyMethod, where System.Linq is loaded and _intList is 1, 4, 8, 25.
+        await host.BreakpointsAsync(Debuggees.MyMethodEnd, Debuggees.Source("DebuggableConsoleApp", "MyClass.cs")).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+
+        (string first, _) = await Evaluate(host, frame, "_intList.Where(x => x > 2).Count()");
+        Assert.True(first == "3", $"The session's first lambda, its making in the program held past the expression's whole time, was answered {first}; the engine's log:\n{host.EngineLog()}");
+        Assert.Contains("Held: the making of the session's first lambda", host.EngineLog(), StringComparison.Ordinal);
+        Assert.Equal("2", (await Evaluate(host, frame, "_intList.Where(x => x > myInt).Count()")).Value);
+    }
+
     /// <summary>A with on a record struct and on a tuple answers the changed copy and leaves the program's variable as it
     /// was: the copy is the evaluation's own, never the variable it was read from. A with on a struct the expression
     /// makes changes the struct it made.</summary>

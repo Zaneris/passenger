@@ -58,6 +58,11 @@ public static class AdapterEnvironment
     [IdentifierHome]
     public const string HoldDecompileVariable = "PASSENGER_ENGINE_HOLD_DECOMPILE";
 
+    /// <summary>The variable that, set to 1, has the engine wait as long as an expression may take before it makes a session's
+    /// first lambda in the program, as that making once took on a busy machine: a test's hold.</summary>
+    [IdentifierHome]
+    public const string HoldLambdaVariable = "PASSENGER_ENGINE_HOLD_LAMBDA";
+
     /// <summary>How long an evaluation runs when nothing says otherwise.</summary>
     public static readonly TimeSpan DefaultEvaluationTimeout = TimeSpan.FromSeconds(5);
 
@@ -81,6 +86,10 @@ public static class AdapterEnvironment
     /// <summary>Whether <see cref="HoldAsyncStepVariable"/> holds the engine so; a value other than 1 is fatal, as a
     /// malformed flag is.</summary>
     public static bool HoldAsyncStep => Flag(HoldAsyncStepVariable);
+
+    /// <summary>Whether <see cref="HoldLambdaVariable"/> holds the engine so; a value other than 1 is fatal, as a malformed
+    /// flag is.</summary>
+    public static bool HoldLambda => Flag(HoldLambdaVariable);
 
     /// <summary>The kind of event <see cref="FailHandlingVariable"/> names, or null for none; the engine refuses, as fatal,
     /// a name that is no kind of its events.</summary>

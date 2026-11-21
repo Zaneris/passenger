@@ -5,18 +5,29 @@ using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger.ExpressionEvaluator.Cil;
 
-/// <summary>Loads the code an expression's lambdas compile to into a collectible assembly load context in the program.</summary>
+/// <summary>Loads the code an expression's lambdas compile to into a collectible assembly load context in the program: the
+/// debugger's own work, which the expression's time does not count (<see cref="MadeAsync{T}"/>).</summary>
 internal sealed class DebuggeeDelegateAssemblyLoader(
     ManagedDebugger debugger,
     CompiledEvaluationMethod compiled,
     EvaluationMetadataResolver resolver,
     CompiledExpressionEvaluationContext context,
     EvaluationHandleScope handles,
-    Lazy<DelegateMaterializerAssembly> materializer) : IAsyncDisposable
+    Lazy<DelegateMaterializerAssembly> materializer,
+    ExpressionTime time) : IAsyncDisposable
 {
     private int? _sessionId;
 
     public DelegateMaterializerAssembly Materializer => materializer.Value;
+
+    /// <summary>Makes in the program what a lambda of the expression needs there, its code loaded and a delegate or
+    /// closure made of it, set aside from the expression's time: the first of a session compiles and loads the debugger's
+    /// own code, which a busy machine takes seconds over.</summary>
+    public Task<T> MadeAsync<T>(Func<Task<T>> making) => time.AsideAsync(debugger.EvalStatus, async () =>
+    {
+        await debugger.HoldFirstLambdaAsync();
+        return await making();
+    });
 
     public async Task<ICorDebugFunction> GetMaterializerFunctionAsync(string methodName)
     {

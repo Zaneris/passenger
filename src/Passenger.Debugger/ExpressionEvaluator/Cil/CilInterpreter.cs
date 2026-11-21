@@ -30,8 +30,8 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         EvaluationMetadataResolver resolver = CreateResolver(compiled, context, frame);
         ICilLocation[] arguments = CreateArguments(frame, context, refind);
         ICilLocation[] locals = CreateLocals(compiled, resolver, frame, body.LocalSignature, context.RootValue is not null, refind);
-        await using DebuggeeDelegateAssemblyLoader delegateAssemblyLoader = new DebuggeeDelegateAssemblyLoader(debugger, compiled, resolver, context, handles, delegateMaterializer);
         ExpressionTime time = new ExpressionTime(Deadline.In(Extensions.EvaluationTimeout));
+        await using DebuggeeDelegateAssemblyLoader delegateAssemblyLoader = new DebuggeeDelegateAssemblyLoader(debugger, compiled, resolver, context, handles, delegateMaterializer, time);
         Interpretation run = new Interpretation(compiled, resolver, context, handles, delegateAssemblyLoader, time, Stopwatch.GetTimestamp(), debugger.EvalStatus.Leaving);
         debugger.EvalStatus.Expression = time;
         try
@@ -1517,6 +1517,17 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         EvaluationHandleScope handles)
     {
         EvaluationDelegate delegateValue = value.Value as EvaluationDelegate ?? throw new InvalidOperationException("CIL value is not an evaluation delegate");
+        return await delegateAssemblyLoader.MadeAsync(() => MakeDelegateAsync(delegateValue, compiled, resolver, delegateAssemblyLoader, context, handles));
+    }
+
+    private async Task<ICorDebugValue> MakeDelegateAsync(
+        EvaluationDelegate delegateValue,
+        CompiledEvaluationMethod compiled,
+        EvaluationMetadataResolver resolver,
+        DebuggeeDelegateAssemblyLoader delegateAssemblyLoader,
+        CompiledExpressionEvaluationContext context,
+        EvaluationHandleScope handles)
+    {
         DelegateMaterializerAssembly materializer = delegateAssemblyLoader.Materializer;
         int delegateAssemblySessionId = 0;
         Guid methodModuleVersionId;
@@ -1560,11 +1571,18 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         CompiledExpressionEvaluationContext context,
         EvaluationHandleScope handles)
     {
-        if (evaluationClosure.MaterializedValue is not null)
-        {
-            return evaluationClosure.MaterializedValue;
-        }
+        return evaluationClosure.MaterializedValue
+            ?? await delegateAssemblyLoader.MadeAsync(() => MakeEvaluationClosureAsync(evaluationClosure, compiled, resolver, delegateAssemblyLoader, context, handles));
+    }
 
+    private async Task<ICorDebugValue> MakeEvaluationClosureAsync(
+        EvaluationClosure evaluationClosure,
+        CompiledEvaluationMethod compiled,
+        EvaluationMetadataResolver resolver,
+        DebuggeeDelegateAssemblyLoader delegateAssemblyLoader,
+        CompiledExpressionEvaluationContext context,
+        EvaluationHandleScope handles)
+    {
         int delegateAssemblySessionId = await delegateAssemblyLoader.GetSessionIdAsync();
         ICorDebugFunction createObject = await delegateAssemblyLoader.GetMaterializerFunctionAsync("CreateObject");
         ICorDebugValue sessionIdArgument = await MaterializeAsync(CilValue.FromPrimitive(delegateAssemblySessionId), context, handles);
