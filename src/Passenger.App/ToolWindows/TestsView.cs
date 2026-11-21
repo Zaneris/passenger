@@ -285,6 +285,27 @@ public sealed class TestsView : DockPanel
         Show(shown);
     }
 
+    /// <summary>The chosen row's result as plain text (Read as Text), named by the row and its outcome: the outcome, then the
+    /// details shown; null with no row chosen.</summary>
+    public (string Title, string Text)? ChosenAsText()
+    {
+        if (tree.SelectedItem is not TestNode node)
+        {
+            return null;
+        }
+        ShowDetails();
+        string outcome = node.State switch
+        {
+            TestState.Passed => "passed",
+            TestState.Failed => "failed",
+            TestState.Skipped => "skipped",
+            TestState.Running => "running",
+            _ => "not run",
+        };
+        string details = detailsText.Snapshot.ToString();
+        return ($"{node.Name}, {outcome}", details.Length == 0 ? $"{node.Name}: {outcome}" : $"{node.Name}: {outcome}\n\n{details}");
+    }
+
     /// <summary>The details' text, written only when it changed, from its top.</summary>
     private void Show(string text)
     {

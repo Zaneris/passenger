@@ -59,6 +59,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     public DiffView(string name, FileDiff diff, TextDocument mine, bool editable, (string Left, string Right)? titles = null,
         DiffHighlighting highlighting = DiffHighlighting.Words)
     {
+        Subject = name;
         shown = diff;
         this.highlighting = highlighting;
         IsEditable = editable;
@@ -448,6 +449,40 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>What the bar says of the differences: how many, then what differs besides the lines, alone where the
     /// lines do not.</summary>
     public string Said => count.Text ?? string.Empty;
+
+    /// <summary>What is compared, as the bar names it.</summary>
+    public string Subject { get; }
+
+    /// <summary>The differences as plain text (Read as Text): what the bar says of them, then each change by where it stands
+    /// on both sides, the lines the left side has marked "-" and those the right has "+".</summary>
+    public string ChangesAsText()
+    {
+        TextSnapshot left = Left.Document.Snapshot;
+        TextSnapshot right = shown.Text;
+        System.Text.StringBuilder text = new(Said);
+        for (int i = 0; i < Hunks.Count; i++)
+        {
+            DiffHunk hunk = Hunks[i];
+            string where = hunk.OldCount == 0 ? $"{Lines(hunk.NewStart, hunk.NewCount)} of {named.Right} added"
+                : hunk.NewCount == 0 ? $"{Lines(hunk.OldStart, hunk.OldCount)} of {named.Left} removed"
+                : $"{Lines(hunk.OldStart, hunk.OldCount)} of {named.Left} changed to {Lines(hunk.NewStart, hunk.NewCount)} of {named.Right}";
+            text.Append("\n\nChange ").Append(i + 1).Append(" of ").Append(Hunks.Count).Append(": ").Append(where);
+            Append(left, hunk.OldStart, hunk.OldCount, "- ");
+            Append(right, hunk.NewStart, hunk.NewCount, "+ ");
+        }
+        return text.ToString();
+
+        static string Lines(int start, int count) => count == 1 ? $"Line {start + 1}" : $"Lines {start + 1} to {start + count}";
+
+        void Append(TextSnapshot side, int start, int count, string mark)
+        {
+            for (int line = start; line < Math.Min(start + count, side.LineCount); line++)
+            {
+                LineSpan span = side.GetLine(line);
+                text.Append('\n').Append(mark).Append(side.GetText(span.Start, span.Length));
+            }
+        }
+    }
 
     private void Count()
     {

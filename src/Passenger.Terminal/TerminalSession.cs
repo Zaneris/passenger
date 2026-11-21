@@ -93,6 +93,44 @@ public sealed partial class TerminalSession : IAsyncDisposable
 
     public TerminalScreen Screen { get; }
 
+    /// <summary>The line the cursor stood on as Enter last went to the program on the main screen, typed, pasted or run:
+    /// the last command's line, which its output follows; null before any.</summary>
+    public long? EnteredAt { get; private set; }
+
+    /// <summary>The last command and what followed it as plain lines, rows joined where they wrapped (Read as Text): from
+    /// the line Enter last went from (<see cref="EnteredAt"/>) to the cursor's, less a prompt waiting there that begins the
+    /// command's line as it did; the screen's rows while a full-screen program shows its own, or before anything was
+    /// entered.</summary>
+    public string LastCommandText()
+    {
+        TerminalScreen screen = Screen;
+        long cursor = screen.ScreenTop + screen.CursorRow;
+        bool own = !screen.IsAlternate && EnteredAt is { } entered && entered <= cursor && entered >= screen.FirstLine;
+        long first = own ? EnteredAt.GetValueOrDefault() : screen.ScreenTop;
+        long last = own ? cursor : screen.ScreenTop + screen.Rows - 1;
+        List<string> lines = [];
+        StringBuilder line = new();
+        for (long at = first; at <= last; at++)
+        {
+            TerminalLine row = screen.LineAt(at);
+            line.Append(row.Text());
+            if (!row.Wrapped || at == last)
+            {
+                lines.Add(line.ToString());
+                line.Clear();
+            }
+        }
+        if (own && lines.Count > 1 && lines[^1].TrimEnd() is { Length: > 0 } waiting && lines[0].StartsWith(waiting, StringComparison.Ordinal))
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+        while (lines.Count > 1 && lines[^1].Length == 0)
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+        return string.Join('\n', lines);
+    }
+
     /// <summary>Raised on the window's thread when output has been taken onto the screen.</summary>
     public event EventHandler? Output;
 
@@ -188,6 +226,10 @@ public sealed partial class TerminalSession : IAsyncDisposable
         if (pty is null || !IsRunning || bytes.Length == 0 || outgoing.IsAddingCompleted)
         {
             return;
+        }
+        if (!Screen.IsAlternate && Array.IndexOf(bytes, (byte)'\r') >= 0)
+        {
+            EnteredAt = Screen.ScreenTop + Screen.CursorRow;
         }
         try
         {

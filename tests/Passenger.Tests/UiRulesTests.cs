@@ -771,8 +771,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>The popups made apart from the searches hold to the popups' rules as the searches do (HoldsToPopupRules):
     /// Rename's box, a list of fixes, a change's lines, the colour picker, and Godot's resource picker, items form and keep
-    /// preview, each at a width of the scale with the frame's room, a list sized by what it holds at the narrowest width
-    /// that holds it.</summary>
+    /// preview, Read as Text's view, each at a width of the scale with the frame's room, a list sized by what it holds at the
+    /// narrowest width that holds it.</summary>
     [AvaloniaFact]
     public void Every_popup_made_apart_from_the_searches_takes_a_width_of_the_scale_and_the_frames_room()
     {
@@ -794,6 +794,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     new Passenger.App.Godot.GodotHint(Passenger.App.Godot.GodotEditing.Items) { Element = Passenger.Workspace.GodotType.Int },
                     new SilentTuner(), value => Task.FromResult(value), () => { }, (_, _) => new Border()));
                 Check("Godot's keep preview", () => new Passenger.App.Godot.GodotKeepPreview("Keep in the scene", [], ["position: the node is made by a script"]));
+                Check("Read as Text's view", () => new PlainTextView("Last message", "No errors or warnings in this file", () => { }), PopupFrame.Widest);
             });
         }
         finally

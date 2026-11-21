@@ -120,6 +120,28 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
+    /// <summary>Read as Text in the Unit Tests window opens the chosen test's result as text, named by the test and its
+    /// outcome, its failure's message and stack under its outcome; Escape gives the test's row the keys back.</summary>
+    [AvaloniaFact]
+    public void A_failed_tests_result_opens_as_text_from_its_row_and_Escape_gives_the_row_its_keys_back()
+    {
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(16, 8));
+        Ui.Run(window, AppActions.RunTests);
+        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Two_and_two_make_five")?.State == TestState.Failed, "the failing test's run", TimeSpan.FromSeconds(120));
+        ListBox tree = Tree(window);
+        tree.SelectedItem = Method(window, "Two_and_two_make_five");
+        ListKeys.Hold(tree);
+        Ui.Settle();
+        Assert.True(tree.IsKeyboardFocusWithin, "The Unit Tests window's tree did not take the keys");
+        PlainTextView view = ReadAsTextTests.Opened(window, window, "a failed test's row");
+        Assert.Equal("Two_and_two_make_five, failed", view.Title);
+        Assert.True(view.Text.StartsWith("Two_and_two_make_five: failed\n\n", StringComparison.Ordinal) && view.Text.Contains("SumTests.cs:line 17", StringComparison.Ordinal),
+            $"Read as Text on a failed test read its result as:\n{view.Text}");
+        ReadAsTextTests.Escaped(window, window, () => tree.IsKeyboardFocusWithin && tree.SelectedItem == Method(window, "Two_and_two_make_five"), "the failed test's row");
+        window.Close();
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Below_a_comment_holding_line_breaks_only_roslyn_counts_each_tests_icon_and_menu_stay_on_its_line()

@@ -323,6 +323,10 @@ public sealed class CodeAssist
     /// <summary>What the hover card says while it shows, null otherwise.</summary>
     public string? HoverText => quickInfo.Text;
 
+    /// <summary>What is at the caret as plain text (Read as Text): the problems on its line and what the file's language
+    /// says of it (<see cref="QuickInfo.WordsAtAsync"/>).</summary>
+    public Task<string> WordsAtCaretAsync(CancellationToken cancel) => quickInfo.WordsAtAsync(context.Caret, cancel);
+
     /// <summary>The rows of a paused program's value the hover card shows, while it shows them.</summary>
     public Debugging.VariablesList? HoverValues => quickInfo.Values;
 

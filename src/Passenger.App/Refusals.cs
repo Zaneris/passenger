@@ -727,6 +727,18 @@ public static class Refusals
     /// <summary>A text box shown to read and copy from (an error's details, a log, a response, a licence).</summary>
     public const string TextReadOnly = "The text is read-only";
 
+    /// <summary>What a thing says, shown as text to read (Read as Text), never the thing itself.</summary>
+    public const string OnlyToRead = "The text is only to read: Escape goes back to where you were";
+
+    /// <summary>Read as Text where the keys are on nothing that says anything as text.</summary>
+    public const string NothingToRead = "Nothing here to read as text: put the keys in the editor, the terminal, a diff, the Tests window or the status bar";
+
+    /// <summary>Read as Text in the editor where nothing at the caret says anything.</summary>
+    public const string NothingAtCaret = "Nothing at the caret to read as text: no problem is on its line, and its language says nothing of it";
+
+    /// <summary>Read as Text asked while its own text is open.</summary>
+    public const string ReadingAlready = "Its text is open: Escape goes back to where you were";
+
     /// <summary>Why edits found in a file as Passenger read it are not made once the file is another text.</summary>
     public static string ChangedSinceRead(string file) =>
         $"{file} changed after Passenger read it, so the places found there may be where they were before: nothing was changed; try again in a moment";

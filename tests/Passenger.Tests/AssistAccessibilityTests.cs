@@ -294,6 +294,38 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
         window.Close();
     }
 
+    /// <summary>Read as Text in the editor opens what is at the caret as text: on a line holding an error, the error by its
+    /// kind and place; on a call, what its card says; each named by the file and the caret's place, and Escape gives the
+    /// editor its keys back with the caret where it was.</summary>
+    [AvaloniaFact]
+    public void Read_as_text_opens_the_carets_problem_and_its_card_as_text_and_Escape_gives_the_editor_its_keys_back_at_the_caret()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => editor.Markers.Any(m => m.Kind == MarkerKind.Error && m.Message.Contains("'Missing'", StringComparison.Ordinal)), "the error under Missing");
+
+        Ui.PlaceAfter(editor, "Missing go");
+        editor.Focus();
+        Ui.Settle();
+        Passenger.Text.TextPosition caret = editor.CaretPosition;
+        PlainTextView problem = ReadAsTextTests.Opened(window, window, "a line holding an error");
+        Assert.Equal($"Program.cs, line {caret.Line + 1}, column {caret.Column + 1}", problem.Title);
+        string first = problem.Text.Split('\n')[0];
+        Assert.True(first.StartsWith("Error at line 7, column 9: ", StringComparison.Ordinal) && first.Contains("'Missing'", StringComparison.Ordinal),
+            $"Read as Text on a line holding an error read it as:\n{problem.Text}");
+        ReadAsTextTests.Escaped(window, window, () => editor.IsFocused && editor.CaretPosition == caret, $"the editor at {caret}");
+
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        editor.Focus();
+        Ui.Settle();
+        caret = editor.CaretPosition;
+        PlainTextView card = ReadAsTextTests.Opened(window, window, "a call");
+        Assert.True(card.Text.Contains("Helper.Twice(int value)", StringComparison.Ordinal) && !card.Text.Contains("Error", StringComparison.Ordinal),
+            $"Read as Text on a call read what its card says as:\n{card.Text}");
+        ReadAsTextTests.Escaped(window, window, () => editor.IsFocused && editor.CaretPosition == caret, $"the editor at {caret}");
+        window.Close();
+    }
+
     [AvaloniaFact]
     public void The_fixes_list_is_read_as_completion_is_and_the_rename_box_is_named_by_its_caption()
     {

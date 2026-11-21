@@ -124,6 +124,38 @@ internal sealed class QuickInfo
         IdeErrors.Observe(Show(context.Caret, Editor.PointOf(context.Caret), byKey: true));
     }
 
+    /// <summary>What is at an offset as plain text: a paused program's value as its card shows it, while one does; else each
+    /// problem on the offset's line, by its kind and place, then what the file's language says of the offset, as its card
+    /// says it (<see cref="HoverWords"/>).</summary>
+    public async Task<string> WordsAtAsync(int offset, CancellationToken cancel)
+    {
+        if (hoverCard.IsVisible && hoverCard.Values is not null)
+        {
+            return hoverCard.Text;
+        }
+        HoverWords words = new();
+        TextSnapshot text = Editor.Document.Snapshot;
+        LineSpan line = text.GetLine(text.GetLineFromOffset(Math.Clamp(offset, 0, text.Length)));
+        foreach (Marker marker in Editor.Markers.Where(m => m.Range.Start <= line.End && (m.Range.End > line.Start || m.Range.Start == line.Start)).OrderBy(m => m.Range.Start))
+        {
+            int start = Math.Clamp(marker.Range.Start, line.Start, line.End);
+            words.AddText($"{KindOf(marker.Kind)} at line {line.Line + 1}, column {start - line.Start + 1}: {marker.Message}");
+        }
+        if (context.Editors.Active is { } shown)
+        {
+            await context.Languages.HoverAsync(words, shown, offset, cancel);
+        }
+        return words.Text;
+
+        static string KindOf(MarkerKind kind) => kind switch
+        {
+            MarkerKind.Error => "Error",
+            MarkerKind.Warning => "Warning",
+            MarkerKind.Unnecessary => "Unnecessary code",
+            _ => "Note",
+        };
+    }
+
     /// <summary>The card for an offset, hung at a point's left; told to a screen reader where a key asked for it.</summary>
     public async Task Show(int offset, Point point, bool byKey = false)
     {

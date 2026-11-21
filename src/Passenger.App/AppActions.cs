@@ -449,6 +449,11 @@ public static class AppActions
     public const string NextRegion = "app.nextRegion";
     public const string PreviousRegion = "app.previousRegion";
 
+    // What the thing at hand says, as plain text to read (a card, the caret's problems, the terminal's last command, a
+    // diff's changes, a test's result, the last message), which no keymap of Rider's has an action for: Ctrl+Alt+R
+    // (Ctrl+Cmd+R on the Mac) in every keymap.
+    public const string ReadAsText = "app.readAsText";
+
     // The debugger's, on the active editor and the session.
     public const string ToggleBreakpoint = "app.debug.toggleBreakpoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
@@ -680,6 +685,7 @@ public static class AppActions
         Keymap keymap = Base(preset).Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
+            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R")
             // The Switcher's keys are the same in every keymap of Rider's (Switcher).
             .Bind(Switcher, "control TAB")
             .Bind(SwitcherBackward, "control shift TAB");
