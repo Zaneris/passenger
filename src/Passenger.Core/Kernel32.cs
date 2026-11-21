@@ -105,6 +105,26 @@ public static partial class Kernel32
     /// built for: x86's, run natively on x64 and by emulation on Arm64); null when Windows will not say.</summary>
     public static bool? Runs32Bit(SafeProcessHandle process) => IsWow64Process2(process, out ushort built, out _) ? built != 0 : null;
 
+    /// <summary>A process's executable, as the system started it (QueryFullProcessImageName): known from the moment the
+    /// process is made, before its loader has listed any module; null when it is gone or Windows will not say.</summary>
+    public static string? ExecutableOf(int process)
+    {
+        using SafeProcessHandle opened = OpenProcess(ProcessQueryLimitedInformation, false, (uint)process);
+        return opened.IsInvalid ? null : ExecutableOf(opened);
+    }
+
+    /// <inheritdoc cref="ExecutableOf(int)"/>
+    public static unsafe string? ExecutableOf(SafeProcessHandle process)
+    {
+        char* buffer = stackalloc char[32768];
+        uint length = 32768;
+        return QueryFullProcessImageName(process, 0, buffer, &length) ? new string(buffer, 0, (int)length) : null;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, char* name, uint* size);
+
     [LibraryImport("kernel32.dll", EntryPoint = "IsWow64Process2", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsWow64Process2(SafeProcessHandle process, out ushort processMachine, out ushort nativeMachine);

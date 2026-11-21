@@ -113,7 +113,7 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
 
     protected override IReadOnlyList<int> RunningHere()
     {
-        if (locator.AppContentDir is not { } content)
+        if (!OperatingSystem.IsWindows() || locator.AppContentDir is not { } content)
         {
             return [];
         }
@@ -122,16 +122,10 @@ public sealed class VelopackUpdater(IVelopackLocator locator) : Updater
         {
             using (running)
             {
-                try
+                // Its executable as Windows started it: its loader may not have listed it among its modules yet.
+                if (running.Id != Environment.ProcessId && Kernel32.ExecutableOf(running.Id) is { } path && PathNames.IsUnder(path, content))
                 {
-                    if (running.Id != Environment.ProcessId && running.MainModule?.FileName is { } path && PathNames.IsUnder(path, content))
-                    {
-                        here.Add(running.Id);
-                    }
-                }
-                catch (Exception error) when (error is Win32Exception or InvalidOperationException)
-                {
-                    // Another user's, or ended meanwhile.
+                    here.Add(running.Id);
                 }
             }
         }

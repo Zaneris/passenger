@@ -756,7 +756,7 @@ public static partial class DotnetProcesses
             // Protected, or another user's the system will not describe: listed by its id, as the debugger may still be let in.
             return new DotnetProcess(id, id.ToString(CultureInfo.InvariantCulture), string.Empty, string.Empty, false);
         }
-        string name = ImagePath(process) is { } path ? Path.GetFileName(path) : $"{id}";
+        string name = Kernel32.ExecutableOf(process) is { } path ? Path.GetFileName(path) : $"{id}";
         (string user, bool mine) = Owner(process);
         return new DotnetProcess(id, name, WindowsCommandLine(process) ?? string.Empty, user, mine)
         {
@@ -781,13 +781,6 @@ public static partial class DotnetProcesses
         }
         using SafeProcessHandle process = Kernel32.OpenProcess(Kernel32.ProcessQueryLimitedInformation, false, (uint)id);
         return !process.IsInvalid && Kernel32.Runs32Bit(process) == true;
-    }
-
-    private static unsafe string? ImagePath(SafeProcessHandle process)
-    {
-        char* buffer = stackalloc char[32768];
-        uint length = 32768;
-        return QueryFullProcessImageName(process, 0, buffer, &length) ? new string(buffer, 0, (int)length) : null;
     }
 
     /// <summary>The command line as the program was given it (NtQueryInformationProcess, Windows 8.1 on): a UNICODE_STRING
@@ -852,10 +845,6 @@ public static partial class DotnetProcesses
     [LibraryImport("dbghelp.dll", EntryPoint = "MiniDumpWriteDump", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool MiniDumpWriteDump(SafeProcessHandle process, uint id, SafeFileHandle file, uint type, IntPtr exception, IntPtr stream, IntPtr callback);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, char* name, uint* size);
 
     [LibraryImport("advapi32.dll", EntryPoint = "OpenProcessToken")]
     [return: MarshalAs(UnmanagedType.Bool)]

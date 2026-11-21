@@ -208,7 +208,8 @@ public abstract class Updater
         try
         {
             using Process running = Process.GetProcessById(processId);
-            return $"process {processId}: {running.MainModule?.FileName ?? running.ProcessName}";
+            string? executable = OperatingSystem.IsWindows() ? Kernel32.ExecutableOf(processId) : running.MainModule?.FileName;
+            return $"process {processId}: {executable ?? running.ProcessName}";
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
