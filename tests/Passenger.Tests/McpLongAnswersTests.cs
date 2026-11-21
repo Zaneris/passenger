@@ -332,7 +332,7 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(held.Content is [TextContentBlock, TextContentBlock], $"A cut list's answer came as {held.Content.Count} parts");
         string words = ((TextContentBlock)held.Content[1]).Text;
         int listed = Json(held).GetArrayLength();
-        Assert.True(Regex.IsMatch(words, $@"^[\d,]+ more {noun}s left out: (.+; )?{Regex.Escape(how)}$") && (all is not int whole || listed + Number(words) == whole),
+        Assert.True(Regex.IsMatch(words, $@"^(1 more {noun}|(?!1 )[\d,]+ more {noun}s) left out: (.+; )?{Regex.Escape(how)}$") && (all is not int whole || listed + Number(words) == whole),
             $"A list of {(all is int known ? known.ToString("N0", CultureInfo.InvariantCulture) : "many")} {noun}s listed {listed}, saying: {words}");
     }
 
