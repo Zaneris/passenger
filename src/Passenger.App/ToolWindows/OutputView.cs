@@ -319,8 +319,12 @@ public sealed class OutputView : DockPanel, IOwnKeys
         }
     }
 
-    /// <summary>Whether the program's input was ended here (Ctrl+D), so it reads no more, until another input is given.</summary>
+    /// <summary>Whether the program's input was ended here (<see cref="EndOfInput"/>), so it reads no more, until another
+    /// input is given.</summary>
     public bool InputEnded { get; private set; }
+
+    /// <summary>The key that ends the program's input: Control with D, on every system.</summary>
+    public static readonly Keystroke EndOfInput = new(Key.D, KeyModifiers.Control);
 
     /// <summary>The console's menu: Copy the selection, Select All, and Clear All.</summary>
     private void ShowMenu(Point? at)
@@ -771,7 +775,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         input is null ? null
         : e.Key == Key.Enter && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift ? SendLine
         : e.Key == Key.Back && e.KeyModifiers == KeyModifiers.None ? Backspace
-        : e.Key == Key.D && e.KeyModifiers == KeyModifiers.Control ? EndInput
+        : Keystroke.From(e) == EndOfInput ? EndInput
         : AppActions.Keymap().ActionFor(new Shortcut(Keystroke.From(e))) is EditorActions.Paste ? InputEdit(EditorActions.Paste)
         : null;
 

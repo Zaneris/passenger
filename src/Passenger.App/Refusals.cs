@@ -698,8 +698,10 @@ public static class Refusals
     public static string InputBeside(string name, string companion) =>
         $"{name}'s Debug console takes no input: the program's input goes to {companion}'s session";
 
-    /// <summary>Input for a launched program whose input was ended in its Debug console (Ctrl+D).</summary>
-    public static string InputEnded(string name) => $"{name}'s Debug console takes no more input: its input was ended (Ctrl+D), so it reads none";
+    /// <summary>Input for a launched program whose input was ended in its Debug console
+    /// (<see cref="ToolWindows.OutputView.EndOfInput"/>).</summary>
+    public static string InputEnded(string name) =>
+        $"{name}'s Debug console takes no more input: its input was ended ({KeyWords.Of(ToolWindows.OutputView.EndOfInput)}), so it reads none";
 
     /// <summary>A merge's own sides, which it takes changes from into the result between them.</summary>
     public const string MergeSideReadOnly = "A merge's sides are read-only: edit the result between them";
