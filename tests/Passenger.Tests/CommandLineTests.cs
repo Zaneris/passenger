@@ -603,6 +603,24 @@ public sealed class CommandLineTests : IDisposable
         Assert.True(code == 0 && File.Exists(Path.Combine(folder, "out.png")), $"The screenshot named from the folder it was started in was not written there: exit code {code}\n{error}");
     }
 
+    /// <summary>A state folder PASSENGER_SETTINGS names by a relative path is the one it names from the folder Passenger was
+    /// started in, not from the home folder it works in once its command line is read; one that cannot be made ends the
+    /// start saying so, as a malformed value does, never with a crash.</summary>
+    [Fact]
+    public async Task A_relative_state_folder_is_named_from_where_Passenger_started_and_one_that_cannot_be_made_ends_the_start_saying_so()
+    {
+        string[] screenshot = [".", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"];
+        (int code, string error) = await Run(screenshot, "kept-here");
+        Assert.True(code == 0 && Directory.Exists(Path.Combine(folder, "kept-here", "logs")),
+            $"PASSENGER_SETTINGS=kept-here, started in {folder}, did not keep the state there: exit code {code}\n{error}");
+
+        File.WriteAllText(Path.Combine(folder, "a-file"), "not a folder\n");
+        (code, error) = await Run(screenshot, Path.Combine("a-file", "state"));
+        Assert.True(code == 2 && error.Contains($"{Path.Combine(PathNames.Canonical(folder), "a-file", "state")}, which {StateStore.Variable} names, could not be made", StringComparison.Ordinal)
+            && !error.Contains("Unhandled exception", StringComparison.Ordinal),
+            $"A state folder that cannot be made, inside a file, did not end the start saying so: exit code {code}\n{error}");
+    }
+
     /// <summary>The folder a process works in, as the system tells it: Linux's /proc link, macOS's lsof.</summary>
     private static async Task<string?> WorkingFolderAsync(int process)
     {
