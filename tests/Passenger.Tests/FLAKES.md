@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI 44896789551
+  (Windows, report shard 1): "The AppHost resource service connection failed (Cancelled): Call canceled by the
+  client", 32.5 s after the AppHost's build. **A bug in the IDE**: the AppHost's resource service was given 30 s to
+  answer whatever `PASSENGER_WAIT_SCALE` said, unlike the IDE's other waits on what it starts, on a runner where the
+  sample's restore took 29.7 s and a console app's build 12.9 s, the stand-in itself giving its AppHost 75 s there; and
+  the run said only the call's cancel. The wait scales, a run past it says the service did not answer in its time, and
+  the test says when the stand-in began and wrote its key. Not met in 27 runs of the class on the Windows VM beside six
+  busy loops (d00b6b0ea, #2077).
 - `ContainerServicesTests`' `A_services_Debug_Restart_Run_without_Debugger_and_Attach_…`, CI 44896789551 (Linux x64,
   gate shard 2): "web gave no answer", its program running, its engine's log ending with the Variables' read of
   WebApplication on Main's thread given up by a Continue, a Disconnect 5 ms later, and that evaluation ending as the
