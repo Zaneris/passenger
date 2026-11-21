@@ -132,16 +132,55 @@ public sealed class StagingTests : IDisposable
         }
     }
 
+    /// <summary>Lines selected in a change of several stage those lines alone, the change's other lines left out of git's
+    /// index, one command of Undo named for the lines; Unstage over one of them takes that line alone back out.</summary>
+    [AvaloniaFact]
+    public void Lines_selected_in_a_change_stage_and_unstage_alone()
+    {
+        string lines = Path.Combine(folder, "Lines.txt");
+        File.WriteAllText(lines, "one\ntwo\nthree\nfour\n");
+        TestGit.Run(folder, "add", "Lines.txt");
+        TestGit.Run(folder, "commit", "-q", "-m", "Lines", "--", "Lines.txt");
+        File.WriteAllText(lines, "ONE\nTWO\nTHREE\nfour\n");
+        MainWindow window = Open(files: 4);
+        try
+        {
+            DiffView view = DiffOf(window, "Lines.txt");
+            Ui.WaitFor(() => view.HeldAt(0) == false, "the diff to know git's index holds none of Lines.txt's change");
+            Assert.Single(view.Hunks);
+            TextSnapshot text = view.Right.Document.Snapshot;
+            view.Right.Focus();
+            view.Right.Select(TextRange.FromBounds(text.GetLineStart(1), text.GetLineStart(3)));
+            Ui.Landed(() => view.Right.IsKeyboardFocusWithin, "the diff's side of the file to have the keys");
+            Ui.Press(window, Ui.Shortcut(AppActions.Stage));
+            Ui.WaitFor(() => Under(window.CommitView, CommitView.StagedGroup).Contains("Lines.txt", StringComparison.Ordinal),
+                () => $"Lines.txt listed as staged once two of its lines were, where Staged lists [{Under(window.CommitView, CommitView.StagedGroup)}]");
+            Assert.Equal("one\nTWO\nTHREE\nfour\n", TestGit.Run(folder, "show", ":Lines.txt"));
+            Assert.Equal("Stage 2 lines of Lines.txt", window.EditorArea.Commands.ToUndo(null)?.Name);
+            Assert.False(view.HeldAt(0) == true, "The change is held whole by the index once two of its three lines were staged");
+
+            view.Right.Select(TextRange.FromBounds(text.GetLineStart(1), text.GetLineStart(1) + 2));
+            Assert.True(window.Perform(AppActions.Unstage), window.Status);
+            Ui.WaitFor(() => window.EditorArea.Commands.ToUndo(null)?.Name == "Unstage 1 line of Lines.txt", () => $"TWO to be unstaged, where the window says {window.Status}");
+            Assert.Equal("one\ntwo\nTHREE\nfour\n", TestGit.Run(folder, "show", ":Lines.txt"));
+            Assert.Equal("ONE\nTWO\nTHREE\nfour\n", File.ReadAllText(lines));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>The files git's index holds changes of, as git names them.</summary>
     private string Staged() => TestGit.Run(folder, "diff", "--cached", "--name-only");
 
     /// <summary>The folder open with no file shown, diffs set to open as tabs, the Commit window listing its changes.</summary>
-    private MainWindow Open()
+    private MainWindow Open(int files = 3)
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         window.ApplySettings(window.Settings with { OpenDiffsIn = DiffPlace.Tab });
         window.Perform(AppActions.ShowCommit);
-        Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == 3, "the three changed files listed");
+        Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Count() == files, $"the {files} changed files listed");
         return window;
     }
 

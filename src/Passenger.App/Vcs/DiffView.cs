@@ -255,20 +255,48 @@ public sealed class DiffView : DockPanel, IOwnKeys
         return [.. Hunks.Where(found.Contains)];
     }
 
-    /// <summary>Asks to stage the changes at the carets, or to unstage them where git's index holds every one whole (Stage's
-    /// keys, turning as the change's own button turns): why not, else null once asked.</summary>
+    /// <summary>What Stage takes at the carets of the side with the keys: the lines a selection spans, each its own part of
+    /// a change (<see cref="PartialCommit.LinesChosen"/>), and the whole change at a caret with nothing selected.</summary>
+    public IReadOnlyList<DiffHunk> ChosenAtCarets()
+    {
+        bool head = Left.IsKeyboardFocusWithin;
+        CodeEditor side = head ? Left : Right;
+        TextSnapshot text = side.Document.Snapshot;
+        List<(int First, int Last)> file = [];
+        List<(int First, int Last)> last = [];
+        foreach (Selection selection in side.Selections.Items)
+        {
+            int first = text.GetLineFromOffset(selection.Start);
+            if (selection.Length > 0)
+            {
+                int end = text.GetLineFromOffset(selection.End);
+                // A selection ending at a line's start takes none of that line.
+                (head ? last : file).Add((first, Math.Max(first, text.GetLineStart(end) == selection.End ? end - 1 : end)));
+            }
+            else if ((head ? shown.HeadHunkAt(first) : shown.HunkAt(first)) is { } hunk)
+            {
+                // The whole change: every line of the file it has, or for one that only deletes lines a line beside them.
+                file.Add(hunk.NewCount == 0 ? (Math.Max(0, hunk.NewStart - 1), hunk.NewStart) : (hunk.NewStart, hunk.NewStart + hunk.NewCount - 1));
+            }
+        }
+        return PartialCommit.LinesChosen(shown, file, last);
+    }
+
+    /// <summary>Asks to stage the changes or lines at the carets (<see cref="ChosenAtCarets"/>), or to unstage them where
+    /// git's index holds every change they are of whole (Stage's keys, turning as the change's own button turns): why not,
+    /// else null once asked.</summary>
     public string? StageAtCarets(bool? stage = null)
     {
         if (!Stages)
         {
             return "Only a diff of the working tree against the last commit stages its changes";
         }
-        if (ChangesAtCarets() is not { Count: > 0 } changes)
+        if (ChosenAtCarets() is not { Count: > 0 } changes)
         {
             return "No change here to stage";
         }
-        bool[] held = [.. changes.Select(c => HeldAt(Hunks.ToList().IndexOf(c)) == true)];
-        StageRequested?.Invoke(this, (changes, stage ?? !held.All(h => h)));
+        bool[] held = [.. ChangesAtCarets().Select(c => HeldAt(Hunks.ToList().IndexOf(c)) == true)];
+        StageRequested?.Invoke(this, (changes, stage ?? !(held.Length > 0 && held.All(h => h))));
         return null;
     }
 

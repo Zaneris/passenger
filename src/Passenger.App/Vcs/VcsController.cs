@@ -1632,13 +1632,17 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Stages some of a file's changes (<see cref="Git.StageChangesAsync"/>), then reads the status again.</summary>
     public Task<VcsOutcome> StageChangesAsync(string path, PartialCommit chosen) =>
-        IndexChangeAsync(stage: true, repository => repository.StageChangesAsync(path, chosen), Plural.Of(chosen.Hunks.Count, "change") + $" of {Path.GetFileName(path)}");
+        IndexChangeAsync(stage: true, repository => repository.StageChangesAsync(path, chosen), $"{Said(chosen.Diff, chosen.Hunks)} of {Path.GetFileName(path)}");
 
     /// <summary>Unstages some of a file's changes, by their lines in the last commit (<see cref="Git.UnstageChangesAsync"/>),
     /// then reads the status again.</summary>
-    public Task<VcsOutcome> UnstageChangesAsync(FileChange change, IReadOnlyList<DiffHunk> changes) =>
-        IndexChangeAsync(stage: false, repository => repository.UnstageChangesAsync(change.Path, change.From, changes),
-            Plural.Of(changes.Count, "change") + $" of {change.Name}");
+    public Task<VcsOutcome> UnstageChangesAsync(FileChange change, FileDiff diff, IReadOnlyList<DiffHunk> changes) =>
+        IndexChangeAsync(stage: false, repository => repository.UnstageChangesAsync(change.Path, change.From, changes), $"{Said(diff, changes)} of {change.Name}");
+
+    /// <summary>Changes of a diff as a person names them: "change 2", "2 changes", or "3 lines" where some are parts of one.</summary>
+    public static string Said(FileDiff diff, IReadOnlyList<DiffHunk> changes) =>
+        changes.All(diff.Hunks.Contains) ? changes.Count == 1 ? $"change {diff.Hunks.ToList().IndexOf(changes[0]) + 1}" : Plural.Of(changes.Count, "change")
+        : Plural.Of(changes.Sum(c => Math.Max(c.OldCount, c.NewCount)), "line");
 
     private async Task<VcsOutcome> IndexChangeAsync(bool stage, Func<Git, Task<GitResult>> change, string what)
     {

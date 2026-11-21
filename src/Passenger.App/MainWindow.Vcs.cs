@@ -1149,9 +1149,8 @@ public partial class MainWindow
         }
         FileDiff diff = view.Compared;
         string[] paths = change.From is { } from ? [path, from] : [path];
-        string which = changes.Count == 1 ? $"change {diff.Hunks.ToList().IndexOf(changes[0]) + 1}" : Plural.Of(changes.Count, "change");
-        VcsOutcome outcome = await IndexChangedAsync($"{(stage ? "Stage" : "Unstage")} {which} of {change.Name}", paths,
-            () => stage ? session.Vcs.StageChangesAsync(path, new PartialCommit(diff, changes, change.From)) : session.Vcs.UnstageChangesAsync(change, changes));
+        VcsOutcome outcome = await IndexChangedAsync($"{(stage ? "Stage" : "Unstage")} {VcsController.Said(diff, changes)} of {change.Name}", paths,
+            () => stage ? session.Vcs.StageChangesAsync(path, new PartialCommit(diff, changes, change.From)) : session.Vcs.UnstageChangesAsync(change, diff, changes));
         work.Tell(outcome.Succeeded, outcome.Message);
         view.RefreshStaged();
     }

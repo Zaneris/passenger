@@ -250,7 +250,7 @@ public sealed partial class PassengerTools
         }
         (IReadOnlyList<DiffHunk> hunks, string? why) = PartialCommit.Touched(diff, ranges);
         return why is not null ? throw new ArgumentException($"{name}: {why} (vcs_status {name} shows them)")
-            : hunks.Count == diff.Hunks.Count ? null : new PartialCommit(diff, hunks, change.From);
+            : hunks.SequenceEqual(diff.Hunks) ? null : new PartialCommit(diff, hunks, change.From);
     }
 
     [McpServerTool(Name = McpTools.VcsLog, Title = "The history", ReadOnly = true), Description(

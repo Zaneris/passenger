@@ -54,13 +54,13 @@ public sealed class PartialCommitTests
     [Theory]
     [InlineData("2", "2")]
     [InlineData("4-5", "4")]
-    [InlineData("5", "4")]
+    [InlineData("5", "5")]
     [InlineData("1-3", "2")]
-    [InlineData(" 2 , 5 ", "2 4")]
+    [InlineData(" 2 , 5 ", "2 5")]
     [InlineData("6", "7")]
     [InlineData("7", "7")]
     [InlineData("1-7", "2 4 7")]
-    public void Lines_of_the_file_now_take_each_change_they_touch_whole(string ranges, string starts)
+    public void Lines_of_the_file_now_take_the_changed_lines_they_name_and_a_deletion_beside_them_whole(string ranges, string starts)
     {
         FileDiff diff = Changed();
         (IReadOnlyList<DiffHunk> hunks, string? why) = PartialCommit.Touched(diff, ranges);
@@ -174,5 +174,33 @@ public sealed class PartialCommitTests
         FileDiff diff = FileDiff.Compare(Head, text);
         Assert.Equal(3, diff.Hunks.Count);
         Assert.Equal(held, string.Concat(diff.HeldIn(FileDiff.Compare(index, text)).Select(h => h ? 'T' : 'F')));
+    }
+
+    /// <summary>Lines chosen take their own part of a change: of the file's side a replaced line its replacement and an added
+    /// line itself, of the last commit's a replaced line its replacement and a deleted line its deletion; every line of a
+    /// side chosen takes the change whole.</summary>
+    [Theory]
+    [InlineData("a\nb\nc\nd\n", "A\nB\nC\nd\n", "1", "", "a\nB\nc\nd\n")]
+    [InlineData("a\nb\nc\nd\n", "A\nB\nC\nd\n", "0-2", "", "A\nB\nC\nd\n")]
+    [InlineData("a\nb\n", "a\nx\ny\nb\n", "2", "", "a\ny\nb\n")]
+    [InlineData("a\nb\nc\nd\n", "a\nX\nd\n", "1", "", "a\nX\nd\n")]
+    [InlineData("a\nb\nc\nd\n", "a\nX\nd\n", "", "2", "a\nb\nd\n")]
+    [InlineData("a\nb\nc\nd\n", "a\nX\nd\n", "", "1", "a\nX\nc\nd\n")]
+    [InlineData("a\nb\nc\nd\n", "a\nd\n", "0", "", "a\nd\n")]
+    public void Lines_chosen_take_their_own_part_of_a_change(string head, string now, string file, string last, string expected)
+    {
+        FileDiff diff = FileDiff.Compare(head, new TextDocument(now).Snapshot);
+        Assert.Equal(expected, new PartialCommit(diff, PartialCommit.LinesChosen(diff, Lines(file), Lines(last))).Content());
+
+        static IReadOnlyList<(int, int)> Lines(string range) => range.Length == 0 ? [] : range.Split('-') is [{ } one] ? [(int.Parse(one), int.Parse(one))]
+            : range.Split('-') is [{ } first, { } last] ? [(int.Parse(first), int.Parse(last))] : [];
+    }
+
+    /// <summary>Unstaging a line of a change the index holds gives back that line alone, the change's other lines kept.</summary>
+    [Fact]
+    public void Unstaging_a_line_of_a_staged_change_gives_back_that_line_alone()
+    {
+        byte[]? unstaged = PartialCommit.Unstaged(Encoding.UTF8.GetBytes("a\nb\nc\nd\n"), Encoding.UTF8.GetBytes("A\nB\nc\nd\n"), [new DiffHunk(1, 1, 1, 1)]);
+        Assert.Equal("A\nb\nc\nd\n", unstaged is null ? null : Encoding.UTF8.GetString(unstaged));
     }
 }
