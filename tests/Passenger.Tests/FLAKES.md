@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `TerminalTests`' `Programs_override_the_configured_cursor_and_reset_restores_it(reset: "\033[0 q")`, CI 44948517766
+  (macOS report shard 3): "Assert.NotEqual() Failure: Values are equal … #ff0f131c". **The test waited wrong**, not
+  #1849's marks, which /bin/sh is given none of: it read the drawn cursor as soon as the cursor stood at the start of
+  the line under the command, where the shell's echo of Enter puts it before sh runs the printf asking for a block, so
+  the configured bar was still drawn there. It did not come again in 4 runs of the 3 cases beside a busy loop a core,
+  but a probe whose program slept a second before its printf failed every case with that wait; the test now waits for
+  the block's request to reach the screen, and the probe passed every case (1ad1c34d1).
 - `ColourSwatchesTests`' `The_colour_picker_in_an_editor_at_the_windows_smallest_width_shows_whole_under_its_line_and_chooses_there`,
   CI 44948517766 and 44953680429 (report lane, every system): "The picker at 341, 170, 251, 304 covers the swatch's
   line, whose foot is at 173, where it was to hang under it". **A regression in the IDE**: #1969's navigation bar takes
