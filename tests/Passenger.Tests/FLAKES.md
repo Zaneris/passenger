@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `ContainerServicesTests`' `A_services_Debug_Restart_Run_without_Debugger_and_Attach_…`, CI 44896789551 (Linux x64,
+  gate shard 2): "web gave no answer", its program running, its engine's log ending with the Variables' read of
+  WebApplication on Main's thread given up by a Continue, a Disconnect 5 ms later, and that evaluation ending as the
+  program was let go. **Most likely a gap in the debugger**: the let-go ran off their stop only the threads of a stop
+  still shown, so the stop's thread, back at its breakpoint once its given-up evaluation returned, was let go inside the
+  runtime's handling of its patch, which on x64 the runtime itself handles only in part (its
+  `DebuggerPatchSkip::DebuggerDetachClean`); #2050's exit 132 at the same step fits it too. On this Mac the thread stood
+  at its breakpoint still once its evaluation had returned; it is now run off it, from where the stop found it. Not met
+  on arm64, which emulates single steps, so unproven on x64 until CI (0b9153577, #2077).
 - `HiddenFramesTests`' `A_step_into_a_line_reading_a_class_without_Just_My_Code_…(newestRuntime: False)`, the Mac under
   load (#1899's runs): "No stopped event came in 60 s", the step's end waiting for CoreLib's symbols to be decompiled.
   **The test waited wrong**: a stop in CoreLib without Just My Code comes once CoreLib is decompiled, once a run, which
