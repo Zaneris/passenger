@@ -55,8 +55,8 @@ public sealed class CheckChoice(string name, string detail, bool chosen, object 
 
 /// <summary>A row a person checks or clears (Add Reference's projects, Add Docker Compose's services, Add Aspire
 /// Orchestration's, a nuget.config's feeds), as tall as every list's row (<see cref="ListRow.Height"/>): its box at its
-/// start, centred in it, then what it names, and what it is in the rest of the row's width, cut short with an ellipsis
-/// where it has no more.</summary>
+/// start, centred in it, then what it names, and what it is in the rest of the row's width, each cut short with an
+/// ellipsis where it has no more, what it is first.</summary>
 public static class CheckRows
 {
     /// <summary>A list of check rows over its choices, one row a choice: Space checks or clears the chosen row, Enter does
@@ -91,7 +91,7 @@ public static class CheckRows
     {
         CheckBox check = Box();
         check.Focusable = false;
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Wide, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(check, Dock.Left);
         DockPanel.SetDock(name, Dock.Left);
