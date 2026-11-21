@@ -49,6 +49,19 @@ public class FrameNamesTests
         Assert.Equal(expected, Named(reader, handle, arguments.Length == 0 ? [] : arguments.Split(',')));
     }
 
+    [Theory]
+    [InlineData("struct Point { public int X; }\nclass Reader { int Read(in Point point, ref int count, out int sum, ref readonly int limit) { sum = 0; return 0; } }",
+        "Reader.Read(in Point point, ref int count, out int sum, ref readonly int limit)")]
+    [InlineData("abstract class Reader { public abstract int Read(in int a, out string b, ref readonly long c); }", "Reader.Read(in int a, out string b, ref readonly long c)")]
+    [InlineData("class Reader { void Read([System.Runtime.InteropServices.In, System.Runtime.InteropServices.Out] ref int both) { } }", "Reader.Read(ref int both)")]
+    public void A_by_reference_parameter_is_named_in_out_ref_readonly_or_ref_as_declared(string code, string expected)
+    {
+        using PEReader image = Built(code);
+        MetadataReader reader = image.GetMetadataReader();
+        MethodDefinitionHandle handle = reader.MethodDefinitions.Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, "Read"));
+        Assert.Equal(expected, Named(reader, handle, []));
+    }
+
     /// <summary>A method named with the type arguments given, the first its type's and the rest its own.</summary>
     private static string Named(MetadataReader reader, MethodDefinitionHandle handle, string[] arguments)
     {

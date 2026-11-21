@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using System.Reflection.Metadata;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
 
@@ -84,22 +85,45 @@ internal static class FrameNames
 
     private static string Arguments(IReadOnlyList<string> arguments) => arguments.Count > 0 ? $"<{string.Join(", ", arguments)}>" : string.Empty;
 
-    /// <summary>A method's parameters as its source declares them, so a local function's closure, a parameter the compiler
-    /// adds with no name, is left out.</summary>
+    /// <summary>A method's parameters as its source declares them, a by-reference one as in, out or ref readonly where it is
+    /// one, so a local function's closure, a parameter the compiler adds with no name, is left out.</summary>
     private static string Parameters(MetadataReader reader, MethodDefinition method, FrameDisplayGenericContext genericContext)
     {
         ImmutableArray<string> parameterTypes = method.DecodeSignature(FrameDisplaySignatureTypeProvider.Instance, genericContext).ParameterTypes;
         ImmutableArray<EntityHandle> parameterHandles = method.DecodeSignature(ManagedDebugger.FieldTypeHandleProvider.Instance, null).ParameterTypes;
-        Dictionary<int, string> parameterNames = method.GetParameters()
+        Dictionary<int, Parameter> parameters = method.GetParameters()
             .Select(reader.GetParameter)
             .Where(parameter => parameter.SequenceNumber > 0)
-            .ToDictionary(parameter => parameter.SequenceNumber, parameter => reader.GetString(parameter.Name));
+            .ToDictionary(parameter => parameter.SequenceNumber);
         return string.Join(", ", parameterTypes
-            .Select((type, index) => parameterNames.TryGetValue(index + 1, out string? name) && name.Length > 0 ? $"{type} {name}"
+            .Select((type, index) => parameters.TryGetValue(index + 1, out Parameter parameter) && reader.GetString(parameter.Name) is { Length: > 0 } name
+                    ? $"{Declared(reader, parameter, type)} {name}"
                 : ModuleMetadataReader.IsClosure(reader, parameterHandles[index]) ? null
                 : type)
             .OfType<string>());
     }
+
+    /// <summary>A by-reference parameter's type as its source declares it: in, out or ref readonly where the compiler marks it
+    /// so, else ref (<see cref="FrameDisplaySignatureTypeProvider.GetByReferenceType"/>); any other parameter's as it is.</summary>
+    private static string Declared(MetadataReader reader, Parameter parameter, string type)
+    {
+        const string byReference = "ref ";
+        if (!type.StartsWith(byReference, StringComparison.Ordinal))
+        {
+            return type;
+        }
+        string kind = ModuleMetadataReader.HasAttribute(reader, parameter.GetCustomAttributes(), [IsReadOnlyAttribute]) ? "in"
+            : ModuleMetadataReader.HasAttribute(reader, parameter.GetCustomAttributes(), [RequiresLocationAttribute]) ? "ref readonly"
+            : (parameter.Attributes & (ParameterAttributes.Out | ParameterAttributes.In)) is ParameterAttributes.Out ? "out"
+            : "ref";
+        return $"{kind} {type[byReference.Length..]}";
+    }
+
+    /// <summary>What the compiler marks an in parameter with.</summary>
+    private const string IsReadOnlyAttribute = "System.Runtime.CompilerServices.IsReadOnlyAttribute";
+
+    /// <summary>What the compiler marks a ref readonly parameter with.</summary>
+    private const string RequiresLocationAttribute = "System.Runtime.CompilerServices.RequiresLocationAttribute";
 
     /// <summary>A frame's type with the type arguments it runs with, its nested types joined by '.', a nullable spelled out.</summary>
     private static string TypeName(MetadataReader reader, TypeDefinitionHandle handle, IReadOnlyList<string> typeArguments)
