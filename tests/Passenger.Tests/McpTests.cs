@@ -2646,20 +2646,33 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"editor_text given a word for a line answered: {Text(typed)}");
     }
 
-    /// <summary>An agent's view of the IDE's actions: every one the IDE declares, listed with why it cannot run now, and run by
-    /// its id as its shortcut would.</summary>
+    /// <summary>An agent's view of the IDE's actions: every one the IDE declares, listed with why it cannot run now, those an
+    /// answer has no room for read on through the groups it names, and run by its id as its shortcut would.</summary>
     [Gate]
     [Fact]
     public async Task An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot()
     {
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        string[] listed = [.. (await Call(client, McpTools.IdeActions)).EnumerateArray().Select(a => a.GetString()!)];
+        CallToolResult all = await Result(client, McpTools.IdeActions);
+        using JsonDocument first = JsonDocument.Parse(all.Content.OfType<TextContentBlock>().First().Text);
+        List<string> listed = [.. first.RootElement.EnumerateArray().Select(a => a.GetString()!)];
+        // Cut short, the answer names the groups of those it left out, which an agent reads on through.
+        if (all.Content.Skip(1).OfType<TextContentBlock>().FirstOrDefault()?.Text is { } more)
+        {
+            Assert.True(more.Contains("more action", StringComparison.Ordinal) && more.Contains("they are of the group", StringComparison.Ordinal),
+                $"ide_actions cut short said of what it left out: {more}");
+            foreach (Match group in Regex.Matches(more, "\"([^\"]+)\""))
+            {
+                listed.AddRange((await Call(client, McpTools.IdeActions, new() { ["query"] = group.Groups[1].Value })).EnumerateArray().Select(a => a.GetString()!)
+                    .Where(line => line.Contains($" [{group.Groups[1].Value}]", StringComparison.Ordinal)));
+            }
+        }
         HashSet<string> ids = [.. listed.Select(line => line[..line.IndexOf(": ", StringComparison.Ordinal)])];
         string[] declared = [.. typeof(AppActions).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string)).Select(f => (string)f.GetRawConstantValue()!)];
         string[] missing = [.. declared.Where(id => !ids.Contains(id))];
-        Assert.True(missing.Length == 0, $"ide_actions leaves out {string.Join(", ", missing)}");
+        Assert.True(missing.Length == 0, $"ide_actions leaves out {string.Join(", ", missing)}, read on through the groups it named: {Text(all).Length:N0} characters, its last words {Text(all)[^Math.Min(300, Text(all).Length)..]}");
 
         string hotReload = Assert.Single(listed, l => l.StartsWith($"{AppActions.ApplyHotReloadChanges}: ", StringComparison.Ordinal));
         Assert.Contains(" - cannot run: Nothing runs", hotReload, StringComparison.Ordinal);

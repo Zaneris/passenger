@@ -3078,12 +3078,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         ActionRegistry actions = window.Actions;
         ActionContext context = Beside ? actions.Context().ForAgent() : actions.Context();
-        IEnumerable<IdeAction> asked = query is not { Length: > 0 } words ? actions.All
-            : actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.Contains(words, StringComparison.OrdinalIgnoreCase)
-                || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase));
-        return Task.FromResult(Held([.. asked.Select(a =>
-            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")],
-            "action", "query, a group's name or a word of the action's, narrows them"));
+        IdeAction[] asked = query is not { Length: > 0 } words ? [.. actions.All]
+            : [.. actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.Contains(words, StringComparison.OrdinalIgnoreCase)
+                || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase))];
+        string[] lines = [.. asked.Select(a =>
+            $"{a.Id}: {a.Title} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why}" : string.Empty)}")];
+        // Cut short, it names the groups of those it left out, which a query of each lists.
+        return Task.FromResult(Held(lines, "action", "query, a group's name or a word of the action's, narrows them", readOn: last =>
+        {
+            string[] groups = [.. asked.Skip(Array.IndexOf(lines, last) + 1).Select(a => $"\"{a.Group}\"").Distinct(StringComparer.Ordinal)];
+            return $"they are of the {Plural.Noun(groups.Length, "group")} {Plural.Listed(groups)}";
+        }));
     });
 
     // The work behind them
