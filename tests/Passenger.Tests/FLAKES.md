@@ -30,6 +30,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `McpAttachTimingTests`' `An_attached_diagnostic_stops_waiting_on_a_suspended_server_…(revokeConnection: False)`,
+  CI 44896789551 (macOS, report, alone): "Waited 20 s for the diagnostic's request to clear while its server is still
+  suspended". **The test waited wrong**: it waited for every request of the server's to clear, and the window's own pull
+  of the file it shows, made at the server's word that its diagnostics moved (which follows the sample's load and can
+  come as the test suspends the server), waits on the suspended server for good by design; a probe holding that word
+  until just after the suspension failed so every time. The test holds the word while the server is suspended, and its
+  wait names what is still in flight (9161ba7ed, #2077).
+
 - `FolderWatchTests`' `Watching_each_folder_as_on_Linux_…`, CI 44872855052 (Linux, report): "Waited 180 s for the
   renamed folders to be watched under their new names alone". **A bug in the IDE**: a renamed folder's own watch can be
   heard ending before its parent reports the rename, as each .NET watcher's events come on a thread of their own, and
