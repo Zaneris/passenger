@@ -7,9 +7,9 @@ namespace Passenger.App.Workspace;
 
 /// <summary>What a folder's window had open, kept in the folder's place in the store: the editors' splits, tabs (pinned
 /// or not) and carets, the editor windows, the recent files, the projects unloaded, the target frameworks chosen, the
-/// Migrations window's environments, the files' folds, the Explorer's view, where Attach to Process's programs run and
-/// whether Godot's script editor was offered, so opening the folder again brings them back. Only the window a person uses
-/// keeps it, as with the layout.</summary>
+/// Migrations window's environments and output folders, the files' folds, the Explorer's view, where Attach to Process's
+/// programs run and whether Godot's script editor was offered, so opening the folder again brings them back. Only the
+/// window a person uses keeps it, as with the layout.</summary>
 public sealed record WorkspaceState : IStateDocument<WorkspaceState>
 {
     public EditorLayout? Editors { get; init; }
@@ -29,6 +29,10 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// <summary>The environment the Migrations window runs dotnet ef in for each startup project chosen in it, by its path
     /// (<see cref="Migrations.EfEnvironmentChoices"/>).</summary>
     public Dictionary<string, string> MigrationEnvironments { get; init; } = [];
+
+    /// <summary>The folder Add Migration was last given for each context, by its project's path then the context's name
+    /// (<see cref="Migrations.EfFolderChoices"/>).</summary>
+    public Dictionary<string, Dictionary<string, string>> MigrationFolders { get; init; } = [];
 
     /// <summary>Where each project of devices, emulators or simulators runs, by its path (<see cref="Run.Devices.DeviceChoices"/>).</summary>
     public Dictionary<string, Run.Devices.KeptTarget> RunTargets { get; init; } = [];
@@ -79,6 +83,7 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
             .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
         MigrationEnvironments = (MigrationEnvironments ?? []).Where(p => p.Key is { Length: > 0 } && p.Value is { } environment && Migrations.EfEnvironmentChoices.WhyNot(environment) is null)
             .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
+        MigrationFolders = Migrations.EfOutputFolders.Clamped(MigrationFolders),
         Build = Build is { Configuration.Length: > 0, Platform.Length: > 0 } build
             ? build with { Mapped = [.. (build.Mapped ?? []).Where(m => m is { Project.Length: > 0, Configuration.Length: > 0, Platform.Length: > 0 })] }
             : null,

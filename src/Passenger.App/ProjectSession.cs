@@ -715,6 +715,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The environment the Migrations window runs dotnet ef in for each startup project.</summary>
     public Migrations.EfEnvironmentChoices MigrationEnvironments { get; } = new();
 
+    /// <summary>The folder Add Migration was last given for each context.</summary>
+    public Migrations.EfFolderChoices MigrationFolders { get; } = new();
+
     /// <summary>Where each project of devices, emulators or simulators runs, and each one's targets as last listed.</summary>
     public Run.Devices.DeviceChoices Targets { get; } = new();
 
@@ -1743,6 +1746,7 @@ public sealed class ProjectSession : IAsyncDisposable
         State = kept;
         Frameworks.Keep(kept.Workspace);
         MigrationEnvironments.Keep(kept.Workspace);
+        MigrationFolders.Keep(kept.Workspace);
         Targets.Keep(kept.Workspace);
         BuildChoices.Keep(kept.Workspace);
         Configurations.Keep(kept.RunConfigurations, Projects);

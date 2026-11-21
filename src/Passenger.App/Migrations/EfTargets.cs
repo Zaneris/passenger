@@ -13,7 +13,19 @@ public sealed record EfPending(string Context, string? File, TextPosition Positi
 /// <summary>A type a C# file declares, as dotnet ef's projects are read: its name and where it is, the last part of the
 /// name of the class it derives from (none for a struct, an interface or a class deriving from none), and whether dotnet
 /// ef could make it, being neither abstract, static nor generic.</summary>
-public sealed record EfDeclaredType(string Name, string? Base, bool Made, TextPosition At);
+public sealed record EfDeclaredType(string Name, string? Base, bool Made, TextPosition At)
+{
+    /// <summary>The context its <c>[DbContext(typeof(…))]</c> attribute names, the last part of the name as written; null
+    /// without one.</summary>
+    public string? ContextOf { get; init; }
+
+    /// <summary>The migration's id its <c>[Migration("…")]</c> attribute gives; null without one.</summary>
+    public string? MigrationId { get; init; }
+}
+
+/// <summary>A migration or model snapshot a project holds, by the context its <c>[DbContext]</c> attribute names (the last
+/// part of the name as written): the migration's id (null for the snapshot), and the file declaring it.</summary>
+public sealed record EfMigrationFile(string Context, string? Id, string File);
 
 /// <summary>What a C# file gives dotnet ef's projects: the types it declares, and what its MigrationsAssembly calls name,
 /// an assembly by its name or by a type of it (<c>typeof(Marker).Assembly</c>).</summary>
@@ -24,11 +36,18 @@ public sealed record EfFileRead(IReadOnlyList<EfDeclaredType> Types, IReadOnlyLi
 /// of the contexts it configures are made there.</summary>
 public sealed record EfProjectRead(string Path, IReadOnlyList<EfPending> Contexts, bool HoldsMigrations, bool NamedForMigrations)
 {
+    /// <summary>Its migrations and model snapshots, each with its context and file, wherever in the project they are.</summary>
+    public IReadOnlyList<EfMigrationFile> Migrations { get; init; } = [];
+
+    /// <summary>A context's migrations and model snapshots, by its name as dotnet ef lists it, short or full.</summary>
+    public IEnumerable<EfMigrationFile> MigrationsOf(string context) => Migrations.Where(m => m.Context == EfTargets.ContextName(context));
+
     /// <summary>Whether dotnet ef makes migrations in it: it declares a context, holds migrations or is named for them.</summary>
     public bool IsTarget => Contexts.Count > 0 || HoldsMigrations || NamedForMigrations;
 
     public bool SameAs(EfProjectRead other) =>
-        PathNames.Same(Path, other.Path) && Contexts.SequenceEqual(other.Contexts) && HoldsMigrations == other.HoldsMigrations && NamedForMigrations == other.NamedForMigrations;
+        PathNames.Same(Path, other.Path) && Contexts.SequenceEqual(other.Contexts) && HoldsMigrations == other.HoldsMigrations && NamedForMigrations == other.NamedForMigrations
+        && Migrations.SequenceEqual(other.Migrations);
 }
 
 /// <summary>The projects the Migrations window offers, by dotnet ef's own rules: for <c>--project</c>, those EF Core reaches
@@ -43,6 +62,16 @@ public static class EfTargets
 
     /// <summary>The call naming the assembly a context's migrations are made in.</summary>
     private const string MigrationsAssembly = "MigrationsAssembly";
+
+    /// <summary>The attribute naming the context of a migration or model snapshot.</summary>
+    private const string DbContextAttribute = "DbContext";
+
+    /// <summary>The attribute giving a migration its id.</summary>
+    private const string MigrationAttribute = "Migration";
+
+    /// <summary>A context's name as an <see cref="EfMigrationFile"/> keeps it, from the name dotnet ef lists, short or full:
+    /// its last part.</summary>
+    public static string ContextName(string listed) => listed[(listed.LastIndexOf('.') + 1)..];
 
     /// <summary>Whether a project references EF Core, or a provider of it, itself.</summary>
     public static bool UsesEf(ProjectModel project) =>
@@ -85,7 +114,8 @@ public static class EfTargets
             bool made = declared is ClassDeclarationSyntax own && !own.Modifiers.Any(SyntaxKind.AbstractKeyword) && !own.Modifiers.Any(SyntaxKind.StaticKeyword)
                 && !declared.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().Any(t => t.TypeParameterList is not null);
             TextPosition at = baseName is null ? default : (lines ??= TextSnapshot.From(text)).GetPosition(declared.Identifier.SpanStart);
-            types.Add(new EfDeclaredType(declared.Identifier.ValueText, baseName, made, at));
+            (string? contextOf, string? migrationId) = declared.AttributeLists.Count > 0 ? Attributed(declared) : (null, null);
+            types.Add(new EfDeclaredType(declared.Identifier.ValueText, baseName, made, at) { ContextOf = contextOf, MigrationId = migrationId });
         }
         List<string> assemblies = [];
         List<string> assemblyTypes = [];
@@ -107,6 +137,32 @@ public static class EfTargets
             }
         }
         return new EfFileRead(types, assemblies, assemblyTypes);
+    }
+
+    /// <summary>The context a type's <c>[DbContext(typeof(…))]</c> names and the id its <c>[Migration("…")]</c> gives, as
+    /// dotnet ef writes both on a migration and the context on its model snapshot.</summary>
+    private static (string? Context, string? Id) Attributed(BaseTypeDeclarationSyntax declared)
+    {
+        string? context = null;
+        string? id = null;
+        foreach (AttributeSyntax attribute in declared.AttributeLists.SelectMany(l => l.Attributes))
+        {
+            if (attribute.ArgumentList?.Arguments is not [var argument])
+            {
+                continue;
+            }
+            switch (Last(attribute.Name))
+            {
+                case DbContextAttribute or DbContextAttribute + "Attribute" when argument.Expression is TypeOfExpressionSyntax type:
+                    context = Last(type.Type);
+                    break;
+                case MigrationAttribute or MigrationAttribute + "Attribute"
+                    when argument.Expression is LiteralExpressionSyntax { RawKind: (int)SyntaxKind.StringLiteralExpression } literal:
+                    id = literal.Token.ValueText;
+                    break;
+            }
+        }
+        return (context, id);
     }
 
     /// <summary>The last part of a type's name as written, without its type arguments: DbContext of
@@ -133,7 +189,10 @@ public static class EfTargets
             EfPending[] declared = [.. files.SelectMany(f => f.Read.Types.Where(t => t.Made && contexts.Contains(t.Name)).Select(t => new EfPending(t.Name, f.File, t.At)))];
             bool holds = files.Any(f => f.Read.Types.Any(t => t.Base == Snapshot));
             bool named = assemblies.Contains(AssemblyOf(project)) || files.Any(f => f.Read.Types.Any(t => markers.Contains(t.Name)));
-            read.Add(new EfProjectRead(project.Path, declared, holds, named));
+            EfMigrationFile[] migrations = [.. files.SelectMany(f => f.Read.Types
+                .Where(t => t.ContextOf is not null && (t.MigrationId is not null || t.Base == Snapshot))
+                .Select(t => new EfMigrationFile(t.ContextOf!, t.MigrationId, f.File)))];
+            read.Add(new EfProjectRead(project.Path, declared, holds, named) { Migrations = migrations });
         }
         return read;
     }

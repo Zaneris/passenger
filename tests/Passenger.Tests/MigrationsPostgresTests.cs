@@ -52,8 +52,8 @@ public sealed class MigrationsPostgresTests
 
             window.Migrations.ChooseContext("ShopContext");
             Ui.Click(window.MigrationsView.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Name == AppActions.AddMigration), settle: false);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "Add Migration's question");
-            ConfirmDialog named = window.OwnedWindows.OfType<ConfirmDialog>().Single(d => d.IsVisible);
+            Ui.WaitFor(() => window.OwnedWindows.OfType<Passenger.App.Migrations.AddMigrationDialog>().Any(d => d.IsVisible), "Add Migration's question");
+            Passenger.App.Migrations.AddMigrationDialog named = window.OwnedWindows.OfType<Passenger.App.Migrations.AddMigrationDialog>().Single(d => d.IsVisible);
             named.KeyTextInput("Initial");
             Ui.ClickButton(named, "Add");
             Ui.WaitFor(() => window.Migrations.Busy is null && window.Migrations.Migrations.Any(m => m.Name == "Initial"), () => $"Initial added ({Said(window)})",

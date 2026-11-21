@@ -969,6 +969,113 @@ public sealed class MigrationsTests
         }
     }
 
+    /// <summary>A migration set per context, each in a folder of its own (#2047): Add Migration's output folder takes one typed
+    /// and one picked inside the project, dotnet ef writing each context's migrations and snapshot there; each context's list
+    /// is read from its own folder; the folder given is kept for the context and filled in again beside the folders holding
+    /// its migrations, dotnet ef's own named where it is empty; and Remove Last Migration removes the last from its folder,
+    /// the snapshot there kept. A folder picked outside the project is refused, saying why.</summary>
+    [AvaloniaFact]
+    public void Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there()
+    {
+        string folder = ShopApp.MakeSets();
+        string data = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Data"));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        List<string?> starts = [];
+        string? picked = null;
+        window.PickFolder = (_, start) =>
+        {
+            starts.Add(start);
+            return Task.FromResult(picked);
+        };
+        try
+        {
+            window.ShowToolWindow(ToolWindowIds.Migrations);
+            Ui.WaitFor(() => window.Migrations.Listed, () => $"the contexts listed (status: {window.Status}; gaps: {Gaps(window)})", Slow);
+            MigrationsController migrations = window.Migrations;
+            Assert.Equal(("Data", "Api"), (migrations.Project?.Name, migrations.Startup?.Name));
+            Assert.Equal(["PostgresContext", "SqlServerContext"], migrations.Contexts.Select(c => c.Name).Order(StringComparer.Ordinal));
+            migrations.ChooseContext("PostgresContext");
+
+            AddMigrationDialog first = Open(window);
+            Assert.True(first.FolderBox.Text is null or "" && first.Into == "Empty: dotnet ef's default, Data/Migrations",
+                $"A context with no migrations opened Add Migration with its folder '{first.FolderBox.Text}' and the note '{first.Into}'");
+            first.KeyTextInput("Initial");
+            first.FolderBox.Focus();
+            first.KeyTextInput("Migrations/Postgres");
+            Assert.True(first.Into == "Into Data/Migrations/Postgres", $"The folder typed was taken as '{first.FolderBox.Text}', the note saying '{first.Into}'");
+            Ui.ClickButton(first, "Add");
+            Ui.WaitFor(() => migrations.Busy is null && Rows(window) is [("Initial", _)], () => $"PostgresContext's Initial added and listed ({window.Status})", Slow);
+            Assert.True(Files(data, "Migrations/Postgres") is [.., "PostgresContextModelSnapshot.cs"] postgres && postgres.Any(f => f.EndsWith("_Initial.cs", StringComparison.Ordinal)),
+                $"Data/Migrations/Postgres holds [{string.Join(", ", Files(data, "Migrations/Postgres"))}]: the migration went elsewhere");
+            Assert.False(Directory.Exists(Path.Combine(data, "Migrations", "SqlServer")) || File.Exists(Path.Combine(data, "Migrations", "PostgresContextModelSnapshot.cs")),
+                "PostgresContext's migration reached Migrations itself, which no output folder named");
+
+            migrations.ChooseContext("SqlServerContext");
+            AddMigrationDialog second = Open(window);
+            second.KeyTextInput("Initial");
+            picked = Path.Combine(folder, "Elsewhere");
+            Ui.Click(second.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Browse…"));
+            Assert.True(second.Problem.Contains("outside Data", StringComparison.Ordinal) && second.FolderBox.Text is null or "",
+                $"A folder picked outside the project was taken as '{second.FolderBox.Text}', saying '{second.Problem}'");
+            Directory.CreateDirectory(Path.Combine(data, "Migrations", "SqlServer"));
+            picked = Path.Combine(data, "Migrations", "SqlServer");
+            Ui.Click(second.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Browse…"));
+            Assert.True(starts.All(s => s == data), $"The folder picker started in [{string.Join(", ", starts)}], not in Data's folder");
+            Assert.Equal("Migrations/SqlServer", second.FolderBox.Text);
+            Ui.ClickButton(second, "Add");
+            Ui.WaitFor(() => migrations.Busy is null && migrations.Context == "SqlServerContext" && Rows(window) is [("Initial", _)],
+                () => $"SqlServerContext's Initial added and listed ({window.Status})", Slow);
+            Assert.Contains("SqlServerContextModelSnapshot.cs", Files(data, "Migrations/SqlServer"));
+
+            // Each context's list is its own folder's.
+            migrations.ChooseContext("PostgresContext");
+            Tool(window, AppActions.MigrationsRefresh);
+            Ui.WaitFor(() => migrations.Busy is null && migrations.Listed, () => $"PostgresContext listed again ({window.Status})", Slow);
+            Assert.Equal([("Initial", (bool?)false)], Rows(window));
+
+            AddMigrationDialog again = Open(window);
+            Assert.True(again.FolderBox.Text == "Migrations/Postgres" && again.FolderBox.ItemsSource is IEnumerable<string> offered && offered.SequenceEqual(["Migrations/Postgres"]),
+                $"Add Migration opened again with '{again.FolderBox.Text}' filled in, offering [{string.Join(", ", (again.FolderBox.ItemsSource as IEnumerable<string>) ?? [])}]: "
+                + "the folder given last and the one holding the context's migrations were to be");
+            again.FolderBox.Focus();
+            Ui.Press(again, "meta A");
+            Ui.Press(again, "BACK_SPACE");
+            Assert.True(again.Into == "Empty: beside its last migration, in Data/Migrations/Postgres", $"The folder emptied left '{again.FolderBox.Text}', the note saying '{again.Into}'");
+            again.NameBox.Focus();
+            again.KeyTextInput("Second");
+            Ui.ClickButton(again, "Add");
+            Ui.WaitFor(() => migrations.Busy is null && Rows(window) is [("Initial", _), ("Second", _)], () => $"Second added and listed ({window.Status})", Slow);
+            Assert.Contains(Files(data, "Migrations/Postgres"), f => f.EndsWith("_Second.cs", StringComparison.Ordinal));
+            Assert.True(window.Session.MigrationFolders.Of(migrations.Project!, "PostgresContext") is null
+                && window.Session.MigrationFolders.Of(migrations.Project!, "SqlServerContext") == "Migrations/SqlServer",
+                "The folders kept were not the last each context was given: the next Add Migration would fill in another");
+
+            Tool(window, AppActions.RemoveLastMigration);
+            Ui.ClickButton(Asked<ChoiceDialog>(window, "Remove Last's question"), "Remove");
+            // Not settled: the build and model check after it are for Problems, which this does not read.
+            Ui.PumpUntil(() => Rows(window) is [("Initial", false)], $"Second removed and the list read again ({window.Status})", Slow);
+            string[] left = Files(data, "Migrations/Postgres");
+            Assert.True(!left.Any(f => f.Contains("_Second", StringComparison.Ordinal)) && left.Contains("PostgresContextModelSnapshot.cs")
+                && !File.ReadAllText(Path.Combine(data, "Migrations", "Postgres", "PostgresContextModelSnapshot.cs")).Contains("Second", StringComparison.Ordinal),
+                $"After Remove Last Migration Data/Migrations/Postgres holds [{string.Join(", ", left)}]");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Add Migration… from the window's button, its question waited for.</summary>
+    private static AddMigrationDialog Open(MainWindow window)
+    {
+        Tool(window, AppActions.AddMigration);
+        return Asked<AddMigrationDialog>(window, "Add Migration's question");
+    }
+
+    /// <summary>The C# files in a folder under a project's, by name, in order.</summary>
+    private static string[] Files(string project, string folder) =>
+        Directory.Exists(Path.Combine(project, folder)) ? [.. Directory.GetFiles(Path.Combine(project, folder), "*.cs").Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)] : [];
+
     private static string Gaps(MainWindow window) => string.Join(" | ", window.MigrationsView.GapsShown);
 
     /// <summary>Checks a file holds a UTF-8 BOM and only CRLF breaks, as <paramref name="why"/>.</summary>
@@ -993,7 +1100,7 @@ public sealed class MigrationsTests
 
     private static void Name(MainWindow window, string name)
     {
-        ConfirmDialog dialog = Asked<ConfirmDialog>(window, "Add Migration's question");
+        AddMigrationDialog dialog = Asked<AddMigrationDialog>(window, "Add Migration's question");
         dialog.KeyTextInput(name);
         Ui.ClickButton(dialog, "Add");
     }
@@ -1286,6 +1393,66 @@ internal static class ShopApp
         TestFolders.Write(folder, "MyApp.Services/Catalog.cs", "namespace MyApp.Services;\n\npublic sealed class Catalog(MyApp.Data.AppDbContext context)\n{\n}\n");
         // By its real path: NuGet reaches the libraries by that too, and two spellings of one project restored at once collide.
         Restore.Run(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "MyApp.slnx")));
+        return folder;
+    }
+
+    /// <summary>A data library with two SQLite contexts, PostgresContext and SqlServerContext, each over its own database file,
+    /// as a solution keeping a migration set per provider declares them (#2047), and Api, a console app referencing it with
+    /// the Design package; the local dotnet-ef. No migration yet. Restored from the run's local feed and the package cache
+    /// (tests/EfGraphs), from the UI thread.</summary>
+    public static string MakeSets()
+    {
+        string folder = TestFolders.Create("sets");
+        Feed();
+        AvaloniaApp.UseFeed(folder);
+        string Ef(string package, bool design = false) =>
+            $"    <PackageReference Include=\"Microsoft.EntityFrameworkCore.{package}\" Version=\"{Version}\"{(design ? " PrivateAssets=\"all\"" : string.Empty)} />\n";
+        TestFolders.Write(folder, "Sets.slnx", "<Solution>\n  <Project Path=\"Api/Api.csproj\" />\n  <Project Path=\"Data/Data.csproj\" />\n</Solution>\n");
+        TestFolders.Write(folder, "Data/Data.csproj", TestProjects.Library().With($"  <ItemGroup>\n{Ef("Sqlite")}  </ItemGroup>\n"));
+        string Database(string name) => Path.Combine(Passenger.Core.PathNames.Canonical(folder), name);
+        TestFolders.Write(folder, "Data/Contexts.cs", $$"""
+            using Microsoft.EntityFrameworkCore;
+
+            namespace Data;
+
+            public sealed class Product
+            {
+                public int Id { get; set; }
+            }
+
+            public sealed class PostgresContext : DbContext
+            {
+                public DbSet<Product> Products => Set<Product>();
+
+                protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(@"Data Source={{Database("postgres.db")}}");
+            }
+
+            public sealed class SqlServerContext : DbContext
+            {
+                public DbSet<Product> Products => Set<Product>();
+
+                protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(@"Data Source={{Database("sqlserver.db")}}");
+            }
+
+            """);
+        TestFolders.Write(folder, "Api/Api.csproj", TestProjects.Console().With($"  <ItemGroup>\n    <ProjectReference Include=\"../Data/Data.csproj\" />\n{Ef("Design", design: true)}  </ItemGroup>\n"));
+        TestFolders.Write(folder, "Api/Program.cs", "System.Console.WriteLine(\"Api\");\n");
+        TestFolders.Write(folder, "dotnet-tools.json", $$"""
+            {
+              "version": 1,
+              "isRoot": true,
+              "tools": {
+                "dotnet-ef": {
+                  "version": "{{Version}}",
+                  "commands": [ "dotnet-ef" ],
+                  "rollForward": false
+                }
+              }
+            }
+
+            """);
+        // By its real path: NuGet reaches Data by that too, and two spellings of one project restored at once collide.
+        Restore.Run(Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Sets.slnx")));
         return folder;
     }
 

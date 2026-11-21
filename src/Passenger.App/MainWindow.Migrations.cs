@@ -238,22 +238,21 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Add Migration…: its name asked, then added to the chosen context.</summary>
+    /// <summary>Add Migration…: its name and output folder asked (<see cref="AddMigrationDialog"/>), then added to the chosen
+    /// context.</summary>
     private async Task AddMigrationAsync()
     {
-        TextBox box = new() { Name = "MigrationName", PlaceholderText = "AddCustomerEmail" };
-        ConfirmDialog dialog = new("Add Migration", $"A name for the migration of {migrations!.Context ?? migrations.Project?.Name}, as a C# class is named.", "Add", detail: box);
-        dialog.Opened += (_, _) => box.Focus();
-        if (!await dialog.ShowDialog<bool>(this) || box.Text?.Trim() is not { Length: > 0 } name)
+        MigrationsController controller = migrations!;
+        if (controller.Project is not { } project)
         {
             return;
         }
-        if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"^[\p{L}_][\p{L}\p{Nd}_]*$"))
+        AddMigrationDialog dialog = new(project, controller.Context ?? project.Name, controller.OutputFolders, controller.LastFolder, controller.KeptFolder,
+            () => PickFolder("Output Folder", project.Folder));
+        if (await dialog.ShowDialog<MigrationAdd?>(this) is { } asked)
         {
-            status.Text = $"{name} is no C# name: a migration is a class of that name";
-            return;
+            await controller.AddAsync(A.AddMigration, asked.Name, asked.Folder);
         }
-        await migrations.AddAsync(A.AddMigration, name);
     }
 
     /// <summary>Script Migrations…: its range and idempotence asked, then scripted into an editor tab.</summary>
@@ -278,9 +277,10 @@ public partial class MainWindow
     }
 
     /// <summary>A Migrations action an agent runs (ide_action), with what it would ask the person as <paramref name="input"/>:
-    /// Refresh's context, Add's name, Update's or Update to's migration (0 for none), Script's FROM..TO, the environment's
-    /// name (none answering the one in force and those offered). Answers what it came to with the context's migrations and
-    /// what keeps dotnet ef from working, each with where its fixes are; refused, says why and where the fix is.</summary>
+    /// Refresh's context, Add's name (then its output folder), Update's or Update to's migration (0 for none), Script's
+    /// FROM..TO, the environment's name (none answering the one in force and those offered). Answers what it came to with
+    /// the context's migrations and what keeps dotnet ef from working, each with where its fixes are; refused, says why and
+    /// where the fix is.</summary>
     public async Task<string> MigrationsForAgentAsync(string action, string? input, CancellationToken cancel)
     {
         MigrationsController controller = migrations!;
@@ -301,9 +301,14 @@ public partial class MainWindow
                 done = await controller.ListAsync(action, cancel);
                 break;
             case A.AddMigration:
-                done = given is not null && System.Text.RegularExpressions.Regex.IsMatch(given, @"^[\p{L}_][\p{L}\p{Nd}_]*$")
-                    ? await controller.AddAsync(action, given, cancel)
-                    : throw new InvalidOperationException($"{action} takes the migration's name as input, a C# name");
+                // Its name, then the folder its files go in, else the one last given for the context, as the question fills in.
+                string[] named = given?.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+                (string? folder, string? unfit) = named.Length > 1 && controller.Project is { } project
+                    ? EfOutputFolders.Read(named[1], project) : (controller.KeptFolder, null);
+                done = named.Length == 0 || MigrationsController.WhyNotNamed(named[0]) is not null
+                    ? throw new InvalidOperationException($"{action} takes the migration's name as input, a C# name, then its output folder where it is not the one last given")
+                    : unfit is not null ? throw new InvalidOperationException($"{action} did not run: {unfit}")
+                    : await controller.AddAsync(action, named[0], folder, cancel);
                 break;
             case A.RemoveLastMigration:
                 done = await controller.RemoveLastAsync(action, cancel);
@@ -335,6 +340,8 @@ public partial class MainWindow
             default:
                 return actions.Run(action) is { } refused ? throw new InvalidOperationException($"{action} did not run: {refused}") : $"Ran {action}";
         }
+        // The folders holding the context's migrations as the command left them, which its build has read again.
+        await session.EfProjects.WholeAsync(() => session.Projects);
         string shown = MigrationsShown(controller);
         return done.Done ? $"{done.Said}\n{shown}" : throw new InvalidOperationException($"{done.Said}\n{shown}");
     }
@@ -350,6 +357,8 @@ public partial class MainWindow
                 + (controller.Environment is { } environment ? $" in {environment.Name}{(environment.Note is { } note ? $" ({note})" : string.Empty)}" : string.Empty)
                 + (controller.Contexts.Count > 1 ? $" (contexts: {string.Join(", ", controller.Contexts.Select(c => c.Name))})" : string.Empty)
                 + (controller.Listed ? $": {Core.Plural.Of(controller.Migrations.Count, "migration")}" : ": not listed yet")
+                + (controller.OutputFolders is { Count: > 0 } folders ? $" in {string.Join(", ", folders)}" : string.Empty)
+                + (controller.KeptFolder is { } kept ? $"; Add Migration's output folder {kept}" : string.Empty)
                 + (controller.Database is { } database ? $", against {database}" : string.Empty));
         }
         lines.AddRange(controller.Migrations.Select(m => $"- {m.Id}: {m.Applied switch { true => "applied", false => "pending", null => "not read" }}"));

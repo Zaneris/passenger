@@ -2888,7 +2888,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     [McpServerTool(Name = McpTools.IdeAction, Title = "Run an IDE action", Destructive = true), Description(
         "Runs an IDE action by its id (app.build, app.debug.stepOver...; ide_actions lists them) as its shortcut would, waits " +
-        "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name, updateTo's " +
+        "for the work it begins and says what it came to, or says why it cannot. input: app.migrations.add's name (then its output folder, else the context's last), updateTo's " +
         "target, environment's name; app.saveAsLaunchProfile's configuration (else the chosen one); app.targetFramework's framework, as " +
         "Project:net9.0 where several projects target several; app.chooseRunTarget's device, emulator or simulator by name " +
         "(Configuration:name for another configuration's), app.chooseBuildConfiguration's configuration (Release, or " +

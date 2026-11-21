@@ -466,18 +466,54 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 : $"{Context}: {Plural.Of(Migrations.Count, "migration")}, {pending} pending");
         }, build: build);
 
-    /// <summary>Adds a migration of the given name to the chosen context, then lists again.</summary>
-    public Task<EfDone> AddAsync(string action, string name, CancellationToken cancel = default) =>
+    /// <summary>Why a migration cannot take a name, as dotnet ef makes it a C# class of that name; null where it can.</summary>
+    public static string? WhyNotNamed(string name) =>
+        SyntaxFacts.IsValidIdentifier(name) && SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? null
+        : name.Length == 0 ? "A migration needs a name" : $"{name} is no C# name: a migration is a class of that name";
+
+    /// <summary>The folders, from the chosen project's, holding the chosen context's migrations as the project was last
+    /// read, the last one's first (<see cref="EfOutputFolders.Holding"/>).</summary>
+    public IReadOnlyList<string> OutputFolders => Project is { } project ? EfOutputFolders.Holding(bound?.EfProjects.Of(project), project, Context) : [];
+
+    /// <summary>The folder of the chosen context's last migration, beside which dotnet ef puts its next given none; null for a
+    /// context with none (<see cref="EfOutputFolders.LastIn"/>).</summary>
+    public string? LastFolder => Project is { } project ? EfOutputFolders.LastIn(bound?.EfProjects.Of(project), project, Context) : null;
+
+    /// <summary>The folder Add Migration was last given for the chosen context, kept with the folder; null for none.</summary>
+    public string? KeptFolder => Project is { } project && Context is { } context ? parts.Session().MigrationFolders.Of(project, context) : null;
+
+    /// <summary>Adds a migration of the given name to the chosen context, into <paramref name="folder"/> (from the project's,
+    /// as dotnet ef's <c>--output-dir</c> takes it; null for the one dotnet ef chooses), then lists again; once added, the
+    /// folder is kept as the context's last given.</summary>
+    public async Task<EfDone> AddAsync(string action, string name, string? folder = null, CancellationToken cancel = default)
+    {
+        if (WhyNotNamed(name) is { } unnamed)
+        {
+            return Said(new EfDone(false, unnamed));
+        }
+        string? asked = Project?.Path;
+        EfDone done = await AddingAsync(action, name, folder, cancel);
+        // Kept for a context dotnet ef took itself too, which the listing after it names.
+        if (done.Done && Project is { } project && PathNames.Same(project.Path, asked ?? string.Empty) && Context is { } context)
+        {
+            parts.Session().MigrationFolders.Choose(project, context, folder);
+        }
+        return done;
+    }
+
+    private Task<EfDone> AddingAsync(string action, string name, string? folder, CancellationToken cancel) =>
         CommandAsync(action, $"Adding migration {name}", asks: true, cancel, async (setting, work) =>
         {
             (string Others, string Built, IReadOnlyList<Host.Stamp> Reads)? before = await BeforeAsync(setting, work);
-            EfOutcome added = await RunAsync(setting, ["migrations", "add", name, "--json"], work);
+            EfOutcome added = await RunAsync(setting, ["migrations", "add", name, .. folder is null ? (string[])[] : ["--output-dir", folder], "--json"], work);
             if (!added.Succeeded)
             {
                 return Failed(setting, added);
             }
             IReadOnlyList<string> written = Written(added);
             parts.FollowWritten(written);
+            // The folders holding the context's migrations read again, with or without a build after.
+            ReadAgain();
             string? made = MigrationId(added);
             string id = made ?? Path.GetFileNameWithoutExtension(written.FirstOrDefault() ?? name);
             // Add's answer says the listing, with whether the database has the migration where the listing said it was reached.
@@ -495,7 +531,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 Migrations = [.. Migrations, new MigrationRow(id, name, false)];
             }
-            return Done($"Added migration {name} to {setting.Context ?? setting.Project.Name}");
+            string? landed = Answer(added)?.GetValueOrDefault("migrationFile") is { Length: > 0 } file && Path.GetDirectoryName(file) is { } into
+                ? PathNames.Relative(into, setting.Project.Folder) : null;
+            return Done($"Added migration {name} to {setting.Context ?? setting.Project.Name}{(landed is null ? string.Empty : $", in {setting.Project.Name}/{landed}")}");
         }, Relist.Built | Relist.Listed);
 
     /// <summary>Removes the chosen context's last migration (once the person agrees), then lists again: with EF Core 11's
@@ -518,12 +556,15 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 return Failed(setting, removed);
             }
+            ReadAgain();
             // What remove deleted says the listing: the last one gone; the model's check, of any left, waits for a build without it.
             if (Listed && setting.Context is { } context && context == Context && Migrations.Count > 0 && MigrationId(removed) == Migrations[^1].Id)
             {
                 Migrations = [.. Migrations.SkipLast(1)];
                 migrationsRead = null;
-                await TellAsync(setting, context, before, Written(removed), changed: null);
+                // The context's model snapshot, which remove writes back without naming, wherever it is kept.
+                IReadOnlyList<string> snapshots = [.. bound?.EfProjects.Of(setting.Project)?.MigrationsOf(context).Where(m => m.Id is null).Select(m => m.File) ?? []];
+                await TellAsync(setting, context, before, [.. Written(removed), .. snapshots], changed: null);
                 then = Migrations.Count > 0 ? Relist.Built | Relist.Checked : Relist.No;
             }
             return Done($"Removed the last migration of {setting.Context ?? setting.Project.Name}");
@@ -712,7 +753,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 await SettleAsync(setting, work);
                 string? read = await BackgroundWork.Run(() => ReadOf(setting));
-                await ReadAsync(setting with { Context = Context }, read, work, contexts: false, list: then.HasFlag(Relist.Listed));
+                // The contexts too where none was known, as a command run before any listing leaves it to dotnet ef's only one.
+                await ReadAsync(setting with { Context = Context }, read, work, contexts: Context is null, list: then.HasFlag(Relist.Listed));
             }
             return Said(done);
         }

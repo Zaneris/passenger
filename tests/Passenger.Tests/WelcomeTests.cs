@@ -769,7 +769,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
                 Asked.Add(("file", title, string.Join("; ", (types ?? []).Select(t => $"{t.Name}: {string.Join(" ", t.Patterns ?? [])}"))));
                 return Task.FromResult<IReadOnlyList<string>>(Next is { } next ? [next] : []);
             };
-            window.PickFolder = title =>
+            window.PickFolder = (title, _) =>
             {
                 Asked.Add(("folder", title, string.Empty));
                 return Task.FromResult(Next);

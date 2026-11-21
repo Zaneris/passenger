@@ -97,10 +97,11 @@
     <Compile Include="../../src/Passenger.App/Packages/PackageFolders.cs" Link="App/PackageFolders.cs" />
   </ItemGroup>
 
-  <!-- Which projects the Migrations window offers dotnet ef, from the projects and their C# files' text alone, and the names
-       of EF Core's packages it reads, compiled in since their project is the app's. -->
+  <!-- Which projects the Migrations window offers dotnet ef, from the projects and their C# files' text alone, the folders it
+       offers Add Migration, and the names of EF Core's packages it reads, compiled in since their project is the app's. -->
   <ItemGroup>
     <Compile Include="../../src/Passenger.App/Migrations/EfTargets.cs" Link="App/EfTargets.cs" />
+    <Compile Include="../../src/Passenger.App/Migrations/EfOutputFolders.cs" Link="App/EfOutputFolders.cs" />
     <Compile Include="../../src/Passenger.App/Migrations/EfRestore.cs" Link="App/EfRestore.cs" />
   </ItemGroup>
 

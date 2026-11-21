@@ -980,6 +980,7 @@ public partial class MainWindow : IdeWindow
         UnloadedProjects = [.. session.KeptUnloaded],
         TargetFrameworks = session.Frameworks.Kept,
         MigrationEnvironments = session.MigrationEnvironments.Kept,
+        MigrationFolders = session.MigrationFolders.Kept,
         RunTargets = session.Targets.Kept,
         Build = session.BuildChoices.Kept,
         Folds = session.Folds.Capture(Editors.Documents),

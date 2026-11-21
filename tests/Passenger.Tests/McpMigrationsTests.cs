@@ -45,6 +45,28 @@ public sealed class McpMigrationsTests : McpRig
         Assert.Contains("CREATE TABLE \"Products\"", File.ReadAllText(file), StringComparison.Ordinal);
     }
 
+    /// <summary>An agent's Add Migration takes the folder its files go in after the migration's name, as the window's question
+    /// does, from the project's: kept for the context, so one given no folder goes there too, the answer naming where each
+    /// went and the folders holding the context's migrations; a folder outside the project refused, saying why.</summary>
+    [Fact]
+    public async Task An_agents_Add_Migration_takes_its_output_folder_after_its_name_and_keeps_it_for_the_context()
+    {
+        string folder = await ShopApp.MakeAsync(design: true, tool: ShopApp.Version);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+
+        string added = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Initial Data/Migrations" }));
+        // Before any listing dotnet ef takes the project's one context, which the answer then names.
+        Assert.True(added.StartsWith("Added migration Initial to Shop, in Shop/Data/Migrations\nShopContext of Shop", StringComparison.Ordinal)
+            && added.Contains("1 migration in Data/Migrations; Add Migration's output folder Data/Migrations", StringComparison.Ordinal), $"Add Migration into Data/Migrations answered: {added}");
+        Assert.Single(Directory.GetFiles(Path.Combine(folder, "Data", "Migrations"), "*_Initial.cs"));
+        string again = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Second" }));
+        Assert.True(again.Contains("Added migration Second to ShopContext, in Shop/Data/Migrations\n", StringComparison.Ordinal),
+            $"Add Migration given no folder after one given Data/Migrations answered: {again}");
+        Assert.False(Directory.Exists(Path.Combine(folder, "Migrations")), "A migration given no folder went to dotnet ef's default, not the folder kept for its context");
+        CallToolResult outside = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.AddMigration, ["input"] = "Third ../Elsewhere" });
+        Assert.True(outside.IsError == true && Text(outside).Contains("../Elsewhere is outside Shop", StringComparison.Ordinal), $"Add Migration into ../Elsewhere answered: {Text(outside)}");
+    }
+
     /// <summary>An agent's choice of the environment dotnet ef runs in, by ide_action with its name as input: none answers
     /// the one in force and those offered, a name chooses it for every command after, and one that names no environment is
     /// refused saying why.</summary>

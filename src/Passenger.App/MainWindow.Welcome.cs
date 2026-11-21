@@ -25,14 +25,15 @@ public partial class MainWindow
     /// <summary>What Open Solution's panel offers, and all it offers: the files that open as the workspace.</summary>
     private static readonly FilePickerFileType SolutionsAndProjects = new("Solutions and Projects") { Patterns = [.. WorkspaceModel.OpenedExtensions.Select(e => "*" + e)] };
 
-    /// <summary>Asks the person for a folder, by a title, in the system's own panel, beside the folder opened last.</summary>
-    public Func<string, Task<string?>> PickFolder
+    /// <summary>Asks the person for a folder, by a title, in the system's own panel, starting in the folder given, else beside
+    /// the folder opened last.</summary>
+    public Func<string, string?, Task<string?>> PickFolder
     {
         get => pickFolder ?? PickFolderAsync;
         set => pickFolder = value;
     }
 
-    private Func<string, Task<string?>>? pickFolder;
+    private Func<string, string?, Task<string?>>? pickFolder;
 
     /// <summary>The Welcome screen, which the editor area shows until a folder opens: made as it is first asked for, with the
     /// recent ones, what it says and New Solution's state.</summary>
@@ -148,18 +149,18 @@ public partial class MainWindow
 
     private async Task OpenPickedFolderAsync()
     {
-        if (await PickFolder("Open Folder") is { } path)
+        if (await PickFolder("Open Folder", null) is { } path)
         {
             Open(path);
         }
     }
 
-    private async Task<string?> PickFolderAsync(string title)
+    private async Task<string?> PickFolderAsync(string title, string? start)
     {
         IReadOnlyList<IStorageFolder> picked = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
             Title = title,
-            SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(BesideLast()),
+            SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(start ?? BesideLast()),
         });
         return picked.Count == 1 ? picked[0].TryGetLocalPath() : null;
     }
