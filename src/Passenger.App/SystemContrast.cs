@@ -9,13 +9,17 @@ namespace Passenger.App;
 /// accessibilityDisplayShouldIncreaseContrast) and GNOME's High Contrast (org.gnome.desktop.a11y.interface's
 /// high-contrast); elsewhere none. Read as Passenger starts and again as a window comes in front (<see cref="LookAgain"/>),
 /// as <see cref="SystemMotion"/> is, and put in force through <see cref="Themes.UseContrast"/>. A Passenger nobody sees
-/// reads only what stands in: <c>PASSENGER_SYSTEM_CONTRAST</c> (<see cref="ContrastAsked.Parse"/>) or a test's.</summary>
+/// reads only what stands in, <c>PASSENGER_SYSTEM_CONTRAST</c> (<see cref="ContrastAsked.Parse"/>) or a test's, and the
+/// system's own where that variable says <see cref="FromSystem"/>.</summary>
 public static partial class SystemContrast
 {
-    /// <summary>Names what the system asks in its place: <c>none</c>, <c>high</c>, <c>high-dark</c> or <c>high-light</c>;
-    /// a malformed value is fatal as the IDE starts.</summary>
+    /// <summary>Names what the system asks in its place: <c>none</c>, <c>high</c>, <c>high-dark</c> or <c>high-light</c>,
+    /// or <see cref="FromSystem"/>; a malformed value is fatal as the IDE starts.</summary>
     [IdentifierHome]
     public const string Variable = "PASSENGER_SYSTEM_CONTRAST";
+
+    /// <summary>The variable's word for the system's own, read even where nobody sees the window (a screenshot's).</summary>
+    public const string FromSystem = "system";
 
     /// <summary>What is in force, none until the first read lands.</summary>
     public static ContrastAsked InForce { get; private set; } = ContrastAsked.None;
@@ -36,7 +40,7 @@ public static partial class SystemContrast
         {
             try
             {
-                return Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } value ? ContrastAsked.Parse(value) : null;
+                return Environment.GetEnvironmentVariable(Variable) is { Length: > 0 } value && value.Trim() != FromSystem ? ContrastAsked.Parse(value) : null;
             }
             catch (FormatException error)
             {
@@ -69,14 +73,14 @@ public static partial class SystemContrast
             PutInForce(given);
             return;
         }
-        if (PassengerApp.ShowsNoWindow)
+        if (PassengerApp.ShowsNoWindow && Environment.GetEnvironmentVariable(Variable)?.Trim() != FromSystem)
         {
             PutInForce(ContrastAsked.None);
             return;
         }
         if (!OperatingSystem.IsLinux())
         {
-            PutInForce(OperatingSystem.IsMacOS() ? ReadMac() : OperatingSystem.IsWindows() ? ReadWindows() : ContrastAsked.None);
+            PutInForce(ReadAtOnce());
             return;
         }
         if (reading is { IsCompleted: false })
@@ -100,6 +104,12 @@ public static partial class SystemContrast
             return true;
         });
     }
+
+    /// <summary>What the system asks now, read from the system itself whatever stands in for it.</summary>
+    public static Task<ContrastAsked> ReadSystemAsync() => OperatingSystem.IsLinux() ? ReadGnomeAsync() : Task.FromResult(ReadAtOnce());
+
+    private static ContrastAsked ReadAtOnce() =>
+        OperatingSystem.IsMacOS() ? ReadMac() : OperatingSystem.IsWindows() ? ReadWindows() : ContrastAsked.None;
 
     private static void PutInForce(ContrastAsked asked)
     {

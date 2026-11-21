@@ -110,6 +110,8 @@ public static class Themes
         {
             return;
         }
+        // Laid even where no theme was put in force yet (Passenger's own, a window keeping no settings).
+        applying ??= app;
         LayWanted();
         UseVariant(app, chosenVariant);
     }
