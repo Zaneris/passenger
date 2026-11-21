@@ -333,6 +333,51 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", failed.GetProperty("test").GetString());
     }
 
+    /// <summary>The Unit Tests actions an agent runs through ide_action answer what the run came to, as tests_run's tally says
+    /// it: Run All Tests with one test failing, Rerun Failed Tests of that one, and again once it is mended; Rerun Failed Tests
+    /// with none failed, and Run All Tests in a folder of no tests, fail saying why, as tests_run does where nothing runs.</summary>
+    [Fact]
+    public async Task An_agents_unit_test_actions_answer_what_the_run_came_to()
+    {
+        string tests = PathNames.Canonical(TestFolders.Create("mcp-test-actions-"));
+        DeleteAtEnd(tests);
+        const string Sums = "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Two_and_two_make_four() => Assert.Equal(4, 2 + 2);\n\n" +
+            "    [Fact]\n    public void Two_and_two_make_five() => Assert.Equal(5, 2 + 2);\n}\n";
+        await TestFolders.PrepareAsync(async () =>
+        {
+            File.WriteAllText(Path.Combine(tests, "Sums.Tests.csproj"),
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n</Project>\n");
+            File.WriteAllText(Path.Combine(tests, "SumTests.cs"), Sums);
+            await Restore.RunAsync(tests);
+        }, tests);
+        string none = PathNames.Canonical(TestFolders.Create("mcp-no-tests-"));
+        DeleteAtEnd(none);
+        File.WriteAllText(Path.Combine(none, "App.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(none, "Program.cs"), "System.Console.WriteLine(\"App\");\n");
+
+        await using (McpClient client = await Start(["--mcp", tests], languageServer: false))
+        {
+            string all = (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.RunAllTests })).GetString()!;
+            Assert.StartsWith("Tests passed: 1, failed: 1 of 2", all, StringComparison.Ordinal);
+            string failed = (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.RerunFailedTests })).GetString()!;
+            Assert.StartsWith("Tests passed: 0, failed: 1 of 1", failed, StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(tests, "SumTests.cs"), Sums.Replace("Assert.Equal(5, 2 + 2)", "Assert.Equal(4, 2 + 2)", StringComparison.Ordinal));
+            string mended = (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.RerunFailedTests })).GetString()!;
+            Assert.StartsWith("Tests passed: 1, failed: 0 of 1", mended, StringComparison.Ordinal);
+            CallToolResult nothing = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.RerunFailedTests });
+            Assert.True(nothing.IsError == true && Text(nothing).Contains("No test failed", StringComparison.Ordinal),
+                $"Rerun Failed Tests with none failed answered an agent: {Text(nothing)}");
+        }
+        await using (McpClient client = await Start(["--mcp", none], languageServer: false))
+        {
+            CallToolResult nowhere = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.RunAllTests });
+            Assert.True(nowhere.IsError == true && Text(nowhere).Contains("There are no test projects: none references a test SDK or adapter", StringComparison.Ordinal),
+                $"Run All Tests in a folder of no tests answered an agent: {Text(nowhere)}");
+        }
+    }
+
     /// <summary>A failing test an agent writes into a test file the IDE has read, run at once by its class's name, runs with
     /// the class's others and is told among the failures: what a run runs is chosen once its build has ended.</summary>
     [Fact]

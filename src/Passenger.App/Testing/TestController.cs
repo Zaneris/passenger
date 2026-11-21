@@ -363,11 +363,18 @@ public sealed class TestController : IAsyncDisposable
         using CancellationTokenSource stop = Begin();
         working = Work?.Begin(AppActions.RunTests, build ? "Building the test projects…" : "Finding the tests…");
         using CancellationTokenRegistration stopped = working?.Stopping.Register(stop.Cancel) ?? default;
+        // What the run came to, told as its work ends: the tally, or why it did not run.
+        (bool Ran, string Said)? came = null;
+        string? Came(string? problem)
+        {
+            came = (problem is null, problem ?? Summary);
+            return problem;
+        }
         try
         {
             if ((build || runner is null) && await DiscoverCore(workspace, build, stop.Token) is { } problem)
             {
-                return problem;
+                return Came(problem);
             }
             stop.Token.ThrowIfCancellationRequested();
             List<TestNode>? chosen = choice.Pick is { } pick ? pick(Tree.Methods) : choice.Rows;
@@ -376,7 +383,7 @@ public sealed class TestController : IAsyncDisposable
             {
                 string? missed = UnfoundIn(chosen);
                 string none = chosen is null ? "There are no tests to run" : "None of these tests was found in the test projects as built";
-                return choice.None?.Invoke(missed) ?? (missed is null ? none : $"{none}: {missed}");
+                return Came(choice.None?.Invoke(missed) ?? (missed is null ? none : $"{none}: {missed}"));
             }
             List<TestNode> methods = [.. tests.Select(Tree.Node).OfType<TestNode>().Select(n => n.Kind == TestNodeKind.Row ? n.Parent! : n).Distinct()];
             // A GoDotTest game none of whose scenes runs its tests is said before Godot starts, its start read as it stands.
@@ -388,7 +395,7 @@ public sealed class TestController : IAsyncDisposable
             {
                 Summary = prefix + never;
                 Message?.Invoke(this, Summary);
-                return never;
+                return Came(never);
             }
             HashSet<string> containerized = [.. projects().Where(p => p.Packages.Any(n => n.Name.StartsWith("Testcontainers", StringComparison.OrdinalIgnoreCase)))
                 .Select(p => p.Path).Where(p => tests.Any(t => t.Project == p))];
@@ -403,7 +410,7 @@ public sealed class TestController : IAsyncDisposable
                     string said = $"{prefix}The tests were not run: they use Testcontainers, and {engineProblem}";
                     Summary = said;
                     Message?.Invoke(this, said);
-                    return said;
+                    return Came(said);
                 }
             }
             // The C# games' tests and GUT's of each Godot project (its project.godot), which run on Godot.
@@ -497,15 +504,15 @@ public sealed class TestController : IAsyncDisposable
                 ended = summary;
                 Ran?.Invoke(this, summary);
             }
-            return null;
+            return Came(null);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
-            return Stopped();
+            return Came(Stopped());
         }
         catch (Exception error) when (error is IOException or InvalidOperationException)
         {
-            return $"The tests could not run: {error.Message}";
+            return Came($"The tests could not run: {error.Message}");
         }
         finally
         {
@@ -521,6 +528,10 @@ public sealed class TestController : IAsyncDisposable
                 LetGoOfStuck();
                 stopping = null;
                 IsBusy = false;
+                if (came is { } told)
+                {
+                    working?.Tell(told.Ran, told.Said);
+                }
                 working?.Dispose();
                 working = null;
                 ReleaseWork();
@@ -584,11 +595,20 @@ public sealed class TestController : IAsyncDisposable
     public Task<string?> RerunAsync(string workspace) =>
         lastRun.Count == 0 ? RunAsync(workspace) : RunAsync(workspace, [.. lastRun]);
 
+    /// <summary>The tests that failed in their last run again, after a build; none failed is said to the action that asked.</summary>
     public Task<string?> RerunFailedAsync(string workspace)
     {
         List<TestNode> failed = [.. Tree.Methods.Where(m => m.State == TestState.Failed)];
-        return failed.Count == 0 ? Task.FromResult<string?>("No test failed") : RunAsync(workspace, failed);
+        if (failed.Count == 0)
+        {
+            ActionWork.Tell(false, NoneFailed);
+            return Task.FromResult<string?>(NoneFailed);
+        }
+        return RunAsync(workspace, failed);
     }
+
+    /// <summary>What Rerun Failed Tests says with no test failed.</summary>
+    private const string NoneFailed = "No test failed";
 
     /// <summary>Stops what is under way, whichever step it is at: the build, finding where the tests build, finding
     /// them, or running them (what has run keeps its result).</summary>
