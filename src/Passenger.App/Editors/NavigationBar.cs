@@ -129,7 +129,7 @@ public sealed class NavigationBar
     /// outline asks for it.</summary>
     public void FollowSource()
     {
-        bool has = document is { } shown && area.ShowsNavigationBar && area.NavigationOutlineOf(shown) is not null;
+        bool has = document is { } shown && area.NamesWhereInBar(shown);
         if (!has && outlined is not null)
         {
             asking?.Cancel();

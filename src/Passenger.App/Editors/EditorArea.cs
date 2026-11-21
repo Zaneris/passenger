@@ -212,8 +212,17 @@ public sealed partial class EditorArea : UserControl
             }
             showsNavigationBar = value;
             OutlinesMayHaveCome();
+            NavigationBarChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>The navigation bars were turned on or off (<see cref="ShowsNavigationBar"/>), Settings' preview too.</summary>
+    public event EventHandler? NavigationBarChanged;
+
+    /// <summary>Whether the navigation bar over an editor of a file names where its caret is: while the bars are on and the
+    /// file has an outline. The one rule the bar shows by, and by which the status bar's path leaves the caret's type and
+    /// member to it, so one place says them.</summary>
+    public bool NamesWhereInBar(OpenDocument document) => showsNavigationBar && NavigationOutlineOf(document) is not null;
 
     /// <summary>The files' outlines may have come, or gone, since the navigation bars last asked (a language server
     /// started, or has a file now): each bar shows or hides again, and one without its file's outline asks for it.</summary>

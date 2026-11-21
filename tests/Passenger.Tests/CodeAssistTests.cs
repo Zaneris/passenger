@@ -40,7 +40,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     [AvaloniaFact]
     public void The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it()
     {
-        MainWindow window = project.Open("Program.cs");
+        MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "Helper.Tw");
         Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
@@ -91,7 +91,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     [AvaloniaFact]
     public void The_path_in_the_status_bar_keeps_its_buttons_as_the_caret_moves()
     {
-        MainWindow window = project.Open("Program.cs");
+        MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "Helper.Tw");
         Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
@@ -110,9 +110,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(Crumbs().SequenceEqual(made), "A caret move back into Main() made the path's buttons again, each with a handler of its own");
         window.Close();
 
-        // The path's buttons in the status bar, those hidden past the path shown too; never the editor's navigation bar's.
-        Button[] Crumbs() => [.. window.GetVisualDescendants().OfType<Button>()
-            .Where(b => b.Classes.Contains(StyleClasses.Crumb) && b.FindAncestorOfType<Passenger.App.Editors.EditorGroup>() is null)];
+        // The path's buttons in the status bar, those hidden past the path shown too.
+        Button[] Crumbs() => [.. PathHost(window).GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Crumb))];
     }
 
     /// <summary>The status bar's path draws the class and the method the caret is in whole, as it draws the file, though they
@@ -122,7 +121,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     [AvaloniaFact]
     public void The_status_bars_path_draws_the_class_and_method_whole_and_shortens_long_ones_with_an_ellipsis_in_a_narrow_window()
     {
-        MainWindow window = project.Open("Program.cs");
+        MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "Helper.Tw");
         Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
@@ -137,7 +136,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         project.Write("Lengths.cs", "class AShapeWhoseNameRunsOnAndOnPastTheBar\n{\n    static void MeasuresEachOfItsSidesInTurnAndAddsThemUp()\n    {\n"
             + "        int sides = 0;\n    }\n}\n");
-        MainWindow narrow = project.Open("Lengths.cs");
+        MainWindow narrow = WithoutNavigationBar(project.Open("Lengths.cs"));
         narrow.Width = MainWindow.SmallestWidth;
         Ui.PlaceAfter(narrow.EditorArea.CodeEditor, "int sides");
         Ui.WaitFor(() => narrow.Breadcrumbs.Count == 3, "the member the caret is in");
@@ -151,6 +150,52 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         narrow.Close();
     }
 
+    /// <summary>Where the status bar's path is drawn.</summary>
+    private static Control PathHost(MainWindow window) => window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
+
+    /// <summary>A window with the navigation bar turned off, so the status bar's path names the type and member the caret is
+    /// in, which these tests read there.</summary>
+    private static MainWindow WithoutNavigationBar(MainWindow window)
+    {
+        window.ApplySettings(window.Settings with { ShowNavigationBar = false });
+        Ui.Settle();
+        return window;
+    }
+
+    /// <summary>One place says where the caret is: while the navigation bar over the editor names the type and member, the
+    /// status bar's path names only the file; with the bar turned off, in Settings' preview too, the path names them again,
+    /// and turned back on, it leaves them to the bar once more.</summary>
+    [AvaloniaFact]
+    public void The_status_bars_path_leaves_the_type_and_member_to_the_navigation_bar_while_it_shows_and_names_them_with_it_off()
+    {
+        MainWindow window = project.Open("Program.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Passenger.App.Editors.NavigationBar bar = window.EditorArea.ActiveGroup.Navigation;
+        Ui.PlaceAfter(editor, "Helper.Tw");
+        Ui.WaitFor(() => window.CSharpService?.For(window.EditorArea.Active!)?.Lsp is not null, "the language server to have the file");
+        Ui.WaitFor(() => bar.Shown.Count == 2, () => $"the bar naming Main(), not {string.Join(" › ", bar.Shown)}");
+        Ui.Settle();
+        Assert.Equal(["Program", "Main()"], bar.Shown);
+        Assert.True(window.Breadcrumbs.SequenceEqual(["Program.cs"]),
+            $"With the navigation bar naming Program › Main(), the status bar's path named them too: {string.Join(" › ", window.Breadcrumbs)}");
+
+        SettingsDialog dialog = window.ShowSettings();
+        Ui.Settle();
+        dialog.Change(s => s with { ShowNavigationBar = false });
+        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, () => $"the path naming the member as Settings shows the bar off, not {string.Join(" › ", window.Breadcrumbs)}");
+        Assert.Equal(["Program.cs", "Program", "Main()"], window.Breadcrumbs);
+        Assert.False(bar.Bar.IsVisible, "Settings showing the navigation bar off left it over the editor");
+        dialog.Close();
+        Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.Count == 2, "the bar back as Settings closed without its change");
+        Assert.True(window.Breadcrumbs.SequenceEqual(["Program.cs"]),
+            $"With the navigation bar back, the status bar's path still named the member: {string.Join(" › ", window.Breadcrumbs)}");
+
+        window.ApplySettings(window.Settings with { ShowNavigationBar = false });
+        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, () => $"the path naming the member with the bar off, not {string.Join(" › ", window.Breadcrumbs)}");
+        Assert.False(bar.Bar.IsVisible, "With the setting off, the navigation bar still shows over the editor");
+        window.Close();
+    }
+
     /// <summary>What marks a part of the path its edge cuts, as <see cref="DrawnPath"/> reads it.</summary>
     private const string CutMark = " (cut by the path's edge)";
 
@@ -158,7 +203,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// marked so, those it lays outside its room left out.</summary>
     private static string[] DrawnPath(MainWindow window)
     {
-        Control host = window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
+        Control host = PathHost(window);
         return [.. host.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is not null)
             .Select(t => (Text: Ui.Drawn(t), At: t.TranslatePoint(default, host) ?? default, t.Bounds.Width))
             .Where(t => t.At.X + t.Width > 0.5 && t.At.X < host.Bounds.Width - 0.5)
@@ -176,6 +221,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         first.Close();
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StateFolder = TestFolders.Create("assist-state-") };
         window.Show();
+        WithoutNavigationBar(window);
         window.OpenFile(project.PathOf("Program.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
         Ui.PlaceAfter(editor, "Helper.Tw");

@@ -9,9 +9,10 @@ using Passenger.Text;
 
 namespace Passenger.App;
 
-/// <summary>The status bar's path: the active file's folders and name, then the type and member the caret is in, from
-/// the language server's outline (asked again as editing pauses); a click on a member goes to it, on the file or a
-/// folder shows it in the Explorer.</summary>
+/// <summary>The status bar's path: the active file's folders and name, then, where the navigation bar over the editor
+/// does not name them (<see cref="Passenger.App.Editors.EditorArea.NamesWhereInBar"/>), the type and member the caret
+/// is in, from the language server's outline (asked again as editing pauses, and as the bar is turned off); a click on a
+/// member goes to it, on the file or a folder shows it in the Explorer.</summary>
 public partial class MainWindow
 {
     private readonly PathCrumbs breadcrumbs = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 18, 0) };
@@ -47,6 +48,13 @@ public partial class MainWindow
             OutlineLater();
         };
         Editors.CaretMoved += (_, _) => ShowBreadcrumbs();
+        Editors.NavigationBarChanged += (_, _) =>
+        {
+            outline = [];
+            outlined = null;
+            ShowBreadcrumbs();
+            OutlineWhenUnseen();
+        };
         Editors.Opened += (_, document) => document.Text.Changed += (_, _) =>
         {
             if (Editors.Active == document)
@@ -62,7 +70,7 @@ public partial class MainWindow
     private void OutlineLater()
     {
         if (Editors.Active is { } document && (session.CSharp?.For(document)?.Lsp is not null
-            || StartsLanguageServer && document.Language.Service == Languages.LanguageService.CSharp))
+            || StartsLanguageServer && document.Language.Service == Languages.LanguageService.CSharp) && !Editors.NamesWhereInBar(document))
         {
             outlineAgain?.Restart();
         }
@@ -86,10 +94,21 @@ public partial class MainWindow
         {
             return;
         }
+        if (Editors.NamesWhereInBar(document))
+        {
+            // The bar names them now: the server came to have the file it outlines.
+            if (outlined is not null)
+            {
+                outline = [];
+                outlined = null;
+                ShowBreadcrumbs();
+            }
+            return;
+        }
         try
         {
             IReadOnlyList<DocumentSymbol> found = await lsp.OutlineAsync();
-            if (asked == outlining && Editors.Active == document)
+            if (asked == outlining && Editors.Active == document && !Editors.NamesWhereInBar(document))
             {
                 outline = found;
                 outlined = document.Path;
@@ -110,7 +129,7 @@ public partial class MainWindow
         if (Editors.Active is { Tool: null } document)
         {
             wanted.AddRange(FileCrumbs(document.Path));
-            if (outlined == document.Path)
+            if (outlined == document.Path && !Editors.NamesWhereInBar(document))
             {
                 ServerLines lines = ServerLines.Of(document.Text.Snapshot);
                 int line = lines.PositionOf(Editors.CodeEditor.Selections.Primary.Caret).Line;
