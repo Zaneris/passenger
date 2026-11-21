@@ -229,6 +229,29 @@ public class ThemeFilesTests
         Assert.False(theme.Light.ContainsKey("AccentPressed"), "A press past the accent's hover was made up for a variant giving neither");
     }
 
+    /// <summary>A file written before the Debug button had colours of its own draws it in its own icon colours, which it
+    /// holds legible where its icons stand; one it gives is kept.</summary>
+    [Fact]
+    public void A_file_leaving_out_the_debug_buttons_colours_draws_it_in_its_own_icon_colours()
+    {
+        Dictionary<string, ThemeTokenKind> tokens = new(Tokens, StringComparer.Ordinal);
+        foreach (string token in (string[])["Icon", "TitleBar.Icon", "Debug", "TitleBar.Debug"])
+        {
+            tokens[token] = ThemeTokenKind.Colour;
+        }
+        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""
+            {"format": 1, "name": "Mine",
+             "dark": {"Icon": "#B9C3D7", "TitleBar.Icon": "#D6E2FF"},
+             "light": {"Icon": "#4D596E", "TitleBar.Icon": "#FFFFFF", "Debug": "#6D28D9"}}
+            """), tokens);
+        Assert.True(read.Read is not null, read.Refused);
+        ThemeFile theme = read.Read;
+        Assert.Equal(new ColourValue(0xFFB9C3D7, 1), theme.Dark["Debug"]);
+        Assert.Equal(new ColourValue(0xFFD6E2FF, 1), theme.Dark["TitleBar.Debug"]);
+        Assert.Equal(new ColourValue(0xFF6D28D9, 1), theme.Light["Debug"]);
+        Assert.Equal(new ColourValue(0xFFFFFFFF, 1), theme.Light["TitleBar.Debug"]);
+    }
+
     [Fact]
     public void A_code_colour_scheme_gives_the_codes_colours_for_either_variant()
     {

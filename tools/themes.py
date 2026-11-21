@@ -520,6 +520,7 @@ def variant(theme, p, dark):
     t["Passenger.TitleBar.Run"] = legible(hue("green"), bars[:2], 3.1, dark)
     t["Passenger.TitleBar.Stop"] = legible(hue("red"), bars[:2], 3.1, dark)
     t["Passenger.TitleBar.HotReload"] = legible(hue("orange"), bars[:2], 3.1, dark)
+    t["Passenger.TitleBar.Debug"] = legible(hue("purple"), bars[:2], 3.1, dark)
     t["Passenger.TitleBar.Focus"] = legible(glance, bars, 3.1, dark)
     t["Passenger.TitleBar.Badge"] = accent
     t["Passenger.TitleBar.BadgeText"] = accent_text
@@ -557,6 +558,7 @@ def variant(theme, p, dark):
 
     t["Passenger.Run"] = legible(hue("green"), [panel, frame], 3.1, dark)
     t["Passenger.HotReload"] = legible(hue("orange"), [panel, frame], 3.1, dark)
+    t["Passenger.Debug"] = legible(hue("purple"), [panel, frame], 3.1, dark)
     t["Passenger.Test.Passed"] = t["Passenger.Run"]
     t["Passenger.Test.Failed"] = legible(hue("red"), [panel], 3.1, dark)
     t["Passenger.Test.Skipped"] = legible(mix(muted, panel, 0.15), [panel], 3.1, dark)

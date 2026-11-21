@@ -113,7 +113,7 @@
             <SolidColorBrush x:Key="Passenger.Menu.SelectedKeys" Color="#FFFFFF" read:Text="Menu.Selected" />
 
             <!-- The title bar, the toolbar on it: the icon's ground, blue into teal, with its own words, icons, hover,
-                 press, rule, run, stop and Hot Reload, focus ring, and the project's initials on the icon's amber dot. -->
+                 press, rule, run, debug, stop and Hot Reload, focus ring, and the project's initials on the icon's amber dot. -->
             <LinearGradientBrush x:Key="Passenger.TitleBar" StartPoint="0%,0%" EndPoint="100%,0%">
                 <GradientStop Offset="0" Color="#1B3270" />
                 <GradientStop Offset="1" Color="#0E4552" />
@@ -126,6 +126,7 @@
             <SolidColorBrush x:Key="Passenger.TitleBar.Run" Color="#5EEAB0" read:Mark="TitleBar" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Stop" Color="#FF8A96" read:Mark="TitleBar" />
             <SolidColorBrush x:Key="Passenger.TitleBar.HotReload" Color="#FFB27A" read:Mark="TitleBar" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Debug" Color="#C4A7FF" read:Mark="TitleBar" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Focus" Color="#FFB547" read:Mark="TitleBar TitleBar.Hover/TitleBar TitleBar.Pressed/TitleBar" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Badge" Color="#FFB547" />
             <SolidColorBrush x:Key="Passenger.TitleBar.BadgeText" Color="#1A1305" read:Text="TitleBar.Badge" />
@@ -155,9 +156,10 @@
                 <GradientStop Offset="1" Color="#0B7D72" />
             </LinearGradientBrush>
 
-            <!-- Running and testing: run and Hot Reload's icons; a test's mark by its outcome. -->
+            <!-- Running and testing: run, debug and Hot Reload's icons; a test's mark by its outcome. -->
             <SolidColorBrush x:Key="Passenger.Run" Color="#34D399" read:Mark="Panel Frame" />
             <SolidColorBrush x:Key="Passenger.HotReload" Color="#FF9D5C" read:Mark="Panel Frame" />
+            <SolidColorBrush x:Key="Passenger.Debug" Color="#B69CFF" read:Mark="Panel Frame" />
             <SolidColorBrush x:Key="Passenger.Test.Passed" Color="#34D399" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.Test.Failed" Color="#FF6B7A" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#8C97AC" read:Mark="Panel" />
@@ -402,6 +404,7 @@
             <SolidColorBrush x:Key="Passenger.TitleBar.Run" Color="#8BF5C4" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Stop" Color="#FFC2C8" />
             <SolidColorBrush x:Key="Passenger.TitleBar.HotReload" Color="#FFD2A8" />
+            <SolidColorBrush x:Key="Passenger.TitleBar.Debug" Color="#E7C4F8" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Focus" Color="#FFFFFF" />
             <SolidColorBrush x:Key="Passenger.TitleBar.Badge" Color="#FFB547" />
             <SolidColorBrush x:Key="Passenger.TitleBar.BadgeText" Color="#1A1305" />
@@ -429,6 +432,7 @@
 
             <SolidColorBrush x:Key="Passenger.Run" Color="#0E8A5A" />
             <SolidColorBrush x:Key="Passenger.HotReload" Color="#C2581A" />
+            <SolidColorBrush x:Key="Passenger.Debug" Color="#6D28D9" />
             <SolidColorBrush x:Key="Passenger.Test.Passed" Color="#0E8A5A" />
             <SolidColorBrush x:Key="Passenger.Test.Failed" Color="#D12F45" />
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#7A8499" />

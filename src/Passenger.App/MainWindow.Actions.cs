@@ -144,7 +144,7 @@ public partial class MainWindow
         ToolButtons.Give(MenuButton, IconKeys.Menu, "Main menu", keys: true);
         ToolButtons.Give(BuildButton, IconKeys.Build, "Build solution", keys: true);
         ToolButtons.Give(RunButton, IconKeys.Run, "Run", keys: true, mark: StyleClasses.ToolbarRun);
-        ToolButtons.Give(DebugButton, IconKeys.Debug, "Debug", keys: true);
+        ToolButtons.Give(DebugButton, IconKeys.Debug, "Debug", keys: true, mark: StyleClasses.ToolbarDebug);
         ToolButtons.Give(ProfileButton, IconKeys.Profile, "Profile", keys: true);
         ToolButtons.Give(HotReloadButton, IconKeys.HotReload, "Apply Hot Reload Changes", keys: true, mark: StyleClasses.ToolbarHotReload);
         ToolButtons.Give(StopButton, IconKeys.Stop, "Stop", keys: true, mark: StyleClasses.ToolbarStop);

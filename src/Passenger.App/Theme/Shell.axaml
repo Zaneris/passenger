@@ -592,9 +592,12 @@
     <Style Selector=":is(Control).lead">
         <Setter Property="Margin" Value="0,0,6,0" />
     </Style>
-    <!-- The toolbar's run, Hot Reload and stop in their own colours, after every icon's. -->
+    <!-- The toolbar's run, debug, Hot Reload and stop in their own colours, after every icon's. -->
     <Style Selector="PathIcon.toolbarRun">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Run}" />
+    </Style>
+    <Style Selector="PathIcon.toolbarDebug">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Debug}" />
     </Style>
     <Style Selector="PathIcon.toolbarHotReload">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.HotReload}" />
@@ -766,6 +769,9 @@
     </Style>
     <Style Selector="Border.titleBar PathIcon.toolbarRun">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.Run}" />
+    </Style>
+    <Style Selector="Border.titleBar PathIcon.toolbarDebug">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.Debug}" />
     </Style>
     <Style Selector="Border.titleBar PathIcon.toolbarStop">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.TitleBar.Stop}" />

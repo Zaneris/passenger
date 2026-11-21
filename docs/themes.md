@@ -70,7 +70,8 @@ theme, whose own they are.
 A file that leaves out `ButtonHover`, `ButtonPressed` or `AccentPressed`, a button's grounds under the pointer and
 pressed, has them worked out in each variant from its own colours, as Passenger's themes work them out: a plain button's
 are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
-as that is from its `Accent`.
+as that is from its `Accent`. One that leaves out `Debug` or `TitleBar.Debug`, the Debug button's own colours, draws it in
+its own `Icon` and `TitleBar.Icon`.
 
 ### Its background picture
 

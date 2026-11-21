@@ -81,6 +81,40 @@ public sealed class ThemeLooksTests : IDisposable
         }
     }
 
+    /// <summary>The toolbar's Debug stands apart from Run and Profile beside it: drawn in a colour of its own, the theme's
+    /// Debug token (on the title bar its TitleBar.Debug), in Dark and in Light, where it was drawn as Profile is.</summary>
+    [AvaloniaFact]
+    public void The_toolbars_debug_is_drawn_in_its_own_colour_apart_from_run_and_profile_in_dark_and_light()
+    {
+        File.WriteAllText(Path.Combine(folder, "Hello.csproj"), TestProjects.Console());
+        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"Hello\");\n");
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(folder);
+        Button debug = window.FindControl<Button>("DebugButton")!;
+        Ui.WaitFor(() => debug.IsEffectivelyEnabled, () => $"Debug to be enabled for Hello (its tip says \"{ToolTip.GetTip(debug)}\")");
+        try
+        {
+            foreach (ThemeChoice variant in (ThemeChoice[])[ThemeChoice.Dark, ThemeChoice.Light])
+            {
+                window.ApplySettings(window.Settings with { Theme = variant });
+                Ui.Settle();
+                bool onTitleBar = debug.GetVisualAncestors().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.TitleBar));
+                Color own = window.TryFindResource(onTitleBar ? TokenKeys.TitleBar_Debug : TokenKeys.Debug, window.ActualThemeVariant, out object? token) && token is ISolidColorBrush brush
+                    ? brush.Color : throw new Xunit.Sdk.XunitException($"{variant} gives the Debug button no colour");
+                (Color drawn, Color run, Color profile) = (Ink(debug), Ink(window.FindControl<Button>("RunButton")!), Ink(window.FindControl<Button>("ProfileButton")!));
+                Assert.True(drawn == own && drawn != run && drawn != profile,
+                    $"In {variant}, Debug is drawn in {drawn} where its own colour is {own}, Run's {run} and Profile's {profile}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static Color Ink(Button button) => button.GetVisualDescendants().OfType<PathIcon>().First().Foreground is ISolidColorBrush ink ? ink.Color : default;
+    }
+
     [AvaloniaFact]
     public void A_themes_margins_move_the_editors_text_and_size_the_tool_windows_header_and_a_dialogs_footer()
     {

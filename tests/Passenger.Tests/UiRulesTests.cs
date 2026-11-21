@@ -2496,7 +2496,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
         // The title bar's words and icons in its own colours (white on Passenger's blue), whatever the window's are.
         Border bar = Named<Border>(window, "Toolbar");
-        Color[] own = [.. ((string[])["Text", "Icon", "Run", "Stop", "HotReload", "BadgeText"]).Select(k => Brush(window, $"Passenger.TitleBar.{k}"))];
+        Color[] own = [.. ((string[])["Text", "Icon", "Run", "Debug", "Stop", "HotReload", "BadgeText"]).Select(k => Brush(window, $"Passenger.TitleBar.{k}"))];
         foreach (TextBlock words in bar.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && !string.IsNullOrEmpty(t.Text)))
         {
             Assert.True(words.Foreground is ISolidColorBrush ink && own.Contains(ink.Color),

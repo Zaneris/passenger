@@ -206,7 +206,7 @@ public static partial class ThemeFiles
         Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, plain, problems);
         if (!code)
         {
-            WorkOutButtonGrounds(sections, tokens);
+            WorkOutLaterTokens(sections, tokens);
         }
         (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
@@ -275,11 +275,11 @@ public static partial class ThemeFiles
         return sections;
     }
 
-    /// <summary>The buttons' grounds under the pointer and pressed that a file written before they were tokens leaves out,
-    /// worked out in each variant from its own colours there as Passenger's themes work them out: a plain button's, its
-    /// hover and pressed washes laid over its ground, and the default button's pressed, as far past its hover as that is
-    /// from its accent; so the file's buttons answer the pointer in its own colours.</summary>
-    private static void WorkOutButtonGrounds(Dictionary<string, TokenValue>[] sections, IReadOnlyDictionary<string, ThemeTokenKind> tokens)
+    /// <summary>The tokens a file written before them leaves out, worked out in each variant from its own colours there: the
+    /// buttons' grounds under the pointer and pressed as Passenger's themes work them out (a plain button's hover and
+    /// pressed washes laid over its ground, the default button's pressed as far past its hover as that is from its
+    /// accent), and the Debug button's colours, its icons'; so the file draws them in its own colours.</summary>
+    private static void WorkOutLaterTokens(Dictionary<string, TokenValue>[] sections, IReadOnlyDictionary<string, ThemeTokenKind> tokens)
     {
         foreach (Dictionary<string, TokenValue> section in sections[1..])
         {
@@ -296,6 +296,9 @@ public static partial class ThemeFiles
             Work("ButtonHover", button is { } under && Given("Hover") is { } hover ? ThemeColours.Over(hover, ThemeColours.Opaque(under)) : null);
             Work("ButtonPressed", button is { } ground && Given("Selected") is { } selected ? ThemeColours.Over(selected, ThemeColours.Opaque(ground)) : null);
             Work("AccentPressed", Given("Accent") is { } accent && Given("AccentHover") is { } accentHover ? ThemeColours.Past(accent, accentHover) : null);
+            // The Debug button in the file's own icon colours, legible where its icons are.
+            Work("Debug", Given("Icon"));
+            Work("TitleBar.Debug", Given("TitleBar.Icon"));
         }
     }
 

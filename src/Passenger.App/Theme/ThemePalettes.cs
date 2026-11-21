@@ -147,6 +147,7 @@ public static class ThemePalettes
         t["TitleBar.Run"] = Legible(p.Green, [bar], Mark, barDark);
         t["TitleBar.Stop"] = Legible(p.Red, [bar], Mark, barDark);
         t["TitleBar.HotReload"] = Legible(p.Orange, [bar], Mark, barDark);
+        t["TitleBar.Debug"] = Legible(p.Purple, [bar], Mark, barDark);
         t["TitleBar.Focus"] = Legible(glance, bars, Mark, barDark);
         t["TitleBar.Badge"] = accent;
         t["TitleBar.BadgeText"] = accentText;
@@ -174,6 +175,7 @@ public static class ThemePalettes
 
         t["Run"] = L("Run", p.Green, [panel, frame], Mark, dark);
         t["HotReload"] = Legible(p.Orange, [panel, frame], Mark, dark);
+        t["Debug"] = Legible(p.Purple, [panel, frame], Mark, dark);
         t["Test.Passed"] = L("Test.Passed", t["Run"], [panel], Mark, dark);
         t["Test.Failed"] = L("Test.Failed", p.Red, [panel], Mark, dark);
         t["Test.Skipped"] = L("Test.Skipped", Mix(muted, panel, 0.15), [panel], Mark, dark);
