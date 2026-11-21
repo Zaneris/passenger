@@ -27,7 +27,7 @@ public static class Declared
         });
 
     public static readonly ToggleSetting FollowSystemContrast = new(s => s.FollowSystemContrast, (s, v) => s with { FollowSystemContrast = v },
-        new(D.Appearance, "Use High Contrast while the system asks for it", "high contrast accessibility increase contrast contrast themes low vision aaa colour color blind windows macos gnome",
+        new(D.AccessibilityPage, "Use High Contrast while the system asks for it", "high contrast accessibility increase contrast contrast themes low vision aaa colour color blind windows macos gnome",
             $"While the system asks for high contrast (a Windows contrast theme, macOS's Increase contrast, GNOME's High Contrast), {ThemeSource.HighContrast} "
             + "shows in the chosen theme's and colour scheme's place, dark or light as the system is, and they come back once it no longer asks."));
 

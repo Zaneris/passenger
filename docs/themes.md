@@ -393,7 +393,7 @@ Passenger carries its own theme, `Tokens.axaml`, and beside it two in its built-
 and a smaller code size, to show what a theme can set; and High Contrast, every word at WCAG AAA's 7:1 on what it is read
 on, marks and edges at 4.5:1 and stronger rules, comments in italics, which Passenger shows in the chosen theme's place,
 dark or light as the system is, while the system asks for high contrast (a Windows contrast theme, macOS's Increase
-contrast, GNOME's High Contrast) and Settings › Appearance's Use High Contrast while the system asks for it is on. Harbour, the ten generated themes and the Reef code colour scheme live in
+contrast, GNOME's High Contrast) and Settings | Accessibility | Use High Contrast while the system asks for it is on. Harbour, the ten generated themes and the Reef code colour scheme live in
 Passenger's themes repository, whose copy the tests carry in `tests/Passenger.Tests/Themes`. Harbour.json and Reef.json
 are written by hand; Cubicle, High Contrast and the ten are written by `tools/themes.py` from its palettes (`just themes
 FOLDER`, the ten into a checkout of the repository or the tests' copy, the two into the built-in source), so change a palette there rather

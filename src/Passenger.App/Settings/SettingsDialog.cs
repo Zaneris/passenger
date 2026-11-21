@@ -289,6 +289,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ClosedToolWindows);
         Add(Declared.FindResults);
 
+        Add(Declared.FollowSystemContrast);
         Add(Declared.SoundCues);
         Add(Declared.SoundOnErrorLine);
         Add(Declared.SoundOnWarningLine);
