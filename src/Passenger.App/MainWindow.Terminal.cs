@@ -40,6 +40,7 @@ public partial class MainWindow
     {
         ToolWindows.TerminalPanel panel = terminal = new ToolWindows.TerminalPanel(() => FolderHeld ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         panel.ActionRequested += (_, action) => Request(action);
+        panel.CommandFailed += (_, _) => Cue(SoundCue.TerminalCommandFailed);
         panel.Emptied += (_, _) =>
         {
             Dock.Hide(ToolWindowIds.Terminal);

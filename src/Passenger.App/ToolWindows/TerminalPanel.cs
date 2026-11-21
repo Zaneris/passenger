@@ -94,6 +94,9 @@ public sealed class TerminalPanel : DockPanel
     /// <summary>One of the window's actions asked for by its button.</summary>
     public event EventHandler<string>? ActionRequested;
 
+    /// <summary>A command the shell of a person's tab ran failed, with its exit status (<see cref="TerminalSession.CommandEnded"/>).</summary>
+    public event EventHandler<int>? CommandFailed;
+
     /// <summary>The window header's own tools: New Session.</summary>
     public Control HeaderTools { get; }
 
@@ -185,6 +188,13 @@ public sealed class TerminalPanel : DockPanel
         tabs.Add(tab);
         Show(tab, focus);
         session.Exited += (_, _) => Close(tab);
+        session.CommandEnded += (_, status) =>
+        {
+            if (status != 0)
+            {
+                CommandFailed?.Invoke(this, status);
+            }
+        };
         try
         {
             await StartShellAsync(session, at ?? folder(), Shell);
@@ -207,11 +217,12 @@ public sealed class TerminalPanel : DockPanel
         {
             throw new InvalidOperationException($"the Shell path in {SettingsDialog.PlaceOfPage(SettingsDialog.TerminalPage)} names no program to start");
         }
-        FirstOnPath? first = await BackgroundWork.Run(() => Dotnet.Apart(at) is { } root
-            ? new FirstOnPath(Dotnet.PathFolder(root, State.StateStore.DefaultRoot), RuntimeVariables.Root, root,
-                FirstOnPath.ZshFolder(Path.Combine(State.StateStore.DefaultRoot, "cache", "terminal")))
-            : null);
-        await session.StartAsync(at, shell?.App, shell?.Arguments, first: first);
+        (FirstOnPath? first, string zsh) = await BackgroundWork.Run(() =>
+        {
+            string zsh = FirstOnPath.ZshFolder(Path.Combine(State.StateStore.DefaultRoot, "cache", "terminal"));
+            return (Dotnet.Apart(at) is { } root ? new FirstOnPath(Dotnet.PathFolder(root, State.StateStore.DefaultRoot), RuntimeVariables.Root, root, zsh) : null, zsh);
+        });
+        await session.StartAsync(at, shell?.App, shell?.Arguments, first: first, marks: zsh);
     }
 
     /// <summary>The name of the tab agents' commands run in.</summary>

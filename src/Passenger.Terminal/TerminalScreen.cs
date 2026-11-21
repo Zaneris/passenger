@@ -80,6 +80,35 @@ public sealed class TerminalScreen
     /// <summary>The program rang the bell.</summary>
     public event Action? Bell;
 
+    /// <summary>A command the shell marked as run ended, with its exit status (OSC 133's D after its C).</summary>
+    public event Action<ShellCommand>? CommandEnded;
+
+    /// <summary>The command at the shell's latest prompt (OSC 133's A), and the one before it; null before any.</summary>
+    public ShellCommand? Command { get; private set; }
+
+    public ShellCommand? CommandBefore { get; private set; }
+
+    /// <summary>Whether the shell marks a command's run (OSC 133's C), so a prompt's command ran only where it says so.</summary>
+    public bool MarksRuns { get; private set; }
+
+    /// <summary>The line the cursor stood on as Enter last went to the program on the main screen, typed, pasted or run;
+    /// null before any, or once a reflow numbered the lines again.</summary>
+    public long? EnteredAt { get; private set; }
+
+    /// <summary>Enter went to the program: on the main screen, its line and its prompt's command are taken as entered.</summary>
+    public void Entered()
+    {
+        if (IsAlternate)
+        {
+            return;
+        }
+        EnteredAt = ScreenTop + CursorRow;
+        if (Command is { } command && command.Prompt <= EnteredAt)
+        {
+            command.Entered = true;
+        }
+    }
+
     public int Columns { get; private set; }
     public int Rows { get; private set; }
 
@@ -264,6 +293,8 @@ public sealed class TerminalScreen
         if (columns != Columns)
         {
             main = Reflow(main, columns, ref mainCursor);
+            // The lines are numbered again, so what was marked by number is forgotten.
+            (Command, CommandBefore, EnteredAt) = (null, null, null);
         }
         int mainRow = mainCursor.Row;
         main = Fit(main, rows, columns, toScrollback: true, ref mainRow);
@@ -1182,6 +1213,10 @@ public sealed class TerminalScreen
             ReadOnlySpan<char> address = split < 0 ? [] : value[(split + 1)..];
             hyperlink = address.IsEmpty ? null : address.SequenceEqual(hyperlink) ? hyperlink : address.ToString();
         }
+        else if (code is "133" && !value.IsEmpty && !IsAlternate)
+        {
+            Mark(value[0], value[1..]);
+        }
         else if (code is "7" && !value.SequenceEqual(place))
         {
             place = value.ToString();
@@ -1189,6 +1224,35 @@ public sealed class TerminalScreen
             {
                 WorkingDirectory = Uri.UnescapeDataString(folder.AbsolutePath);
             }
+        }
+    }
+
+    /// <summary>A shell's mark (OSC 133): A a prompt begins at the cursor's line, C its command runs, D it ended with the
+    /// status after it (0 where none is given). A second A on a prompt's line before its command ran is the same prompt, and
+    /// a second D for one command, or one for a command never marked as run, is passed over.</summary>
+    private void Mark(char kind, ReadOnlySpan<char> rest)
+    {
+        long line = ScreenTop + CursorRow;
+        switch (kind)
+        {
+            case 'A':
+                if (Command is not { Ran: false, Status: null } same || same.Prompt != line)
+                {
+                    CommandBefore = Command;
+                    Command = new ShellCommand(line);
+                }
+                break;
+            case 'C':
+                Command ??= new ShellCommand(line);
+                Command.Ran = true;
+                MarksRuns = true;
+                break;
+            case 'D' when Command is { Ran: true, Status: null } ended:
+                ReadOnlySpan<char> status = rest.StartsWith(";") ? rest[1..] : [];
+                int end = status.IndexOf(';');
+                ended.Status = int.TryParse(end < 0 ? status : status[..end], System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out int code) ? code : 0;
+                CommandEnded?.Invoke(ended);
+                break;
         }
     }
 
@@ -1460,4 +1524,18 @@ public sealed class TerminalScreen
             entries[0] = 0;
         }
     }
+}
+
+/// <summary>A command as the shell marks it (OSC 133): the line its prompt began on, whether the shell said it ran, whether
+/// Enter went to the shell at it, and how it ended once it did.</summary>
+public sealed class ShellCommand(long prompt)
+{
+    public long Prompt { get; } = prompt;
+
+    public bool Ran { get; internal set; }
+
+    public bool Entered { get; internal set; }
+
+    /// <summary>Its exit status, once the shell said it ended; null before.</summary>
+    public int? Status { get; internal set; }
 }

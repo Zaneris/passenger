@@ -460,6 +460,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>A sound as the debugger stops the program the person debugs.</summary>
     public bool SoundOnDebuggerStop { get; init; } = true;
 
+    /// <summary>A sound as a command the person ran in the terminal fails, where its shell tells.</summary>
+    public bool SoundOnTerminalFailure { get; init; } = true;
+
     /// <summary>"Show files with the same names as nested": the Solution view nests files by their nesting rules
     /// (Counter.razor.cs under Counter.razor), on until the Explorer's File Nesting... turns it off.</summary>
     public bool NestFiles { get; init; } = true;

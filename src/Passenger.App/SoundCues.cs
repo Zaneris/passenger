@@ -16,6 +16,7 @@ public enum SoundCue
     TestsPassed,
     TestsFailed,
     DebuggerStopped,
+    TerminalCommandFailed,
 }
 
 /// <summary>The sound cues: short tones Passenger makes itself, each a few notes of its own, written once as a WAV into a
@@ -50,6 +51,7 @@ public static class SoundCues
         SoundCue.ChangedLine => settings.SoundOnChangedLine,
         SoundCue.BuildPassed or SoundCue.BuildFailed => settings.SoundOnBuildEnd,
         SoundCue.TestsPassed or SoundCue.TestsFailed => settings.SoundOnTestsEnd,
+        SoundCue.TerminalCommandFailed => settings.SoundOnTerminalFailure,
         _ => settings.SoundOnDebuggerStop,
     };
 
@@ -66,6 +68,7 @@ public static class SoundCues
         SoundCue.BuildFailed => [(392, 0.09), (311, 0.09), (262, 0.14)],
         SoundCue.TestsPassed => [(659, 0.07), (784, 0.07), (1047, 0.11)],
         SoundCue.TestsFailed => [(523, 0.09), (415, 0.09), (349, 0.14)],
+        SoundCue.TerminalCommandFailed => [(311, 0.08), (233, 0.12)],
         _ => [(740, 0.06), (0, 0.04), (740, 0.06)],
     };
 

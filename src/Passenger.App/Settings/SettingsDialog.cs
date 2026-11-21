@@ -298,6 +298,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.SoundOnBuildEnd);
         Add(Declared.SoundOnTestsEnd);
         Add(Declared.SoundOnDebuggerStop);
+        Add(Declared.SoundOnTerminalFailure);
 
         Add(Declared.ReopenProjectsOnStartup);
         StackPanel openIn = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Group };

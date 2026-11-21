@@ -1,7 +1,10 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Settings;
+using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Terminal;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -9,7 +12,8 @@ namespace Passenger.Tests;
 /// <summary>The sound cues as a person moving through code hears them, the window's record of what it played standing in
 /// for the speakers: one as the caret comes to a line holding a change, a folded region, an error, a breakpoint or a warning,
 /// nothing along a line nor on lines holding none; Settings turning a cue off, the cues off, or on only while a screen
-/// reader runs. A build's and a test run's cues are UnitTestsTests'.</summary>
+/// reader runs; a command failing in each shell Passenger marks the commands of, which Read as Text reads the last of by
+/// its marks. A build's and a test run's cues are UnitTestsTests'.</summary>
 public sealed class SoundCuesTests : IDisposable
 {
     private const string Head = "class Shop\n{\n    int count;\n\n    void Add()\n    {\n        count++;\n    }\n\n    void Clear() { count = 0; }\n    void Reset() { count = 1; }\n}\n";
@@ -100,6 +104,80 @@ public sealed class SoundCuesTests : IDisposable
             window.Close();
         }
     }
+
+    /// <summary>Each shell here, set up to mark its commands: a command that fails plays its cue once (where the shell tells a
+    /// command ran: not bash before 4.4, nor cmd), one that passes and an empty line none, and Read as Text reads the last
+    /// command and its output from its prompt's mark.</summary>
+    [AvaloniaTheory]
+    [InlineData("zsh")]
+    [InlineData("bash")]
+    [InlineData("fish")]
+    [InlineData("pwsh")]
+    [InlineData("powershell")]
+    [InlineData("cmd")]
+    public void A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(string kind)
+    {
+        (string? program, string[] arguments) = kind switch
+        {
+            "zsh" => (Found("/bin/zsh", "zsh"), []),
+            "bash" => (Found("/bin/bash", "bash"), ["--norc", "--noprofile"]),
+            "fish" => (Programs.OnPath("fish"), ["--no-config"]),
+            "pwsh" => (Programs.OnPath(OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh"), ["-NoLogo", "-NoProfile"]),
+            "powershell" => (OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe") : null, ["-NoLogo", "-NoProfile"]),
+            _ => ((string?, string[]))(OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "cmd.exe") : null, []),
+        };
+        Assert.SkipWhen(program is null || !File.Exists(program), $"{kind} is not installed here");
+        (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, program!, arguments);
+        try
+        {
+            window.ApplySettings(window.Settings with { SoundCues = SoundCuesPlayed.Always });
+            Ui.WaitFor(() => shell.Screen.Command is not null, () => $"{kind}'s first prompt marked; the terminal shows:\n{shell.Screen.ScreenText()}");
+            bool tells = kind is not "cmd";
+            if (kind == "bash")
+            {
+                Run(window, shell, "echo v${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}");
+                string version = ScreenLines(shell).Last(l => l.StartsWith('v'));
+                tells = Version.Parse(version[1..]) >= new Version(4, 4);
+            }
+            Run(window, shell, "echo first");
+            Run(window, shell, OperatingSystem.IsWindows() ? "cmd /c exit 3" : "false");
+            Assert.True(Failed(window) == (tells ? 1 : 0), $"A command failing in {kind} played its cue {Failed(window)} times, not {(tells ? "once" : "never, as it tells no run")}");
+            Run(window, shell, string.Empty);
+            Run(window, shell, "echo second");
+            Assert.True(Failed(window) == (tells ? 1 : 0), $"An empty line and a command passing in {kind} played the failure's cue again");
+
+            PlainTextView view = ReadAsTextTests.Opened(window, window, $"{kind}'s terminal");
+            string[] lines = view.Text.Split('\n');
+            Assert.True(lines is [var command, "second"] && command.EndsWith("echo second", StringComparison.Ordinal),
+                $"Read as Text in {kind} read the last command and its output as:\n{view.Text}");
+            ReadAsTextTests.Escaped(window, window, () => window.TerminalPanel.View.IsFocused, "the terminal");
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string? Found(string at, string name) => File.Exists(at) ? at : Programs.OnPath(name);
+    }
+
+    /// <summary>Types a command (or nothing) and presses Enter, then waits for the shell's next prompt, marked below the last.</summary>
+    private static void Run(MainWindow window, TerminalSession shell, string command)
+    {
+        long before = shell.Screen.Command?.Prompt ?? -1;
+        if (command.Length > 0)
+        {
+            window.KeyTextInput(command);
+        }
+        Ui.Press(window, "ENTER");
+        TerminalTests.WaitForScreen(window, shell, s => s.Command is { Entered: false } next && next.Prompt > before && s.CursorColumn > 0,
+            $"the shell's next prompt after '{command}'");
+        Ui.Settle();
+    }
+
+    private static string[] ScreenLines(TerminalSession shell) =>
+        [.. Enumerable.Range(0, (int)(shell.Screen.ScreenTop + shell.Screen.Rows - shell.Screen.FirstLine)).Select(i => shell.Screen.LineAt(shell.Screen.FirstLine + i).Text())];
+
+    private static int Failed(MainWindow window) => window.CuesPlayed.Count(c => c == SoundCue.TerminalCommandFailed);
 
     /// <summary>Presses a key in the editor and holds the window to having played <paramref name="cues"/> for it, and no more.</summary>
     private static void Heard(MainWindow window, string key, SoundCue[] cues, string where)

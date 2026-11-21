@@ -53,16 +53,16 @@ public sealed record FirstOnPath(string Folder, string Variable, string Value, s
     /// <summary>What bash's PROMPT_COMMAND begins with, which runs <see cref="Again"/>.</summary>
     private const string BashPrompt = $"eval \"${AgainVariable}\";";
 
-    /// <summary>Passenger's .zshenv: zsh's startup files are then the person's own, from their ZDOTDIR or the home, and
-    /// before the first prompt <see cref="Again"/> runs once.</summary>
+    /// <summary>Passenger's .zshenv: zsh's startup files are then the person's own, from their ZDOTDIR or the home, the
+    /// shell's marks are set up (<see cref="ShellMarks"/>), and before the first prompt <see cref="Again"/> runs once.</summary>
     public static readonly string ZshEnv = $$"""
         # Passenger's terminal: the person's startup files, then the folder Passenger keeps first on the PATH, at the first prompt.
         if [ -n "${{{ZdotdirVariable}}+x}" ]; then ZDOTDIR=${{ZdotdirVariable}}; else unset ZDOTDIR; fi
         unset {{ZdotdirVariable}}
         if [ -f "${ZDOTDIR:-$HOME}/.zshenv" ]; then . "${ZDOTDIR:-$HOME}/.zshenv"; fi
-        __passenger_first() {
+        {{ShellMarks.ZshHooks}}__passenger_first() {
         precmd_functions=(${precmd_functions:#__passenger_first})
-        eval "${{AgainVariable}}"
+        {{ShellMarks.ZshFirst}}eval "${{{AgainVariable}}-}"
         unfunction __passenger_first
         }
         precmd_functions+=(__passenger_first)
@@ -105,12 +105,7 @@ public sealed record FirstOnPath(string Folder, string Variable, string Value, s
         environment[AgainVariable] = Again;
         if (kind == ShellKind.Zsh)
         {
-            string? own = environment.TryGetValue("ZDOTDIR", out string? set) ? set : inherited.GetValueOrDefault("ZDOTDIR");
-            if (own is { Length: > 0 })
-            {
-                environment[ZdotdirVariable] = own;
-            }
-            environment["ZDOTDIR"] = ZshStartup;
+            ShellMarks.ZshStartup(environment, inherited, ZshStartup);
         }
         else
         {

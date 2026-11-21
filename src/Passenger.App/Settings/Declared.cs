@@ -105,6 +105,9 @@ public static class Declared
     public static readonly ToggleSetting SoundOnDebuggerStop = Cue(s => s.SoundOnDebuggerStop, (s, v) => s with { SoundOnDebuggerStop = v },
         "The debugger stopping", "debugger stop stopped breakpoint hit exception step paused");
 
+    public static readonly ToggleSetting SoundOnTerminalFailure = Cue(s => s.SoundOnTerminalFailure, (s, v) => s with { SoundOnTerminalFailure = v },
+        "A command in the terminal failing", "terminal shell command failed exit status code error");
+
     /// <summary>A sound cue's row on the Accessibility page, voided while the cues play never.</summary>
     private static ToggleSetting Cue(Func<AppSettings, bool> get, Func<AppSettings, bool, AppSettings> set, string label, string words) =>
         new(get, set, new(D.AccessibilityPage, label, $"sound cue audio signal {words}")

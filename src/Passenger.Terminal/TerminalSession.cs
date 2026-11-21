@@ -88,26 +88,23 @@ public sealed partial class TerminalSession : IAsyncDisposable
     {
         Screen = new TerminalScreen(columns, rows);
         Screen.Reply += Write;
+        Screen.CommandEnded += command => CommandEnded?.Invoke(this, command.Status.GetValueOrDefault());
         take = TakeOutput;
     }
 
     public TerminalScreen Screen { get; }
 
-    /// <summary>The line the cursor stood on as Enter last went to the program on the main screen, typed, pasted or run:
-    /// the last command's line, which its output follows; null before any.</summary>
-    public long? EnteredAt { get; private set; }
-
-    /// <summary>The last command and what followed it as plain lines, rows joined where they wrapped (Read as Text): from
-    /// the line Enter last went from (<see cref="EnteredAt"/>) to the cursor's, less a prompt waiting there that begins the
-    /// command's line as it did; the screen's rows while a full-screen program shows its own, or before anything was
-    /// entered.</summary>
+    /// <summary>The last command and what followed it as plain lines, rows joined where they wrapped (Read as Text): by the
+    /// shell's marks where it makes them (<see cref="Marked"/>); else from the line Enter last went from
+    /// (<see cref="TerminalScreen.EnteredAt"/>) to the cursor's, less a prompt waiting there that begins the command's line
+    /// as it did; the screen's rows while a full-screen program shows its own, or before anything was entered.</summary>
     public string LastCommandText()
     {
         TerminalScreen screen = Screen;
         long cursor = screen.ScreenTop + screen.CursorRow;
-        bool own = !screen.IsAlternate && EnteredAt is { } entered && entered <= cursor && entered >= screen.FirstLine;
-        long first = own ? EnteredAt.GetValueOrDefault() : screen.ScreenTop;
-        long last = own ? cursor : screen.ScreenTop + screen.Rows - 1;
+        (long First, long Last)? marked = screen.IsAlternate ? null : Marked(screen, cursor);
+        bool entered = !screen.IsAlternate && marked is null && screen.EnteredAt is { } enteredAt && enteredAt <= cursor && enteredAt >= screen.FirstLine;
+        (long first, long last) = marked ?? (entered ? (screen.EnteredAt.GetValueOrDefault(), cursor) : (screen.ScreenTop, screen.ScreenTop + screen.Rows - 1));
         List<string> lines = [];
         StringBuilder line = new();
         for (long at = first; at <= last; at++)
@@ -120,7 +117,7 @@ public sealed partial class TerminalSession : IAsyncDisposable
                 line.Clear();
             }
         }
-        if (own && lines.Count > 1 && lines[^1].TrimEnd() is { Length: > 0 } waiting && lines[0].StartsWith(waiting, StringComparison.Ordinal))
+        if (entered && lines.Count > 1 && lines[^1].TrimEnd() is { Length: > 0 } waiting && lines[0].StartsWith(waiting, StringComparison.Ordinal))
         {
             lines.RemoveAt(lines.Count - 1);
         }
@@ -131,8 +128,31 @@ public sealed partial class TerminalSession : IAsyncDisposable
         return string.Join('\n', lines);
     }
 
+    /// <summary>The lines of the last command by the shell's marks (<see cref="TerminalScreen.Command"/>): from the prompt
+    /// now to the cursor, where its command was entered or ran; else from the prompt before to the line above the prompt
+    /// now, where the shell said its command ran (or, from a shell marking no runs, it was entered); null where neither
+    /// is, or the marks are gone from the scrollback.</summary>
+    private static (long First, long Last)? Marked(TerminalScreen screen, long cursor)
+    {
+        if (screen.Command is not { } now || now.Prompt < screen.FirstLine || now.Prompt > cursor)
+        {
+            return null;
+        }
+        if (now.Ran || now.Entered)
+        {
+            return (now.Prompt, cursor);
+        }
+        return screen.CommandBefore is { } before && before.Prompt >= screen.FirstLine && before.Prompt < now.Prompt && (screen.MarksRuns ? before.Ran : before.Entered)
+            ? (before.Prompt, now.Prompt - 1)
+            : null;
+    }
+
     /// <summary>Raised on the window's thread when output has been taken onto the screen.</summary>
     public event EventHandler? Output;
+
+    /// <summary>Raised on the window's thread as the shell marks a command it ran as ended, with its exit status
+    /// (<see cref="ShellMarks"/>).</summary>
+    public event EventHandler<int>? CommandEnded;
 
     /// <summary>Raised on the window's thread when the shell has ended and its last output is on the screen, with its exit
     /// code, which is 0 for one a signal ended on macOS and Linux.</summary>
@@ -149,9 +169,10 @@ public sealed partial class TerminalSession : IAsyncDisposable
     /// <summary>Starts the shell in a folder. <paramref name="shell"/> names one other than the user's own, or a program
     /// to run in the terminal in place of a shell; <paramref name="variables"/> are set over the IDE's environment, an
     /// empty value taking one away, and the outer terminal's are taken out (<see cref="WithoutOuterTerminal"/>);
-    /// <paramref name="first"/> is a folder the shell finds programs in before any other, its startup files' say aside.</summary>
+    /// <paramref name="first"/> is a folder the shell finds programs in before any other, its startup files' say aside;
+    /// <paramref name="marks"/>, Passenger's zsh startup folder, has a person's shell mark its commands (<see cref="ShellMarks"/>).</summary>
     public async Task StartAsync(string folder, string? shell = null, IReadOnlyList<string>? arguments = null, IReadOnlyDictionary<string, string>? variables = null,
-        FirstOnPath? first = null)
+        FirstOnPath? first = null, string? marks = null)
     {
         (string app, string[] args) = shell is null ? DefaultShell() : (shell, [.. arguments ?? []]);
         Shell = ShellKinds.Of(app);
@@ -167,7 +188,13 @@ public sealed partial class TerminalSession : IAsyncDisposable
             environment["LANG"] = "en_US.UTF-8";
         }
         WithoutOuterTerminal(environment, Environment.GetEnvironmentVariable);
-        first?.Give(app, environment, Inherited().ToDictionary(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal));
+        Dictionary<string, string> inherited = Inherited().ToDictionary(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        if (marks is not null)
+        {
+            // Before the folder first on the PATH, whose PROMPT_COMMAND then runs first in bash.
+            (app, args) = ShellMarks.Give(app, args, environment, inherited, marks);
+        }
+        first?.Give(app, environment, inherited);
         string cwd = Directory.Exists(folder) ? folder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!OperatingSystem.IsWindows())
         {
@@ -227,9 +254,9 @@ public sealed partial class TerminalSession : IAsyncDisposable
         {
             return;
         }
-        if (!Screen.IsAlternate && Array.IndexOf(bytes, (byte)'\r') >= 0)
+        if (Array.IndexOf(bytes, (byte)'\r') >= 0)
         {
-            EnteredAt = Screen.ScreenTop + Screen.CursorRow;
+            Screen.Entered();
         }
         try
         {
