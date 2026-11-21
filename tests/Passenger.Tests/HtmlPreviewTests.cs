@@ -334,7 +334,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
             HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed nothing beside the HTML file");
             Assert.Equal(HtmlPreview.NoWebKitGtk, preview.Said);
             Assert.True(preview.Given is null && !preview.GetLogicalChildren().OfType<NativeWebView>().Any(), "A system without a web view was given a page");
-            Assert.Contains(preview.GetLogicalChildren().OfType<TextBlock>(), t => t.Text == HtmlPreview.NoWebKitGtk && t.IsEffectivelyVisible);
+            Assert.Contains(preview.GetLogicalDescendants().OfType<TextBlock>(), t => t.Text == HtmlPreview.NoWebKitGtk && t.IsEffectivelyVisible);
             window.Close();
         }
         finally
