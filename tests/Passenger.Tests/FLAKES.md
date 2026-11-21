@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `KeymapChoiceTests`' `A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through`, CI 44953680429 (Windows
+  report shard 3): "Waited 225 s for the shell's prompt a row lower, the empty line Ctrl+J entered read". **#2080's fix
+  missed a case**, the shell marks having changed no prompt it waits for: the fix (76fe95e93) waited after Ctrl+J for the
+  prompt sh draws a row lower once Ctrl+J ends its empty line, and cmd.exe, the test's shell on Windows, ends no line at
+  Ctrl+J. A probe on the Windows VM found cmd's screen unchanged 3 s after it, the cursor still on its prompt, and
+  `echo floated` typed then ran as it did before the fix; the fixed test failed there as on CI. The wait now holds off
+  Windows alone, and the test passed on the Windows VM, the Mac and the Linux VM (8b3598bf4).
 - `ReadAsTextTests`' `The_terminals_last_command_and_its_output_open_as_text_and_Escape_gives_the_terminal_its_keys_back`,
   CI 44953680429 (macOS report shard 1): "ArgumentOutOfRangeException : index ('-1') must be a non-negative value",
   thrown by `TerminalScreen.LineAt` inside the test's wait. **The test read wrong**, not #1849's marks, which /bin/sh is
