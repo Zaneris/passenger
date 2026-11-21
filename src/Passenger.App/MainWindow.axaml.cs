@@ -45,6 +45,10 @@ public partial class MainWindow : IdeWindow
     /// <summary>What the last action came to, and the file shown's place and properties.</summary>
     private readonly StatusBar status;
 
+    /// <summary>The status bar's caret and Vim mode words following a key in a frame after its rows', where the frame of
+    /// both would draw every row between the caret and the window's foot again.</summary>
+    private readonly FrameApart caretWords;
+
     /// <summary>What the window tells the person, heard by a screen reader.</summary>
     private readonly Announcer announcer;
 
@@ -197,8 +201,14 @@ public partial class MainWindow : IdeWindow
                 UpdateStatus();
             }
         };
-        Editors.CaretMoved += (_, _) => UpdateCaret();
-        Editors.ForEachEditor(editor => editor.VimModeChanged += (_, _) => UpdateCaret());
+        caretWords = new FrameApart(this, UpdateCaret);
+        Editors.CaretMoved += (_, _) => caretWords.Ask();
+        // The command line at once, which the input method's window follows.
+        Editors.ForEachEditor(editor => editor.VimModeChanged += (_, _) =>
+        {
+            status.ShowCommandLine(CaretShown);
+            caretWords.Ask();
+        });
         Editors.ForEachEditor(editor => editor.VimCommandLineEnd = () => status.EndIn(editor));
         Editors.ForEachEditor(editor => editor.VimRegisters = vimRegisters);
         Editors.ForEachEditor(FollowVim);
@@ -1296,7 +1306,11 @@ public partial class MainWindow : IdeWindow
         return language;
     }
 
-    private void UpdateCaret() => status.ShowCaret(Editors.Active is { HoldsText: true } ? Editors.CodeEditor : null);
+    /// <summary>The status bar's caret and Vim mode words worded again, as <see cref="caretWords"/> runs it.</summary>
+    private void UpdateCaret() => status.ShowCaret(CaretShown);
+
+    /// <summary>The editor whose caret the status bar words: the one shown, while it shows text.</summary>
+    private CodeEditor? CaretShown => Editors.Active is { HoldsText: true } ? Editors.CodeEditor : null;
 
     private void OnProjectClicked(object? sender, RoutedEventArgs e) => ShowProjectMenu();
 
