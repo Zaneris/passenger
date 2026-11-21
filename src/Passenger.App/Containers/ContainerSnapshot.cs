@@ -25,6 +25,17 @@ public sealed record ContainerPort(string HostPort, string Inside, string Protoc
 
     public override string ToString() => $"{HostPort}→{Inside}{(Protocol == "tcp" ? string.Empty : $"/{Protocol}")}";
 
+    /// <summary>Where an address a program in a container names as its own (<see cref="WebAddress.OnItsOwnMachine"/>) is
+    /// reached from here: at the port its container publishes for the address's (<paramref name="published"/>), linked on the
+    /// engine's machine (<see cref="LinkOn"/>), its scheme, path and query kept; null where it publishes none.</summary>
+    public static Uri? Reaching(Uri address, IEnumerable<ContainerPort> published, string? endpoint)
+    {
+        string inside = address.Port.ToString(CultureInfo.InvariantCulture);
+        return published.FirstOrDefault(p => p.Inside == inside && p.Protocol == "tcp")?.LinkOn(endpoint) is { } link
+            ? new UriBuilder(address) { Host = link.Host, Port = link.Port }.Uri
+            : null;
+    }
+
     /// <summary>The ports a row of <c>docker ps --format json</c> publishes: Docker's words, or Podman's own list of them
     /// (<c>host_port</c>, <c>container_port</c>, <c>protocol</c>).</summary>
     public static IReadOnlyList<ContainerPort> Read(JsonElement row)
@@ -88,6 +99,10 @@ public sealed record ContainerInfo(string Id, string Name, string Image, string 
     public bool IsTestcontainers => Labels.ContainsKey("org.testcontainers");
 
     public bool IsRunning => State is "running" or "restarting";
+
+    /// <summary>Whether a merged log names it so before its lines: by its name, or a Compose project's container by its name
+    /// without the project's (<c>web-1</c>), as <c>docker compose logs</c> does.</summary>
+    public bool LoggedAs(string named) => Name == named || Project is { } project && Name == $"{project}-{named}";
 
     public bool IsPaused => State == "paused";
 
@@ -205,6 +220,25 @@ public sealed record ContainerSnapshot(IReadOnlyList<ComposeProject> Projects, I
 
     /// <summary>Every container, those of projects first.</summary>
     public IEnumerable<ContainerInfo> AllContainers => Projects.SelectMany(p => p.Containers).Concat(Containers);
+
+    /// <summary>Where an address a container's program names as its own is reached from here, as the engine lists its
+    /// containers now and the Containers window links their ports (<see cref="ContainerPort.Reaching"/>): of the first
+    /// container <paramref name="which"/> takes; null where none is there, it publishes no such port, or the engine does
+    /// not say. Any thread.</summary>
+    public static async Task<Uri?> ReachingAsync(ContainerEngine engine, Uri address, Func<ContainerInfo, bool> which, CancellationToken cancel = default)
+    {
+        try
+        {
+            ContainerSnapshot snapshot = await ReadAsync(engine, cancel, containersOnly: true);
+            return snapshot.AllContainers.FirstOrDefault(which) is { } container
+                ? ContainerPort.Reaching(address, container.Ports, (await engine.StateAsync(cancel: cancel)).Endpoint)
+                : null;
+        }
+        catch (Exception unread) when (unread is ContainerCommandException or JsonException || ChildFailures.Of(unread))
+        {
+            return null;
+        }
+    }
 
     /// <summary>Reads it all, each list asked of the CLI at once; a <see cref="ContainerCommandException"/> when one fails,
     /// but for Compose's list of projects, which only words their statuses (an engine with no Compose v2 has none: the

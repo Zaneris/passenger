@@ -1100,6 +1100,8 @@ public sealed class DebugController : IDisposable
         tab.App = app ?? tab.App;
         tab.Plan = plan;
         tab.InputFrom = launched ? null : inputFrom ?? (place is { } there ? $"in its container, {there.Where}" : "from what started it");
+        // A program in a container names its container's addresses, reached here where the container publishes them.
+        tab.Console.Links.Reaching = place?.Reaching is { } reaching ? (_, address) => reaching(address) : null;
         view.TelemetryChanged();
         tab.LetGoOfHooks();
         tab.Handlers = hook;

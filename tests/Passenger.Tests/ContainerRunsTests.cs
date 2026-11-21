@@ -432,6 +432,45 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
+    /// <summary>Where a service's program says it listens in its container (<c>http://[::]:8080</c>, <c>http://0.0.0.0:8080</c>)
+    /// links, in the Run window, the address its container's 8080 is published on here, as the Containers window links that
+    /// port, and the page answers there; an address on a port it publishes nowhere is no link.</summary>
+    [AvaloniaFact]
+    public void A_services_own_address_in_the_runs_output_links_where_its_container_publishes_it()
+    {
+        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
+        string folder = TestFolders.Create("ctr-listens-");
+        string project = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}listens";
+        TestFolders.Write(folder, "compose.yaml", $"name: {project}\nservices:\n  web:\n    image: {Docker.Image}\n    init: true\n    ports: [\"8080\"]\n"
+            + "    command: [\"sh\", \"-c\", \"mkdir -p /www && echo web > /www/index.html && echo 'Now listening on: http://[::]:8080' && echo 'Now listening on: http://0.0.0.0:8080/index.html'"
+            + " && echo 'Metrics at: http://localhost:9090/metrics' && exec httpd -f -p 8080 -h /www\"]\n");
+        MainWindow window = Open(folder);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        try
+        {
+            Launched(window, "web to come up");
+            Ui.WaitFor(() => Run(window).Contains("Metrics at:", StringComparison.Ordinal), "web's addresses in the Run window", TimeSpan.FromMinutes(1));
+            string[] lines = [.. Run(window).Split('\n').Where(l => l.Contains("| ", StringComparison.Ordinal))];
+            string anywhere = lines.First(l => l.Contains("http://[::]:8080", StringComparison.Ordinal));
+            string page = lines.First(l => l.Contains("http://0.0.0.0:8080/index.html", StringComparison.Ordinal));
+            string unpublished = lines.First(l => l.Contains("http://localhost:9090/metrics", StringComparison.Ordinal));
+            int published = Published(project, "web");
+
+            Assert.Equal([new Uri($"http://localhost:{published}/")], Ui.LinksIn(window.BottomPanel.Run.Links, anywhere).Select(l => Assert.IsType<WebLink>(l.Target).Address));
+            Uri reached = new($"http://localhost:{published}/index.html");
+            Assert.Equal([reached], Ui.LinksIn(window.BottomPanel.Run.Links, page).Select(l => Assert.IsType<WebLink>(l.Target).Address));
+            Assert.Empty(Ui.LinksIn(window.BottomPanel.Run.Links, unpublished));
+            Ui.ClickLink(window.BottomPanel.Run, page, link => link.Target is WebLink);
+            Assert.Equal(reached, window.Browsed[^1]);
+            Assert.Equal("web", Page(published).Trim());
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take web down");
+            window.Close();
+        }
+    }
+
     [AvaloniaFact]
     public void A_Dockerfile_project_an_SDK_container_project_and_a_Docker_launch_profile_each_run_their_project_in_a_container()
     {

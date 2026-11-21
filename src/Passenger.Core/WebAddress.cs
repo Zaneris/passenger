@@ -18,6 +18,11 @@ public static class WebAddress
     public static bool OnThisMachine(Uri address) =>
         address.IsAbsoluteUri && (address.IsLoopback || address.Host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Whether an http or https address names the machine of the program that wrote it, as a program says where it
+    /// listens: a host on every interface (<c>0.0.0.0</c>, <c>[::]</c>), or its own (<see cref="OnThisMachine"/>).</summary>
+    public static bool OnItsOwnMachine(Uri address) =>
+        address.IsAbsoluteUri && address.Scheme is "http" or "https" && (OnThisMachine(address) || address.Host == "0.0.0.0" || IsIPv6Any(address.Host));
+
     /// <summary>Whether an address is an http or https one on this machine with nothing but where it is: no user info,
     /// query or fragment, as a service's endpoint is given.</summary>
     public static bool Local(Uri address) => OnThisMachine(address) && address.Scheme is ("http" or "https")

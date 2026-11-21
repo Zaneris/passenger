@@ -31,6 +31,21 @@ public sealed class WebAddressTests
         Assert.False(WebAddress.OnThisMachine(new Uri(address)), $"{address} was taken for this machine's, so what Passenger keeps to this machine would go to it");
     }
 
+    [Theory]
+    [InlineData("http://0.0.0.0:8080", true)]
+    [InlineData("http://[::]:8080/swagger", true)]
+    [InlineData("https://localhost:8443", true)]
+    [InlineData("http://127.0.0.1:5000", true)]
+    [InlineData("http://[::1]:5000", true)]
+    [InlineData("http://192.0.2.10:8080", false)]
+    [InlineData("https://learn.microsoft.com/aspnet", false)]
+    [InlineData("ftp://0.0.0.0:21", false)]
+    public void A_program_names_its_own_machine_on_every_interface_or_its_own_loopback(string address, bool own)
+    {
+        Assert.True(WebAddress.OnItsOwnMachine(new Uri(address)) == own,
+            $"{address} was {(own ? "taken for another machine's" : "taken for the machine of the program that wrote it")}, so a container's console would link it {(own ? "as it is, at this machine's port" : "to its container's published port")}");
+    }
+
     [Fact]
     public void A_relative_address_is_on_no_machine()
     {

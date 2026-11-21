@@ -12,7 +12,7 @@ namespace Passenger.App.Containers;
 /// with its containers' merged: <c>docker logs -f</c> (<c>docker compose logs -f</c>) streamed into a console (<see
 /// cref="MergedLog"/>) through a <see cref="ProcessRunner"/>, an AppHost's one per container read straight into it.
 /// Timestamps are shown on demand, and a project's services and an AppHost's containers each have a toggle; changing
-/// either streams the log again.</summary>
+/// either streams the log again. An address a container's program names as its own links where its container publishes it.</summary>
 public sealed class ContainerLogPane : DockPanel
 {
     /// <summary>How many lines of what came before a stream begins with.</summary>
@@ -214,6 +214,13 @@ public sealed class ContainerLogPane : DockPanel
         End();
         Console.Clear();
         streamed = row is { } read ? Signature(read) : null;
+        if (row is { Containers: [var first, ..] containers })
+        {
+            // Their programs name their containers' addresses, reached here where those publish them.
+            ContainerEngine on = first.Engine ?? engine();
+            Console.Links.Reaching = (named, address) => ContainerSnapshot.ReachingAsync(on, address,
+                c => containers.Any(shown => shown.Id == c.Id) && (named is null ? containers.Count == 1 : c.LoggedAs(named)));
+        }
         if (row is { Kind: ContainerRowKind.AppHost } host)
         {
             Merge(host, Options());

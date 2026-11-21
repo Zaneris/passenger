@@ -54,13 +54,14 @@ public sealed record ContainerReach(ContainerEngine Engine, string Container, st
     public Task<IReadOnlyList<DotnetProcess>> ProcessesAsync(CancellationToken cancel) => ContainerTools.ProcessesAsync(Engine, Container, Tools, cancel);
 
     /// <summary>The debug adapter's place there for a program (its name as the container's processes give it), paths
-    /// crossing through <paramref name="paths"/>; the container stopped (its own end, the Containers window's Stop) is its
-    /// program's end, never the debugger's.</summary>
+    /// crossing through <paramref name="paths"/>, the addresses it names as its own reached where the container publishes
+    /// them; the container stopped (its own end, the Containers window's Stop) is its program's end, never the debugger's.</summary>
     public Debugging.AdapterPlace Adapter(string? program, ContainerPaths paths) =>
         new(arguments => Engine.Command(ContainerTools.AdapterCommand(Container, Tools, arguments)), ContainerTools.SymbolCache, paths, Container)
         {
             Running = Debugging.AdapterPlace.Runs(Engine, Container),
             Program = program,
+            Reaching = address => ContainerSnapshot.ReachingAsync(Engine, address, c => c.Name == Container || ContainerRow.SameId(c.Id, Container)),
         };
 
     /// <summary>Where the container's paths are files of <paramref name="folder"/>, as its image was built: for a container

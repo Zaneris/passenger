@@ -27,6 +27,11 @@ public sealed record AdapterPlace(Func<IReadOnlyList<string>, ProcessStartInfo> 
     /// the debugger's (<see cref="Runs"/>). Null where nothing can tell, such an end then taken for the debugger's.</summary>
     public Func<Task<bool>>? Running { get; init; }
 
+    /// <summary>Where an address the program names as its own (where it says it listens) is reached from here: at the port
+    /// its container publishes for it (<see cref="ContainerSnapshot.ReachingAsync"/>), null where it publishes none; null
+    /// where the place cannot tell. Any thread.</summary>
+    public Func<Uri, Task<Uri?>>? Reaching { get; init; }
+
     /// <summary>Whether a container runs now, as the engine says: what a container's place gives as its <see cref="Running"/>.</summary>
     public static Func<Task<bool>> Runs(ContainerEngine engine, string container) => async () =>
         await engine.RunAsync(["inspect", "-f", "{{.State.Running}}", container]).ConfigureAwait(false) is { Succeeded: true } said

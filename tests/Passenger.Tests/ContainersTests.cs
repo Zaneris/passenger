@@ -375,9 +375,6 @@ public sealed class ContainersTests
             labels: { $LABEL }
         """;
 
-    /// <summary>A Compose project the test brought up: listed with its services, ports and health, the port a link the browser
-    /// opens; a container's log streaming into its console with links; and the project's log merging its services, each a
-    /// toggle, which Find searches by a regular expression.</summary>
     /// <summary>Prune is offered while nothing has asked the engine how it stands, never refused as not running then, and
     /// refused once the engine is known not to serve, in its own words (here: no docker command where it was named).</summary>
     [AvaloniaFact]
@@ -433,6 +430,10 @@ public sealed class ContainersTests
         }
     }
 
+    /// <summary>A Compose project the test brought up: listed with its services, ports and health, the port a link the browser
+    /// opens; a container's log streaming into its console with links, the address its program names as its own linked where
+    /// its container publishes it; and the project's log merging its services, each a toggle, which Find searches by a
+    /// regular expression.</summary>
     [AvaloniaFact]
     public void A_compose_project_is_listed_with_its_services_ports_and_health_and_its_logs_stream_with_links_and_merge_its_services()
     {
@@ -461,7 +462,10 @@ public sealed class ContainersTests
             OutputView console = view.Log.Console;
             Ui.WaitFor(() => Text(console).Contains("web listening on http://localhost:8080/", StringComparison.Ordinal), "web's first line in its log");
             string line = Text(console).Split('\n').First(l => l.Contains("web listening", StringComparison.Ordinal));
-            Assert.Contains(console.Links.In(line), l => l.Target is WebLink { Address.Port: 8080 });
+            // The address web names as its own is reached here where its container publishes its 8080.
+            Uri reached = new($"http://localhost:{port.HostPort}/");
+            Assert.True(Ui.LinksIn(console.Links, line).Any(l => l.Target is WebLink { Address: var at } && at == reached),
+                $"web's own address in its log does not link where its container publishes its 8080 ({reached}): {string.Join(", ", Ui.LinksIn(console.Links, line).Select(l => l.Target))}");
 
             Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Project && r.Label == project), "The project's row was not listed");
             Ui.WaitFor(() => Text(console).Contains("worker tick", StringComparison.Ordinal) && Text(console).Contains("web listening", StringComparison.Ordinal),

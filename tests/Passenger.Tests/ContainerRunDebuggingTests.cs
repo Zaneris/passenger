@@ -41,11 +41,11 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     private const int InMain = 1;
     private const int InRequest = 4;
 
-    /// <summary>Two services debugged at once, each stopping in Main and in a request, stepped and evaluated; then the
-    /// Containers window's actions on the debugged run go through it: the project's Restart ends the sessions, restarts every
-    /// service and attaches to the debugged ones again; a debugged service's Stop and Remove end its session before its
-    /// container stops or goes (an adapter losing it would be the IDE's error, which fails the test), the run going on; and
-    /// the project's Stop is the run's, its sessions ended before its containers go.</summary>
+    /// <summary>Two services debugged at once, each stopping in Main and in a request, stepped and evaluated, web's address in
+    /// its console linked where it is published here; then the Containers window's actions on the run go through it: the
+    /// project's Restart ends the sessions, restarts every service and attaches to the debugged ones again; a service's Stop
+    /// and Remove end its session before its container stops or goes (an adapter losing it would be the IDE's error, which
+    /// fails the test), the run going on; and the project's Stop is the run's, its sessions ended before its containers go.</summary>
     [AvaloniaFact]
     public void Two_services_debugged_at_once_stop_in_Main_and_in_a_request_and_the_Containers_windows_Restart_Stop_and_Remove_go_through_the_run()
     {
@@ -88,6 +88,10 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             }
             // Each tab's console is its container's log, which an attach gets none of through the debugger.
             Ui.WaitFor(() => window.Debugger.Output(web.Session).ToString().Contains("Now listening on", StringComparison.Ordinal), "web's log in its console");
+            // Where web says it listens in its container links where that container's 8080 is published here.
+            string listening = window.Debugger.Output(web.Session).ToString().Split('\n').First(l => l.Contains("Now listening on", StringComparison.Ordinal));
+            Assert.Equal([new Uri($"http://localhost:{ContainerRunsTests.Published(project, "web")}/")],
+                Ui.LinksIn(web.Console.Links, listening).Select(l => Assert.IsType<WebLink>(l.Target).Address));
             Assert.DoesNotContain(DebugController.AttachedConsole, window.Debugger.Output(api.Session).ToString(), StringComparison.Ordinal);
 
             foreach (string app in (string[])["Web", "Api"])

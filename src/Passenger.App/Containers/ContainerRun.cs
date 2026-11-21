@@ -1696,6 +1696,13 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
         return chosen?.LinkOn(endpoint)?.GetLeftPart(UriPartial.Authority);
     }
 
+    /// <summary>Where an address a service's program names as its own on a line of the run's log (<see cref="Logs"/>) is
+    /// reached from here: at the port the container Compose's prefix names (<paramref name="named"/>, <c>web-1</c>) publishes
+    /// for it (<see cref="ContainerSnapshot.ReachingAsync"/>); null on a line of no container's (Compose's own words) or
+    /// where it publishes none. Any thread.</summary>
+    public Task<Uri?> ReachingAsync(string? named, Uri address) => named is null ? Task.FromResult<Uri?>(null)
+        : ContainerSnapshot.ReachingAsync(engine, address, c => c.Project == Plan.ProjectName && c.LoggedAs(named));
+
     /// <summary>The address the browser opens: the plan's, its tokens (<see cref="ServiceUrls"/>) filled from the port the
     /// engine published for the launched service, on the engine's machine (<see cref="ContainerPort.LinkOn"/>), over HTTPS where
     /// that port serves it this run; null without one.</summary>
