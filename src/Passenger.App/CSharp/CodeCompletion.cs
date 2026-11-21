@@ -101,6 +101,12 @@ internal sealed partial class CodeCompletion
         ? [.. MemberKindsOf.All.Where(k => completion.Filters.Offered.HasFlag(k)).Select(MemberKindsOf.Words)]
         : [];
 
+    /// <summary>Turns a filter by the kind of member on or off, where the open list offers it; false where it does not.</summary>
+    public bool ToggleFilter(MemberKinds kind) => completion.IsVisible && completion.Filters.Toggle(kind);
+
+    /// <summary>Why a filter by the kind of member can't be turned on or off now; null where the open list offers it.</summary>
+    public string? WhyNotFilter(MemberKinds kind) => completion.IsVisible && completion.Filters.IsVisible && completion.Filters.Offered.HasFlag(kind) ? null : Refusals.NoMembersListed;
+
     /// <summary>The filter of the kind of member it names.</summary>
     public Avalonia.Controls.Primitives.ToggleButton Filter(string named) => completion.Filters.Of(MemberKindsOf.All.Single(k => MemberKindsOf.Words(k) == named));
 
@@ -119,10 +125,14 @@ internal sealed partial class CodeCompletion
     private Control[] RowViews(bool shownOnly) =>
         [.. completion.List.GetRealizedContainers().OfType<ListBoxItem>().Where(row => !shownOnly || row.IsVisible).Select(row => row.Presenter?.Child).OfType<Control>()];
 
-    /// <summary>The keys the open list takes before the editor does (Up, Down, Enter, Tab, Escape), and Tab's template
-    /// after its abbreviation.</summary>
+    /// <summary>The keys the open list takes before the editor does (Up, Down, Enter, Tab, Escape, its filters' keys while
+    /// it shows them), and Tab's template after its abbreviation.</summary>
     public bool TakeKey(string action)
     {
+        if (completion.IsVisible && completion.Filters.Toggle(MemberKindsOf.OfAction(action)))
+        {
+            return true;
+        }
         if (open is not null && action is EditorActions.Up or EditorActions.Down or EditorActions.PageUp or EditorActions.PageDown
             or EditorActions.NewLine or EditorActions.Indent)
         {

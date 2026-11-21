@@ -548,6 +548,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal([("()", false, null), ("(string? paramName)", false, null), (Message, true, "string? message"), (Inner, true, "System.Exception? innerException")],
             Overloads().OrderBy(o => o.Code.Length).Select(o => (o.Code[o.Code.IndexOf('(', StringComparison.Ordinal)..], o.Fits, o.Strong)));
 
+        // Next and Previous Overload step the chosen one, on the keys the keymap in force gives them there.
+        string chosen = Chosen();
+        Ui.Press(window, Keys(AppActions.NextOverload));
+        Ui.WaitFor(() => Chosen() != chosen, () => $"another overload chosen after Next Overload's keys: {window.Assist.SignatureText}");
+        Assert.Contains("Overload ", window.Assist.SignatureText, StringComparison.Ordinal);
+        Ui.Press(window, Keys(AppActions.PreviousOverload));
+        Ui.WaitFor(() => Chosen() == chosen, () => $"the first overload chosen again after Previous Overload's keys: {window.Assist.SignatureText}");
+        Assert.Equal("        _ = new System.ArgumentNullException(label, );", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+
         window.KeyTextInput("new System.Exception()");
         Ui.Run(window, AppActions.ParameterInfo);
         Ui.WaitFor(() => Overloads().Any(o => o.Code.EndsWith(Message, StringComparison.Ordinal) && !o.Fits),
@@ -564,11 +573,19 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => Overloads().Count(o => o.Fits) == 2, () => $"both two-argument overloads fitting once the argument is gone: {string.Join(" | ", Overloads())}");
         window.Close();
 
+        // The overload the card marks chosen.
+        string Chosen() => window.Assist.SignatureCard?.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains(StyleClasses.Chosen))
+            .SelectMany(b => b.GetVisualDescendants().OfType<ColouredCode>()).Select(c => c.Code).FirstOrDefault() ?? string.Empty;
+
         // Each overload the card shows: its code, whether the arguments still fit it, and the parameter drawn strong.
         List<(string Code, bool Fits, string? Strong)> Overloads() =>
             window.Assist.SignatureCard?.GetVisualDescendants().OfType<ColouredCode>()
                 .Select(c => (c.Code, !c.Classes.Contains(StyleClasses.Unfit), c.Marked is { } m ? c.Code.Substring(m.Start, m.Length) : null)).ToList() ?? [];
     }
+
+    /// <summary>The keys an action runs from where it is pressed, as the keymap in force has them.</summary>
+    private static string Keys(string action) =>
+        AppActions.Keymap().ShortcutsFor(AppActions.KeysIn(action)).First(s => s.Second is null).Notation();
 
     /// <summary>A completion item naming several overloads lists each in its card, in the code's colours, where the card
     /// said one and how many more; completing a name a call already makes again, those its arguments no longer fit are set
@@ -600,8 +617,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>A type's members after its dot are offered filters by kind under the rows, the kinds its items are of: turned
-    /// on, the list shows only members of the kinds on, narrowed as typed within them, every member again once each is off;
-    /// the keys stay in the editor throughout.</summary>
+    /// on, by a click or their keys (Alt and the badge's letter), the list shows only members of the kinds on, narrowed as
+    /// typed within them, every member again once each is off; the keys stay in the editor throughout and a filter's key
+    /// types nothing.</summary>
     [AvaloniaFact]
     public void A_members_list_narrows_to_the_kinds_turned_on_under_it_and_leaves_the_keys_in_the_editor()
     {
@@ -625,10 +643,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Su" && window.Assist.CompletionLabels.Contains("Substring"),
             () => $"Substring among the properties and methods narrowed by Su: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
         Assert.DoesNotContain(window.Assist.CompletionLabels, label => label.StartsWith("Sum", StringComparison.Ordinal));
-        Ui.Click(window.Assist.CompletionFilter("Properties"));
-        Ui.Click(window.Assist.CompletionFilter("Methods"));
+        Ui.Press(window, Keys(AppActions.CompletionProperties));
+        Ui.Press(window, Keys(AppActions.CompletionMethods));
         Ui.WaitFor(() => window.Assist.CompletionLabels.Any(label => label.StartsWith("Sum", StringComparison.Ordinal)) && window.Assist.CompletionLabels.Contains("Substring"),
             () => $"every member narrowed by Su once the filters are off: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        Assert.Equal("        _ = label.Su;", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
+        Ui.Press(window, Keys(AppActions.CompletionExtensionMethods));
+        Ui.WaitFor(() => window.Assist.CompletionBadges.All(b => b.Letter == "x") && window.Assist.CompletionLabels.Any(label => label.StartsWith("Sum", StringComparison.Ordinal)),
+            () => $"string's extension methods alone after their filter's keys: {string.Join(", ", window.Assist.CompletionBadges.Take(8))}");
         Assert.Equal("        _ = label.Su;", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
         window.Close();
     }

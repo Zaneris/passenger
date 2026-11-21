@@ -35,6 +35,19 @@ internal static class MemberKindsOf
             _ => MemberKinds.None,
         };
 
+    /// <summary>The action that turns the filter of a kind on and off, from the keys too.</summary>
+    public static string ActionOf(MemberKinds kind) => kind switch
+    {
+        MemberKinds.Properties => AppActions.CompletionProperties,
+        MemberKinds.Methods => AppActions.CompletionMethods,
+        MemberKinds.ExtensionMethods => AppActions.CompletionExtensionMethods,
+        MemberKinds.Fields => AppActions.CompletionFields,
+        _ => AppActions.CompletionEvents,
+    };
+
+    /// <summary>The kind whose filter an action turns on and off; none for another action.</summary>
+    public static MemberKinds OfAction(string action) => All.FirstOrDefault(k => ActionOf(k) == action);
+
     /// <summary>What the filter of a kind is called, its tip and its name to a screen reader.</summary>
     public static string Words(MemberKinds kind) => kind switch
     {
@@ -77,6 +90,8 @@ internal sealed class CompletionFilters : StackPanel
             (letter.Text, string brush) = MemberKindsOf.Badge(kind);
             badge.Bind(Border.BackgroundProperty, badge.GetResourceObservable(brush));
             ToggleButton toggle = ToolButtons.Give(new ToggleButton(), badge, MemberKindsOf.Words(kind));
+            // Its tip names its keys as the keymap in force has them.
+            ActionTips.Set(toggle, MemberKindsOf.ActionOf(kind), MemberKindsOf.Words(kind));
             toggle.IsCheckedChanged += (_, _) =>
             {
                 if (!setting)
@@ -100,6 +115,17 @@ internal sealed class CompletionFilters : StackPanel
 
     /// <summary>The filter of a kind, shown or not.</summary>
     public ToggleButton Of(MemberKinds kind) => toggles[kind];
+
+    /// <summary>Turns the filter of a kind offered on or off, as a click does; false for a kind not offered.</summary>
+    public bool Toggle(MemberKinds kind)
+    {
+        if (!IsVisible || !Offered.HasFlag(kind) || kind == MemberKinds.None)
+        {
+            return false;
+        }
+        toggles[kind].IsChecked = toggles[kind].IsChecked != true;
+        return true;
+    }
 
     /// <summary>Filters for the kinds a list's items are of, where they are more than one, else none; with
     /// <paramref name="fresh"/> (a list opening) each off, else those still offered as they were.</summary>

@@ -413,6 +413,19 @@ public static class AppActions
     public const string Inline = "app.code.inline";
     public const string ParameterInfo = "app.code.parameterInfo";
 
+    // Rider's MethodOverloadSwitchDown and MethodOverloadSwitchUp: Parameter Info's next and previous overload, on the keys
+    // the editor's own action has there (KeysIn).
+    public const string NextOverload = "app.code.nextOverload";
+    public const string PreviousOverload = "app.code.previousOverload";
+
+    // The completion list's filters by the kind of member, which no keymap of Rider's has: each on Alt and its badge's
+    // letter, taken only while the list shows them (InEditor), the key typing as before anywhere else.
+    public const string CompletionProperties = "app.code.completion.properties";
+    public const string CompletionMethods = "app.code.completion.methods";
+    public const string CompletionExtensionMethods = "app.code.completion.extensionMethods";
+    public const string CompletionFields = "app.code.completion.fields";
+    public const string CompletionEvents = "app.code.completion.events";
+
     // Rider's SurroundWith (its Visual Studio keymaps clear its own keys and give theirs to SurroundWithLiveTemplate, which
     // it is here), EditorCompleteStatement, OptimizeImports (named Optimize Imports in C# too; its id says usings, which
     // Find Action reads), SafeDelete, IntroduceField, IntroduceParameter and RiderBackendAction-EncapsulateField.
@@ -668,7 +681,19 @@ public static class AppActions
         NewItem when Preset != KeymapPreset.VisualStudio => Generate,
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
+        NextOverload when Preset != KeymapPreset.VSCode => OverloadKeys(down: true),
+        PreviousOverload when Preset != KeymapPreset.VSCode => OverloadKeys(down: false),
         _ => id,
+    };
+
+    /// <summary>The action whose keys step through Parameter Info's overloads, as Rider's keymaps give them Ctrl+Up and Down,
+    /// or Alt's on the Mac: the editor's scroll by a line, its line move on the Mac, or IntelliJ IDEA's selection steps
+    /// there.</summary>
+    private static string OverloadKeys(bool down) => (Preset, OperatingSystem.IsMacOS()) switch
+    {
+        (KeymapPreset.IntelliJ, true) => down ? ShrinkSelection : ExtendSelection,
+        (_, true) => down ? EditorActions.MoveLineDown : EditorActions.MoveLineUp,
+        _ => down ? EditorActions.ScrollDown : EditorActions.ScrollUp,
     };
 
     /// <summary>Whether a key pressed is one a place takes for an action (<see cref="KeysIn"/>), in the keymap in force.</summary>
@@ -692,7 +717,12 @@ public static class AppActions
             .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R")
             // The Switcher's keys are the same in every keymap of Rider's (Switcher).
             .Bind(Switcher, "control TAB")
-            .Bind(SwitcherBackward, "control shift TAB");
+            .Bind(SwitcherBackward, "control shift TAB")
+            .Bind(CompletionProperties, "alt P")
+            .Bind(CompletionMethods, "alt M")
+            .Bind(CompletionExtensionMethods, "alt X")
+            .Bind(CompletionFields, "alt F")
+            .Bind(CompletionEvents, "alt E");
         foreach ((string action, string[] shortcuts) in overrides)
         {
             List<Shortcut> keys = [];

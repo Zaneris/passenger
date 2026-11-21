@@ -69,6 +69,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     {
         TextBlock words => words.Text,
         ColouredCode code => code.Code,
+        Border { Child: Panel { Children: [ColouredCode overload, ..] } } => overload.Code,
         Panel row => string.Join(' ', row.Children.OfType<TextBlock>().Select(t => t.Text)),
         Debugging.VariablesList values => string.Join('\n', values.Tree.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Name} = {r.TypeLabel}{r.Shown}")),
         _ => null,
@@ -143,8 +144,9 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 
     /// <summary>One of a call's overloads, among the rest: its code as <see cref="AddServed"/> shows it, the parameter the
     /// caret's argument fills strong (<see cref="ColouredCode.Marked"/>), set back where the call's arguments no longer fit
-    /// it.</summary>
-    public void AddOverload(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language, bool fits, int parameter)
+    /// it; with <paramref name="chosen"/>, a row of a list stepped through, marked as a chosen row is where it is the one.</summary>
+    public void AddOverload(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language, bool fits, int parameter,
+        bool? chosen = null)
     {
         AddServed(code, given, language);
         ColouredCode shown = (ColouredCode)parts.Children[^1];
@@ -155,6 +157,15 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         if (!fits)
         {
             shown.Classes.Add(StyleClasses.Unfit);
+        }
+        if (chosen is { } isChosen)
+        {
+            // A list stepped through: each a row, the one chosen marked as a chosen row is.
+            parts.Children.RemoveAt(parts.Children.Count - 1);
+            Border row = new();
+            ChosenMark.Hold(row, shown);
+            row.Classes.Set(StyleClasses.Chosen, isChosen);
+            parts.Children.Add(row);
         }
     }
 

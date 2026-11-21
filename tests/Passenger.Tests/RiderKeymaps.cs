@@ -35,9 +35,13 @@ internal static class RiderKeymaps
             ["ShowUsages"] = ["control alt F7"],
             ["QuickEvaluateExpression"] = ["control alt F8", "alt button1"],
             ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
+            ["MethodOverloadSwitchUp"] = ["control UP"],
+            ["MethodOverloadSwitchDown"] = ["control DOWN"],
         }),
         [MacOS] = (Default, new()
         {
+            ["MethodOverloadSwitchUp"] = ["alt UP"],
+            ["MethodOverloadSwitchDown"] = ["alt DOWN"],
             ["Switcher"] = ["ctrl TAB", "ctrl shift TAB"],
             ["Generate"] = ["meta N", "control ENTER"],
             ["NewElement"] = ["meta N", "control ENTER"],
@@ -79,6 +83,8 @@ internal static class RiderKeymaps
             ["ContextHelp"] = [],
             ["ShowUsages"] = ["shift f12"],
             ["QuickEvaluateExpression"] = ["ctrl alt f8"],
+            ["MethodOverloadSwitchDown"] = [],
+            ["MethodOverloadSwitchUp"] = [],
         }),
         ["VSCode OSX"] = (MacOS, new()
         {
@@ -97,6 +103,8 @@ internal static class RiderKeymaps
             ["EditorCloneCaretBelow"] = ["shift meta alt down", "meta alt down"],
             ["ShowUsages"] = ["shift f12"],
             ["QuickEvaluateExpression"] = ["meta alt f8"],
+            ["MethodOverloadSwitchDown"] = [],
+            ["MethodOverloadSwitchUp"] = [],
         }),
     };
 

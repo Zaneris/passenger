@@ -539,7 +539,9 @@ public partial class MainWindow
         ActionContext context = actions!.Context();
         string? taken = Here(A.NewItem, ExplorerHasKeys(context))
             ?? Here(A.Rerun, context.ToolWindow?.Id == ToolWindowIds.Run)
-            ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line));
+            ?? Here(A.EditBreakpoint, context is { ToolWindow: null, File: { } file } && session.Debug.Breakpoints.In(file.Path).Any(b => b.Line == context.Caret.Line))
+            ?? Here(A.NextOverload, assist.StepsOverloads)
+            ?? Here(A.PreviousOverload, assist.StepsOverloads);
         if (taken is null)
         {
             return false;

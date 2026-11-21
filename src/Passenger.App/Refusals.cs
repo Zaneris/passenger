@@ -76,6 +76,12 @@ public static class Refusals
     /// <summary>The window has no folder open (a solution, a project or a folder of files).</summary>
     public const string NoFolder = "No folder is open";
 
+    /// <summary>A completion list's filter by the kind of member asked for where none is offered.</summary>
+    public const string NoMembersListed = "No completion list of a type's members of that kind is open";
+
+    /// <summary>Parameter Info's next or previous overload asked for where it shows no call of several.</summary>
+    public const string NoOverloadsShown = "Parameter Info shows no call of several overloads";
+
     /// <summary>The folder open has no solution (a project opened alone, or a folder of files).</summary>
     public const string NoSolution = "No solution is open";
 

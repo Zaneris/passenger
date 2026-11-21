@@ -553,11 +553,16 @@ public sealed class CodeAssist
     private CodeEditor Editor => context.Editor;
 
     /// <summary>Keys the open popups take before the editor does: the completion list's Up, Down, Enter,
-    /// Tab and Escape, and Escape for a card.</summary>
+    /// Tab and Escape, Parameter Info's keys for its next and previous overload, and Escape for a card.</summary>
     public bool TakeKey(string action)
     {
         if (completion.TakeKey(action))
         {
+            return true;
+        }
+        if (OverloadStep(action) is { } step)
+        {
+            parameterInfo.Step(step);
             return true;
         }
         if (action == EditorActions.Escape && (parameterInfo.IsVisible || quickInfo.IsVisible))
@@ -568,6 +573,17 @@ public sealed class CodeAssist
         }
         return false;
     }
+
+    /// <summary>Whether Parameter Info shows a call of several overloads, which its keys step through.</summary>
+    public bool StepsOverloads => parameterInfo.Steps;
+
+    /// <summary>The step a key of the editor's takes through Parameter Info's overloads while it shows several (the keys
+    /// of Next and Previous Overload, <see cref="AppActions.KeysIn"/>); null for none.</summary>
+    private int? OverloadStep(string action) =>
+        !parameterInfo.Steps ? null
+        : action == AppActions.KeysIn(AppActions.NextOverload) ? 1
+        : action == AppActions.KeysIn(AppActions.PreviousOverload) ? -1
+        : null;
 
     /// <summary>Closes the list of choices or rename box open in a window, as Escape there does wherever the keys are,
     /// saying whether one was.</summary>
@@ -583,6 +599,23 @@ public sealed class CodeAssist
         Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
             godot: true, shader: true, writes: true);
         Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true, writes: true);
+        registry.Add(new IdeAction(AppActions.NextOverload, "Next Overload", "Code", _ => parameterInfo.Step(1))
+        {
+            WhyNot = _ => parameterInfo.Steps ? null : Refusals.NoOverloadsShown,
+        });
+        registry.Add(new IdeAction(AppActions.PreviousOverload, "Previous Overload", "Code", _ => parameterInfo.Step(-1))
+        {
+            WhyNot = _ => parameterInfo.Steps ? null : Refusals.NoOverloadsShown,
+        });
+        foreach (MemberKinds kind in MemberKindsOf.All)
+        {
+            // The list's keys while it shows its filters, the editor's own anywhere else.
+            registry.Add(new IdeAction(MemberKindsOf.ActionOf(kind), $"Completion Filter: {MemberKindsOf.Words(kind)}", "Code", _ => completion.ToggleFilter(kind))
+            {
+                InEditor = true,
+                WhyNot = _ => completion.WhyNotFilter(kind),
+            });
+        }
         // Passenger's own fixes first, which a file the server does not read (a XAML file) may have too.
         registry.Add(new IdeAction(AppActions.QuickFix, "Show Context Actions", "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
         {
