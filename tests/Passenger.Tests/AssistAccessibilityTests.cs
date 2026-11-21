@@ -296,7 +296,7 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
 
     /// <summary>Read as Text in the editor opens what is at the caret as text: on a line holding an error, the error by its
     /// kind and place; on a call, what its card says; each named by the file and the caret's place, and Escape gives the
-    /// editor its keys back with the caret where it was.</summary>
+    /// editor its keys back with the caret where it was. In Problems, the chosen problem by its kind, code and place.</summary>
     [AvaloniaFact]
     public void Read_as_text_opens_the_carets_problem_and_its_card_as_text_and_Escape_gives_the_editor_its_keys_back_at_the_caret()
     {
@@ -323,6 +323,19 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
         Assert.True(card.Text.Contains("Helper.Twice(int value)", StringComparison.Ordinal) && !card.Text.Contains("Error", StringComparison.Ordinal),
             $"Read as Text on a call read what its card says as:\n{card.Text}");
         ReadAsTextTests.Escaped(window, window, () => editor.IsFocused && editor.CaretPosition == caret, $"the editor at {caret}");
+
+        window.ShowToolWindow(ToolWindowIds.Problems);
+        Passenger.App.ToolWindows.ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.Rows.Any(r => r.Problem?.Message.Contains("'Missing'", StringComparison.Ordinal) == true), "the error under Missing in Problems");
+        Avalonia.Controls.ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.ProblemsWindow).OfType<Avalonia.Controls.ListBox>().First();
+        list.SelectedItem = problems.Rows.First(r => r.Problem?.Message.Contains("'Missing'", StringComparison.Ordinal) == true);
+        ListKeys.Hold(list);
+        Ui.Settle();
+        PlainTextView chosen = ReadAsTextTests.Opened(window, window, "a problem chosen in Problems");
+        Assert.True(chosen.Title == "Problem: Program.cs:7:9" && chosen.Text.StartsWith("Error", StringComparison.Ordinal) && chosen.Text.Contains("CS0246", StringComparison.Ordinal)
+            && chosen.Text.Contains("'Missing'", StringComparison.Ordinal) && chosen.Text.Contains("At line 7, column 9 of ", StringComparison.Ordinal),
+            $"Read as Text on a problem chosen in Problems read \"{chosen.Title}\" as:\n{chosen.Text}");
+        ReadAsTextTests.Escaped(window, window, () => list.IsKeyboardFocusWithin, "the problem's row");
         window.Close();
     }
 

@@ -8,8 +8,8 @@ namespace Passenger.App;
 
 /// <summary>Read as Text: what the thing with the keys says, opened as plain text in the one view a screen reader reads
 /// line by line (<see cref="PlainTextView"/>), Escape giving the keys back to where they were: in the terminal its last
-/// command and output, in a diff its changes, in the Tests window the chosen test's result, in the status bar its last
-/// message, in the editor the problems on the caret's line and what the card at the caret says.</summary>
+/// command and output, in a diff its changes, in the Tests window the chosen test's result, in Problems the chosen problem,
+/// in the status bar its last message, in the editor the problems on the caret's line and what the card at the caret says.</summary>
 public partial class MainWindow
 {
     /// <summary>A thing's text to read: what it is, how it is read, and what is said where it says nothing.</summary>
@@ -63,8 +63,8 @@ public partial class MainWindow
     private static PlainTextView? Reading(object? focused) =>
         (focused as Visual)?.FindAncestorOfType<PlainTextView>(includeSelf: true);
 
-    /// <summary>What the element with the keys says as text, by where it is: the terminal, a diff, the Tests window, the
-    /// status bar, the files' editor; else the status bar's last message; null with none.</summary>
+    /// <summary>What the element with the keys says as text, by where it is: the terminal, a diff, the Tests window,
+    /// Problems, the status bar, the files' editor; else the status bar's last message; null with none.</summary>
     private Readable? ReadableAt(ActionContext context)
     {
         Visual? focused = context.Focused as Visual;
@@ -80,6 +80,10 @@ public partial class MainWindow
         {
             return Bottom.Tests.ChosenAsText() is { } chosen ? new(chosen.Title, _ => Task.FromResult(chosen.Text), Refusals.NothingToRead) : null;
         }
+        if (context.ToolWindow?.Id == ToolWindowIds.Problems)
+        {
+            return Bottom.Problems.ChosenRow?.Problem is { } problem ? new($"Problem: {problem.Where}", _ => Task.FromResult(ProblemText(problem)), Refusals.NothingToRead) : null;
+        }
         Border statusBar = StatusBarFrame;
         if (focused is not null && (focused == statusBar || statusBar.IsVisualAncestorOf(focused)))
         {
@@ -91,6 +95,20 @@ public partial class MainWindow
             return new($"{file.Title}, line {caret.Line + 1}, column {caret.Column + 1}", assist.WordsAtCaretAsync, Refusals.NothingAtCaret);
         }
         return LastMessage();
+    }
+
+    /// <summary>A problem as text: its kind, code and message, then where it is, by line and column, and its project.</summary>
+    private static string ProblemText(Problem problem)
+    {
+        string kind = problem.Severity switch
+        {
+            ProblemSeverity.Error => "Error",
+            ProblemSeverity.Warning => "Warning",
+            _ => "Note",
+        };
+        string where = problem.Path is { } path ? $"At line {problem.Position.Line + 1}, column {problem.Position.Column + 1} of {path}" : string.Empty;
+        string project = problem.Project is { } named ? $"In {named}" : string.Empty;
+        return string.Join('\n', new[] { $"{kind}{(problem.Code is { Length: > 0 } code ? $" {code}" : string.Empty)}: {problem.Message}", where, project }.Where(l => l.Length > 0));
     }
 
     /// <summary>The status bar's last message, with its kind where it is an error or a warning; null while it says nothing.</summary>

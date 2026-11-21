@@ -731,7 +731,7 @@ public static class Refusals
     public const string OnlyToRead = "The text is only to read: Escape goes back to where you were";
 
     /// <summary>Read as Text where the keys are on nothing that says anything as text.</summary>
-    public const string NothingToRead = "Nothing here to read as text: put the keys in the editor, the terminal, a diff, the Tests window or the status bar";
+    public const string NothingToRead = "Nothing here to read as text: put the keys in the editor, the terminal, a diff, the Tests window, Problems or the status bar";
 
     /// <summary>Read as Text in the editor where nothing at the caret says anything.</summary>
     public const string NothingAtCaret = "Nothing at the caret to read as text: no problem is on its line, and its language says nothing of it";
