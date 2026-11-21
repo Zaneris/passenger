@@ -28,6 +28,14 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-21
+
+- `McpLanguagesTests`' YAML test, CI 44763221323 (Windows, report): "Its code help needs the YAML language server: it
+  is starting…". **A bug in the IDE**: an agent's 2-minute wait for its language server never scaled with
+  `PASSENGER_WAIT_SCALE`, and the YAML server's first start reads about 380 modules cold (29.5 s on a loaded VM against
+  1.6–3.3 s after) on a runner where a 1.4 s build took 33.8 s. The wait scales now, says what it waits for, and its
+  refusal names the wait (`Refusals.StillStarting`; 79cd3b108, #2040).
+
 ## 2026-11-20
 
 - `XamlTests`' `Passengers_own_main_window_completes_its_theme_tokens_and_its_style_classes`, CI 44855772233 (every
