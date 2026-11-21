@@ -39,48 +39,49 @@ internal static class CompletionItemKinds
     /// just made, the symbols recommended at a place found once for every item asked for there.</summary>
     public static async Task<Dictionary<int, string>?> TypesAsync(Document document, IReadOnlyList<RoslynCompletionItem> items, CancellationToken cancellationToken)
     {
-        Compilation? compilation = null;
-        Dictionary<int, ILookup<(string Name, SymbolKind Kind, bool Generic), ISymbol>> recommended = [];
+        ItemSymbols read = new(document);
         Dictionary<int, string>? types = null;
         for (int i = 0; i < items.Count; i++)
         {
-            RoslynCompletionItem item = items[i];
-            if (!item.Tags.Any(Typed.Contains))
-            {
-                continue;
-            }
-            IEnumerable<ISymbol?> symbols;
-            if (item.TryGetProperty("Symbols", out string? keys) && !string.IsNullOrEmpty(keys))
-            {
-                compilation ??= await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
-                if (compilation is null)
-                {
-                    return null;
-                }
-                symbols = keys.Split('|', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(key => SymbolKey.ResolveString(key, compilation, cancellationToken: cancellationToken).GetAnySymbol());
-            }
-            else if (SymbolCompletionItem.GetSymbolName(item) is { } name && SymbolCompletionItem.GetKind(item) is { } kind
-                && SymbolCompletionItem.GetContextPosition(item) is >= 0 and int at)
-            {
-                if (!recommended.TryGetValue(at, out ILookup<(string Name, SymbolKind Kind, bool Generic), ISymbol>? there))
-                {
-                    there = (await Recommender.GetRecommendedSymbolsAtPositionAsync(document, at, cancellationToken: cancellationToken).ConfigureAwait(false))
-                        .ToLookup(s => (s.Name, s.Kind, Arity(s) > 0));
-                    recommended[at] = there;
-                }
-                symbols = there[(name, kind, SymbolCompletionItem.GetSymbolIsGeneric(item))];
-            }
-            else
-            {
-                continue;
-            }
-            if (Agreed(symbols) is { } type)
+            if (items[i].Tags.Any(Typed.Contains) && await read.OfAsync(items[i], cancellationToken).ConfigureAwait(false) is { } symbols
+                && Agreed(symbols) is { } type)
             {
                 (types ??= [])[i] = type;
             }
         }
         return types;
+    }
+
+    /// <summary>The symbols Roslyn's completion items name, read again in a document's compilation: from the keys an item
+    /// keeps, or, for one keeping only its symbols' name and kind, those of that name and kind recommended where its list
+    /// was asked for, as the server finds them to describe one; each place's recommendations found once.</summary>
+    public sealed class ItemSymbols(Document document)
+    {
+        private readonly Dictionary<int, ILookup<(string Name, SymbolKind Kind, bool Generic), ISymbol>> recommended = [];
+        private Compilation? compilation;
+
+        /// <summary>An item's symbols, an unread key's left out; null for an item that names none.</summary>
+        public async Task<IReadOnlyList<ISymbol>?> OfAsync(RoslynCompletionItem item, CancellationToken cancellationToken)
+        {
+            if (item.TryGetProperty("Symbols", out string? keys) && !string.IsNullOrEmpty(keys))
+            {
+                compilation ??= await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
+                return compilation is null ? null : [.. keys.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(key => SymbolKey.ResolveString(key, compilation, cancellationToken: cancellationToken).GetAnySymbol()).OfType<ISymbol>()];
+            }
+            if (SymbolCompletionItem.GetSymbolName(item) is not { } name || SymbolCompletionItem.GetKind(item) is not { } kind
+                || SymbolCompletionItem.GetContextPosition(item) is not (>= 0 and int at))
+            {
+                return null;
+            }
+            if (!recommended.TryGetValue(at, out ILookup<(string Name, SymbolKind Kind, bool Generic), ISymbol>? there))
+            {
+                there = (await Recommender.GetRecommendedSymbolsAtPositionAsync(document, at, cancellationToken: cancellationToken).ConfigureAwait(false))
+                    .ToLookup(s => (s.Name, s.Kind, Arity(s) > 0));
+                recommended[at] = there;
+            }
+            return [.. there[(name, kind, SymbolCompletionItem.GetSymbolIsGeneric(item))]];
+        }
     }
 
     private static int Arity(ISymbol symbol) => symbol switch
@@ -91,10 +92,10 @@ internal static class CompletionItemKinds
     };
 
     /// <summary>The type an item's symbols give, where they agree; null for none, or where one can't be read or they differ.</summary>
-    private static string? Agreed(IEnumerable<ISymbol?> symbols)
+    private static string? Agreed(IReadOnlyList<ISymbol> symbols)
     {
         string? agreed = null;
-        foreach (ISymbol? symbol in symbols)
+        foreach (ISymbol symbol in symbols)
         {
             ITypeSymbol? type = symbol switch
             {

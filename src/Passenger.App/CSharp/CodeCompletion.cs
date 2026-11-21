@@ -1124,13 +1124,20 @@ internal sealed partial class CodeCompletion
                 return;
             }
             itemCard.Clear();
-            if (item.Detail is { Length: > 0 } detail)
+            Languages.Language? shownIn = context.Editors.Active is { } active && active.Text == Editor.Document ? active.Language : null;
+            bool overloads = item.Overloads is { Count: > 1 };
+            if (overloads)
             {
-                itemCard.AddServed(detail, null, context.Editors.Active is { } active && active.Text == Editor.Document ? active.Language : null);
+                // Every overload the item names, those the call its name already makes no longer fits set back.
+                itemCard.AddOverloads(item.Overloads!, item.OverloadFits, shownIn);
+            }
+            else if (item.Detail is { Length: > 0 } detail)
+            {
+                itemCard.AddServed(detail, null, shownIn);
             }
             if (Shapes.Text(item.Documentation) is { Length: > 0 } documentation)
             {
-                itemCard.AddMarkdown(documentation, item.Code);
+                itemCard.AddMarkdown(documentation, item.Code, overloadsShown: overloads);
             }
             if (!itemCard.IsEmpty)
             {

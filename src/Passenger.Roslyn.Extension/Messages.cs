@@ -121,6 +121,14 @@ public static class CodeParts
     /// <summary>A signature's member saying whether it still fits the arguments its call has so far; missing where that
     /// can't be read.</summary>
     public const string Fits = "passengerFits";
+
+    /// <summary>A resolved completion item's member giving each of the overloads it names as its signature's parts; missing
+    /// for an item of one.</summary>
+    public const string Overloads = "passengerOverloads";
+
+    /// <summary>A resolved completion item's member saying of each overload whether it fits the arguments of a call its name
+    /// already makes, each true where it makes none.</summary>
+    public const string OverloadFits = "passengerOverloadFits";
 }
 
 /// <summary>A stretch of code and its semantic token type, null for none.</summary>

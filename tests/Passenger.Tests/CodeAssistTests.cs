@@ -462,7 +462,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// name does.</summary>
     private const string KindsCode = "using System.Linq;\n\nstatic class Kinds\n{\n    public static int Totalled(int first, string label)\n    {\n"
         + "        var count = label.Length;\n        double half = first / 2.0;\n        int Doubled(int value, bool loud) => loud ? value * 2 : value;\n"
-        + "        _ = label;\n        _ = Described(label, label, first);\n        return Doubled(count, false) + (int)half;\n    }\n\n"
+        + "        _ = label;\n        _ = Described(label, label, first);\n        _ = System.Math.Max(1, 2);\n        return Doubled(count, false) + (int)half;\n    }\n\n"
         + "    public static string Described(string firstName, string lastName, int yearOfBirth, bool includeTheMiddleInitial = false) => firstName;\n}\n";
 
     /// <summary>A call's list names each value by what it is, its type beside it: a local (the inferred one too) apart from
@@ -568,6 +568,35 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         List<(string Code, bool Fits, string? Strong)> Overloads() =>
             window.Assist.SignatureCard?.GetVisualDescendants().OfType<ColouredCode>()
                 .Select(c => (c.Code, !c.Classes.Contains(StyleClasses.Unfit), c.Marked is { } m ? c.Code.Substring(m.Start, m.Length) : null)).ToList() ?? [];
+    }
+
+    /// <summary>A completion item naming several overloads lists each in its card, in the code's colours, where the card
+    /// said one and how many more; completing a name a call already makes again, those its arguments no longer fit are set
+    /// back.</summary>
+    [AvaloniaFact]
+    public void A_completion_items_card_lists_every_overload_setting_back_those_its_calls_arguments_no_longer_fit()
+    {
+        MainWindow window = project.Open("Kinds.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "Math.Ma");
+        editor.Focus();
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Max"), () => $"Math's Max in the list: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
+        for (int moves = 0; moves < window.Assist.CompletionLabels.Count && window.Assist.CompletionChosen != "Max"; moves++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.WaitFor(() => Overloads().Count > 6, () => $"Max's overloads in its card: {window.Assist.ItemDocumentation}");
+        Assert.Contains(Overloads(), o => o.Code.EndsWith("Max(int val1, int val2)", StringComparison.Ordinal) && o.Fits);
+        Assert.Contains(Overloads(), o => o.Code.EndsWith("Max(long val1, long val2)", StringComparison.Ordinal) && o.Fits);
+        Assert.Contains(Overloads(), o => o.Code.EndsWith("Max(byte val1, byte val2)", StringComparison.Ordinal) && !o.Fits);
+        Assert.DoesNotContain("(+ ", window.Assist.ItemDocumentation, StringComparison.Ordinal);
+        Assert.Contains("Returns the larger of two", window.Assist.ItemDocumentation, StringComparison.Ordinal);
+        window.Close();
+
+        // Each overload the card shows: its code, and whether the call's arguments still fit it.
+        List<(string Code, bool Fits)> Overloads() =>
+            window.Assist.ItemCard?.GetVisualDescendants().OfType<ColouredCode>().Select(c => (c.Code, !c.Classes.Contains(StyleClasses.Unfit))).ToList() ?? [];
     }
 
     /// <summary>A type's members after its dot are offered filters by kind under the rows, the kinds its items are of: turned

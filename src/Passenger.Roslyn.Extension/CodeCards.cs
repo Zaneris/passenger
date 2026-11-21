@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.Completion;
+using Microsoft.CodeAnalysis.Completion.Providers;
 using Microsoft.CodeAnalysis.LanguageServer;
 using Microsoft.CodeAnalysis.LanguageServer.Handler;
 using Microsoft.CodeAnalysis.LanguageServer.Handler.Completion;
@@ -29,6 +30,19 @@ internal static class CodeCards
 {
     /// <summary>The legend a client without Visual Studio's extensions is given, whose token types the client colours by.</summary>
     private static readonly SemanticTokensSchema Legend = SemanticTokensSchema.GetSchema(clientSupportsVisualStudioExtensions: false);
+
+    /// <summary>A signature as an overload of a card shows it: what it returns, its type's name and its own, its type
+    /// parameters, and each parameter with its type, name, modifiers and default.</summary>
+    public static readonly SymbolDisplayFormat Signature = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType | SymbolDisplayMemberOptions.IncludeContainingType
+            | SymbolDisplayMemberOptions.IncludeRef,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeParamsRefOut
+            | SymbolDisplayParameterOptions.IncludeDefaultValue | SymbolDisplayParameterOptions.IncludeExtensionThis,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
+            | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
     /// <summary>A stretch of a classification's text; no type for a name the server could not bind, as its colours leave out.</summary>
     public static CodePart Part(string classification, string text) =>
@@ -110,7 +124,9 @@ internal sealed class CodedHover : LspHover
 }
 
 /// <summary><see cref="ExtensionMethods.CompletionResolve"/>: completionItem/resolve by the server's own resolving, with the
-/// parts of its documentation's blocks of code from the description of the item the server's kept list holds.</summary>
+/// parts of its documentation's blocks of code from the description of the item the server's kept list holds, and for an
+/// item naming several overloads each one's signature in parts, with whether it fits the arguments of a call the name
+/// already makes (<see cref="SignatureFits.OfNameAsync"/>).</summary>
 [Method(ExtensionMethods.CompletionResolve)]
 internal sealed class CodedCompletionResolveHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<CodedCompletionItem, LspCompletionItem>
 {
@@ -137,6 +153,15 @@ internal sealed class CodedCompletionResolveHandler(IGlobalOptionService options
         CompletionDescription? description = await document.GetRequiredLanguageService<CompletionService>().GetDescriptionAsync(document, item,
             options.GetCompletionOptions(language), options.GetSymbolDescriptionOptions(language), cancellationToken).ConfigureAwait(false);
         coded.Code = description is null ? null : CodeCards.Blocks(description.TaggedParts);
+        if (await new CompletionItemKinds.ItemSymbols(document).OfAsync(item, cancellationToken).ConfigureAwait(false) is { } symbols
+            && symbols.OfType<IMethodSymbol>().ToArray() is { Length: > 1 } overloads
+            && SymbolCompletionItem.GetContextPosition(item) is >= 0 and int at
+            && await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false) is { } model)
+        {
+            coded.Overloads = [.. overloads.Select(o => o.ToMinimalDisplayParts(model, at, CodeCards.Signature).ToTaggedText()
+                .Select(t => CodeCards.Part(t.Tag.ToClassificationTypeName(), t.Text)).ToArray())];
+            coded.OverloadFits = await SignatureFits.OfNameAsync(document, at, overloads, cancellationToken).ConfigureAwait(false);
+        }
         return coded;
     }
 
@@ -147,12 +172,21 @@ internal sealed class CodedCompletionResolveHandler(IGlobalOptionService options
         && (asked.Label == kept.SortText || asked.SortText?.EndsWith(kept.SortText, StringComparison.Ordinal) == true);
 }
 
-/// <summary>A completion item, resolved with its documentation's blocks of code's parts.</summary>
+/// <summary>A completion item, resolved with its documentation's blocks of code's parts, and each of its overloads'
+/// signatures in parts with whether it fits.</summary>
 internal sealed class CodedCompletionItem : LspCompletionItem
 {
     [JsonPropertyName(CodeParts.Member)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<CodePart[]>? Code { get; set; }
+
+    [JsonPropertyName(CodeParts.Overloads)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<CodePart[]>? Overloads { get; set; }
+
+    [JsonPropertyName(CodeParts.OverloadFits)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool[]? OverloadFits { get; set; }
 }
 
 /// <summary><see cref="ExtensionMethods.SignatureHelp"/>: textDocument/signatureHelp by the server's own, asked as for a

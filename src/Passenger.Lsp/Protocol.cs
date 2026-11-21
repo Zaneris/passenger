@@ -241,6 +241,18 @@ public sealed class CompletionItem
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? Code { get; init; }
 
+    /// <summary>A resolved C# item's overloads, each its signature in parts, through Passenger's extension; null for an
+    /// item of one. Never sent back.</summary>
+    [JsonPropertyName(Roslyn.Extension.CodeParts.Overloads)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? Overloads { get; init; }
+
+    /// <summary>Whether each of <see cref="Overloads"/> fits the arguments of a call the item's name already makes. Never
+    /// sent back.</summary>
+    [JsonPropertyName(Roslyn.Extension.CodeParts.OverloadFits)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<bool>? OverloadFits { get; init; }
+
     /// <summary>How well the item fits where its list was asked for, as the server's matching says: higher fits better,
     /// 0 where it says nothing (<see cref="CompletionList.WithPriorities"/>). Never sent back.</summary>
     [JsonIgnore]

@@ -25,8 +25,7 @@ internal static class SignatureFits
         {
             return null;
         }
-        (string? Name, ITypeSymbol? Type)[] arguments = [.. list.Arguments.Select(a => (a.NameColon?.Name.Identifier.ValueText,
-            a.Expression.IsMissing ? null : model.GetTypeInfo(a.Expression, cancellationToken).Type))];
+        (string? Name, ITypeSymbol? Type)[] arguments = Arguments(model, list, cancellationToken);
         // The place the caret's argument stands at, past the arguments written where it follows the last comma.
         int at = list.Arguments.GetSeparators().Count(comma => comma.SpanStart < position);
         if (arguments.Length <= at)
@@ -44,6 +43,40 @@ internal static class SignatureFits
         }
         return fits;
     }
+
+    /// <summary>Whether each of a name's overloads fits the arguments of the call the name at <paramref name="position"/> makes
+    /// (a call's name completed again); each fits where it makes none.</summary>
+    public static async Task<bool[]> OfNameAsync(Document document, int position, IReadOnlyList<IMethodSymbol> overloads, CancellationToken cancellationToken)
+    {
+        bool[] fits = [.. overloads.Select(_ => true)];
+        SyntaxNode? root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
+        SemanticModel? model = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+        if (root is null || model is null || position > root.FullSpan.End)
+        {
+            return fits;
+        }
+        SyntaxToken name = root.FindToken(position);
+        if (name.Parent is not SimpleNameSyntax && position > 0)
+        {
+            name = root.FindToken(position - 1);
+        }
+        if (name.Parent is not SimpleNameSyntax called
+            || called.AncestorsAndSelf().TakeWhile(n => n is ExpressionSyntax).OfType<InvocationExpressionSyntax>().FirstOrDefault() is not { } call
+            || !call.Expression.Span.Contains(called.Span))
+        {
+            return fits;
+        }
+        (string? Name, ITypeSymbol? Type)[] arguments = Arguments(model, call.ArgumentList, cancellationToken);
+        for (int i = 0; i < fits.Length; i++)
+        {
+            fits[i] = Fit(model.Compilation, [.. overloads[i].Parameters], arguments, -1, null).Fits;
+        }
+        return fits;
+    }
+
+    /// <summary>Each argument of a call as it binds: its name where it is named, and its type where one is known.</summary>
+    private static (string? Name, ITypeSymbol? Type)[] Arguments(SemanticModel model, BaseArgumentListSyntax list, CancellationToken cancellationToken) =>
+        [.. list.Arguments.Select(a => (a.NameColon?.Name.Identifier.ValueText, a.Expression.IsMissing ? null : model.GetTypeInfo(a.Expression, cancellationToken).Type))];
 
     /// <summary>A signature's parameters, from the symbol its key names, as many as it shows; null where it keeps none.</summary>
     private static IParameterSymbol[]? Parameters(SignatureHelpItem item, Compilation compilation, CancellationToken cancellationToken)

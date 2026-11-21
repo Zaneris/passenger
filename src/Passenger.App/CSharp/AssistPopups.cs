@@ -141,14 +141,13 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
     }
 
-    /// <summary>One of a call's overloads, among the rest: its code as <see cref="AddServed"/> shows it but on its line, the
-    /// parameter the caret's argument fills strong (<see cref="ColouredCode.Marked"/>), set back where the call's
-    /// arguments no longer fit it.</summary>
+    /// <summary>One of a call's overloads, among the rest: its code as <see cref="AddServed"/> shows it, the parameter the
+    /// caret's argument fills strong (<see cref="ColouredCode.Marked"/>), set back where the call's arguments no longer fit
+    /// it.</summary>
     public void AddOverload(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language, bool fits, int parameter)
     {
         AddServed(code, given, language);
         ColouredCode shown = (ColouredCode)parts.Children[^1];
-        shown.Signature = false;
         if (parameter >= 0 && Languages.SignatureLines.Parameters(shown.Code) is { } places && parameter < places.Count)
         {
             shown.Marked = places[parameter];
@@ -156,6 +155,16 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         if (!fits)
         {
             shown.Classes.Add(StyleClasses.Unfit);
+        }
+    }
+
+    /// <summary>A completion item's overloads, each as <see cref="AddOverload"/> shows it, set back where the arguments of a
+    /// call its name already makes no longer fit it.</summary>
+    public void AddOverloads(IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>> overloads, IReadOnlyList<bool>? fits, Languages.Language? language)
+    {
+        for (int i = 0; i < overloads.Count; i++)
+        {
+            AddOverload(Languages.CSharp.ServerCode.Of(overloads[i]).Text, overloads[i], language, fits is null || i >= fits.Count || fits[i], -1);
         }
     }
 
@@ -236,17 +245,36 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 
     /// <summary>A hover's Markdown: its fenced code as code (<see cref="AddServed"/>, by the parts given for it, else as the
     /// language its fence names), the prose between as its words (<see cref="HoverMarkdown"/>).</summary>
-    public void AddMarkdown(string markdown, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? code = null) =>
-        AddBlocks(HoverMarkdown.ByKind(markdown, plain: false, words: true), code);
+    /// <param name="overloadsShown">Whether the card lists the overloads above it (<see cref="AddOverloads"/>), which take
+    /// the place of its signature and of what it says of how many more there are.</param>
+    public void AddMarkdown(string markdown, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? code = null, bool overloadsShown = false) =>
+        AddBlocks(HoverMarkdown.ByKind(markdown, plain: false, words: true), code, overloadsShown);
 
-    private void AddBlocks(IEnumerable<(IReadOnlyList<string> Lines, bool Code, string Info)> blocks, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? given)
+    /// <summary>What a description says after its signature of how many more overloads there are, after the space it may
+    /// begin with.</summary>
+    private static readonly System.Text.RegularExpressions.Regex MoreOverloads =
+        new(@"^\s*\(\+\s*\d+\s+(generic\s+)?overloads?\)\s*", System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private void AddBlocks(IEnumerable<(IReadOnlyList<string> Lines, bool Code, string Info)> blocks, IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>>? given,
+        bool overloadsShown = false)
     {
         List<IReadOnlyList<Roslyn.Extension.CodePart>> unused = [.. given ?? []];
+        bool signature = overloadsShown;
         foreach ((IReadOnlyList<string> lines, bool code, string info) in blocks)
         {
             string text = string.Join('\n', lines).Trim('\n', ' ');
+            if (overloadsShown)
+            {
+                text = MoreOverloads.Replace(text, string.Empty);
+            }
             if (text.Length == 0)
             {
+                continue;
+            }
+            if (code && signature)
+            {
+                // The signature the overloads listed include.
+                signature = false;
                 continue;
             }
             if (code)
