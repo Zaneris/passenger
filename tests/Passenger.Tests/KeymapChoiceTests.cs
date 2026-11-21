@@ -479,9 +479,12 @@ public sealed class KeymapChoiceTests : IDisposable
 
             Ui.Press(floating, "control J");
             Assert.True(floating.IsVisible && window.TerminalPanel.View.IsFocused, "Ctrl+J, pressed in the floating terminal, hid it rather than going to the shell");
-            // Typed before the shell's next prompt, the command is echoed ahead of it and its output follows the prompt.
-            Ui.WaitFor(() => CursorLine(window) > prompted && window.TerminalPanel.Active!.Screen.CursorColumn > 0,
-                "the shell's prompt a row lower, the empty line Ctrl+J entered read");
+            // sh ends the empty line at Ctrl+J and echoes a command typed before its next prompt ahead of it; cmd's line goes on.
+            if (!OperatingSystem.IsWindows())
+            {
+                Ui.WaitFor(() => CursorLine(window) > prompted && window.TerminalPanel.Active!.Screen.CursorColumn > 0,
+                    "the shell's prompt a row lower, the empty line Ctrl+J entered read");
+            }
             floating.KeyTextInput("echo floated");
             Ui.Press(floating, "ENTER");
             Ui.WaitFor(() => window.TerminalPanel.Active!.Screen.ScreenText().Contains("\nfloated", StringComparison.Ordinal), "what was typed run in the floating terminal");
