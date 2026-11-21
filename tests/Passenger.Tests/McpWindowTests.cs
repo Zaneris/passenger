@@ -602,6 +602,55 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An attached agent never closes the person's solution, though it was allowed every tool: ide_actions lists
+    /// Close Solution greyed saying it is the person's, its ide_action is refused, so is Close Solution chosen in Find
+    /// Action by its keys, the agent told why each time and the status bar saying it too, and the folder stays open.</summary>
+    [AvaloniaFact]
+    public void An_attached_agent_allowed_every_tool_never_closes_the_persons_solution_and_is_told_why()
+    {
+        string folder = PathNames.Canonical(Plain("mcp-close-"));
+        MainWindow window = AgentsWindow(folder, languageServer: false);
+        window.OpenFile(Path.Combine(folder, "Notes.txt"));
+        Ui.Settle();
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId, folder])), "the agent attaching");
+        // What asks the person (every tool, input into Passenger's own windows) is allowed for the session.
+        CallToolResult Allowed(string tool, Dictionary<string, object?> arguments, string what)
+        {
+            Task<CallToolResult> calling = Waiting.Apart(() => Result(client, tool, arguments));
+            WaitFor(() => calling.IsCompleted || Questions(window).Any(), what);
+            if (Questions(window).FirstOrDefault() is { } asked)
+            {
+                Press(asked, AgentToolDialog.AllowForSession);
+            }
+            return Await(calling, what);
+        }
+        try
+        {
+            Assert.Contains("allowed every tool", Text(Allowed(McpTools.RequestFullAccess, [], "the agent's request for every tool")), StringComparison.Ordinal);
+
+            string listed = Text(Allowed(McpTools.IdeActions, new() { ["query"] = AppActions.CloseSolution }, "the agent's ide_actions"));
+            Assert.True(listed.Contains($" - cannot run: {Refusals.CloseSolutionIsThePersons}", StringComparison.Ordinal), $"ide_actions listed Close Solution as: {listed}");
+            CallToolResult closed = Allowed(McpTools.IdeAction, new() { ["action"] = AppActions.CloseSolution }, "the agent's Close Solution");
+            Assert.True(closed.IsError == true && Text(closed).Contains(Refusals.CloseSolutionIsThePersons, StringComparison.Ordinal), $"The agent's Close Solution answered: {Text(closed)}");
+            Ui.Settle();
+            Assert.Equal(folder, window.Folder);
+
+            Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }, "the agent's keys for Find Action");
+            Allowed(McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Close Solution" }, "the agent's typing in Find Action");
+            CallToolResult entered = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Enter" }, "the agent's Enter on Close Solution");
+            Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.CloseSolutionIsThePersons, StringComparison.Ordinal),
+                $"The agent's Enter on Find Action's Close Solution answered: {Text(entered)}");
+            Ui.Settle();
+            Assert.Equal(folder, window.Folder);
+            Assert.Equal(Refusals.CloseSolutionIsThePersons, window.Status);
+        }
+        finally
+        {
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>

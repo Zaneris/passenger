@@ -2039,7 +2039,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
             (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
             (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons),
-            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons)])
+            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons),
+            (AppActions.CloseSolution, Refusals.CloseSolutionIsThePersons)])
         {
             CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
             Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),

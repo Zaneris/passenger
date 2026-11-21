@@ -30,7 +30,7 @@ public sealed class ActionWorkRulesTests : IDisposable
             List<string> untold = [];
             ActionContext person = window.Actions.Context();
             ActionContext agent = person.ForAgent();
-            // One refused to an agent and not to the person (Quit, Restart to Update) is the person's alone, never an agent's to hear.
+            // One refused to an agent and not to the person (Quit, Close Solution, Restart to Update) is the person's alone, never an agent's to hear.
             foreach (IdeAction action in window.Actions.All.Where(a => a.WhyNot(agent) is null || a.WhyNot(person) is not null))
             {
                 (Dictionary<ActionFlows.Effect, string> atOnce, Dictionary<ActionFlows.Effect, string> later, HashSet<ActionFlows.Effect> going) = ([], [], []);

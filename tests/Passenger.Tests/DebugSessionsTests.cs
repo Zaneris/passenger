@@ -366,7 +366,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
 
     /// <summary>A program attached to whose code Hot Reload changed, which its runtime then lets no debugger go of: Close
     /// Solution and the window's close each ask first, saying leaving would stop it rather than leave it frozen, Cancel
-    /// keeping it debugged and the folder open, and an agent's Close Solution is refused saying so; the window's close asks
+    /// keeping it debugged and the folder open, and an agent's Close Solution is refused, the person's alone; the window's close asks
     /// that alone though Confirm before closing says Every window, the question confirming the close already; then Stop and
     /// Close ends the program and closes the solution, where the debugger let it go before, held by the runtime for good.</summary>
     [AvaloniaFact]
@@ -403,8 +403,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Equal(DebugState.Paused, first.State);
             Assert.True(DotnetProcesses.Runs(program), "Cancel ended First");
-            Assert.Equal("Hot Reload changed the code of First, after which its runtime lets no debugger go, so closing the solution would stop it rather than "
-                + "leave it frozen; stop it first to go on (session First)", window.Actions.RunForAgent(AppActions.CloseSolution));
+            Assert.Equal(Refusals.CloseSolutionIsThePersons, window.Actions.RunForAgent(AppActions.CloseSolution));
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
 

@@ -876,6 +876,10 @@ public static class Refusals
     public const string QuitIsThePersons = "Only the person quits Passenger or closes its last window, which ends what runs there and installs an update made ready: "
         + "ask them to";
 
+    /// <summary>An agent's Close Solution, by its ide_action or its input into Passenger's window, attached or in its own
+    /// Passenger: the person closes the solution, which ends what runs there.</summary>
+    public const string CloseSolutionIsThePersons = "Only the person closes the solution, which ends what runs there and leaves its folder: ask them to";
+
     /// <summary>An attached agent's input closing a window that Settings' Confirm before closing asks the person about, or
     /// answering that question: the person closes it.</summary>
     public const string CloseIsThePersons = "Only the person closes this window, which Passenger asks them about first as Settings says (Confirm before closing): "
