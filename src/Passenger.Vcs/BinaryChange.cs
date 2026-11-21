@@ -6,9 +6,9 @@ namespace Passenger.Vcs;
 /// its bytes are the same.</summary>
 public sealed record BinaryChange(long? Before, long? After, bool Same)
 {
-    /// <summary>The change as git's diff says it, of a file by its name from the tree's top.</summary>
-    public string Unified(string name) => Same ? "No changes"
-        : $"Binary files {(Before is null ? "/dev/null" : $"a/{name}")} and {(After is null ? "/dev/null" : $"b/{name}")} differ";
+    /// <summary>The change as git's diff says it, of a file by its name from the tree's top, and where it was for one renamed.</summary>
+    public string Unified(string name, string? from = null) => Same ? "No changes"
+        : $"Binary files {(Before is null ? "/dev/null" : $"a/{from ?? name}")} and {(After is null ? "/dev/null" : $"b/{name}")} differ";
 
     /// <summary>The change in a person's words, of a file by its name.</summary>
     public string Said(string name) => (Before, After) switch

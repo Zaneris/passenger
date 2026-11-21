@@ -106,9 +106,10 @@ public static class LineDiff
         return edits;
     }
 
-    /// <summary>The difference as `git diff` prints it: a header, then each hunk with three lines of context around it,
-    /// hunks whose context touches merged into one.</summary>
-    public static string Unified(string before, string after, string name, int context = 3)
+    /// <summary>The difference as `git diff` prints it: a header naming the file where it was (<paramref name="from"/>, for
+    /// one renamed) and where it is, then each hunk with three lines of context around it, hunks whose context touches merged
+    /// into one.</summary>
+    public static string Unified(string before, string after, string name, string? from = null, int context = 3)
     {
         string[] a = Lines(before);
         string[] b = Lines(after);
@@ -118,7 +119,7 @@ public static class LineDiff
             return string.Empty;
         }
         System.Text.StringBuilder text = new();
-        text.Append($"--- a/{name}\n+++ b/{name}\n");
+        text.Append($"--- a/{from ?? name}\n+++ b/{name}\n");
         int i = 0;
         while (i < hunks.Count)
         {

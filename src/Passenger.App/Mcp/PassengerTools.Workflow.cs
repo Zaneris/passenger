@@ -110,12 +110,15 @@ public sealed partial class PassengerTools
     /// <summary>vcs_status of a file: its changes since the last commit, as the repository was read just before.</summary>
     private async Task<string> VcsDiffAsync(string full, CancellationToken cancel)
     {
-        string name = Session.Folder is { } folder && PathNames.Relative(full, folder) is { } below ? below : full;
+        FileChange? change = Session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full));
+        string name = Named(full);
+        // A renamed file's diff names where it was as well as where it is.
+        string? from = change?.From is { } origin ? Named(origin) : null;
         // Git's own words for a change of mode come first, as its diff says it.
-        string? mode = Session.Vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full))?.Mode?.Unified;
+        string? mode = change?.Mode?.Unified;
         if (await Session.Vcs.BinaryChangeAsync(full) is { } binary)
         {
-            return Joined(mode, binary.Same ? null : binary.Unified(name));
+            return Joined(mode, binary.Same ? null : binary.Unified(name, from));
         }
         string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
         string? encoding = await Session.Vcs.EncodingChangeAsync(full);
@@ -124,15 +127,17 @@ public sealed partial class PassengerTools
         (string diff, string? separators) = await BackgroundWork.Run(() =>
         {
             string mine = texts.Text(full) ?? string.Empty;
-            return (LineDiff.Unified(head, mine, name), LineDiff.SeparatorChanges(head, mine));
+            return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head, mine));
         }, cancel);
         return Joined(mode, encoding, separators, diff.Length == 0 ? null : diff);
+
+        string Named(string path) => Session.Folder is { } folder && PathNames.Relative(path, folder) is { } below ? below : path;
 
         static string Joined(params string?[] parts) => parts.OfType<string>().ToArray() is { Length: > 0 } said ? string.Join('\n', said) : "No changes";
     }
 
     [McpServerTool(Name = McpTools.VcsCommit, Title = "Commit", Destructive = true), Description(
-        "Commits the paths given, else every changed file but the unversioned (saved first), with message; amend changes the " +
+        "Commits the paths given (a folder's, every change under it, new files too), else every changed file but the unversioned (saved first), with message; amend changes the " +
         "last commit (with paths [], its message alone), push pushes after; signed as git's config says and signed off as the Commit window's Sign-off is, " +
         "as the window commits. lines maps a modified file to the lines of the changes of it to commit (\"3,12-14\", as vcs_status's diff " +
         "numbers it now), each change they touch whole, the rest left uncommitted; with lines and no paths, only its files. With movesFirst, where git would no " +
@@ -152,7 +157,26 @@ public sealed partial class PassengerTools
         List<FileChange> passed = paths is null && lines is not { Count: > 0 } ? [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is not null)] : [];
         List<FileChange> chosen = paths is null
             ? lines is { Count: > 0 } ? [] : [.. vcs.Changes.Where(c => c.Kind is not ChangeKind.Unversioned && c.Uncommittable is null)]
-            : [.. paths.Select(given => Resolve(given)).Select(p => vcs.Changes.FirstOrDefault(c => c.Path == p) ?? throw new ArgumentException($"{Relative(p)} has no changes to commit"))];
+            : [];
+        foreach (string given in paths ?? [])
+        {
+            string full = Path.TrimEndingDirectorySeparator(Resolve(given));
+            if (vcs.Changes.FirstOrDefault(c => PathNames.Same(c.Path, full)) is { } file)
+            {
+                chosen.Add(file);
+                continue;
+            }
+            // A folder's path is every change under it, as vcs_status lists them there, its new files among them.
+            FileChange[] under = [.. vcs.Changes.Where(c => PathNames.IsUnder(c.Path, full) || c.From is { } from && PathNames.IsUnder(from, full))];
+            if (under.Length == 0)
+            {
+                throw new ArgumentException($"{Relative(full)} has no changes to commit");
+            }
+            chosen.AddRange(under.Where(c => c.Uncommittable is null));
+            passed.AddRange(under.Where(c => c.Uncommittable is not null));
+        }
+        chosen = [.. chosen.Distinct()];
+        passed = [.. passed.Distinct()];
         Dictionary<string, PartialCommit> partial = new(PathNames.Comparer);
         List<string> left = [.. passed.Select(c => $"{Relative(c.Path)} ({c.Uncommittable})")];
         foreach ((string given, string ranges) in lines ?? [])

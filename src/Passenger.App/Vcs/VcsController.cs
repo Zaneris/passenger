@@ -990,7 +990,8 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>Push: the branch to the one it tracks, or where it tracks none, to the only remote or the one of several
-    /// the person chooses (<see cref="ChooseRemote"/>, never asked of an agent: <paramref name="ask"/> false).</summary>
+    /// the person chooses (<see cref="ChooseRemote"/>, never asked of an agent: <paramref name="ask"/> false). Its work
+    /// begins before anything is asked of git, so an agent's action hears where it went or why it did not.</summary>
     public async Task<VcsOutcome> PushAsync(bool ask = true)
     {
         UiThread.Check();
@@ -1002,6 +1003,11 @@ public sealed class VcsController : IDisposable
         {
             return Report(false, untrusted);
         }
+        if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(AppActions.Push));
+        }
+        using Working? held = work;
         string? remote = null;
         if (!await repository.TracksAsync())
         {
@@ -1015,11 +1021,6 @@ public sealed class VcsController : IDisposable
                 return Report(false, refused);
             }
         }
-        if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work, stoppable: true))
-        {
-            return Report(false, UnderWay(AppActions.Push));
-        }
-        using Working? held = work;
         if (await RemoteAsync(work, (stopping, asker) => repository.PushAsync(remote, stopping, asker)) is not { } pushed)
         {
             return Report(false, "Push stopped");
