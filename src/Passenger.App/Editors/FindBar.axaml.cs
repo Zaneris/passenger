@@ -77,6 +77,10 @@ public partial class FindBar : UserControl
     public FindBar()
     {
         InitializeComponent();
+        // The bar is one the keys go through, from the query to its buttons.
+        ToolButtons.Give(PreviousButton, IconKeys.ArrowUp, "Previous occurrence", keys: true);
+        ToolButtons.Give(NextButton, IconKeys.ArrowDown, "Next occurrence", keys: true);
+        ToolButtons.Give(CloseButton, IconKeys.Close, "Close", keys: true, glyph: true);
         // In a narrow pane (a console, a diff) each field keeps room to type in, what follows it taking a row below.
         Flowing(QueryRow, QueryRoom, QueryPadding.Left + TypingRoom + QueryPadding.Right, CountRow, ToolWindows.ToolFlow.Spring(), CloseButton);
         Flowing(ReplaceRow, ReplaceWith, FieldInsets.Padding.Left + TypingRoom + FieldInsets.Padding.Right, ReplaceButtons);

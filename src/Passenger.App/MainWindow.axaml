@@ -55,9 +55,7 @@
                      configuration's, their choices still in the Run and Build menus (ShrinkingRow.GoesWhole). -->
                 <app:ShrinkingRow Name="ToolbarEnd" DockPanel.Dock="Right" Spacing="{x:Static app:Gaps.Hair}" VerticalAlignment="Center"
                             WindowDecorationProperties.ElementRole="User">
-                    <Button Name="BuildButton" Classes="tool" ToolTip.Tip="Build solution">
-                        <PathIcon Data="{StaticResource Icon.Build}" />
-                    </Button>
+                    <Button Name="BuildButton" />
                     <!-- The build configuration every build takes, shown once the folder offers any
                          (MainWindow.BuildConfigurations.cs). -->
                     <Button Name="BuildConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Build configuration" IsVisible="False" Click="OnBuildConfigClicked"
@@ -85,28 +83,14 @@
                                        MaxWidth="180" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
-                    <Button Name="RunButton" Classes="tool" ToolTip.Tip="Run">
-                        <PathIcon Classes="toolbarRun" Data="{StaticResource Icon.Run}" />
-                    </Button>
-                    <Button Name="DebugButton" Classes="tool" ToolTip.Tip="Debug">
-                        <PathIcon Data="{StaticResource Icon.Debug}" />
-                    </Button>
-                    <Button Name="ProfileButton" Classes="tool" ToolTip.Tip="Profile">
-                        <PathIcon Data="{StaticResource Icon.Profile}" />
-                    </Button>
-                    <Button Name="HotReloadButton" Classes="tool" ToolTip.Tip="Apply Hot Reload Changes" IsVisible="False">
-                        <PathIcon Classes="toolbarHotReload" Data="{StaticResource Icon.HotReload}" />
-                    </Button>
-                    <Button Name="StopButton" Classes="tool" ToolTip.Tip="Stop" IsEnabled="False">
-                        <PathIcon Classes="toolbarStop" Data="{StaticResource Icon.Stop}" />
-                    </Button>
+                    <Button Name="RunButton" />
+                    <Button Name="DebugButton" />
+                    <Button Name="ProfileButton" />
+                    <Button Name="HotReloadButton" IsVisible="False" />
+                    <Button Name="StopButton" IsEnabled="False" />
                     <Border Classes="toolbarRule" />
-                    <Button Name="SearchButton" Classes="tool" ToolTip.Tip="Search everywhere">
-                        <PathIcon Data="{StaticResource Icon.Search}" />
-                    </Button>
-                    <Button Name="SettingsButton" Classes="tool" ToolTip.Tip="Settings">
-                        <PathIcon Data="{StaticResource Icon.Settings}" />
-                    </Button>
+                    <Button Name="SearchButton" />
+                    <Button Name="SettingsButton" />
                 </app:ShrinkingRow>
 
                 <app:ShrinkingRow Name="ToolbarStart" DockPanel.Dock="Left" HorizontalAlignment="Left" VerticalAlignment="Center" Spacing="{x:Static app:Gaps.Hair}"
@@ -116,9 +100,7 @@
                          behind the button after them. The titles are added after the button as Settings asks for
                          them. -->
                     <app:MainMenuPlace Name="MainMenuPlace">
-                        <Button Name="MenuButton" Classes="tool" ToolTip.Tip="Main menu" AutomationProperties.Name="Main menu" Click="OnMenuClicked">
-                            <PathIcon Data="{StaticResource Icon.Menu}" />
-                        </Button>
+                        <Button Name="MenuButton" Click="OnMenuClicked" />
                     </app:MainMenuPlace>
                     <Button Name="ProjectButton" Classes="widget" MinWidth="80" ToolTip.Tip="Open a solution, project or folder" Click="OnProjectClicked">
                         <DockPanel>

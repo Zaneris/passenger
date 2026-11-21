@@ -43,7 +43,7 @@ public sealed class FilterMenu
     public void Inside(TextBox search)
     {
         Button.Margin = new Thickness(0, 0, Gaps.Hair, 0);
-        Button.Width = Button.Height = 24;
+        Button.Classes.Add(StyleClasses.InField);
         search.InnerRightContent = Button;
     }
 

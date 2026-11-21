@@ -881,12 +881,9 @@ public sealed class EditorGroup : DockPanel
         RowIcon icon = new();
         TextBlock name = new() { Classes = { StyleClasses.TabName }, VerticalAlignment = VerticalAlignment.Center };
         Ellipse modified = new() { Classes = { StyleClasses.Modified }, Width = 7, Height = 7 };
-        RowIcon closeGlyph = RowIcon.Glyph(IconKeys.Close);
-        Button close = new() { Classes = { StyleClasses.TabClose }, Content = closeGlyph };
-        ToolButtons.Tip(close, "Close");
-        RowIcon pinGlyph = RowIcon.Glyph(IconKeys.Pin);
-        Button pin = new() { Classes = { StyleClasses.TabPin }, Content = pinGlyph };
-        ToolButtons.Tip(pin, "Unpin Tab");
+        Button close = ToolButtons.Small(IconKeys.Close, "Close");
+        close.Classes.Add(StyleClasses.TabClose);
+        Button pin = ToolButtons.Small(IconKeys.Pin, "Unpin Tab");
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
         bool down = tabsPlace != EditorTabsPlace.Top;
         Border border = new() { Classes = { StyleClasses.Tab } };

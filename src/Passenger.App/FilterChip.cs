@@ -18,13 +18,13 @@ public sealed class FilterChip : Border
         Classes.Add(StyleClasses.Chip);
         IsVisible = false;
         VerticalAlignment = VerticalAlignment.Center;
-        PathIcon glyph = new() { Classes = { StyleClasses.Small } };
-        glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(IconKeys.Close));
-        Clear = new Button { Classes = { StyleClasses.TabPin }, Content = glyph, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
-        ToolButtons.Tip(Clear, clears);
-        Clear.Click += (_, _) => Cleared?.Invoke(this, EventArgs.Empty);
+        Clear = ToolButtons.Small(IconKeys.Close, clears, () => Cleared?.Invoke(this, EventArgs.Empty));
+        Clear.Margin = new Thickness(Gaps.Small, 0, 0, 0);
         Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { words, Clear } };
     }
+
+    /// <summary>Styled as the Border it is.</summary>
+    protected override Type StyleKeyOverride => typeof(Border);
 
     /// <summary>The × was pressed: the filter is to go.</summary>
     public event EventHandler? Cleared;

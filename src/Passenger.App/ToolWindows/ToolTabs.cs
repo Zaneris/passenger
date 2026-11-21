@@ -30,9 +30,10 @@ public static class ToolTabs
             return new ChoiceToggle { Classes = { StyleClasses.PanelTab }, Content = title };
         }
         Control name = title as Control ?? new TextBlock { Text = title.ToString(), VerticalAlignment = VerticalAlignment.Center };
-        RowIcon glyph = RowIcon.Glyph(IconKeys.Close);
-        Button button = new() { Classes = { StyleClasses.TabClose }, Content = glyph, Margin = new Thickness(Gaps.Small, 0, 0, 0), [DockPanel.DockProperty] = Dock.Right };
-        ToolButtons.Tip(button, closeTip);
+        Button button = ToolButtons.Small(IconKeys.Close, closeTip);
+        button.Classes.Add(StyleClasses.TabClose);
+        button.Margin = new Thickness(Gaps.Small, 0, 0, 0);
+        DockPanel.SetDock(button, Dock.Right);
         button.Click += (_, e) =>
         {
             close();

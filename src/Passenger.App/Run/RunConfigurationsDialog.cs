@@ -958,8 +958,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             return;
         }
         string? why = actions.WhyNot(AppActions.SaveAsLaunchProfile, actions.Context());
-        SaveAsProfileButton.IsEnabled = why is null;
-        ToolTip.SetTip(SaveAsProfileButton, why ?? SaveAsTip);
+        ToolButtons.Grey(SaveAsProfileButton, why, SaveAsTip);
     }
 
     /// <summary>Reset to Launch Profile (or its other source): every field of the chosen generated configuration as its
@@ -1436,7 +1435,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         TextBox valueBox = Field("Value");
         nameBox.Text = name;
         valueBox.Text = value;
-        Button remove = ToolButtons.Of(IconKeys.Close, "Remove Variable");
+        Button remove = ToolButtons.Glyph(IconKeys.Close, "Remove Variable");
         Grid row = new() { ColumnDefinitions = VariableColumns(), ColumnSpacing = Gaps.Normal };
         Grid.SetColumn(valueBox, 1);
         Grid.SetColumn(remove, 2);

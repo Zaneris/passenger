@@ -119,6 +119,21 @@ public partial class MainWindow
     private Workspace.SearchScope? ExplorerScope(ActionContext context) =>
         context.ToolWindow?.Id == ToolWindowIds.Explorer && Explorer.SelectedNodes is { Count: > 0 } rows ? ScopeOf(rows) : null;
 
+    /// <summary>The toolbar's icon buttons, declared by the window's XAML, made the one icon button (ToolButtons), each
+    /// kept where Tab reaches it, as the toolbar is a region the keys go through.</summary>
+    private void GiveToolbarButtons()
+    {
+        ToolButtons.Give(MenuButton, IconKeys.Menu, "Main menu", keys: true);
+        ToolButtons.Give(BuildButton, IconKeys.Build, "Build solution", keys: true);
+        ToolButtons.Give(RunButton, IconKeys.Run, "Run", keys: true, mark: StyleClasses.ToolbarRun);
+        ToolButtons.Give(DebugButton, IconKeys.Debug, "Debug", keys: true);
+        ToolButtons.Give(ProfileButton, IconKeys.Profile, "Profile", keys: true);
+        ToolButtons.Give(HotReloadButton, IconKeys.HotReload, "Apply Hot Reload Changes", keys: true, mark: StyleClasses.ToolbarHotReload);
+        ToolButtons.Give(StopButton, IconKeys.Stop, "Stop", keys: true, mark: StyleClasses.ToolbarStop);
+        ToolButtons.Give(SearchButton, IconKeys.Search, "Search everywhere", keys: true);
+        ToolButtons.Give(SettingsButton, IconKeys.Settings, "Settings", keys: true);
+    }
+
     /// <summary>The window's own actions; each feature's partial or controller adds its own beside them.</summary>
     private void AddActions()
     {

@@ -488,10 +488,5 @@ internal sealed class ToolPane : DockPanel
         return menu;
     }
 
-    private static Button HeaderButton(string icon, string tip)
-    {
-        Button button = ToolButtons.Of(icon, tip);
-        ((PathIcon)button.Content!).Classes.Add(StyleClasses.Small);
-        return button;
-    }
+    private static Button HeaderButton(string icon, string tip) => ToolButtons.Glyph(icon, tip);
 }

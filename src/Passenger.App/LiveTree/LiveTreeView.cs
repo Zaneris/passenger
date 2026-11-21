@@ -56,8 +56,7 @@ public sealed class LiveTreeView : DockPanel
     private readonly EmptyState placeholder;
     private readonly TextBlock status;
     private readonly TextBlock monitors;
-    private readonly Border banner;
-    private readonly TextBlock bannerText;
+    private readonly Banner banner = Banner.Wrapping();
     private readonly StackPanel heading;
     private readonly ToolTabs.Strip<LiveTreePage> tabs = new() { [DockPanel.DockProperty] = Dock.Top, Margin = new Thickness(Gaps.Small, Gaps.Hair, Gaps.Small, Gaps.Tight) };
     private readonly ListBox properties;
@@ -132,9 +131,6 @@ public sealed class LiveTreeView : DockPanel
         // The charts take the rows they have, up to a bound, the tree keeping the rest.
         charts = new ContentControl { [DockProperty] = Dock.Top, MaxHeight = 240, IsVisible = false };
         Children.Add(charts);
-        bannerText = new TextBlock { Classes = { StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
-        banner = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(Gaps.Wide, Gaps.Small), IsVisible = false, Child = bannerText };
-        banner.Bind(Border.BackgroundProperty, banner.GetResourceObservable(TokenKeys.Banner));
         Children.Add(banner);
 
         tree = new TreeList
@@ -643,12 +639,11 @@ public sealed class LiveTreeView : DockPanel
 
     public void ShowBanner(string? text)
     {
-        bannerText.Text = text ?? string.Empty;
-        banner.IsVisible = text is not null;
+        banner.Say(text);
     }
 
     /// <summary>The note over the tree, while it shows one.</summary>
-    public string? BannerText => banner.IsVisible ? bannerText.Text : null;
+    public string? BannerText => banner.Said;
 
     /// <summary>What the window says in place of a tree (why it has none), while it says it.</summary>
     public string? PlaceholderText => placeholder.IsVisible ? placeholder.Text : null;

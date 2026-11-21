@@ -303,7 +303,6 @@ internal sealed class GodotValueCell : LiveValueCell
             TextBlock hex = new TextBlock { Classes = { StyleClasses.Code }, VerticalAlignment = VerticalAlignment.Center };
             Button button = Add(new Button
             {
-                Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),
                 Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { swatch, hex } },
@@ -426,7 +425,6 @@ internal sealed class GodotValueCell : LiveValueCell
             TextBlock name = new() { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
             Button button = new()
             {
-                Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),
@@ -441,8 +439,7 @@ internal sealed class GodotValueCell : LiveValueCell
         }
         string? path = value as string;
         resource.Value.Name.Text = path is { Length: > 0 } ? Path.GetFileName(path) : value is null ? "None" : GodotVariant.Shown(value);
-        resource.Value.Button.IsEnabled = whyNot is null;
-        ToolTip.SetTip(resource.Value.Button, whyNot ?? (path is { Length: > 0 } ? $"{path}: choose another of the project's" : "Choose one of the project's"));
+        ToolButtons.Grey(resource.Value.Button, whyNot, path is { Length: > 0 } ? $"{path}: choose another of the project's" : "Choose one of the project's");
         resource.Value.Properties.IsVisible = ownProperties;
         ToolTip.SetTip(resource.Value.Properties, "Its own properties, read and set in the game: a resource several nodes hold changes in each");
         IdeErrors.Observe(ThumbnailAsync(resource.Value.Thumbnail, path));
@@ -466,7 +463,6 @@ internal sealed class GodotValueCell : LiveValueCell
             TextBlock words = new TextBlock { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
             Button button = Add(new Button
             {
-                Classes = { StyleClasses.Compact },
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),

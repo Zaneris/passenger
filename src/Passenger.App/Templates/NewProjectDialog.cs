@@ -1471,10 +1471,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// <summary>A set-up greyed with why, said on hover, or offered given null.</summary>
     private void Greyed(ProjectSetup kind, string? why)
     {
-        ComboBoxItem item = setups[(int)kind];
-        item.IsEnabled = why is null;
-        ToolTip.SetTip(item, why);
-        ToolTip.SetShowOnDisabled(item, true);
+        ToolButtons.Grey(setups[(int)kind], why);
     }
 
     /// <summary>The package of Aspire's templates where an Aspire set-up makes its AppHost and ServiceDefaults from them

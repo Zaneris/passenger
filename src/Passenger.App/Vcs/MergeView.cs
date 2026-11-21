@@ -103,14 +103,12 @@ public sealed class MergeView : DockPanel
         }
 
         status = new TextBlock();
-        applyNonConflicting = ToolButtons.Of(IconKeys.ApplyNonConflicts, "Apply All Non-Conflicting Changes", ApplyNonConflicting);
         // Two arrows meeting in the middle: the vertical one turned on its side.
-        applyNonConflicting.Content = new PathIcon { RenderTransform = new RotateTransform(90) };
-        ((PathIcon)applyNonConflicting.Content).Bind(PathIcon.DataProperty, applyNonConflicting.GetResourceObservable(IconKeys.ApplyNonConflicts));
+        PathIcon meeting = new() { RenderTransform = new RotateTransform(90) };
+        meeting.Bind(PathIcon.DataProperty, meeting.GetResourceObservable(IconKeys.ApplyNonConflicts));
+        applyNonConflicting = ToolButtons.Of(meeting, "Apply All Non-Conflicting Changes", ApplyNonConflicting);
         resolveSimple = ToolButtons.Of(IconKeys.Wand, "Resolve Simple Conflicts", ResolveSimpleConflicts);
-        Border rule = new() { Width = 1, Height = 16, Margin = new Thickness(Gaps.Small, 0) };
-        rule.Bind(Border.BackgroundProperty, rule.GetResourceObservable(TokenKeys.Divider));
-        Children.Add(DiffLines.Bar(name, Step, status, [applyNonConflicting, resolveSimple, rule]));
+        Children.Add(DiffLines.Bar(name, Step, status, [applyNonConflicting, resolveSimple, ToolWindows.ToolBars.Rule()]));
         Children.Add(sides);
 
         Left.ScrollChanged += (_, _) => Follow(Left);

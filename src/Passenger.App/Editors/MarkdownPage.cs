@@ -132,6 +132,9 @@ public sealed class MarkdownPicture : Panel
         }
     }
 
+    /// <summary>Styled as the Panel it is.</summary>
+    protected override Type StyleKeyOverride => typeof(Panel);
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);

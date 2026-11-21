@@ -51,12 +51,8 @@ public sealed class RequestsView : DockPanel
         following = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Tight, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         following.Classes.Add(StyleClasses.Muted);
         Button clear = ToolButtons.Of(IconKeys.Clear, "Clear the requests", log.Clear);
-        DockPanel bar = new() { Margin = new Thickness(Gaps.Normal, Gaps.Tight) };
         DockPanel.SetDock(clear, Dock.Left);
-        bar.Children.Add(clear);
-        bar.Children.Add(following);
-        DockPanel.SetDock(bar, Dock.Top);
-        Children.Add(bar);
+        Children.Add(ToolBars.Top(new DockPanel { Margin = new Thickness(Gaps.Normal, 0), Children = { clear, following } }));
         Children.Add(new Panel { Children = { list, placeholder } });
         log.Changed += (_, told) => Take(told);
         log.FollowingChanged += (_, _) => following.Text = log.Following;

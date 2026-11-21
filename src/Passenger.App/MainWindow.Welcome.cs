@@ -96,9 +96,7 @@ public partial class MainWindow
     /// <summary>The Welcome screen's New Solution greys as the action does, saying why on its tip.</summary>
     private void GreyNewSolution(WelcomeView shown)
     {
-        shown.NewSolutionButton.IsEnabled = newSolutionWhyNot is null;
-        ToolTip.SetTip(shown.NewSolutionButton, newSolutionWhyNot);
-        ToolTip.SetShowOnDisabled(shown.NewSolutionButton, true);
+        ToolButtons.Grey(shown.NewSolutionButton, newSolutionWhyNot);
     }
 
     /// <summary>Opens what File, Open Solution or Open Folder chose (or a recent one, the system's, a new solution or a

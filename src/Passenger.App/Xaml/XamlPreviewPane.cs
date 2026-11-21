@@ -17,8 +17,7 @@ public sealed class XamlPreviewPane : DockPanel
 {
     private readonly XamlPreview preview;
     private readonly TextBlock status;
-    private readonly TextBlock error;
-    private readonly Border errorBar;
+    private readonly Banner errorBar = Banner.Wrapping(error: true);
     private readonly Image image;
     private readonly Canvas marks;
     private readonly Border outline;
@@ -98,10 +97,6 @@ public sealed class XamlPreviewPane : DockPanel
         // A bar of their own under the header, so in a narrow pane they wrap to rows rather than crowd the header out.
         looks = ToolWindows.ToolBars.OverEditor(new ToolWindows.ToolFlow { Margin = new Thickness(ListRow.TextStart, Gaps.Hair), Spacing = Gaps.Small, Children = { screens, platforms, themes } });
         looks.IsVisible = false;
-        error = new TextBlock { Classes = { StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap };
-        error.Classes.Add(StyleClasses.Error);
-        errorBar = new Border { [DockProperty] = Dock.Top, Padding = new Thickness(Gaps.Wide, Gaps.Small), IsVisible = false, Child = error };
-        errorBar.Bind(Border.BackgroundProperty, errorBar.GetResourceObservable(TokenKeys.Banner));
         image = new Image { Stretch = Stretch.Fill };
         // The element at the caret, drawn over the frame in the frame's own units, so it shrinks with it.
         outline = new Border { BorderThickness = new Thickness(OutlineWidth), IsVisible = false, IsHitTestVisible = false };
@@ -217,7 +212,7 @@ public sealed class XamlPreviewPane : DockPanel
     public const double OutlineWidth = 2;
 
     /// <summary>The error shown over the frame; null while there is none.</summary>
-    public string? ErrorShown => errorBar.IsVisible ? error.Text : null;
+    public string? ErrorShown => errorBar.Said;
 
     /// <summary>The element whose own values show under the frame, and each value as its row shows it (property, value,
     /// where it comes from); none while they are hidden.</summary>
@@ -371,8 +366,7 @@ public sealed class XamlPreviewPane : DockPanel
         waiting.Text = preview.Status;
         waiting.Offer(preview.Offers, preview.Offers is { } offered ? titleOf(offered) : null);
         waiting.IsVisible = preview.Frame is null;
-        error.Text = preview.Error;
-        errorBar.IsVisible = preview.Error is not null;
+        errorBar.Say(preview.Error);
         if (preview.Frame is null)
         {
             outline.IsVisible = false;

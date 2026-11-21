@@ -206,7 +206,10 @@ public sealed class DiffStrip : Control
         public BandButton(double size, double reach, Action<DiffBand, bool, KeyModifiers> pressed)
         {
             glyph = new BandGlyph { Width = size, Height = size };
-            Button = new Button { Classes = { StyleClasses.Tool }, Content = glyph, Focusable = false, Width = size + (2 * reach), Height = size + (2 * reach), MinHeight = 0 };
+            // Named for the change it stands beside as it is shown; as tall as the change's line, not a bar's.
+            Button = ToolButtons.Of(glyph, string.Empty);
+            Button.Width = Button.Height = size + (2 * reach);
+            Button.MinHeight = 0;
             Button.AddHandler(InputElement.PointerReleasedEvent, (_, e) => held = e.KeyModifiers, RoutingStrategies.Tunnel);
             Button.Click += (_, _) =>
             {

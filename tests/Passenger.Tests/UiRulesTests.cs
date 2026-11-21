@@ -21,6 +21,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Settings;
 using Passenger.Editor;
+using Syntax = Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Passenger.Tests;
 
@@ -1282,8 +1283,38 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
-    /// <summary>Holds every Border Passenger made in a window (not a control template's) to the look's radii.</summary>
-    private static void Radii(Window window, string what)
+    /// <summary>Every control's own corners, and its template's parts', are one of the look's radii too: a style giving a
+    /// button or a toggle a radius of its own (a tab's × and pin once had 3) is drawn by its template, which the rule over
+    /// the window's Borders passes by. Held over a pinned editor tab, the Git log, the Unit Tests window's filters and NuGet's
+    /// search, under each look.</summary>
+    [AvaloniaFact]
+    public void Every_controls_corner_in_its_template_is_one_of_the_looks_radii()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Notes.txt"));
+            Assert.True(window.Perform(AppActions.PinTab), "Pin Tab did not run");
+            Ui.Settle();
+            UnderEachLook(window, () =>
+            {
+                foreach (string shown in (string[])[AppActions.ShowGit, AppActions.ShowTests, AppActions.ShowNuGet])
+                {
+                    Assert.True(window.Perform(shown), $"{shown} did not show");
+                    Ui.Settle();
+                    Radii(window, $"the window with {shown}", templates: true);
+                }
+            });
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Holds every Border Passenger made in a window (not a control template's) to the look's radii; with
+    /// <paramref name="templates"/>, every control's own corners and its template's Borders and presenters instead.</summary>
+    private static void Radii(Window window, string what, bool templates = false)
     {
         HashSet<double> radii = [0];
         foreach (string key in (string[])["ControlRadius", "ToolRadius", "PopupRadius", "CardRadius", "BadgeRadius", "ChipRadius", "TabRadius"])
@@ -1292,6 +1323,30 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             {
                 radii.UnionWith([corners.TopLeft, corners.TopRight, corners.BottomRight, corners.BottomLeft]);
             }
+        }
+        if (templates)
+        {
+            // The scrollbar's thumb is the look's own shape, rounder than its width allows a control's radius.
+            if (window.TryFindResource(TokenKeys.ScrollThumbRadius, window.ActualThemeVariant, out object? thumb) && thumb is CornerRadius thumbs)
+            {
+                radii.Add(thumbs.TopLeft);
+            }
+            foreach (Visual drawn in window.GetVisualDescendants().Where(v => v.IsEffectivelyVisible))
+            {
+                (CornerRadius r, string kind) = drawn switch
+                {
+                    TemplatedControl control => (control.CornerRadius, control.GetType().Name),
+                    Border { TemplatedParent: Control parent } part => (part.CornerRadius, $"{parent.GetType().Name}'s {part.Name ?? "Border"}"),
+                    ContentPresenter { TemplatedParent: Control parent } part => (part.CornerRadius, $"{parent.GetType().Name}'s {part.Name ?? "presenter"}"),
+                    _ => (default, string.Empty),
+                };
+                if (drawn is Control shown && !((double[])[r.TopLeft, r.TopRight, r.BottomRight, r.BottomLeft]).All(radii.Contains))
+                {
+                    Assert.Fail($"In {what}, a {string.Join(".", [kind, .. shown.Classes.Where(c => !c.StartsWith(':'))])} named '{AutomationProperties.GetName(shown)}' "
+                        + $"has corners of {r}, none of the look's radii ({string.Join(", ", radii.Order())})");
+                }
+            }
+            return;
         }
         foreach (Border border in window.GetVisualDescendants().OfType<Border>().Where(b => b.IsEffectivelyVisible && b.TemplatedParent is null))
         {
@@ -1351,8 +1406,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>Every tool window's toolbar buttons are made one way (ToolButtons): each icon of the one size every icon has,
-    /// and none taking the keys from the list or editor it acts on; only the frame's own Options and Hide in a header are
-    /// smaller.</summary>
+    /// and none taking the keys from the list or editor it acts on; only a glyph's (ToolButtons.Glyph: the frame's own Options
+    /// and Hide in a header, a row's ×) is smaller, and one inside a field (a list's Sort and Filter) a row icon's.</summary>
     [Gate]
     [AvaloniaFact]
     public void Every_tool_windows_toolbar_buttons_have_the_one_icon_size_and_never_take_the_keys()
@@ -1375,9 +1430,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         continue;
                     }
                     seen++;
-                    bool frames = (button.Name == AppActions.HideToolWindow || ToolTip.GetTip(button) is "Options")
-                        && button.FindAncestorOfType<Border>() is { Classes: var classes } && classes.Contains(StyleClasses.ToolHeader);
-                    double size = frames ? 10 : 16;
+                    double size = icon.Classes.Contains(StyleClasses.Small) ? RowIcon.GlyphSize : button.Classes.Contains(StyleClasses.InField) ? RowIcon.Size : 16;
                     string what = $"{tool.Title}'s {ToolTip.GetTip(button)}";
                     Assert.False(button.Focusable, $"{what} takes the keys when clicked, where a toolbar's button leaves them with what it acts on");
                     Assert.True(icon.Bounds.Width == size && icon.Bounds.Height == size,
@@ -4102,6 +4155,367 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
         Assert.True(found.Count == 0, $"{found.Count} tool window bars are built by hand, so their heights, widths and rules drift apart: make each with "
             + $"ToolBars.Top or ToolBars.Side (ToolBars.OverEditor over an editor, Banner for a line of words on the banner's tint):\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>Every icon button is made by ToolButtons (the title bar's and the find bar's declared in XAML and given their
+    /// look there, a glyph's small one inside a chip, a field or a tab), so each is one size, one radius and named and greyed
+    /// one way: the tool button's, a counted filter's, the small button's and the in-field button's classes named elsewhere
+    /// (a tab's × its tabs' own), and a control greyed with its tip of why written beside it by hand, fail here, naming the
+    /// line.</summary>
+    [Fact]
+    public void Every_icon_button_is_made_and_greyed_with_why_by_ToolButtons()
+    {
+        (Regex Named, string[] Owners)[] owned =
+        [
+            (new(@"\bStyleClasses\.(?:Tool|Outcome)\b|Classes=""[^""]*\b(?:tool|outcome)\b"), ["/ToolButtons.cs"]),
+            (new(@"\bnew\s+Button\b[^;]*\bStyleClasses\.Small\b|\bButton\s+\w+\s*=\s*new\(\)\s*\{[^;]*\bStyleClasses\.Small\b|<Button\b[^>]*\bClasses=""[^""]*\bsmall\b"), ["/ToolButtons.cs"]),
+            (new(@"\bStyleClasses\.TabClose\b|Classes=""[^""]*\btabClose\b"), ["/ToolWindows/ToolTabs.cs", "/Editors/EditorGroup.cs"]),
+            (new(@"\bStyleClasses\.InField\b|Classes=""[^""]*\binField\b"), ["/ToolWindows/FilterMenu.cs"]),
+        ];
+        // A menu's item is greyed by its own piece, ListMenus.Grey.
+        string[] greyers = ["/ToolButtons.cs", "/ToolWindows/ListMenus.cs"];
+        Regex greyed = new(@"\b([\w.]+)\.IsEnabled\s*=\s*[^;]*\bis\s+null\b");
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles())
+        {
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                foreach ((Regex named, string[] owners) in owned)
+                {
+                    if (named.IsMatch(lines[i]) && !owners.Any(o => path.EndsWith(o, StringComparison.Ordinal)))
+                    {
+                        found.Add($"{path}:{i + 1}: {lines[i].Trim()}");
+                    }
+                }
+                if (greyed.Match(lines[i]) is { Success: true } grey && !greyers.Any(o => path.EndsWith(o, StringComparison.Ordinal))
+                    && lines.Skip(Math.Max(0, i - 3)).Take(7).Any(l => l.Contains($"ToolTip.SetTip({grey.Groups[1].Value},", StringComparison.Ordinal)))
+                {
+                    found.Add($"{path}:{i + 1}: greyed with its tip of why by hand: {lines[i].Trim()}");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} icon buttons are made or greyed by hand, so their size, radius, keys and tips drift from every other's: "
+            + $"make each with ToolButtons (Of, Glyph, Small, Toggle, Counted, or Give for one declared elsewhere) and grey it with ToolButtons.Grey:\n{string.Join("\n", found)}");
+        Assert.Matches(owned[0].Named, "            Button = new Button { Classes = { StyleClasses.Tool }, Content = glyph };");
+        Assert.Matches(owned[0].Named, "                    <Button Name=\"PreviousButton\" Classes=\"tool\" ToolTip.Tip=\"Previous occurrence\">");
+        Assert.DoesNotMatch(owned[0].Named, "                    <Border Classes=\"toolbarRule\" />");
+        Assert.Matches(owned[1].Named, "        Button set = new() { Classes = { StyleClasses.Small }, Content = plus };");
+        Assert.DoesNotMatch(owned[1].Named, "        PathIcon glyph = new() { Classes = { StyleClasses.Small } };");
+        Assert.Matches(greyed, "        SaveAsProfileButton.IsEnabled = why is null;");
+    }
+
+    /// <summary>A style class is given only to a control a style of it takes: Shell.axaml's or ControlThemes.axaml's selector
+    /// naming the class on the type the control is styled as (its own, or the one its StyleKeyOverride names), on a base of
+    /// it by <c>:is()</c>, or on any control. A class borrowed from another kind of control (a drop-down's given to a
+    /// button), or given to a control of its own kind styled as itself (a Border's class on a Border of Passenger's that
+    /// says no StyleKeyOverride), styles nothing there, the control looking as if it had none: each fails here, naming its
+    /// line. C# is read by its syntax, the control's type taken from what makes it, the declared type of what holds it, a
+    /// cast or the class whose own it is.</summary>
+    [Fact]
+    public void Every_style_class_is_given_to_a_control_of_a_type_its_styles_name()
+    {
+        Dictionary<string, HashSet<string>> styledOn = ClassesStyledOn();
+        Dictionary<string, Type[]> types = StyledTypes();
+        List<(string Path, string Text, Microsoft.CodeAnalysis.SyntaxNode? Root)> files = [.. UiFiles().Select(f => (f.Path, f.Text, f.Path.EndsWith(".cs", StringComparison.Ordinal)
+            ? Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(f.Text, cancellationToken: TestContext.Current.CancellationToken).GetRoot(TestContext.Current.CancellationToken)
+            : null))];
+        // Each of Passenger's controls styled as another, by the type its StyleKeyOverride names; any other as itself.
+        Dictionary<string, string> styledAs = new(StringComparer.Ordinal);
+        foreach (Syntax.PropertyDeclarationSyntax key in files.SelectMany(f => f.Root?.DescendantNodes().OfType<Syntax.PropertyDeclarationSyntax>() ?? []))
+        {
+            if (key.Identifier.ValueText == "StyleKeyOverride" && key.ExpressionBody?.Expression is Syntax.TypeOfExpressionSyntax typeOf
+                && key.Parent is Syntax.ClassDeclarationSyntax owner && TypeName(typeOf.Type) is { } styled)
+            {
+                styledAs[owner.Identifier.ValueText] = styled;
+            }
+        }
+        // A control of Passenger's is styled as the nearest of its own kinds that says, else as itself.
+        string StyledAs(Type type)
+        {
+            for (Type? kind = type; kind is not null && kind.Assembly.GetName().Name?.StartsWith("Passenger", StringComparison.Ordinal) == true; kind = kind.BaseType)
+            {
+                if (styledAs.TryGetValue(kind.Name, out string? key))
+                {
+                    return key;
+                }
+            }
+            return type.Name.Split('`')[0];
+        }
+        bool Takes(string on, Type[] given) => on.StartsWith(":is ", StringComparison.Ordinal)
+            ? types.TryGetValue(on[4..], out Type[]? bases) && bases.Any(t => given.Any(t.IsAssignableFrom))
+            : given.Any(g => StyledAs(g) == on);
+        Dictionary<string, string> classOf = typeof(StyleClasses).GetFields().ToDictionary(f => f.Name, f => (string)f.GetRawConstantValue()!, StringComparer.Ordinal);
+        List<string> found = [];
+        int checkedCount = 0;
+        void Check(string path, int line, string? type, string style)
+        {
+            // A control held as any control may be of any kind.
+            if (type is null or nameof(Control) or nameof(Visual) or nameof(StyledElement) || !types.TryGetValue(type, out Type[]? given))
+            {
+                return;
+            }
+            checkedCount++;
+            HashSet<string> on = styledOn.GetValueOrDefault(style) ?? [];
+            if (!on.Contains("*") && !on.Any(s => Takes(s, given)))
+            {
+                found.Add($"{path}:{line}: {style} given to a {type}, where a style takes it on {(on.Count == 0 ? "nothing" : string.Join(", ", on.Order(StringComparer.Ordinal)))}");
+            }
+        }
+        foreach ((string path, string text, Microsoft.CodeAnalysis.SyntaxNode? root) in files)
+        {
+            if (root is null)
+            {
+                foreach (Match element in Regex.Matches(text, @"<(?:\w+:)?(\w+)\b[^>]*>"))
+                {
+                    foreach (Match given in Regex.Matches(element.Value, @"\sClasses=""([^""{]*)""|\sClasses\.([\w-]+)="))
+                    {
+                        foreach (string style in given.Groups[1].Success ? given.Groups[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries) : [given.Groups[2].Value])
+                        {
+                            Check(path, LineOf(text, element.Index), element.Groups[1].Value, style);
+                        }
+                    }
+                }
+                continue;
+            }
+            Dictionary<string, HashSet<string>> declared = DeclaredTypes(root);
+            foreach (Microsoft.CodeAnalysis.SyntaxNode node in root.DescendantNodes())
+            {
+                (string? type, Syntax.ExpressionSyntax? named) = node switch
+                {
+                    Syntax.AssignmentExpressionSyntax
+                    {
+                        Left: Syntax.IdentifierNameSyntax { Identifier.ValueText: "Classes" },
+                        Right: Syntax.InitializerExpressionSyntax,
+                        Parent: Syntax.InitializerExpressionSyntax { Parent: Syntax.BaseObjectCreationExpressionSyntax made },
+                    } => (MadeType(made), null),
+                    Syntax.InvocationExpressionSyntax { Expression: Syntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" or "Set" or "Insert" } call } invocation
+                        when ClassesOwner(call.Expression, out Syntax.ExpressionSyntax? owner)
+                        => (OwnerType(owner, node, declared), invocation.ArgumentList.Arguments.ElementAtOrDefault(call.Name.Identifier.ValueText == "Insert" ? 1 : 0)?.Expression),
+                    _ => (null, null),
+                };
+                IEnumerable<Syntax.ExpressionSyntax> styles = named is not null ? [named]
+                    : node is Syntax.AssignmentExpressionSyntax { Right: Syntax.InitializerExpressionSyntax list } ? list.Expressions : [];
+                foreach (Syntax.ExpressionSyntax style in styles)
+                {
+                    if (style is Syntax.MemberAccessExpressionSyntax { Expression: Syntax.IdentifierNameSyntax { Identifier.ValueText: "StyleClasses" }, Name.Identifier.ValueText: string constant }
+                        && classOf.TryGetValue(constant, out string? value))
+                    {
+                        Check(path, node.GetLocation().GetLineSpan().StartLinePosition.Line + 1, type, value);
+                    }
+                }
+            }
+        }
+        Assert.True(checkedCount > 500, $"Only {checkedCount} classes given to a control of a known type were found: the search no longer reads the code");
+        Assert.True(found.Count == 0, $"{found.Count} classes are given to a control no style of theirs takes, so it looks as if it had none: give each "
+            + $"a class its own kind of control is styled by, or none:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>The types each style class is styled on by Shell.axaml's and ControlThemes.axaml's selectors, by name (":is "
+    /// before a type whose kinds all take it, "*" for a class any control takes); a control theme's <c>^</c> is its target
+    /// type.</summary>
+    private static Dictionary<string, HashSet<string>> ClassesStyledOn()
+    {
+        Dictionary<string, HashSet<string>> on = new(StringComparer.Ordinal);
+        foreach (string theme in (string[])["Shell.axaml", "ControlThemes.axaml"])
+        {
+            string target = "*";
+            string text = File.ReadAllText(Path.Combine(Passenger.Tests.Debugging.Helpers.Debuggees.Root, "src", "Passenger.App", "Theme", theme));
+            foreach (Match tag in Regex.Matches(text, @"<ControlTheme\b[^>]*\bTargetType=""(?:\w+:)?(\w+)""|<Style\s[^>]*Selector=""([^""]*)"""))
+            {
+                if (tag.Groups[1].Success)
+                {
+                    target = tag.Groups[1].Value;
+                    continue;
+                }
+                string selector = Regex.Replace(tag.Groups[2].Value, @"\[[^\]]*\]|:not\([^)]*\)", string.Empty).Replace("^", target, StringComparison.Ordinal);
+                foreach (string part in Regex.Split(selector, @"\s*,\s*|\s*/template/\s*|\s*>\s*|\s+"))
+                {
+                    Match compound = Regex.Match(part, @"^(?::is\((?:\w+\|)?(\w+)\)|(?:\w+\|)?(\w+))?(.*)$");
+                    string type = compound.Groups[1].Success ? $":is {compound.Groups[1].Value}" : compound.Groups[2].Success ? compound.Groups[2].Value : "*";
+                    foreach (Match style in Regex.Matches(compound.Groups[3].Value, @"\.([A-Za-z_][\w-]*)"))
+                    {
+                        if (!on.TryGetValue(style.Groups[1].Value, out HashSet<string>? types))
+                        {
+                            on[style.Groups[1].Value] = types = new HashSet<string>(StringComparer.Ordinal);
+                        }
+                        types.Add(type);
+                    }
+                }
+            }
+        }
+        return on;
+    }
+
+    /// <summary>Every styled element type of Avalonia's and Passenger's assemblies loaded, by its name.</summary>
+    private static Dictionary<string, Type[]> StyledTypes()
+    {
+        IEnumerable<Type> Of(Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException partly)
+            {
+                return partly.Types.OfType<Type>();
+            }
+        }
+        return AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => a.GetName().Name is { } name && (name.StartsWith("Avalonia", StringComparison.Ordinal) || name.StartsWith("Passenger", StringComparison.Ordinal)))
+            .SelectMany(Of).Where(t => typeof(StyledElement).IsAssignableFrom(t))
+            .GroupBy(t => t.Name.Split('`')[0], StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
+    }
+
+    /// <summary>The types a file declares each name of (a local, a field, a property, a parameter, a pattern's), by the
+    /// type's own name.</summary>
+    private static Dictionary<string, HashSet<string>> DeclaredTypes(Microsoft.CodeAnalysis.SyntaxNode root)
+    {
+        Dictionary<string, HashSet<string>> declared = new(StringComparer.Ordinal);
+        void Add(string name, Syntax.TypeSyntax? type)
+        {
+            if (TypeName(type) is { } named)
+            {
+                if (!declared.TryGetValue(name, out HashSet<string>? types))
+                {
+                    declared[name] = types = new HashSet<string>(StringComparer.Ordinal);
+                }
+                types.Add(named);
+            }
+        }
+        foreach (Microsoft.CodeAnalysis.SyntaxNode node in root.DescendantNodes())
+        {
+            switch (node)
+            {
+                case Syntax.VariableDeclarationSyntax variables:
+                    foreach (Syntax.VariableDeclaratorSyntax each in variables.Variables)
+                    {
+                        Add(each.Identifier.ValueText, variables.Type);
+                    }
+                    break;
+                case Syntax.ParameterSyntax parameter:
+                    Add(parameter.Identifier.ValueText, parameter.Type);
+                    break;
+                case Syntax.PropertyDeclarationSyntax property:
+                    Add(property.Identifier.ValueText, property.Type);
+                    break;
+                case Syntax.ForEachStatementSyntax each:
+                    Add(each.Identifier.ValueText, each.Type);
+                    break;
+                case Syntax.DeclarationPatternSyntax { Designation: Syntax.SingleVariableDesignationSyntax single } pattern:
+                    Add(single.Identifier.ValueText, pattern.Type);
+                    break;
+            }
+        }
+        return declared;
+    }
+
+    /// <summary>A type's own name, its namespace, generic arguments and nullability left off; null for a var, a tuple or an array.</summary>
+    private static string? TypeName(Syntax.TypeSyntax? type) => type switch
+    {
+        Syntax.NullableTypeSyntax nullable => TypeName(nullable.ElementType),
+        Syntax.QualifiedNameSyntax qualified => TypeName(qualified.Right),
+        Syntax.AliasQualifiedNameSyntax alias => TypeName(alias.Name),
+        Syntax.GenericNameSyntax generic => generic.Identifier.ValueText,
+        Syntax.IdentifierNameSyntax { IsVar: false } name => name.Identifier.ValueText,
+        _ => null,
+    };
+
+    /// <summary>The type an object creation makes: its own, or for <c>new()</c> the type of the variable or property it is
+    /// given to.</summary>
+    private static string? MadeType(Syntax.BaseObjectCreationExpressionSyntax made) => made switch
+    {
+        Syntax.ObjectCreationExpressionSyntax explicitly => TypeName(explicitly.Type),
+        { Parent: Syntax.EqualsValueClauseSyntax { Parent: Syntax.VariableDeclaratorSyntax { Parent: Syntax.VariableDeclarationSyntax variables } } } => TypeName(variables.Type),
+        { Parent: Syntax.EqualsValueClauseSyntax { Parent: Syntax.PropertyDeclarationSyntax property } } => TypeName(property.Type),
+        _ => null,
+    };
+
+    /// <summary>Whether an expression is a control's Classes, <paramref name="owner"/> the control (null for the class's
+    /// own, <c>Classes</c> alone).</summary>
+    private static bool ClassesOwner(Syntax.ExpressionSyntax expression, out Syntax.ExpressionSyntax? owner)
+    {
+        owner = (expression as Syntax.MemberAccessExpressionSyntax)?.Expression;
+        return expression is Syntax.IdentifierNameSyntax { Identifier.ValueText: "Classes" }
+            or Syntax.MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Classes" };
+    }
+
+    /// <summary>The type of a control whose Classes are named: the class's own for <c>this</c>, a cast's, or the one type
+    /// the file declares its name of.</summary>
+    private static string? OwnerType(Syntax.ExpressionSyntax? owner, Microsoft.CodeAnalysis.SyntaxNode at, Dictionary<string, HashSet<string>> declared)
+    {
+        while (owner is Syntax.ParenthesizedExpressionSyntax inner)
+        {
+            owner = inner.Expression;
+        }
+        return owner switch
+        {
+            null or Syntax.ThisExpressionSyntax => at.Ancestors().OfType<Syntax.ClassDeclarationSyntax>().FirstOrDefault()?.Identifier.ValueText,
+            Syntax.CastExpressionSyntax cast => TypeName(cast.Type),
+            Syntax.IdentifierNameSyntax name when declared.TryGetValue(name.Identifier.ValueText, out HashSet<string>? types) && types.Count == 1 => types.Single(),
+            _ => null,
+        };
+    }
+
+    /// <summary>A bar's top, its rules and a banner are the shared pieces (ToolBars.Top, ToolBars.Rule, Banner): a panel docked
+    /// at a tool window's top holding its icon buttons, with neither a bar's height nor its rule; a line a pixel wide and
+    /// some high between a bar's groups; and a Border docked at the top on the banner's tint, each built by hand, fail here,
+    /// naming the line.</summary>
+    [Fact]
+    public void Every_bars_top_rule_and_banner_is_the_shared_piece()
+    {
+        Regex border = new(@"(?:\bnew\s+Border\b|\bBorder\s+\w+\s*=\s*new\(\))\s*\{");
+        List<string> found = [];
+        foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            if (path.EndsWith("/ToolBars.cs", StringComparison.Ordinal) || path.EndsWith("/Banner.cs", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            foreach (Match match in border.Matches(text))
+            {
+                string own = Initializer(text, match.Index + match.Length);
+                if (Regex.IsMatch(own, @"\bWidth\s*=\s*(?:1\b|Hairlines\.Width\b)") && Regex.IsMatch(own, @"\bHeight\s*="))
+                {
+                    found.Add($"{path}:{LineOf(text, match.Index)}: a bar's rule built by hand");
+                }
+            }
+            foreach (Match banner in Regex.Matches(text, @"\b(\w+)\.Bind\(Border\.BackgroundProperty, \1\.GetResourceObservable\(TokenKeys\.Banner\)\)"))
+            {
+                string name = Regex.Escape(banner.Groups[1].Value);
+                if (Regex.IsMatch(text, $@"\b{name}\s*=\s*new\b[^;]*\bDock\.Top\b|SetDock\({name}, Dock\.Top\)"))
+                {
+                    found.Add($"{path}:{LineOf(text, banner.Index)}: a banner built by hand");
+                }
+            }
+            if (path.EndsWith("Dialog.cs", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            Microsoft.CodeAnalysis.SyntaxNode root = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(text, cancellationToken: TestContext.Current.CancellationToken)
+                .GetRoot(TestContext.Current.CancellationToken);
+            HashSet<string> buttons = [.. root.DescendantNodes().OfType<Syntax.VariableDeclaratorSyntax>()
+                .Where(v => v.Initializer?.Value.ToString().StartsWith("ToolButtons.", StringComparison.Ordinal) == true).Select(v => v.Identifier.ValueText)];
+            bool Button(Syntax.ExpressionSyntax held) => held.ToString().StartsWith("ToolButtons.", StringComparison.Ordinal)
+                || held is Syntax.IdentifierNameSyntax { Identifier.ValueText: string named } && buttons.Contains(named);
+            foreach (Syntax.VariableDeclaratorSyntax panel in root.DescendantNodes().OfType<Syntax.VariableDeclaratorSyntax>())
+            {
+                string name = panel.Identifier.ValueText;
+                Syntax.InitializerExpressionSyntax? own = (panel.Initializer?.Value as Syntax.BaseObjectCreationExpressionSyntax)?.Initializer;
+                bool top = own?.ToString().Contains("Dock.Top", StringComparison.Ordinal) == true
+                    || root.DescendantNodes().OfType<Syntax.InvocationExpressionSyntax>().Any(i => i.ToString() == $"DockPanel.SetDock({name}, Dock.Top)");
+                bool holds = own?.Expressions.OfType<Syntax.AssignmentExpressionSyntax>()
+                        .Any(a => a.Left.ToString() == "Children" && a.Right is Syntax.InitializerExpressionSyntax children && children.Expressions.Any(Button)) == true
+                    || root.DescendantNodes().OfType<Syntax.InvocationExpressionSyntax>()
+                        .Any(i => i.Expression.ToString() == $"{name}.Children.Add" && i.ArgumentList.Arguments.Count == 1 && Button(i.ArgumentList.Arguments[0].Expression));
+                if (top && holds)
+                {
+                    found.Add($"{path}:{panel.GetLocation().GetLineSpan().StartLinePosition.Line + 1}: a top bar of {name} built by hand, with neither a bar's height nor its rule");
+                }
+            }
+        }
+        Assert.True(found.Count == 0, $"{found.Count} bars, rules or banners are built by hand, so their heights, rules and room drift from every other's: "
+            + $"make each with ToolBars.Top, ToolBars.Rule or Banner (Banner.Wrapping for words read whole):\n{string.Join("\n", found)}");
     }
 
     /// <summary>A table's column titles are one piece, ColumnTitles, so every table's are one size and height over one rule:

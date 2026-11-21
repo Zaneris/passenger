@@ -58,9 +58,8 @@ public sealed class KeyValueGrid : EditableTable
         CheckBox check = new() { IsChecked = on, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MinWidth = 0 };
         TextBox keyBox = new TextBox { Classes = { StyleClasses.Cell, StyleClasses.Code }, Text = key };
         TextBox valueBox = new TextBox { Classes = { StyleClasses.Cell, StyleClasses.Code }, Text = value };
-        Button remove = ToolButtons.Of(IconKeys.Close, "Remove");
+        Button remove = ToolButtons.Glyph(IconKeys.Close, "Remove");
         remove.VerticalAlignment = VerticalAlignment.Center;
-        ((PathIcon)remove.Content!).Classes.Add(StyleClasses.Small);
         Border view = Ruled(check, keyBox, valueBox, remove);
         Row row = new(check, keyBox, valueBox, remove, view);
         rows.Add(row);

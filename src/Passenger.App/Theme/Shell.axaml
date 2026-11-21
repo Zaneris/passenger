@@ -39,7 +39,7 @@
     </Style>
     <!-- A button: its content centred (Fluent leaves it at the left of a button wider than it), the shared height, side
          padding and radius, and a plain button's ground and edge (white with a field's edge in light). One that reads as
-         text (crumb, link, statusItem) says otherwise in its own style, as the small square ones (tool, tabClose) say their
+         text (crumb, link, statusItem) says otherwise in its own style, as the square ones (tool, small) say their
          size and ground. -->
     <Style Selector="Button">
         <Setter Property="MinHeight" Value="{DynamicResource Passenger.ControlHeight}" />
@@ -226,10 +226,15 @@
         <Setter Property="Background" Value="{DynamicResource Passenger.TitleBar}" />
         <Setter Property="BorderThickness" Value="0" />
     </Style>
+    <!-- The line between a bar's groups (ToolBars.Rule; the title bar's between its run and its search): the divider's
+         colour, the title bar's own on it. -->
     <Style Selector="Border.toolbarRule">
         <Setter Property="Width" Value="1" />
         <Setter Property="Height" Value="18" />
         <Setter Property="Margin" Value="6,0" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.Divider}" />
+    </Style>
+    <Style Selector="Border.titleBar Border.toolbarRule">
         <Setter Property="Background" Value="{DynamicResource Passenger.TitleBar.Rule}" />
     </Style>
     <!-- A symbol kind's letter on its colour (Go to, completion), a tag of words (a Git ref, a method, a health), a filter's
@@ -599,16 +604,17 @@
     </Style>
 
 
-    <!-- An outcome filter on the Unit Tests window's toolbar: the outcome's mark and how many tests have it, the ones
-         chosen on a raised band with the chosen mark under it. -->
+    <!-- A list's filter for a kind of its rows on its bar (ToolButtons.Counted: a test's outcome, a problem's severity): the
+         kind's mark, at a row icon's size, and how many rows are of it at the step of the bar's other words, as tall as
+         the bar's buttons, the ones chosen on a raised band with the chosen mark under it. -->
     <Style Selector="ToggleButton.outcome">
-        <Setter Property="Height" Value="24" />
+        <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="Padding" Value="6,0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ToolRadius}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
@@ -625,8 +631,8 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
     <Style Selector="ToggleButton.outcome PathIcon">
-        <Setter Property="Width" Value="12" />
-        <Setter Property="Height" Value="12" />
+        <Setter Property="Width" Value="{x:Static app:RowIcon.Size}" />
+        <Setter Property="Height" Value="{x:Static app:RowIcon.Size}" />
     </Style>
     <!-- A number that counts while it is watched (a filter's tally) in figures of one width, so that while it counts it
          holds still, and what stands after it with it. -->
@@ -694,8 +700,9 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <!-- An icon button (ToolButtons), a toolbar's and the title bar's: a control-high square, its icon centred. -->
     <Style Selector="Button.tool">
-        <Setter Property="Width" Value="30" />
+        <Setter Property="Width" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ToolRadius}" />
@@ -810,7 +817,7 @@
     </Style>
     <!-- A toolbar toggle (Mute Breakpoints): a tool button that stays pressed while it is on, the chosen mark under it. -->
     <Style Selector="ToggleButton.tool">
-        <Setter Property="Width" Value="30" />
+        <Setter Property="Width" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="Height" Value="{DynamicResource Passenger.ControlHeight}" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="Padding" Value="0" />
@@ -907,9 +914,10 @@
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Link}" />
         <Setter Property="TextDecorations" Value="Underline" />
     </Style>
+    <!-- A glyph, a step smaller than an icon, as a row's chevron and a tab's × are (ToolButtons.Glyph's). -->
     <Style Selector="PathIcon.small">
-        <Setter Property="Width" Value="10" />
-        <Setter Property="Height" Value="10" />
+        <Setter Property="Width" Value="{x:Static app:RowIcon.GlyphSize}" />
+        <Setter Property="Height" Value="{x:Static app:RowIcon.GlyphSize}" />
     </Style>
 
     <!-- What is chosen, the one way in every list, tree, drop-down, tab strip and stripe: its ground, and beside it the
@@ -1034,16 +1042,8 @@
     <Style Selector="Border.tab:pointerover Ellipse.modified">
         <Setter Property="Opacity" Value="0" />
     </Style>
+    <!-- A tab's × (a small button, ToolButtons.Small): shown on the tab under the pointer. -->
     <Style Selector="Button.tabClose">
-        <Setter Property="Width" Value="16" />
-        <Setter Property="Height" Value="16" />
-        <Setter Property="MinHeight" Value="0" />
-        <Setter Property="Padding" Value="0" />
-        <Setter Property="CornerRadius" Value="3" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Opacity" Value="0" />
     </Style>
     <Style Selector="Border.tab:pointerover Button.tabClose">
@@ -1060,23 +1060,21 @@
     <Style Selector="ToggleButton.panelTab:checked Button.tabClose">
         <Setter Property="Opacity" Value="1" />
     </Style>
-    <Style Selector="Button.tabClose:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Selected}" />
-    </Style>
-    <!-- A pinned tab's pin, always shown, which unpins it. -->
-    <Style Selector="Button.tabPin">
+    <!-- A glyph's button inside what it acts on (ToolButtons.Small: a tab's × and pin, a chip's ×, a field's +): the
+         glyph's square, on a control's radius, a band under the pointer. -->
+    <Style Selector="Button.small">
         <Setter Property="Width" Value="16" />
         <Setter Property="Height" Value="16" />
+        <Setter Property="MinWidth" Value="0" />
         <Setter Property="MinHeight" Value="0" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{DynamicResource Passenger.TextMuted}" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.tabPin:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="Button.small:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Selected}" />
     </Style>
 
@@ -1130,10 +1128,18 @@
     <Style Selector="ComboBox.cell:pointerover /template/ Border#Background">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
     </Style>
-    <!-- A search's option in or beside its field (OptionToggles): an icon's square, on the accent's ground while on. -->
-    <Style Selector="ToggleButton.option">
+    <!-- A button inside a field (a search's options, a list's Sort and Filter at its search's end): a step inside the
+         field's edges, its icon a row icon's size. -->
+    <Style Selector="ToggleButton.option, ToggleButton.inField">
         <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="22" />
+    </Style>
+    <Style Selector="ToggleButton.option PathIcon, ToggleButton.inField PathIcon">
+        <Setter Property="Width" Value="{x:Static app:RowIcon.Size}" />
+        <Setter Property="Height" Value="{x:Static app:RowIcon.Size}" />
+    </Style>
+    <!-- A search's option in or beside its field (OptionToggles): an icon's square, on the accent's ground while on. -->
+    <Style Selector="ToggleButton.option">
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="CornerRadius" Value="{DynamicResource Passenger.ControlRadius}" />
@@ -1142,10 +1148,6 @@
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Icon}" />
-    </Style>
-    <Style Selector="ToggleButton.option PathIcon">
-        <Setter Property="Width" Value="14" />
-        <Setter Property="Height" Value="14" />
     </Style>
     <Style Selector="ToggleButton.option:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
@@ -1655,8 +1657,8 @@
         <Setter Property="Margin" Value="24,20" />
         <Setter Property="Spacing" Value="12" />
     </Style>
-    <!-- The tab strip's own tools at its end, at the tabs' height. -->
-    <Style Selector="ToggleButton.tabStripTool">
+    <!-- The tab strip's own tools at its end (its preview's toggle and Hidden Tabs), at the tabs' height. -->
+    <Style Selector=":is(Button).tabStripTool">
         <Setter Property="Margin" Value="0,0,6,0" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>

@@ -168,10 +168,10 @@ public sealed class StrokeField : TextBox
     private Button SpecialKeys()
     {
         Keystroke[] keys = [new(Key.Enter, KeyModifiers.None), new(Key.Escape, KeyModifiers.None), new(Key.Tab, KeyModifiers.None), new(Key.Tab, KeyModifiers.Shift)];
-        PathIcon plus = new() { Width = 12, Height = 12 };
-        plus.Bind(PathIcon.DataProperty, plus.GetResourceObservable(IconKeys.Add));
-        Button set = new() { Classes = { StyleClasses.TabPin }, Content = plus, Focusable = false, Margin = new Thickness(0, 0, Gaps.Small, 0) };
-        ToolButtons.Tip(set, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(KeyWords.Of))} keys");
+        Button set = ToolButtons.Small(IconKeys.Add, $"Set shortcuts with {string.Join(", ", keys.Where(k => k.Modifiers == KeyModifiers.None).Select(KeyWords.Of))} keys");
+        // The field takes every key, so its + never takes them from it.
+        set.Focusable = false;
+        set.Margin = new Thickness(0, 0, Gaps.Small, 0);
         List<MenuItem> items = [];
         foreach (Keystroke key in keys)
         {

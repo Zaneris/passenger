@@ -428,6 +428,7 @@ public sealed class EditorTabsTests : IDisposable
     /// <summary>Whether a control is drawn: shown, and not faded out as a tab's × and dot are while the other shows.</summary>
     private static bool Shows(Control control) => control.IsEffectivelyVisible && control.Opacity == 1;
 
+    /// <summary>Whether a tab shows its pin, the small button that unpins it.</summary>
     private static bool PinShown(EditorGroup group, string name) =>
-        Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabPin)).IsEffectivelyVisible;
+        Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Unpin Tab").IsEffectivelyVisible;
 }

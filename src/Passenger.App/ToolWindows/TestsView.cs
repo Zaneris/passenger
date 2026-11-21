@@ -139,7 +139,7 @@ public sealed class TestsView : DockPanel
             Children =
             {
                 groupBy,
-                Divider(),
+                ToolBars.Rule(),
                 all,
             },
         };
@@ -344,13 +344,6 @@ public sealed class TestsView : DockPanel
         button.AddHandler(PointerPressedEvent, (_, e) => adding = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta | KeyModifiers.Shift)) != 0,
             RoutingStrategies.Tunnel, handledEventsToo: true);
         return button;
-    }
-
-    private Border Divider()
-    {
-        Border line = new() { Width = 1, Height = 18, Margin = new Thickness(Gaps.Tight, 0), VerticalAlignment = VerticalAlignment.Center };
-        line.Bind(Border.BackgroundProperty, line.GetResourceObservable(TokenKeys.Divider));
-        return line;
     }
 
     /// <summary>An outcome's filter clicked: that outcome alone (All again if it was so already), or with a modifier held

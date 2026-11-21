@@ -141,12 +141,8 @@ public sealed class AppHostPublishDialog : IdeWindow
         List<ComboBoxItem> items = [new ComboBoxItem { Content = AppHostPipeline.Publish }];
         foreach (DeployStep step in offer?.Steps ?? [])
         {
-            ComboBoxItem item = new() { Content = step.Name, Tag = step, IsEnabled = step.WhyNot is null };
-            if ((step.WhyNot ?? step.Description) is { } tip)
-            {
-                ToolTip.SetTip(item, tip);
-                ToolTip.SetShowOnDisabled(item, true);
-            }
+            ComboBoxItem item = new() { Content = step.Name, Tag = step };
+            ToolButtons.Grey(item, step.WhyNot, step.Description);
             items.Add(item);
         }
         stepBox.ItemsSource = items;

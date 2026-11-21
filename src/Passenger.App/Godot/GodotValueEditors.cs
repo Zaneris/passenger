@@ -95,7 +95,7 @@ public sealed class GodotItemsEditor : Border
         Width = PopupFrame.Narrow;
         Padding = PopupFrame.Inset;
         empty = new EmptyState { Text = Entries ? "No entries" : "No items" };
-        Button add = new() { Classes = { StyleClasses.Compact }, Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
+        Button add = new() { Content = Entries ? "Add Entry" : "Add Item", HorizontalAlignment = HorizontalAlignment.Left };
         add.Click += (_, _) => IdeErrors.Observe(InTurnAsync(AddAsync));
         Add = add;
         string of = itemType == GodotType.Nil && keyType == GodotType.Nil ? GodotVariant.TypeName(type)
@@ -186,7 +186,7 @@ public sealed class GodotItemsEditor : Border
         Control field = Opens(Listed[index], $"{name}[{index}]", asked, Replaced) is { } opens ? opens
             : Field(Listed[index], asked, text => InTurn(asked, now => SetItemAsync(now, text)));
         Grid.SetColumn(field, 1);
-        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove item {index}", () => Remove(asked));
+        Button remove = ToolButtons.Glyph(IconKeys.Close, $"Remove item {index}", () => Remove(asked));
         Grid.SetColumn(remove, 2);
         row.Children.Add(at);
         row.Children.Add(field);
@@ -204,7 +204,7 @@ public sealed class GodotItemsEditor : Border
             : Field(entry.Value, asked, text => InTurn(asked, now => SetEntryAsync(now, text, key: false)));
         value.Margin = new Thickness(Gaps.Tight, 0, 0, 0);
         Grid.SetColumn(value, 1);
-        Button remove = ToolButtons.Of(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => Remove(asked));
+        Button remove = ToolButtons.Glyph(IconKeys.Close, $"Remove {GodotVariant.Shown(entry.Key, quoted: true)}", () => Remove(asked));
         Grid.SetColumn(remove, 2);
         row.Children.Add(key);
         row.Children.Add(value);
@@ -226,7 +226,6 @@ public sealed class GodotItemsEditor : Border
         TextBlock words = new TextBlock { Classes = { StyleClasses.Code }, Text = GodotVariant.Shown(item), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Button button = new()
         {
-            Classes = { StyleClasses.Compact },
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Padding = new Thickness(Gaps.Tight, Gaps.Hair, Gaps.Normal, Gaps.Hair),

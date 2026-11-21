@@ -451,11 +451,8 @@ public sealed class PublishDialog : IdeWindow
             List<ComboBoxItem> items = [];
             foreach (PublishProfileFile each in profiles)
             {
-                ComboBoxItem item = new() { Content = each.Remote is null ? each.Name : $"{each.Name} ({each.Remote})", Tag = each, IsEnabled = each.Remote is null };
-                if (each.Remote is { } method)
-                {
-                    ToolTip.SetTip(item, $"{each.Name} publishes by {method}: Passenger publishes to a folder only, for now");
-                }
+                ComboBoxItem item = new() { Content = each.Remote is null ? each.Name : $"{each.Name} ({each.Remote})", Tag = each };
+                ToolButtons.Grey(item, each.Remote is { } method ? $"{each.Name} publishes by {method}: Passenger publishes to a folder only, for now" : null);
                 items.Add(item);
             }
             items.Add(new ComboBoxItem { Content = "New profile" });
@@ -672,8 +669,8 @@ public sealed class PublishDialog : IdeWindow
         {
             control.IsEnabled = idle;
         }
-        targetBox.IsEnabled = idle && Chosen is null;
-        ToolTip.SetTip(targetBox, Chosen is null ? null : "A profile publishes as it was made to: a new profile publishes the other way");
+        ToolButtons.Grey(targetBox, Chosen is null ? null : "A profile publishes as it was made to: a new profile publishes the other way");
+        targetBox.IsEnabled &= idle;
         profileBox.IsEnabled = !saving;
         bool runtime = Runtime is not null;
         singleFileBox.IsEnabled = idle && runtime;

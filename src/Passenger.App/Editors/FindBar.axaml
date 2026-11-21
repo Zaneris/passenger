@@ -21,16 +21,11 @@
                 </Panel>
                 <StackPanel Name="CountRow" Orientation="Horizontal" Spacing="{x:Static app:Gaps.Hair}" VerticalAlignment="Center">
                     <TextBlock Name="Count" Classes="muted" Margin="{x:Static editors:FindBar.CountMargin}" VerticalAlignment="Center" />
-                    <Button Name="PreviousButton" Classes="tool" ToolTip.Tip="Previous occurrence" AutomationProperties.Name="Previous occurrence">
-                        <PathIcon Data="{StaticResource Icon.ArrowUp}" />
-                    </Button>
-                    <Button Name="NextButton" Classes="tool" ToolTip.Tip="Next occurrence" AutomationProperties.Name="Next occurrence">
-                        <PathIcon Data="{StaticResource Icon.ArrowDown}" />
-                    </Button>
+                    <!-- Each made an icon button, its look, mark and tip, by ToolButtons. -->
+                    <Button Name="PreviousButton" />
+                    <Button Name="NextButton" />
                 </StackPanel>
-                <Button Name="CloseButton" Classes="tool" ToolTip.Tip="Close" AutomationProperties.Name="Close" VerticalAlignment="Center">
-                    <PathIcon Classes="small" Data="{StaticResource Icon.Close}" />
-                </Button>
+                <Button Name="CloseButton" VerticalAlignment="Center" />
             </Panel>
             <Panel Name="ReplaceRow" IsVisible="False">
                 <TextBox Name="ReplaceWith" Classes="search" PlaceholderText="Replace" AutomationProperties.Name="Replace" />

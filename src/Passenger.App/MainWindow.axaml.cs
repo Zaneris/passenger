@@ -69,6 +69,7 @@ public partial class MainWindow : IdeWindow
     {
         UiThread.Own();
         InitializeComponent();
+        GiveToolbarButtons();
         session = ProjectSession.None(Setup());
         announcer = new Announcer(this, Root);
         status = new StatusBar(StatusMessage, StatusText, StatusIcon, StatusWorking, VimModeText, CaretButton, CaretText, IndentButton, IndentText, LanguageText, LineSeparatorButton,

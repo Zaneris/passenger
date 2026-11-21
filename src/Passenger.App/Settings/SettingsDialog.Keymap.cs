@@ -44,7 +44,7 @@ public sealed partial class SettingsDialog
     public ComboBox KeymapChoice { get; } = new FormDropDown { Name = "KeymapChoice" };
 
     /// <summary>Find Actions by Shortcut, the magnifier over a keyboard at the Keymap page's top.</summary>
-    public Button FindByShortcut { get; } = new() { Classes = { StyleClasses.Tool } };
+    public Button FindByShortcut { get; } = ToolButtons.Give(new Button(), KeyboardSearch(), "Find Actions by Shortcut", keys: true);
 
     /// <summary>Find Actions by Shortcut's popup: the keystrokes the page is narrowed to.</summary>
     public ShortcutPanel FindShortcut => filterKeys;
@@ -210,16 +210,6 @@ public sealed partial class SettingsDialog
         KeymapChoice.HorizontalAlignment = HorizontalAlignment.Left;
         KeymapChoice.SelectionChanged += (_, _) => ChooseKeymap(KeymapChoices[Math.Max(0, KeymapChoice.SelectedIndex)]);
 
-        Grid icon = new() { Width = 18, Height = 18 };
-        PathIcon keyboard = Glyph(IconKeys.Keyboard);
-        PathIcon magnifier = Glyph(IconKeys.Search);
-        magnifier.Width = magnifier.Height = 10;
-        magnifier.HorizontalAlignment = HorizontalAlignment.Right;
-        magnifier.VerticalAlignment = VerticalAlignment.Bottom;
-        icon.Children.Add(keyboard);
-        icon.Children.Add(magnifier);
-        FindByShortcut.Content = icon;
-        ToolButtons.Tip(FindByShortcut, "Find Actions by Shortcut");
         FindByShortcut.Click += (_, _) => findPopup.IsOpen = true;
         filterChip.Cleared += (_, _) => ClearShortcutFilter();
 
@@ -435,11 +425,14 @@ public sealed partial class SettingsDialog
         _ => "Other",
     };
 
-    private static PathIcon Glyph(string key)
+    /// <summary>Find Actions by Shortcut's mark: a keyboard, a glyph's magnifier at its foot.</summary>
+    private static Control KeyboardSearch()
     {
-        PathIcon icon = new();
-        icon.Bind(PathIcon.DataProperty, icon.GetResourceObservable(key));
-        return icon;
+        PathIcon keyboard = new();
+        keyboard.Bind(PathIcon.DataProperty, keyboard.GetResourceObservable(IconKeys.Keyboard));
+        PathIcon magnifier = new() { Classes = { StyleClasses.Small }, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
+        magnifier.Bind(PathIcon.DataProperty, magnifier.GetResourceObservable(IconKeys.Search));
+        return new Grid { Width = 18, Height = 18, Children = { keyboard, magnifier } };
     }
 
     private sealed record ActionRow(IdeAction Action, Control Row, TextBlock Title, WrapPanel Keys);
