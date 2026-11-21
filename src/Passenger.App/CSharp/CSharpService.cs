@@ -2604,8 +2604,18 @@ public sealed partial class CSharpService : IAsyncDisposable
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>What the status bar says when a command (<paramref name="what"/>) asks the server before it is ready.</summary>
-    public string Unready(string what) => $"{what} needs the C# language server: {State}";
+    /// <summary>What the status bar says when a command (<paramref name="what"/>) asks the server before it can answer: its
+    /// state while it is not ready; once it is, why it has not taken in the file asked of (<paramref name="document"/>).</summary>
+    public string Unready(string what, OpenDocument? document = null)
+    {
+        if (!IsReady || document is null || For(document) is not { Lsp: null } features)
+        {
+            return $"{what} needs the C# language server: {State}";
+        }
+        return features.TooDeep ? $"{what} cannot run: {Refusals.TooDeep(document.Name)}"
+            : Refusals.NotInServerYet(what, document.Name, arriving.TryGetValue(document.Path, out Arrival? arrival) && !arrival.Decided
+                ? Path.GetFileNameWithoutExtension(arrival.Project) : null);
+    }
 }
 
 /// <summary>One error or warning of the solution's, in its file, where it starts as the editor counts the file's lines.</summary>

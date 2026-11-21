@@ -83,7 +83,7 @@ public partial class MainWindow
         CSharpDocument? features = csharp.For(active);
         if (!csharp.IsReady || features is { Lsp: null })
         {
-            return (null, Said(csharp.Unready(what)));
+            return (null, Said(csharp.Unready(what, active)));
         }
         try
         {

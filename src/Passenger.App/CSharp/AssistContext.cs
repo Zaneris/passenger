@@ -97,23 +97,19 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// a command (<paramref name="what"/>), while the server cannot take it.</summary>
     public LspDocument? Ask(string? what = null)
     {
-        if (Current is not { } current)
+        if (what is not null && Unready(what) is { } unready)
         {
-            return null;
+            Say(unready);
         }
-        if (current.Lsp is null && what is not null)
-        {
-            if (current is WebDocument && Web?.Invoke() is { } web && editors.Active is { } shown)
-            {
-                Say(web.Unready(what, shown));
-            }
-            else if (service() is { } csharp)
-            {
-                Say(csharp.Unready(what));
-            }
-        }
-        return current.Lsp;
+        return Current?.Lsp;
     }
+
+    /// <summary>Why a command (<paramref name="what"/>) gets no server's document for the file shown, a server's file it
+    /// cannot take yet, in the status bar's words; null where it has one, or no server reads the file.</summary>
+    public string? Unready(string what) => Current is not { Lsp: null } current ? null
+        : current is WebDocument && Web?.Invoke() is { } web && editors.Active is { } shown ? web.Unready(what, shown)
+        : service() is { } csharp ? csharp.Unready(what, editors.Active)
+        : null;
 
     /// <summary>An open file's server document as it is now, for what the person chose from an answer (a fix, a new
     /// name): the server that answered may have been started again while they chose.</summary>

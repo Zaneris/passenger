@@ -875,22 +875,42 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
     }
 
+    /// <summary>Reformat Code on the file shown, held as the action's work from its first moment until it is done, which it
+    /// tells what it came to: reformatted or not, or why not.</summary>
     private async Task ReformatCore()
     {
         if (context.Editors.Active is not { } document)
         {
             return;
         }
+        const string what = "Reformat Code";
+        using Working? working = context.Work?.Begin(AppActions.Reformat, $"Reformatting {document.Name}…", stoppable: false);
+        string? unready = null;
+        LspDocument? Server()
+        {
+            unready = context.Unready(what);
+            if (unready is not null)
+            {
+                context.Say(unready);
+            }
+            return context.Ask();
+        }
         try
         {
-            if (await ReformatAsync(document, Selected(document), () => context.Ask("Reformat Code")) is { } done)
+            if (await ReformatAsync(document, Selected(document), Server) is { } done)
             {
                 context.Say(done.Said);
+                working?.Tell(done.Applied, done.Said);
+            }
+            else if (unready is not null)
+            {
+                working?.Tell(false, unready);
             }
         }
         catch (LanguageServerFailed failed)
         {
-            context.Failed("Reformat Code", failed);
+            context.Failed(what, failed);
+            working?.Tell(false, $"{what} failed: {failed.Reason}");
         }
     }
 
@@ -1006,7 +1026,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             if (served is { Lsp: null })
             {
                 unready = context.WebOf(document) is not null && context.Web?.Invoke() is { } web ? web.Unready(what, document)
-                    : context.CSharp?.Unready(what);
+                    : context.CSharp?.Unready(what, document);
             }
             return served?.Lsp;
         }

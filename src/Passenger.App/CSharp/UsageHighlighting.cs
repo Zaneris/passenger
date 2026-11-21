@@ -164,7 +164,7 @@ public sealed class UsageHighlighting
         }
         if (service() is { } csharp && csharp.For(document)?.Lsp is null)
         {
-            Message?.Invoke(this, csharp.Unready("Highlight Usages in File"));
+            Message?.Invoke(this, csharp.Unready("Highlight Usages in File", document));
             return;
         }
         watch.Stop();

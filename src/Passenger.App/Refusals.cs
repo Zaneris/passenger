@@ -174,6 +174,12 @@ public static class Refusals
         $"{file} is not loaded into {project} yet: the C# language server has not taken it in after {Durations.Said(CSharp.Patience.Limit)}, "
         + "and would answer without it; try again once it has";
 
+    /// <summary>A command (<paramref name="what"/>) asked of a file the C# language server is ready but has not taken in
+    /// yet: one come under a project (<paramref name="project"/>) whose load of it has not ended, else one it is still to open.</summary>
+    public static string NotInServerYet(string what, string file, string? project) => project is null
+        ? $"{what} needs {file} in the C# language server, which has not taken it in yet: try again in a moment"
+        : $"{what} needs {file} in the C# language server, which has not loaded it into {project} yet: try again once it has";
+
     /// <summary>A project the C# language server was asked to load again (its file or an import changed) that it has not
     /// loaded since (<see cref="CSharp.CSharpService.UnplacedAsync"/>), whose answers would be of the project as it was.</summary>
     public static string NotLoadedAgain(string project) =>

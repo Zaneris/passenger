@@ -751,6 +751,51 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>Reformat Code an agent runs through ide_action answers what it came to: on a file the language server has,
+    /// whether it changed; on a file come into a project while the server's load of the project again for it is held, so the
+    /// server, ready, has not taken it in, a refusal naming the file and the project it is not loaded into yet, as the status
+    /// bar says it, where the server's state alone was said ("C# ready") and the agent heard only that the action ran.</summary>
+    [AvaloniaFact]
+    public void An_agents_Reformat_Code_of_a_file_the_server_has_not_taken_in_yet_is_refused_naming_it()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-reformat-untaken-"));
+        DeleteAtEnd(folder);
+        string lib = TestFolders.Write(folder, "Lib/Lib.csproj", TestProjects.Library());
+        string greeter = TestFolders.Write(folder, "Lib/Greeter.cs", "namespace Lib;\n\npublic class Greeter\n{\n    public string Greet() => \"Hello\";\n}\n");
+        MainWindow window = AgentsWindow(folder);
+        Ui.WaitFor(() => window.CSharpService is { IsReady: true }, () => $"the language server to load Lib ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
+        TaskCompletionSource building = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            window.OpenFile(greeter);
+            Ui.WaitFor(() => window.CSharpService!.For(window.EditorArea.Active!)?.Lsp is not null, "the server to have Greeter.cs");
+            Task<CallToolResult> formatting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Reformat }));
+            Press(Question(window, "the question for the agent's Reformat Code"), AgentToolDialog.AllowForSession);
+            CallToolResult formatted = Await(formatting, "the agent's Reformat Code of Greeter.cs");
+            Assert.True(formatted.IsError != true && Text(formatted) is "Already formatted" or "Reformatted", $"Reformat Code of Greeter.cs answered an agent: {Text(formatted)}");
+
+            Task held = window.Session.DesignTimeBuilds.HoldNextAsked(lib, building.Task);
+            string late = TestFolders.Write(folder, "Lib/Late.cs", "namespace Lib;\n\npublic static class Late\n{\n}\n");
+            // Pumped, not settled: the server's load held waits on the window.
+            Ui.PumpUntil(() => held.IsCompleted, "the server's load of Lib again, for the file come into it, to be held", AgentLimit);
+            window.OpenFile(late);
+            Ui.PumpUntil(() => window.EditorArea.Active?.Name == "Late.cs" && window.CSharpService!.For(window.EditorArea.Active) is not null, "Late.cs to open", AgentLimit);
+            CallToolResult refused = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Reformat })),
+                "the agent's Reformat Code of Late.cs", AgentLimit);
+            string expected = Refusals.NotInServerYet("Reformat Code", "Late.cs", "Lib");
+            Assert.True(refused.IsError == true && Text(refused).Contains(expected, StringComparison.Ordinal),
+                $"Reformat Code of a file the server has not taken in yet answered an agent: {Text(refused)}");
+            Assert.Equal(expected, window.Status);
+        }
+        finally
+        {
+            building.TrySetResult();
+            Gone(client);
+            window.Close();
+        }
+    }
+
     /// <summary>A MAUI page's code-behind asked of as its folder first loads: the server's restore brings MAUI's generator,
     /// its load after queues the generator's run, and the server's word that its diagnostics moved, sent of changes made
     /// before that load, is heard just after it ends (held to then). An agent's definition of the InitializeComponent the
