@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `VcsTests`' `A_renamed_and_a_moved_files_rows_in_the_Commit_window_name_where_each_came_from`, CI 44940279906 (Linux
+  x64, report shard 2): "Expected: ("Store.cs  ← Shop.cs", …) Actual: ("Store.cs  R  ← Shop.cs", …)". **The test was
+  written before the design it reads**: #1851 put each changed file's letter beside its name, and the test still read
+  the row without it. It now reads the letter (R for a moved file, M for one modified) and its word on the tip and to a
+  screen reader (38d16158e, #1851).
+- `VcsTests`' `A_screenshot_of_a_working_tree_taken_with_no_wait_shows_its_branch_and_change_bars`, CI 44940279906
+  (Linux x64, report shard 2): "The changed line's bar is drawn #ff0f131c, not the modified bar's colour". **The test
+  was written before the design it reads**: #1851 broke a changed line's bar into dashes, and the one pixel the test read
+  at the line's middle fell in a gap between them. It now reads the bar down the line, two runs of the modified colour
+  at least with a gap between, which a solid bar or another colour fails (d06bf1200, #1851).
 - `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI 44896789551
   (Windows, report shard 1): "The AppHost resource service connection failed (Cancelled): Call canceled by the
   client", 32.5 s after the AppHost's build. **A bug in the IDE**: the AppHost's resource service was given 30 s to
