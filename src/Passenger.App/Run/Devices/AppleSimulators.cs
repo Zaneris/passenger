@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Passenger.App.Workspace;
 using Passenger.Core;
 
@@ -84,20 +85,48 @@ public static class AppleSimulators
     }
 
     /// <summary>Boots a shut-down simulator and waits until its system has started, with no window: nothing of it shows on
-    /// anyone's screen. Null once booted, else why not.</summary>
+    /// anyone's screen. Null once booted, else why not. Another boot of it landing between the look that found it shut
+    /// down and this one's request, which simctl then refuses, is waited for as this one would have been.</summary>
     public static async Task<string?> BootAsync(AppleTools tools, DeviceTarget simulator, Action<string> say, CancellationToken cancel)
     {
         say($"Starting the simulator {simulator.Name}…");
+        Deadline limit = Deadline.In(BootLimit);
         try
         {
             // bootstatus -b boots it where it is shut down and waits for its boot to finish.
             ChildResult booted = await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Simctl, ["bootstatus", simulator.Id, "-b"]), limit: BootLimit, cancel: cancel);
-            return booted.Succeeded ? null : $"The simulator {simulator.Name} did not start: {booted.Said}";
+            if (booted.Succeeded)
+            {
+                return null;
+            }
+            if (await StateAsync(tools.Simctl, simulator.Id, cancel) is not (BootingState or BootedState))
+            {
+                return $"The simulator {simulator.Name} did not start: {booted.Said}";
+            }
+            IdeLog.Write(IdeLog.Ide, $"The simulator {simulator.Id} was booted by another as a start booted it: its boot is waited for ({booted.Said})");
+            // Without -b, bootstatus waits for the boot under way, or says at once that it has ended.
+            ChildResult waited = await ChildProcesses.RunAsync(ChildProcesses.Command(tools.Simctl, ["bootstatus", simulator.Id]), limit: limit.Left, cancel: cancel);
+            return waited.Succeeded ? null : $"The simulator {simulator.Name} did not start: {waited.Said}";
         }
         catch (TimeoutException)
         {
             return $"The simulator {simulator.Name} did not finish starting in {Durations.Said(BootLimit)}";
         }
+    }
+
+    /// <summary>A simulator's state as simctl names it while it boots.</summary>
+    private const string BootingState = "Booting";
+
+    /// <summary>A simulator's state as simctl names it once booted.</summary>
+    private const string BootedState = "Booted";
+
+    /// <summary>A simulator's state as simctl lists it now, null where it lists no such simulator or could not be read.</summary>
+    private static async Task<string?> StateAsync(string simctl, string udid, CancellationToken cancel)
+    {
+        ChildResult listed = await SimctlAsync(simctl, ["list", "devices", "-j", udid], cancel);
+        return listed.Succeeded ? JsonMembers.Properties(JsonMembers.ObjectIn(listed.Output), "devices")
+            .SelectMany(runtime => runtime.Value.ValueKind == JsonValueKind.Array ? runtime.Value.EnumerateArray() : Enumerable.Empty<JsonElement>())
+            .Where(device => JsonMembers.Text(device, "udid") == udid).Select(device => JsonMembers.Text(device, "state")).FirstOrDefault() : null;
     }
 
     /// <summary>The app the project's build made for a simulator, its bundle and identifier as its workload reads them
