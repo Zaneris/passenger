@@ -17,32 +17,20 @@ namespace Passenger.Tests;
 /// its button through UIKit; with Hot Reload an edit lands through Passenger's relay, carried into the app's data container,
 /// and its update handler is called; Debug stops in its main page, steps, shows, evaluates and takes an edit; Stop ends the
 /// app and takes out what was carried, and a simulator the window booted is shut down as it closes. Skips, saying why, off
-/// a Mac, without MAUI's and iOS's workloads, Xcode or an iPhone simulator, or the simulator's relay. Avalonia's head
-/// (<see cref="AvaloniaSimulatorTests"/>) is a step too. Debugged through the window, so alone.</summary>
+/// a Mac, without MAUI's and iOS's workloads, Xcode or an iPhone simulator, or the simulator's relay. Debugged through the
+/// window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
 public sealed class MauiSimulatorTests
 {
-    private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
+    private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));
 
     /// <summary>What the update handler the test adds to the app writes once Hot Reload has applied an edit.</summary>
     private const string Handled = "Update handler called for MainPage";
 
-    /// <summary>An app on an iOS simulator: MAUI's head run with Hot Reload, its tree and a tap, and debugged; Avalonia's
-    /// head's tree, a XAML edit and its shared code stopped in. Avalonia's, which needs nuget.org's packages too, comes
-    /// last.</summary>
     [AvaloniaFact]
-    public void An_app_on_an_ios_simulator_runs_debugs_and_takes_edits_its_tree_shown_and_tapped()
+    public void A_maui_apps_ios_head_run_on_a_simulator_shows_its_tree_takes_a_tap_and_a_hot_reload_edit_and_ends_with_stop()
     {
-        Flow.Step("a MAUI app's iOS head run on a simulator shows its tree, takes a tap and a Hot Reload edit, and ends with Stop",
-            A_maui_apps_ios_head_run_on_a_simulator_shows_its_tree_takes_a_tap_and_a_hot_reload_edit_and_ends_with_stop);
-        Flow.Step("a MAUI app's iOS head debugged on a simulator stops, steps, evaluates and takes a Hot Reload edit",
-            A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit);
-        Flow.Step("an Avalonia app's iOS head on a simulator shows its tree, takes a XAML edit and stops at a breakpoint in its shared code",
-            AvaloniaSimulatorTests.An_avalonia_apps_ios_head_on_a_simulator_shows_its_tree_takes_a_xaml_edit_and_stops_at_a_breakpoint_in_its_shared_code);
-    }
-
-    private static void A_maui_apps_ios_head_run_on_a_simulator_shows_its_tree_takes_a_tap_and_a_hot_reload_edit_and_ends_with_stop()
-    {
+        using IDisposable hang = Limits.BeginHang();
         (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("maui-ios-run");
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });
@@ -86,8 +74,10 @@ public sealed class MauiSimulatorTests
         LeftAsFound(target, tools);
     }
 
-    private static void A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit()
+    [AvaloniaFact]
+    public void A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit()
     {
+        using IDisposable hang = Limits.BeginHang();
         (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("maui-ios-debug");
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });

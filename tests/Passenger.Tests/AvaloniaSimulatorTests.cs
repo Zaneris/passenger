@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
@@ -15,16 +16,19 @@ namespace Passenger.Tests;
 /// into its data container, whose tree shows the shared view and takes a XAML edit saved; Debug stops at a breakpoint in the
 /// shared project's App, its locals shown, steps, evaluates and, gone on, shows its tree; each Stop ends the app and takes
 /// out what was carried, and a simulator the window booted is shut down as it closes. Skips, saying why, off a Mac, without
-/// the iOS workload, Xcode or an iPhone simulator, the simulator's relay, or nuget.org's Avalonia iOS packages. A step of
-/// <see cref="MauiSimulatorTests"/>' flow, which runs alone.</summary>
-internal static class AvaloniaSimulatorTests
+/// the iOS workload, Xcode or an iPhone simulator, the simulator's relay, or nuget.org's Avalonia iOS packages. Debugged
+/// through the window, so alone; its waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+[Collection(Alone.Name)]
+public sealed class AvaloniaSimulatorTests
 {
-    private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
+    private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));
 
     private const string Name = "XApp";
 
-    internal static void An_avalonia_apps_ios_head_on_a_simulator_shows_its_tree_takes_a_xaml_edit_and_stops_at_a_breakpoint_in_its_shared_code()
+    [AvaloniaFact]
+    public void An_avalonia_apps_ios_head_on_a_simulator_shows_its_tree_takes_a_xaml_edit_and_stops_at_a_breakpoint_in_its_shared_code()
     {
+        using IDisposable hang = Limits.BeginHang();
         if (!OperatingSystem.IsMacOS())
         {
             Assert.Skip(Refusals.IosOnMacAlone);
