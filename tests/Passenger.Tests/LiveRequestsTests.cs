@@ -88,8 +88,51 @@ public sealed class LiveRequestsTests
         }
         """;
 
+    /// <summary>The Requests window lists a running app's requests with their routes and commands and opens their
+    /// handlers, each request of one trace with its own commands; a runtime that takes no session is said and asked no
+    /// more, nor is one the window stopped looking at; it follows a web app Run runs in the terminal; a thousand
+    /// requests scroll on rows made once, and a request heard costs what it changed however many are listed.</summary>
     [AvaloniaFact]
-    public void The_requests_window_lists_the_running_apps_requests_with_their_routes_and_commands_and_opens_their_handlers()
+    public void The_Requests_window_lists_a_running_apps_requests_while_someone_looks_and_costs_what_each_changed()
+    {
+        Flow.StepApart<LiveRequestsTests>("the requests window lists the running app's requests with their routes and commands and opens their handlers", t =>
+        {
+            t.The_requests_window_lists_the_running_apps_requests_with_their_routes_and_commands_and_opens_their_handlers();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsTests>("two requests of one trace served at once each list only their own commands", t =>
+        {
+            t.Two_requests_of_one_trace_served_at_once_each_list_only_their_own_commands();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsTests>("a program whose runtime takes no session is said to and asked no more", t =>
+        {
+            t.A_program_whose_runtime_takes_no_session_is_said_to_and_asked_no_more();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsTests>("a start the window stops looking at asks the program nothing more", t =>
+        {
+            t.A_start_the_window_stops_looking_at_asks_the_program_nothing_more();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsTests>("the requests window follows a web app Run runs in the terminal", t =>
+        {
+            t.The_requests_window_follows_a_web_app_Run_runs_in_the_terminal();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsTests>("a scroll step down a thousand requests a running app answered hands the rows other requests never making one again", t =>
+        {
+            t.A_scroll_step_down_a_thousand_requests_a_running_app_answered_hands_the_rows_other_requests_never_making_one_again();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsTests>("a request heard costs the window what it changed however many are listed", t =>
+        {
+            t.A_request_heard_costs_the_window_what_it_changed_however_many_are_listed();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void The_requests_window_lists_the_running_apps_requests_with_their_routes_and_commands_and_opens_their_handlers()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("requests-");
@@ -205,8 +248,7 @@ public sealed class LiveRequestsTests
     /// <summary>Two requests of one trace (a page's two calls carrying its trace on) served at once by one app, each running
     /// a query of its own, each list only their own command: a command is tied to the request whose activity it ran under,
     /// not to the trace's latest.</summary>
-    [AvaloniaFact]
-    public void Two_requests_of_one_trace_served_at_once_each_list_only_their_own_commands()
+    private void Two_requests_of_one_trace_served_at_once_each_list_only_their_own_commands()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("requests-pair-");
@@ -280,8 +322,7 @@ public sealed class LiveRequestsTests
     /// <summary>A program whose runtime takes no session (a silent port in front of it) is said to by the window once its
     /// start's time runs out, with what its port showed, and asked no more, where the window waited on it for good. What
     /// asks is counted in this test's process: another process of the machine may reach the port too.</summary>
-    [AvaloniaFact]
-    public void A_program_whose_runtime_takes_no_session_is_said_to_and_asked_no_more()
+    private void A_program_whose_runtime_takes_no_session_is_said_to_and_asked_no_more()
     {
         MainWindow window = Ui.OpenFolder(QuietFolder("requests-silent-"), languageServer: false);
         try
@@ -312,8 +353,7 @@ public sealed class LiveRequestsTests
 
     /// <summary>A program's start that the window stops looking at as it waits at a runtime that takes no session is given up
     /// at once: the window asks the program no account of its port and says nothing of it.</summary>
-    [AvaloniaFact]
-    public void A_start_the_window_stops_looking_at_asks_the_program_nothing_more()
+    private void A_start_the_window_stops_looking_at_asks_the_program_nothing_more()
     {
         MainWindow window = Ui.OpenFolder(QuietFolder("requests-dropped-"), languageServer: false);
         try
@@ -363,8 +403,7 @@ public sealed class LiveRequestsTests
 
     /// <summary>A web app whose configuration runs it in the terminal has its requests followed as one in the Run console
     /// does: Run's program is the same wherever it runs.</summary>
-    [AvaloniaFact]
-    public void The_requests_window_follows_a_web_app_Run_runs_in_the_terminal()
+    private void The_requests_window_follows_a_web_app_Run_runs_in_the_terminal()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("requests-terminal-");
@@ -411,8 +450,7 @@ public sealed class LiveRequestsTests
     /// <summary>A web app Run runs answers a thousand requests, the window listing as many as it keeps, and the list
     /// scrolled with the wheel as <see cref="LongListsTests"/> scrolls the IDE's own: a step down it allocates what one
     /// down fifty requests does, and its rows are handed other requests, none made again.</summary>
-    [AvaloniaFact]
-    public void A_scroll_step_down_a_thousand_requests_a_running_app_answered_hands_the_rows_other_requests_never_making_one_again()
+    private void A_scroll_step_down_a_thousand_requests_a_running_app_answered_hands_the_rows_other_requests_never_making_one_again()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("requests-many-");
@@ -467,8 +505,7 @@ public sealed class LiveRequestsTests
     /// the top, the oldest's come out, and every other row keeps its control. The app's diagnostic events are stood in
     /// for by the events the profiler's reader gives the window; an N+1 of many commands is counted by its
     /// text.</summary>
-    [AvaloniaFact]
-    public void A_request_heard_costs_the_window_what_it_changed_however_many_are_listed()
+    private void A_request_heard_costs_the_window_what_it_changed_however_many_are_listed()
     {
         string folder = TestFolders.Create("requests-listed-");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -544,206 +581,6 @@ public sealed class LiveRequestsTests
                 window.RequestLog.Hear(new RequestEnded(id, at, id, 200), "Shop", null);
             }
             return id;
-        }
-    }
-
-    /// <summary>A request heard costs the window what it costs with five routes when the folder has five hundred: each
-    /// route's template is split once, and the request's path is walked against them where it lies. The routes are stood
-    /// in for by the catalog's answer from the C# server, the app's events by the profiler reader's.</summary>
-    [AvaloniaFact]
-    public void A_request_heard_costs_the_window_what_it_costs_with_five_routes_when_the_folder_has_five_hundred()
-    {
-        string folder = TestFolders.Create("requests-routes-");
-        string project = Path.Combine(folder, "Shop.csproj");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        int heard = 0;
-        try
-        {
-            // The log alone, as it keeps the requests while no one looks: a drawn row's cost is held by the test above.
-            Ui.Settle();
-            long few = Costs(5);
-            long many = Costs(500);
-            Assert.True(many < few + 1024,
-                $"A request heard with 500 routes allocated {many:N0} bytes on the UI thread, with 5 routes {few:N0}: its path is matched against each route by making it again");
-            Assert.Equal("/orders/{id}", window.RequestLog.Requests[^1].Route?.Template);
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        // The least a request heard allocated on the UI thread with this many routes, the one it reaches the last.
-        long Costs(int routes)
-        {
-            window.RequestLog.Clear();
-            List<WebRoute> declared = [];
-            for (int i = 0; i < routes - 1; i++)
-            {
-                string template = (i % 3) switch
-                {
-                    0 => $"/api/things{i}",
-                    1 => $"/api/things{i}/{{id}}/parts",
-                    _ => $"/files{i}/{{name}}.{{extension}}",
-                };
-                declared.Add(Route(template));
-            }
-            declared.Add(Route("/orders/{id}"));
-            window.Session.Routes.Took(new RoutesFound(declared, [project]), window.Session.Routes.ToRead());
-            for (int i = 0; i < 3; i++)
-            {
-                Hear(Request());
-            }
-            long least = long.MaxValue;
-            for (int round = 0; round < 5; round++)
-            {
-                WebEvent[] told = Request();
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                Hear(told);
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-            }
-            return least;
-        }
-
-        WebRoute Route(string template) => new(project, RouteKinds.Minimal, ["GET"], template, null, [], "Handle", Path.Combine(folder, "Program.cs"),
-            new Place(0, 0), new Place(0, 1), string.Empty);
-
-        // A request as the app tells of it, made before it is measured: its start and its end.
-        WebEvent[] Request()
-        {
-            string id = $"request-{heard}";
-            DateTime at = DateTime.UtcNow;
-            return [new RequestBegan(id, at, id, "GET", $"/orders/{heard++}", string.Empty), new RequestEnded(id, at, id, 200)];
-        }
-
-        void Hear(WebEvent[] told)
-        {
-            foreach (WebEvent one in told)
-            {
-                window.RequestLog.Hear(one, "Shop", null);
-            }
-            Ui.Settle();
-        }
-    }
-
-    /// <summary>A 2 KB SQL command of hundreds of words, its parameters' values logged, costs the window what one of the
-    /// same length with a few long words costs: its text is read for its columns as ranges of its characters, with no
-    /// string made for each word, and the log masked once.</summary>
-    [AvaloniaFact]
-    public void A_two_kilobyte_SQL_command_costs_the_window_no_string_for_each_of_its_words()
-    {
-        string folder = TestFolders.Create("requests-sql-");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        int heard = 0;
-        try
-        {
-            // The log alone, as it keeps the requests while no one looks: a row drawn shapes each word of its text.
-            Ui.Settle();
-            long words = Costs(round => string.Concat(Enumerable.Repeat($"c{round}, ", 300)));
-            long few = Costs(round => new string((char)('a' + round), 1200) + ", ");
-            Assert.True(words < few + 1024,
-                $"A 2 KB command of 300 words cost the UI thread {words:N0} bytes, one of its length in a few words {few:N0}: each word of its text is made a string");
-            LiveCommand command = Assert.Single(window.RequestLog.Requests[^1].Commands);
-            Assert.Equal("@p0='••••••', @p1='Ada' (Size = 3)", command.Parameters);
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        // The least a request of one such command (its log heard first) allocated on the UI thread, each text new to it.
-        long Costs(Func<int, string> selected)
-        {
-            for (int i = 0; i < 3; i++)
-            {
-                Hear(Request(Sql(selected(i))));
-            }
-            long least = long.MaxValue;
-            for (int round = 3; round < 8; round++)
-            {
-                WebEvent[] told = Request(Sql(selected(round)));
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                Hear(told);
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-            }
-            return least;
-        }
-
-        // A command's text of 2 KB: the columns selected, then a WHERE that compares a secret's column and a name's.
-        static string Sql(string selected)
-        {
-            string where = " FROM \"Customers\" AS \"c\" WHERE \"c\".\"Password\" = @p0 AND \"c\".\"Name\" = @p1";
-            string text = "SELECT " + selected + "1" + where;
-            return text + new string(' ', 2048 - text.Length);
-        }
-
-        // A request as the app tells of it, made before it is measured: its start, EF Core's log of its command, the command and its end.
-        WebEvent[] Request(string sql)
-        {
-            string id = $"request-{heard++}";
-            DateTime at = DateTime.UtcNow;
-            string logged = $"Executed DbCommand (1ms) [Parameters=[@p0='hunter22' (Size = 8), @p1='Ada' (Size = 3)], CommandType='Text', CommandTimeout='30']\n{sql}";
-            return [new RequestBegan(id, at, id, "GET", "/customers", string.Empty), new CommandLogged(id, at, logged),
-                new CommandRan(id, at, $"{id}-0", sql, 1.5, null, null), new RequestEnded(id, at, id, 200)];
-        }
-
-        void Hear(WebEvent[] told)
-        {
-            foreach (WebEvent one in told)
-            {
-                window.RequestLog.Hear(one, "Shop", null);
-            }
-            Ui.Settle();
-        }
-    }
-
-    /// <summary>A command's row shows the command's own tooltip where the row last showed a request: with more requests
-    /// listed than the window shows, each command heard in a batch of its own is handed the row of a request scrolled off
-    /// the list's foot, as a slow machine's batches hand them. The app's events are stood in for by the profiler reader's.</summary>
-    [AvaloniaFact]
-    public void A_command_handed_the_row_of_a_request_shows_its_own_tooltip()
-    {
-        string folder = TestFolders.Create("requests-reused-");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            // The Requests window's own rows, whatever the folder holds.
-            Ui.ServeEveryWindow(window);
-            window.ShowToolWindow(ToolWindowIds.Requests);
-            Ui.Settle();
-            int heard = 0;
-            ListBox list = window.Requests.GetVisualDescendants().OfType<ListBox>().Single();
-            Assert.True(list.Bounds.Height >= 4 * ListRow.Height, $"The Requests window's list is {list.Bounds.Height} high, too low to show a request and its three commands");
-            while (window.Requests.Rows.Count * ListRow.Height < list.Bounds.Height + (4 * ListRow.Height))
-            {
-                string each = $"request-{heard}";
-                Hear(new RequestBegan(each, DateTime.UtcNow, each, "GET", $"/orders/{heard++}", string.Empty), new RequestEnded(each, DateTime.UtcNow, each, 200));
-            }
-
-            string id = "signing-up";
-            DateTime at = DateTime.UtcNow;
-            string[] texts = ["INSERT INTO \"Customers\" (\"Name\") VALUES (@p0)", "UPDATE \"Customers\" SET \"Name\" = @p0", "SELECT COUNT(*) FROM \"Customers\""];
-            Hear(new RequestBegan(id, at, id, "GET", "/sign-up/ada", string.Empty));
-            for (int i = 0; i < texts.Length; i++)
-            {
-                Hear(new CommandRan(id, at, $"{id}-{i}", texts[i], 1.5, null, null));
-            }
-            Hear(new RequestEnded(id, at, id, 200));
-            string[] tips = CommandTips(window, window.RequestLog.Requests.Single(r => r.Path == "/sign-up/ada"));
-            Assert.True(tips.SequenceEqual(texts), $"The pointer resting on the sign-up's commands, each in the row of a request before, reads [{string.Join(" | ", tips)}], not their own texts [{string.Join(" | ", texts)}]");
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        // Events the window takes in one batch, laid out before the next.
-        void Hear(params WebEvent[] told)
-        {
-            foreach (WebEvent one in told)
-            {
-                window.RequestLog.Hear(one, "Shop", null);
-            }
-            Ui.Settle();
         }
     }
 

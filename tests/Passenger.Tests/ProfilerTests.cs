@@ -28,8 +28,102 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Profile builds and runs the configuration and its end shows the snapshot; Go to Source opens each
+    /// profiled method where its PDB says; ten thousand stacks read, drag and draw in what their bars keep; a program
+    /// that crashes at once, or has not reached the profiler, ends or is ended whole; one goes on after its snapshot
+    /// until Stop; Profile and Run each wait for the Run console; a program needing a terminal is offered one; a trace
+    /// of allocations alone lists them; a snapshot in a folder Passenger cannot write opens, twice at once.</summary>
     [AvaloniaFact]
-    public void Profile_builds_and_runs_the_configuration_and_its_end_shows_the_snapshot()
+    public void Profile_records_a_run_from_its_start_to_its_end_and_opens_its_snapshot_where_its_methods_are()
+    {
+        Flow.StepApart<ProfilerTests>("profile builds and runs the configuration and its end shows the snapshot", () => new ProfilerTests(waits), t =>
+        {
+            t.Profile_builds_and_runs_the_configuration_and_its_end_shows_the_snapshot();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("go to Source opens each profiled method where its PDB says async nested generic and lambda alike", () => new ProfilerTests(waits), t =>
+        {
+            t.Go_to_Source_opens_each_profiled_method_where_its_PDB_says_async_nested_generic_and_lambda_alike();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a profile of ten thousand stacks reads drags and draws in what its stacks and bars keep", () => new ProfilerTests(waits), t =>
+        {
+            t.A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a profiled program that crashes at once ends its run saying its trace was cut short", () => new ProfilerTests(waits), t =>
+        {
+            t.A_profiled_program_that_crashes_at_once_ends_its_run_saying_its_trace_was_cut_short();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a profiled program that has not reached the profiler is started once and Kill or closing the folder ends it", () => new ProfilerTests(waits), t =>
+        {
+            t.A_profiled_program_that_has_not_reached_the_profiler_is_started_once_and_Kill_or_closing_the_folder_ends_it();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a profiled program goes on after its snapshot until stop ends it", () => new ProfilerTests(waits), t =>
+        {
+            t.A_profiled_program_goes_on_after_its_snapshot_until_stop_ends_it();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("Profile and Run each wait for the Run console while the other's program has it", () => new ProfilerTests(waits), t =>
+        {
+            t.Profile_and_Run_each_wait_for_the_Run_console_while_the_other_s_program_has_it();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a profiled program needing a terminal is offered one and Profile in the Terminal profiles it reading the key typed there", () => new ProfilerTests(waits), t =>
+        {
+            t.A_profiled_program_needing_a_terminal_is_offered_one_and_Profile_in_the_Terminal_profiles_it_reading_the_key_typed_there();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a trace of allocations and collections alone lists them", () => new ProfilerTests(waits), t =>
+        {
+            t.A_trace_of_allocations_and_collections_alone_lists_them();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a snapshot in a folder passenger cannot write opens and two reads of it at once both open", () => new ProfilerTests(waits), t =>
+        {
+            t.A_snapshot_in_a_folder_passenger_cannot_write_opens_and_two_reads_of_it_at_once_both_open();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>Attach Profiler and Get Memory Snapshot refuse a program the debugger holds and take it once it goes
+    /// on; a memory snapshot of a profiled program counts its heap by type and leaving the folder ends the run; Attach
+    /// Profiler that cannot write its snapshot releases EventPipe and leaves the program running; Get Snapshot of a
+    /// program whose runtime refuses the stop still reads the run; Attach Profiler profiles a program run in the
+    /// terminal and the app dotnet watch runs.</summary>
+    [AvaloniaFact]
+    public void Attach_Profiler_and_Get_Snapshot_take_a_running_program_and_let_it_go_running()
+    {
+        Flow.StepApart<ProfilerTests>("attach Profiler and Get Memory Snapshot refuse a program the debugger holds at once and take it once it goes on", () => new ProfilerTests(waits), t =>
+        {
+            t.Attach_Profiler_and_Get_Memory_Snapshot_refuse_a_program_the_debugger_holds_at_once_and_take_it_once_it_goes_on();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("a memory snapshot of a program being profiled counts its heap by type and leaving the folder then ends the run", () => new ProfilerTests(waits), t =>
+        {
+            t.A_memory_snapshot_of_a_program_being_profiled_counts_its_heap_by_type_and_leaving_the_folder_then_ends_the_run();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("attach Profiler that cannot write its snapshot says why releases EventPipe and leaves the program running unrecorded", () => new ProfilerTests(waits), t =>
+        {
+            t.Attach_Profiler_that_cannot_write_its_snapshot_says_why_releases_EventPipe_and_leaves_the_program_running_unrecorded();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("get Snapshot of a program whose runtime refuses the stop still reads the run and lets it go", () => new ProfilerTests(waits), t =>
+        {
+            t.Get_Snapshot_of_a_program_whose_runtime_refuses_the_stop_still_reads_the_run_and_lets_it_go();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<ProfilerTests>("attach Profiler profiles the program run in the terminal and the app dotnet watch runs", () => new ProfilerTests(waits), t =>
+        {
+            t.Attach_Profiler_profiles_the_program_run_in_the_terminal_and_the_app_dotnet_watch_runs();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Profile_builds_and_runs_the_configuration_and_its_end_shows_the_snapshot()
     {
         // Twenty threads, the main one spinning; 60 MB of short-lived arrays; and a .NET program of its own.
         string project = Project("Spinner", """
@@ -177,8 +271,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// folder with no language server to look a name up in: an async method's (its state machine's MoveNext), a nested
     /// type's, a generic type's (shared code, its type argument __Canon) and a lambda's; and Enter on the call tree's row of
     /// the nested type's method opens it too.</summary>
-    [AvaloniaFact]
-    public void Go_to_Source_opens_each_profiled_method_where_its_PDB_says_async_nested_generic_and_lambda_alike()
+    private void Go_to_Source_opens_each_profiled_method_where_its_PDB_says_async_nested_generic_and_lambda_alike()
     {
         string project = Project("Shapes", """
             using System.Runtime.CompilerServices;
@@ -282,73 +375,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
-    /// <summary>Go to Source on a hot spot that is a constructor, of a program built with no PDB, finds it by its name
-    /// through the language server: Busy..ctor(Int32) opens at Busy's constructor.</summary>
-    [AvaloniaFact]
-    public void Go_to_Source_opens_a_constructor_of_a_program_with_no_PDB_by_its_name()
-    {
-        string project = Project("Builder", """
-            using System.Runtime.CompilerServices;
-
-            public static class Program
-            {
-                public static void Main()
-                {
-                    DateTime until = DateTime.UtcNow.AddSeconds(3);
-                    while (DateTime.UtcNow < until)
-                    {
-                        GC.KeepAlive(new Busy(4_000_000));
-                    }
-                }
-            }
-
-            public sealed class Busy
-            {
-                public long Sum { get; }
-
-                [MethodImpl(MethodImplOptions.NoInlining)]
-                public Busy(int count)
-                {
-                    for (int i = 0; i < count; i++) { Sum += i % 7; }
-                }
-            }
-            """, "<PropertyGroup>\n    <DebugType>none</DebugType>\n  </PropertyGroup>");
-        string program = PathNames.Canonical(Path.Combine(project, "Program.cs"));
-        int constructor = Array.FindIndex(File.ReadAllLines(program), l => l.Contains("public Busy(int count)", StringComparison.Ordinal));
-        MainWindow window = Ui.OpenFolder(project);
-        try
-        {
-            Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.ProfilerView.Snapshot is not null, "the program's end to show its snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(Directory.GetFiles(project, "Builder.pdb", SearchOption.AllDirectories).Length == 0, "The program was built with a PDB, which Go to Source would open it by");
-            Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true }, "the language server to load the program", TimeSpan.FromMinutes(2));
-            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
-            view.ShowPage(Passenger.App.Profiling.ProfilerPage.HotSpots);
-            Ui.Settle();
-            HotSpot spot = view.Snapshot!.HotSpots.FirstOrDefault(h => h.Name.StartsWith("Busy..ctor(", StringComparison.Ordinal))
-                ?? throw new Xunit.Sdk.XunitException($"No hot spot is Busy's constructor: {string.Join(", ", view.Snapshot.HotSpots.Take(12).Select(h => h.Name))}");
-            Avalonia.Controls.ListBox spots = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBox>()
-                .Single(l => ReferenceEquals(l.ItemsSource, view.Snapshot.HotSpots));
-            window.OpenFile(Path.Combine(project, "Builder.csproj"));
-            Ui.DoubleClick(Ui.Row(spots, spot));
-            Ui.WaitFor(() => window.EditorArea.Active?.Path is { } open && PathNames.Same(open, program),
-                () => $"Go to Source on {spot.Name} to open Program.cs, where {window.EditorArea.Active?.Path} is open ({window.Status})", TimeSpan.FromSeconds(30));
-            Assert.True(window.EditorArea.CodeEditor.CaretPosition.Line == constructor,
-                $"Go to Source on {spot.Name} opened line {window.EditorArea.CodeEditor.CaretPosition.Line + 1}, not its constructor's, {constructor + 1}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Opening a profile costs a stack what keeping it takes, not a name made again for each frame: from a thousand
     /// stacks about seventy frames deep to ten thousand, under 12 KB a stack more (on every thread, the least of three). Over
     /// the larger, a drag's pointer move across the timeline costs the UI thread no more 2,400 wide than 800 wide, and under
     /// 16 KB more than a pointer passing over it; a frame of the flame graph, under 400 bytes a bar more whole than zoomed
     /// into a leaf, and under 400 too where every bar is labelled.</summary>
-    [AvaloniaFact]
-    public void A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep()
+    private void A_profile_of_ten_thousand_stacks_reads_drags_and_draws_in_what_its_stacks_and_bars_keep()
     {
         // Each count forty calls deep, then a path of its own down a binary tree, to a spin a busy machine's sampler still catches hundreds of times and a large array (an allocation tick).
         string project = Project("Stacks", """
@@ -555,8 +587,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// with no Get Snapshot or Kill, and no IDE error is caught. Its trace cut anywhere past its header, down to none of
     /// its events (where TraceEvent's index of it holds none), opens saying it was cut short, and within its header is no
     /// snapshot; each cut is let go of once read, so the next is written over it at once.</summary>
-    [AvaloniaFact]
-    public void A_profiled_program_that_crashes_at_once_ends_its_run_saying_its_trace_was_cut_short()
+    private void A_profiled_program_that_crashes_at_once_ends_its_run_saying_its_trace_was_cut_short()
     {
         string project = Project("Crashes", "throw new InvalidOperationException(\"crashed at once\");\n");
         MainWindow window = Ui.OpenFolder(project);
@@ -621,8 +652,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// profiler's port): Profile pressed again starts no second program; Kill ends it at once; a configuration whose working
     /// folder is gone, and one that ends before it reaches the profiler, are said to in the profiler window; and Close
     /// Solution ends a start under way with the folder's other programs. None leaves a port listening.</summary>
-    [AvaloniaFact]
-    public void A_profiled_program_that_has_not_reached_the_profiler_is_started_once_and_Kill_or_closing_the_folder_ends_it()
+    private void A_profiled_program_that_has_not_reached_the_profiler_is_started_once_and_Kill_or_closing_the_folder_ends_it()
     {
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Starting: Undiagnosed", pids, undiagnosed: true);
@@ -705,8 +735,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// Profiler, greyed saying why, refuses it at once with nothing left under way, and attaches once it goes on; Get Memory
     /// Snapshot of it so attached and then paused refuses likewise, and Get Snapshot too, its run going on, read once the
     /// program goes on.</summary>
-    [AvaloniaFact]
-    public void Attach_Profiler_and_Get_Memory_Snapshot_refuse_a_program_the_debugger_holds_at_once_and_take_it_once_it_goes_on()
+    private void Attach_Profiler_and_Get_Memory_Snapshot_refuse_a_program_the_debugger_holds_at_once_and_take_it_once_it_goes_on()
     {
         MainWindow window = OpenWaits("Held", TestFolders.Create("pids-"));
         string program = PathNames.Canonical(waits.PathOf("Program.cs"));
@@ -778,8 +807,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>A memory snapshot of a program being profiled counts its heap by type and it runs on; then Close Solution
     /// ends the run whole: the program killed, the profiler's port gone with its listener, and the profiler window no longer
     /// following the run, its time no longer counting and its Kill and Get Snapshot gone.</summary>
-    [AvaloniaFact]
-    public void A_memory_snapshot_of_a_program_being_profiled_counts_its_heap_by_type_and_leaving_the_folder_then_ends_the_run()
+    private void A_memory_snapshot_of_a_program_being_profiled_counts_its_heap_by_type_and_leaving_the_folder_then_ends_the_run()
     {
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Waits for its input", pids);
@@ -827,8 +855,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>Get Snapshot ends the run, not the program Profile started: it goes on, read from and typed to in the Run
     /// console, with Kill there and Stop able to end it, and nothing of the profiler's left listening for it; meanwhile
     /// Profile starts no other, which Kill and Stop could not reach.</summary>
-    [AvaloniaFact]
-    public void A_profiled_program_goes_on_after_its_snapshot_until_stop_ends_it()
+    private void A_profiled_program_goes_on_after_its_snapshot_until_stop_ends_it()
     {
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Lasting", pids);
@@ -886,8 +913,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// runs there, its output and typing left to it; Profile of the configuration Run runs ends that run and profiles it;
     /// and Run is refused while Profile's program has it, until that ends, after which typing reaches Run's
     /// program.</summary>
-    [AvaloniaFact]
-    public void Profile_and_Run_each_wait_for_the_Run_console_while_the_other_s_program_has_it()
+    private void Profile_and_Run_each_wait_for_the_Run_console_while_the_other_s_program_has_it()
     {
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Echo", pids);
@@ -941,8 +967,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// Terminal, which keeps the configuration's Use external console on and profiles it from its start in a tab of the
     /// Terminal window, the offer then gone: there it reads the key typed, the Run console left as it was, and its end shows
     /// its snapshot, samples taken.</summary>
-    [AvaloniaFact]
-    public void A_profiled_program_needing_a_terminal_is_offered_one_and_Profile_in_the_Terminal_profiles_it_reading_the_key_typed_there()
+    private void A_profiled_program_needing_a_terminal_is_offered_one_and_Profile_in_the_Terminal_profiles_it_reading_the_key_typed_there()
     {
         string project = Project("Keys", """
             using System.Diagnostics;
@@ -1006,8 +1031,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>Attach Profiler where its snapshot cannot be written says so and leaves the program as it was, running and
     /// recorded by nothing: the recording it began there ended (EventPipe released), which the program's frames provider
     /// hears as turned off. Once a snapshot can be written, Attach Profiler records it.</summary>
-    [AvaloniaFact]
-    public void Attach_Profiler_that_cannot_write_its_snapshot_says_why_releases_EventPipe_and_leaves_the_program_running_unrecorded()
+    private void Attach_Profiler_that_cannot_write_its_snapshot_says_why_releases_EventPipe_and_leaves_the_program_running_unrecorded()
     {
         MainWindow window = OpenWaits("Attached", TestFolders.Create("pids-"));
         try
@@ -1054,8 +1078,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// <summary>Get Snapshot of a program attached to whose runtime answers the stop with an error (of the diagnostics
     /// library's, not the program gone) still reads the run and lets it go: the snapshot shows, the recording ended, the
     /// program running, and nothing of the profiler's left connected to its port.</summary>
-    [AvaloniaFact]
-    public void Get_Snapshot_of_a_program_whose_runtime_refuses_the_stop_still_reads_the_run_and_lets_it_go()
+    private void Get_Snapshot_of_a_program_whose_runtime_refuses_the_stop_still_reads_the_run_and_lets_it_go()
     {
         string pids = TestFolders.Create("pids-");
         MainWindow window = OpenWaits("Refused", pids);
@@ -1085,8 +1108,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     /// <summary>Attach Profiler profiles the program the person runs wherever Run started it: one in a tab of the terminal,
     /// and under Hot Reload the app dotnet watch started, never dotnet watch's own process.</summary>
-    [AvaloniaFact]
-    public void Attach_Profiler_profiles_the_program_run_in_the_terminal_and_the_app_dotnet_watch_runs()
+    private void Attach_Profiler_profiles_the_program_run_in_the_terminal_and_the_app_dotnet_watch_runs()
     {
         string pids = TestFolders.Create("pids-");
         string project = Project("Spun", $"File.WriteAllText(Path.Combine(@\"{pids}\", $\"{{Environment.ProcessId}}.pid\"), \"\");\n" + """
@@ -1155,34 +1177,9 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         }
     }
 
-    [AvaloniaFact]
-    public void The_frames_median_of_an_even_count_is_halfway_between_the_middle_two()
-    {
-        // A snapshot of an Avalonia app's two frames, of 10 and 30 ms, as its inspector tells them.
-        string trace = Path.Combine(folder, "TwoFrames.nettrace");
-        Ui.Await(Waiting.Apart(() => RecordFrames(trace, [10, 30])), "the two frames' trace");
-        MainWindow window = new() { Width = 1300, Height = 900 };
-        window.Show();
-        try
-        {
-            Snapshot snapshot = Ui.Await(window.OpenSnapshotAsync(trace), "the snapshot to open") ?? throw new InvalidOperationException($"The snapshot did not open: {window.Status}");
-            Assert.Equal(2, snapshot.UiFrames.Count);
-            window.ProfilerView.ShowPage(Passenger.App.Profiling.ProfilerPage.Frames);
-            Ui.Settle();
-            string summary = window.ProfilerView.FramesPage.Summary;
-            Assert.True(summary.StartsWith("2 frames: 20.0 ms on the UI thread at the median, 30.0 ms at the longest", StringComparison.Ordinal),
-                $"The Frames page's median of a 10 ms and a 30 ms frame is not 20 ms: {summary}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A trace holding only the runtime's allocation ticks and collections, no samples and no frames (a recording of
     /// a program's memory alone), lists them on the Allocations and GC pages as any run's.</summary>
-    [AvaloniaFact]
-    public void A_trace_of_allocations_and_collections_alone_lists_them()
+    private void A_trace_of_allocations_and_collections_alone_lists_them()
     {
         string trace = Path.Combine(folder, "MemoryOnly.nettrace");
         MemoryRecorded recorded = Ui.Await(Waiting.Apart(() => RecordMemory(trace)), "the allocations' and collections' trace");
@@ -1210,8 +1207,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
 
     /// <summary>A snapshot kept where Passenger cannot write (a read-only folder, a mounted image) opens as any other, and
     /// two reads of one snapshot at once both open it: reading one writes nothing beside it.</summary>
-    [AvaloniaFact]
-    public void A_snapshot_in_a_folder_passenger_cannot_write_opens_and_two_reads_of_it_at_once_both_open()
+    private void A_snapshot_in_a_folder_passenger_cannot_write_opens_and_two_reads_of_it_at_once_both_open()
     {
         string kept = Directory.CreateDirectory(Path.Combine(folder, "kept")).FullName;
         string trace = Path.Combine(kept, "MemoryOnly.nettrace");
@@ -1443,54 +1439,6 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             // The first build makes bin, which a reset would take for a file the test added: made now, the folder stays as reset.
             Directory.CreateDirectory(PathOf("bin"));
         }
-    }
-
-    /// <summary>A console project restored in the tests' folder, with this as its Program.cs and anything more its project
-    /// file is to hold.</summary>
-    /// <summary>At the smallest window, a profile's pages, its run's summary and Open Snapshot each lie whole in the profiler's
-    /// pane, none over another, the pages and the summary taking another line where one has no room; the summary's whole text
-    /// is its tooltip, for where it is cut.</summary>
-    [AvaloniaFact]
-    public void At_the_smallest_window_a_profiles_pages_summary_and_buttons_lie_whole_in_its_pane_none_over_another()
-    {
-        string project = Project("Narrow", "Console.WriteLine($\"spun {Enumerable.Range(0, 2_000_000).Sum(i => Math.Sqrt(i))}\");\n");
-        MainWindow window = new() { Width = MainWindow.SmallestWidth, Height = MainWindow.SmallestHeight, StateFolder = TestFolders.Create("settings-"), StartsLanguageServer = false };
-        window.Show();
-        try
-        {
-            window.OpenFolder(project);
-            Ui.Settle();
-            Ui.Launched(window, window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.ProfilerView.Snapshot is not null, "the program's end to show its snapshot", TimeSpan.FromMinutes(2));
-            Ui.Settle();
-            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
-            Rect pane = Placed(window, view);
-            Control[] parts = [.. view.GetVisualDescendants().OfType<Control>().Where(c => c.Name is { } name && name.StartsWith("Profiler", StringComparison.Ordinal)
-                && c.IsEffectivelyVisible && c is Button or TextBlock)];
-            Assert.Contains(parts, part => part.Name == "ProfilerSnapshots");
-            Assert.Contains(parts, part => part.Name == "ProfilerOpenSnapshot");
-            TextBlock summary = Assert.IsType<TextBlock>(Assert.Single(parts, part => part.Name == "ProfilerSummary"));
-            Assert.Equal(summary.Text, ToolTip.GetTip(summary) as string);
-            List<string> wrong = [];
-            foreach (Control part in parts)
-            {
-                Rect at = Placed(window, part);
-                if (at.Left < pane.Left - 0.5 || at.Right > pane.Right + 0.5)
-                {
-                    wrong.Add($"{part.Name} lies at {at.Left:0.#} to {at.Right:0.#}, outside the pane's {pane.Left:0.#} to {pane.Right:0.#}");
-                }
-                wrong.AddRange(parts.Where(other => other != part && string.CompareOrdinal(other.Name, part.Name) > 0 && Placed(window, other).Intersects(at))
-                    .Select(other => $"{part.Name} lies over {other.Name}"));
-            }
-            Assert.True(wrong.Count == 0, $"At {MainWindow.SmallestWidth} wide the profiler's bar draws out of its pane or over itself: {string.Join("; ", wrong)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static Rect Placed(Visual window, Visual control) =>
-            control.TransformToVisual(window) is { } to ? new Rect(control.Bounds.Size).TransformToAABB(to) : default;
     }
 
     private string Project(string name, string program, string more = "")

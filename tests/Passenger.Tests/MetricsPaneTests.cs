@@ -10,8 +10,29 @@ namespace Passenger.Tests;
 /// nothing more once the pane lets it go as its start waits. The program read is this test's own process.</summary>
 public sealed class MetricsPaneTests
 {
+    /// <summary>A program paused in the debugger is said to be and read once it runs; a runtime that takes no session
+    /// is said and asked no more; a pane let go of while its start waits asks its runtime nothing more.</summary>
     [AvaloniaFact]
-    public void A_program_paused_in_the_debugger_is_said_to_be_and_read_once_it_runs()
+    public void The_Stats_tab_reads_a_programs_metrics_only_while_it_can_and_asks_nothing_more_once_let_go()
+    {
+        Flow.StepApart<MetricsPaneTests>("a program paused in the debugger is said to be and read once it runs", t =>
+        {
+            t.A_program_paused_in_the_debugger_is_said_to_be_and_read_once_it_runs();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MetricsPaneTests>("a runtime that takes no session is said to and asked no more", t =>
+        {
+            t.A_runtime_that_takes_no_session_is_said_to_and_asked_no_more();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MetricsPaneTests>("a pane let go of while its start waits asks its runtime nothing more", t =>
+        {
+            t.A_pane_let_go_of_while_its_start_waits_asks_its_runtime_nothing_more();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void A_program_paused_in_the_debugger_is_said_to_be_and_read_once_it_runs()
     {
         bool paused = true;
         MetricsPane pane = new() { Paused = (_, _) => paused };
@@ -43,8 +64,7 @@ public sealed class MetricsPaneTests
     /// <summary>A program whose runtime takes no session (a silent port in front of it) is said to, with what its port showed,
     /// once its start's time has run out, and asked no more: never left saying it waits while it asks again for minutes.
     /// What asks is counted in this test's process: another process of the machine may reach the port too.</summary>
-    [AvaloniaFact]
-    public void A_runtime_that_takes_no_session_is_said_to_and_asked_no_more()
+    private void A_runtime_that_takes_no_session_is_said_to_and_asked_no_more()
     {
         MetricsPane pane = new() { Paused = (_, _) => false };
         using SilentPort port = new(Environment.ProcessId);
@@ -73,8 +93,7 @@ public sealed class MetricsPaneTests
 
     /// <summary>A pane let go of while its start waits at a runtime that takes no session gives the start up at once: it
     /// asks no account of the port that it would only throw away, and says nothing.</summary>
-    [AvaloniaFact]
-    public void A_pane_let_go_of_while_its_start_waits_asks_its_runtime_nothing_more()
+    private void A_pane_let_go_of_while_its_start_waits_asks_its_runtime_nothing_more()
     {
         MetricsPane pane = new() { Paused = (_, _) => false };
         using SilentPort port = new(Environment.ProcessId);

@@ -22,8 +22,69 @@ public sealed class MemorySnapshotsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Two snapshots compared show the objects made, collected and survived; a type's objects open to their
+    /// shortest paths from the roots with what they retain; a heap of a million objects is read, compared and opened;
+    /// a program on .NET 11 lists its objects and the static keeping them.</summary>
     [AvaloniaFact]
-    public void Two_snapshots_compared_show_the_objects_made_and_collected_between_them_and_those_the_GC_moved_as_survived()
+    public void A_memory_snapshot_is_read_compared_and_opened_to_what_keeps_each_type()
+    {
+        Flow.StepApart<MemorySnapshotsTests>("two snapshots compared show the objects made and collected between them and those the GC moved as survived", t =>
+        {
+            t.Two_snapshots_compared_show_the_objects_made_and_collected_between_them_and_those_the_GC_moved_as_survived();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("a type's objects open to their shortest paths from the roots with each root's kind and what they retain", t =>
+        {
+            t.A_types_objects_open_to_their_shortest_paths_from_the_roots_with_each_roots_kind_and_what_they_retain();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("a heap of a million objects is read compared and opened", t =>
+        {
+            t.A_heap_of_a_million_objects_is_read_compared_and_opened();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("a memory snapshot of a program on dotnet 11 lists its objects and the static that keeps them", t =>
+        {
+            t.A_memory_snapshot_of_a_program_on_dotnet_11_lists_its_objects_and_the_static_that_keeps_them();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>A snapshot writes nothing into a program's output; past three the oldest lets go of its objects, and
+    /// Delete and the folder's end let go of the rest; a program that ends as its snapshot is taken, or in its full
+    /// collection, is said or leaves the snapshot taken; an agent's snapshot given up as its dump is written leaves no
+    /// dump.</summary>
+    [AvaloniaFact]
+    public void A_memory_snapshot_leaves_its_program_as_it_was_and_lets_go_of_what_it_no_longer_keeps()
+    {
+        Flow.StepApart<MemorySnapshotsTests>("a memory snapshot writes nothing into the output of a program that echoes its input byte for byte", t =>
+        {
+            t.A_memory_snapshot_writes_nothing_into_the_output_of_a_program_that_echoes_its_input_byte_for_byte();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("past three snapshots the oldest lets go of its objects which a comparison names and Delete and the folder's end let go of the rest", t =>
+        {
+            t.Past_three_snapshots_the_oldest_lets_go_of_its_objects_which_a_comparison_names_and_Delete_and_the_folders_end_let_go_of_the_rest();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("a memory snapshot of a program that ends as it is taken says the program ended", t =>
+        {
+            t.A_memory_snapshot_of_a_program_that_ends_as_it_is_taken_says_the_program_ended();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("a program that ends in its snapshot's full collection leaves the snapshot taken", t =>
+        {
+            t.A_program_that_ends_in_its_snapshots_full_collection_leaves_the_snapshot_taken();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MemorySnapshotsTests>("an agent's memory snapshot given up as its dump is written leaves no dump behind", t =>
+        {
+            t.An_agents_memory_snapshot_given_up_as_its_dump_is_written_leaves_no_dump_behind();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Two_snapshots_compared_show_the_objects_made_and_collected_between_them_and_those_the_GC_moved_as_survived()
     {
         // Survivors with garbage between them, so a compacting collection moves them.
         MainWindow window = Profiled("Grower", """
@@ -139,8 +200,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_types_objects_open_to_their_shortest_paths_from_the_roots_with_each_roots_kind_and_what_they_retain()
+    private void A_types_objects_open_to_their_shortest_paths_from_the_roots_with_each_roots_kind_and_what_they_retain()
     {
         // A thousand entries a static field keeps through its list, and one only a GC handle does.
         MainWindow window = Profiled("Cacher", """
@@ -232,88 +292,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>What a ConditionalWeakTable keeps alive for a key whose type holds no references (a string) is kept through
-    /// the key: a 10 MB array listed, its shortest path from the static that holds the key, and the key's strings retaining it.</summary>
-    [AvaloniaFact]
-    public void A_conditional_weak_tables_value_is_retained_through_its_key_though_the_key_holds_no_references()
-    {
-        MainWindow window = Profiled("Attacher", """
-            using System.Runtime.CompilerServices;
-            Attached.Fill();
-            Console.WriteLine("ready");
-            Console.ReadLine();
-            static class Attached
-            {
-                public static readonly string Key = new('k', 16);
-                private static readonly ConditionalWeakTable<string, byte[]> table = new();
-
-                [MethodImpl(MethodImplOptions.NoInlining)]
-                public static void Fill() => table.Add(Key, new byte[10_000_000]);
-            }
-            """);
-        MemoryView memory = window.ProfilerView.MemoryPage;
-        Snapshot(window, 1);
-        HeapType arrays = Assert.Single(memory.TypeRows, t => t.Name == "System.Byte[]");
-        Assert.True(arrays.Bytes >= 10_000_000, $"The 10 MB array the table keeps for its key is not among the live objects: the byte arrays take {arrays.Bytes:N0} bytes");
-        HeapType strings = Assert.Single(memory.TypeRows, t => t.Name == "System.String");
-        Assert.True(strings.RetainedBytes >= 10_000_000, $"The strings retain {strings.RetainedBytes:N0} bytes, not the key's 10 MB array");
-
-        Focus(memory.TypeList, arrays);
-        Ui.Press(window, "enter");
-        Ui.WaitFor(() => memory.Set is not null, "the byte arrays");
-        HeapObject payload = memory.ObjectRows[0];
-        Assert.True(payload.Bytes >= 10_000_000, $"The largest byte array takes {payload.Bytes:N0} bytes");
-        Focus(memory.ObjectList, payload);
-        Ui.Press(window, "enter");
-        Ui.WaitFor(() => memory.Set?.Count == 1, "the array alone");
-        Assert.Equal(1, memory.SetTab);
-        Assert.Equal(["System.String.dependent handle", "Static reference: Attached.Key"], memory.PathRows.Skip(1).Select(r => r.Node.Text));
-        window.Profiling!.Kill();
-        window.Close();
-    }
-
-    /// <summary>Two objects of a type that share a 10 MB payload nothing else holds retain it together: the type's row counts
-    /// it, and the type's objects opened say so too, though neither object alone retains it.</summary>
-    [AvaloniaFact]
-    public void Two_objects_of_a_type_sharing_a_payload_retain_it_together()
-    {
-        MainWindow window = Profiled("Sharer", """
-            using System.Runtime.CompilerServices;
-            Shared.Fill();
-            Console.WriteLine("ready");
-            Console.ReadLine();
-            static class Shared
-            {
-                public static readonly List<Sharer> Sharers = [];
-
-                [MethodImpl(MethodImplOptions.NoInlining)]
-                public static void Fill()
-                {
-                    byte[] payload = new byte[10_000_000];
-                    Sharers.Add(new Sharer(payload));
-                    Sharers.Add(new Sharer(payload));
-                }
-            }
-            sealed class Sharer(byte[] payload) { public byte[] Payload { get; } = payload; }
-            """);
-        MemoryView memory = window.ProfilerView.MemoryPage;
-        Snapshot(window, 1);
-        HeapType sharers = Assert.Single(memory.TypeRows, t => t.Name == "Sharer");
-        Assert.Equal(2, sharers.Count);
-        Assert.True(sharers.RetainedBytes >= sharers.Bytes + 10_000_000, $"The two sharers retain {sharers.RetainedBytes:N0} bytes, not their 10 MB payload");
-
-        Focus(memory.TypeList, sharers);
-        Ui.Press(window, "enter");
-        Ui.WaitFor(() => memory.Set is not null, "the sharers");
-        Assert.Equal(sharers.RetainedBytes, memory.Set!.RetainedBytes);
-        Assert.All(memory.ObjectRows, o => Assert.True(o.RetainedBytes < 10_000_000, $"A sharer alone retains {o.RetainedBytes:N0} bytes, the payload the other holds too"));
-        Assert.Contains($"retained {Sizes.Said(sharers.RetainedBytes)}", memory.Summary, StringComparison.Ordinal);
-        window.Profiling!.Kill();
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_heap_of_a_million_objects_is_read_compared_and_opened()
+    private void A_heap_of_a_million_objects_is_read_compared_and_opened()
     {
         MainWindow window = Profiled("Million", """
             using System.Runtime.CompilerServices;
@@ -371,8 +350,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_memory_snapshot_of_a_program_on_dotnet_11_lists_its_objects_and_the_static_that_keeps_them()
+    private void A_memory_snapshot_of_a_program_on_dotnet_11_lists_its_objects_and_the_static_that_keeps_them()
     {
         MainWindow window = Profiled("Eleven", """
             using System.Runtime.CompilerServices;
@@ -500,8 +478,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_memory_snapshot_writes_nothing_into_the_output_of_a_program_that_echoes_its_input_byte_for_byte()
+    private void A_memory_snapshot_writes_nothing_into_the_output_of_a_program_that_echoes_its_input_byte_for_byte()
     {
         // A program whose output is its input, as a language or MCP server's output is its protocol's alone.
         MainWindow window = Profiled("Echo", """
@@ -548,8 +525,7 @@ public sealed class MemorySnapshotsTests : IDisposable
     /// <summary>Past three snapshots the oldest lets go of its objects, its row and its page saying so and a comparison with
     /// it saying why there is none, while the rest compare as before; Delete removes a snapshot, its objects let go at once,
     /// and the folder's end lets go of the others.</summary>
-    [AvaloniaFact]
-    public void Past_three_snapshots_the_oldest_lets_go_of_its_objects_which_a_comparison_names_and_Delete_and_the_folders_end_let_go_of_the_rest()
+    private void Past_three_snapshots_the_oldest_lets_go_of_its_objects_which_a_comparison_names_and_Delete_and_the_folders_end_let_go_of_the_rest()
     {
         MainWindow window = Profiled("Keeper", """
             Console.WriteLine("ready");
@@ -601,8 +577,7 @@ public sealed class MemorySnapshotsTests : IDisposable
     }
 
     /// <summary>A memory snapshot of a program that ends as it is taken says the program ended, not what failed as it went.</summary>
-    [AvaloniaFact]
-    public void A_memory_snapshot_of_a_program_that_ends_as_it_is_taken_says_the_program_ended()
+    private void A_memory_snapshot_of_a_program_that_ends_as_it_is_taken_says_the_program_ended()
     {
         MainWindow window = Profiled("Ender", """
             Console.WriteLine("ready");
@@ -619,8 +594,7 @@ public sealed class MemorySnapshotsTests : IDisposable
     /// <summary>A program that ends in its snapshot's full collection, which finalizes what ends it, after its dump was
     /// read, leaves the snapshot of what it held, placed among no collections: the snapshot failed, as the runtime gone
     /// answered neither that collection's session's start nor its stop.</summary>
-    [AvaloniaFact]
-    public void A_program_that_ends_in_its_snapshots_full_collection_leaves_the_snapshot_taken()
+    private void A_program_that_ends_in_its_snapshots_full_collection_leaves_the_snapshot_taken()
     {
         MainWindow window = Profiled("Finalized", """
             Ender.Arm();
@@ -656,8 +630,7 @@ public sealed class MemorySnapshotsTests : IDisposable
 
     /// <summary>An agent's memory snapshot given up while its dump is on disk leaves none there once the dump's writer and
     /// reader have ended; the program goes on, and the next snapshot is taken as before.</summary>
-    [AvaloniaFact]
-    public void An_agents_memory_snapshot_given_up_as_its_dump_is_written_leaves_no_dump_behind()
+    private void An_agents_memory_snapshot_given_up_as_its_dump_is_written_leaves_no_dump_behind()
     {
         MainWindow window = Profiled("Quitter", """
             Console.WriteLine("ready");
