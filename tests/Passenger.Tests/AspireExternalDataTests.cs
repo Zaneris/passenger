@@ -77,16 +77,20 @@ public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<A
         finally
         {
             window?.Close();
-            ChildProcesses.Kill(run);
             // The orchestrator and the services it started are no children of the CLI's: each follows the AppHost's end.
             int[] ended = [run.Id, .. listed];
             string folder = PathNames.Canonical(project.Folder);
             bool Service(string command) => command.Contains(folder, StringComparison.Ordinal)
                 && (command.Contains("dotnet run", StringComparison.Ordinal) || command.Contains("/bin/Debug/", StringComparison.Ordinal));
-            string[] Left() => [.. Processes.Listed().Where(process => ended.Contains(process.Key) || Service(process.Value)
-                || process.Value.Contains(AspireCli.Home, StringComparison.Ordinal)).Select(process => $"{process.Key}: {process.Value}")];
+            IEnumerable<int> Ours() => Processes.Listed().Where(process => ended.Contains(process.Key) || Service(process.Value)
+                || process.Value.Contains(AspireCli.Home, StringComparison.Ordinal)).Select(process => process.Key);
+            // What the orchestrator ends as the AppHost goes leaves its runtime's files, as DCP's doing, not Passenger's: read while each runs.
+            RuntimeFiles[] theirs = [.. Ours().SelectMany(LeftRuntimeFiles.Of)];
+            ChildProcesses.Kill(run);
+            string[] Left() => [.. Ours().Select(id => $"{id}: {Processes.Listed().GetValueOrDefault(id)}")];
             Assert.True(Waiting.Until(() => Left().Length == 0, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(1)),
                 $"What the CLI's run started outlived the test:\n{string.Join("\n", Left())}");
+            LeftRuntimeFiles.TakeOnceGone(theirs);
         }
     }
 

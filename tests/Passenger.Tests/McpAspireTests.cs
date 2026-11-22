@@ -454,11 +454,14 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
             int[] killed = [.. orchestrator, .. orchestrator.SelectMany(Processes.Descendants),
                 .. Processes.Listed().Where(process => process.Value.EndsWith(watchdog, StringComparison.Ordinal)).Select(process => process.Key),
                 .. Processes.Descendants(passenger.Id), passenger.Id];
+            // The crash is the test's own doing, its watchdog killed with it: what the killed runtimes leave is the test's to take.
+            RuntimeFiles[] crashed = [.. killed.Distinct().SelectMany(LeftRuntimeFiles.Of)];
             foreach (int id in killed.Distinct())
             {
                 OwnProcess.Of(id).Kill(alone: true);
             }
             await Until(() => killed.All(id => !Processes.IsRunning(id)), "Passenger, its children and the orchestrator killed");
+            LeftRuntimeFiles.TakeOnceGone(crashed);
             Assert.Equal("running", await Docker.StateAsync(session));
 
             await using McpClient next = await Start(["--mcp", starter], languageServer: false);
