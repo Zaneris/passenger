@@ -56,7 +56,7 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   (`MauiSimulatorTests`' run 6:50 against 4:41 to 5:51 before). Which step took the time was not said; a wait of such a
   test that gives up now says the test's time was spent and ends with the IDE's log, which times each program the steps
   ran (a6ed48d5b), and the jobs end their build's servers before the tests (713c6d8ad); the flow, a Run and a Debug
-  start of minutes each, keeps little margin within the limit either way.
+  start of minutes each, is now two tests, each with its own 9.5 minutes (c174791c8).
 - `GodotEditorCompletionTests`' `An_open_godot_editors_unsaved_names_complete_until_it_ends` (the gate), CI 45027932334
   (Linux gate shard 2), at 8f0cca610, passing on its retry: "Completion never offered editor_dash, which only Godot's
   editor holds", a client of the test's own answered with it at once. **A race in the IDE**: Godot's editor at times
