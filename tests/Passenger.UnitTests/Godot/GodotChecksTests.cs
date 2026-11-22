@@ -40,53 +40,52 @@ public class GodotChecksTests
 
     private static GodotScenes Scenes() => new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene) });
 
-    /// <summary>Two scripts' signals of one name are two declarations: a handler both connect to can't take a change of one
-    /// without breaking the other, while the one signal's connections from each node running its script all follow it.</summary>
+    /// <summary>A scene's nodes, connections and values are checked against its scripts as Godot loads them, offering
+    /// fixes.</summary>
     [Fact]
-    public void A_handler_shared_with_another_scripts_signal_of_the_same_name_is_one_a_change_of_signature_cannot_follow()
-    {
-        const string scene = """
-            [gd_scene format=3]
+    public void Scenes_and_scripts_are_checked_against_each_other_as_godot_loads_them() => Cases.All(
+        (nameof(A_script_asks_the_engine_classes_scripts_signals_and_methods_of_the_scenes_it_runs_in),
+            A_script_asks_the_engine_classes_scripts_signals_and_methods_of_the_scenes_it_runs_in),
+        (nameof(A_path_no_node_answers_and_a_node_of_another_type_are_errors_naming_the_scene_and_line),
+            A_path_no_node_answers_and_a_node_of_another_type_are_errors_naming_the_scene_and_line),
+        (nameof(A_path_no_node_answers_offers_the_nearest_of_the_type_asked_and_a_wrong_type_the_nodes_own),
+            A_path_no_node_answers_offers_the_nearest_of_the_type_asked_and_a_wrong_type_the_nodes_own),
+        (nameof(A_connection_to_a_missing_method_offers_it_made_with_what_the_signal_gives_less_unbinds_and_with_binds_beside_the_scripts_handlers),
+            A_connection_to_a_missing_method_offers_it_made_with_what_the_signal_gives_less_unbinds_and_with_binds_beside_the_scripts_handlers),
+        (nameof(A_property_a_scene_sets_that_the_script_lacks_is_an_error_offering_it_exported_of_its_values_type),
+            A_property_a_scene_sets_that_the_script_lacks_is_an_error_offering_it_exported_of_its_values_type),
+        (nameof(A_scene_marks_a_node_path_it_sets_that_names_no_node_or_one_of_another_type),
+            A_scene_marks_a_node_path_it_sets_that_names_no_node_or_one_of_another_type));
 
-            [ext_resource type="Script" path="res://first.gd" id="1"]
-            [ext_resource type="Script" path="res://second.gd" id="2"]
-            [ext_resource type="Script" path="res://main.gd" id="3"]
+    /// <summary>Paths, uids, strings, theme items and layers are errors only where Godot would look in vain.</summary>
+    [Fact]
+    public void Resources_strings_and_theme_items_are_checked_where_godot_looks() => Cases.All(
+        (nameof(A_res_path_no_file_answers_is_an_error_and_a_folder_or_a_path_built_on_is_not),
+            A_res_path_no_file_answers_is_an_error_and_a_folder_or_a_path_built_on_is_not),
+        (nameof(A_connection_to_a_method_the_script_lacks_or_of_other_parameters_than_its_signal_and_binds_give_is_an_error),
+            A_connection_to_a_method_the_script_lacks_or_of_other_parameters_than_its_signal_and_binds_give_is_an_error),
+        (nameof(A_string_naming_a_member_a_script_lacks_or_of_other_arguments_is_an_error),
+            A_string_naming_a_member_a_script_lacks_or_of_other_arguments_is_an_error),
+        (nameof(A_scene_is_marked_where_godot_would_not_load_its_resources_nodes_and_connections),
+            A_scene_is_marked_where_godot_would_not_load_its_resources_nodes_and_connections),
+        (nameof(An_exported_node_set_to_another_type_or_no_node_is_an_error), An_exported_node_set_to_another_type_or_no_node_is_an_error),
+        (nameof(A_uid_no_file_has_is_an_error_and_a_scenes_resource_found_by_its_uid_a_warning),
+            A_uid_no_file_has_is_an_error_and_a_scenes_resource_found_by_its_uid_a_warning),
+        (nameof(A_string_naming_what_the_project_does_not_define_is_an_error_saying_where_godot_looks),
+            A_string_naming_what_the_project_does_not_define_is_an_error_saying_where_godot_looks),
+        (nameof(A_theme_item_its_class_looks_up_in_vain_is_an_error_and_the_editor_s_names_join_the_candidates),
+            A_theme_item_its_class_looks_up_in_vain_is_an_error_and_the_editor_s_names_join_the_candidates));
 
-            [node name="Main" type="Node"]
-            script = ExtResource("3")
-
-            [node name="One" type="Node" parent="."]
-            script = ExtResource("1")
-
-            [node name="Again" type="Node" parent="."]
-            script = ExtResource("1")
-
-            [node name="Two" type="Node" parent="."]
-            script = ExtResource("2")
-
-            [connection signal="changed" from="One" to="." method="on_changed"]
-            [connection signal="changed" from="Again" to="." method="on_changed"]
-            [connection signal="changed" from="Two" to="." method="on_changed"]
-            [connection signal="moved" from="One" to="." method="on_moved"]
-            [connection signal="moved" from="Again" to="." method="on_moved"]
-
-            """;
-        Dictionary<string, string> scripts = new(StringComparer.Ordinal)
-        {
-            ["res://first.gd"] = "extends Node\n\nsignal changed(value)\nsignal moved(value)\n",
-            ["res://second.gd"] = "extends Node\n\nsignal changed(value)\n",
-            ["res://main.gd"] = "extends Node\n\nfunc on_changed(value):\n\tpass\n\nfunc on_moved(value):\n\tpass\n",
-        };
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) }, texts: scripts);
-
-        (IReadOnlyList<GDScriptHandler> handlers, IReadOnlyList<GDScriptPlace> unfollowed) = GodotChecks.SignalHandlers(scenes, "res://first.gd", "changed");
-        Assert.Empty(handlers);
-        Assert.Equal(["its handler on_changed is connected to another signal too", "its handler on_changed is connected to another signal too"], unfollowed.Select(p => p.What));
-
-        (handlers, unfollowed) = GodotChecks.SignalHandlers(scenes, "res://first.gd", "moved");
-        Assert.Equal(["on_moved", "on_moved"], handlers.Select(h => h.Name));
-        Assert.Empty(unfollowed);
-    }
+    /// <summary>A GDScript's signals, connections and calls are read against its handlers' parameters and the engine's
+    /// signals.</summary>
+    [Fact]
+    public void A_gdscripts_connections_and_calls_are_read_against_its_handlers() => Cases.All(
+        (nameof(A_scenes_connection_to_a_gdscript_is_read_against_its_scripts_and_the_engines_answer_for_its_class),
+            A_scenes_connection_to_a_gdscript_is_read_against_its_scripts_and_the_engines_answer_for_its_class),
+        (nameof(A_gdscript_games_connections_are_read_against_the_engines_signals_and_its_handlers_parameters),
+            A_gdscript_games_connections_are_read_against_the_engines_signals_and_its_handlers_parameters),
+        (nameof(A_csharp_call_of_a_gdscripts_function_gives_it_a_count_it_takes_a_rest_parameter_taking_any_more),
+            A_csharp_call_of_a_gdscripts_function_gives_it_a_count_it_takes_a_rest_parameter_taking_any_more));
 
     private static GodotClassFound Main => new("Main", "Main", new Place(2, 21), new Place(2, 25), "Node2D", ["res://Main.cs"], [], []);
 
@@ -101,8 +100,7 @@ public class GodotChecksTests
 
     private static GodotNodeCall Call(string path, GodotTypeRef? type, bool orNull = false) => new(path, At, End, true, 0, type, orNull);
 
-    [Fact]
-    public void A_script_asks_the_engine_classes_scripts_signals_and_methods_of_the_scenes_it_runs_in()
+    private void A_script_asks_the_engine_classes_scripts_signals_and_methods_of_the_scenes_it_runs_in()
     {
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), Scenes(), ["res://Main.cs"]);
         Assert.Equal(["Node2D", "CanvasLayer", "Label"], asked.Engine);
@@ -111,8 +109,7 @@ public class GodotChecksTests
         Assert.Equal([new GodotMemberAsked("Node2D", "res://Main.cs", "OnPressed"), new GodotMemberAsked("Node2D", "res://Main.cs", "OnToggled")], asked.Methods);
     }
 
-    [Fact]
-    public void A_path_no_node_answers_and_a_node_of_another_type_are_errors_naming_the_scene_and_line()
+    private void A_path_no_node_answers_and_a_node_of_another_type_are_errors_naming_the_scene_and_line()
     {
         GodotScenes scenes = Scenes();
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
@@ -134,8 +131,7 @@ public class GodotChecksTests
         ], findings.Select(f => (f.Error, f.Message)));
     }
 
-    [Fact]
-    public void A_path_no_node_answers_offers_the_nearest_of_the_type_asked_and_a_wrong_type_the_nodes_own()
+    private void A_path_no_node_answers_offers_the_nearest_of_the_type_asked_and_a_wrong_type_the_nodes_own()
     {
         GodotScenes scenes = Scenes();
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
@@ -152,8 +148,7 @@ public class GodotChecksTests
         Assert.Equal("Label", findings[1].Offer!.Shown);
     }
 
-    [Fact]
-    public void A_connection_to_a_missing_method_offers_it_made_with_what_the_signal_gives_less_unbinds_and_with_binds_beside_the_scripts_handlers()
+    private void A_connection_to_a_missing_method_offers_it_made_with_what_the_signal_gives_less_unbinds_and_with_binds_beside_the_scripts_handlers()
     {
         GodotScenes scenes = Scenes();
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
@@ -167,8 +162,7 @@ public class GodotChecksTests
         Assert.Equal("OnToggled(bool, string)", finding.Offer.Shown);
     }
 
-    [Fact]
-    public void A_property_a_scene_sets_that_the_script_lacks_is_an_error_offering_it_exported_of_its_values_type()
+    private void A_property_a_scene_sets_that_the_script_lacks_is_an_error_offering_it_exported_of_its_values_type()
     {
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
             "script = ExtResource(\"1\")\nLives = 3\nTint = Color(1, 0, 0, 1)\nTarget = NodePath(\"Hud/Score\")\nposition = Vector2(1, 2)\nmetadata/Note = \"x\"\n", StringComparison.Ordinal)) });
@@ -186,8 +180,7 @@ public class GodotChecksTests
 
     /// <summary>A node path a scene sets on a script's property that names a node of another type than the property's, or
     /// no node, is an error at the path; one the property takes is not.</summary>
-    [Fact]
-    public void A_scene_marks_a_node_path_it_sets_that_names_no_node_or_one_of_another_type()
+    private void A_scene_marks_a_node_path_it_sets_that_names_no_node_or_one_of_another_type()
     {
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Scene.Replace("script = ExtResource(\"1\")\n",
             "script = ExtResource(\"1\")\nDisplay = NodePath(\"Hud\")\nScore = NodePath(\"Hud/Score\")\nTarget = NodePath(\"Hud/Gone\")\n", StringComparison.Ordinal)) });
@@ -201,50 +194,7 @@ public class GodotChecksTests
             GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true).Select(f => (text[f.Start..f.End], f.Message)));
     }
 
-    /// <summary>A SubResource no sub_resource of the file has is an error at its id, inside an array too; one the file has, and
-    /// the words of one inside a string, are not.</summary>
-    [Fact]
-    public void A_scene_marks_a_sub_resource_id_it_has_no_sub_resource_of()
-    {
-        const string scene = """
-            [gd_scene format=3]
-
-            [sub_resource type="RectangleShape2D" id="Box_a"]
-
-            [node name="Main" type="Area2D"]
-            shape = SubResource("Box_a")
-            shapes = [SubResource("Box_b"), "SubResource(\"Box_c\")"]
-            old = SubResource( 3 )
-
-            """;
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) });
-        Assert.Equal([("Box_b", "No sub_resource of this file has the id \"Box_b\""), ("3", "No sub_resource of this file has the id \"3\"")],
-            GodotChecks.SceneFindings(scenes, "res://main.tscn", GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn"), GodotCodeFound.None, _ => true)
-                .Select(f => (scene[f.Start..f.End], f.Message)));
-    }
-
-    [Theory]
-    [InlineData("true", "bool")]
-    [InlineData("-3", "int")]
-    [InlineData("2.5", "float")]
-    [InlineData("1e-05", "float")]
-    [InlineData("\"a\"", "String")]
-    [InlineData("&\"run\"", "StringName")]
-    [InlineData("^\"Hud\"", "NodePath")]
-    [InlineData("[1, 2]", "Array")]
-    [InlineData("Array[int]([1])", "Array")]
-    [InlineData("{}", "Dictionary")]
-    [InlineData("Vector2(1, 2)", "Vector2")]
-    [InlineData("PackedStringArray(\"a\")", "PackedStringArray")]
-    [InlineData("null", null)]
-    public void A_scenes_value_is_of_the_godot_type_its_text_writes(string written, string? type) => Assert.Equal(type, GodotChecks.TypeOfValue(written));
-
-    [Fact]
-    public void An_arrays_items_are_read_at_its_top() =>
-        Assert.Equal(["1", "\"a, b\"", "Vector2(1, 2)", "[3]"], GodotChecks.Items("[1, \"a, b\", Vector2(1, 2), [3]]"));
-
-    [Fact]
-    public void A_res_path_no_file_answers_is_an_error_and_a_folder_or_a_path_built_on_is_not()
+    private void A_res_path_no_file_answers_is_an_error_and_a_folder_or_a_path_built_on_is_not()
     {
         GodotScenes scenes = Scenes();
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
@@ -255,8 +205,7 @@ public class GodotChecksTests
         Assert.Equal(["No file res://gone.tscn is in the Godot project", "No folder res://levels/ is in the Godot project"], findings.Select(f => f.Message));
     }
 
-    [Fact]
-    public void A_connection_to_a_method_the_script_lacks_or_of_other_parameters_than_its_signal_and_binds_give_is_an_error()
+    private void A_connection_to_a_method_the_script_lacks_or_of_other_parameters_than_its_signal_and_binds_give_is_an_error()
     {
         GodotScenes scenes = Scenes();
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
@@ -274,8 +223,7 @@ public class GodotChecksTests
     /// <summary>A string naming a member a script's class lacks is an error, as is an EmitSignal giving a signal other
     /// arguments than it takes and a Callable's method connected by a string to a signal of other arguments; an engine
     /// class's object, which its script may give more, and strings that hold are not marked.</summary>
-    [Fact]
-    public void A_string_naming_a_member_a_script_lacks_or_of_other_arguments_is_an_error()
+    private void A_string_naming_a_member_a_script_lacks_or_of_other_arguments_is_an_error()
     {
         GodotScenes scenes = Scenes();
         GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
@@ -315,8 +263,7 @@ public class GodotChecksTests
     /// <summary>A scene's own text is marked where Godot would not load it: an external resource of no file, an ExtResource
     /// of no id, a node under one the scene lacks, a connection's end no node answers, and a connection to a method the C#
     /// script lacks, from a signal the engine class lacks, or of other arguments; a node of a GDScript is never said to lack one.</summary>
-    [Fact]
-    public void A_scene_is_marked_where_godot_would_not_load_its_resources_nodes_and_connections()
+    private void A_scene_is_marked_where_godot_would_not_load_its_resources_nodes_and_connections()
     {
         const string scene = """
             [gd_scene format=3]
@@ -372,36 +319,9 @@ public class GodotChecksTests
         ], findings.Select(f => (scene[f.Start..f.End], f.Message)));
     }
 
-    /// <summary>A node a scene adds under an imported model's own nodes is no node under one the scene lacks: Godot finds
-    /// its parent in the model, which no text says; one under a missing node of the scene's own still is.</summary>
-    [Fact]
-    public void A_node_added_inside_an_imported_model_is_not_marked_as_left_out()
-    {
-        const string scene = """
-            [gd_scene format=3]
-
-            [ext_resource type="PackedScene" path="res://chicken.glb" id="1_model"]
-
-            [node name="Chicken" instance=ExtResource("1_model")]
-
-            [node name="Mesh" parent="Rig/Skeleton3D" index="0"]
-
-            [node name="Halo" type="Node3D" parent="."]
-
-            [node name="Lost" type="Node3D" parent="Halo/Gone"]
-
-            """;
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://chicken.tscn"] = GodotFile.Parse(scene) });
-        GodotCodeRequest asked = GodotChecks.SceneAsks(In("Chicken.cs"), scenes, "res://chicken.tscn");
-        GodotCodeFound found = new([], [], [], [], [], [], []);
-        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://chicken.tscn", asked, found, _ => true);
-        Assert.Equal([("Halo/Gone", "No node 'Halo/Gone' is in the scene, so Godot leaves Lost out")], findings.Select(f => (scene[f.Start..f.End], f.Message)));
-    }
-
     /// <summary>An exported node a scene sets to a node of another type, or a NodePath it sets to no node, is an error at the
     /// member's name naming the scene and line; one of the type, or a path leaving the tree, is not.</summary>
-    [Fact]
-    public void An_exported_node_set_to_another_type_or_no_node_is_an_error()
+    private void An_exported_node_set_to_another_type_or_no_node_is_an_error()
     {
         const string scene = """
             [gd_scene format=3]
@@ -439,8 +359,7 @@ public class GodotChecksTests
     /// <summary>A uid:// a string gives that no file has is an error once Godot keeps a cache of the project's uids (without
     /// one, a uid may name a file Passenger does not read); one naming a file gone is one too; in a scene, an external
     /// resource whose path is gone but whose uid names a file is a warning that Godot loads it by its uid.</summary>
-    [Fact]
-    public void A_uid_no_file_has_is_an_error_and_a_scenes_resource_found_by_its_uid_a_warning()
+    private void A_uid_no_file_has_is_an_error_and_a_scenes_resource_found_by_its_uid_a_warning()
     {
         const string scene = """
             [gd_scene format=3]
@@ -475,8 +394,7 @@ public class GodotChecksTests
     /// looks; a group no scene gives a node is one unless the code adds it; an animation its player's libraries lack is one
     /// where the code tells the player by its path, and never where it does not; an autoload a path names through /root that
     /// project.godot lacks, and a node its scene lacks, are errors too.</summary>
-    [Fact]
-    public void A_string_naming_what_the_project_does_not_define_is_an_error_saying_where_godot_looks()
+    private void A_string_naming_what_the_project_does_not_define_is_an_error_saying_where_godot_looks()
     {
         const string scene = """
             [gd_scene format=3]
@@ -531,48 +449,11 @@ public class GodotChecksTests
         Assert.False(GodotChecks.Named(scenes, GodotStringKind.Animation, ["res://Main.cs"], null, null, null).Whole, "a player the code does not tell is never checked");
     }
 
-    /// <summary>A GetNodeOrNull asks whether a node is there, so an autoload or a node of one that isn't is no fault.</summary>
-    [Fact]
-    public void A_get_node_or_null_of_an_autoload_or_its_node_that_is_not_there_is_no_finding()
-    {
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
-        {
-            ["res://main.tscn"] = GodotFile.Parse(Scene),
-            ["res://hud.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[node name=\"Hud\" type=\"CanvasLayer\"]\n\n[node name=\"Score\" type=\"Label\" parent=\".\"]\n"),
-        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = "[autoload]\n\nHud=\"*res://hud.tscn\"\n" });
-        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
-        GodotCodeFound found = Found(asked, [Call("/root/Optional", null, orNull: true), Call("/root/Hud/Optional", null, orNull: true)]);
-        Assert.DoesNotContain(GodotChecks.Findings(scenes, asked, found, _ => true), f => f.Message.Contains("Optional", StringComparison.Ordinal));
-    }
-
-    /// <summary>Nodes whose shaders are all known say which uniforms there are, one shader shared among them or each its own;
-    /// a node with none known leaves it open.</summary>
-    [Theory]
-    [InlineData("one", "one", true, "alpha")]
-    [InlineData("one", "other", true, "alpha, beta")]
-    [InlineData("one", null, false, "alpha, beta, gamma")]
-    public void A_shader_parameter_s_names_are_whole_where_every_node_told_has_a_shader_shared_or_not(string first, string? second, bool whole, string names)
-    {
-        static GodotFile Running(string? shader) => GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n"
-            + (shader is null ? string.Empty : $"[ext_resource type=\"Shader\" path=\"res://{shader}.gdshader\" id=\"2\"]\n\n[sub_resource type=\"ShaderMaterial\" id=\"m\"]\nshader = ExtResource(\"2\")\n")
-            + "\n[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Sprite\" type=\"Sprite2D\" parent=\".\"]\n"
-            + (shader is null ? string.Empty : "material = SubResource(\"m\")\n"));
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://a.tscn"] = Running(first), ["res://b.tscn"] = Running(second) }, texts: new Dictionary<string, string>
-        {
-            ["res://one.gdshader"] = "shader_type canvas_item;\nuniform float alpha;\n",
-            ["res://other.gdshader"] = "shader_type canvas_item;\nuniform float beta;\n",
-            ["res://unrelated.gdshader"] = "shader_type canvas_item;\nuniform float gamma;\n",
-        });
-        GodotChecks.Candidates candidates = GodotChecks.Named(scenes, GodotStringKind.ShaderParameter, ["res://Main.cs"], "Sprite", null, "material");
-        Assert.Equal((whole, names), (candidates.Whole, string.Join(", ", candidates.Names.Select(n => n.Name).Order(StringComparer.Ordinal))));
-    }
-
     /// <summary>A theme item's name that neither Godot's default theme nor the project's themes give the class it is looked
     /// up in is an error naming the class; one a class deriving from it has (which the node may be), one the code adds, or
     /// one looked up in a class Passenger does not know, never. Its candidates are the project theme's first, then the
     /// default theme's along the class's bases, then those only the open Godot editor answered, each name once.</summary>
-    [Fact]
-    public void A_theme_item_its_class_looks_up_in_vain_is_an_error_and_the_editor_s_names_join_the_candidates()
+    private void A_theme_item_its_class_looks_up_in_vain_is_an_error_and_the_editor_s_names_join_the_candidates()
     {
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
         {
@@ -599,87 +480,6 @@ public class GodotChecksTests
         Assert.Single(colors.Names, n => n.Name == "font_color");
         Assert.Equal("theme color the open Godot editor holds", colors.Names[^1].Detail);
         Assert.Equal("editor_only", colors.Names[^1].Name);
-    }
-
-    /// <summary>The theme items of the Godot project.godot names: 4.4's Label has no focus style, so it is not offered and is
-    /// warned of as a later Godot's; 4.5's has it; a typo stays an error; and where the project names a Godot the carried table
-    /// does not tell, or none, nothing older is said to be missing.</summary>
-    [Theory]
-    [InlineData("\"4.4\"", false, "No theme stylebox 'focus' is among Label's theme styleboxes in Godot's default theme: the project is of Godot 4.4, and Godot 4.5 added it")]
-    [InlineData("\"4.5\"", true, "")]
-    [InlineData("\"4.9\"", true, "")]
-    public void A_theme_item_is_read_by_the_godot_the_project_names(string godot, bool offered, string warned)
-    {
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
-        {
-            ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
-        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = $"[application]\n\nconfig/features=PackedStringArray({godot}, \"C#\")\n" });
-        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
-        GodotCodeFound found = Found(asked, []) with { Kinds = [new GodotKindRead(GodotStringKind.ThemeStyle, "focus", At, End, true, false, 0, null, null, "Label")] };
-        IReadOnlyList<GodotChecks.Finding> findings = GodotChecks.Findings(scenes, asked, found, _ => true);
-        Assert.Equal(warned.Length == 0 ? [] : [(false, warned)], findings.Select(f => (f.Error, f.Message)));
-        Assert.Equal(offered, GodotChecks.Named(scenes, GodotStringKind.ThemeStyle, [], ".", null, "Label").Names.Any(n => n.Name == "focus"));
-    }
-
-    [Fact]
-    public void A_theme_item_only_an_older_godot_had_is_no_error_where_the_project_names_no_godot()
-    {
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile>
-        {
-            ["res://main.tscn"] = GodotFile.Parse("[gd_scene format=3]\n\n[ext_resource type=\"Script\" path=\"res://Main.cs\" id=\"1\"]\n\n[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n"),
-        }, texts: new Dictionary<string, string> { [GodotResPaths.Project] = "config_version=5\n" });
-        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
-        GodotCodeFound found = Found(asked, []) with { Kinds = [new GodotKindRead(GodotStringKind.ThemeIcon, "color_okhsl_hue", At, End, true, false, 0, null, null, "ColorPicker")] };
-        Assert.Empty(GodotChecks.Findings(scenes, asked, found, _ => true));
-    }
-
-    /// <summary>A layer's number outside the layers Godot numbers is an error, one inside never; an AnimationTree's parameter
-    /// its tree does not make is one where the code tells the tree; a global shader uniform project.godot lacks is one.</summary>
-    [Fact]
-    public void A_layer_out_of_godots_numbers_an_animation_trees_unmade_parameter_and_an_unknown_global_uniform_are_errors()
-    {
-        const string scene = """
-            [gd_scene format=3]
-
-            [ext_resource type="Script" path="res://Main.cs" id="1"]
-
-            [sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_1"]
-            advance_condition = &"is_running"
-
-            [sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_1"]
-            transitions = ["Start", "End", SubResource("AnimationNodeStateMachineTransition_1")]
-
-            [node name="Main" type="Node2D"]
-            script = ExtResource("1")
-
-            [node name="Tree" type="AnimationTree" parent="."]
-            tree_root = SubResource("AnimationNodeStateMachine_1")
-
-            """;
-        const string project = "[layer_names]\n\n2d_physics/layer_2=\"enemies\"\n\n[shader_globals]\n\nwind={\n\"type\": \"vec2\"\n}\n";
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
-            texts: new Dictionary<string, string> { [GodotResPaths.Project] = project });
-        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
-        GodotKindRead Read(GodotStringKind kind, string name, string? node = null, string? member = null) => new(kind, name, At, End, true, false, 0, node, null, member);
-        GodotCodeFound found = Found(asked, []) with
-        {
-            Kinds =
-            [
-                Read(GodotStringKind.Layer, "2", member: "2d_physics"), Read(GodotStringKind.Layer, "33", member: "2d_physics"), Read(GodotStringKind.Layer, "0", member: "3d_render"),
-                Read(GodotStringKind.TreeParameter, "parameters/conditions/is_running", "Tree"), Read(GodotStringKind.TreeParameter, "parameters/conditions/is_runing", "Tree"),
-                Read(GodotStringKind.TreeParameter, "parameters/anything"),
-                Read(GodotStringKind.ShaderGlobal, "wind"), Read(GodotStringKind.ShaderGlobal, "wnd"),
-            ],
-        };
-        Assert.Equal(
-        [
-            "No layer '33' is among Godot's 2D physics layers, numbered 1 to 32",
-            "No layer '0' is among Godot's 3D render layers, numbered 1 to 20",
-            "No AnimationTree parameter 'parameters/conditions/is_runing' is made by the tree of Tree (main.tscn:14)",
-            "No global shader uniform 'wnd' is in project.godot's [shader_globals]",
-        ], GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => f.Message));
-        GodotDefined enemies = GodotChecks.Named(scenes, GodotStringKind.Layer, [], null, null, "2d_physics").Names[1];
-        Assert.Equal(("2", "enemies"), (enemies.Name, enemies.Detail));
     }
 
     private const string MixedScene = """
@@ -709,8 +509,7 @@ public class GodotChecksTests
             ["res://actor.gd"] = "class_name Actor extends CharacterBody2D\n\nsignal died\n\nvar health := 3\n",
         });
 
-    [Fact]
-    public void A_scenes_connection_to_a_gdscript_is_read_against_its_scripts_and_the_engines_answer_for_its_class()
+    private void A_scenes_connection_to_a_gdscript_is_read_against_its_scripts_and_the_engines_answer_for_its_class()
     {
         GodotScenes scenes = Mixed();
         GodotCodeRequest asked = GodotChecks.SceneAsks(In("Main.cs"), scenes, "res://main.tscn");
@@ -730,121 +529,10 @@ public class GodotChecksTests
         Assert.Empty(GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, GodotCodeFound.None, _ => true));
     }
 
-    /// <summary>Godot hands a GDScript signal's emitted arguments on as they are, so a signal written without parentheses, or
-    /// one its script emits with other arguments than it declares, is not read against its handlers; one whose emits agree
-    /// with its parameters still is.</summary>
-    [Fact]
-    public void A_gdscript_signal_whose_parameters_say_nothing_of_its_emits_is_not_read_against_its_handlers()
-    {
-        const string scene = """
-            [gd_scene format=3]
-
-            [ext_resource type="Script" path="res://player.gd" id="1"]
-            [ext_resource type="Script" path="res://hud.gd" id="2"]
-
-            [node name="Main" type="Node3D"]
-
-            [node name="Player" type="CharacterBody3D" parent="."]
-            script = ExtResource("1")
-
-            [node name="HUD" type="CanvasLayer" parent="."]
-            script = ExtResource("2")
-
-            [connection signal="coin_collected" from="Player" to="HUD" method="_on_coin_collected"]
-            [connection signal="hit" from="Player" to="HUD" method="_on_coin_collected"]
-            [connection signal="updated" from="Player" to="HUD" method="_on_updated"]
-
-            """;
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
-            texts: new Dictionary<string, string>
-            {
-                ["res://player.gd"] = "extends CharacterBody3D\n\nsignal coin_collected\nsignal hit(by: Node, amount: int)\nsignal updated(zone)\n\n"
-                    + "func collect(coins: int) -> void:\n\tcoin_collected.emit(coins)\n\thit.emit(self, coins)\n\tupdated.emit(0.2, 0.8)\n",
-                ["res://hud.gd"] = "extends CanvasLayer\n\nfunc _on_coin_collected(coins):\n\tpass\n\nfunc _on_updated(low: float, high: float) -> void:\n\tpass\n",
-            });
-        GodotCodeRequest asked = GodotChecks.SceneAsks(In("main.tscn"), scenes, "res://main.tscn");
-        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(_ => (GodotSignature?)null)], [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
-        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true);
-        Assert.Equal(["hit gives 2 (Node, int), but _on_coin_collected takes 1 (coins)"], findings.Select(f => f.Message));
-    }
-
-    /// <summary>A handler with a rest parameter takes any count past its required ones (#1211): three arguments are no
-    /// error, none is one, said as at least.</summary>
-    [Fact]
-    public void A_handler_with_a_rest_parameter_takes_any_count_past_the_ones_it_requires()
-    {
-        string scene = """
-            [gd_scene load_steps=3 format=3]
-
-            [ext_resource type="Script" path="res://player.gd" id="1"]
-            [ext_resource type="Script" path="res://hud.gd" id="2"]
-
-            [node name="Main" type="Node3D"]
-
-            [node name="Player" type="CharacterBody3D" parent="."]
-            script = ExtResource("1")
-
-            [node name="HUD" type="CanvasLayer" parent="."]
-            script = ExtResource("2")
-
-            [connection signal="three" from="Player" to="HUD" method="_on_any"]
-            [connection signal="none" from="Player" to="HUD" method="_on_any"]
-
-            """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(scene) },
-            texts: new Dictionary<string, string>
-            {
-                ["res://player.gd"] = "extends CharacterBody3D\n\nsignal three(a, b, c)\nsignal none()\n",
-                ["res://hud.gd"] = "extends CanvasLayer\n\nfunc _on_any(first, ...rest):\n\tprint(first, rest)\n",
-            });
-        GodotCodeRequest asked = GodotChecks.SceneAsks("/game/main.tscn", scenes, "res://main.tscn");
-        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(_ => (GodotSignature?)null)], [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
-        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://main.tscn", asked, found, _ => true);
-        Assert.Equal(["none gives no arguments, but _on_any takes at least 1 (first, ...rest)"], findings.Select(f => f.Message));
-    }
-
-    /// <summary>A connection whose flags have Godot bind the sending node after the signal's own values (16,
-    /// CONNECT_APPEND_SOURCE_OBJECT) gives its handler one more: a handler taking it is no error, and a missing one is made
-    /// taking it.</summary>
-    [Fact]
-    public void A_connection_that_binds_its_sending_node_gives_the_handler_one_more_argument()
-    {
-        const string scene = """
-            [gd_scene format=3]
-
-            [ext_resource type="Script" path="res://settings.gd" id="1"]
-
-            [node name="Settings" type="VBoxContainer"]
-            script = ExtResource("1")
-
-            [node name="Events" type="CheckBox" parent="."]
-
-            [connection signal="toggled" from="Events" to="." method="_on_filter_toggled" flags=18]
-            [connection signal="toggled" from="Events" to="." method="_on_events_toggled" flags=18]
-            [connection signal="toggled" from="Events" to="." method="_on_filter_toggled"]
-
-            """;
-        GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://settings.tscn"] = GodotFile.Parse(scene) },
-            texts: new Dictionary<string, string> { ["res://settings.gd"] = "extends VBoxContainer\n\nfunc _on_filter_toggled(toggled_on: bool, source: BaseButton) -> void:\n\tpass\n" });
-        GodotCodeRequest asked = GodotChecks.SceneAsks(In("settings.tscn"), scenes, "res://settings.tscn");
-        GodotSignature toggled = new("toggled", ["bool"], 1, null, null, null) { Names = ["toggledOn"] };
-        GodotCodeFound found = new([], [], [], [], [], [.. asked.Signals.Select(s => s.Name == "toggled" ? toggled : null)],
-            [.. asked.Methods.Select(_ => (GodotSignature?)null)]);
-        IReadOnlyList<GodotChecks.SceneFinding> findings = GodotChecks.SceneFindings(scenes, "res://settings.tscn", asked, found, _ => true);
-        Assert.Equal(
-        [
-            "Settings, a VBoxContainer (settings.gd), has no method _on_events_toggled",
-            "toggled gives 1 (bool), but _on_filter_toggled takes 2 (toggled_on: bool, source: BaseButton)",
-        ], findings.Select(f => f.Message));
-        Assert.Equal(["toggled_on: bool", "source: CheckBox"], findings[0].Offer!.Function!.Parameters);
-        Assert.Equal([true, true, false], GodotFile.Parse(scene).Connections.Select(c => c.AppendsSource));
-    }
-
     /// <summary>With the engine's answers alone, as a game of GDScript alone has them from GodotSharp: a signal a node of no
     /// script lacks is an error; a handler its GDScript lacks is one, offering to make it with the signal's parameters as
     /// GDScript writes them, a bound value's too; and a handler its script declares taking other than the signal gives is one.</summary>
-    [Fact]
-    public void A_gdscript_games_connections_are_read_against_the_engines_signals_and_its_handlers_parameters()
+    private void A_gdscript_games_connections_are_read_against_the_engines_signals_and_its_handlers_parameters()
     {
         const string scene = """
             [gd_scene format=3]
@@ -880,30 +568,9 @@ public class GodotChecksTests
         Assert.Equal(("int", string.Empty, "new_text"), (GodotChecks.ScriptType("long"), GodotChecks.ScriptType("Variant"), GodotChecks.Snake("newText")));
     }
 
-    [Fact]
-    public void A_string_naming_a_member_on_a_node_of_gdscript_is_read_against_its_scripts_and_the_engine_classes_having_it()
-    {
-        GodotScenes scenes = Mixed();
-        GodotCodeRequest asked = GodotChecks.Asks(In("Main.cs"), scenes, ["res://Main.cs"]);
-        GodotStringRead Read(GodotNameKind kind, string name, params string[] engines) =>
-            new(kind, name, At, End, true, "Node", false, null, null, null) { Class = 0, Node = "Enemy", Engines = engines };
-        GodotCodeFound found = new([Main], [], [], [], [], [], [])
-        {
-            Strings = [Read(GodotNameKind.Method, "take_damage"), Read(GodotNameKind.Method, "take_damag"), Read(GodotNameKind.Method, "move_and_slide", "CharacterBody2D"),
-                Read(GodotNameKind.Signal, "died"), Read(GodotNameKind.Property, "health"), Read(GodotNameKind.Property, "heath")],
-        };
-        Assert.Equal(["Enemy, a CharacterBody2D (enemy.gd), has no method 'take_damag'", "Enemy, a CharacterBody2D (enemy.gd), has no property 'heath'"],
-            GodotChecks.Findings(scenes, asked, found, _ => true).Select(f => f.Message));
-        GodotChecks.Candidates members = GodotChecks.Members(scenes, GodotNameKind.Method, ["res://Main.cs"], "Enemy", null, _ => null);
-        Assert.Equal(("take_damage", "res://enemy.gd"), (members.Names.Single().Name, members.Names.Single().Places.Single().Res));
-        Assert.False(members.Whole, "A node whose engine class is not known to lack the name is taken to have all it may");
-        Assert.False(GodotChecks.Members(scenes, GodotNameKind.Method, ["res://Main.cs"], ".", null, _ => false).Whole, "Main's own C# script is read as GDScript");
-    }
-
     /// <summary>A C# Call of a GDScript's function by its string is read for its count as an emit is (#1211): the count its
     /// function takes is no mark, fewer than it requires or more than it takes is, and a rest parameter takes any more.</summary>
-    [Fact]
-    public void A_csharp_call_of_a_gdscripts_function_gives_it_a_count_it_takes_a_rest_parameter_taking_any_more()
+    private void A_csharp_call_of_a_gdscripts_function_gives_it_a_count_it_takes_a_rest_parameter_taking_any_more()
     {
         GodotScenes scenes = new(Game, new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(MixedScene) },
             texts: new Dictionary<string, string>

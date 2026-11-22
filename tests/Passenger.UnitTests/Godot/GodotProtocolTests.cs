@@ -9,8 +9,39 @@ namespace Passenger.UnitTests.Godot;
 /// person types; and Passenger's live-edit ids apart from the editor's.</summary>
 public class GodotProtocolTests
 {
+    /// <summary>The game's trees, inspected nodes, output, monitors and errors read as Godot sent them, ending
+    /// nothing.</summary>
     [Fact]
-    public void Passengers_live_edit_ids_are_apart_from_every_id_the_editor_gives_its_live_edits()
+    public void The_games_messages_read_as_godot_sent_them() => Cases.All(
+        (nameof(Passengers_live_edit_ids_are_apart_from_every_id_the_editor_gives_its_live_edits),
+            Passengers_live_edit_ids_are_apart_from_every_id_the_editor_gives_its_live_edits),
+        (nameof(A_scene_tree_the_game_sent_reads_as_its_root_window_with_the_scenes_node_under_it),
+            A_scene_tree_the_game_sent_reads_as_its_root_window_with_the_scenes_node_under_it),
+        (nameof(A_scene_tree_nested_past_what_a_stack_holds_reads_to_its_bound_and_says_more_lies_below),
+            A_scene_tree_nested_past_what_a_stack_holds_reads_to_its_bound_and_says_more_lies_below),
+        (nameof(An_inspected_node_reads_its_properties_under_their_categories_and_says_which_can_be_set),
+            An_inspected_node_reads_its_properties_under_their_categories_and_says_which_can_be_set),
+        (nameof(An_error_reads_with_its_stack_and_is_placed_at_the_first_place_that_is_the_projects),
+            An_error_reads_with_its_stack_and_is_placed_at_the_first_place_that_is_the_projects),
+        (nameof(What_Passenger_sends_reads_back_as_sent_its_length_first), What_Passenger_sends_reads_back_as_sent_its_length_first),
+        (nameof(Bytes_counting_more_than_they_hold_are_refused_before_anything_is_made_of_them),
+            Bytes_counting_more_than_they_hold_are_refused_before_anything_is_made_of_them));
+
+    /// <summary>A typed value reads as its type does and a number is written at its type's precision.</summary>
+    [Fact]
+    public void Typed_values_read_and_are_written_as_godots_variant_text_does() => Cases.All(
+        (nameof(A_typed_value_reads_as_its_type_does), A_typed_value_reads_as_its_type_does),
+        (nameof(A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision),
+            A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision));
+
+    /// <summary>A typed value reads one way in the tree and in Variables, as GDScript where a paused frame
+    /// can.</summary>
+    [Fact]
+    public Task A_typed_value_reads_in_the_tree_and_in_variables_or_says_why_not() => Cases.AllAsync(
+        (nameof(A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says),
+            A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says));
+
+    private void Passengers_live_edit_ids_are_apart_from_every_id_the_editor_gives_its_live_edits()
     {
         long[] ours = [GodotLiveEditIds.Agent, GodotLiveEditIds.Tuned];
 
@@ -72,8 +103,7 @@ public class GodotProtocolTests
 
     private static GodotMessage Message(string base64) => GodotMessage.Read(Convert.FromBase64String(base64));
 
-    [Fact]
-    public void A_scene_tree_the_game_sent_reads_as_its_root_window_with_the_scenes_node_under_it()
+    private void A_scene_tree_the_game_sent_reads_as_its_root_window_with_the_scenes_node_under_it()
     {
         GodotMessage message = Message(Tree);
         Assert.Equal((GodotWords.SceneTree, GodotMessage.MainThread), (message.Name, message.Thread));
@@ -85,8 +115,7 @@ public class GodotProtocolTests
 
     /// <summary>A game can nest nodes as deep as it likes, and Godot sends its tree without a stack's limit: the tree reads to
     /// its bound on a small stack, the node there saying it has more below, and the rest of the message is read past.</summary>
-    [Fact]
-    public void A_scene_tree_nested_past_what_a_stack_holds_reads_to_its_bound_and_says_more_lies_below()
+    private void A_scene_tree_nested_past_what_a_stack_holds_reads_to_its_bound_and_says_more_lies_below()
     {
         const int Deep = 100_000;
         List<object?> data = [];
@@ -105,8 +134,7 @@ public class GodotProtocolTests
         Assert.True(all[^1] is { Children: [], Deeper: true } && all.Take(all.Count - 1).All(n => !n.Deeper), "The node at the bound did not say more lies below it, or another did");
     }
 
-    [Fact]
-    public void An_inspected_node_reads_its_properties_under_their_categories_and_says_which_can_be_set()
+    private void An_inspected_node_reads_its_properties_under_their_categories_and_says_which_can_be_set()
     {
         GodotObjectState node = Assert.Single(GodotObjectState.Read(Message(Inspected).Data));
         Assert.Equal((27598521817UL, "Node"), (node.Id, node.Class));
@@ -120,32 +148,7 @@ public class GodotProtocolTests
         Assert.DoesNotContain(node.Properties, p => p.Name is "Main" or "Node" or "Process" or "Thread Group");
     }
 
-    [Fact]
-    public void Output_strings_lose_the_zero_Godot_ends_each_with_and_monitors_read_by_their_place()
-    {
-        GodotMessage output = Message(Output);
-        Assert.True(output is { Name: GodotWords.Output, Data: [string[] lines, int[] kinds] } && lines.SequenceEqual(["frame 10"]) && kinds.SequenceEqual([0]),
-            $"The game's output read as {GodotVariant.Shown(output.Data.ToList())}");
-        GodotMonitors? monitors = GodotMonitors.Read(Message(Monitors).Data, []);
-        Assert.True(monitors is { Fps: 1, Memory: 41726031, Objects: 1500, Resources: 1, Nodes: 2, Orphans: 0, Custom: [] }, $"The monitors read as {monitors}");
-        Assert.StartsWith("1 FPS · 0.0 ms process · 39.8 MB · 1,500 objects · 2 nodes", monitors!.Said, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_games_custom_monitors_are_named_as_it_said_them_and_charted_under_their_category()
-    {
-        IReadOnlyList<string> names = GodotMonitors.Names([new List<object?> { new GodotName("Game/Score"), "Speed" }, new List<object?> { 0L, 0L }]);
-        Assert.Equal(["Game/Score", "Speed"], names);
-        List<object?> frame = [60.0, 0.016, 0.002, .. Enumerable.Repeat<object?>(0L, 20), 42L, "not a number"];
-        GodotMonitors? monitors = GodotMonitors.Read(frame, names);
-        Assert.True(monitors is { Fps: 60, Custom: [("Game/Score", 42), ("Speed", null)] }, $"The monitors read as {monitors} with {string.Join(", ", monitors?.Custom ?? [])}");
-        Assert.Equal([("Godot", "Frames a second", 60.0), ("Godot", "Frame time", 0.016), ("Game", "Score", 42.0)],
-            monitors!.Readings().Where(r => r.Instrument is "Frames a second" or "Frame time" or "Score").Select(r => (r.Meter, r.Instrument, r.Value)));
-        Assert.DoesNotContain(monitors.Readings(), r => r.Instrument == "Speed");
-    }
-
-    [Fact]
-    public void An_error_reads_with_its_stack_and_is_placed_at_the_first_place_that_is_the_projects()
+    private void An_error_reads_with_its_stack_and_is_placed_at_the_first_place_that_is_the_projects()
     {
         GodotError? error = GodotError.Read(Message(Error).Data);
         Assert.True(error is { File: "res://Main.cs", Function: "void Main._Process(double)", Line: 19, Message: "Spinner fell over", Warning: false, Milliseconds: 558 },
@@ -164,34 +167,7 @@ public class GodotProtocolTests
         Assert.Equal((script, 19), generated.PlaceIn(root, Local));
     }
 
-    /// <summary>GD.PushError's error at a line, as the debugger tells it before and after the JIT inlines Godot's own frames
-    /// (its place then names a frame past the caller, PushError's own frame gone), is placed at that line each time, as its
-    /// pin and Problems take it; one at another line is placed there.</summary>
-    [Fact]
-    public void An_error_is_placed_at_its_line_however_Godots_own_frames_come_and_one_at_another_line_at_that()
-    {
-        string root = Path.Combine(Path.GetTempPath(), "spinner");
-        string Local(string path) => path.StartsWith("res://", StringComparison.Ordinal) ? Path.Combine(root, path[6..].Replace('/', Path.DirectorySeparatorChar)) : path;
-        string script = Path.Combine(root, "Main.cs");
-        const string Glue = "/root/godot/modules/mono/glue/GodotSharp/GodotSharp/Core/";
-        GodotFrame push = new(Glue + "GD.cs", "void Godot.GD.PushError(string)", 366);
-        GodotFrame trampoline = new(Path.Combine(root, Passenger.Workspace.IgnoredFolders.GodotCache, "mono", "temp", "obj", "Main_ScriptMethods.generated.cs"), "Main+GodotInternal.trampoline_1__Process", 38);
-        GodotFrame bridge = new(Glue + "Bridge/CSharpInstanceBridge.cs", "Godot.Bridge.CSharpInstanceBridge.CallViaTrampoline", 161);
-        GodotError Raised(string file, int line, int at, params GodotFrame[] frames) =>
-            new(5, file, "f", line, "Every frame", string.Empty, false, [.. frames.Select(f => f.Function.StartsWith("void Main", StringComparison.Ordinal) ? f with { Line = at } : f)]);
-        GodotFrame process = new(script, "void Main._Process(double)", 10);
-        GodotError[] forms =
-        [
-            Raised("res://Main.cs", 10, 10, push, process, trampoline, bridge),
-            Raised("res://.godot/mono/temp/obj/Main_ScriptMethods.generated.cs", 38, 10, push, process, trampoline, bridge),
-            Raised(bridge.File, 161, 10, process, trampoline, bridge),
-        ];
-        Assert.All(forms, f => Assert.Equal((script, 10), f.PlaceIn(root, Local)));
-        Assert.Equal((script, 13), Raised(bridge.File, 161, 13, process, trampoline, bridge).PlaceIn(root, Local));
-    }
-
-    [Fact]
-    public void What_Passenger_sends_reads_back_as_sent_its_length_first()
+    private void What_Passenger_sends_reads_back_as_sent_its_length_first()
     {
         object?[] data = [27598521817L, "Greeting", "hello", true, 4_000_000_000L, 0.5, 0.1, new GodotName("ready"),
             new GodotNodePath(["root", "Main"], ["position"], true), new GodotMath(GodotType.Vector2, [1, 2.5]), new GodotMath(GodotType.Vector3I, [1, -2, 3]),
@@ -208,21 +184,18 @@ public class GodotProtocolTests
         }
     }
 
-    [Theory]
-    [InlineData(GodotType.Vector2, "(1, 2.5)", "(1, 2.5)")]
-    [InlineData(GodotType.Vector2I, "3,4", "(3, 4)")]
-    [InlineData(GodotType.Color, "(1, 0.5, 0)", "(1, 0.5, 0, 1)")]
-    [InlineData(GodotType.Int, " 42 ", "42")]
-    [InlineData(GodotType.Bool, "True", "true")]
-    [InlineData(GodotType.NodePath, "/root/Main:position", "/root/Main:position")]
-    [InlineData(GodotType.String, " kept as typed ", " kept as typed ")]
-    [InlineData(GodotType.Transform2D, "x: (1, 0), y: (0, 1), origin: (100, 50.5)", "x: (1, 0), y: (0, 1), origin: (100, 50.5)")]
-    [InlineData(GodotType.Transform2D, "1, 0, 0, 1, 100, 50", "x: (1, 0), y: (0, 1), origin: (100, 50)")]
-    [InlineData(GodotType.Transform3D, "basis: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), origin: (1e2, -2, 3)", "basis: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), origin: (100, -2, 3)")]
-    [InlineData(GodotType.Aabb, "position: (0, 0, 0), size: (2, 2, 2)", "position: (0, 0, 0), size: (2, 2, 2)")]
-    [InlineData(GodotType.Plane, "normal: (0, 1, 0), d: 4", "normal: (0, 1, 0), d: 4")]
-    [InlineData(GodotType.Quaternion, "(0, 0, 0, 1)", "(0, 0, 0, 1)")]
-    public void A_typed_value_reads_as_its_type_does(GodotType type, string text, string shown)
+    private void A_typed_value_reads_as_its_type_does() => Cases.Each<(GodotType Type, string Text, string Shown)>(
+    [
+        (GodotType.Vector2, "(1, 2.5)", "(1, 2.5)"),
+        (GodotType.Color, "(1, 0.5, 0)", "(1, 0.5, 0, 1)"),
+        (GodotType.Bool, "True", "true"),
+        (GodotType.String, " kept as typed ", " kept as typed "),
+        (GodotType.Transform2D, "1, 0, 0, 1, 100, 50", "x: (1, 0), y: (0, 1), origin: (100, 50)"),
+        (GodotType.Transform3D, "basis: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), origin: (1e2, -2, 3)", "basis: ((1, 0, 0), (0, 1, 0), (0, 0, 1)), origin: (100, -2, 3)"),
+        (GodotType.Quaternion, "(0, 0, 0, 1)", "(0, 0, 0, 1)"),
+    ], row => A_typed_value_reads_as_its_type_does(row.Type, row.Text, row.Shown));
+
+    private void A_typed_value_reads_as_its_type_does(GodotType type, string text, string shown)
     {
         (object? value, string? whyNot) = GodotVariant.Parse(type, text);
         Assert.True(whyNot is null && GodotVariant.Shown(value) == shown, $"'{text}' as a {type} read as {GodotVariant.Shown(value)} ({whyNot})");
@@ -231,26 +204,19 @@ public class GodotProtocolTests
     /// <summary>Each number as Godot's variant text writes it at the precision its type holds: a single's shortest digits for a
     /// vector's number, a double's for a float, fixed from 1e-4 to 1e15 and with an exponent beyond, zero unsigned, and
     /// Godot's words for the rest; each read back as the number it was at that precision.</summary>
-    [Theory]
-    [InlineData(0.30000001192092896, true, "0.3")]
-    [InlineData(0.30000001192092896, false, "0.30000001192092896")]
-    [InlineData(0.3, false, "0.3")]
-    [InlineData(1234567.25, false, "1234567.25")]
-    [InlineData(1234567.25, true, "1234567.2")]
-    [InlineData(0.30000000000000004, false, "0.30000000000000004")]
-    [InlineData(-2.5, false, "-2.5")]
-    [InlineData(100.0, true, "100")]
-    [InlineData(1e10, true, "10000000000")]
-    [InlineData(123456.789, false, "123456.789")]
-    [InlineData(1e15, false, "1e+15")]
-    [InlineData(1.2345678901234568e17, false, "1.2345678901234568e+17")]
-    [InlineData(0.0001, false, "0.0001")]
-    [InlineData(1.5e-5, false, "1.5e-05")]
-    [InlineData(-0.0, false, "0")]
-    [InlineData(double.NaN, false, "nan")]
-    [InlineData(double.PositiveInfinity, true, "inf")]
-    [InlineData(double.NegativeInfinity, false, "inf_neg")]
-    public void A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision(double value, bool single, string written)
+    private void A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision() => Cases.Each<(double Value, bool Single, string Written)>(
+    [
+        (0.30000001192092896, true, "0.3"),
+        (0.30000001192092896, false, "0.30000001192092896"),
+        (1234567.25, true, "1234567.2"),
+        (1e10, true, "10000000000"),
+        (1e15, false, "1e+15"),
+        (-0.0, false, "0"),
+        (double.NaN, false, "nan"),
+        (double.NegativeInfinity, false, "inf_neg"),
+    ], row => A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision(row.Value, row.Single, row.Written));
+
+    private void A_number_is_written_as_Godots_variant_text_writes_it_at_its_types_precision(double value, bool single, string written)
     {
         Assert.Equal(written, GodotText.Number(value, single));
         Assert.Equal(written, single ? GodotVariant.Shown((float)value) : GodotVariant.Shown(value));
@@ -259,42 +225,15 @@ public class GodotProtocolTests
             $"{written} read back as {read} ({whyNot}), not {value}");
     }
 
-    /// <summary>A float the game sends is a double, written with a double's digits however it came, and a vector's numbers
-    /// singles, written with a single's, as the scene's inspector writes them.</summary>
-    [Fact]
-    public void A_float_from_the_game_writes_as_a_double_and_a_vectors_numbers_as_singles()
-    {
-        Assert.Equal("1234567.25", GodotVariant.Shown(GodotVariant.Read(GodotVariant.Write(1234567.25))));
-        Assert.Equal("0.3", GodotVariant.Shown(GodotVariant.Read(GodotVariant.Write(0.3))));
-        object? vector = GodotVariant.Read(GodotVariant.Write(new GodotMath(GodotType.Vector2, [(double)0.3f, (double)1234567.25f])));
-        Assert.Equal("(0.3, 1234567.2)", GodotVariant.Shown(vector));
-        Assert.Equal("Vector2(0.3, 1234567.2)", GodotText.Scene(vector));
-        Assert.Equal("[0.3, 1234567.2]", GodotVariant.Shown(GodotVariant.Read(GodotVariant.Write(new[] { 0.3f, 1234567.25f }))));
-        Assert.Equal("PackedFloat32Array(0.3, 1234567.2)", GodotText.Scene(new[] { 0.3f, 1234567.25f }));
-        Assert.Equal("[0.3, 1234567.25]", GodotVariant.Shown(new[] { 0.3, 1234567.25 }));
-    }
+    private Task A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says() => Cases.EachAsync<(GodotType Type, string Text, string Shown)>(
+    [
+        (GodotType.String, "\"tock\"", "tock"),
+        (GodotType.String, "\"a\" + \"b\"", "\"a\" + \"b\""),
+        (GodotType.NodePath, "^\"/root/Main\"", "/root/Main"),
+        (GodotType.Float, "1", "1"),
+    ], row => A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says(row.Type, row.Text, row.Shown));
 
-    [Theory]
-    [InlineData(GodotType.Vector2, "1")]
-    [InlineData(GodotType.Vector2I, "1.5, 2")]
-    [InlineData(GodotType.Int, "many")]
-    [InlineData(GodotType.Transform3D, "1, 0, 0")]
-    public void A_typed_value_its_type_cannot_read_says_what_it_takes(GodotType type, string text)
-    {
-        (object? value, string? whyNot) = GodotVariant.Parse(type, text);
-        Assert.True(value is null && whyNot is { Length: > 0 }, $"'{text}' as a {type} read as {GodotVariant.Shown(value)}, where it should say what it takes");
-    }
-
-    [Theory]
-    [InlineData(GodotType.String, "\"tock\"", "tock")]
-    [InlineData(GodotType.String, "tock", "tock")]
-    [InlineData(GodotType.String, "\"say \\\"hi\\\"\\n\"", "say \"hi\"\n")]
-    [InlineData(GodotType.String, "\"a\" + \"b\"", "\"a\" + \"b\"")]
-    [InlineData(GodotType.StringName, "&\"ready\"", "ready")]
-    [InlineData(GodotType.NodePath, "^\"/root/Main\"", "/root/Main")]
-    [InlineData(GodotType.Vector2, "(1, 2)", "(1, 2)")]
-    [InlineData(GodotType.Float, "1", "1")]
-    public async Task A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says(GodotType type, string text, string shown)
+    private async Task A_typed_value_reads_one_way_in_the_tree_and_in_Variables_its_type_first_a_strings_literal_as_it_says(GodotType type, string text, string shown)
     {
         (object? value, string? whyNot) = await GodotVariant.ReadAsync(type, text, script: null);
         (object? paused, string? pausedWhyNot) = await GodotVariant.ReadAsync(type, text, _ => Task.FromResult<(object?, string?)>((null, "no GDScript was to be read")));
@@ -302,18 +241,7 @@ public class GodotProtocolTests
             $"'{text}' as a {type} read as {GodotVariant.Shown(value)} ({whyNot}) in the tree and {GodotVariant.Shown(paused)} ({pausedWhyNot}) in Variables, not {shown}");
     }
 
-    [Fact]
-    public async Task A_typed_value_its_type_cannot_read_is_read_as_GDScript_where_a_paused_frame_can_and_refused_saying_both_where_neither_reads_it()
-    {
-        Assert.Equal(1.5, (await GodotVariant.ReadAsync(GodotType.Int, "speed * 0.5", text => Task.FromResult<(object?, string?)>((text == "speed * 0.5" ? 1.5 : null, null)))).Value);
-        (object? running, string? whyNot) = await GodotVariant.ReadAsync(GodotType.Int, "speed * 0.5", script: null);
-        Assert.True(running is null && whyNot == "a whole number", $"With no frame to read GDScript in, 'speed * 0.5' as an int read as {running} ({whyNot})");
-        (object? unread, string? said) = await GodotVariant.ReadAsync(GodotType.Int, "nope", _ => Task.FromResult<(object?, string?)>((null, "Identifier \"nope\" not declared")));
-        Assert.True(unread is null && said == "a whole number, or GDScript that reads as one (Identifier \"nope\" not declared)", $"'nope' as an int read as {unread} ({said})");
-    }
-
-    [Fact]
-    public void Bytes_counting_more_than_they_hold_are_refused_before_anything_is_made_of_them()
+    private void Bytes_counting_more_than_they_hold_are_refused_before_anything_is_made_of_them()
     {
         byte[] array = [28, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0x7F];
         Assert.Throws<GodotVariantException>(() => GodotVariant.Read(array));

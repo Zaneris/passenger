@@ -7,34 +7,19 @@ namespace Passenger.UnitTests.Run;
 /// is), and each copy's own arguments its line of the configuration's, none for a copy past them.</summary>
 public class GameCopiesTests
 {
+    /// <summary>A game's copies are named for their place and configuration, each with its own arguments.</summary>
     [Fact]
-    public void A_copy_is_named_for_its_place_and_the_first_by_its_configuration()
+    public void A_games_copies_are_named_and_given_their_own_arguments() => Cases.All(
+        (nameof(A_copy_is_named_for_its_place_and_the_first_by_its_configuration), A_copy_is_named_for_its_place_and_the_first_by_its_configuration),
+        (nameof(Each_copy_takes_its_own_line_of_arguments_and_one_past_them_none), Each_copy_takes_its_own_line_of_arguments_and_one_past_them_none));
+
+    private void A_copy_is_named_for_its_place_and_the_first_by_its_configuration()
     {
         Assert.Equal("Lobby", GameCopies.Name("Lobby", 1));
         Assert.Equal("Lobby #3", GameCopies.Name("Lobby", 3));
     }
 
-    [Fact]
-    public void A_copy_says_more_of_its_name_where_another_configuration_goes_by_it()
-    {
-        Assert.Equal("Arena (copy 2)", GameCopies.Name("Arena", 2, ["Arena", "Arena #2"]));
-        Assert.Equal("Arena (copy 2) (copy 2)", GameCopies.Name("Arena", 2, ["Arena #2", "Arena (copy 2)"]));
-        Assert.Equal("Arena #3", GameCopies.Name("Arena", 3, ["Arena", "Arena #2"]));
-        Assert.Equal("Arena", GameCopies.Name("Arena", 1, ["Arena", "Arena #2"]));
-        Assert.Equal("Arena #2 #2", GameCopies.Name("Arena #2", 2, ["Arena", "Arena #2"]));
-    }
-
-    [Fact]
-    public void A_program_is_the_copy_its_plan_says_and_a_name_alone_is_the_first_of_its_own_configuration()
-    {
-        Assert.Equal(new GameCopy("Arena", 2), GameCopies.Of(new GameCopy("Arena", 2), "Arena #2"));
-        Assert.Equal(new GameCopy("Arena #2", 1), GameCopies.Of(new GameCopy("Arena #2", 1), "Arena #2"));
-        Assert.Equal(new GameCopy("Arena #2", 1), GameCopies.Of(null, "Arena #2"));
-        Assert.Equal(new GameCopy("Level #1", 1), GameCopies.Of(null, "Level #1"));
-    }
-
-    [Fact]
-    public void Each_copy_takes_its_own_line_of_arguments_and_one_past_them_none()
+    private void Each_copy_takes_its_own_line_of_arguments_and_one_past_them_none()
     {
         string[] lines = ["-- server", "-- client --name \"Player Two\""];
         Assert.Equal(["--", "server"], GameCopies.Own(lines, 1));

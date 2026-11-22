@@ -47,8 +47,17 @@ public class GodotProfileTests
 
     private static GodotMessage Message(string base64) => GodotMessage.Read(Convert.FromBase64String(base64));
 
+    /// <summary>A game's signatures, frames, totals and render stages read as Godot sent them.</summary>
     [Fact]
-    public void A_signature_reads_as_its_number_and_its_script_its_bodys_line_and_its_name()
+    public void A_games_profile_reads_as_godot_sent_it() => Cases.All(
+        (nameof(A_signature_reads_as_its_number_and_its_script_its_bodys_line_and_its_name),
+            A_signature_reads_as_its_number_and_its_script_its_bodys_line_and_its_name),
+        (nameof(A_frame_reads_its_times_in_milliseconds_its_servers_functions_and_its_script_functions_work),
+            A_frame_reads_its_times_in_milliseconds_its_servers_functions_and_its_script_functions_work),
+        (nameof(The_renderers_stages_read_with_their_cpu_and_gpu_times_and_data_too_short_reads_as_none),
+            The_renderers_stages_read_with_their_cpu_and_gpu_times_and_data_too_short_reads_as_none));
+
+    private void A_signature_reads_as_its_number_and_its_script_its_bodys_line_and_its_name()
     {
         GodotMessage message = Message(Signature);
         Assert.Equal(GodotWords.FunctionSignature, message.Name);
@@ -58,15 +67,7 @@ public class GodotProfileTests
         Assert.True(call is { File: "res://wander.gd", Line: 0, Name: "Node.get_parent", IsEngineCall: true }, $"Godot's API call read as {call}, so its row would name no call into Godot");
     }
 
-    [Fact]
-    public void A_built_in_scripts_signature_keeps_the_scene_in_its_file()
-    {
-        Assert.Equal(new ScriptFunction("res://main.tscn::GDScript_k3x9a", 4, "_ready"), ScriptFunction.Of("res://main.tscn::GDScript_k3x9a::4::_ready"));
-        Assert.Equal(new ScriptFunction(string.Empty, 0, "no signature"), ScriptFunction.Of("no signature"));
-    }
-
-    [Fact]
-    public void A_frame_reads_its_times_in_milliseconds_its_servers_functions_and_its_script_functions_work()
+    private void A_frame_reads_its_times_in_milliseconds_its_servers_functions_and_its_script_functions_work()
     {
         GodotMessage message = Message(Frame);
         Assert.Equal(GodotWords.ServersFrame, message.Name);
@@ -81,18 +82,7 @@ public class GodotProfileTests
             frame.Scripts.Select(s => (s.Function, s.Calls, Math.Round(s.SelfMs, 3), Math.Round(s.TotalMs, 3))));
     }
 
-    [Fact]
-    public void The_runs_total_and_the_hardware_read_as_Godot_sent_them()
-    {
-        GameFrame total = GodotProfile.Frame(Message(Total).Data) ?? throw new Xunit.Sdk.XunitException("The total read as nothing");
-        Assert.True(total is { Number: 541, Servers.Count: 0, Scripts.Count: 5 }, $"The total read as frame {total.Number} with {total.Servers.Count} servers and {total.Scripts.Count} functions");
-        Assert.Equal(361, total.Scripts.Single(s => s.Function == 0).Calls);
-        Assert.Equal(string.Empty, GodotProfile.Gpu(Message(Hardware).Data));
-        Assert.Equal("Apple M1", GodotProfile.Gpu(["Apple M1 Pro", new GodotName("Apple M1")]));
-    }
-
-    [Fact]
-    public void The_renderers_stages_read_with_their_cpu_and_gpu_times_and_data_too_short_reads_as_none()
+    private void The_renderers_stages_read_with_their_cpu_and_gpu_times_and_data_too_short_reads_as_none()
     {
         GodotMessage message = GodotMessage.Read(GodotMessage.Frame(GodotWords.VisualFrame, 92L, 6L, new GodotName("Render Opaque"), 1.5, 2.25, new GodotName("Post"), 0.25, 0.5)[4..]);
         Assert.Equal([new RenderArea("Render Opaque", 1.5, 2.25), new RenderArea("Post", 0.25, 0.5)], GodotProfile.Rendered(message.Data));

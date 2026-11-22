@@ -11,10 +11,27 @@ public sealed class GodotPicturesTests : IDisposable
 
     public void Dispose() => Directory.Delete(temporary, recursive: true);
 
+    /// <summary>A game's picture is read only as a PNG Godot wrote in its own temporary folder.</summary>
+    [Fact]
+    public void A_games_picture_is_read_only_from_godots_own_temporary_folder() => Cases.All(
+        (nameof(The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says),
+            () => Apart(test => test.The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says())),
+        (nameof(A_png_godot_wrote_in_the_games_temporary_folder_is_read),
+            () => Apart(test => test.A_png_godot_wrote_in_the_games_temporary_folder_is_read())),
+        (nameof(A_file_of_another_kind_or_place_or_one_not_there_is_left_alone),
+            () => Apart(test => test.A_file_of_another_kind_or_place_or_one_not_there_is_left_alone())),
+        (nameof(A_link_named_as_a_png_in_the_folder_is_left_alone), () => Apart(test => test.A_link_named_as_a_png_in_the_folder_is_left_alone())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<GodotPicturesTests> check)
+    {
+        using GodotPicturesTests test = new();
+        check(test);
+    }
+
     /// <summary>Godot writes a picture where it takes its temporary folder: on macOS the user's own whatever TMPDIR says,
     /// on Linux /tmp, on Windows the TMP it was given, else Passenger's own.</summary>
-    [Fact]
-    public void The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says()
+    private void The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says()
     {
         Dictionary<string, string> given = new(StringComparer.Ordinal) { ["TMPDIR"] = temporary, ["TMP"] = temporary, ["TEMP"] = temporary };
         string expected = OperatingSystem.IsMacOS() ? UserTemporary.Folder() : OperatingSystem.IsWindows() ? temporary : "/tmp";
@@ -26,16 +43,14 @@ public sealed class GodotPicturesTests : IDisposable
         }
     }
 
-    [Fact]
-    public void A_png_godot_wrote_in_the_games_temporary_folder_is_read()
+    private void A_png_godot_wrote_in_the_games_temporary_folder_is_read()
     {
         string picture = Written("scr-20261116120000.png");
         Assert.Null(GodotPictures.WhyNot(picture, temporary));
         Assert.Null(GodotPictures.WhyNot(picture, temporary + Path.DirectorySeparatorChar));
     }
 
-    [Fact]
-    public void A_file_of_another_kind_or_place_or_one_not_there_is_left_alone()
+    private void A_file_of_another_kind_or_place_or_one_not_there_is_left_alone()
     {
         string below = Path.Join(temporary, "deeper");
         Directory.CreateDirectory(below);
@@ -49,8 +64,7 @@ public sealed class GodotPicturesTests : IDisposable
         Assert.Contains("no PNG", GodotPictures.WhyNot("scr.png", temporary), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_link_named_as_a_png_in_the_folder_is_left_alone()
+    private void A_link_named_as_a_png_in_the_folder_is_left_alone()
     {
         string key = Written("id_ed25519");
         string link = Path.Join(temporary, "scr-1.png");

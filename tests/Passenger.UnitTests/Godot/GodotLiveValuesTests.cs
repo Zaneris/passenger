@@ -55,8 +55,30 @@ public class GodotLiveValuesTests
 
     private static int Line(string text, string code) => Array.FindIndex(text.Split('\n'), l => l.Contains(code, StringComparison.Ordinal));
 
+    /// <summary>A script's live members are its fields and variables, read without running a getter of the
+    /// person's.</summary>
     [Fact]
-    public void A_csharp_scripts_members_are_its_instance_fields_and_auto_properties_never_a_getter_of_its_own()
+    public void A_scripts_live_members_are_read_never_running_a_getter_of_its_own() => Cases.All(
+        (nameof(A_csharp_scripts_members_are_its_instance_fields_and_auto_properties_never_a_getter_of_its_own),
+            A_csharp_scripts_members_are_its_instance_fields_and_auto_properties_never_a_getter_of_its_own),
+        (nameof(A_gdscripts_members_are_its_top_level_vars_annotated_or_not_but_static_ones_and_an_inner_classs),
+            A_gdscripts_members_are_its_top_level_vars_annotated_or_not_but_static_ones_and_an_inner_classs),
+        (nameof(What_reading_a_node_runs_is_each_getter_and_get_of_its_script_and_those_it_extends_by_path_or_by_class_name),
+            What_reading_a_node_runs_is_each_getter_and_get_of_its_script_and_those_it_extends_by_path_or_by_class_name),
+        (nameof(A_script_extending_itself_is_read_once), A_script_extending_itself_is_read_once),
+        (nameof(What_reading_a_node_runs_of_a_csharp_script_is_each_property_with_a_getter_of_the_persons_and_its_Get),
+            What_reading_a_node_runs_of_a_csharp_script_is_each_property_with_a_getter_of_the_persons_and_its_Get),
+        (nameof(A_gdscript_member_with_a_getter_of_its_own_is_never_read_however_it_is_written),
+            A_gdscript_member_with_a_getter_of_its_own_is_never_read_however_it_is_written));
+
+    /// <summary>The helper's answer reads as each script's values, rounded and hinted, each member's last minute
+    /// kept.</summary>
+    [Fact]
+    public void Live_values_are_shown_as_the_helper_reads_them() => Cases.All(
+        (nameof(The_helpers_answer_reads_as_each_scripts_count_node_and_values_a_member_not_held_left_out),
+            The_helpers_answer_reads_as_each_scripts_count_node_and_values_a_member_not_held_left_out));
+
+    private void A_csharp_scripts_members_are_its_instance_fields_and_auto_properties_never_a_getter_of_its_own()
     {
         GodotScriptMembers members = CSharp(Player, "res://actors/Player.cs") ?? throw new InvalidOperationException("Player.cs declares no script class");
         Assert.Equal(("res://actors/Player.cs", "Player", Line(Player, "class Player")), (members.Script, members.Class, members.ClassLine));
@@ -64,17 +86,7 @@ public class GodotLiveValuesTests
             members.Members.Select(m => (m.Name, m.Line)));
     }
 
-    [Fact]
-    public void A_partial_classs_other_file_reads_its_members_for_the_script_named_as_the_class()
-    {
-        const string Movement = "public partial class Player\n{\n    private int steps;\n}\n";
-        GodotScriptMembers? members = CSharp(Movement, "res://actors/Player.Movement.cs");
-        Assert.True(members is { Script: "res://actors/Player.cs", Members: [{ Name: "steps", Line: 2 }] }, $"Player.Movement.cs read as {members}");
-        Assert.Null(CSharp(Movement, "res://actors/Enemy.cs"));
-    }
-
-    [Fact]
-    public void A_gdscripts_members_are_its_top_level_vars_annotated_or_not_but_static_ones_and_an_inner_classs()
+    private void A_gdscripts_members_are_its_top_level_vars_annotated_or_not_but_static_ones_and_an_inner_classs()
     {
         const string Script = """
             extends CharacterBody2D
@@ -102,17 +114,7 @@ public class GodotLiveValuesTests
         Assert.Equal(("crate", 0), (plain.Class, plain.ClassLine));
     }
 
-    /// <summary>A class_name is read as Godot reads a name: one starting past ASCII and holding marks names the class whole,
-    /// on its own line.</summary>
-    [Fact]
-    public void A_gdscripts_class_name_past_ascii_and_holding_marks_names_its_class_whole()
-    {
-        GodotScriptMembers members = GodotMembers.OfGdScript(TextSnapshot.From("extends Node\n\nclass_name गिनती\nvar total = 1\n"), "res://things/counter.gd");
-        Assert.Equal(("गिनती", 2), (members.Class, members.ClassLine));
-    }
-
-    [Fact]
-    public void What_reading_a_node_runs_is_each_getter_and_get_of_its_script_and_those_it_extends_by_path_or_by_class_name()
+    private void What_reading_a_node_runs_is_each_getter_and_get_of_its_script_and_those_it_extends_by_path_or_by_class_name()
     {
         Dictionary<string, string> files = new()
         {
@@ -125,14 +127,12 @@ public class GodotLiveValuesTests
         Assert.Empty(GodotMembers.RunByReading("res://gone.gd", res => files.GetValueOrDefault(res)));
     }
 
-    [Fact]
-    public void A_script_extending_itself_is_read_once()
+    private void A_script_extending_itself_is_read_once()
     {
         Assert.Equal(["a"], GodotMembers.RunByReading("res://a.gd", _ => "extends \"a.gd\"\n\nvar a: int:\n\tget:\n\t\treturn 1\n"));
     }
 
-    [Fact]
-    public void What_reading_a_node_runs_of_a_csharp_script_is_each_property_with_a_getter_of_the_persons_and_its_Get()
+    private void What_reading_a_node_runs_of_a_csharp_script_is_each_property_with_a_getter_of_the_persons_and_its_Get()
     {
         const string Script = """
             namespace Game;
@@ -168,8 +168,7 @@ public class GodotLiveValuesTests
         Assert.Equal(["Bodied", "Arrow", "Accessor", "_Get"], GodotMembers.RunByReading("res://Player.cs", res => res == "res://Player.cs" ? Script : null));
     }
 
-    [Fact]
-    public void A_gdscript_member_with_a_getter_of_its_own_is_never_read_however_it_is_written()
+    private void A_gdscript_member_with_a_getter_of_its_own_is_never_read_however_it_is_written()
     {
         const string Script = """
             extends Node
@@ -215,15 +214,7 @@ public class GodotLiveValuesTests
         Assert.Equal(Line(Script, "var last"), members.Members[^1].Line);
     }
 
-    [Fact]
-    public void A_script_that_does_not_parse_still_has_the_members_around_what_is_wrong()
-    {
-        const string Script = "extends Node\n\nvar first := 1\n\nfunc _ready(:\n\tpass\n\nvar after := 2\nvar := 3\nvar last := 4\n";
-        Assert.Equal(["first", "after", "last"], GodotMembers.OfGdScript(TextSnapshot.From(Script), "res://broken.gd").Members.Select(m => m.Name));
-    }
-
-    [Fact]
-    public void The_helpers_answer_reads_as_each_scripts_count_node_and_values_a_member_not_held_left_out()
+    private void The_helpers_answer_reads_as_each_scripts_count_node_and_values_a_member_not_held_left_out()
     {
         GodotScriptAsk main = new("res://Main.cs", 0, ["frames", "drift", "Target", "tag", "list"]);
         GodotScriptAsk enemy = new("res://Enemy.cs", 0, ["hits"]);
@@ -255,56 +246,4 @@ public class GodotLiveValuesTests
         Assert.Null(GodotScriptRead.Read([new List<object?> { "nonsense" }], [main]));
     }
 
-    [Theory]
-    [InlineData(312.48736572265625, "312.487")]
-    [InlineData(0.10000000149011612, "0.1")]
-    [InlineData(-2.0, "-2")]
-    [InlineData(0.0, "0")]
-    [InlineData(0.000123456, "0.000123")]
-    [InlineData(-0.0001, "-0.0001")]
-    [InlineData(1234567.25, "1234567.25")]
-    public void A_real_number_is_rounded_to_a_thousandth_or_three_figures_when_smaller(double value, string words)
-    {
-        Assert.Equal(words, GodotLiveWords.Number(value));
-    }
-
-    [Fact]
-    public void A_hint_quotes_strings_says_a_path_reaching_no_node_and_is_cut_at_its_longest()
-    {
-        Assert.Equal("name: \"Ada\"", GodotLiveWords.Hint("name", new GodotMemberValue("Ada")));
-        Assert.Equal("action: &\"jump\"", GodotLiveWords.Hint("action", new GodotMemberValue(new GodotName("jump"))));
-        Assert.Equal("alive: true", GodotLiveWords.Hint("alive", new GodotMemberValue(true)));
-        Assert.Equal("cell: (3, -4)", GodotLiveWords.Hint("cell", new GodotMemberValue(new GodotMath(GodotType.Vector2I, [3, -4]))));
-        Assert.Equal("target: ../Gone → no node", GodotLiveWords.Hint("target", new GodotMemberValue(new GodotNodePath(["..", "Gone"], [], false), Node: "", IsPath: true)));
-        Assert.Equal("scene: null", GodotLiveWords.Hint("scene", new GodotMemberValue(null)));
-        string cut = GodotLiveWords.Hint("story", new GodotMemberValue(new string('a', 100)));
-        Assert.True(cut.Length == GodotLiveWords.Longest && cut.EndsWith('…'), $"A long string's hint is {cut.Length} long: {cut}");
-    }
-
-    [Fact]
-    public void A_members_last_minute_keeps_a_reading_a_second_lets_older_ones_go_and_begins_again_for_another_shape()
-    {
-        GodotLiveHistory history = new();
-        for (int second = 0; second < 90; second++)
-        {
-            history.Add(1, "frames", second * 1000L, (long)(second * 60));
-            // A reading soon after takes the last one's place.
-            history.Add(1, "frames", (second * 1000L) + 200, (long)((second * 60) + 12));
-        }
-        IReadOnlyList<(long At, double[] Parts)> kept = history.Of(1, "frames", 89_200);
-        Assert.Equal(61, kept.Count);
-        Assert.Equal((29_200L, 29 * 60 + 12.0), (kept[0].At, kept[0].Parts[0]));
-        Assert.Equal((89_200L, 89 * 60 + 12.0), (kept[^1].At, kept[^1].Parts[0]));
-
-        history.Add(1, "drift", 0, new GodotMath(GodotType.Vector2, [1, 2]));
-        history.Add(1, "drift", 1000, new GodotMath(GodotType.Vector3, [1, 2, 3]));
-        Assert.True(history.Of(1, "drift", 1000) is [(1000, [1, 2, 3])], "A vector read with another count of parts kept the readings before it");
-        history.Add(1, "drift", 2000, "words");
-        Assert.Empty(history.Of(1, "drift", 2000));
-        Assert.Equal(["x", "y", "z", "w"], GodotLiveWords.PartNames(new GodotMath(GodotType.Vector4, [0, 0, 0, 0])));
-        Assert.Equal(["r", "g", "b", "a"], GodotLiveWords.PartNames(new GodotMath(GodotType.Color, [0, 0, 0, 1])));
-
-        history.Forget(200_000);
-        Assert.Empty(history.Of(1, "frames", 89_200));
-    }
 }

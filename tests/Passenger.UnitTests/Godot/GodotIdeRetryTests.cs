@@ -9,8 +9,15 @@ public class GodotIdeRetryTests
 {
     private const string Meta = "6010\nGodot Editor\n";
 
+    /// <summary>An editor refusing its handshake is tried again after ten seconds, a connected one kept.</summary>
     [Fact]
-    public void An_editor_that_refused_its_first_handshake_is_tried_again_once_ten_seconds_have_passed()
+    public void An_editors_link_is_tried_again_and_kept_as_godot_answers() => Cases.All(
+        (nameof(An_editor_that_refused_its_first_handshake_is_tried_again_once_ten_seconds_have_passed),
+            An_editor_that_refused_its_first_handshake_is_tried_again_once_ten_seconds_have_passed),
+        (nameof(A_connected_editor_is_kept_while_open_and_connected_to_again_once_closed),
+            A_connected_editor_is_kept_while_open_and_connected_to_again_once_closed));
+
+    private void An_editor_that_refused_its_first_handshake_is_tried_again_once_ten_seconds_have_passed()
     {
         Assert.Equal(TimeSpan.FromSeconds(10), GodotIdeRetry.Again);
         Assert.True(GodotIdeRetry.Stands(Meta, answered: false, open: false, TimeSpan.FromSeconds(9.9), Meta), "An editor that refused a moment ago was tried again at once");
@@ -18,8 +25,7 @@ public class GodotIdeRetryTests
         Assert.False(GodotIdeRetry.Stands(Meta, answered: false, open: false, TimeSpan.FromSeconds(1), "6011\nGodot Editor\n"), "A new meta file waited out the last editor's refusal");
     }
 
-    [Fact]
-    public void A_connected_editor_is_kept_while_open_and_connected_to_again_once_closed()
+    private void A_connected_editor_is_kept_while_open_and_connected_to_again_once_closed()
     {
         Assert.True(GodotIdeRetry.Stands(Meta, answered: true, open: true, TimeSpan.FromMinutes(5), Meta), "An open connection was made again");
         Assert.False(GodotIdeRetry.Stands(Meta, answered: true, open: false, TimeSpan.FromSeconds(1), Meta), "A closed connection was kept");

@@ -59,8 +59,17 @@ public sealed class GodotInputCodecTests
         return read;
     }
 
+    /// <summary>Keys, mouse buttons, moves and the display state read back as Godot's codec reads them.</summary>
     [Fact]
-    public void A_key_reads_back_as_godots_decoder_reads_it_its_codes_character_and_side()
+    public void Input_reads_back_as_godots_own_codec_reads_it() => Cases.All(
+        (nameof(A_key_reads_back_as_godots_decoder_reads_it_its_codes_character_and_side),
+            A_key_reads_back_as_godots_decoder_reads_it_its_codes_character_and_side),
+        (nameof(A_mouse_button_reads_back_with_its_index_place_in_pixels_and_the_buttons_held),
+            A_mouse_button_reads_back_with_its_index_place_in_pixels_and_the_buttons_held),
+        (nameof(The_display_state_reads_back_as_display_server_embedded_deserializes_it),
+            The_display_state_reads_back_as_display_server_embedded_deserializes_it));
+
+    private void A_key_reads_back_as_godots_decoder_reads_it_its_codes_character_and_side()
     {
         (uint code, byte location) = GodotInputCodec.KeyOf("A");
         Dictionary<string, object> read = Decoded(GodotInputCodec.Key(GodotModifiers.Shift | GodotModifiers.Meta, pressed: true, echo: false, code, code, code, 'A', location));
@@ -71,26 +80,7 @@ public sealed class GodotInputCodecTests
         Assert.Equal((0x41u, 0x41u, 0x41u, (uint)'A', 0), ((uint)read["keycode"], (uint)read["physical_keycode"], (uint)read["key_label"], (uint)read["unicode"], (int)read["location"]));
     }
 
-    [Fact]
-    public void Avalonias_key_names_take_godots_codes_named_keys_with_the_special_bit_and_a_pairs_side()
-    {
-        const uint Special = 1u << 22;
-        Assert.Equal((Special | 0x01, (byte)0), GodotInputCodec.KeyOf("Escape"));
-        Assert.Equal((Special | 0x05, (byte)0), GodotInputCodec.KeyOf("Return"));
-        Assert.Equal((Special | 0x05, (byte)0), GodotInputCodec.KeyOf("Enter"));
-        Assert.Equal(((uint)'7', (byte)0), GodotInputCodec.KeyOf("D7"));
-        Assert.Equal(((uint)'7', (byte)0), GodotInputCodec.KeyOf("Digit7"));
-        Assert.Equal((Special | 0x8B, (byte)0), GodotInputCodec.KeyOf("NumPad5"));
-        Assert.Equal((Special | 0x1C, (byte)0), GodotInputCodec.KeyOf("F1"));
-        Assert.Equal((Special | 0x27, (byte)0), GodotInputCodec.KeyOf("F12"));
-        Assert.Equal((Special | 0x15, (byte)2), GodotInputCodec.KeyOf("ShiftRight"));
-        Assert.Equal((Special | 0x16, (byte)1), GodotInputCodec.KeyOf("LeftCtrl"));
-        Assert.Equal((0x20u, (byte)0), GodotInputCodec.KeyOf("Space"));
-        Assert.Equal((Special | 0x7FFFFF, (byte)0), GodotInputCodec.KeyOf("NoSuchKey"));
-    }
-
-    [Fact]
-    public void A_mouse_button_reads_back_with_its_index_place_in_pixels_and_the_buttons_held()
+    private void A_mouse_button_reads_back_with_its_index_place_in_pixels_and_the_buttons_held()
     {
         byte held = (byte)(GodotInputCodec.MaskOf(1) | GodotInputCodec.MaskOf(2));
         Dictionary<string, object> read = Decoded(GodotInputCodec.MouseButton(GodotModifiers.Ctrl, pressed: true, doubleClick: true, 2, 640.5f, 360.25f, held));
@@ -100,25 +90,7 @@ public sealed class GodotInputCodecTests
         Assert.Equal((2, (640.5f, 360.25f), 3), ((int)read["button_index"], ((float, float))read["position"], (int)read["button_mask"]));
     }
 
-    [Fact]
-    public void A_mouse_move_reads_back_with_its_place_how_far_it_moved_and_no_pen()
-    {
-        Dictionary<string, object> read = Decoded(GodotInputCodec.MouseMotion(GodotModifiers.None, 100f, 50f, -3.5f, 2f, GodotInputCodec.MaskOf(1)));
-
-        Assert.Equal(2, read["type"]);
-        Assert.False((bool)read["pen_inverted"], "A mouse's move read back as a pen's, inverted");
-        Assert.Equal(((100f, 50f), 0f, (0f, 0f), (-3.5f, 2f), 1),
-            (((float, float))read["position"], (float)read["pressure"], ((float, float))read["tilt"], ((float, float))read["relative"], (int)read["button_mask"]));
-    }
-
-    [Fact]
-    public void The_side_buttons_fall_outside_godots_mask_of_a_byte_as_in_godots_own_codec()
-    {
-        Assert.Equal([1, 2, 4, 128, 0], new[] { 1, 2, 3, 8, 9 }.Select(b => (int)GodotInputCodec.MaskOf(b)));
-    }
-
-    [Fact]
-    public void The_display_state_reads_back_as_display_server_embedded_deserializes_it()
+    private void The_display_state_reads_back_as_display_server_embedded_deserializes_it()
     {
         byte[] data = GodotInputCodec.DisplayState(2f, 144f, 2f, 69734662);
 

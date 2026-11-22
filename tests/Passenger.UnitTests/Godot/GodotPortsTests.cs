@@ -8,8 +8,13 @@ namespace Passenger.UnitTests.Godot;
 /// port; a connection only to the port, as a client of Godot's server, or on other ports, holds nothing.</summary>
 public sealed class GodotPortsTests
 {
+    /// <summary>Only a connection whose local end is on the port holds it.</summary>
     [Fact]
-    public void A_connection_whose_local_end_is_on_the_port_holds_it_and_is_said()
+    public void A_connection_on_the_port_holds_it() => Cases.All(
+        (nameof(A_connection_whose_local_end_is_on_the_port_holds_it_and_is_said), A_connection_whose_local_end_is_on_the_port_holds_it_and_is_said),
+        (nameof(A_connection_to_the_port_or_on_other_ports_holds_nothing), A_connection_to_the_port_or_on_other_ports_holds_nothing));
+
+    private void A_connection_whose_local_end_is_on_the_port_holds_it_and_is_said()
     {
         (IPEndPoint, IPEndPoint)[] connections =
         [
@@ -19,8 +24,7 @@ public sealed class GodotPortsTests
         Assert.Equal("a connection from 192.168.1.5:52341 to 140.82.112.3:443", GodotPorts.Holding(connections, 52341));
     }
 
-    [Fact]
-    public void A_connection_to_the_port_or_on_other_ports_holds_nothing()
+    private void A_connection_to_the_port_or_on_other_ports_holds_nothing()
     {
         (IPEndPoint, IPEndPoint)[] connections =
         [

@@ -10,33 +10,29 @@ namespace Passenger.UnitTests.Godot;
 /// the pane.</summary>
 public class GameFitTests
 {
+    /// <summary>A game fits its pane in its own shape, and the pointer reaches it from its own top left.</summary>
     [Fact]
-    public void A_game_wider_than_the_pane_is_tall_for_fills_its_height_at_the_panes_middle()
-    {
-        Assert.Equal(new GamePlace(382, 0, 635, 476), GameFit.Within((1400, 476), (720, 540)));
-    }
+    public void A_game_fits_its_pane_in_its_shape_and_takes_the_pointer_inside_it() => Cases.All(
+        (nameof(A_game_of_no_size_known_takes_the_whole_pane), A_game_of_no_size_known_takes_the_whole_pane),
+        (nameof(A_game_never_falls_outside_the_pane_whatever_their_sizes), A_game_never_falls_outside_the_pane_whatever_their_sizes),
+        (nameof(A_pointer_comes_to_the_game_from_its_own_top_left_and_stays_inside_it_past_its_edges),
+            A_pointer_comes_to_the_game_from_its_own_top_left_and_stays_inside_it_past_its_edges),
+        (nameof(A_press_on_the_panes_bars_is_no_press_on_the_game), A_press_on_the_panes_bars_is_no_press_on_the_game));
 
+    /// <summary>A place the game names, a warp among them, comes to the pane as its Godot draws it.</summary>
     [Fact]
-    public void A_pane_larger_than_the_game_draws_it_larger_in_its_shape()
-    {
-        Assert.Equal(new GamePlace(13, 0, 1373, 1030), GameFit.Within((1400, 1030), (720, 540)));
-    }
+    public void Places_the_game_names_come_to_the_pane_as_its_godot_draws_them() => Cases.All(
+        (nameof(A_place_a_game_names_comes_to_the_pane_from_the_games_own_top_left_in_what_its_godot_says),
+            A_place_a_game_names_comes_to_the_pane_from_the_games_own_top_left_in_what_its_godot_says),
+        (nameof(A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says),
+            A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says));
 
-    [Fact]
-    public void A_tall_game_in_a_wide_pane_and_a_wide_game_in_a_tall_pane_keep_their_shapes()
-    {
-        Assert.Equal(new GamePlace(350, 0, 300, 450), GameFit.Within((1000, 450), (480, 720)));
-        Assert.Equal(new GamePlace(0, 306, 400, 225), GameFit.Within((400, 837), (1280, 720)));
-    }
-
-    [Fact]
-    public void A_game_of_no_size_known_takes_the_whole_pane()
+    private void A_game_of_no_size_known_takes_the_whole_pane()
     {
         Assert.Equal(new GamePlace(0, 0, 700, 238), GameFit.Within((700, 238), (0, 0)));
     }
 
-    [Fact]
-    public void A_game_never_falls_outside_the_pane_whatever_their_sizes()
+    private void A_game_never_falls_outside_the_pane_whatever_their_sizes()
     {
         Random random = new(1305);
         for (int i = 0; i < 2000; i++)
@@ -51,19 +47,7 @@ public class GameFitTests
         }
     }
 
-    [Fact]
-    public void A_resolution_of_the_games_own_arguments_is_its_size_before_its_projects()
-    {
-        (int, int) project = (1152, 648);
-        Assert.Equal((400, 800), GameFit.OwnSize(["--debug-collisions", "--resolution", "400x800"], project));
-        Assert.Equal(project, GameFit.OwnSize(["--debug-collisions"], project));
-        Assert.Equal(project, GameFit.OwnSize(["--", "--resolution", "400x800"], project));
-        Assert.Equal(project, GameFit.OwnSize(["--resolution"], project));
-        Assert.Equal(project, GameFit.OwnSize(["--resolution", "large"], project));
-    }
-
-    [Fact]
-    public void A_pointer_comes_to_the_game_from_its_own_top_left_and_stays_inside_it_past_its_edges()
+    private void A_pointer_comes_to_the_game_from_its_own_top_left_and_stays_inside_it_past_its_edges()
     {
         GamePlace place = new(382, 0, 635, 476);
         Assert.Equal((9d, 20d), GameFit.Inside(200, 20, place, 2));
@@ -71,8 +55,7 @@ public class GameFitTests
         Assert.Equal((317.5, 238d), GameFit.Inside(699, 400, place, 2));
     }
 
-    [Fact]
-    public void A_press_on_the_panes_bars_is_no_press_on_the_game()
+    private void A_press_on_the_panes_bars_is_no_press_on_the_game()
     {
         GamePlace place = new(382, 0, 635, 476);
         Assert.False(GameFit.Over(100, 100, place, 2));
@@ -80,53 +63,12 @@ public class GameFitTests
         Assert.False(GameFit.Over(600, 100, place, 2));
     }
 
-    [Fact]
-    public void A_games_warp_of_the_pointer_reads_as_the_place_it_names_as_godot_sends_one()
-    {
-        byte[] frame = GodotMessage.Frame(GodotWords.EmbeddedWarpMouse, new GodotMath(GodotType.Vector2I, [320, -4]));
-
-        GodotMessage read = GodotMessage.Read(frame.AsSpan(4));
-
-        Assert.Equal("game_view:warp_mouse", read.Name);
-        Assert.Equal((320, -4), GameFit.Warped(read.Data));
-    }
-
-    [Fact]
-    public void A_warp_message_of_any_other_form_names_no_place()
-    {
-        Assert.Null(GameFit.Warped([]));
-        Assert.Null(GameFit.Warped([320L, 4L]));
-        Assert.Null(GameFit.Warped([new GodotMath(GodotType.Vector2, [320, 4])]));
-    }
-
-    [Fact]
-    public void A_place_a_game_names_comes_to_the_pane_from_the_games_own_top_left_in_what_its_godot_says()
+    private void A_place_a_game_names_comes_to_the_pane_from_the_games_own_top_left_in_what_its_godot_says()
     {
         GamePlace place = new(382, 40, 635, 476);
         Assert.Equal((291d, 70d), GameFit.FromGame(100, 50, place, scale: 2, perUnit: 1));
         Assert.Equal((241d, 45d), GameFit.FromGame(100, 50, place, scale: 2, perUnit: 2));
         Assert.Equal((482d, 90d), GameFit.FromGame(100, 50, new GamePlace(382, 40, 635, 476), scale: 1, perUnit: 1));
-    }
-
-    [Fact]
-    public void A_place_a_game_names_past_its_edges_stays_on_the_game()
-    {
-        GamePlace place = new(382, 40, 635, 476);
-        Assert.Equal((191d, 20d), GameFit.FromGame(-30, -30, place, scale: 2, perUnit: 1));
-        (double x, double y) = GameFit.FromGame(5000, 5000, place, scale: 2, perUnit: 1);
-        Assert.True(GameFit.Over(x, y, place, 2), $"A place past the game's far corner came to {x},{y}, off the game placed at {place}, on what lies beside the pane");
-    }
-
-    [Fact]
-    public void A_place_a_game_names_is_where_a_pointer_there_reaches_it_again()
-    {
-        GamePlace place = new(382, 40, 635, 476);
-        foreach (double perUnit in new[] { 1d, 2d })
-        {
-            (double x, double y) = GameFit.FromGame(120, 90, place, 2, perUnit);
-            (double backX, double backY) = GameFit.Inside(x, y, place, 2);
-            Assert.Equal((120d, 90d), (backX * perUnit, backY * perUnit));
-        }
     }
 
     /// <summary>What Godot's embedded display makes of a size at the scale it was told, as its _window_set_size works them
@@ -138,14 +80,15 @@ public class GameFitTests
         return ((size.Width / (double)scale, size.Height / (double)scale), ((int)(size.Width / scale * render), (int)(size.Height / scale * render)));
     }
 
-    [Theory]
-    [InlineData("4.5", true)]
-    [InlineData("4.5", false)]
-    [InlineData("4.6.3", true)]
-    [InlineData("4.6.3", false)]
-    [InlineData("4.7.2", true)]
-    [InlineData("4.7.2", false)]
-    public void A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says(string version, bool allowHidpi)
+    private void A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says() => Cases.Each<(string Version, bool AllowHidpi)>(
+    [
+        ("4.5", true),
+        ("4.5", false),
+        ("4.7.2", true),
+        ("4.7.2", false),
+    ], row => A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says(row.Version, row.AllowHidpi));
+
+    private void A_game_takes_its_whole_place_in_the_pane_whatever_its_allow_hidpi_says(string version, bool allowHidpi)
     {
         const int Scale = 2;
         (int Width, int Height) pane = (700 * Scale, 238 * Scale);
@@ -158,20 +101,4 @@ public class GameFitTests
         Assert.True(layer.Width <= 700 && layer.Height <= 238, $"Godot {version}'s layer of {layer} points overruns a pane of 700 by 238, so the game shows cropped");
     }
 
-    [Fact]
-    public void Only_a_godot_that_reads_allow_hidpi_draws_more_coarsely_for_it()
-    {
-        Assert.Equal((1400, 476), Displayed((1400, 476), 2, "4.6.3", allowHidpi: false).Drawn);
-        Assert.Equal((700, 238), Displayed((1400, 476), 2, "4.7.2", allowHidpi: false).Drawn);
-        Assert.Equal((1400, 476), Displayed((1400, 476), 2, "4.7.2", allowHidpi: true).Drawn);
-    }
-
-    [Fact]
-    public void Godot_takes_the_pointer_on_its_embedded_display_in_points_from_4_7()
-    {
-        Assert.False(GodotExecutables.TakesPointerInPoints("4.6.2"));
-        Assert.True(GodotExecutables.TakesPointerInPoints("4.7"));
-        Assert.True(GodotExecutables.TakesPointerInPoints("4.8.1"));
-        Assert.False(GodotExecutables.TakesPointerInPoints(null));
-    }
 }

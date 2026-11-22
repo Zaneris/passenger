@@ -11,8 +11,13 @@ public class GodotRelayTests
 {
     private static GodotDictionary Sent(long id) => new([new KeyValuePair<object?, object?>(GodotRelay.ObjectKey, id)]);
 
+    /// <summary>An object relayed by its id is read as that id, every other value as it came.</summary>
     [Fact]
-    public void An_object_sent_by_its_id_is_read_as_that_id_wherever_it_is()
+    public void A_relayed_value_is_as_it_came_an_object_by_its_id() => Cases.All(
+        (nameof(An_object_sent_by_its_id_is_read_as_that_id_wherever_it_is), An_object_sent_by_its_id_is_read_as_that_id_wherever_it_is),
+        (nameof(Every_other_value_is_as_it_came), Every_other_value_is_as_it_came));
+
+    private void An_object_sent_by_its_id_is_read_as_that_id_wherever_it_is()
     {
         GodotArray typed = new([Sent(7), Sent(8)]) { Element = GodotElement.Of(GodotType.Object) };
         GodotMessage relayed = new("scene:inspect_objects", GodotMessage.MainThread,
@@ -28,8 +33,7 @@ public class GodotRelayTests
         Assert.Equal(new GodotObjectId(44), Assert.IsType<GodotDictionary>(read.Data[3]).Entries[0].Value);
     }
 
-    [Fact]
-    public void Every_other_value_is_as_it_came()
+    private void Every_other_value_is_as_it_came()
     {
         GodotDictionary two = new([new KeyValuePair<object?, object?>(GodotRelay.ObjectKey, 1L), new KeyValuePair<object?, object?>("other", 2L)]);
         GodotDictionary named = new([new KeyValuePair<object?, object?>(GodotRelay.ObjectKey, "not an id")]);

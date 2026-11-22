@@ -17,8 +17,14 @@ public class GodotClassDefaultsTests
         }
         """));
 
+    /// <summary>A class lists its properties before its parents' with the nearest default.</summary>
     [Fact]
-    public void A_class_lists_its_own_properties_before_its_parents_with_their_headings()
+    public void A_classs_properties_and_defaults_come_as_its_reference_gives_them() => Cases.All(
+        (nameof(A_class_lists_its_own_properties_before_its_parents_with_their_headings),
+            A_class_lists_its_own_properties_before_its_parents_with_their_headings),
+        (nameof(A_default_comes_from_the_nearest_class_that_says_one), A_default_comes_from_the_nearest_class_that_says_one));
+
+    private void A_class_lists_its_own_properties_before_its_parents_with_their_headings()
     {
         Assert.Equal(["position", "global_position", "Visibility", "modulate", "Node", "name", "process_mode"], Classes.PropertiesOf("Node2D").Select(p => p.Name));
         Assert.Equal(["Node2D", "CanvasItem", "Node"], Classes.Chain("Node2D"));
@@ -28,8 +34,7 @@ public class GodotClassDefaultsTests
         Assert.Equal(("process_mode", 2L, "Inherit,Pausable", "Node"), Classes.PropertiesOf("Node2D").Single(p => p.Name == "process_mode") is var mode ? (mode.Name, mode.Hint, mode.HintString, mode.Owner) : default);
     }
 
-    [Fact]
-    public void A_default_comes_from_the_nearest_class_that_says_one()
+    private void A_default_comes_from_the_nearest_class_that_says_one()
     {
         Assert.Equal("Color(1, 1, 1, 1)", Classes.DefaultOf("Node2D", "modulate"));
         Assert.Equal("0", Classes.DefaultOf("Node2D", "process_mode"));

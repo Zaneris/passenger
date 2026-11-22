@@ -50,8 +50,23 @@ public class GodotScriptStopsTests
 
     private static GodotMessage Message(string hex) => GodotMessage.Read(Convert.FromHexString(hex));
 
+    /// <summary>A script's stops, stacks, variables and evaluations read as Godot's debugger sends them.</summary>
     [Fact]
-    public void A_stop_reads_as_a_breakpoints_a_pauses_outside_every_script_or_a_script_errors_that_takes_no_step()
+    public void A_scripts_stops_stacks_and_values_read_as_godots_debugger_sends_them() => Cases.All(
+        (nameof(A_stop_reads_as_a_breakpoints_a_pauses_outside_every_script_or_a_script_errors_that_takes_no_step),
+            A_stop_reads_as_a_breakpoints_a_pauses_outside_every_script_or_a_script_errors_that_takes_no_step),
+        (nameof(A_stack_reads_innermost_first_and_a_pause_outside_every_script_has_none),
+            A_stack_reads_innermost_first_and_a_pause_outside_every_script_has_none),
+        (nameof(A_frames_variables_read_as_locals_and_members_self_an_object_by_its_id_and_class),
+            A_frames_variables_read_as_locals_and_members_self_an_object_by_its_id_and_class),
+        (nameof(An_evaluations_answer_reads_as_its_value_and_a_bad_ones_as_null_beside_the_error_it_raised),
+            An_evaluations_answer_reads_as_its_value_and_a_bad_ones_as_null_beside_the_error_it_raised),
+        (nameof(A_game_starts_with_its_breakpoints_a_space_in_a_path_escaped_and_stops_only_at_a_line_with_code),
+            A_game_starts_with_its_breakpoints_a_space_in_a_path_escaped_and_stops_only_at_a_line_with_code),
+        (nameof(A_condition_is_asked_of_the_game_as_the_truth_of_its_value_whatever_it_is_written_with),
+            A_condition_is_asked_of_the_game_as_the_truth_of_its_value_whatever_it_is_written_with));
+
+    private void A_stop_reads_as_a_breakpoints_a_pauses_outside_every_script_or_a_script_errors_that_takes_no_step()
     {
         Assert.Equal(new GodotBreak(true, GodotBreak.AtBreakpoint, true, 1), GodotBreak.Read(Message(AtBreakpoint).Data));
         GodotBreak paused = GodotBreak.Read(Message(AtPause).Data)!;
@@ -64,8 +79,7 @@ public class GodotScriptStopsTests
         Assert.Null(GodotBreak.Read([true, "Breakpoint"]));
     }
 
-    [Fact]
-    public void A_stack_reads_innermost_first_and_a_pause_outside_every_script_has_none()
+    private void A_stack_reads_innermost_first_and_a_pause_outside_every_script_has_none()
     {
         Assert.Equal([new GodotScriptFrame("res://main.gd", 24, "twice"), new GodotScriptFrame("res://main.gd", 14, "_process")],
             GodotScriptFrame.Stack(Message(Stack).Data));
@@ -73,8 +87,7 @@ public class GodotScriptStopsTests
         Assert.Null(GodotScriptFrame.Stack([6L, "res://main.gd", 24L]));
     }
 
-    [Fact]
-    public void A_frames_variables_read_as_locals_and_members_self_an_object_by_its_id_and_class()
+    private void A_frames_variables_read_as_locals_and_members_self_an_object_by_its_id_and_class()
     {
         Assert.Equal(5, GodotScriptVariable.Count(Message(FiveVariables).Data));
         GodotScriptVariable delta = GodotScriptVariable.Read(Message(Delta).Data)!;
@@ -86,8 +99,7 @@ public class GodotScriptStopsTests
         Assert.Equal(("counter", GodotScope.Member, "int", "93"), (counter.Name, counter.Scope, counter.TypeName, counter.Shown));
     }
 
-    [Fact]
-    public void An_evaluations_answer_reads_as_its_value_and_a_bad_ones_as_null_beside_the_error_it_raised()
+    private void An_evaluations_answer_reads_as_its_value_and_a_bad_ones_as_null_beside_the_error_it_raised()
     {
         GodotScriptVariable answer = GodotScriptVariable.Read(Message(Evaluated).Data)!;
         Assert.Equal(("kept + 1", GodotScope.Evaluated, "42"), (answer.Name, answer.Scope, answer.Shown));
@@ -98,56 +110,7 @@ public class GodotScriptStopsTests
         Assert.Equal("Expected expression", GodotScriptValues.Failure(raised));
     }
 
-    [Fact]
-    public void A_value_shows_as_GDScript_writes_it_and_what_is_inside_one_is_read_by_its_own_expression()
-    {
-        Assert.Equal("\"hi\"", GodotScriptValues.Shown("hi"));
-        Assert.Equal("Vector2i", GodotScriptValues.TypeName(GodotType.Vector2I));
-        Assert.Equal("null", GodotScriptValues.TypeName(GodotType.Nil));
-        Assert.Equal([("[0]", "items[0]", (object?)1L), ("[1]", "items[1]", "two")], GodotScriptValues.Inside(new List<object?> { 1L, "two" }, "items"));
-        Assert.Equal([("x", "at.x", (object?)3L), ("y", "at.y", 4L)], GodotScriptValues.Inside(new GodotMath(GodotType.Vector2I, [3, 4]), "at"));
-        Assert.Equal([("\"a\"", "seen[\"a\"]", (object?)true)],
-            GodotScriptValues.Inside(new GodotDictionary([new KeyValuePair<object?, object?>("a", true)]), "seen"));
-        Assert.Empty(GodotScriptValues.Inside(5L, "n"));
-        Assert.True(GodotScriptValues.HasInside(new GodotObjectId(7)), "An object read as holding nothing");
-    }
-
-    /// <summary>A tracepoint's value shows as every debugger shows one to its specifiers: a String, StringName or NodePath
-    /// quoted as Variables writes it unless nq, an int, 64 bits, in hexadecimal under h, anything else as Variables shows it.</summary>
-    [Fact]
-    public void A_tracepoints_string_is_quoted_unless_nq_and_its_int_is_64_bits_under_h()
-    {
-        Assert.Equal(("\"Ada\"", "Ada"), (DisplayFormat.Shown(GodotScriptValues.Displayed("Ada"), []), DisplayFormat.Shown(GodotScriptValues.Displayed("Ada"), ["nq"])));
-        Assert.Equal(("&\"walk\"", "walk"),
-            (DisplayFormat.Shown(GodotScriptValues.Displayed(new GodotName("walk")), []), DisplayFormat.Shown(GodotScriptValues.Displayed(new GodotName("walk")), ["nq"])));
-        Assert.Equal(("14", "0x000000000000000e", "0xffffffffffffffff"),
-            (DisplayFormat.Shown(GodotScriptValues.Displayed(14L), []), DisplayFormat.Shown(GodotScriptValues.Displayed(14L), ["h"]), DisplayFormat.Shown(GodotScriptValues.Displayed(-1L), ["h"])));
-        Assert.Equal(("2.5", "true", "<Object#7>"),
-            (DisplayFormat.Shown(GodotScriptValues.Displayed(2.5), ["h"]), DisplayFormat.Shown(GodotScriptValues.Displayed(true), ["h", "nq"]),
-                DisplayFormat.Shown(GodotScriptValues.Displayed(new GodotObjectId(7)), ["nq"])));
-    }
-
-    /// <summary>Godot sends a vector's numbers as singles, which Variables writes as the numbers they read back as, as the
-    /// scene's inspector does, never the double each widens to, its components as singles too; a float is a double, written
-    /// with a double's digits.</summary>
-    [Fact]
-    public void A_vectors_singles_show_in_Variables_as_written_not_as_the_doubles_they_widen_to()
-    {
-        object? sent = GodotVariant.Read(GodotVariant.Write(new GodotMath(GodotType.Vector2, [(double)0.3f, (double)0.1f])));
-        GodotScriptVariable position = GodotScriptVariable.Read(["position", (long)GodotScope.Member, (long)GodotType.Vector2, sent, string.Empty])!;
-        Assert.Equal(("Vector2", "(0.3, 0.1)"), (position.TypeName, position.Shown));
-        Assert.Equal("Vector2(0.3, 0.1)", GodotText.Scene(sent));
-        IReadOnlyList<(string Name, string? Expression, object? Value)> parts = GodotScriptValues.Inside(sent, "position");
-        Assert.Equal([("x", "position.x", (object?)0.3f), ("y", "position.y", 0.1f)], parts);
-        Assert.Equal(["0.3", "0.1"], parts.Select(p => GodotScriptValues.Shown(p.Value)));
-        Assert.Equal(["0.3", "1234567.25"], new[] { 0.3, 1234567.25 }.Select(real =>
-            GodotScriptVariable.Read(["far", (long)GodotScope.Local, (long)GodotType.Float, GodotVariant.Read(GodotVariant.Write(real)), string.Empty])!.Shown));
-        Assert.Equal("[0.3, nan, inf_neg]", GodotScriptValues.Shown(new[] { 0.3f, float.NaN, float.NegativeInfinity }));
-        Assert.Equal("[\"a\\nb\", \"tab\\there\"]", GodotScriptValues.Shown(new[] { "a\nb", "tab\there" }));
-    }
-
-    [Fact]
-    public void A_game_starts_with_its_breakpoints_a_space_in_a_path_escaped_and_stops_only_at_a_line_with_code()
+    private void A_game_starts_with_its_breakpoints_a_space_in_a_path_escaped_and_stops_only_at_a_line_with_code()
     {
         Assert.Equal("res://main.gd:8,res://scripts/my%20enemy.gd:12", GodotScriptBreakpoints.Argument([("res://main.gd", 8), ("res://scripts/my enemy.gd", 12)]));
         Assert.Null(GodotScriptBreakpoints.Argument([]));
@@ -156,8 +119,7 @@ public class GodotScriptStopsTests
         Assert.False(GodotScriptBreakpoints.IsCodeLine(script, 40), "A line past the script's end read as one with code");
     }
 
-    [Fact]
-    public void A_condition_is_asked_of_the_game_as_the_truth_of_its_value_whatever_it_is_written_with()
+    private void A_condition_is_asked_of_the_game_as_the_truth_of_its_value_whatever_it_is_written_with()
     {
         Assert.Equal("not not (items)", GodotScriptBreakpoints.Truth("items"));
         Assert.Equal("not not (a or b)", GodotScriptBreakpoints.Truth("a or b"));

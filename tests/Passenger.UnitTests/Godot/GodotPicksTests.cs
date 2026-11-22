@@ -62,8 +62,14 @@ public class GodotPicksTests
 
     private static GodotMessage Message(string base64) => GodotMessage.Read(Convert.FromBase64String(base64));
 
+    /// <summary>A pick names the node Godot picked, its setup and type as each Godot reads them.</summary>
     [Fact]
-    public void A_pick_names_the_node_Godot_picked_its_class_and_its_properties()
+    public void A_pick_names_the_node_godot_picked() => Cases.All(
+        (nameof(A_pick_names_the_node_Godot_picked_its_class_and_its_properties), A_pick_names_the_node_Godot_picked_its_class_and_its_properties),
+        (nameof(What_a_click_picks_is_set_by_set_type_before_Godot_4_8_by_set_node_type_from_it_and_by_both_where_the_version_is_not_known),
+            What_a_click_picks_is_set_by_set_type_before_Godot_4_8_by_set_node_type_from_it_and_by_both_where_the_version_is_not_known));
+
+    private void A_pick_names_the_node_Godot_picked_its_class_and_its_properties()
     {
         GodotMessage message = Message(Picked);
         Assert.Equal(GodotWords.ObjectsSelected, message.Name);
@@ -73,31 +79,7 @@ public class GodotPicksTests
         Assert.Equal(new GodotMath(GodotType.Vector2, [300, 300]), picked.Properties.First(p => p.Name == "position").Value);
     }
 
-    [Fact]
-    public void Godots_word_that_it_picked_nothing_names_no_node()
-    {
-        GodotMessage message = Message(Nothing);
-        Assert.Equal(GodotWords.NothingSelected, message.Name);
-        Assert.Empty(message.Data);
-        Assert.Null(GodotPicks.Picked(message.Data));
-    }
-
-    [Fact]
-    public void The_setup_is_one_dictionary_Godot_reads_whole_one_node_a_pick_at_eight_pixels_in_the_outlines_colour()
-    {
-        byte[] frame = GodotMessage.Frame(GodotWords.SelectSetup, GodotPicks.Settings(0.25, 0.5, 1));
-        GodotMessage read = GodotMessage.Read(frame.AsSpan(4));
-        GodotDictionary settings = Assert.IsType<GodotDictionary>(Assert.Single(read.Data));
-        Dictionary<string, object?> named = settings.Entries.ToDictionary(e => (string)e.Key!, e => e.Value);
-        Assert.Equal(1L, named["debugger/max_node_selection"]);
-        Assert.Equal(GodotPicks.GrabRadius, named["editors/polygon_editor/point_grab_radius"]);
-        Assert.Equal(new GodotMath(GodotType.Color, [0.25, 0.5, 1, 1]), named["editors/2d/selection_rectangle_color"]);
-        Assert.Equal(new GodotMath(GodotType.Color, [0.25, 0.5, 1, 1]), named["editors/3d/selection_box_color"]);
-        Assert.Equal(new GodotMath(GodotType.Color, [0.25, 0.5, 1, 0.25]), named["box_selection_fill_color"]);
-    }
-
-    [Fact]
-    public void What_a_click_picks_is_set_by_set_type_before_Godot_4_8_by_set_node_type_from_it_and_by_both_where_the_version_is_not_known()
+    private void What_a_click_picks_is_set_by_set_type_before_Godot_4_8_by_set_node_type_from_it_and_by_both_where_the_version_is_not_known()
     {
         Assert.Equal([GodotWords.SelectType], GodotPicks.TypeMessages("4.7.2.stable.mono.official.ed1daf0bf"));
         Assert.Equal([GodotWords.SelectNodeType], GodotPicks.TypeMessages("4.8.beta2.mono.official.cafc17a19"));

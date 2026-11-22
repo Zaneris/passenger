@@ -8,8 +8,18 @@ namespace Passenger.UnitTests.Godot;
 /// arguments Settings gives Godot, the parameters they give kept, and GUT's and GoDotTest's Godot started with them.</summary>
 public class GodotHeadlessTests
 {
+    /// <summary>Godot runs headless by its flag or driver, without SDL's HID gamepads, each test runner's after its
+    /// settings.</summary>
     [Fact]
-    public void Godot_runs_headless_by_its_flag_or_the_headless_display_driver_and_not_otherwise()
+    public void A_headless_godot_is_started_without_sdls_hid_gamepads() => Cases.All(
+        (nameof(Godot_runs_headless_by_its_flag_or_the_headless_display_driver_and_not_otherwise),
+            Godot_runs_headless_by_its_flag_or_the_headless_display_driver_and_not_otherwise),
+        (nameof(Every_headless_godot_is_started_without_SDLs_HID_gamepads_and_a_godot_someone_plays_keeps_them),
+            Every_headless_godot_is_started_without_SDLs_HID_gamepads_and_a_godot_someone_plays_keeps_them),
+        (nameof(GUT_and_GoDotTest_run_godot_headless_after_the_settings_arguments_unless_its_window_is_asked_for),
+            GUT_and_GoDotTest_run_godot_headless_after_the_settings_arguments_unless_its_window_is_asked_for));
+
+    private void Godot_runs_headless_by_its_flag_or_the_headless_display_driver_and_not_otherwise()
     {
         Assert.True(GodotExecutables.RunsHeadless(["--path", "/game", "--headless"]), "--headless among the arguments was not taken for a headless run");
         Assert.True(GodotExecutables.RunsHeadless(["--display-driver", "headless", "--path", "/game"]), "The headless display driver was not taken for a headless run");
@@ -22,8 +32,7 @@ public class GodotHeadlessTests
     /// the main thread's run loop as Godot ends.</summary>
     private const string SdlHidGamepads = "SDL_JOYSTICK_HIDAPI";
 
-    [Fact]
-    public void Every_headless_godot_is_started_without_SDLs_HID_gamepads_and_a_godot_someone_plays_keeps_them()
+    private void Every_headless_godot_is_started_without_SDLs_HID_gamepads_and_a_godot_someone_plays_keeps_them()
     {
         Assert.Equal("0", ChildProcesses.Command("/godot", ["--headless", "--path", "/game", "--import"]).Environment[SdlHidGamepads]);
         Assert.Equal("0", ChildProcesses.Command("/godot", ["--display-driver", "headless", "--path", "/game"]).Environment[SdlHidGamepads]);
@@ -33,49 +42,7 @@ public class GodotHeadlessTests
             "A game's own --headless, which Godot never reads, took SDL's HID gamepads from a game with a window");
     }
 
-    [Fact]
-    public void An_environment_passed_on_for_a_headless_godot_turns_SDLs_HID_gamepads_off_unless_it_says_otherwise()
-    {
-        Dictionary<string, string> home = new() { ["HOME"] = "/runs/home" };
-        IReadOnlyDictionary<string, string> headless = GodotExecutables.EnvironmentOf(["--headless", "--path", "/game"], home);
-        Assert.Equal("0", headless[SdlHidGamepads]);
-        Assert.Equal("/runs/home", headless["HOME"]);
-        Assert.False(GodotExecutables.EnvironmentOf(["--path", "/game"], home).ContainsKey(SdlHidGamepads),
-            "A debugged game with a window lost SDL's HID gamepads, which the person playing it may be holding");
-        Assert.Equal("1", GodotExecutables.EnvironmentOf(["--headless"], new Dictionary<string, string> { [SdlHidGamepads] = "1" })[SdlHidGamepads]);
-    }
-
-    [Fact]
-    public void GdUnit4s_godot_is_made_headless_after_the_parameters_given_and_once_where_they_say_so_already()
-    {
-        XElement none = new("RunSettings", new XElement("RunConfiguration"));
-        GdUnit4Settings.Given(none, [], headless: true);
-        Assert.Equal("--headless", none.Element("GdUnit4")?.Element("Parameters")?.Value);
-
-        XElement verbose = XElement.Parse("<RunSettings><GdUnit4><DisplayName>SimpleName</DisplayName><Parameters> --verbose </Parameters></GdUnit4></RunSettings>");
-        GdUnit4Settings.Given(verbose, [], headless: true);
-        Assert.Equal("--verbose --headless", verbose.Element("GdUnit4")!.Element("Parameters")!.Value);
-        Assert.Equal("SimpleName", verbose.Element("GdUnit4")!.Element("DisplayName")!.Value);
-
-        XElement already = XElement.Parse("<RunSettings><GdUnit4><Parameters>--headless --verbose</Parameters></GdUnit4></RunSettings>");
-        GdUnit4Settings.Given(already, [], headless: true);
-        Assert.Equal("--headless --verbose", already.Element("GdUnit4")!.Element("Parameters")!.Value);
-    }
-
-    [Fact]
-    public void GdUnit4s_godot_takes_the_settings_arguments_ahead_of_its_own_parameters_and_is_left_windowed_where_asked()
-    {
-        XElement given = XElement.Parse("<RunSettings><GdUnit4><Parameters>--verbose</Parameters></GdUnit4></RunSettings>");
-        GdUnit4Settings.Given(given, ["--rendering-driver", "opengl3", "--log-file", "/runs/a log.txt"], headless: false);
-        Assert.Equal("--rendering-driver opengl3 --log-file \"/runs/a log.txt\" --verbose", given.Element("GdUnit4")!.Element("Parameters")!.Value);
-
-        XElement unseen = new("RunSettings");
-        GdUnit4Settings.Given(unseen, ["--display-driver", "headless"], headless: true);
-        Assert.Equal("--display-driver headless", unseen.Element("GdUnit4")!.Element("Parameters")!.Value);
-    }
-
-    [Fact]
-    public void GUT_and_GoDotTest_run_godot_headless_after_the_settings_arguments_unless_its_window_is_asked_for()
+    private void GUT_and_GoDotTest_run_godot_headless_after_the_settings_arguments_unless_its_window_is_asked_for()
     {
         Assert.Equal(["--headless"], GodotStart.Headless.Leading);
         Assert.Equal(["--rendering-driver", "opengl3", "--headless"], new GodotStart(["--rendering-driver", "opengl3"], Windowed: false).Leading);

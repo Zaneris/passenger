@@ -26,13 +26,23 @@ public class GodotEditorWireTests
             && root.GetProperty("reply").GetString() == Reply && root.GetProperty("process").GetInt32() == 77, root.GetRawText());
     }
 
-    [Theory]
-    [InlineData(Token + "\n", true)]
-    [InlineData(Token + "\r\n", true)]
-    [InlineData("A1B2C4\n", false)]
-    [InlineData(Token, false)]
-    [InlineData("\n", false)]
-    public async Task Only_the_secret_as_the_first_line_is_answered_with_Passengers_own(string said, bool taken)
+    /// <summary>Only Passenger's secret as the first line is answered, and a longer line is refused early.</summary>
+    [Fact]
+    public Task Only_the_secret_opens_the_editors_wire() => Cases.AllAsync(
+        (nameof(Only_the_secret_as_the_first_line_is_answered_with_Passengers_own),
+            Only_the_secret_as_the_first_line_is_answered_with_Passengers_own),
+        (nameof(A_first_line_longer_than_any_secret_is_refused_before_its_end), A_first_line_longer_than_any_secret_is_refused_before_its_end));
+
+    private Task Only_the_secret_as_the_first_line_is_answered_with_Passengers_own() => Cases.EachAsync<(string Said, bool Taken)>(
+    [
+        (Token + "\n", true),
+        (Token + "\r\n", true),
+        ("A1B2C4\n", false),
+        (Token, false),
+        ("\n", false),
+    ], row => Only_the_secret_as_the_first_line_is_answered_with_Passengers_own(row.Said, row.Taken));
+
+    private async Task Only_the_secret_as_the_first_line_is_answered_with_Passengers_own(string said, bool taken)
     {
         Wire wire = new(Encoding.UTF8.GetBytes(said + "{\"id\":1}\n"));
 
@@ -43,8 +53,7 @@ public class GodotEditorWireTests
         Assert.True(!taken || wire.Unread == "{\"id\":1}\n", $"Nothing after the secret was to be read before it was checked; left: {wire.Unread}");
     }
 
-    [Fact]
-    public async Task A_first_line_longer_than_any_secret_is_refused_before_its_end()
+    private async Task A_first_line_longer_than_any_secret_is_refused_before_its_end()
     {
         Wire wire = new(Encoding.UTF8.GetBytes(new string('A', 4096) + "\n"));
 

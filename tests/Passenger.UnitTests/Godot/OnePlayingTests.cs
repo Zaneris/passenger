@@ -10,10 +10,29 @@ public sealed class OnePlayingTests
 
     private OnePlaying<string> Playing() => new(ended.Add);
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach(bool firstLandsFirst)
+    /// <summary>One sound plays at a time, the latest asked for in reach.</summary>
+    [Fact]
+    public void One_sound_plays_at_a_time() => Cases.All(
+        (nameof(Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach),
+            Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach),
+        (nameof(A_sound_running_ends_as_the_next_is_asked_for), () => Apart(test => test.A_sound_running_ends_as_the_next_is_asked_for())),
+        (nameof(A_sound_starting_as_Stop_is_pressed_ends_as_it_lands),
+            () => Apart(test => test.A_sound_starting_as_Stop_is_pressed_ends_as_it_lands())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<OnePlayingTests> check)
+    {
+        OnePlayingTests test = new();
+        check(test);
+    }
+
+    private static void Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach() => Cases.Each<bool>(
+    [
+        true,
+        false,
+    ], row => Apart(test => test.Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach(row)));
+
+    private void Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach(bool firstLandsFirst)
     {
         OnePlaying<string> playing = Playing();
         int first = playing.Ask();
@@ -36,8 +55,7 @@ public sealed class OnePlayingTests
         Assert.True(ended.Order(StringComparer.Ordinal).SequenceEqual(["first", "second"]), $"Stop left a player running with nothing to end it; ended: {string.Join(", ", ended)}");
     }
 
-    [Fact]
-    public void A_sound_running_ends_as_the_next_is_asked_for()
+    private void A_sound_running_ends_as_the_next_is_asked_for()
     {
         OnePlaying<string> playing = Playing();
         playing.Started(playing.Ask(), "first");
@@ -51,8 +69,7 @@ public sealed class OnePlayingTests
         Assert.Equal(["first", "second"], ended);
     }
 
-    [Fact]
-    public void A_sound_starting_as_Stop_is_pressed_ends_as_it_lands()
+    private void A_sound_starting_as_Stop_is_pressed_ends_as_it_lands()
     {
         OnePlaying<string> playing = Playing();
         int ask = playing.Ask();

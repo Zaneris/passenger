@@ -8,8 +8,15 @@ public class GodotUserFoldersTests
 {
     private static readonly Dictionary<string, string> Folders = new(StringComparer.Ordinal) { ["HOME"] = "/run/godot", ["XDG_DATA_HOME"] = "/run/godot/.local/share" };
 
+    /// <summary>Godot's user folders fill in what the environment does not set.</summary>
     [Fact]
-    public void The_folders_fill_in_what_the_environment_does_not_set_and_its_own_stand()
+    public void A_godots_user_folders_fill_in_what_the_environment_leaves() => Cases.All(
+        (nameof(The_folders_fill_in_what_the_environment_does_not_set_and_its_own_stand),
+            The_folders_fill_in_what_the_environment_does_not_set_and_its_own_stand),
+        (nameof(An_environment_given_no_folders_or_setting_them_all_is_left_as_it_is),
+            An_environment_given_no_folders_or_setting_them_all_is_left_as_it_is));
+
+    private void The_folders_fill_in_what_the_environment_does_not_set_and_its_own_stand()
     {
         Dictionary<string, string> own = new(StringComparer.Ordinal) { ["HOME"] = "/mine", ["GREETING"] = "hello" };
 
@@ -20,8 +27,7 @@ public class GodotUserFoldersTests
         Assert.True(own.Count == 2, "The configuration's own environment was changed in place");
     }
 
-    [Fact]
-    public void An_environment_given_no_folders_or_setting_them_all_is_left_as_it_is()
+    private void An_environment_given_no_folders_or_setting_them_all_is_left_as_it_is()
     {
         Dictionary<string, string> own = new(StringComparer.Ordinal) { ["GREETING"] = "hello" };
         Dictionary<string, string> all = new(Folders, StringComparer.Ordinal);

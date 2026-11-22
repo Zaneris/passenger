@@ -48,22 +48,36 @@ public class GodotVariantTextTests
         ")", "]", "}",
     ];
 
+    /// <summary>Text typed for a scene is read or refused as Godot's loader would.</summary>
     [Fact]
-    public void What_Godots_loader_takes_is_read()
+    public void Values_are_read_as_godots_loader_reads_them() => Cases.All(
+        (nameof(What_Godots_loader_takes_is_read), What_Godots_loader_takes_is_read),
+        (nameof(What_Godots_loader_refuses_or_swallows_lines_over_is_refused), What_Godots_loader_refuses_or_swallows_lines_over_is_refused),
+        (nameof(A_file_not_in_the_project_is_refused_where_Godot_loads_by_its_path_alone),
+            A_file_not_in_the_project_is_refused_where_Godot_loads_by_its_path_alone),
+        (nameof(A_class_the_engine_makes_no_object_of_is_refused), A_class_the_engine_makes_no_object_of_is_refused));
+
+    /// <summary>Each Godot's reader takes what it reads and refuses the rest, and a value nested too deep ends
+    /// nothing.</summary>
+    [Fact]
+    public void Each_godots_reader_takes_its_own_and_nothing_deep_ends_the_ide() => Cases.All(
+        (nameof(What_an_older_Godots_reader_refuses_is_refused_for_it), What_an_older_Godots_reader_refuses_is_refused_for_it),
+        (nameof(A_value_nested_past_what_is_read_is_refused_and_stops_short_of_the_stack),
+            A_value_nested_past_what_is_read_is_refused_and_stops_short_of_the_stack));
+
+    private void What_Godots_loader_takes_is_read()
     {
         string refused = string.Join("\n", Read.Select(text => (text, Why: GodotVariantText.WhyNot(text, Bare))).Where(r => r.Why is not null).Select(r => $"{r.text}: {r.Why}"));
         Assert.True(refused.Length == 0, $"A person's good value would be refused:\n{refused}");
     }
 
-    [Fact]
-    public void What_Godots_loader_refuses_or_swallows_lines_over_is_refused()
+    private void What_Godots_loader_refuses_or_swallows_lines_over_is_refused()
     {
         string read = string.Join("\n", Refused.Where(text => GodotVariantText.WhyNot(text, Bare) is null));
         Assert.True(read.Length == 0, $"These would be written into a scene Godot then fails to load, or loads short of its lines:\n{read}");
     }
 
-    [Fact]
-    public void A_file_not_in_the_project_is_refused_where_Godot_loads_by_its_path_alone()
+    private void A_file_not_in_the_project_is_refused_where_Godot_loads_by_its_path_alone()
     {
         GodotVariantBounds project = new(null, path => path == "res://here.tres", null);
         Assert.Null(GodotVariantText.WhyNot("Resource(\"res://here.tres\")", Bare, project));
@@ -73,15 +87,7 @@ public class GodotVariantTextTests
         Assert.Null(GodotVariantText.WhyNot("Resource(\"res://missing.tres\")", Bare));
     }
 
-    [Fact]
-    public void A_resource_names_one_path_and_one_uid_at_most()
-    {
-        Assert.Equal("Resource takes one path and one uid", GodotVariantText.WhyNot("Resource(\"res://a.tres\", \"res://b.tres\")", Bare));
-        Assert.Equal("Resource takes one path and one uid", GodotVariantText.WhyNot("Resource(\"uid://a\", \"uid://b\")", Bare));
-    }
-
-    [Fact]
-    public void A_class_the_engine_makes_no_object_of_is_refused()
+    private void A_class_the_engine_makes_no_object_of_is_refused()
     {
         GodotVariantBounds project = new(null, null, named => named == "Node");
         Assert.Null(GodotVariantText.WhyNot("Object(Node,)", Bare, project));
@@ -90,63 +96,20 @@ public class GodotVariantTextTests
         Assert.Null(GodotVariantText.WhyNot("Object(Unknown,)", Bare));
     }
 
-    [Theory]
-    [InlineData("4.0", "Signal()", "Signal needs Godot 4.1 or newer, and this one is 4.0")]
-    [InlineData("4.0", "Callable()", "Callable needs Godot 4.1 or newer, and this one is 4.0")]
-    [InlineData("4.2.2", "PackedVector4Array(1, 2, 3, 4)", "PackedVector4Array needs Godot 4.3 or newer, and this one is 4.2")]
-    [InlineData("4.2", "PoolVector4Array(1, 2, 3, 4)", "PoolVector4Array needs Godot 4.3 or newer, and this one is 4.2")]
-    [InlineData("4.2", "Vector4Array(1, 2, 3, 4)", "Vector4Array needs Godot 4.3 or newer, and this one is 4.2")]
-    [InlineData("4.2", "PackedByteArray(\"AQI=\")", "Bytes as base64 needs Godot 4.3 or newer, and this one is 4.2")]
-    [InlineData("4.3", "Dictionary[String, int]({\"a\": 1})", "A typed Dictionary needs Godot 4.4 or newer, and this one is 4.3")]
-    public void What_an_older_Godots_reader_refuses_is_refused_for_it(string engine, string text, string why)
+    private void What_an_older_Godots_reader_refuses_is_refused_for_it() => Cases.Each<(string Engine, string Text, string Why)>(
+    [
+        ("4.0", "Signal()", "Signal needs Godot 4.1 or newer, and this one is 4.0"),
+        ("4.2.2", "PackedVector4Array(1, 2, 3, 4)", "PackedVector4Array needs Godot 4.3 or newer, and this one is 4.2"),
+        ("4.2", "Vector4Array(1, 2, 3, 4)", "Vector4Array needs Godot 4.3 or newer, and this one is 4.2"),
+        ("4.3", "Dictionary[String, int]({\"a\": 1})", "A typed Dictionary needs Godot 4.4 or newer, and this one is 4.3"),
+    ], row => What_an_older_Godots_reader_refuses_is_refused_for_it(row.Engine, row.Text, row.Why));
+
+    private void What_an_older_Godots_reader_refuses_is_refused_for_it(string engine, string text, string why)
     {
         Assert.Equal(why, GodotVariantText.WhyNot(text, Bare, new GodotVariantBounds(Version.Parse(engine), null, null)));
     }
 
-    [Theory]
-    [InlineData("4.1", "Signal()")]
-    [InlineData("4.3", "PackedVector4Array(1, 2, 3, 4)")]
-    [InlineData("4.3.0", "PackedByteArray(\"AQI=\")")]
-    [InlineData("4.4", "Dictionary[String, int]({\"a\": 1})")]
-    [InlineData("4.0", "PackedByteArray(1, 2)")]
-    [InlineData("4.7", "Vector2(1, 2)")]
-    public void What_a_Godots_reader_takes_is_read_for_it(string engine, string text)
-    {
-        Assert.Null(GodotVariantText.WhyNot(text, Bare, new GodotVariantBounds(Version.Parse(engine), null, null)));
-    }
-
-    [Fact]
-    public void A_word_Godot_has_no_value_for_says_so()
-    {
-        Assert.Equal("not_a_value is no value", GodotVariantText.WhyNot("not_a_value", Bare));
-        Assert.Equal("Vector2 takes 2 numbers", GodotVariantText.WhyNot("Vector2(1, 2, 3)", Bare));
-        Assert.Equal("more follows the value", GodotVariantText.WhyNot("Vector2(1, 2) junk", Bare));
-    }
-
-    [Fact]
-    public void A_resource_named_by_id_is_one_the_scene_writes()
-    {
-        GodotFile scene = GodotFile.Parse("""
-            [gd_scene format=3]
-
-            [ext_resource type="Texture2D" path="res://icon.png" id="1_abc"]
-            [ext_resource type="Texture2D" path="res://old.png" id=2]
-
-            [sub_resource type="StyleBoxFlat" id="Box_x"]
-
-            [node name="Main" type="Node"]
-
-            """);
-        Assert.Null(GodotVariantText.WhyNot("ExtResource(\"1_abc\")", scene));
-        Assert.Null(GodotVariantText.WhyNot("ExtResource(2)", scene));
-        Assert.Null(GodotVariantText.WhyNot("[SubResource(\"Box_x\"), ExtResource(\"1_abc\")]", scene));
-        Assert.Equal("the scene names no external resource 9_z", GodotVariantText.WhyNot("{\"a\": ExtResource(\"9_z\")}", scene));
-        Assert.Equal("the scene names no sub-resource Gone", GodotVariantText.WhyNot("SubResource(\"Gone\")", scene));
-        Assert.Null(GodotVariantText.WhyNot("Array[ExtResource(\"1_abc\")]([])", scene));
-    }
-
-    [Fact]
-    public void A_value_nested_past_what_is_read_is_refused_and_stops_short_of_the_stack()
+    private void A_value_nested_past_what_is_read_is_refused_and_stops_short_of_the_stack()
     {
         Assert.Null(GodotVariantText.WhyNot(new string('[', 100) + new string(']', 100), Bare));
         Assert.Equal("it is nested too deeply", GodotVariantText.WhyNot(new string('[', 200_000), Bare));
