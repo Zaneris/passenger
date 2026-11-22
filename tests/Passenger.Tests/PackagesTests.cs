@@ -51,6 +51,19 @@ public sealed class PackagesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The gate's package changes as one flow, to take their place once it has its record on CI: a package
+    /// from the feed installed, updated and removed in a project with no solution, prereleases offered in semver's
+    /// order, versions unlisted on nuget.org left out, and a version set centrally shown and written there by an
+    /// install.</summary>
+    [AvaloniaFact]
+    public void The_gates_package_changes_hold_as_one_flow()
+    {
+        Flow.StepApart("a package found in the feed is installed updated and removed in a project below a folder with no solution", () => new PackagesTests(), t => t.A_package_found_in_the_feed_is_installed_updated_and_removed_in_a_project_below_a_folder_with_no_solution());
+        Flow.StepApart("prereleases are offered as semver orders them so beta 10 is an update from beta 2", () => new PackagesTests(), t => t.Prereleases_are_offered_as_semver_orders_them_so_beta_10_is_an_update_from_beta_2());
+        Flow.StepApart("versions unlisted on nuget org are not offered", () => new PackagesTests(), t => t.Versions_unlisted_on_nuget_org_are_not_offered());
+        Flow.StepApart("under central package management the window shows the version set centrally and an install puts its version there", () => new PackagesTests(), t => t.Under_central_package_management_the_window_shows_the_version_set_centrally_and_an_install_puts_its_version_there());
+    }
+
     /// <summary>In a window opened on the folder above the project, which no solution names: a package is installed at the
     /// version chosen, updated and removed, then installed again from the Install on the project's line.</summary>
     [Gate]

@@ -24,6 +24,17 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
     public TestingPlatformTests(RestoredFolders restored)
         : base(restored) => this.restored = restored;
 
+    /// <summary>The gate's Testing Platform runs as one flow, to take their place once it has its record on CI: a
+    /// theory's rows found and made by a run landing under their method, Stop ending a run and its test host keeping
+    /// what ran, and a VSTest and a Testing Platform project shown in one tree and run together.</summary>
+    [AvaloniaFact]
+    public void The_gates_testing_platform_runs_hold_as_one_flow()
+    {
+        Flow.StepApart("a theorys rows found by the platform and made by its run land under their method", () => new TestingPlatformTests(restored), t => t.A_theorys_rows_found_by_the_platform_and_made_by_its_run_land_under_their_method());
+        Flow.StepApart("Stop ends a run on the platform and its test host keeping what ran", () => new TestingPlatformTests(restored), t => t.Stop_ends_a_run_on_the_platform_and_its_test_host_keeping_what_ran());
+        Flow.StepApart("a solution of a vstest project and an mstest project on the platform shows both in one tree and run all runs both", () => new TestingPlatformTests(restored), t => t.A_solution_of_a_vstest_project_and_an_mstest_project_on_the_platform_shows_both_in_one_tree_and_run_all_runs_both());
+    }
+
     /// <summary>A project on the platform alone shows its tests from code and Run All reports each outcome; a project's run
     /// settings reach its tests on MSTest's runner and on one that reads none.</summary>
     [AvaloniaFact]

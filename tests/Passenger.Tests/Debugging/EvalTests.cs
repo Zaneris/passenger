@@ -7,6 +7,21 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class EvalTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>The gate's evaluations as one flow, to take their place once it has its record on CI: a stop's locals
+    /// listed as they are and read, assigned and called by an evaluation, a name a lambda shadows, a generic method's
+    /// type argument, a LINQ watch in a program that has called none, a static class's field and a method taking a
+    /// nested type.</summary>
+    [Fact]
+    public async Task The_gates_evaluations_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("at a stop the locals are listed as they are and an evaluation reads assigns and calls what the method sees", () => new EvalTests(testOutputHelper), t => t.At_a_stop_the_locals_are_listed_as_they_are_and_an_evaluation_reads_assigns_and_calls_what_the_method_sees());
+        await Flow.StepApartAsync("an evaluation of a name a lambda shadows reads the lambdas own parameter", () => new EvalTests(testOutputHelper), t => t.An_evaluation_of_a_name_a_lambda_shadows_reads_the_lambdas_own_parameter());
+        await Flow.StepApartAsync("an evaluation inside a generic method knows its type argument", () => new EvalTests(testOutputHelper), t => t.An_evaluation_inside_a_generic_method_knows_its_type_argument());
+        await Flow.StepApartAsync("a LINQ watch evaluates in a program that has called no LINQ method yet", () => new EvalTests(testOutputHelper), t => t.A_LINQ_watch_evaluates_in_a_program_that_has_called_no_LINQ_method_yet());
+        await Flow.StepApartAsync("an evaluation in a static classs method reads its field", () => new EvalTests(testOutputHelper), t => t.An_evaluation_in_a_static_classs_method_reads_its_field());
+        await Flow.StepApartAsync("an evaluation calls a method that takes a nested type", () => new EvalTests(testOutputHelper), t => t.An_evaluation_calls_a_method_that_takes_a_nested_type());
+    }
+
     /// <summary>At a stop in a method, its locals and parameters are listed as they are, and an evaluation reads and assigns
     /// them, its fields and properties (static ones too, by any qualified name), and calls its methods, a chain of calls
     /// keeping each one's result alive.</summary>

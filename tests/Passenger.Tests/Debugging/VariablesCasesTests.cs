@@ -9,6 +9,20 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>The gate's variables as one flow, to take their place once it has its record on CI: a captured
+    /// parameter listed once with its live value, an exception's inner one, a union's value, a pointer's address and
+    /// target, a DebuggerDisplay rendered, and a value whose ToString throws opening to its members.</summary>
+    [Fact]
+    public async Task The_gates_variables_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("a parameter a lambda captures is listed once with its live value", () => new VariablesCasesTests(testOutputHelper), t => t.A_parameter_a_lambda_captures_is_listed_once_with_its_live_value());
+        await Flow.StepApartAsync("an exception wrapping another reports the inner one", () => new VariablesCasesTests(testOutputHelper), t => t.An_exception_wrapping_another_reports_the_inner_one());
+        await Flow.StepApartAsync("a union shows the value it holds as that values type opening to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members());
+        await Flow.StepApartAsync("a pointer shows its address and type and opens to what it points at", () => new VariablesCasesTests(testOutputHelper), t => t.A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at());
+        await Flow.StepApartAsync("DebuggerDisplay renders as Visual Studio does", () => new VariablesCasesTests(testOutputHelper), t => t.DebuggerDisplay_renders_as_Visual_Studio_does());
+        await Flow.StepApartAsync("a value whose ToString throws shows its type and opens to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members());
+    }
+
     [Gate]
     [Fact]
     public async Task A_parameter_a_lambda_captures_is_listed_once_with_its_live_value()

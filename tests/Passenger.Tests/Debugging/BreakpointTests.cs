@@ -9,6 +9,21 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int MyIntSet = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "int myInt = 4;");
 
+    /// <summary>The gate's breakpoints as one flow, to take their place once it has its record on CI: one set before
+    /// its module loads told pending then bound, one answered with where it bound once its symbols are in, one stopping
+    /// at the statement of its column, at a line's first statement and at a statement's start, and one in a file of the
+    /// program's name in another folder binding to none of it.</summary>
+    [Fact]
+    public async Task The_gates_breakpoints_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("a breakpoint set before its module loads is told pending then bound at its statement", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_set_before_its_module_loads_is_told_pending_then_bound_at_its_statement());
+        await Flow.StepApartAsync("a breakpoint given a column stops at the statement at that column", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_given_a_column_stops_at_the_statement_at_that_column());
+        await Flow.StepApartAsync("a breakpoint on a line of several statements stops at the first", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_on_a_line_of_several_statements_stops_at_the_first());
+        await Flow.StepApartAsync("a breakpoint inside a statement of several lines stops at its start", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_inside_a_statement_of_several_lines_stops_at_its_start());
+        await Flow.StepApartAsync("a breakpoint set once its symbols have loaded is answered with where it bound", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_set_once_its_symbols_have_loaded_is_answered_with_where_it_bound());
+        await Flow.StepApartAsync("a breakpoint in a file named as the programs in another folder binds to none of it", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_in_a_file_named_as_the_programs_in_another_folder_binds_to_none_of_it());
+    }
+
     [Gate]
     [Fact]
     public async Task A_breakpoint_set_before_its_module_loads_is_told_pending_then_bound_at_its_statement()

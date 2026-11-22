@@ -17,6 +17,18 @@ public class StackTraceTests(ITestOutputHelper testOutputHelper)
     private static readonly int MiddleAwaits = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await InnerAsync();");
     private static readonly int TestAwaits = Debuggees.Line("DebuggableConsoleApp", "AsyncStackTraceClass.cs", "await MiddleAsync();");
 
+    /// <summary>The gate's stacks as one flow, to take their place once it has its record on CI: a stop's frames down
+    /// to Main with an async method by its own name, the async methods awaiting a stop with their locals, a library
+    /// frame without source decompiled as it is resolved, and a stack down to Main through code a program emitted.</summary>
+    [Fact]
+    public async Task The_gates_stacks_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("a stop lists its frames down to Main the librarys subtle and an async methods by its own name", () => new StackTraceTests(testOutputHelper), t => t.A_stop_lists_its_frames_down_to_Main_the_librarys_subtle_and_an_async_methods_by_its_own_name());
+        await Flow.StepApartAsync("a stop in an awaited method lists the async methods awaiting it with their locals", () => new StackTraceTests(testOutputHelper), t => t.A_stop_in_an_awaited_method_lists_the_async_methods_awaiting_it_with_their_locals());
+        await Flow.StepApartAsync("a library frame without source is decompiled when it is resolved", () => new StackTraceTests(testOutputHelper), t => t.A_library_frame_without_source_is_decompiled_when_it_is_resolved());
+        await Flow.StepApartAsync("a stop in a method emitted code calls has its stack down to Main through the emitted frame", () => new StackTraceTests(testOutputHelper), t => t.A_stop_in_a_method_emitted_code_calls_has_its_stack_down_to_Main_through_the_emitted_frame());
+    }
+
     [Gate]
     [Fact]
     public async Task A_stop_lists_its_frames_down_to_Main_the_librarys_subtle_and_an_async_methods_by_its_own_name()

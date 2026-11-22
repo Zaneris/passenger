@@ -7,6 +7,20 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class FunctionBreakpointTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>The gate's function breakpoints as one flow, to take their place once it has its record on CI: by a
+    /// bare name in every method of it, by a full name in that one alone, in a generic class's method, in every
+    /// overload or the one its parameters name, and a hit count going on beside another one set.</summary>
+    [Fact]
+    public async Task The_gates_function_breakpoints_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("a function breakpoint by a bare method name stops in every method of that name", () => new FunctionBreakpointTests(testOutputHelper), t => t.A_function_breakpoint_by_a_bare_method_name_stops_in_every_method_of_that_name());
+        await Flow.StepApartAsync("a function breakpoint by a full name stops in that method alone", () => new FunctionBreakpointTests(testOutputHelper), t => t.A_function_breakpoint_by_a_full_name_stops_in_that_method_alone());
+        await Flow.StepApartAsync("a function breakpoint on a generic classs method stops in it", () => new FunctionBreakpointTests(testOutputHelper), t => t.A_function_breakpoint_on_a_generic_classs_method_stops_in_it());
+        await Flow.StepApartAsync("a function breakpoints hit count goes on when another is set beside it and it stops on its third hit", () => new FunctionBreakpointTests(testOutputHelper), t => t.A_function_breakpoints_hit_count_goes_on_when_another_is_set_beside_it_and_it_stops_on_its_third_hit());
+        await Flow.StepApartAsync("a function breakpoint naming no parameters stops in every overload", () => new FunctionBreakpointTests(testOutputHelper), t => t.A_function_breakpoint_naming_no_parameters_stops_in_every_overload());
+        await Flow.StepApartAsync("a function breakpoint naming its parameters stops in that overload alone", () => new FunctionBreakpointTests(testOutputHelper), t => t.A_function_breakpoint_naming_its_parameters_stops_in_that_overload_alone());
+    }
+
     [Gate]
     [Fact]
     public async Task A_function_breakpoint_by_a_bare_method_name_stops_in_every_method_of_that_name()

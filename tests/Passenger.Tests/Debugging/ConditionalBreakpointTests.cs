@@ -12,6 +12,25 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
     private static readonly int TestEnd = AfterCount + 1;
 
+    /// <summary>The gate's conditions, hit counts and tracepoints as one flow, to take their place once it has its
+    /// record on CI: a breakpoint stopping where its condition holds, never where it fails, and saying why where it
+    /// cannot be told or is refused, a hit count of each form stopping on its hits and outlasting its file's
+    /// breakpoints sent again, and a tracepoint writing its values and never stopping.</summary>
+    [Fact]
+    public async Task The_gates_conditions_and_hit_counts_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("a condition with a lambda is refused saying why", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_condition_with_a_lambda_is_refused_saying_why());
+        await Flow.StepApartAsync("a tracepoint writes its message with the values in it and never stops", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_tracepoint_writes_its_message_with_the_values_in_it_and_never_stops());
+        await Flow.StepApartAsync("a breakpoint whose condition holds stops", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoint_whose_condition_holds_stops());
+        await Flow.StepAsync("a breakpoint whose condition cannot be told stops and says why", () => Cases.EachAsync<string>(["noSuchName", "myInt"], row => Flow.StepApartAsync($"a breakpoint whose condition cannot be told stops and says why ({row})", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoint_whose_condition_cannot_be_told_stops_and_says_why(row))));
+        await Flow.StepApartAsync("a breakpoint whose condition fails never stops", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoint_whose_condition_fails_never_stops());
+        await Flow.StepAsync("a hit count of N stops on the Nth hit alone", () => Cases.EachAsync<string>(["==2", "2", "= 2"], row => Flow.StepApartAsync($"a hit count of N stops on the Nth hit alone ({row})", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_hit_count_of_N_stops_on_the_Nth_hit_alone(row))));
+        await Flow.StepApartAsync("a breakpoints hit count and id outlast its files breakpoints being sent again", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_breakpoints_hit_count_and_id_outlast_its_files_breakpoints_being_sent_again());
+        await Flow.StepApartAsync("a hit count the debugger cannot read is refused saying why", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_hit_count_the_debugger_cannot_read_is_refused_saying_why());
+        await Flow.StepApartAsync("a hit count of at least N stops on every hit from the Nth", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_hit_count_of_at_least_N_stops_on_every_hit_from_the_Nth());
+        await Flow.StepApartAsync("a hit count of every N stops on every Nth hit", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_hit_count_of_every_N_stops_on_every_Nth_hit());
+    }
+
     [Gate]
     [Fact]
     public async Task A_condition_with_a_lambda_is_refused_saying_why()

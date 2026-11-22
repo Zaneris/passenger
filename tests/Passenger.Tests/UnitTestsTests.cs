@@ -27,6 +27,30 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     public UnitTestsTests(RestoredFolders restored)
         : base(restored) => this.restored = restored;
 
+    /// <summary>The gate's Unit Tests window as one flow, to take their place once it has its record on CI: Run All
+    /// marking each test with a failure linked to its line, a test run at the caret alone, a build's failure brought
+    /// forward, runs until a failure, under each framework, of a solution folder chosen and stopped while building or
+    /// finding, tests shown from code before any build and as they are typed, renamed and run, kept on their lines
+    /// below line breaks only Roslyn counts, and the tree's grouping, filters and find, kept with the folder.</summary>
+    [AvaloniaFact]
+    public void The_gates_unit_tests_window_holds_as_one_flow()
+    {
+        Flow.StepApart("Run all marks each test a failure links to its line run at the caret runs that test alone and a failed build brings the build window forward", () => new UnitTestsTests(restored), t => t.Run_all_marks_each_test_a_failure_links_to_its_line_run_at_the_caret_runs_that_test_alone_and_a_failed_build_brings_the_build_window_forward());
+        Flow.StepApart("below a comment holding line breaks only roslyn counts each tests icon and menu stay on its line", () => new UnitTestsTests(restored), t => t.Below_a_comment_holding_line_breaks_only_roslyn_counts_each_tests_icon_and_menu_stay_on_its_line());
+        Flow.StepApart("Run until failure repeats a test until it fails and shows that run", () => new UnitTestsTests(restored), t => t.Run_until_failure_repeats_a_test_until_it_fails_and_shows_that_run());
+        Flow.StepApart("a project built for two frameworks runs under each and shows each ones results under it", () => new UnitTestsTests(restored), t => t.A_project_built_for_two_frameworks_runs_under_each_and_shows_each_ones_results_under_it());
+        Flow.StepApart("Stop in the unit tests window ends a run while it builds and while it finds the tests", () => new UnitTestsTests(restored), t => t.Stop_in_the_unit_tests_window_ends_a_run_while_it_builds_and_while_it_finds_the_tests());
+        Flow.StepApart("typing in one file among many open reads and marks that files tests and no others", () => new UnitTestsTests(restored), t => t.Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others());
+        Flow.StepApart("Run unit tests on a solution folder chosen in the explorer runs the tests of its projects alone", () => new UnitTestsTests(restored), t => t.Run_unit_tests_on_a_solution_folder_chosen_in_the_explorer_runs_the_tests_of_its_projects_alone());
+        Flow.StepApart("a solution never built shows its xunit nunit and mstest tests from their code as it opens", () => new UnitTestsTests(restored), t => t.A_solution_never_built_shows_its_xunit_nunit_and_mstest_tests_from_their_code_as_it_opens());
+        Flow.StepApart("Run all lands on the tests shown from code with a theorys rows under it and a test it never ran stays", () => new UnitTestsTests(restored), t => t.Run_all_lands_on_the_tests_shown_from_code_with_a_theorys_rows_under_it_and_a_test_it_never_ran_stays());
+        Flow.StepApart("typing a test adds it to the tree renaming or removing one follows and a test that ran keeps its result", () => new UnitTestsTests(restored), t => t.Typing_a_test_adds_it_to_the_tree_renaming_or_removing_one_follows_and_a_test_that_ran_keeps_its_result());
+        Flow.StepApart("Group by categories shows each test under its xunit traits nunit categories and mstest test categories", () => new UnitTestsTests(restored), t => t.Group_by_categories_shows_each_test_under_its_xunit_traits_nunit_categories_and_mstest_test_categories());
+        Flow.StepApart("after a run the failed filter shows the failures alone as many as it counts and a modifier adds the ignored", () => new UnitTestsTests(restored), t => t.After_a_run_the_failed_filter_shows_the_failures_alone_as_many_as_it_counts_and_a_modifier_adds_the_ignored());
+        Flow.StepApart("Find in the unit tests window narrows the tree to the tests named and the rows above them", () => new UnitTestsTests(restored), t => t.Find_in_the_unit_tests_window_narrows_the_tree_to_the_tests_named_and_the_rows_above_them());
+        Flow.StepApart("the grouping and outcomes chosen come back when the folder opens again and another folder has its own", () => new UnitTestsTests(restored), t => t.The_grouping_and_outcomes_chosen_come_back_when_the_folder_opens_again_and_another_folder_has_its_own());
+    }
+
     /// <summary>Run All, stopped during its build and pressed again, marks each test, the Unit Tests window kept in front
     /// through its build, the status bar's tally a link back to it; a failed test's stack trace in its details links to the
     /// line that failed; Run Tests at the caret runs that test alone; and a build that fails brings the Build window forward

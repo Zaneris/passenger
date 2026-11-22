@@ -8,6 +8,27 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class LaunchTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>The gate's launches as one flow, to take their place once it has its record on CI: a program stopped at
+    /// its entry however its Main is written, reading its own input, writing all it writes with its own exit code and
+    /// starting another as it would undebugged, started in the client's terminal or refused there saying why, and a
+    /// runtime starting late, a launch stopped while it starts and a program ending before it.</summary>
+    [Fact]
+    public async Task The_gates_launches_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("Stop at entry stops in Main saying so", () => new LaunchTests(testOutputHelper), t => t.Stop_at_entry_stops_in_Main_saying_so());
+        await Flow.StepApartAsync("Stop at entry in top level statements stops at their first saying so", () => new LaunchTests(testOutputHelper), t => t.Stop_at_entry_in_top_level_statements_stops_at_their_first_saying_so());
+        await Flow.StepApartAsync("Stop at entry in an async Main stops at its start saying so", () => new LaunchTests(testOutputHelper), t => t.Stop_at_entry_in_an_async_Main_stops_at_its_start_saying_so());
+        await Flow.StepApartAsync("Stop at entry in async top level statements stops at their first saying so", () => new LaunchTests(testOutputHelper), t => t.Stop_at_entry_in_async_top_level_statements_stops_at_their_first_saying_so());
+        await Flow.StepApartAsync("a launched program reads its own input never the adapters", () => new LaunchTests(testOutputHelper), t => t.A_launched_program_reads_its_own_input_never_the_adapters());
+        await Flow.StepApartAsync("a dotnet program the debugged one starts runs as it would undebugged", () => new LaunchTests(testOutputHelper), t => t.A_dotnet_program_the_debugged_one_starts_runs_as_it_would_undebugged());
+        await Flow.StepApartAsync("a program writing 64 KB runs to its end with all it wrote and its own exit code", () => new LaunchTests(testOutputHelper), t => t.A_program_writing_64_KB_runs_to_its_end_with_all_it_wrote_and_its_own_exit_code());
+        await Flow.StepApartAsync("a program started in the clients terminal stops at a breakpoint on Mains first line every time", () => new LaunchTests(testOutputHelper), t => t.A_program_started_in_the_clients_terminal_stops_at_a_breakpoint_on_Mains_first_line_every_time());
+        await Flow.StepApartAsync("a client that cannot start the program in its terminal fails the launch saying why", () => new LaunchTests(testOutputHelper), t => t.A_client_that_cannot_start_the_program_in_its_terminal_fails_the_launch_saying_why());
+        await Flow.StepApartAsync("a program whose runtime starts late is still debugged", () => new LaunchTests(testOutputHelper), t => t.A_program_whose_runtime_starts_late_is_still_debugged());
+        await Flow.StepApartAsync("a launch stopped while its runtime starts ends at once with its program", () => new LaunchTests(testOutputHelper), t => t.A_launch_stopped_while_its_runtime_starts_ends_at_once_with_its_program());
+        await Flow.StepApartAsync("a program that ends before its runtime starts fails configurationDone saying how it ended", () => new LaunchTests(testOutputHelper), t => t.A_program_that_ends_before_its_runtime_starts_fails_configurationDone_saying_how_it_ended());
+    }
+
     [Gate]
     [Fact]
     public async Task Stop_at_entry_stops_in_Main_saying_so()

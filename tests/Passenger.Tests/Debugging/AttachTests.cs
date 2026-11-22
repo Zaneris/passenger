@@ -13,6 +13,22 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
 
+    /// <summary>The gate's attaches as one flow, to take their place once it has its record on CI: a program held at
+    /// its start let go and its breakpoint's first pass seen, a running program stopped by a pause at once, a program
+    /// left running when the client goes and attached to again, an attached program's end saying only the exit code the
+    /// system tells, a held program running on when its attach ends first, and an attach to a program that is not .NET
+    /// refused saying why.</summary>
+    [Fact]
+    public async Task The_gates_attaches_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("a program held at its start is let go by the attach and its breakpoints first pass is seen", () => new AttachTests(testOutputHelper), t => t.A_program_held_at_its_start_is_let_go_by_the_attach_and_its_breakpoints_first_pass_is_seen());
+        await Flow.StepApartAsync("a program attached to runs on when the client goes without disconnecting and can be attached to again", () => new AttachTests(testOutputHelper), t => t.A_program_attached_to_runs_on_when_the_client_goes_without_disconnecting_and_can_be_attached_to_again());
+        await Flow.StepApartAsync("a running program is the debuggers once configurationDone answers so a pause at once stops it", () => new AttachTests(testOutputHelper), t => t.A_running_program_is_the_debuggers_once_configurationDone_answers_so_a_pause_at_once_stops_it());
+        await Flow.StepApartAsync("an attached programs end says its exit code where the system tells it and makes none up", () => new AttachTests(testOutputHelper), t => t.An_attached_programs_end_says_its_exit_code_where_the_system_tells_it_and_makes_none_up());
+        await Flow.StepApartAsync("a program held at its start runs on when its attach ends before taking hold of it", () => new AttachTests(testOutputHelper), t => t.A_program_held_at_its_start_runs_on_when_its_attach_ends_before_taking_hold_of_it());
+        await Flow.StepApartAsync("an attach to a program that is not dotnet fails its configurationDone saying why", () => new AttachTests(testOutputHelper), t => t.An_attach_to_a_program_that_is_not_dotnet_fails_its_configurationDone_saying_why());
+    }
+
     [Gate]
     [Fact]
     public async Task A_program_held_at_its_start_is_let_go_by_the_attach_and_its_breakpoints_first_pass_is_seen()

@@ -12,6 +12,19 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
 {
     private const string Looping = "LoopingConsoleApp";
 
+    /// <summary>The gate's pauses as one flow, to take their place once it has its record on CI: a looping program
+    /// paused in its loop and again after it went on, a value paused in a sleep shown though its ToString cannot run
+    /// and a step back to the loop, and a parallel loop stopped on the iteration its condition matches or where its
+    /// exception was thrown.</summary>
+    [Fact]
+    public async Task The_gates_pauses_hold_as_one_flow()
+    {
+        await Flow.StepApartAsync("Pause stops a looping program in its loop and a second pause after continuing does too", () => new PauseTests(testOutputHelper), t => t.Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too());
+        await Flow.StepApartAsync("a value paused in a sleep shows its type and fields where its ToString cannot run and a step comes back to the loop", () => new PauseTests(testOutputHelper), t => t.A_value_paused_in_a_sleep_shows_its_type_and_fields_where_its_ToString_cannot_run_and_a_step_comes_back_to_the_loop());
+        await Flow.StepApartAsync("a condition that calls a method stops a parallel loop on its matching iteration", () => new PauseTests(testOutputHelper), t => t.A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration());
+        await Flow.StepApartAsync("an exception in a parallel loop whose iterations test a condition stops where it was thrown", () => new PauseTests(testOutputHelper), t => t.An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown());
+    }
+
     [Gate]
     [Fact]
     public async Task Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too()
