@@ -14,17 +14,10 @@ public sealed class StampsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_folders_stamp_changes_only_with_what_its_build_reads() => Cases.All(
-        ("a folders stamp holds while a build makes its output dependencies and hidden folders and changes with a folder of its own", () => Apart(test => test.A_folders_stamp_holds_while_a_build_makes_its_output_dependencies_and_hidden_folders_and_changes_with_a_folder_of_its_own())),
-        ("a file named as a build folder is counted as the wildcards take it in", () => Apart(test => test.A_file_named_as_a_build_folder_is_counted_as_the_wildcards_take_it_in())),
-        ("a presence stamp holds through an edit and changes as its file comes or goes", () => Apart(test => test.A_presence_stamp_holds_through_an_edit_and_changes_as_its_file_comes_or_goes())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<StampsTests> check)
-    {
-        using StampsTests test = new();
-        check(test);
-    }
+    public void A_folders_stamp_changes_only_with_what_its_build_reads() => Cases.AllApart<StampsTests>(
+        ("a folders stamp holds while a build makes its output dependencies and hidden folders and changes with a folder of its own", test => test.A_folders_stamp_holds_while_a_build_makes_its_output_dependencies_and_hidden_folders_and_changes_with_a_folder_of_its_own()),
+        ("a file named as a build folder is counted as the wildcards take it in", test => test.A_file_named_as_a_build_folder_is_counted_as_the_wildcards_take_it_in()),
+        ("a presence stamp holds through an edit and changes as its file comes or goes", test => test.A_presence_stamp_holds_through_an_edit_and_changes_as_its_file_comes_or_goes()));
 
     private void A_folders_stamp_holds_while_a_build_makes_its_output_dependencies_and_hidden_folders_and_changes_with_a_folder_of_its_own()
     {

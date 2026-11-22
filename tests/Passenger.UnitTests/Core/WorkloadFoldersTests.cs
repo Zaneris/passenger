@@ -13,18 +13,11 @@ public sealed class WorkloadFoldersTests : IDisposable
     public void Dispose() => Directory.Delete(place, recursive: true);
 
     [Fact]
-    public void An_SDKs_workloads_are_installed_where_dotnet_reads_them() => Cases.All(
-        ("a dotnet installs an SDKs workloads for each user by the marker of its feature band whatever its pre release", () => Apart(test => test.A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release())),
-        ("the users own dotnet comes first and takes the installs only where the SDKs band carries the marker", () => Apart(test => test.The_users_own_dotnet_comes_first_and_takes_the_installs_only_where_the_SDKs_band_carries_the_marker())),
-        ("a dotnet installed in the users own dotnet folder is its one folder however its home is reached", () => Apart(test => test.A_dotnet_installed_in_the_users_own_dotnet_folder_is_its_one_folder_however_its_home_is_reached())),
-        ("the SDKs home is DOTNET CLI HOME else the systems home folder", () => Apart(test => test.The_SDKs_home_is_DOTNET_CLI_HOME_else_the_systems_home_folder())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<WorkloadFoldersTests> check)
-    {
-        using WorkloadFoldersTests test = new();
-        check(test);
-    }
+    public void An_SDKs_workloads_are_installed_where_dotnet_reads_them() => Cases.AllApart<WorkloadFoldersTests>(
+        ("a dotnet installs an SDKs workloads for each user by the marker of its feature band whatever its pre release", test => test.A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release()),
+        ("the users own dotnet comes first and takes the installs only where the SDKs band carries the marker", test => test.The_users_own_dotnet_comes_first_and_takes_the_installs_only_where_the_SDKs_band_carries_the_marker()),
+        ("a dotnet installed in the users own dotnet folder is its one folder however its home is reached", test => test.A_dotnet_installed_in_the_users_own_dotnet_folder_is_its_one_folder_however_its_home_is_reached()),
+        ("the SDKs home is DOTNET CLI HOME else the systems home folder", test => test.The_SDKs_home_is_DOTNET_CLI_HOME_else_the_systems_home_folder()));
 
     private void A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release()
     {

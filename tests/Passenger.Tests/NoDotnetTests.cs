@@ -100,10 +100,26 @@ public sealed class NoDotnetTests : IAsyncDisposable
     [AvaloniaFact]
     public async Task With_no_dotnet_the_window_says_so_and_refuses_only_what_needs_it()
     {
-        await Flow.StepAsync("with no dotnet the Welcome screen says so its New Solution refusing in those words and links the download page", () => ApartAsync(t => t.With_no_dotnet_the_Welcome_screen_says_so_its_New_Solution_refusing_in_those_words_and_links_the_download_page()));
-        await Flow.StepAsync("a csharp folder with no dotnet says so refuses what needs it in those words and still edits and commits", () => ApartAsync(t => t.A_csharp_folder_with_no_dotnet_says_so_refuses_what_needs_it_in_those_words_and_still_edits_and_commits()));
-        await Flow.StepAsync("a GDScript only games tests ask no dotnet of their actions", () => ApartAsync(t => t.A_GDScript_only_games_tests_ask_no_dotnet_of_their_actions()));
-        await Flow.StepAsync("a loose csharp file with no dotnet has the banner say it knows no framework types and why", () => ApartAsync(t => t.A_loose_csharp_file_with_no_dotnet_has_the_banner_say_it_knows_no_framework_types_and_why()));
+        await Flow.StepApartAsync<NoDotnetTests>("with no dotnet the Welcome screen says so its New Solution refusing in those words and links the download page", t =>
+        {
+            t.With_no_dotnet_the_Welcome_screen_says_so_its_New_Solution_refusing_in_those_words_and_links_the_download_page();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("a csharp folder with no dotnet says so refuses what needs it in those words and still edits and commits", t =>
+        {
+            t.A_csharp_folder_with_no_dotnet_says_so_refuses_what_needs_it_in_those_words_and_still_edits_and_commits();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("a GDScript only games tests ask no dotnet of their actions", t =>
+        {
+            t.A_GDScript_only_games_tests_ask_no_dotnet_of_their_actions();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("a loose csharp file with no dotnet has the banner say it knows no framework types and why", t =>
+        {
+            t.A_loose_csharp_file_with_no_dotnet_has_the_banner_say_it_knows_no_framework_types_and_why();
+            return Task.CompletedTask;
+        });
     }
 
     /// <summary>Install dotnet SDK asks the person, never an agent, installs the SDK the folder's global.json pins from
@@ -112,12 +128,36 @@ public sealed class NoDotnetTests : IAsyncDisposable
     [AvaloniaFact]
     public async Task Install_dotnet_SDK_installs_the_SDK_checked_or_leaves_the_folder_as_it_was()
     {
-        await Flow.StepAsync("with no dotnet Install dotnet SDK asks to install the SDK the folders global json pins never the newest", () => ApartAsync(t => t.With_no_dotnet_Install_dotnet_SDK_asks_to_install_the_SDK_the_folders_global_json_pins_never_the_newest()));
-        await Flow.StepAsync("an archive whose SHA 512 is not the one published is refused with nothing installed", () => ApartAsync(t => t.An_archive_whose_SHA_512_is_not_the_one_published_is_refused_with_nothing_installed()));
-        await Flow.StepAsync("an archive without the runtime its SDK runs on is refused with nothing of it left and what the folder held kept", () => ApartAsync(t => t.An_archive_without_the_runtime_its_SDK_runs_on_is_refused_with_nothing_of_it_left_and_what_the_folder_held_kept()));
-        await Flow.StepAsync("an SDK that does not start is taken out again saying so and what the folder held is kept", () => ApartAsync(t => t.An_SDK_that_does_not_start_is_taken_out_again_saying_so_and_what_the_folder_held_is_kept()));
-        await Flow.StepAsync("an agents install on a persons window is their question and an agents own passenger refuses it", () => ApartAsync(t => t.An_agents_install_on_a_persons_window_is_their_question_and_an_agents_own_passenger_refuses_it()));
-        await Flow.StepAsync("install dotnet SDK asks then installs the SDK from the feed into the persons folder checked and the folder loads with it and new shells find it", () => ApartAsync(t => t.Install_dotnet_SDK_asks_then_installs_the_SDK_from_the_feed_into_the_persons_folder_checked_and_the_folder_loads_with_it_and_new_shells_find_it()));
+        await Flow.StepApartAsync<NoDotnetTests>("with no dotnet Install dotnet SDK asks to install the SDK the folders global json pins never the newest", t =>
+        {
+            t.With_no_dotnet_Install_dotnet_SDK_asks_to_install_the_SDK_the_folders_global_json_pins_never_the_newest();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("an archive whose SHA 512 is not the one published is refused with nothing installed", t =>
+        {
+            t.An_archive_whose_SHA_512_is_not_the_one_published_is_refused_with_nothing_installed();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("an archive without the runtime its SDK runs on is refused with nothing of it left and what the folder held kept", t =>
+        {
+            t.An_archive_without_the_runtime_its_SDK_runs_on_is_refused_with_nothing_of_it_left_and_what_the_folder_held_kept();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("an SDK that does not start is taken out again saying so and what the folder held is kept", t =>
+        {
+            t.An_SDK_that_does_not_start_is_taken_out_again_saying_so_and_what_the_folder_held_is_kept();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("an agents install on a persons window is their question and an agents own passenger refuses it", t =>
+        {
+            t.An_agents_install_on_a_persons_window_is_their_question_and_an_agents_own_passenger_refuses_it();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("install dotnet SDK asks then installs the SDK from the feed into the persons folder checked and the folder loads with it and new shells find it", t =>
+        {
+            t.Install_dotnet_SDK_asks_then_installs_the_SDK_from_the_feed_into_the_persons_folder_checked_and_the_folder_loads_with_it_and_new_shells_find_it();
+            return Task.CompletedTask;
+        });
     }
 
     /// <summary>The installation Passenger was told to use comes before its own, goes first on the PATH once, and one
@@ -125,24 +165,21 @@ public sealed class NoDotnetTests : IAsyncDisposable
     [AvaloniaFact]
     public async Task The_dotnet_used_is_the_one_named_and_goes_first_on_the_PATH()
     {
-        await Flow.StepAsync("the installation Passenger was told to use comes before the dotnet running it", () => ApartAsync(t => t.The_installation_Passenger_was_told_to_use_comes_before_the_dotnet_running_it()));
-        await Flow.StepAsync("an installation used goes first on the PATH once and keeps its empty entry", () => ApartAsync(t => t.An_installation_used_goes_first_on_the_PATH_once_and_keeps_its_empty_entry()));
-        await Flow.StepAsync("an SDK in the home dotnet folder no PATH names is found named and used and Add to PATH puts it there", () => ApartAsync(t => t.An_SDK_in_the_home_dotnet_folder_no_PATH_names_is_found_named_and_used_and_Add_to_PATH_puts_it_there()));
-    }
-
-    /// <summary>Runs a check on a test of its own, as each ran before, disposed as xunit disposes one: its stand-ins and
-    /// variables put back before the next check's are set.</summary>
-    private static async Task ApartAsync(Action<NoDotnetTests> check)
-    {
-        NoDotnetTests test = new();
-        try
+        await Flow.StepApartAsync<NoDotnetTests>("the installation Passenger was told to use comes before the dotnet running it", t =>
         {
-            check(test);
-        }
-        finally
+            t.The_installation_Passenger_was_told_to_use_comes_before_the_dotnet_running_it();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("an installation used goes first on the PATH once and keeps its empty entry", t =>
         {
-            await test.DisposeAsync();
-        }
+            t.An_installation_used_goes_first_on_the_PATH_once_and_keeps_its_empty_entry();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartAsync<NoDotnetTests>("an SDK in the home dotnet folder no PATH names is found named and used and Add to PATH puts it there", t =>
+        {
+            t.An_SDK_in_the_home_dotnet_folder_no_PATH_names_is_found_named_and_used_and_Add_to_PATH_puts_it_there();
+            return Task.CompletedTask;
+        });
     }
 
     private void With_no_dotnet_the_Welcome_screen_says_so_its_New_Solution_refusing_in_those_words_and_links_the_download_page()

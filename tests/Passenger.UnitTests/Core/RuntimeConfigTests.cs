@@ -13,17 +13,10 @@ public sealed class RuntimeConfigTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_programs_runtime_configuration_reads_as_the_host_reads_it() => Cases.All(
-        ("a wpf apps configuration written with comments reads its framework as dotnet 8 its desktop framework and its switches", () => Apart(test => test.A_wpf_apps_configuration_written_with_comments_reads_its_framework_as_dotnet_8_its_desktop_framework_and_its_switches())),
-        ("each property reads as the host gives it an object or a list as its json written whole on one line", () => Apart(test => test.Each_property_reads_as_the_host_gives_it_an_object_or_a_list_as_its_json_written_whole_on_one_line())),
-        ("a self contained build runs on the frameworks it carries and one with no configuration reads as none", () => Apart(test => test.A_self_contained_build_runs_on_the_frameworks_it_carries_and_one_with_no_configuration_reads_as_none())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<RuntimeConfigTests> check)
-    {
-        using RuntimeConfigTests test = new();
-        check(test);
-    }
+    public void A_programs_runtime_configuration_reads_as_the_host_reads_it() => Cases.AllApart<RuntimeConfigTests>(
+        ("a wpf apps configuration written with comments reads its framework as dotnet 8 its desktop framework and its switches", test => test.A_wpf_apps_configuration_written_with_comments_reads_its_framework_as_dotnet_8_its_desktop_framework_and_its_switches()),
+        ("each property reads as the host gives it an object or a list as its json written whole on one line", test => test.Each_property_reads_as_the_host_gives_it_an_object_or_a_list_as_its_json_written_whole_on_one_line()),
+        ("a self contained build runs on the frameworks it carries and one with no configuration reads as none", test => test.A_self_contained_build_runs_on_the_frameworks_it_carries_and_one_with_no_configuration_reads_as_none()));
 
     private void A_wpf_apps_configuration_written_with_comments_reads_its_framework_as_dotnet_8_its_desktop_framework_and_its_switches()
     {

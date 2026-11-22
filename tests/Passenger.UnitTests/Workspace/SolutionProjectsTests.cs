@@ -16,25 +16,18 @@ public sealed class SolutionProjectsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_project_added_to_a_solution_folder_is_refused_where_its_name_is_taken_and_none_is_lost() => Cases.All(
-        ("a project of a name its solution folder holds already is refused and the file left as it was", () => Cases.Each<(string?, string, string)>(
+    public void A_project_added_to_a_solution_folder_is_refused_where_its_name_is_taken_and_none_is_lost() => Cases.AllApart<SolutionProjectsTests>(
+        ("a project of a name its solution folder holds already is refused and the file left as it was", _ => Cases.EachApart<SolutionProjectsTests, (string?, string, string)>(
         [
             (null, "b/hello/hello.csproj", "the solution's top"),
             ("/src/", "b/Hello/Hello.csproj", "the solution folder src"),
-        ], row => Apart(test => test.A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(row.Item1, row.Item2, row.Item3)))),
-        ("folders nested past what a solution holds stand in the deepest and lose no project", () => Cases.Each<string>(
+        ], (test, row) => test.A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(row.Item1, row.Item2, row.Item3))),
+        ("folders nested past what a solution holds stand in the deepest and lose no project", _ => Cases.EachApart<SolutionProjectsTests, string>(
         [
             "elements",
             "nested projects",
-        ], row => Apart(test => test.Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(row)))),
-        ("a project of that name is taken in another solution folder", () => Apart(test => test.A_project_of_that_name_is_taken_in_another_solution_folder())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<SolutionProjectsTests> check)
-    {
-        using SolutionProjectsTests test = new();
-        check(test);
-    }
+        ], (test, row) => test.Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(row))),
+        ("a project of that name is taken in another solution folder", test => test.A_project_of_that_name_is_taken_in_another_solution_folder()));
 
     private void A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(string? folder, string project, string where)
     {

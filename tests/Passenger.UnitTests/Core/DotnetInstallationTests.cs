@@ -11,14 +11,14 @@ public sealed class DotnetInstallationTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void An_SDK_is_taken_only_where_the_runtime_it_runs_on_is_there() => Cases.All(
-        ("an SDK short of the runtime it runs on is no SDK", () => Apart(test => test.An_SDK_short_of_the_runtime_it_runs_on_is_no_SDK())),
-        ("an SDK takes its runtime or a later one of its major never an earlier or the next major", () => Apart(test => test.An_SDK_takes_its_runtime_or_a_later_one_of_its_major_never_an_earlier_or_the_next_major())),
-        ("an SDK that says nothing of its runtime is taken at its folders word", () => Cases.Each<string?>(
+    public void An_SDK_is_taken_only_where_the_runtime_it_runs_on_is_there() => Cases.AllApart<DotnetInstallationTests>(
+        ("an SDK short of the runtime it runs on is no SDK", test => test.An_SDK_short_of_the_runtime_it_runs_on_is_no_SDK()),
+        ("an SDK takes its runtime or a later one of its major never an earlier or the next major", test => test.An_SDK_takes_its_runtime_or_a_later_one_of_its_major_never_an_earlier_or_the_next_major()),
+        ("an SDK that says nothing of its runtime is taken at its folders word", _ => Cases.EachApart<DotnetInstallationTests, string?>(
         [
             null,
             "not json",
-        ], row => Apart(test => test.An_SDK_that_says_nothing_of_its_runtime_is_taken_at_its_folders_word(row)))));
+        ], (test, row) => test.An_SDK_that_says_nothing_of_its_runtime_is_taken_at_its_folders_word(row))));
 
     private void An_SDK_short_of_the_runtime_it_runs_on_is_no_SDK()
     {
@@ -51,19 +51,12 @@ public sealed class DotnetInstallationTests : IDisposable
     }
 
     [Fact]
-    public void A_folders_dotnet_is_the_first_installation_holding_the_SDK_its_trusted_global_json_takes() => Cases.All(
-        ("the installation chosen comes before the dotnet running this program while its dotnet is there", () => Apart(test => test.The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there())),
-        ("a folder whose global json asks an SDK the first dotnet lacks takes the next that holds it the homes own too", () => Apart(test => test.A_folder_whose_global_json_asks_an_SDK_the_first_dotnet_lacks_takes_the_next_that_holds_it_the_homes_own_too())),
-        ("a global jsons sdk paths are searched in their order a relative one from its folder host being each dotnet found", () => Apart(test => test.A_global_jsons_sdk_paths_are_searched_in_their_order_a_relative_one_from_its_folder_host_being_each_dotnet_found())),
-        ("a global json in a folder not trusted names no dotnet of its own the dotnets found searched alone", () => Apart(test => test.A_global_json_in_a_folder_not_trusted_names_no_dotnet_of_its_own_the_dotnets_found_searched_alone())),
-        ("the homes own dotnet is looked for after DOTNET ROOT the PATH and the installers places", () => Apart(test => test.The_homes_own_dotnet_is_looked_for_after_DOTNET_ROOT_the_PATH_and_the_installers_places())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<DotnetInstallationTests> check)
-    {
-        using DotnetInstallationTests test = new();
-        check(test);
-    }
+    public void A_folders_dotnet_is_the_first_installation_holding_the_SDK_its_trusted_global_json_takes() => Cases.AllApart<DotnetInstallationTests>(
+        ("the installation chosen comes before the dotnet running this program while its dotnet is there", test => test.The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there()),
+        ("a folder whose global json asks an SDK the first dotnet lacks takes the next that holds it the homes own too", test => test.A_folder_whose_global_json_asks_an_SDK_the_first_dotnet_lacks_takes_the_next_that_holds_it_the_homes_own_too()),
+        ("a global jsons sdk paths are searched in their order a relative one from its folder host being each dotnet found", test => test.A_global_jsons_sdk_paths_are_searched_in_their_order_a_relative_one_from_its_folder_host_being_each_dotnet_found()),
+        ("a global json in a folder not trusted names no dotnet of its own the dotnets found searched alone", test => test.A_global_json_in_a_folder_not_trusted_names_no_dotnet_of_its_own_the_dotnets_found_searched_alone()),
+        ("the homes own dotnet is looked for after DOTNET ROOT the PATH and the installers places", test => test.The_homes_own_dotnet_is_looked_for_after_DOTNET_ROOT_the_PATH_and_the_installers_places()));
 
     private void The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there()
     {

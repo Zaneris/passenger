@@ -13,17 +13,10 @@ public sealed class CarriedFilesTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void The_debug_relays_are_found_where_the_app_carries_them() => Cases.All(
-        ("a bundle carries its debug relays in its Resources", () => Apart(test => test.A_bundle_carries_its_debug_relays_in_its_Resources())),
-        ("an app carrying its relays beside it takes them there", () => Apart(test => test.An_app_carrying_its_relays_beside_it_takes_them_there())),
-        ("an app carrying no relays names where they would be beside it", () => Apart(test => test.An_app_carrying_no_relays_names_where_they_would_be_beside_it())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<CarriedFilesTests> check)
-    {
-        using CarriedFilesTests test = new();
-        check(test);
-    }
+    public void The_debug_relays_are_found_where_the_app_carries_them() => Cases.AllApart<CarriedFilesTests>(
+        ("a bundle carries its debug relays in its Resources", test => test.A_bundle_carries_its_debug_relays_in_its_Resources()),
+        ("an app carrying its relays beside it takes them there", test => test.An_app_carrying_its_relays_beside_it_takes_them_there()),
+        ("an app carrying no relays names where they would be beside it", test => test.An_app_carrying_no_relays_names_where_they_would_be_beside_it()));
 
     private void A_bundle_carries_its_debug_relays_in_its_Resources()
     {

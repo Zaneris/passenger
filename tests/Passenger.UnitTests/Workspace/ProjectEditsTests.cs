@@ -13,14 +13,14 @@ public sealed class ProjectEditsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_move_is_followed_by_every_path_a_project_names_escaped_as_msbuild_reads_it() => Cases.All(
-        ("a project moved deeper follows its imports and hint paths and another projects import into it follows it", () => Apart(test => test.A_project_moved_deeper_follows_its_imports_and_hint_paths_and_another_projects_import_into_it_follows_it())),
-        ("each file a list names follows its move the rest of the list as written", () => Apart(test => test.Each_file_a_list_names_follows_its_move_the_rest_of_the_list_as_written())),
-        ("a file whose name holds an ampersand is named escaped as it moves and the project still reads as xml", () => Apart(test => test.A_file_whose_name_holds_an_ampersand_is_named_escaped_as_it_moves_and_the_project_still_reads_as_xml())),
-        ("a reference to a project in a folder of msbuilds own characters is read back as that project", () => Apart(test => test.A_reference_to_a_project_in_a_folder_of_msbuilds_own_characters_is_read_back_as_that_project())),
-        ("a move follows paths written escaped and escapes the paths it writes", () => Apart(test => test.A_move_follows_paths_written_escaped_and_escapes_the_paths_it_writes())),
-        ("a folder with a quote in its name is written escaped only inside a condition", () => Apart(test => test.A_folder_with_a_quote_in_its_name_is_written_escaped_only_inside_a_condition())),
-        ("a file named beside an item follows it through a folder of msbuilds own characters", () => Apart(test => test.A_file_named_beside_an_item_follows_it_through_a_folder_of_msbuilds_own_characters())));
+    public void A_move_is_followed_by_every_path_a_project_names_escaped_as_msbuild_reads_it() => Cases.AllApart<ProjectEditsTests>(
+        ("a project moved deeper follows its imports and hint paths and another projects import into it follows it", test => test.A_project_moved_deeper_follows_its_imports_and_hint_paths_and_another_projects_import_into_it_follows_it()),
+        ("each file a list names follows its move the rest of the list as written", test => test.Each_file_a_list_names_follows_its_move_the_rest_of_the_list_as_written()),
+        ("a file whose name holds an ampersand is named escaped as it moves and the project still reads as xml", test => test.A_file_whose_name_holds_an_ampersand_is_named_escaped_as_it_moves_and_the_project_still_reads_as_xml()),
+        ("a reference to a project in a folder of msbuilds own characters is read back as that project", test => test.A_reference_to_a_project_in_a_folder_of_msbuilds_own_characters_is_read_back_as_that_project()),
+        ("a move follows paths written escaped and escapes the paths it writes", test => test.A_move_follows_paths_written_escaped_and_escapes_the_paths_it_writes()),
+        ("a folder with a quote in its name is written escaped only inside a condition", test => test.A_folder_with_a_quote_in_its_name_is_written_escaped_only_inside_a_condition()),
+        ("a file named beside an item follows it through a folder of msbuilds own characters", test => test.A_file_named_beside_an_item_follows_it_through_a_folder_of_msbuilds_own_characters()));
 
     private void A_project_moved_deeper_follows_its_imports_and_hint_paths_and_another_projects_import_into_it_follows_it()
     {
@@ -139,17 +139,10 @@ public sealed class ProjectEditsTests : IDisposable
     }
 
     [Fact]
-    public void Files_left_out_of_a_projects_build_are_left_out_of_every_build_once() => Cases.All(
-        ("files left out of a projects build are removed once in an item group of their own", () => Apart(test => test.Files_left_out_of_a_projects_build_are_removed_once_in_an_item_group_of_their_own())),
-        ("a removal with a condition of its own leaves the files in other builds so one for every build is added", () => Apart(test => test.A_removal_with_a_condition_of_its_own_leaves_the_files_in_other_builds_so_one_for_every_build_is_added())),
-        ("a folder of msbuilds own characters is left out by a glob msbuild reads and once only", () => Apart(test => test.A_folder_of_msbuilds_own_characters_is_left_out_by_a_glob_msbuild_reads_and_once_only())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<ProjectEditsTests> check)
-    {
-        using ProjectEditsTests test = new();
-        check(test);
-    }
+    public void Files_left_out_of_a_projects_build_are_left_out_of_every_build_once() => Cases.AllApart<ProjectEditsTests>(
+        ("files left out of a projects build are removed once in an item group of their own", test => test.Files_left_out_of_a_projects_build_are_removed_once_in_an_item_group_of_their_own()),
+        ("a removal with a condition of its own leaves the files in other builds so one for every build is added", test => test.A_removal_with_a_condition_of_its_own_leaves_the_files_in_other_builds_so_one_for_every_build_is_added()),
+        ("a folder of msbuilds own characters is left out by a glob msbuild reads and once only", test => test.A_folder_of_msbuilds_own_characters_is_left_out_by_a_glob_msbuild_reads_and_once_only()));
 
     private void Files_left_out_of_a_projects_build_are_removed_once_in_an_item_group_of_their_own()
     {

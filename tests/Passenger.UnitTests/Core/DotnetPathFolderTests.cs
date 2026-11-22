@@ -45,22 +45,15 @@ public sealed class DotnetPathFolderTests : IDisposable
     }
 
     [Fact]
-    public void A_shells_dotnet_comes_first_on_the_path_from_a_folder_holding_it_alone() => Cases.All(
-        ("an installation holding dotnets layout alone is its own folder on the path", () => Apart(test => test.An_installation_holding_dotnets_layout_alone_is_its_own_folder_on_the_path())),
-        ("an installation holding anything else lends its dotnet through a folder holding it alone", () => Cases.Each<(string, bool)>(
+    public void A_shells_dotnet_comes_first_on_the_path_from_a_folder_holding_it_alone() => Cases.AllApart<DotnetPathFolderTests>(
+        ("an installation holding dotnets layout alone is its own folder on the path", test => test.An_installation_holding_dotnets_layout_alone_is_its_own_folder_on_the_path()),
+        ("an installation holding anything else lends its dotnet through a folder holding it alone", _ => Cases.EachApart<DotnetPathFolderTests, (string, bool)>(
         [
             ("git", false),
             ("bin", true),
-        ], row => Apart(test => test.An_installation_holding_anything_else_lends_its_dotnet_through_a_folder_holding_it_alone(row.Item1, row.Item2)))),
-        ("the folder lending an installations dotnet holds that dotnet alone and is the users own", () => Apart(test => test.The_folder_lending_an_installations_dotnet_holds_that_dotnet_alone_and_is_the_users_own())),
-        ("a dotnet put wrong in the folder is put right and another installation has a folder of its own", () => Apart(test => test.A_dotnet_put_wrong_in_the_folder_is_put_right_and_another_installation_has_a_folder_of_its_own())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<DotnetPathFolderTests> check)
-    {
-        using DotnetPathFolderTests test = new();
-        check(test);
-    }
+        ], (test, row) => test.An_installation_holding_anything_else_lends_its_dotnet_through_a_folder_holding_it_alone(row.Item1, row.Item2))),
+        ("the folder lending an installations dotnet holds that dotnet alone and is the users own", test => test.The_folder_lending_an_installations_dotnet_holds_that_dotnet_alone_and_is_the_users_own()),
+        ("a dotnet put wrong in the folder is put right and another installation has a folder of its own", test => test.A_dotnet_put_wrong_in_the_folder_is_put_right_and_another_installation_has_a_folder_of_its_own()));
 
     private void An_installation_holding_dotnets_layout_alone_is_its_own_folder_on_the_path()
     {

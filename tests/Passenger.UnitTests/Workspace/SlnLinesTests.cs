@@ -12,16 +12,9 @@ public sealed class SlnLinesTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_solutions_lines_are_read_and_followed_however_they_are_written() => Cases.All(
-        ("a project whose block has no end leaves the next project to be shown and taken out", () => Apart(test => test.A_project_whose_block_has_no_end_leaves_the_next_project_to_be_shown_and_taken_out())),
-        ("a folders files and nesting written in lower case are read and followed alike", () => Apart(test => test.A_folders_files_and_nesting_written_in_lower_case_are_read_and_followed_alike())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<SlnLinesTests> check)
-    {
-        using SlnLinesTests test = new();
-        check(test);
-    }
+    public void A_solutions_lines_are_read_and_followed_however_they_are_written() => Cases.AllApart<SlnLinesTests>(
+        ("a project whose block has no end leaves the next project to be shown and taken out", test => test.A_project_whose_block_has_no_end_leaves_the_next_project_to_be_shown_and_taken_out()),
+        ("a folders files and nesting written in lower case are read and followed alike", test => test.A_folders_files_and_nesting_written_in_lower_case_are_read_and_followed_alike()));
 
     private void A_project_whose_block_has_no_end_leaves_the_next_project_to_be_shown_and_taken_out()
     {

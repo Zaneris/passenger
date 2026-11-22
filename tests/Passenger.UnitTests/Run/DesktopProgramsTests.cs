@@ -20,18 +20,18 @@ public sealed class DesktopProgramsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_start_is_the_desktop_app_its_program_is_native_or_managed() => Cases.All(
-        ("a named program beside its ui framework is a desktop app though no project built it", () => Apart(test => test.A_named_program_beside_its_ui_framework_is_a_desktop_app_though_no_project_built_it())),
-        ("a program with no ui framework is no desktop app", () => Apart(test => test.A_program_with_no_ui_framework_is_no_desktop_app())),
-        ("a program taking avalonia base alone is no desktop app and one beside avalonias controls is an avalonia app", () => Apart(test => test.A_program_taking_avalonia_base_alone_is_no_desktop_app_and_one_beside_avalonias_controls_is_an_avalonia_app())),
-        ("a mac program linking what opens windows is a desktop app", () => Cases.Each<string>(
+    public void A_start_is_the_desktop_app_its_program_is_native_or_managed() => Cases.AllApart<DesktopProgramsTests>(
+        ("a named program beside its ui framework is a desktop app though no project built it", test => test.A_named_program_beside_its_ui_framework_is_a_desktop_app_though_no_project_built_it()),
+        ("a program with no ui framework is no desktop app", test => test.A_program_with_no_ui_framework_is_no_desktop_app()),
+        ("a program taking avalonia base alone is no desktop app and one beside avalonias controls is an avalonia app", test => test.A_program_taking_avalonia_base_alone_is_no_desktop_app_and_one_beside_avalonias_controls_is_an_avalonia_app()),
+        ("a mac program linking what opens windows is a desktop app", _ => Cases.EachApart<DesktopProgramsTests, string>(
         [
             "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
             "@rpath/libSDL2-2.0.0.dylib",
-        ], row => Apart(test => test.A_mac_program_linking_what_opens_windows_is_a_desktop_app(row)))),
-        ("a program in a macs app bundle is a desktop app whatever it links", () => Apart(test => test.A_program_in_a_macs_app_bundle_is_a_desktop_app_whatever_it_links())),
-        ("a single file publish on a mac is known by the ui framework inside it and goes past the inspector", () => Apart(test => test.A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector())),
-        ("a ui framework named across two reads of a large program is found all the same", () => Apart(test => test.A_ui_framework_named_across_two_reads_of_a_large_program_is_found_all_the_same())));
+        ], (test, row) => test.A_mac_program_linking_what_opens_windows_is_a_desktop_app(row))),
+        ("a program in a macs app bundle is a desktop app whatever it links", test => test.A_program_in_a_macs_app_bundle_is_a_desktop_app_whatever_it_links()),
+        ("a single file publish on a mac is known by the ui framework inside it and goes past the inspector", test => test.A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector()),
+        ("a ui framework named across two reads of a large program is found all the same", test => test.A_ui_framework_named_across_two_reads_of_a_large_program_is_found_all_the_same()));
 
     private void A_named_program_beside_its_ui_framework_is_a_desktop_app_though_no_project_built_it()
     {
@@ -42,24 +42,24 @@ public sealed class DesktopProgramsTests : IDisposable
     }
 
     [Fact]
-    public void A_dotnet_start_is_what_its_command_runs_or_its_project_builds() => Cases.All(
-        ("the assembly a named dotnet is given is what runs past exec and the hosts options", () => Apart(test => test.The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options())),
-        ("a project s run command is read before the project s own program", () => Apart(test => test.A_project_s_run_command_is_read_before_the_project_s_own_program())),
-        ("a script a project s run command names starts the project s app a hook goes through", () => Apart(test => test.A_script_a_project_s_run_command_names_starts_the_project_s_app_a_hook_goes_through())),
-        ("a dotnet program a project s run command names is what runs never the project s own app", () => Apart(test => test.A_dotnet_program_a_project_s_run_command_names_is_what_runs_never_the_project_s_own_app())),
-        ("a named dotnet run starts what its project builds past any hook given it", () => Cases.Each<string>(
+    public void A_dotnet_start_is_what_its_command_runs_or_its_project_builds() => Cases.AllApart<DesktopProgramsTests>(
+        ("the assembly a named dotnet is given is what runs past exec and the hosts options", test => test.The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options()),
+        ("a project s run command is read before the project s own program", test => test.A_project_s_run_command_is_read_before_the_project_s_own_program()),
+        ("a script a project s run command names starts the project s app a hook goes through", test => test.A_script_a_project_s_run_command_names_starts_the_project_s_app_a_hook_goes_through()),
+        ("a dotnet program a project s run command names is what runs never the project s own app", test => test.A_dotnet_program_a_project_s_run_command_names_is_what_runs_never_the_project_s_own_app()),
+        ("a named dotnet run starts what its project builds past any hook given it", _ => Cases.EachApart<DesktopProgramsTests, string>(
         [
             "run",
             "watch",
-        ], row => Apart(test => test.A_named_dotnet_run_starts_what_its_project_builds_past_any_hook_given_it(row)))),
-        ("a build turning startup hooks off keeps the inspector out", () => Apart(test => test.A_build_turning_startup_hooks_off_keeps_the_inspector_out())),
-        ("a dotnet run naming a project names it past the folder it starts in", () => Cases.Each<(string, string, string)>(
+        ], (test, row) => test.A_named_dotnet_run_starts_what_its_project_builds_past_any_hook_given_it(row))),
+        ("a build turning startup hooks off keeps the inspector out", test => test.A_build_turning_startup_hooks_off_keeps_the_inspector_out()),
+        ("a dotnet run naming a project names it past the folder it starts in", _ => Cases.EachApart<DesktopProgramsTests, (string, string, string)>(
         [
             ("run", "-p", "../Other/Other.csproj"),
             ("watch", "--project", "../Other/Other.csproj"),
-        ], row => Apart(test => test.A_dotnet_run_naming_a_project_names_it_past_the_folder_it_starts_in(row.Item1, row.Item2, row.Item3)))),
-        ("a dotnet run naming another project is what that project says never what the plans built", () => Apart(test => test.A_dotnet_run_naming_another_project_is_what_that_project_says_never_what_the_plans_built())),
-        ("a dotnet run of a project no window loaded is refused for what cannot be read but on linux which has no display", () => Apart(test => test.A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display())));
+        ], (test, row) => test.A_dotnet_run_naming_a_project_names_it_past_the_folder_it_starts_in(row.Item1, row.Item2, row.Item3))),
+        ("a dotnet run naming another project is what that project says never what the plans built", test => test.A_dotnet_run_naming_another_project_is_what_that_project_says_never_what_the_plans_built()),
+        ("a dotnet run of a project no window loaded is refused for what cannot be read but on linux which has no display", test => test.A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display()));
 
     private void The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options()
     {
@@ -146,28 +146,21 @@ public sealed class DesktopProgramsTests : IDisposable
     }
 
     [Fact]
-    public void A_project_says_what_it_is_by_its_packages_and_the_projects_it_references() => Cases.All(
-        ("a project says what it is by the packages it takes", () => Cases.Each<(string, string?)>(
+    public void A_project_says_what_it_is_by_its_packages_and_the_projects_it_references() => Cases.AllApart<DesktopProgramsTests>(
+        ("a project says what it is by the packages it takes", _ => Cases.EachApart<DesktopProgramsTests, (string, string?)>(
         [
             ("Avalonia.Desktop", DesktopPrograms.Avalonia),
             ("GtkSharp", "a GTK app"),
             ("Eto.Parse", null),
             ("Serilog", null),
-        ], row => Apart(test => test.A_project_says_what_it_is_by_the_packages_it_takes(row.Item1, row.Item2)))),
-        ("a project takes its ui framework from the projects it references", () => Apart(test => test.A_project_takes_its_ui_framework_from_the_projects_it_references())),
-        ("a project takes xaml by any package of avalonias of its own or of the projects it references", () => Cases.Each<(string, bool)>(
+        ], (test, row) => test.A_project_says_what_it_is_by_the_packages_it_takes(row.Item1, row.Item2))),
+        ("a project takes its ui framework from the projects it references", test => test.A_project_takes_its_ui_framework_from_the_projects_it_references()),
+        ("a project takes xaml by any package of avalonias of its own or of the projects it references", _ => Cases.EachApart<DesktopProgramsTests, (string, bool)>(
         [
             ("Avalonia.Themes.Fluent", true),
             ("Eto.Forms", false),
-        ], row => Apart(test => test.A_project_takes_xaml_by_any_package_of_avalonias_of_its_own_or_of_the_projects_it_references(row.Item1, row.Item2)))),
-        ("a restore says a project takes xaml where a package of another name brings avalonia", () => Apart(test => test.A_restore_says_a_project_takes_xaml_where_a_package_of_another_name_brings_avalonia())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<DesktopProgramsTests> check)
-    {
-        using DesktopProgramsTests test = new();
-        check(test);
-    }
+        ], (test, row) => test.A_project_takes_xaml_by_any_package_of_avalonias_of_its_own_or_of_the_projects_it_references(row.Item1, row.Item2))),
+        ("a restore says a project takes xaml where a package of another name brings avalonia", test => test.A_restore_says_a_project_takes_xaml_where_a_package_of_another_name_brings_avalonia()));
 
     private void A_project_says_what_it_is_by_the_packages_it_takes(string package, string? called) =>
         Assert.Equal(called, DesktopPrograms.OfProject(Model("App", "Exe", package), []));

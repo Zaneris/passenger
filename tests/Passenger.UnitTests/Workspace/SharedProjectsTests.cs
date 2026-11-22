@@ -36,10 +36,10 @@ public sealed class SharedProjectsTests : IDisposable
     private string ItemsFile => Path.Combine(Shared, "Shop.Shared.projitems");
 
     [Fact]
-    public void A_shared_projects_files_are_those_its_items_name_as_msbuild_reads_them() => Cases.All(
-        ("its files are those its items name from its folder a wildcards found there less what is excluded or removed", () => Apart(test => test.Its_files_are_those_its_items_name_from_its_folder_a_wildcards_found_there_less_what_is_excluded_or_removed())),
-        ("a wildcard takes a file named in another case only where its folder ignores case", () => Apart(test => test.A_wildcard_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case())),
-        ("a shared project added to a classic solution takes its own id and type and no configuration", () => Apart(test => test.A_shared_project_added_to_a_classic_solution_takes_its_own_id_and_type_and_no_configuration())));
+    public void A_shared_projects_files_are_those_its_items_name_as_msbuild_reads_them() => Cases.AllApart<SharedProjectsTests>(
+        ("its files are those its items name from its folder a wildcards found there less what is excluded or removed", test => test.Its_files_are_those_its_items_name_from_its_folder_a_wildcards_found_there_less_what_is_excluded_or_removed()),
+        ("a wildcard takes a file named in another case only where its folder ignores case", test => test.A_wildcard_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case()),
+        ("a shared project added to a classic solution takes its own id and type and no configuration", test => test.A_shared_project_added_to_a_classic_solution_takes_its_own_id_and_type_and_no_configuration()));
 
     private void Its_files_are_those_its_items_name_from_its_folder_a_wildcards_found_there_less_what_is_excluded_or_removed()
     {
@@ -87,22 +87,15 @@ public sealed class SharedProjectsTests : IDisposable
     }
 
     [Fact]
-    public void A_file_made_moved_or_deleted_is_written_into_a_shared_projects_items_as_they_stand() => Cases.All(
-        ("a file made goes after the last item of its type from the items folder with its separators and one named already stays", () => Apart(test => test.A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays())),
-        ("a file deleted leaves its item and a folder deleted every item under it an item group left empty going too", () => Apart(test => test.A_file_deleted_leaves_its_item_and_a_folder_deleted_every_item_under_it_an_item_group_left_empty_going_too())),
-        ("a file made where a wildcard of its type takes it gets no item of its own and one it leaves out does", () => Apart(test => test.A_file_made_where_a_wildcard_of_its_type_takes_it_gets_no_item_of_its_own_and_one_it_leaves_out_does())),
-        ("a file a wildcard takes is excluded by a remove after it holding in every build and included again by that remove going", () => Apart(test => test.A_file_a_wildcard_takes_is_excluded_by_a_remove_after_it_holding_in_every_build_and_included_again_by_that_remove_going())),
-        ("a file one item names beside another leaves that item naming the other whether deleted or excluded", () => Apart(test => test.A_file_one_item_names_beside_another_leaves_that_item_naming_the_other_whether_deleted_or_excluded())),
-        ("a file one item names beside another is named where it moved within the folder and taken out where it left it", () => Apart(test => test.A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it())),
-        ("its items follow a file renamed within its folder one moved out and one moved in", () => Apart(test => test.Its_items_follow_a_file_renamed_within_its_folder_one_moved_out_and_one_moved_in())),
-        ("a projects import of shared items is written as visual studio writes it after any other and taken out with a group it empties", () => Apart(test => test.A_projects_import_of_shared_items_is_written_as_visual_studio_writes_it_after_any_other_and_taken_out_with_a_group_it_empties())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<SharedProjectsTests> check)
-    {
-        using SharedProjectsTests test = new();
-        check(test);
-    }
+    public void A_file_made_moved_or_deleted_is_written_into_a_shared_projects_items_as_they_stand() => Cases.AllApart<SharedProjectsTests>(
+        ("a file made goes after the last item of its type from the items folder with its separators and one named already stays", test => test.A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays()),
+        ("a file deleted leaves its item and a folder deleted every item under it an item group left empty going too", test => test.A_file_deleted_leaves_its_item_and_a_folder_deleted_every_item_under_it_an_item_group_left_empty_going_too()),
+        ("a file made where a wildcard of its type takes it gets no item of its own and one it leaves out does", test => test.A_file_made_where_a_wildcard_of_its_type_takes_it_gets_no_item_of_its_own_and_one_it_leaves_out_does()),
+        ("a file a wildcard takes is excluded by a remove after it holding in every build and included again by that remove going", test => test.A_file_a_wildcard_takes_is_excluded_by_a_remove_after_it_holding_in_every_build_and_included_again_by_that_remove_going()),
+        ("a file one item names beside another leaves that item naming the other whether deleted or excluded", test => test.A_file_one_item_names_beside_another_leaves_that_item_naming_the_other_whether_deleted_or_excluded()),
+        ("a file one item names beside another is named where it moved within the folder and taken out where it left it", test => test.A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it()),
+        ("its items follow a file renamed within its folder one moved out and one moved in", test => test.Its_items_follow_a_file_renamed_within_its_folder_one_moved_out_and_one_moved_in()),
+        ("a projects import of shared items is written as visual studio writes it after any other and taken out with a group it empties", test => test.A_projects_import_of_shared_items_is_written_as_visual_studio_writes_it_after_any_other_and_taken_out_with_a_group_it_empties()));
 
     private void A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays()
     {

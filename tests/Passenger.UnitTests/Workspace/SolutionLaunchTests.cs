@@ -20,18 +20,18 @@ public sealed class SolutionLaunchTests : IDisposable
         + "        \"Path\": \"src\\\\Api\\\\Api.csproj\",\n        \"Action\": \"Start\",\n        \"Extra\": 7\n      }\n    ]\n  }\n]";
 
     [Fact]
-    public void A_solutions_launch_profiles_are_read_from_the_files_beside_it() => Cases.All(
-        ("a solutions profiles are its name with slnLaunch and the persons own with user after", () => Cases.Each<string>(
+    public void A_solutions_launch_profiles_are_read_from_the_files_beside_it() => Cases.AllApart<SolutionLaunchTests>(
+        ("a solutions profiles are its name with slnLaunch and the persons own with user after", _ => Cases.EachApart<SolutionLaunchTests, string>(
         [
             "Shop.slnx",
-        ], row => Apart(test => test.A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(row)))),
-        ("each project is read from the solutions folder with its action and launch profile", () => Apart(test => test.Each_project_is_read_from_the_solutions_folder_with_its_action_and_launch_profile())),
-        ("an early files Name for a path an action of any letter case and comments are read and an unknown action is kept", () => Apart(test => test.An_early_files_Name_for_a_path_an_action_of_any_letter_case_and_comments_are_read_and_an_unknown_action_is_kept())),
-        ("a file that is no list of profiles says why and is never written over", () => Cases.Each<string>(
+        ], (test, row) => test.A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(row))),
+        ("each project is read from the solutions folder with its action and launch profile", test => test.Each_project_is_read_from_the_solutions_folder_with_its_action_and_launch_profile()),
+        ("an early files Name for a path an action of any letter case and comments are read and an unknown action is kept", test => test.An_early_files_Name_for_a_path_an_action_of_any_letter_case_and_comments_are_read_and_an_unknown_action_is_kept()),
+        ("a file that is no list of profiles says why and is never written over", _ => Cases.EachApart<SolutionLaunchTests, string>(
         [
             "{ \"Name\": \"x\" }",
             "[ { \"Name\": ",
-        ], row => Apart(test => test.A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(row)))));
+        ], (test, row) => test.A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(row))));
 
     private void A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(string solution)
     {
@@ -80,21 +80,14 @@ public sealed class SolutionLaunchTests : IDisposable
     }
 
     [Fact]
-    public void Profiles_written_back_keep_every_character_Passenger_did_not_change() => Cases.All(
-        ("profiles written back unchanged keep every character", () => Apart(test => test.Profiles_written_back_unchanged_keep_every_character())),
-        ("a changed profile is written in its place keeping what Passenger does not model and the others as they were", () => Apart(test => test.A_changed_profile_is_written_in_its_place_keeping_what_Passenger_does_not_model_and_the_others_as_they_were())),
-        ("a new profile goes after the last laid out as Visual Studio writes one and a removed one goes with its lines", () => Apart(test => test.A_new_profile_goes_after_the_last_laid_out_as_Visual_Studio_writes_one_and_a_removed_one_goes_with_its_lines())),
-        ("a new file is written as Visual Studio writes one and an item that is no profile is kept", () => Apart(test => test.A_new_file_is_written_as_Visual_Studio_writes_one_and_an_item_that_is_no_profile_is_kept())),
-        ("a profile moved from the persons file to the teams keeps its members and both files are read beside the solution", () => Apart(test => test.A_profile_moved_from_the_persons_file_to_the_teams_keeps_its_members_and_both_files_are_read_beside_the_solution())),
-        ("a project renamed or moved is named where it went in the separator it was written with every other character kept", () => Apart(test => test.A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept())),
-        ("the solution moved names each project from its new folder and a file that does not read is left alone", () => Apart(test => test.The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<SolutionLaunchTests> check)
-    {
-        using SolutionLaunchTests test = new();
-        check(test);
-    }
+    public void Profiles_written_back_keep_every_character_Passenger_did_not_change() => Cases.AllApart<SolutionLaunchTests>(
+        ("profiles written back unchanged keep every character", test => test.Profiles_written_back_unchanged_keep_every_character()),
+        ("a changed profile is written in its place keeping what Passenger does not model and the others as they were", test => test.A_changed_profile_is_written_in_its_place_keeping_what_Passenger_does_not_model_and_the_others_as_they_were()),
+        ("a new profile goes after the last laid out as Visual Studio writes one and a removed one goes with its lines", test => test.A_new_profile_goes_after_the_last_laid_out_as_Visual_Studio_writes_one_and_a_removed_one_goes_with_its_lines()),
+        ("a new file is written as Visual Studio writes one and an item that is no profile is kept", test => test.A_new_file_is_written_as_Visual_Studio_writes_one_and_an_item_that_is_no_profile_is_kept()),
+        ("a profile moved from the persons file to the teams keeps its members and both files are read beside the solution", test => test.A_profile_moved_from_the_persons_file_to_the_teams_keeps_its_members_and_both_files_are_read_beside_the_solution()),
+        ("a project renamed or moved is named where it went in the separator it was written with every other character kept", test => test.A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept()),
+        ("the solution moved names each project from its new folder and a file that does not read is left alone", test => test.The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone()));
 
     private void Profiles_written_back_unchanged_keep_every_character()
     {

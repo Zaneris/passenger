@@ -53,28 +53,28 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     [Fact]
-    public Task A_merge_brings_what_the_installation_lacks_whole_through_its_links_and_onto_other_volumes() => Cases.AllAsync(
-        ("what the installation has stays as it is and what it lacks comes whole", () => ApartAsync(test => test.What_the_installation_has_stays_as_it_is_and_what_it_lacks_comes_whole())),
-        ("a folder of the installation that is a link is merged through it and stays a link", () => Cases.EachAsync<string>(
+    public Task A_merge_brings_what_the_installation_lacks_whole_through_its_links_and_onto_other_volumes() => Cases.AllApartAsync<DotnetMergeTests>(
+        ("what the installation has stays as it is and what it lacks comes whole", test => test.What_the_installation_has_stays_as_it_is_and_what_it_lacks_comes_whole()),
+        ("a folder of the installation that is a link is merged through it and stays a link", _ => Cases.EachApartAsync<DotnetMergeTests, string>(
         [
             "shared",
             "host/fxr",
-        ], row => ApartAsync(test => test.A_folder_of_the_installation_that_is_a_link_is_merged_through_it_and_stays_a_link(row)))),
-        ("taking back a merge made through a link empties what it filled and leaves the link", () => ApartAsync(test => test.Taking_back_a_merge_made_through_a_link_empties_what_it_filled_and_leaves_the_link())),
-        ("a folder from another volume comes beside where it goes under a name of its own its programs still programs", () =>
+        ], (test, row) => test.A_folder_of_the_installation_that_is_a_link_is_merged_through_it_and_stays_a_link(row))),
+        ("taking back a merge made through a link empties what it filled and leaves the link", test => test.Taking_back_a_merge_made_through_a_link_empties_what_it_filled_and_leaves_the_link()),
+        ("a folder from another volume comes beside where it goes under a name of its own its programs still programs", test =>
         {
-            Apart(test => test.A_folder_from_another_volume_comes_beside_where_it_goes_under_a_name_of_its_own_its_programs_still_programs());
+            test.A_folder_from_another_volume_comes_beside_where_it_goes_under_a_name_of_its_own_its_programs_still_programs();
             return Task.CompletedTask;
         }),
-        ("the folder of the hosts resolver waits to come whole and never stands without it", () => ApartAsync(test => test.The_folder_of_the_hosts_resolver_waits_to_come_whole_and_never_stands_without_it())),
-        ("what makes a folder count to the host is told from the rest", () =>
+        ("the folder of the hosts resolver waits to come whole and never stands without it", test => test.The_folder_of_the_hosts_resolver_waits_to_come_whole_and_never_stands_without_it()),
+        ("what makes a folder count to the host is told from the rest", _ =>
         {
-            Cases.Each<(string, bool)>(
+            Cases.EachApart<DotnetMergeTests, (string, bool)>(
             [
                 ("sdk/10.0.403/dotnet.dll", true),
                 ("shared/Microsoft.NETCore.App/10.0.14/System.Private.CoreLib.dll", false),
                 ("sdk/10.0.403/dotnet.runtimeconfig.json", false),
-            ], row => Apart(test => test.What_makes_a_folder_count_to_the_host_is_told_from_the_rest(row.Item1, row.Item2)));
+            ], (test, row) => test.What_makes_a_folder_count_to_the_host_is_told_from_the_rest(row.Item1, row.Item2));
             return Task.CompletedTask;
         }));
 
@@ -149,15 +149,15 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     [Fact]
-    public Task A_merge_that_cannot_land_whole_leaves_the_installation_as_it_was() => Cases.AllAsync(
-        ("a runtime refused its place leaves no SDK to read as installed and taking back leaves the installation as it was", () => ApartAsync(test => test.A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was())),
-        ("a move refused at its last step has what came before it taken out again", () => ApartAsync(test => test.A_move_refused_at_its_last_step_has_what_came_before_it_taken_out_again())),
-        ("a merge that ended is taken out whole where what follows it fails and a folder it did not make stays", () => ApartAsync(test => test.A_merge_that_ended_is_taken_out_whole_where_what_follows_it_fails_and_a_folder_it_did_not_make_stays())),
-        ("what stands in the way of an SDKs entry is named and nothing of the SDK stays", () => Cases.EachAsync<(string, string)>(
+    public Task A_merge_that_cannot_land_whole_leaves_the_installation_as_it_was() => Cases.AllApartAsync<DotnetMergeTests>(
+        ("a runtime refused its place leaves no SDK to read as installed and taking back leaves the installation as it was", test => test.A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was()),
+        ("a move refused at its last step has what came before it taken out again", test => test.A_move_refused_at_its_last_step_has_what_came_before_it_taken_out_again()),
+        ("a merge that ended is taken out whole where what follows it fails and a folder it did not make stays", test => test.A_merge_that_ended_is_taken_out_whole_where_what_follows_it_fails_and_a_folder_it_did_not_make_stays()),
+        ("what stands in the way of an SDKs entry is named and nothing of the SDK stays", _ => Cases.EachApartAsync<DotnetMergeTests, (string, string)>(
         [
             ("shared", "no folder, where the SDK has one"),
-        ], row => ApartAsync(test => test.What_stands_in_the_way_of_an_SDKs_entry_is_named_and_nothing_of_the_SDK_stays(row.Item1, row.Item2)))),
-        ("stopped it moves nothing more", () => ApartAsync(test => test.Stopped_it_moves_nothing_more())));
+        ], (test, row) => test.What_stands_in_the_way_of_an_SDKs_entry_is_named_and_nothing_of_the_SDK_stays(row.Item1, row.Item2))),
+        ("stopped it moves nothing more", test => test.Stopped_it_moves_nothing_more()));
 
     private async Task A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was()
     {
@@ -187,25 +187,11 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     [Fact]
-    public Task A_file_another_program_holds_is_waited_for_and_what_stays_held_is_named() => Cases.AllAsync(
-        ("a file held in what moves is waited for saying so and the merge lands once it is let go", () => ApartAsync(test => test.A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go())),
-        ("what stays held past the wait is named and all the rest is taken out again", () => ApartAsync(test => test.What_stays_held_past_the_wait_is_named_and_all_the_rest_is_taken_out_again())),
-        ("folders whose files another program reads come in entry by entry with no wait and the SDK installs", () => ApartAsync(test => test.Folders_whose_files_another_program_reads_come_in_entry_by_entry_with_no_wait_and_the_SDK_installs())),
-        ("a folder brought in entry by entry counts only once all of it is there", () => ApartAsync(test => test.A_folder_brought_in_entry_by_entry_counts_only_once_all_of_it_is_there())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<DotnetMergeTests> check)
-    {
-        using DotnetMergeTests test = new();
-        check(test);
-    }
-
-    /// <summary>As Apart, for a check that waits.</summary>
-    private static async Task ApartAsync(Func<DotnetMergeTests, Task> check)
-    {
-        using DotnetMergeTests test = new();
-        await check(test);
-    }
+    public Task A_file_another_program_holds_is_waited_for_and_what_stays_held_is_named() => Cases.AllApartAsync<DotnetMergeTests>(
+        ("a file held in what moves is waited for saying so and the merge lands once it is let go", test => test.A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go()),
+        ("what stays held past the wait is named and all the rest is taken out again", test => test.What_stays_held_past_the_wait_is_named_and_all_the_rest_is_taken_out_again()),
+        ("folders whose files another program reads come in entry by entry with no wait and the SDK installs", test => test.Folders_whose_files_another_program_reads_come_in_entry_by_entry_with_no_wait_and_the_SDK_installs()),
+        ("a folder brought in entry by entry counts only once all of it is there", test => test.A_folder_brought_in_entry_by_entry_counts_only_once_all_of_it_is_there()));
 
     /// <summary>What a virus scanner does to files just unpacked: the move waits, saying so, and goes on once let go.</summary>
     private async Task A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go()
