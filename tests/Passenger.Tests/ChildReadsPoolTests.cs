@@ -11,10 +11,16 @@ namespace Passenger.Tests;
 /// <summary>A window reading the output of more children than its process's thread pool has threads, for as long as each
 /// runs: its language server's and project host's, and quiet ones read as a run's output is (ChildProcesses.Hear) and as
 /// a language server's is (ContiguousReader). No read waits on a thread of the pool, so the window's work and its language
-/// server's answers go on beside them. Alone, as it holds the process's pool to as many threads as it has processors.</summary>
+/// server's answers go on beside them. Alone, as it holds the process's pool to as many threads for the window's work as
+/// it has processors.</summary>
 [Collection(Alone.Name)]
 public sealed class ChildReadsPoolTests
 {
+    /// <summary>The pool's threads a headless window test holds all the while it runs, where a person's window holds none:
+    /// the window's own thread, which the headless session takes from the pool for its life, and the test runner's, which
+    /// waits on it.</summary>
+    private const int HeldByTheTest = 2;
+
     /// <summary>What Passenger starts is read and ended through ChildProcesses, leaving nothing behind: a read failing
     /// partway ends the child and fails the run, a child disposed on another thread as it is killed has what it started
     /// ended too, a helper takes its host's properties and conserves memory unless the person set it, and a window
@@ -41,13 +47,14 @@ public sealed class ChildReadsPoolTests
         int Unknown() => window.CSharpService!.For(code)!.Diagnostics.Count(d => d.Code?.ToString() == "CS0246");
         Ui.WaitFor(() => Unknown() == 1, "Missing's error");
 
+        Assert.True(Thread.CurrentThread.IsThreadPoolThread, "The window's thread is no longer one of the pool's, which the threads held for its work count on");
         int threads = Environment.ProcessorCount;
         ThreadPool.GetMaxThreads(out int most, out int ports);
         List<Process> children = [];
         List<Task> reads = [];
         try
         {
-            Assert.True(ThreadPool.SetMaxThreads(threads, ports), $"The pool could not be held to {threads} threads");
+            Assert.True(ThreadPool.SetMaxThreads(threads + HeldByTheTest, ports), $"The pool could not be held to {threads} threads beside the test's own {HeldByTheTest}");
             for (int each = 0; each < threads * 2; each++)
             {
                 Process child = ChildProcesses.Start(Quiet());
@@ -59,7 +66,7 @@ public sealed class ChildReadsPoolTests
             Ui.PlaceAfter(editor, "Missing missing;");
             window.KeyTextInput(" Absent absent;");
             Ui.WaitFor(() => Unknown() == 2,
-                () => $"With {threads * 3} reads of {children.Count} children's output waiting and the pool held to {threads} threads, the language server's answer to an edit never came "
+                () => $"With {threads * 3} reads of {children.Count} children's output waiting and the pool held to {threads} threads for the window's work, the language server's answer to an edit never came "
                     + $"({Unknown()} unknown types marked, not 2): a read waits on a thread of the pool, so a window with many children has none left for its work");
             Assert.True(children.All(DotnetProcesses.Runs) && !reads.Any(read => read.IsCompleted),
                 "A quiet child ended, or its read did, before the window had answered: the reads did not wait all along");
