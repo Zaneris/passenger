@@ -30,6 +30,26 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `MauiAndroidTests`' `A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree`,
+  CI 44970786971 (Linux, report shard 1, the shard #2095 sets up Android's emulator for): it skipped, "No Android device
+  is connected and no emulator is made", and failed for "left programs' runtime files … dotnet-diagnostic-…-socket".
+  **The CI set-up's emulator never booted**: avdmanager wrote its AVD where the emulator never looked ("Unknown AVD name
+  [passenger] … no file passenger.ini in $HOME/.android/avd"), so every Android device test there skipped; the AVD is now
+  where ANDROID_AVD_HOME names, which avdmanager, the emulator and the tests all read (fdd5630ba, #2095). The socket a
+  program left as the test skipped is the test's or the IDE's own, left to Mobile's batch.
+- `AndroidTargetChoiceTests`' `After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered`,
+  CI 44970786971 (Linux, report shard 1): "Only Passenger Relisted is listed, so a run's listing has nothing else to
+  keep". **The test holds a Mac's or Windows' targets**: a run on its Android stand-in is to leave the other targets
+  listed, and on Linux there is no other (no head of this machine's, no simulator), first seen as #2095 gave CI the
+  Android workload. Left to Mobile's batch.
+- `GodotAddonTests`' `A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each`,
+  CI 44970786971 (Windows, report shard 4): "Expected: typeof(Avalonia.Controls.ComboBox) Actual:
+  typeof(Passenger.App.ToolDropDown)". **The test was written before what it reads**: 37bd7bca4 made a scene node's enum
+  a ToolDropDown while no Godot test ran on CI, the first run with Godot (#2095). Left to Godot's batch.
+- `ContainersTests`' `A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so`, CI
+  44970786971 (Linux, report shard 2): "Not found: "more than the 1073741824 the IDE reads of one"". **The test was
+  written before what it reads**: since #2091 the container tools' limit is said through `Numbers.Said`
+  ("1,073,741,824"), and the test still looks for plain digits. Left to #2091.
 - `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI 44953680429
   (Windows, report shard 1, three test processes at once): "web: Its metrics could not be read: its runtime took no
   session in 10 s (process 11428 runs, and its diagnostic port … answered another request at once)", web having answered
