@@ -69,8 +69,9 @@ public sealed class ProjectLoadTests : IDisposable
         TestFolders.Delete(folder);
     }
 
-    /// <summary>The gate's four checks of what a project's load says, as one flow, to take their place once it has its
-    /// record on CI: a vulnerable package warned of with its advisory and fixed, and a missing SDK named.</summary>
+    /// <summary>The gate's four checks of what a project's load says, as one flow: a vulnerable package warned of with
+    /// its advisory and fixed, and a missing SDK named.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_project_loads_hold_as_one_flow()
     {
@@ -95,9 +96,7 @@ public sealed class ProjectLoadTests : IDisposable
             ("a local source not there under a system folder is said in nugets words not as that folder being read only", () => Flow.StepApart("a local source not there under a system folder is said in nugets words not as that folder being read only", () => new ProjectLoadTests(), t => t.A_local_source_not_there_under_a_system_folder_is_said_in_nugets_words_not_as_that_folder_being_read_only()))));
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix()
+    private void A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix()
     {
         Restore.Run(project);
         MainWindow window = Open();
@@ -176,9 +175,7 @@ public sealed class ProjectLoadTests : IDisposable
 
     /// <summary>An advisory's address is the feed's to name, in any scheme: only an http or https one is a link, and one that
     /// would launch a program (a file: address) is words that open nothing.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_advisory_whose_address_is_no_web_page_is_shown_in_the_nuget_window_as_words_not_a_link()
+    private void An_advisory_whose_address_is_no_web_page_is_shown_in_the_nuget_window_as_words_not_a_link()
     {
         const string Local = "file:///System/Applications/Calculator.app";
         feed.Advise("Passenger.Vulnerable", 2, Local, "[1.0.0, 1.0.1)");
@@ -196,9 +193,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Updating_a_vulnerable_package_to_the_version_that_fixes_it_takes_its_warning_away()
+    private void Updating_a_vulnerable_package_to_the_version_that_fixes_it_takes_its_warning_away()
     {
         Restore.Run(project);
         MainWindow window = Open();
@@ -222,9 +217,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_whose_sdk_cannot_be_found_is_an_error_naming_why_in_the_status_bar_and_under_it_in_problems()
+    private void A_project_whose_sdk_cannot_be_found_is_an_error_naming_why_in_the_status_bar_and_under_it_in_problems()
     {
         Directory.CreateDirectory(Path.Combine(folder, "Bad"));
         string bad = Path.Combine(folder, "Bad", "Bad.csproj");

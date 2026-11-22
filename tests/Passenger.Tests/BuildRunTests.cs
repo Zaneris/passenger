@@ -43,11 +43,11 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         return Path.Combine(made, "Sample.slnx");
     });
 
-    /// <summary>The gate's seventeen checks of Build and Run, as one flow, to take their place once it has its record
-    /// on CI: a solution opened by name, build errors listed and linked, Hot Reload reaching the program, the run
-    /// console's input and colours, the projects chosen built alone, a build stopped or waiting for design-time builds,
-    /// links in a program's output, the Build window, a browser opened once listening, and a build or program ended
-    /// with the window.</summary>
+    /// <summary>The gate's seventeen checks of Build and Run, as one flow: a solution opened by name, build errors
+    /// listed and linked, Hot Reload reaching the program, the run console's input and colours, the projects chosen
+    /// built alone, a build stopped or waiting for design-time builds, links in a program's output, the Build window, a
+    /// browser opened once listening, and a build or program ended with the window.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_builds_and_runs_hold_as_one_flow()
     {
@@ -114,9 +114,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// unloaded is dimmed and leaves the run configurations until reloaded; and the project host's design-time build of
     /// it writes no apphost, which the SDK makes (and on macOS signs) in Compile's dependencies once the assembly is
     /// there, so a build begun beside it could have both make and sign that one file at once.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_solution_opened_by_name_opens_that_one_shows_its_projects_framework_unloads_it_and_its_design_time_build_leaves_the_apphost()
+    private void A_solution_opened_by_name_opens_that_one_shows_its_projects_framework_unloads_it_and_its_design_time_build_leaves_the_apphost()
     {
         Write("Zebra.slnx", "<Solution>\n  <Folder Name=\"/src/\">\n    <Project Path=\"src/Hello/Hello.csproj\" />\n  </Folder>\n</Solution>\n");
         Write("Directory.Build.props", $"<Project>\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
@@ -265,9 +263,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// listed in Problems at its file and line, the status bar's word a link there, the Build window's line of it a link to
     /// its file, line and column; and Run, whose build fails on it too, brings the Build window forward with it and runs
     /// nothing.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_error_is_listed_in_problems_and_a_link_from_the_build_window_and_a_run_whose_build_fails_runs_nothing()
+    private void A_build_error_is_listed_in_problems_and_a_link_from_the_build_window_and_a_run_whose_build_fails_runs_nothing()
     {
         string shop = Path.Combine(TestFolders.Create("build-error-"), "Shop (copy)");
         TestFolders.Write(shop, "Shop.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
@@ -313,9 +309,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_error_whose_message_runs_over_several_lines_is_one_problem_showing_its_first_line()
+    private void A_build_error_whose_message_runs_over_several_lines_is_one_problem_showing_its_first_line()
     {
         // A message of many lines, as XAML compilers' and NuGet's are: MSBuild writes each line as its own.
         Write("src/Hello/Hello.csproj",
@@ -406,9 +400,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// which leaves the callers calling the method the update deletes, is said as the restart dotnet watch makes, however
     /// long after the Apply the program calls it and however far the window fell behind; and the program dotnet watch
     /// started again, and dotnet watch, end with the window.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window()
+    private void With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window()
     {
         string started = Path.Combine(Folder, "program.pid");
         string asked = Path.Combine(Folder, "asked");
@@ -965,9 +957,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// colour, whatever colour codes it writes, none of which shows even split between two reads, and the console's
     /// menu clears it with its colours; and the third's three megabytes keep to the console's buffer, its oldest lines
     /// dropped.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void The_run_console_takes_typed_input_never_shows_a_split_colour_code_colours_standard_error_clears_from_its_menu_and_keeps_riders_buffer()
+    private void The_run_console_takes_typed_input_never_shows_a_split_colour_code_colours_standard_error_clears_from_its_menu_and_keeps_riders_buffer()
     {
         Write("src/Hello/Program.cs",
             "Console.Write(\"Name? \");\nstring? name = Console.ReadLine();\nConsole.WriteLine($\"Hello, {name}\");\n"
@@ -1087,9 +1077,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_projects_chosen_in_the_explorer_build_rebuild_and_clean_on_their_own()
+    private void The_projects_chosen_in_the_explorer_build_rebuild_and_clean_on_their_own()
     {
         Write("Sample.slnx", "<Solution>\n  <Folder Name=\"/src/\">\n    <Project Path=\"src/Hello/Hello.csproj\" />\n    <Project Path=\"src/Tools/Tools.csproj\" />\n  </Folder>\n</Solution>\n");
         Write("src/Tools/Tools.csproj", TestProjects.Library());
@@ -1127,9 +1115,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// person's IDE's environment, after a build that left its nodes for the next, Stop pressed while each project's build
     /// runs a step writing to its output folder until ended (as a code generator, a bundler or tests in the build would)
     /// ends every step, and nothing more is written; each line names its step's shell, for a failure to say who wrote.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_under_dotnet_tests_environment_ends_and_stopping_a_build_ends_its_steps_wherever_msbuild_ran_them_and_nothing_more_is_written_after()
+    private void A_build_under_dotnet_tests_environment_ends_and_stopping_a_build_ends_its_steps_wherever_msbuild_ran_them_and_nothing_more_is_written_after()
     {
         WriteTwoProjects();
         using OwnMSBuild tested = new(("MSBUILDENSURESTDOUTFORTASKPROCESSES", "1"));
@@ -1303,9 +1289,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// build waits for the design-time build, the Build window saying so, and runs alone. Here the design-time build
     /// holds App.g.cs as MarkupCompile does while it writes it, until the test lets it go; a build's MarkupCompile
     /// begun meanwhile says so.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_begun_while_a_wpf_apps_design_time_build_writes_its_generated_code_waits_for_it_and_succeeds()
+    private void A_build_begun_while_a_wpf_apps_design_time_build_writes_its_generated_code_waits_for_it_and_succeeds()
     {
         string app = PathNames.Canonical(TestFolders.Create("wpf-build-"));
         string release = Path.Combine(app, "release");
@@ -1363,9 +1347,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// writer have: the build waits. Here the design-time build holds the resources open until the test lets it go,
     /// then deletes the empty file it held (taken as up to date, it would be embedded: AVLN9999) for the task to write;
     /// a build begun meanwhile says so.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_begun_while_an_avalonia_apps_design_time_build_writes_its_resources_waits_for_it_and_succeeds()
+    private void A_build_begun_while_an_avalonia_apps_design_time_build_writes_its_resources_waits_for_it_and_succeeds()
     {
         string app = PathNames.Canonical(TestFolders.Create("avalonia-build-"));
         string release = Path.Combine(app, "release");
@@ -1480,9 +1462,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>What a program writes in the Run window links where it points: an address opens in the browser, a message
     /// naming a file of its project in a compiler's shape opens that file (a relative path the project's, though the run's
     /// working folder is its output folder), and the stack trace of what it threw has each frame's file and line a link.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_address_a_message_naming_a_file_and_a_stack_trace_a_program_writes_are_links_where_they_point()
+    private void An_address_a_message_naming_a_file_and_a_stack_trace_a_program_writes_are_links_where_they_point()
     {
         Write("src/Hello/Program.cs", "Console.WriteLine(\"The orders are documented at https://example.com/orders/help?topic=load.\");\n"
             + "Console.WriteLine(\"Program.cs(2,9): warning ORD001: the orders were checked by the program\");\nOrders.Load(\"orders.json\");\n\nstatic class Orders\n{\n"
@@ -1528,9 +1508,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// to find their links, and a row on screen throughout has the same links at the end as at the start. Each row's text
     /// was copied as its colours were compared and again as its links were drawn, at every line written and every pointer
     /// move over it, its links made again each time.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_console_as_output_streams_copies_no_line_it_has_linked()
+    private void A_console_as_output_streams_copies_no_line_it_has_linked()
     {
         string folder = TestFolders.Create("links-");
         string source = TestFolders.Write(folder, "Orders.cs", "static class Orders\n{\n}\n");
@@ -1574,9 +1552,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// build is explicitly invoked" is off, and a build's end brings it forward as "Showing build results after build
     /// completed" says, by default only when errors were received; Run's build, an implicit one, opens it only with
     /// "even when the build is invoked implicitly".</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Build_opens_the_build_window_as_it_starts_and_its_end_brings_it_forward_as_settings_say()
+    private void Build_opens_the_build_window_as_it_starts_and_its_end_brings_it_forward_as_settings_say()
     {
         MainWindow window = Open();
         try
@@ -1646,9 +1622,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Assert.True(window.Status?.StartsWith(said, StringComparison.Ordinal) == true, $"The build did not end saying \"{said}\": {Ui.Said(window)}");
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_web_project_whose_profile_launches_the_browser_opens_its_launch_url_once_it_listens_and_not_before()
+    private void A_web_project_whose_profile_launches_the_browser_opens_its_launch_url_once_it_listens_and_not_before()
     {
         // Each profile's port held from now until its site is about to listen there.
         using HeldPort browse = new();
@@ -1792,9 +1766,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         return editor.TranslatePoint(top + new Vector(2, editor.LineHeight / 2), window)!.Value;
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_that_cannot_start_says_why_and_leaves_nothing_waiting()
+    private void A_build_that_cannot_start_says_why_and_leaves_nothing_waiting()
     {
         MainWindow window = Open();
         TestFolders.Delete(Folder);
@@ -1862,9 +1834,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>A program that runs until it is ended: the Run window's Rerun while it runs stops it and runs it again, and the
     /// one run again, still running when the window closes, ends with it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void The_run_windows_rerun_while_the_program_runs_stops_it_and_runs_it_again_and_a_program_still_running_ends_with_the_window()
+    private void The_run_windows_rerun_while_the_program_runs_stops_it_and_runs_it_again_and_a_program_still_running_ends_with_the_window()
     {
         string runs = Path.Combine(Folder, "program.pids");
         string started = Path.Combine(Folder, "program.pid");
@@ -1906,9 +1876,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// terminal's shell is told its folder by its real path, as the IDE's builds name it, since a build through another
     /// spelling of a project's path deletes what the IDE's build wrote and it did not (IncrementalClean),
     /// runtimeconfig.json and deps.json among them.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_program_run_built_and_built_again_in_the_terminal_starts_with_no_build_before_it()
+    private void A_program_run_built_and_built_again_in_the_terminal_starts_with_no_build_before_it()
     {
         string folder = Folder;
         // Windows' shells read no PWD.
@@ -1969,9 +1937,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             TerminalTests.Screen(shell).Split('\n').Select(line => line.Trim()).LastOrDefault(line => line is "built-0" or "built-1");
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_build_still_running_when_the_window_closes_ends_with_it()
+    private void A_build_still_running_when_the_window_closes_ends_with_it()
     {
         // A step of the build that would run for ten minutes, as a slow tool or a hung test would: its process names itself.
         Write("src/Hello/Hello.csproj", $"""

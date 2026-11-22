@@ -55,9 +55,10 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         base.Dispose();
     }
 
-    /// <summary>The gate's five checks for a newer release as one flow, to take their place once it has its record on
-    /// CI: a second window asking none of its own, the same, older or pre-release version saying nothing, the check
-    /// turned off, a failed check said and logged, and a newer release announced once.</summary>
+    /// <summary>The gate's five checks for a newer release as one flow: a second window asking none of its own, the
+    /// same, older or pre-release version saying nothing, the check turned off, a failed check said and logged, and a
+    /// newer release announced once.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_update_checks_hold_as_one_flow()
     {
@@ -280,9 +281,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         });
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_newer_release_is_announced_once_naming_its_version_with_a_link_to_this_systems_download()
+    private void A_newer_release_is_announced_once_naming_its_version_with_a_link_to_this_systems_download()
     {
         using IDisposable theme = TestsTheme();
         string newer = Bumped(1, 0);
@@ -331,9 +330,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_second_solution_window_asks_for_no_release_of_its_own_and_takes_the_watch_over_as_the_first_closes()
+    private void A_second_solution_window_asks_for_no_release_of_its_own_and_takes_the_watch_over_as_the_first_closes()
     {
         using IDisposable theme = TestsTheme();
         github.Answer = Release($"v{Bumped(1, 0)}");
@@ -360,9 +357,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         TestFolders.Delete(bank);
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_same_version_an_older_one_a_pre_release_or_a_draft_says_nothing_and_Check_for_Updates_says_up_to_date()
+    private void The_same_version_an_older_one_a_pre_release_or_a_draft_says_nothing_and_Check_for_Updates_says_up_to_date()
     {
         using IDisposable theme = TestsTheme();
         github.Answer = Release($"v{Product.Version}");
@@ -397,9 +392,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void With_Check_for_updates_off_in_Settings_nothing_is_asked_until_it_is_on_again()
+    private void With_Check_for_updates_off_in_Settings_nothing_is_asked_until_it_is_on_again()
     {
         using IDisposable theme = TestsTheme();
         github.Answer = Release($"v{Bumped(1, 0)}");
@@ -431,9 +424,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_failed_or_unanswered_check_says_nothing_and_is_logged_and_Check_for_Updates_says_why()
+    private void A_failed_or_unanswered_check_says_nothing_and_is_logged_and_Check_for_Updates_says_why()
     {
         using IDisposable theme = TestsTheme();
         Assert.True(ReleaseFeed.Default.Listing.IsLoopback, $"A test's window would ask {ReleaseFeed.Default.Listing} for the latest release, not a loopback address");

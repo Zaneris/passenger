@@ -56,10 +56,10 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         TestFolders.Delete(settings);
     }
 
-    /// <summary>The gate's seventeen checks of run configurations, as one flow, to take their place once it has its
-    /// record on CI: what runs and is kept, added, copied, changed, removed or refused in the dialog, written to and
-    /// reset from a launch profile with its Undo, an older file and a file-based program's, a compose configuration,
-    /// and what the toolbar shows.</summary>
+    /// <summary>The gate's seventeen checks of run configurations, as one flow: what runs and is kept, added, copied,
+    /// changed, removed or refused in the dialog, written to and reset from a launch profile with its Undo, an older
+    /// file and a file-based program's, a compose configuration, and what the toolbar shows.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_run_configurations_hold_as_one_flow()
     {
@@ -99,9 +99,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Flow.StepApart("a launch profile of several projects is changed made and removed in the dialog and written as Visual Studio writes it", () => new RunConfigurationsTests(folders), t => t.A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it());
     }
 
-    [Gate]
-    [Fact]
-    public void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()
+    private void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()
     {
         RunConfiguration source = new() { Name = "Aspire", Project = Path.Combine(folder, "Host", "Host.csproj"), Aspire = true };
         string linked = Path.Combine(folder, "Linked", "Linked.csproj");
@@ -137,9 +135,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>While a run of a configuration is up, the toolbar, its chooser and Edit Configurations' row say "(running)"
     /// after its name, and stop saying it once the run has ended.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_configuration_says_it_is_running_in_the_toolbar_its_chooser_and_Edit_Configurations_while_a_run_of_it_is_up()
+    private void A_configuration_says_it_is_running_in_the_toolbar_its_chooser_and_Edit_Configurations_while_a_run_of_it_is_up()
     {
         // Hello made a program that runs until stopped, which it never is otherwise.
         Restored();
@@ -174,9 +170,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_configuration_added_in_the_dialog_runs_with_what_was_typed_and_is_there_when_the_folder_opens_again()
+    private void A_configuration_added_in_the_dialog_runs_with_what_was_typed_and_is_there_when_the_folder_opens_again()
     {
         Restored();
         MainWindow window = Keeping();
@@ -239,9 +233,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// project's folder, arguments given for one run replacing the profile's; a Docker profile is a container configuration
     /// of its project; and a generated configuration copied is the person's own, the generated one staying as its profile
     /// makes it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_generated_configuration_copied_is_the_persons_own_and_the_generated_one_stays_as_its_launch_profile_makes_it()
+    private void A_generated_configuration_copied_is_the_persons_own_and_the_generated_one_stays_as_its_launch_profile_makes_it()
     {
         Restored();
         Write("Hello/Properties/launchSettings.json", """
@@ -377,9 +369,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>A generated configuration's arguments changed in place, with no copy, are what Run gives the program, and are
     /// there when the folder opens again; its launch profile's environment changed on disk then reaches it while the
     /// arguments stay the person's, the Explorer left as it was, and the dialog marks the arguments alone as changed.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_generated_configurations_arguments_changed_in_place_are_run_kept_with_the_folder_and_stay_over_its_launch_profile_as_it_changes()
+    private void A_generated_configurations_arguments_changed_in_place_are_run_kept_with_the_folder_and_stay_over_its_launch_profile_as_it_changes()
     {
         Restored();
         Write("Hello/Properties/launchSettings.json", Greet("Hi"));
@@ -499,9 +489,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>Write to Launch Profile puts the arguments and a variable changed in place into the profile, the rest of
     /// launchSettings.json (the other profile, a comment, the spacing) byte for byte, and keeps here what the file has no
     /// place for; Undo takes the write back whole: the file as it was, the changes kept with the folder as they were.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Write_to_launch_profile_puts_the_changes_into_launchSettings_json_the_rest_as_it_was_and_Undo_takes_it_back()
+    private void Write_to_launch_profile_puts_the_changes_into_launchSettings_json_the_rest_as_it_was_and_Undo_takes_it_back()
     {
         string settingsFile = Path.Combine(project, "Properties", "launchSettings.json");
         Write("Hello/Properties/launchSettings.json", Profiles);
@@ -561,9 +549,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// byte; dotnet run runs it by that name, listed as generated from it, the console kept here. Undo in the Explorer takes
     /// the profile out, the folder's own configuration back, the keys left there for Redo to save it again; the folder
     /// opened again lists it as generated, the console still kept here.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back()
+    private void Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back()
     {
         Restored();
         string settingsFile = Path.Combine(project, "Properties", "launchSettings.json");
@@ -660,9 +646,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// then its profiles, which dotnet run runs by the profile's name; the project then runs only as that profile, its
     /// building first kept here. Undo takes the file and the folder made for it away, the folder's own configuration back;
     /// Redo makes them again, and the folder opened again lists it as generated, still not built first.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Save_as_launch_profile_in_a_project_with_no_launchSettings_json_makes_it_as_dotnet_new_does_and_Undo_takes_it_away()
+    private void Save_as_launch_profile_in_a_project_with_no_launchSettings_json_makes_it_as_dotnet_new_does_and_Undo_takes_it_away()
     {
         Restored();
         string properties = Path.Combine(project, "Properties");
@@ -768,9 +752,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>A file-based program's launch profiles, in its app.run.json, changed on disk reach its run configuration as
     /// a launchSettings.json's do, the Explorer left as it was.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration()
+    private void A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration()
     {
         TestFolders.Delete(folder);
         folder = TestFolders.Create("program-");
@@ -795,9 +777,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>Reset to Launch Profile puts a generated configuration changed in place back as its profile makes it, and
     /// the folder opened again has no change kept for it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Reset_to_launch_profile_puts_a_changed_configuration_back_as_its_profile_makes_it_for_good()
+    private void Reset_to_launch_profile_puts_a_changed_configuration_back_as_its_profile_makes_it_for_good()
     {
         Write("Hello/Properties/launchSettings.json", Greet("Hi"));
         MainWindow window = Keeping();
@@ -832,9 +812,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>A runConfigurations.json an older Passenger wrote, with a copy the person made of a generated configuration,
     /// opens as it was; changing the generated one in place leaves the copy in the file as it stood.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_older_runConfigurations_json_opens_as_it_was_and_keeps_the_persons_copies_as_they_stand()
+    private void An_older_runConfigurations_json_opens_as_it_was_and_keeps_the_persons_copies_as_they_stand()
     {
         Write("Hello/Properties/launchSettings.json", Greet("Hi"));
         JsonArray copies = [new JsonObject
@@ -902,9 +880,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>Use external console, chosen in the dialog for a copy of the generated configuration (whose own stays the
     /// Run window's), runs the program in a tab of the Terminal window named for the configuration, and is still chosen when
     /// the folder opens again.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration()
+    private void Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration()
     {
         Restored();
         MainWindow window = Keeping();
@@ -996,9 +972,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>Open browser, After launch: a launch profile's launchBrowser shows ticked with the URL its launchUrl and
     /// applicationUrl make, and opens that URL once the program listens; turned off in a copy, the copy opens none.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_launch_profiles_browser_shows_under_open_browser_and_a_copy_with_it_turned_off_opens_none()
+    private void A_launch_profiles_browser_shows_under_open_browser_and_a_copy_with_it_turned_off_opens_none()
     {
         Restored();
         // The port held until each run's program, waiting at a gate, is let listen there; it listens until let go.
@@ -1144,9 +1118,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         return (program, record);
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_configuration_removed_in_the_dialog_is_gone_from_the_toolbar_and_the_folder()
+    private void A_configuration_removed_in_the_dialog_is_gone_from_the_toolbar_and_the_folder()
     {
         MainWindow window = Keeping();
         window.SetConfigurations(
@@ -1178,9 +1150,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_compose_configuration_added_in_the_dialog_shows_its_kinds_page_and_is_kept_with_its_files_and_choices()
+    private void A_compose_configuration_added_in_the_dialog_shows_its_kinds_page_and_is_kept_with_its_files_and_choices()
     {
         Write("compose.yaml", "services:\n  web:\n    image: busybox:1.38\n");
         Write("compose.override.yaml", "services:\n  web:\n    environment: { A: \"1\" }\n");
@@ -1266,9 +1236,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_name_taken_or_missing_is_refused_with_why_and_nothing_changes()
+    private void A_name_taken_or_missing_is_refused_with_why_and_nothing_changes()
     {
         MainWindow window = Keeping();
         try
@@ -1294,9 +1262,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     }
 
     /// <summary>A name longer than the list is wide ends in an ellipsis inside its row.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_configuration_named_longer_than_the_list_is_wide_ends_in_an_ellipsis_inside_its_row()
+    private void A_configuration_named_longer_than_the_list_is_wide_ends_in_an_ellipsis_inside_its_row()
     {
         const string Long = "TopLevelStatementsConsoleApp project, named at more length than the list has room for";
         MainWindow window = Keeping();

@@ -22,7 +22,8 @@ public sealed class LaunchUpToDateTests
     internal static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
     /// <summary>The gate's two checks that a run builds only where what its build reads changed and waits for a build
-    /// at work, as one flow, to take their place once it has its record on CI.</summary>
+    /// at work, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_up_to_date_runs_hold_as_one_flow()
     {
@@ -45,9 +46,7 @@ public sealed class LaunchUpToDateTests
         Flow.StepApart<LaunchUpToDateTests>("a run takes the SDKs version as dotnet names it never waiting for what dotnet does after", t => t.A_run_takes_the_SDKs_version_as_dotnet_names_it_never_waiting_for_what_dotnet_does_after());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_run_with_nothing_its_build_reads_changed_starts_no_build_and_each_change_builds_first()
+    private void A_run_with_nothing_its_build_reads_changed_starts_no_build_and_each_change_builds_first()
     {
         string folder = Write();
         string app = Path.Combine(folder, "App", "App.csproj");
@@ -127,9 +126,7 @@ public sealed class LaunchUpToDateTests
 
     /// <summary>Run begun while a build works waits for that build to end, saying so in its work, and then runs; here
     /// the build is held until the test lets it go.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_run_begun_while_a_build_works_waits_for_it_to_end_and_then_runs()
+    private void A_run_begun_while_a_build_works_waits_for_it_to_end_and_then_runs()
     {
         string folder = TestFolders.Create("uptodate-held-");
         // A build, not a design-time one, held once the test puts "hold" there until it puts "go" (ten minutes at most).

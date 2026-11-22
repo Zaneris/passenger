@@ -71,8 +71,8 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         folder = PathNames.Canonical(shop.Folder);
     }
 
-    /// <summary>The gate's eight checks of a project file's completion, cards, marks and saves, as one flow, to take
-    /// their place once it has its record on CI.</summary>
+    /// <summary>The gate's eight checks of a project file's completion, cards, marks and saves, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_project_file_help_holds_as_one_flow()
     {
@@ -99,9 +99,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Flow.StepApart("a typing pause in a project file of thousands of items costs the window what one of forty does", () => new ProjectFileHelpTests(shop), t => t.A_typing_pause_in_a_project_file_of_thousands_of_items_costs_the_window_what_one_of_forty_does());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_file_completes_its_properties_their_values_paths_and_the_names_its_evaluation_knows()
+    private void A_project_file_completes_its_properties_their_values_paths_and_the_names_its_evaluation_knows()
     {
         MainWindow window = Open("App/App.csproj");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -150,9 +148,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_package_reference_completes_ids_and_versions_from_the_folders_feed_and_a_vulnerable_version_is_marked()
+    private void A_package_reference_completes_ids_and_versions_from_the_folders_feed_and_a_vulnerable_version_is_marked()
     {
         MainWindow window = Open("App/App.csproj");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -229,9 +225,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_card_over_a_name_says_its_evaluated_value_and_where_it_was_set_and_go_to_declaration_goes_there()
+    private void The_card_over_a_name_says_its_evaluated_value_and_where_it_was_set_and_go_to_declaration_goes_there()
     {
         MainWindow window = Open("App/App.csproj");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -301,9 +295,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
 
     /// <summary>Core takes in its own folder's C# by the SDK's wildcard and Shared's by its own element, so a file come into or
     /// gone from either folder, whether another program or the IDE made it, changes what the cards count with nothing typed.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_item_elements_card_counts_the_files_come_into_and_gone_from_the_folders_its_wildcards_walk_with_nothing_typed()
+    private void An_item_elements_card_counts_the_files_come_into_and_gone_from_the_folders_its_wildcards_walk_with_nothing_typed()
     {
         MainWindow window = Open("Core/Core.csproj");
         OpenDocument document = window.EditorArea.Active!;
@@ -335,9 +327,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_evaluations_errors_are_marked_on_their_lines_as_typed_and_listed_in_problems()
+    private void The_evaluations_errors_are_marked_on_their_lines_as_typed_and_listed_in_problems()
     {
         MainWindow window = Open("App/App.csproj");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -365,9 +355,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Directory_packages_props_completes_versions_marks_a_vulnerable_one_and_takes_a_new_references_version()
+    private void Directory_packages_props_completes_versions_marks_a_vulnerable_one_and_takes_a_new_references_version()
     {
         Write("Directory.Packages.props", """
             <Project>
@@ -440,9 +428,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
 
     /// <summary>A lone '\r', U+0085, U+2028 and U+2029 end a line for the edits a workspace edit makes, not for the editor:
     /// the version a new reference takes goes into Directory.Packages.props, not open, beside the others below them.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_new_references_version_goes_beside_the_others_in_a_directory_packages_props_holding_line_breaks_only_roslyn_counts()
+    private void A_new_references_version_goes_beside_the_others_in_a_directory_packages_props_holding_line_breaks_only_roslyn_counts()
     {
         string props = $"""
             <Project>
@@ -481,9 +467,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_file_saved_has_the_solution_view_and_the_language_server_take_what_it_says_now()
+    private void A_project_file_saved_has_the_solution_view_and_the_language_server_take_what_it_says_now()
     {
         MainWindow window = Open("App/App.csproj", autosaves: true, languageServer: true);
         CodeEditor editor = window.EditorArea.CodeEditor;

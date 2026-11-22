@@ -56,8 +56,9 @@ public sealed class NewSolutionTests : IDisposable
     }
 
     /// <summary>The gate's New Solution from the Welcome screen and from a window with a solution open wherever it
-    /// opens, as one flow, to take their place once it has its record on CI; Avalonia's templates installed stay a test
-    /// of their own, as the install is the run's.</summary>
+    /// opens, as one flow; Avalonia's templates installed stay a test of their own, as the install is the
+    /// run's.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_new_solutions_hold_as_one_flow()
     {
@@ -107,9 +108,7 @@ public sealed class NewSolutionTests : IDisposable
     /// <summary>New Solution from the Welcome screen lists what dotnet new list reports, refuses a name already taken or a
     /// directory not empty with why before anything is made, and makes a console app with the option chosen, opens it
     /// built and runs it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void New_Solution_from_the_Welcome_screen_makes_a_console_app_with_the_option_chosen_opens_it_built_and_runs_it()
+    private void New_Solution_from_the_Welcome_screen_makes_a_console_app_with_the_option_chosen_opens_it_built_and_runs_it()
     {
         using IDisposable theme = TestsTheme();
         Write("Taken/notes.txt", "kept\n");
@@ -234,12 +233,7 @@ public sealed class NewSolutionTests : IDisposable
     /// session there has begun, whatever Settings' Open project in says: asked, nothing builds while the question waits, and
     /// This Window builds it there once the old solution is left; Current Window builds it there too; New Window builds it in
     /// a window of its own. The solution that was open is never built.</summary>
-    [Gate]
-    [AvaloniaTheory]
-    [InlineData(OpenProjectIn.Ask)]
-    [InlineData(OpenProjectIn.CurrentWindow)]
-    [InlineData(OpenProjectIn.NewWindow)]
-    public void New_Solution_from_a_window_with_a_solution_open_builds_the_new_one_in_the_window_it_opens_in(OpenProjectIn openIn)
+    private void New_Solution_from_a_window_with_a_solution_open_builds_the_new_one_in_the_window_it_opens_in(OpenProjectIn openIn)
     {
         using IDisposable theme = TestsTheme();
         Write("Old/Old.csproj", Executable);

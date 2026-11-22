@@ -30,9 +30,10 @@ public sealed class StateTests : IDisposable
         TestFolders.Delete(settings);
     }
 
-    /// <summary>The gate's seven checks of what the state keeps, as one flow, to take their place once it has its
-    /// record on CI: a hand edit set aside, values out of range kept, a dotfiles link followed, breakpoints, bookmarks,
-    /// tabs and layouts coming back with their folder, and a layout reaching every window.</summary>
+    /// <summary>The gate's seven checks of what the state keeps, as one flow: a hand edit set aside, values out of
+    /// range kept, a dotfiles link followed, breakpoints, bookmarks, tabs and layouts coming back with their folder,
+    /// and a layout reaching every window.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_kept_state_holds_as_one_flow()
     {
@@ -116,9 +117,7 @@ public sealed class StateTests : IDisposable
         Assert.Empty(Directory.GetFiles(settings, "*.tmp"));
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_settings_file_a_hand_edit_left_not_reading_is_set_aside_by_the_next_change_and_the_status_bar_says_where_it_went()
+    private void A_settings_file_a_hand_edit_left_not_reading_is_set_aside_by_the_next_change_and_the_status_bar_says_where_it_went()
     {
         using IDisposable theme = TestsTheme();
         string file = Path.Combine(settings, "settings.json");
@@ -176,9 +175,7 @@ public sealed class StateTests : IDisposable
         Assert.Equal(broken, File.ReadAllText(file + ".bad"));
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_later_builds_values_and_a_hand_edit_out_of_range_stay_in_the_file_while_the_window_uses_what_it_can()
+    private void A_later_builds_values_and_a_hand_edit_out_of_range_stay_in_the_file_while_the_window_uses_what_it_can()
     {
         using IDisposable theme = TestsTheme();
         string file = Path.Combine(settings, "settings.json");
@@ -212,9 +209,7 @@ public sealed class StateTests : IDisposable
         Assert.Equal(1.5, (double)written["editorLineSpacing"]!);
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Settings_kept_in_a_dotfiles_folder_through_a_symlink_take_each_change_there_and_the_link_stays()
+    private void Settings_kept_in_a_dotfiles_folder_through_a_symlink_take_each_change_there_and_the_link_stays()
     {
         using IDisposable theme = TestsTheme();
         string file = Path.Combine(settings, "settings.json");
@@ -378,9 +373,7 @@ public sealed class StateTests : IDisposable
         Assert.True(File.Exists(former), "The workspace file an older build reads was taken away");
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Breakpoints_and_bookmarks_come_back_when_the_folder_opens_again_and_go_when_another_opens()
+    private void Breakpoints_and_bookmarks_come_back_when_the_folder_opens_again_and_go_when_another_opens()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    void M()\n    {\n        int x = 1;\n    }\n}\n");
         File.WriteAllText(Path.Combine(folder, "Two.cs"), "class Two\n{\n}\n");
@@ -547,9 +540,7 @@ public sealed class StateTests : IDisposable
 
     /// <summary>A file open with no folder never keeps the next folder's tabs from coming back, and leaving that folder keeps
     /// its own tabs, not the file open before it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_folder_opens_with_its_own_tabs_whatever_was_open_before_it_which_stays_beside_them()
+    private void A_folder_opens_with_its_own_tabs_whatever_was_open_before_it_which_stays_beside_them()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), "class Shop { }\n");
         File.WriteAllText(Path.Combine(folder, "Bank.cs"), "class Bank { }\n");
@@ -583,9 +574,7 @@ public sealed class StateTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Each_folder_opens_on_its_own_layout_and_one_without_on_the_one_there_was()
+    private void Each_folder_opens_on_its_own_layout_and_one_without_on_the_one_there_was()
     {
         string other = TestFolders.Create("other-");
         MainWindow first = Keeping(folder);
@@ -609,9 +598,7 @@ public sealed class StateTests : IDisposable
         second.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_layout_kept_for_a_screen_no_longer_there_or_by_a_later_build_opens_every_tool_window_where_it_can_be_reached()
+    private void A_layout_kept_for_a_screen_no_longer_there_or_by_a_later_build_opens_every_tool_window_where_it_can_be_reached()
     {
         File.WriteAllText(Path.Combine(settings, "layout.json"), """
             {

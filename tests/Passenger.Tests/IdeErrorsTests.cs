@@ -30,10 +30,10 @@ public sealed class IdeErrorsTests : IDisposable
         TestFolders.Delete(folder);
     }
 
-    /// <summary>The gate's checks of the IDE's errors but its rule over src, as one flow, to take their place once it
-    /// has its record on CI: a command or a change handler that throws leaving the window up and in step, errors
-    /// counted, capped and logged, a window test failing on an error, and a language server started again or never
-    /// started for a window gone.</summary>
+    /// <summary>The gate's checks of the IDE's errors but its rule over src, as one flow: a command or a change handler
+    /// that throws leaving the window up and in step, errors counted, capped and logged, a window test failing on an
+    /// error, and a language server started again or never started for a window gone.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_IDE_errors_hold_as_one_flow()
     {
@@ -94,9 +94,7 @@ public sealed class IdeErrorsTests : IDisposable
         Flow.StepApart<IdeErrorsTests>("Undo of a rename whose file another program holds says it waits and undone once the file is let go", t => t.Undo_of_a_rename_whose_file_another_program_holds_says_it_waits_and_undone_once_the_file_is_let_go());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_command_that_throws_leaves_the_window_up_with_the_error_in_the_log_and_the_status_bar()
+    private void A_command_that_throws_leaves_the_window_up_with_the_error_in_the_log_and_the_status_bar()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         File.WriteAllText(Path.Combine(folder, "Two.cs"), "class Two { }\n");
@@ -146,9 +144,7 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>A handler of a file's changes that throws is an error the IDE shows, and every handler after it still hears
     /// of the change: the file's parse keeps up with the keys, the first of which the handler threw on.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_handler_of_a_files_changes_that_throws_leaves_those_after_it_in_step_with_the_text()
+    private void A_handler_of_a_files_changes_that_throws_leaves_those_after_it_in_step_with_the_text()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -288,9 +284,9 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>Every place src's code lets go of a task it started (DroppedTasks): a discard, a call as a statement, a
     /// lambda for a delegate that returns nothing, a continuation that only marks a fault seen among them (that is
-    /// UnawaitedWork.Dismiss's), a timed wait's own task waited on through Ended. Passed over: a folder of no .NET project
-    /// (the debugger's relay is C), a project not built, the container tools (only the solution's build and the release
-    /// make them).</summary>
+    /// UnawaitedWork.Dismiss's), a timed wait's own task waited on through Ended. Passed over: a folder of no .NET
+    /// project (the debugger's relay is C), a project not built, the container tools (only the solution's build and the
+    /// release make them).</summary>
     [Gate]
     [AvaloniaFact]
     public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
@@ -324,9 +320,7 @@ public sealed class IdeErrorsTests : IDisposable
             + $"and a timed wait waited on however it ends to UnawaitedWork.EndedWithin, never WaitAsync's own task to Ended:\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_same_error_again_and_again_is_one_row_with_its_count_and_a_log_rotated_under_its_size_cap()
+    private void The_same_error_again_and_again_is_one_row_with_its_count_and_a_log_rotated_under_its_size_cap()
     {
         long limit = IdeErrors.LogLimit;
         IdeErrors.LogLimit = 16 * 1024;
@@ -377,9 +371,7 @@ public sealed class IdeErrorsTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Past_a_hundred_different_errors_the_rest_are_only_in_the_log_and_the_count_says_there_are_more()
+    private void Past_a_hundred_different_errors_the_rest_are_only_in_the_log_and_the_count_says_there_are_more()
     {
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
@@ -405,9 +397,7 @@ public sealed class IdeErrorsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_window_test_in_which_the_ide_caught_an_error_fails_naming_it()
+    private void A_window_test_in_which_the_ide_caught_an_error_fails_naming_it()
     {
         MainWindow window = new() { Width = 800, Height = 600 };
         window.Show();
@@ -416,7 +406,8 @@ public sealed class IdeErrorsTests : IDisposable
         IdeErrors.Observe(new TaskCompletionSource().Task.WaitAsync(TimeSpan.Zero, TestContext.Current.CancellationToken));
         Ui.Settle();
         FailOnIdeErrorsAttribute check = new();
-        System.Reflection.MethodInfo self = typeof(IdeErrorsTests).GetMethod(nameof(A_window_test_in_which_the_ide_caught_an_error_fails_naming_it))!;
+        // The window test this runs in, as the check is handed after each.
+        System.Reflection.MethodInfo self = Assert.IsAssignableFrom<Xunit.v3.IXunitTestMethod>(TestContext.Current.TestMethod).Method;
         InvalidOperationException failed = Assert.Throws<InvalidOperationException>(() => check.After(self, null!));
         Assert.Contains("ArgumentException: A posted job went wrong in a test", failed.Message, StringComparison.Ordinal);
         Assert.Contains($"TimeoutException: The operation has timed out.\n   at {nameof(A_window_test_in_which_the_ide_caught_an_error_fails_naming_it)} in ", failed.Message, StringComparison.Ordinal);
@@ -475,9 +466,7 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>A folder without a solution has its projects found by a walk off the window's thread, and its language
     /// server starts once that walk lands: a window closed before then starts none, which nothing would end.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_window_closed_before_its_folders_projects_are_found_starts_no_language_server()
+    private void A_window_closed_before_its_folders_projects_are_found_starts_no_language_server()
     {
         WriteProgram(folder);
         MainWindow window = new() { Width = 1200, Height = 800 };
@@ -742,9 +731,7 @@ public sealed class IdeErrorsTests : IDisposable
     /// <summary>A server whose process ends during its own start, before it has answered, is started again as one that ends
     /// later is, the window saying so, and C# comes back for the file open; asked to, the IDE starts it again in place of
     /// the one running.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_language_server_that_ends_during_its_start_is_started_again_saying_so()
+    private void A_language_server_that_ends_during_its_start_is_started_again_saying_so()
     {
         WriteProgram(folder);
         MainWindow window = new() { Width = 1200, Height = 800 };
