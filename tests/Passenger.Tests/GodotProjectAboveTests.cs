@@ -47,9 +47,21 @@ public sealed class GodotProjectAboveTests : IClassFixture<GodotProjectAboveTest
         game.Reset();
     }
 
-    /// <summary>The code of a project above the Godot folder names the moved scene: its string follows the move.</summary>
+    /// <summary>A C# project above its Godot folder follows a moved scene and is told where its build misses the
+    /// folder.</summary>
     [AvaloniaFact]
-    public void A_moved_scene_is_followed_by_the_code_of_a_project_above_the_godot_folder()
+    public void A_project_above_its_godot_folder_follows_and_is_told()
+    {
+        Flow.Step(nameof(A_moved_scene_is_followed_by_the_code_of_a_project_above_the_godot_folder),
+            A_moved_scene_is_followed_by_the_code_of_a_project_above_the_godot_folder);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_project_above_its_godot_folder_is_told_where_its_build_misses_it),
+            A_project_above_its_godot_folder_is_told_where_its_build_misses_it);
+    }
+
+    /// <summary>The code of a project above the Godot folder names the moved scene: its string follows the move.</summary>
+    private void A_moved_scene_is_followed_by_the_code_of_a_project_above_the_godot_folder()
     {
         MainWindow window = game.Open(game.PathOf(Path.Combine("game", "Main.cs")));
         try
@@ -71,8 +83,7 @@ public sealed class GodotProjectAboveTests : IClassFixture<GodotProjectAboveTest
 
     /// <summary>The project sets its Godot folder in its body, too late for Godot.NET.Sdk to build into it: the generators
     /// were told, but the build lands beside the project, where Godot finds no assembly. Problems says so, and what to set.</summary>
-    [AvaloniaFact]
-    public void A_project_above_its_godot_folder_is_told_where_its_build_misses_it()
+    private void A_project_above_its_godot_folder_is_told_where_its_build_misses_it()
     {
         MainWindow window = game.Open(game.PathOf(Path.Combine("game", "Main.cs")));
         try

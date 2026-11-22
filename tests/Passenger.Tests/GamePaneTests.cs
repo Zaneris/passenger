@@ -26,8 +26,50 @@ public sealed class GamePaneTests
 {
     private static readonly (int Width, int Height) FourByThree = (720, 540);
 
+    /// <summary>The embedded display is told the window's scale and the game's place, follows the pane, and the game
+    /// window stays chosen and shown.</summary>
     [AvaloniaFact]
-    public void The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale()
+    public void The_game_pane_tells_the_display_its_place_and_scale()
+    {
+        Flow.Step(nameof(The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale),
+            The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size),
+            A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_game_follows_the_pane_as_it_changes_size), The_game_follows_the_pane_as_it_changes_size);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown),
+            The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error),
+            A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own),
+            A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own);
+    }
+
+    /// <summary>A click and a pointer the game moves reach it from its own top left in what its Godot takes, never
+    /// while the pane lacks the keys.</summary>
+    [AvaloniaFact]
+    public void The_game_pane_passes_the_pointer_in_the_games_own_terms()
+    {
+        Flow.Step("A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes(\"4.7.2\", 1)",
+            () => A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes("4.7.2", 1));
+        OpenWindows.CloseAll();
+        Flow.Step("A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes(\"4.6.2\", 2)",
+            () => A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes("4.6.2", 2));
+        OpenWindows.CloseAll();
+        Flow.Step("A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(\"4.7.2\", 1)",
+            () => A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says("4.7.2", 1));
+        OpenWindows.CloseAll();
+        Flow.Step("A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(\"4.6.2\", 2)",
+            () => A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says("4.6.2", 2));
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_game_moves_no_pointer_while_the_pane_lacks_the_keys), A_game_moves_no_pointer_while_the_pane_lacks_the_keys);
+    }
+
+    private void The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale()
     {
         using Rig rig = Rig.Open();
         rig.Window.SetRenderScaling(2);
@@ -45,8 +87,7 @@ public sealed class GamePaneTests
         Assert.True(place.X + place.Width <= rig.Pane.Bounds.Width * 2 && place.Y + place.Height <= rig.Pane.Bounds.Height * 2, $"The game's place of {place} falls outside the pane's {rig.Pane.Bounds} at 2x");
     }
 
-    [AvaloniaFact]
-    public void A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size()
+    private void A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size()
     {
         using Rig rig = Rig.Open();
         rig.Window.SetRenderScaling(2);
@@ -63,8 +104,7 @@ public sealed class GamePaneTests
         Assert.Equal((rig.Place(1).Width, rig.Place(1).Height), game.ToldSize);
     }
 
-    [AvaloniaFact]
-    public void The_game_follows_the_pane_as_it_changes_size()
+    private void The_game_follows_the_pane_as_it_changes_size()
     {
         using Rig rig = Rig.Open();
         // Tall enough that the pane's height decides its size, whatever the width of the window's right side.
@@ -80,10 +120,7 @@ public sealed class GamePaneTests
         Assert.Equal((rig.Place(1).Width, rig.Place(1).Height), game.ToldSize);
     }
 
-    [AvaloniaTheory]
-    [InlineData("4.7.2", 1)]
-    [InlineData("4.6.2", 2)]
-    public void A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes(string version, double unit)
+    private void A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes(string version, double unit)
     {
         using Rig rig = Rig.Open(version);
         rig.Window.SetRenderScaling(2);
@@ -106,10 +143,7 @@ public sealed class GamePaneTests
             $"The click 10,20 in from the game's top left reached Godot {version} at {x},{y}, where it takes {unit} to a logical unit");
     }
 
-    [AvaloniaTheory]
-    [InlineData("4.7.2", 1)]
-    [InlineData("4.6.2", 2)]
-    public void A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(string version, double unit)
+    private void A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(string version, double unit)
     {
         using Rig rig = Rig.Open(version);
         rig.Window.SetRenderScaling(2);
@@ -134,8 +168,7 @@ public sealed class GamePaneTests
             $"The pointer moved 3,4 on from the place the game put it reached Godot {version} as a move of {x},{y}, so a game that recentres the pointer sees it leap by as far as it was put");
     }
 
-    [AvaloniaFact]
-    public void A_game_moves_no_pointer_while_the_pane_lacks_the_keys()
+    private void A_game_moves_no_pointer_while_the_pane_lacks_the_keys()
     {
         using Rig rig = Rig.Open();
         Game game = rig.Hold(FourByThree);
@@ -154,8 +187,7 @@ public sealed class GamePaneTests
         Assert.Equal((3f, 4f), game.LastMove);
     }
 
-    [AvaloniaFact]
-    public void The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown()
+    private void The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown()
     {
         using Rig rig = Rig.Open();
         DockHost dock = rig.Window.DockHost;
@@ -169,8 +201,7 @@ public sealed class GamePaneTests
         Assert.Equal(ToolAnchor.RightBottom, dock[ToolWindowIds.LiveTree].Anchor);
     }
 
-    [AvaloniaFact]
-    public void A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error()
+    private void A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error()
     {
         using Rig rig = Rig.Open();
         rig.Hold(FourByThree, connects: false);
@@ -184,8 +215,7 @@ public sealed class GamePaneTests
         Assert.DoesNotContain(IdeErrors.Errors, e => e.Message.Contains("is not connected", StringComparison.Ordinal));
     }
 
-    [AvaloniaFact]
-    public void A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own()
+    private void A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own()
     {
         using Rig rig = Rig.Open();
         Ui.WaitFor(() => rig.Window.Configurations.Any(c => c.Generated && c.Name == "Pane"), () => $"the game's configuration ({string.Join(", ", rig.Window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));

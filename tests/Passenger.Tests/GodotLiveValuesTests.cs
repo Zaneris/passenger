@@ -131,11 +131,35 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
 
         """;
 
+    /// <summary>A running game's member values show at their lines and climb as it runs, read without running a getter
+    /// of the game's, a node chosen read once.</summary>
+    [AvaloniaFact]
+    public void A_games_values_show_at_their_lines_running_no_getter()
+    {
+        Flow.Step(nameof(A_members_value_shows_at_its_line_end_climbs_as_the_game_runs_charts_its_last_minute_on_hover_and_goes_at_Stop),
+            A_members_value_shows_at_its_line_end_climbs_as_the_game_runs_charts_its_last_minute_on_hover_and_goes_at_Stop);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_script_two_nodes_run_shows_their_count_until_one_is_chosen_in_the_Live_Visual_Tree_then_its_values),
+            A_script_two_nodes_run_shows_their_count_until_one_is_chosen_in_the_Live_Visual_Tree_then_its_values);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_gdscripts_var_shows_its_value_at_its_line_end_and_climbs_as_the_game_runs),
+            A_gdscripts_var_shows_its_value_at_its_line_end_and_climbs_as_the_game_runs);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Watching_a_gdscripts_values_runs_no_getter_of_its_and_no_to_string_so_the_game_stays_as_it_was),
+            Watching_a_gdscripts_values_runs_no_getter_of_its_and_no_to_string_so_the_game_stays_as_it_was);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_node_chosen_in_the_Live_Visual_Tree_is_read_once_saying_its_getters_ran_and_never_again_as_the_games_nodes_come_and_go),
+            A_node_chosen_in_the_Live_Visual_Tree_is_read_once_saying_its_getters_ran_and_never_again_as_the_games_nodes_come_and_go);
+    }
+
     /// <summary>The frame count's hint climbs as the game runs beside the vector's parts and the node its path reaches; hovered
     /// after two readings it shows the member's last minute as a rising line; turned off in Settings every hint goes and none
     /// comes while the game runs, and back on they return; at Stop they go.</summary>
-    [AvaloniaFact]
-    public void A_members_value_shows_at_its_line_end_climbs_as_the_game_runs_charts_its_last_minute_on_hover_and_goes_at_Stop()
+    private void A_members_value_shows_at_its_line_end_climbs_as_the_game_runs_charts_its_last_minute_on_hover_and_goes_at_Stop()
     {
         MainWindow window = Started("Main.cs");
         try
@@ -181,8 +205,7 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
 
     /// <summary>A script two nodes run shows their count after its class until one is chosen in the Live Visual Tree, then
     /// that node's values, its name after the class; the other chosen, its values.</summary>
-    [AvaloniaFact]
-    public void A_script_two_nodes_run_shows_their_count_until_one_is_chosen_in_the_Live_Visual_Tree_then_its_values()
+    private void A_script_two_nodes_run_shows_their_count_until_one_is_chosen_in_the_Live_Visual_Tree_then_its_values()
     {
         MainWindow window = Started("Enemy.cs");
         try
@@ -217,8 +240,7 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
     }
 
     /// <summary>A GDScript's var shows its value at its line's end, read again as the game runs, as a C# member's does.</summary>
-    [AvaloniaFact]
-    public void A_gdscripts_var_shows_its_value_at_its_line_end_and_climbs_as_the_game_runs()
+    private void A_gdscripts_var_shows_its_value_at_its_line_end_and_climbs_as_the_game_runs()
     {
         MainWindow window = Started("spark.gd");
         try
@@ -241,8 +263,7 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
 
     /// <summary>Watching a game never runs its code: a member with a getter of its own shows no value, the rest of its script's
     /// do, and an object in a container is said by what it is, so what they count stays at nothing however long it is watched.</summary>
-    [AvaloniaFact]
-    public void Watching_a_gdscripts_values_runs_no_getter_of_its_and_no_to_string_so_the_game_stays_as_it_was()
+    private void Watching_a_gdscripts_values_runs_no_getter_of_its_and_no_to_string_so_the_game_stays_as_it_was()
     {
         game.Rewrite("spark.gd", Watched);
         MainWindow window = Started("spark.gd");
@@ -290,8 +311,7 @@ public sealed class GodotLiveValuesTests : IClassFixture<GodotLiveValuesTests.Ga
     /// <summary>Choosing a node reads it through Godot's own inspection, which runs its getters, so the pane says it did; the
     /// game's nodes then coming and going, its tree follows and the node is read no more, so what the getter counts stands
     /// still, until Refresh reads it again.</summary>
-    [AvaloniaFact]
-    public void A_node_chosen_in_the_Live_Visual_Tree_is_read_once_saying_its_getters_ran_and_never_again_as_the_games_nodes_come_and_go()
+    private void A_node_chosen_in_the_Live_Visual_Tree_is_read_once_saying_its_getters_ran_and_never_again_as_the_games_nodes_come_and_go()
     {
         game.Rewrite("spark.gd", Busy);
         MainWindow window = Started("spark.gd");

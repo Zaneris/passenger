@@ -38,8 +38,31 @@ public sealed class GDScriptUsagesTests
         TestFolders.Write(folder, "main.tscn", Scene);
     }
 
+    /// <summary>Find Usages and Rename reach a GDScript name in every script, string and scene, as one command, asking
+    /// where a use is unseen.</summary>
     [AvaloniaFact]
-    public void Find_usages_lists_a_functions_calls_in_another_script_its_string_and_the_scenes_connection_and_a_locals_in_its_function()
+    public void Gdscript_usages_and_renames_reach_every_script_string_and_scene()
+    {
+        Flow.StepApart<GDScriptUsagesTests>(nameof(Find_usages_lists_a_functions_calls_in_another_script_its_string_and_the_scenes_connection_and_a_locals_in_its_function),
+            test => test.Find_usages_lists_a_functions_calls_in_another_script_its_string_and_the_scenes_connection_and_a_locals_in_its_function());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptUsagesTests>(nameof(Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole),
+            test => test.Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptUsagesTests>(nameof(Rename_renames_a_function_through_the_other_script_its_string_and_the_scene_as_one_command),
+            test => test.Rename_renames_a_function_through_the_other_script_its_string_and_the_scene_as_one_command());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptUsagesTests>(nameof(A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing),
+            test => test.A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptUsagesTests>(nameof(A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete),
+            test => test.A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptUsagesTests>(nameof(A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it),
+            test => test.A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it());
+    }
+
+    private void Find_usages_lists_a_functions_calls_in_another_script_its_string_and_the_scenes_connection_and_a_locals_in_its_function()
     {
         (MainWindow window, TaskCompletionSource release) = Open();
         try
@@ -69,8 +92,7 @@ public sealed class GDScriptUsagesTests
     /// <summary>A name Godot reads whole is read whole where the caret stands in it: Find Usages of a function named with marks
     /// (नमस्ते's virama and vowel sign) lists the scene's connection to it beside its calls, and a local holding a middle dot
     /// (U+00B7) is named whole in the Find window.</summary>
-    [AvaloniaFact]
-    public void Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole()
+    private void Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole()
     {
         const string Name = "नमस्ते";
         TestFolders.Write(folder, "player.gd", Player.Replace("hit", Name, StringComparison.Ordinal).Replace("total", "col\u00B7lega", StringComparison.Ordinal));
@@ -102,8 +124,7 @@ public sealed class GDScriptUsagesTests
 
     /// <summary>Rename of the function takes its calls in the other script, by name and by its string, and the scene's
     /// connection with it, as one command one Undo takes back; a local's rename stays in its function.</summary>
-    [AvaloniaFact]
-    public void Rename_renames_a_function_through_the_other_script_its_string_and_the_scene_as_one_command()
+    private void Rename_renames_a_function_through_the_other_script_its_string_and_the_scene_as_one_command()
     {
         (MainWindow window, TaskCompletionSource release) = Open();
         try
@@ -147,8 +168,7 @@ public sealed class GDScriptUsagesTests
 
     /// <summary>A script calling the function on a value of no type written may call it unseen, so its rename asks first,
     /// saying where, and declined changes nothing.</summary>
-    [AvaloniaFact]
-    public void A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing()
+    private void A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing()
     {
         TestFolders.Write(folder, "other.gd", "extends Node\n\n\nfunc poke(thing):\n\tthing.hit(1)\n");
         (MainWindow window, TaskCompletionSource release) = Open();
@@ -179,8 +199,7 @@ public sealed class GDScriptUsagesTests
 
     /// <summary>A variable set on the resources its script runs in, a resource file's own section and a scene's sub-resource,
     /// is named by those keys: Rename takes them with it, or each would load its default, and Safe Delete refuses, naming them.</summary>
-    [AvaloniaFact]
-    public void A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete()
+    private void A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete()
     {
         const string stats = "[gd_resource type=\"Resource\" format=3]\n\n[ext_resource type=\"Script\" path=\"res://player.gd\" id=\"1\"]\n\n[resource]\nscript = ExtResource(\"1\")\nspeed = 42\n";
         TestFolders.Write(folder, "player.gd", Player.Replace("signal hurt(amount)", "signal hurt(amount)\n@export var speed = 1", StringComparison.Ordinal));
@@ -208,8 +227,7 @@ public sealed class GDScriptUsagesTests
 
     /// <summary>A rename asked right after a script changed on disk, before the folder's watcher can have told of it, renames
     /// in the script as the disk now has it, where it was refused as changed since it was read.</summary>
-    [AvaloniaFact]
-    public void A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it()
+    private void A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it()
     {
         (MainWindow window, TaskCompletionSource release) = Open();
         try

@@ -40,12 +40,23 @@ public sealed class GodotScriptScenesTests
 
     private static string Player(string type) => $"[gd_scene format=3]\n\n[node name=\"Player\" type=\"{type}\"]\n";
 
+    /// <summary>A GDScript game's scene is marked, outlined and followed, and read against the engine's signals, making
+    /// a missing handler.</summary>
+    [AvaloniaFact]
+    public void A_gdscript_games_scene_is_read_against_its_scripts()
+    {
+        Flow.Step(nameof(A_scene_of_a_gdscript_game_is_marked_outlined_and_followed_and_its_connection_leads_to_its_function),
+            A_scene_of_a_gdscript_game_is_marked_outlined_and_followed_and_its_connection_leads_to_its_function);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_gdscript_games_scene_is_read_against_the_engines_signals_and_makes_a_missing_handler_from_its_mark),
+            A_gdscript_games_scene_is_read_against_the_engines_signals_and_makes_a_missing_handler_from_its_mark);
+    }
+
     /// <summary>The scene opened marks the theme's ExtResource of no id the file has and the connection to _on_quit_pressed,
     /// which main.gd declares no function of, and the one to a handler the Start button, of no script, could not have, but
     /// not the one to _on_start_pressed; Structure lists the scene's nodes, script, instance and connections, the Player's
     /// class following player.tscn as it is written again on disk; and the connection's row goes to main.gd's function.</summary>
-    [AvaloniaFact]
-    public void A_scene_of_a_gdscript_game_is_marked_outlined_and_followed_and_its_connection_leads_to_its_function()
+    private void A_scene_of_a_gdscript_game_is_marked_outlined_and_followed_and_its_connection_leads_to_its_function()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-script-scenes-"));
         File.WriteAllText(Path.Combine(folder, "project.godot"), "config_version=5\n\n[application]\n\nconfig/name=\"Blocks\"\nrun/main_scene=\"res://main.tscn\"\n");
@@ -113,8 +124,7 @@ public sealed class GodotScriptScenesTests
     /// lacks is an error, a handler main.gd lacks though its name is no engine method's is one too, and so is a handler
     /// taking none of the toggle's bool; the missing one is made from its mark, taking the toggle's bool as GDScript writes
     /// it, and its mark goes. Without a .NET build of Godot, which carries GodotSharp, the test skips saying why.</summary>
-    [AvaloniaFact]
-    public void A_gdscript_games_scene_is_read_against_the_engines_signals_and_makes_a_missing_handler_from_its_mark()
+    private void A_gdscript_games_scene_is_read_against_the_engines_signals_and_makes_a_missing_handler_from_its_mark()
     {
         GodotFound? godot = GodotExecutables.Find(null);
         Assert.SkipWhen(godot?.Sharp is null, godot is null ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build, whose GodotSharp tells its classes"

@@ -12,8 +12,22 @@ namespace Passenger.Tests;
 /// folds an error whole wherever its reads end.</summary>
 public sealed class GodotErrorFloodTests
 {
+    /// <summary>A burst of a game's errors costs Problems and the folded console no more after thousands than after a
+    /// hundred, and an error cut between reads shows whole.</summary>
     [AvaloniaFact]
-    public void A_burst_of_a_games_errors_costs_Problems_no_more_after_thousands_before_it_than_after_a_hundred()
+    public void A_flood_of_a_games_errors_costs_no_more_as_it_goes()
+    {
+        Flow.Step(nameof(A_burst_of_a_games_errors_costs_Problems_no_more_after_thousands_before_it_than_after_a_hundred),
+            A_burst_of_a_games_errors_costs_Problems_no_more_after_thousands_before_it_than_after_a_hundred);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred),
+            A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks),
+            An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks);
+    }
+
+    private void A_burst_of_a_games_errors_costs_Problems_no_more_after_thousands_before_it_than_after_a_hundred()
     {
         ProblemsModel problems = new();
         problems.BeginGodot();
@@ -31,8 +45,7 @@ public sealed class GodotErrorFloodTests
         Assert.Contains(problems.Rows, r => r.Problem?.Message == "frame 5499 went wrong");
     }
 
-    [AvaloniaFact]
-    public void A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred()
+    private void A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred()
     {
         OutputView console = new() { Fold = new GodotConsoleFold() };
         Window window = new() { Width = 900, Height = 500, Content = console };
@@ -58,8 +71,7 @@ public sealed class GodotErrorFloodTests
 
     /// <summary>A flood's reads end anywhere: a header cut inside its first word shows whole with the rest of it and is an entry
     /// of the console's errors, and the start of a line whose rest never comes still shows, before what the console says next.</summary>
-    [AvaloniaFact]
-    public void An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks()
+    private void An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks()
     {
         OutputView console = new() { Fold = new GodotConsoleFold() };
         Window window = new() { Width = 900, Height = 500, Content = console };

@@ -28,10 +28,26 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
         game.Reset();
     }
 
+    /// <summary>An array's item, a dictionary's value and a resource's property are set in the running game and kept
+    /// where they are written.</summary>
+    [AvaloniaFact]
+    public void A_games_values_are_set_in_their_forms()
+    {
+        Flow.Step(nameof(An_arrays_item_a_dictionarys_value_and_a_resources_property_are_set_in_the_running_game),
+            An_arrays_item_a_dictionarys_value_and_a_resources_property_are_set_in_the_running_game);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed),
+            A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file),
+            A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file);
+    }
+
     /// <summary>The array's item typed and one added, the dictionary's value typed, and the resource's check box cleared,
     /// each printed by the game as it then holds it.</summary>
-    [AvaloniaFact]
-    public void An_arrays_item_a_dictionarys_value_and_a_resources_property_are_set_in_the_running_game()
+    private void An_arrays_item_a_dictionarys_value_and_a_resources_property_are_set_in_the_running_game()
     {
         MainWindow window = Open();
         try
@@ -81,8 +97,7 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
 
     /// <summary>An array in an array opens its own form under the outer one's rows: its item typed there reaches the game as
     /// the whole outer value with that array in its place, and both forms and the pane's row show what the game holds.</summary>
-    [AvaloniaFact]
-    public void A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed()
+    private void A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed()
     {
         MainWindow window = Open();
         try
@@ -114,8 +129,7 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
     /// <summary>A resource's own property set in the game is noted in its form with Keep, which shows and writes the line
     /// where the resource is written: in the scene's sub_resource for one the scene holds, in its own [resource] section for
     /// one saved as a file.</summary>
-    [AvaloniaFact]
-    public void A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file()
+    private void A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file()
     {
         MainWindow window = Open();
         try

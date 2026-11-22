@@ -41,8 +41,25 @@ public sealed class GodotExportTests
     /// <summary>The template the preset's debug export takes: on macOS one archive holds both.</summary>
     internal static string DebugTemplate => OperatingSystem.IsMacOS() ? "macos.zip" : OperatingSystem.IsWindows() ? $"windows_debug_{Arch}.exe" : $"linux_debug.{Arch}";
 
+    /// <summary>Export names the templates its preset takes, installs them from an archive, writes the game where the
+    /// preset says and publishes a C# game, refusing what Godot's editor would build none of.</summary>
     [AvaloniaFact]
-    public void Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so()
+    public void A_games_export_takes_its_templates_and_publishes_as_godot_would()
+    {
+        Flow.Step(nameof(Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so),
+            Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says),
+            Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_csharp_games_export_publishes_its_project_with_the_runtime_pack_from_a_local_feed),
+            A_csharp_games_export_publishes_its_project_with_the_runtime_pack_from_a_local_feed);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens),
+            A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens);
+    }
+
+    private void Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so()
     {
         Assert.SkipWhen(Godot is null || Godot.WhyNotScripts is not null, Skipped);
         (string folder, IReadOnlyDictionary<string, string> homes) = Game();
@@ -69,8 +86,7 @@ public sealed class GodotExportTests
         }
     }
 
-    [AvaloniaFact]
-    public void Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says()
+    private void Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says()
     {
         Assert.SkipWhen(Godot is null || Godot.WhyNotScripts is not null, Skipped);
         string? archive = Environment.GetEnvironmentVariable(TemplatesVariable);
@@ -108,8 +124,7 @@ public sealed class GodotExportTests
     /// <summary>A C# game, its project on the SDK's own framework, exports through the dialog once its templates are
     /// installed: Godot publishes it self-contained for the preset's runtime, its runtime pack from a feed of the test's own
     /// that holds the pack the test project downloaded, and the game's assembly is among what the export writes.</summary>
-    [AvaloniaFact]
-    public void A_csharp_games_export_publishes_its_project_with_the_runtime_pack_from_a_local_feed()
+    private void A_csharp_games_export_publishes_its_project_with_the_runtime_pack_from_a_local_feed()
     {
         Assert.SkipWhen(Godot is not { WhyNot: null, Version: not null, Packages: not null },
             Godot is null ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build to run this test" : $"The Godot found cannot export C#: {Godot.WhyNot}");
@@ -156,8 +171,7 @@ public sealed class GodotExportTests
     /// variables naming a .NET whose released SDK the installer's dotnet lacks, which Passenger then keeps): the Export dialog
     /// says why as it opens and greys Export, before any template is installed, in the words an export asked for anyway is
     /// refused with (#1727).</summary>
-    [AvaloniaFact]
-    public void A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens()
+    private void A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens()
     {
         Assert.SkipWhen(Godot is not { WhyNot: null, Version: not null, Packages: not null },
             Godot is null ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build to run this test" : $"The Godot found cannot export C#: {Godot.WhyNot}");

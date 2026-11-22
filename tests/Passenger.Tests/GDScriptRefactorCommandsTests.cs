@@ -41,8 +41,22 @@ public sealed class GDScriptRefactorCommandsTests
         TestFolders.Write(folder, "main.tscn", Scene);
     }
 
+    /// <summary>Each GDScript refactoring changes every script, scene and string naming it as one command that one Undo
+    /// takes back.</summary>
     [AvaloniaFact]
-    public void Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back()
+    public void Gdscript_refactorings_are_one_command_each()
+    {
+        Flow.StepApart<GDScriptRefactorCommandsTests>(nameof(Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back),
+            test => test.Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptRefactorCommandsTests>(nameof(A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command),
+            test => test.A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptRefactorCommandsTests>(nameof(Change_signature_changes_the_name_of_a_function_taking_typed_collections),
+            test => test.Change_signature_changes_the_name_of_a_function_taking_typed_collections());
+    }
+
+    private void Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
         window.Show();
@@ -175,8 +189,7 @@ public sealed class GDScriptRefactorCommandsTests
 
     /// <summary>A rename Passenger can't see every use of asks the person, naming the places, and made anyway leaves them,
     /// one Undo taking it back.</summary>
-    [AvaloniaFact]
-    public void A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command()
+    private void A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command()
     {
         const string Dynamic = "extends Node\n\n\nfunc poke(player: Node, method: String):\n\tplayer.call(method)\n";
         TestFolders.Write(folder, "dynamic.gd", Dynamic);
@@ -223,8 +236,7 @@ public sealed class GDScriptRefactorCommandsTests
     }
 
     /// <summary>The dialog takes a parameter and a return of a typed collection as written, so a name beside them can change.</summary>
-    [AvaloniaFact]
-    public void Change_signature_changes_the_name_of_a_function_taking_typed_collections()
+    private void Change_signature_changes_the_name_of_a_function_taking_typed_collections()
     {
         const string Typed = "extends Node\n\n\nfunc count(nodes: Array[Node], table: Dictionary[String, int]) -> Array[int]:\n\treturn [nodes.size(), table.size()]\n\n\n"
             + "func _ready():\n\tprint(count([], {}))\n";

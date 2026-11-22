@@ -73,10 +73,26 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
 
     private string ScenePath => Path.Combine(PathNames.Canonical(game.Folder), "main.tscn");
 
+    /// <summary>A colour picked or value slid reaches the running game, and Keep writes it to the scene or the C#
+    /// default, unkept values listed as the game stops.</summary>
+    [AvaloniaFact]
+    public void A_tuned_value_reaches_the_game_and_is_kept_where_asked()
+    {
+        Flow.Step(nameof(A_colour_picked_and_a_ranged_value_slid_reach_the_game_as_the_pointer_moves_each_marked_with_what_it_was),
+            A_colour_picked_and_a_ranged_value_slid_reach_the_game_as_the_pointer_moves_each_marked_with_what_it_was);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Keep_shows_then_writes_the_scenes_line_and_the_CSharp_default_each_one_step_of_Undo),
+            Keep_shows_then_writes_the_scenes_line_and_the_CSharp_default_each_one_step_of_Undo);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Values_left_unkept_are_listed_as_the_game_stops_and_Keep_All_there_writes_them),
+            Values_left_unkept_are_listed_as_the_game_stops_and_Keep_All_there_writes_them);
+    }
+
     /// <summary>Dragging Speed's slider and the colour picker's square each reach the game as the pointer moves, before
     /// either is let go of, and what it prints follows; each row then says what its value was, with Keep.</summary>
-    [AvaloniaFact]
-    public void A_colour_picked_and_a_ranged_value_slid_reach_the_game_as_the_pointer_moves_each_marked_with_what_it_was()
+    private void A_colour_picked_and_a_ranged_value_slid_reach_the_game_as_the_pointer_moves_each_marked_with_what_it_was()
     {
         MainWindow window = Started();
         try
@@ -115,8 +131,7 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
 
     /// <summary>Keep on Speed shows the scene's line as it will read and writes it there; Keep on Tint, which only the code
     /// gives, shows and writes its [Export] default in Main.cs; each is one step of Undo.</summary>
-    [AvaloniaFact]
-    public void Keep_shows_then_writes_the_scenes_line_and_the_CSharp_default_each_one_step_of_Undo()
+    private void Keep_shows_then_writes_the_scenes_line_and_the_CSharp_default_each_one_step_of_Undo()
     {
         MainWindow window = Started();
         try
@@ -155,8 +170,7 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
 
     /// <summary>A value set and not kept is listed as Stop ends the game, with what it was and is; Keep All there shows what
     /// it writes and writes it, and the list goes once nothing is left to keep.</summary>
-    [AvaloniaFact]
-    public void Values_left_unkept_are_listed_as_the_game_stops_and_Keep_All_there_writes_them()
+    private void Values_left_unkept_are_listed_as_the_game_stops_and_Keep_All_there_writes_them()
     {
         MainWindow window = Started();
         try

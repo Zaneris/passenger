@@ -20,8 +20,24 @@ public sealed class GodotScriptEditorTests
         GodotEditorSettings.UseExternalEditor, GodotEditorSettings.ExecPath, GodotEditorSettings.ExecFlags,
     ];
 
+    /// <summary>Passenger writes itself into Godot's own settings as its script editor when asked, shows the values
+    /// where it cannot, and offers it once.</summary>
     [AvaloniaFact]
-    public void Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set()
+    public void Passenger_is_offered_as_godots_script_editor()
+    {
+        Flow.Step(nameof(Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set),
+            Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Where_the_settings_cannot_be_written_the_values_to_set_by_hand_are_shown),
+            Where_the_settings_cannot_be_written_the_values_to_set_by_hand_are_shown);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed),
+            A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_folder_with_no_Godot_project_refuses_it_saying_why), A_folder_with_no_Godot_project_refuses_it_saying_why);
+    }
+
+    private void Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set()
     {
         string godot = StandInGodot(out string data);
         File.WriteAllText(Path.Combine(data, "editor_settings-4.6.tres"), """
@@ -63,8 +79,7 @@ public sealed class GodotScriptEditorTests
         Assert.True(asked.Count == 1, $"Asked again with nothing to change, Passenger asked: {string.Join(" | ", asked)}");
     }
 
-    [AvaloniaFact]
-    public void Where_the_settings_cannot_be_written_the_values_to_set_by_hand_are_shown()
+    private void Where_the_settings_cannot_be_written_the_values_to_set_by_hand_are_shown()
     {
         string godot = StandInGodot(out string data);
         Directory.Delete(data);
@@ -88,8 +103,7 @@ public sealed class GodotScriptEditorTests
     /// <summary>A Godot project's first opening in a window that keeps its folders' state offers Passenger as Godot's script
     /// editor in the banner over the editor; dismissed, the banner goes, and the folder opened again in another window on
     /// the same state offers it no more, while another Godot project is offered it still.</summary>
-    [AvaloniaFact]
-    public void A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed()
+    private void A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed()
     {
         string godot = StandInGodot(out _);
         string state = TestFolders.Create("godot-offer-state-");
@@ -132,8 +146,7 @@ public sealed class GodotScriptEditorTests
         return folder;
     }
 
-    [AvaloniaFact]
-    public void A_folder_with_no_Godot_project_refuses_it_saying_why()
+    private void A_folder_with_no_Godot_project_refuses_it_saying_why()
     {
         string folder = TestFolders.Create("no-godot-");
         TestFolders.Write(folder, "notes.txt", "notes\n");

@@ -88,11 +88,87 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     private string ScriptPath => Path.Combine(PathNames.Canonical(game.Folder), "Main.cs");
 
+    /// <summary>A C# Godot game runs from its configuration, opens in Godot's editor, and takes Hot Reload's edits,
+    /// each copy its own, under the debugger too.</summary>
+    [AvaloniaFact]
+    public void A_godot_game_runs_and_takes_hot_reload()
+    {
+        Flow.Step(nameof(Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor),
+            Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in),
+            Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger),
+            Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once),
+            Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on),
+            Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs),
+            A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start),
+            Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start);
+    }
+
+    /// <summary>A debugged game ends as it ends, prints in the terminal, is profiled with its frames and shows its live
+    /// tree, properties and sources.</summary>
+    [AvaloniaFact]
+    public void A_debugged_and_profiled_game_ends_and_shows_its_tree()
+    {
+        Flow.Step(nameof(A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go),
+            A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code),
+            A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it),
+            Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Profile_records_the_game_its_scripts_loop_among_the_samples), Profile_records_the_game_its_scripts_loop_among_the_samples);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made),
+            Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function),
+            Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(The_running_games_tree_shows_its_nodes_a_property_typed_there_changes_it_its_error_links_to_its_line_and_its_monitors_read),
+            The_running_games_tree_shows_its_nodes_a_property_typed_there_changes_it_its_error_links_to_its_line_and_its_monitors_read);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh),
+            The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_nodes_position_and_a_transform_are_set_from_the_properties_pane),
+            A_nodes_position_and_a_transform_are_set_from_the_properties_pane);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn),
+            Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn);
+    }
+
     /// <summary>The project's generated configurations are its game and Godot's editor on it, each on the Godot found with
     /// --path naming the project, headless as the window nobody sees runs every Godot; Run of the game builds it and starts it there, its words in the Run console, Apply Hot
     /// Reload Changes saying it runs without Hot Reload; the editor's configuration says what Hot Reload is to Godot's editor.</summary>
-    [AvaloniaFact]
-    public void Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor()
+    private void Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor()
     {
         MainWindow window = game.Open(null, languageServer: false);
         try
@@ -135,8 +211,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>The editor's configuration opens the scene at hand in Godot's editor, and for the script at hand the scene
     /// it is attached in.</summary>
-    [AvaloniaFact]
-    public void Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in()
+    private void Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in()
     {
         MainWindow window = game.Open(null, languageServer: false);
         try
@@ -160,8 +235,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>Run with Hot Reload on starts the game held for a quiet debugger, nothing of a debug session shown: an edit to
     /// the method its _Process calls, applied by Apply Hot Reload Changes, is what the game then prints in the Run console.</summary>
-    [AvaloniaFact]
-    public void Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger()
+    private void Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -193,8 +267,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// <summary>Run of two copies with Hot Reload on holds each at its start and attaches to each quietly, as Run's one game:
     /// an edit to the method _Process calls, applied once, is what both copies then print, each in its own tab of the
     /// Terminal window.</summary>
-    [AvaloniaFact]
-    public void Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once()
+    private void Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -218,8 +291,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// <summary>Hot Reload's restart of one of two copies Run runs with it restarts that copy alone: built again and started
     /// in its own tab's place, held and attached to again, printing again, while the other runs on in the same process,
     /// still attached.</summary>
-    [AvaloniaFact]
-    public void Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on()
+    private void Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -266,8 +338,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>Debug of the game stops at a breakpoint in its script's _Process, Godot having loaded the script's assembly
     /// itself; an edit to the script applied by Hot Reload is what the game prints once it goes on.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs()
+    private void A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -299,8 +370,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>A debugged game that ends is shown ended in the Debug window as it ends: its session over, and nothing shown
     /// debugged, while its debugger has yet to go, which it does after.</summary>
-    [AvaloniaFact]
-    public void A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go()
+    private void A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go()
     {
         MainWindow window = game.Open(null, languageServer: false);
         try
@@ -340,8 +410,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// Godot's teardown outlasts what its .NET does) ends its session through its debugger's word that its debugging ended,
     /// with the game's own exit code: the session's fallback for an adapter that never says so is not used, and nothing is
     /// left running for Passenger to end.</summary>
-    [AvaloniaFact]
-    public void A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code()
+    private void A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code()
     {
         string quitter = Path.Combine(game.Folder, "quitter.gd");
         File.WriteAllText(quitter, "extends Node\n\nvar frames := 0\n\n\nfunc _process(_delta: float) -> void:\n\tframes += 1\n\tif frames == 60:\n"
@@ -384,8 +453,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// shows what its script prints rather than the Run and Debug windows' consoles (on Windows, where Godot's own .exe writes
     /// to no console, through Godot's console wrapper); under Debug a breakpoint in _Process still stops the game, the
     /// debugger holding Godot's own process; and Stop ends each there, the game with it.</summary>
-    [AvaloniaFact]
-    public void Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it()
+    private void Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -431,8 +499,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     }
 
     /// <summary>Profile starts the game under the profiler, and its snapshot holds the samples of the script's own loop.</summary>
-    [AvaloniaFact]
-    public void Profile_records_the_game_its_scripts_loop_among_the_samples()
+    private void Profile_records_the_game_its_scripts_loop_among_the_samples()
     {
         MainWindow window = game.Open(null, languageServer: false);
         try
@@ -461,8 +528,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// release lets no program read its memory), and the Frames page names the GDScript function at its line with its calls
     /// and time, the C# loop the engine called and the C# method GDScript called with their sampled time, says the headless
     /// game drew nothing, and opens the script at the function's line.</summary>
-    [AvaloniaFact]
-    public void Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made()
+    private void Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made()
     {
         string wanderer = Path.Combine(game.Folder, "wander.gd");
         string ledger = Path.Combine(game.Folder, "Ledger.cs");
@@ -561,8 +627,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// <summary>Profile of a game whose GDScript calls C# and whose C# calls GDScript back puts both languages' functions in
     /// the one call tree beside the threads, GDScript's as Godot measured them, each with its own time and opening its script,
     /// and the C# sampled; the Frames page's link opens the slowest frame alone on the call tree, its costliest function chosen.</summary>
-    [AvaloniaFact]
-    public void Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function()
+    private void Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function()
     {
         string crawler = Path.Combine(game.Folder, "wander.gd");
         string ledger = Path.Combine(game.Folder, "Ledger.cs");
@@ -648,8 +713,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// <summary>Run makes Passenger the game's remote debugger: the Live Visual Tree shows its scene tree, the Main node's
     /// script property typed there is what the game then prints, the error the script raises is in Problems at its line and
     /// linked from Godot's words in the Run console, and the window's status line reads the game's monitors.</summary>
-    [AvaloniaFact]
-    public void The_running_games_tree_shows_its_nodes_a_property_typed_there_changes_it_its_error_links_to_its_line_and_its_monitors_read()
+    private void The_running_games_tree_shows_its_nodes_a_property_typed_there_changes_it_its_error_links_to_its_line_and_its_monitors_read()
     {
         MainWindow window = game.Open(null, languageServer: false);
         try
@@ -698,8 +762,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// <summary>The Live Visual Tree follows the game as it changes while it is shown: the node the script renames after five
     /// seconds shows by its new name before the one it adds to the root after fifteen, neither asked for by Refresh, and
     /// the added one shows too.</summary>
-    [AvaloniaFact]
-    public void The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh()
+    private void The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh()
     {
         File.WriteAllText(ScriptPath, """
             using Godot;
@@ -757,8 +820,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>A node's values of several parts are set from the properties pane in the form it shows them: a Node2D's
     /// position (a Vector2 of its transform) and a Transform2D the script exports, each read back as the game then holds it.</summary>
-    [AvaloniaFact]
-    public void A_nodes_position_and_a_transform_are_set_from_the_properties_pane()
+    private void A_nodes_position_and_a_transform_are_set_from_the_properties_pane()
     {
         File.WriteAllText(ScriptPath, """
             using Godot;
@@ -805,8 +867,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>Two games launched at once (Debug on the main scene, and again on another) are each a source of the Live Visual Tree:
     /// the chooser offers both, the one started last shown first, and each chosen in turn shows its own nodes.</summary>
-    [AvaloniaFact]
-    public void Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn()
+    private void Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn()
     {
         File.WriteAllText(Path.Combine(game.Folder, "other.tscn"), "[gd_scene format=3]\n\n[node name=\"Other\" type=\"Node\"]\n");
         MainWindow window = game.Open(null, languageServer: false);
@@ -852,8 +913,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     /// <summary>Settings › Godot says the Godot found, with the version it answers and that it runs C#; a Godot too old for the
     /// project's Godot.NET.Sdk (a stand-in answering 4.6.1 to --version) is refused before Run starts anything, naming both.</summary>
-    [AvaloniaFact]
-    public void Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start()
+    private void Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start()
     {
         MainWindow window = game.Open(null, languageServer: false);
         try

@@ -132,8 +132,37 @@ public sealed class GodotShaderTests
         TestFolders.Write(folder, "level.tscn", Level);
     }
 
+    /// <summary>A shader is marked in Godot's words, completes, leads to its includes and uniforms, and starts no Godot
+    /// but its version's probe.</summary>
     [AvaloniaFact]
-    public void A_misspelt_name_is_marked_with_Godots_words_at_its_line_in_a_shader_a_scenes_own_shader_and_through_an_include()
+    public void A_shader_is_checked_completed_and_followed_as_godot_reads_it()
+    {
+        Flow.StepApart<GodotShaderTests>(nameof(A_misspelt_name_is_marked_with_Godots_words_at_its_line_in_a_shader_a_scenes_own_shader_and_through_an_include),
+            test => test.A_misspelt_name_is_marked_with_Godots_words_at_its_line_in_a_shader_a_scenes_own_shader_and_through_an_include());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(VERTEX_completes_in_vertex_and_not_in_light_and_a_uniforms_card_gives_its_type_and_hint),
+            test => test.VERTEX_completes_in_vertex_and_not_in_light_and_a_uniforms_card_gives_its_type_and_hint());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(Go_to_Declaration_reaches_an_includes_function_and_Find_Usages_of_a_uniform_lists_the_scene_setting_it),
+            test => test.Go_to_Declaration_reaches_an_includes_function_and_Find_Usages_of_a_uniform_lists_the_scene_setting_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(Context_help_on_TIME_browses_its_place_in_Godots_shading_reference),
+            test => test.Context_help_on_TIME_browses_its_place_in_Godots_shading_reference());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(VERTEX_completes_inside_a_scenes_own_shader_and_its_uniforms_card_gives_its_type_and_hint),
+            test => test.VERTEX_completes_inside_a_scenes_own_shader_and_its_uniforms_card_gives_its_type_and_hint());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(A_compatibility_projects_shader_is_marked_where_it_asks_for_what_only_Forward_plus_draws),
+            test => test.A_compatibility_projects_shader_is_marked_where_it_asks_for_what_only_Forward_plus_draws());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(Opening_editing_and_checking_shaders_starts_no_Godot_but_the_probe_of_its_version),
+            test => test.Opening_editing_and_checking_shaders_starts_no_Godot_but_the_probe_of_its_version());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderTests>(nameof(Each_shader_is_marked_where_Godots_own_compiler_errs_in_its_words_at_its_line_under_each_rendering_method),
+            test => test.Each_shader_is_marked_where_Godots_own_compiler_errs_in_its_words_at_its_line_under_each_rendering_method());
+    }
+
+    private void A_misspelt_name_is_marked_with_Godots_words_at_its_line_in_a_shader_a_scenes_own_shader_and_through_an_include()
     {
         SortedDictionary<string, string> before = Files();
         MainWindow window = Open(Path.Combine("fx", "water.gdshader"));
@@ -162,8 +191,7 @@ public sealed class GodotShaderTests
         Assert.True(before.SequenceEqual(after), $"The project was to be left as it was, but holds {string.Join(", ", after.Keys)} (it held {string.Join(", ", before.Keys)})");
     }
 
-    [AvaloniaFact]
-    public void VERTEX_completes_in_vertex_and_not_in_light_and_a_uniforms_card_gives_its_type_and_hint()
+    private void VERTEX_completes_in_vertex_and_not_in_light_and_a_uniforms_card_gives_its_type_and_hint()
     {
         MainWindow window = Open(Path.Combine("fx", "water.gdshader"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -211,8 +239,7 @@ public sealed class GodotShaderTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Go_to_Declaration_reaches_an_includes_function_and_Find_Usages_of_a_uniform_lists_the_scene_setting_it()
+    private void Go_to_Declaration_reaches_an_includes_function_and_Find_Usages_of_a_uniform_lists_the_scene_setting_it()
     {
         MainWindow window = Open(Path.Combine("fx", "water.gdshader"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -233,8 +260,7 @@ public sealed class GodotShaderTests
 
     /// <summary>Context Help on TIME browses the global built-ins of the spatial shader's page of Godot's shading reference,
     /// for the version of the Godot found; on the shader's own uniform it says there is none, browsing nothing.</summary>
-    [AvaloniaFact]
-    public void Context_help_on_TIME_browses_its_place_in_Godots_shading_reference()
+    private void Context_help_on_TIME_browses_its_place_in_Godots_shading_reference()
     {
         MainWindow window = Open(Path.Combine("fx", "water.gdshader"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -253,8 +279,7 @@ public sealed class GodotShaderTests
     /// <summary>Inside a scene's own Shader a uniform's card gives its type and hint as Godot's compile of the scene read
     /// them, Go to Declaration on its use reaches its line in the scene, Context Help on VERTEX browses vertex()'s built-ins
     /// of canvas_item shaders, and VERTEX completes in vertex().</summary>
-    [AvaloniaFact]
-    public void VERTEX_completes_inside_a_scenes_own_shader_and_its_uniforms_card_gives_its_type_and_hint()
+    private void VERTEX_completes_inside_a_scenes_own_shader_and_its_uniforms_card_gives_its_type_and_hint()
     {
         TestFolders.Write(folder, "ripple.tscn", Ripple);
         MainWindow window = Open("ripple.tscn");
@@ -287,8 +312,7 @@ public sealed class GodotShaderTests
 
     /// <summary>A Compatibility project's shader is read under that rendering method, so a hint only Forward+ gives is marked
     /// with Godot's words at its line.</summary>
-    [AvaloniaFact]
-    public void A_compatibility_projects_shader_is_marked_where_it_asks_for_what_only_Forward_plus_draws()
+    private void A_compatibility_projects_shader_is_marked_where_it_asks_for_what_only_Forward_plus_draws()
     {
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Shaded\"\n\n[rendering]\n\nrenderer/rendering_method=\"gl_compatibility\"\n");
         TestFolders.Write(folder, Path.Combine("fx", "rough.gdshader"), Rough);
@@ -301,8 +325,7 @@ public sealed class GodotShaderTests
     /// <summary>A session that opens a shader, an include and a scene's own Shader, edits them and checks them starts no
     /// Godot for them: the shading language's table is probed once for the Godot found's version (kept in the state's cache,
     /// so at most once here), and every check after it is Passenger's own.</summary>
-    [AvaloniaFact]
-    public void Opening_editing_and_checking_shaders_starts_no_Godot_but_the_probe_of_its_version()
+    private void Opening_editing_and_checking_shaders_starts_no_Godot_but_the_probe_of_its_version()
     {
         List<string> godots = [];
         EventHandler<ChildStart> started = (_, child) =>
@@ -353,8 +376,7 @@ public sealed class GodotShaderTests
     /// refuses: under each method, wherever Godot's own compiler (the Godot found, headless with user folders of the
     /// test's) errs, Passenger marks the shader with the same words at the same line, or on its <c>#include</c> with the
     /// include's place; where Godot compiles a shader, Passenger marks no error on it.</summary>
-    [AvaloniaFact]
-    public void Each_shader_is_marked_where_Godots_own_compiler_errs_in_its_words_at_its_line_under_each_rendering_method()
+    private void Each_shader_is_marked_where_Godots_own_compiler_errs_in_its_words_at_its_line_under_each_rendering_method()
     {
         foreach (string method in new[] { "forward_plus", "mobile", "gl_compatibility" })
         {

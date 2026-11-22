@@ -29,8 +29,19 @@ public sealed class GDScriptParameterInfoTests
         TestFolders.Write(folder, "main.gd", Script);
     }
 
+    /// <summary>A script's function, signal, engine method and constructor show their signature and the parameter at
+    /// the caret.</summary>
     [AvaloniaFact]
-    public void A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at()
+    public void A_calls_signature_shows_its_parameter_at_the_caret()
+    {
+        Flow.StepApart<GDScriptParameterInfoTests>(nameof(A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at),
+            test => test.A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptParameterInfoTests>(nameof(The_engines_method_and_a_built_in_types_constructor_show_their_signature),
+            test => test.The_engines_method_and_a_built_in_types_constructor_show_their_signature());
+    }
+
+    private void A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at()
     {
         (MainWindow window, TaskCompletionSource release) = Open();
         try
@@ -84,8 +95,7 @@ public sealed class GDScriptParameterInfoTests
 
     /// <summary>The engine's method shows its signature as its API gives it, defaults and enum types among it, and a
     /// built-in type's constructor the one taking the arguments given.</summary>
-    [AvaloniaFact]
-    public void The_engines_method_and_a_built_in_types_constructor_show_their_signature()
+    private void The_engines_method_and_a_built_in_types_constructor_show_their_signature()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's signatures come from its API");
         (MainWindow window, TaskCompletionSource release) = Open();

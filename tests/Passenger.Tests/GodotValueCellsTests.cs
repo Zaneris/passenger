@@ -99,8 +99,36 @@ public sealed class GodotValueCellsTests
         ((Window)TopLevel.GetTopLevel(field)!).KeyTextInput(text);
     }
 
+    /// <summary>A running game's value rows send each edit, add and removal for the row asked, in order, nothing typed
+    /// lost.</summary>
     [AvaloniaFact]
-    public void What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost()
+    public void A_games_value_rows_send_each_edit_in_the_order_asked()
+    {
+        Flow.Step(nameof(What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost),
+            What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(What_is_typed_in_the_row_Remove_takes_goes_with_it), What_is_typed_in_the_row_Remove_takes_goes_with_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit),
+            An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for),
+            Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way),
+            An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_removal_the_game_refuses_leaves_the_rows_and_what_waits_behind_it_acts_on_the_row_it_asked_for),
+            A_removal_the_game_refuses_leaves_the_rows_and_what_waits_behind_it_acts_on_the_row_it_asked_for);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both),
+            Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now),
+            A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now);
+    }
+
+    private void What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost()
     {
         Sends sends = new();
         GodotItemsEditor form = Form(IntArray(1, 2, 3), Ints, sends, new Tuner());
@@ -117,8 +145,7 @@ public sealed class GodotValueCellsTests
         Assert.Equal("9", form.Fields[0].Text);
     }
 
-    [AvaloniaFact]
-    public void What_is_typed_in_the_row_Remove_takes_goes_with_it()
+    private void What_is_typed_in_the_row_Remove_takes_goes_with_it()
     {
         Sends sends = new();
         GodotItemsEditor form = Form(IntArray(1, 2, 3), Ints, sends, new Tuner());
@@ -129,8 +156,7 @@ public sealed class GodotValueCellsTests
         Assert.Equal([1L, 3L], Assert.IsType<GodotArray>(Assert.Single(sends.Sent)));
     }
 
-    [AvaloniaFact]
-    public void An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit()
+    private void An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit()
     {
         Sends sends = new();
         GodotItemsEditor form = Form(IntArray(1), Ints, sends, new Tuner());
@@ -148,8 +174,7 @@ public sealed class GodotValueCellsTests
         Assert.Equal("9", form.Fields[0].Text);
     }
 
-    [AvaloniaFact]
-    public void Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for()
+    private void Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for()
     {
         Sends sends = new();
         GodotItemsEditor form = Form(IntArray(10, 20, 30, 40), Ints, sends, new Tuner());
@@ -165,8 +190,7 @@ public sealed class GodotValueCellsTests
         Assert.Equal([10L, 30L], Assert.IsType<GodotArray>(sends.Sent[^1]));
     }
 
-    [AvaloniaFact]
-    public void An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way()
+    private void An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way()
     {
         Sends sends = new();
         GodotItemsEditor form = Form(IntArray(1, 2), Ints, sends, new Tuner());
@@ -180,8 +204,7 @@ public sealed class GodotValueCellsTests
         Assert.Equal([7L, 8L], Assert.IsType<GodotArray>(sends.Sent[^1]));
     }
 
-    [AvaloniaFact]
-    public void A_removal_the_game_refuses_leaves_the_rows_and_what_waits_behind_it_acts_on_the_row_it_asked_for()
+    private void A_removal_the_game_refuses_leaves_the_rows_and_what_waits_behind_it_acts_on_the_row_it_asked_for()
     {
         Sends sends = new();
         Tuner tuner = new();
@@ -197,8 +220,7 @@ public sealed class GodotValueCellsTests
         Assert.Equal([10L, 20L], Assert.IsType<GodotArray>(sends.Sent[^1]));
     }
 
-    [AvaloniaFact]
-    public void Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both()
+    private void Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both()
     {
         GodotHint hint = new(GodotEditing.Entries) { Key = GodotType.Bool, Element = GodotType.Int };
         GodotDictionary typed = new([new(true, 1L)]) { KeyType = GodotElement.Of(GodotType.Bool), ValueType = GodotElement.Of(GodotType.Int) };
@@ -244,8 +266,7 @@ public sealed class GodotValueCellsTests
 
     private static PropertyValue Row(string name) => new(name, "Main", false, "Float", "5", "Main", null, null);
 
-    [AvaloniaFact]
-    public void A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now()
+    private void A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now()
     {
         Ranges values = new();
         LiveValueCell cell = new GodotValueCells(values, new Tuner()).Make();

@@ -146,11 +146,40 @@ public sealed class GoDotTestTests : IDisposable
         TestFolders.Delete(folder + "-home");
     }
 
+    /// <summary>GoDotTest's tests run in the game as chosen, told as each ends, fail at their lines and stop at
+    /// breakpoints, or say why they cannot.</summary>
+    [AvaloniaFact]
+    public void Godottest_tests_run_and_debug_in_the_game()
+    {
+        Flow.StepApart<GoDotTestTests>(nameof(A_GoDotTest_test_is_found_from_code_runs_in_the_game_fails_at_its_line_and_stops_at_a_breakpoint_under_Debug),
+            test => test.A_GoDotTest_test_is_found_from_code_runs_in_the_game_fails_at_its_line_and_stops_at_a_breakpoint_under_Debug());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes),
+            test => test.A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(Two_tests_of_a_suites_three_run_and_the_third_does_not),
+            test => test.Two_tests_of_a_suites_three_run_and_the_third_does_not());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together),
+            test => test.A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug),
+            test => test.Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(A_game_whose_tests_run_from_a_test_scene_runs_them_from_it),
+            test => test.A_game_whose_tests_run_from_a_test_scene_runs_them_from_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts),
+            test => test.The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GoDotTestTests>(nameof(A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys),
+            test => test.A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys());
+    }
+
     /// <summary>Both tests are in the tree before any build; Run All Tests passes one and fails the other with its exception
     /// at its line, linked, and what it printed; the gutter marks each; Debug of the failing one stops at a breakpoint inside
     /// it in Godot's process, and going on lets the run end with its failure.</summary>
-    [AvaloniaFact]
-    public void A_GoDotTest_test_is_found_from_code_runs_in_the_game_fails_at_its_line_and_stops_at_a_breakpoint_under_Debug()
+    private void A_GoDotTest_test_is_found_from_code_runs_in_the_game_fails_at_its_line_and_stops_at_a_breakpoint_under_Debug()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!);
@@ -237,8 +266,7 @@ public sealed class GoDotTestTests : IDisposable
 
     /// <summary>A game never opened in Godot's editor, whose test loads an asset with no .import beside it, is imported before
     /// its tests run: the test loads the asset and passes, and the asset's .import is left for the game.</summary>
-    [AvaloniaFact]
-    public void A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes()
+    private void A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, testCode: LoadsIcon);
@@ -295,8 +323,7 @@ public sealed class GoDotTestTests : IDisposable
 
     /// <summary>Two of a suite's three tests chosen run those two: the third never runs, so neither its side effects nor its
     /// failure come of a run that did not ask for it.</summary>
-    [AvaloniaFact]
-    public void Two_tests_of_a_suites_three_run_and_the_third_does_not()
+    private void Two_tests_of_a_suites_three_run_and_the_third_does_not()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, testCode: ThreeOfASuite);
@@ -356,8 +383,7 @@ public sealed class GoDotTestTests : IDisposable
 
     /// <summary>A test of one of two classes GoDotTest knows by one name is refused saying why, Godot left unstarted, where a
     /// run by name would have run the other class's; both chosen together run, as a suite takes them.</summary>
-    [AvaloniaFact]
-    public void A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together()
+    private void A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, testCode: TwoOfOneName);
@@ -438,8 +464,7 @@ public sealed class GoDotTestTests : IDisposable
 
     /// <summary>Run All Tests tells the first test passed, with the time it ran, while the next is still running, and that
     /// one once the test lets it go; debugged, the run tells them so too, from the debug session's console.</summary>
-    [AvaloniaFact]
-    public void Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug()
+    private void Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, main: Patient, testCode: Stepping);
@@ -477,8 +502,7 @@ public sealed class GoDotTestTests : IDisposable
 
     /// <summary>A game whose main scene runs nothing of GoDotTest's, its tests run by a test scene under test/ as GoDotTest's
     /// README writes one, runs them from that scene: one passes and the other fails.</summary>
-    [AvaloniaFact]
-    public void A_game_whose_tests_run_from_a_test_scene_runs_them_from_it()
+    private void A_game_whose_tests_run_from_a_test_scene_runs_them_from_it()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain, tests: GoDotTestGame.TestScene);
@@ -501,8 +525,7 @@ public sealed class GoDotTestTests : IDisposable
     /// <summary>The run settings' GoDotTestScene parameter chooses the scene: one the game lacks is refused before Godot
     /// starts, Run All Tests greying with why; ci/Runner.tscn, named there, runs the tests, where test/Tests.tscn, which
     /// GoDotTest's convention would choose, runs none of them.</summary>
-    [AvaloniaFact]
-    public void The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts()
+    private void The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain, tests: GoDotTestGame.TestScene.Replace("this)", "this, predicate: _ => false)", StringComparison.Ordinal));
@@ -538,8 +561,7 @@ public sealed class GoDotTestTests : IDisposable
 
     /// <summary>A game no scene of which runs GoDotTest's tests is said to never run them before Godot starts: Run All Tests
     /// greys saying so, and a run asked for anyway starts no Godot and says the same.</summary>
-    [AvaloniaFact]
-    public void A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys()
+    private void A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain);

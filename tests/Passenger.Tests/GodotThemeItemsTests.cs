@@ -92,10 +92,26 @@ public sealed class GodotThemeItemsTests : IClassFixture<GodotThemeItemsTests.Ga
         return labels;
     }
 
+    /// <summary>Theme items complete on their nodes, describe themselves from the class reference and rename across
+    /// theme, scene and C#.</summary>
+    [AvaloniaFact]
+    public void Theme_items_complete_describe_and_rename_as_godot_names_them()
+    {
+        Flow.Step(nameof(A_variations_own_item_completes_on_its_node_and_theme_get_color_completes_the_type_it_names),
+            A_variations_own_item_completes_on_its_node_and_theme_get_color_completes_the_type_it_names);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_default_theme_items_card_gives_the_class_references_words_and_context_help_browses_its_place),
+            A_default_theme_items_card_gives_the_class_references_words_and_context_help_browses_its_place);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_project_themes_colour_renames_across_the_theme_the_scenes_override_and_the_csharp_string_in_one_undo),
+            A_project_themes_colour_renames_across_the_theme_the_scenes_override_and_the_csharp_string_in_one_undo);
+    }
+
     /// <summary>On Title, whose scene gives it the TitleLabel variation, the variation's own glow completes beside the project
     /// theme's accent for every Label and the default theme's font_color; Theme.GetColor naming Label completes Label's.</summary>
-    [AvaloniaFact]
-    public void A_variations_own_item_completes_on_its_node_and_theme_get_color_completes_the_type_it_names()
+    private void A_variations_own_item_completes_on_its_node_and_theme_get_color_completes_the_type_it_names()
     {
         MainWindow window = Opened();
         try
@@ -115,8 +131,7 @@ public sealed class GodotThemeItemsTests : IClassFixture<GodotThemeItemsTests.Ga
 
     /// <summary>font_color's card gives the class reference's words for a Label's, and Context Help on it browses its place
     /// on Label's page for the version of the Godot found.</summary>
-    [AvaloniaFact]
-    public void A_default_theme_items_card_gives_the_class_references_words_and_context_help_browses_its_place()
+    private void A_default_theme_items_card_gives_the_class_references_words_and_context_help_browses_its_place()
     {
         MainWindow window = Opened();
         try
@@ -137,8 +152,7 @@ public sealed class GodotThemeItemsTests : IClassFixture<GodotThemeItemsTests.Ga
     /// <summary>accent, which the project's theme defines for Label, renamed from the C# string is renamed in the theme, in
     /// the scene's override on Title and in the string, the misspelt string left; one Undo puts every file back; Rename of
     /// font_color, the default theme's, is refused.</summary>
-    [AvaloniaFact]
-    public void A_project_themes_colour_renames_across_the_theme_the_scenes_override_and_the_csharp_string_in_one_undo()
+    private void A_project_themes_colour_renames_across_the_theme_the_scenes_override_and_the_csharp_string_in_one_undo()
     {
         MainWindow window = Opened();
         try

@@ -72,8 +72,36 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
     internal const string Enemy = "extends CharacterBody2D\n\nsignal died\n\nvar health := 3.0\n\n\nfunc take_damage(amount: int) -> void:\n\thealth -= amount\n"
         + "\tif health <= 0:\n\t\tdied.emit()\n";
 
+    /// <summary>A C# string naming a GDScript's function is checked, completes, leads to it and follows its renames,
+    /// and a connect is marked where the two disagree.</summary>
     [AvaloniaFact]
-    public void A_csharp_string_naming_a_gdscripts_function_is_checked_leads_to_it_and_is_among_its_usages()
+    public void A_csharp_string_naming_a_gdscript_function_is_read_against_it()
+    {
+        Flow.Step(nameof(A_csharp_string_naming_a_gdscripts_function_is_checked_leads_to_it_and_is_among_its_usages),
+            A_csharp_string_naming_a_gdscripts_function_is_checked_leads_to_it_and_is_among_its_usages);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_gdscripts_function_completes_and_hovers_in_a_csharp_string_and_its_rename_follows_the_strings_and_scenes_naming_it),
+            A_gdscripts_function_completes_and_hovers_in_a_csharp_string_and_its_rename_follows_the_strings_and_scenes_naming_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code),
+            A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it),
+            An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked),
+            A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call),
+            A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call);
+    }
+
+    private void A_csharp_string_naming_a_gdscripts_function_is_checked_leads_to_it_and_is_among_its_usages()
     {
         MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
         try
@@ -114,8 +142,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
     /// <summary>The C# string completes enemy.gd's functions and hovers take_damage's declaration; renamed in enemy.gd,
     /// take_damage is renamed in the script by Godot's server, in the C# string calling it and in the scene's connection,
     /// the misspelt string left, and Undo puts every file back.</summary>
-    [AvaloniaFact]
-    public void A_gdscripts_function_completes_and_hovers_in_a_csharp_string_and_its_rename_follows_the_strings_and_scenes_naming_it()
+    private void A_gdscripts_function_completes_and_hovers_in_a_csharp_string_and_its_rename_follows_the_strings_and_scenes_naming_it()
     {
         MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
         try
@@ -162,8 +189,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
     /// <summary>Renamed from the C# string calling it, take_damage is renamed as from its script: there by Godot's server, the
     /// script lent with no tab, in the C# string and in the scene's connection, the person left in Main.cs; one Undo puts
     /// every file back.</summary>
-    [AvaloniaFact]
-    public void A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code()
+    private void A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code()
     {
         MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
         try
@@ -199,8 +225,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
 
     /// <summary>An exported variable a scene sets, renamed in its script, is renamed there by Godot's server, in the scene's
     /// key setting it on the node and in the C# Get naming it; one Undo puts every file back.</summary>
-    [AvaloniaFact]
-    public void An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it()
+    private void An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it()
     {
         string exported = Enemy.Replace("var health := 3.0", "@export var health := 3.0", StringComparison.Ordinal);
         string setting = Scene.Replace("script = ExtResource(\"2_enemy\")\n", "script = ExtResource(\"2_enemy\")\nhealth = 5.0\n", StringComparison.Ordinal);
@@ -242,8 +267,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
     /// parentheses gives whatever its emits do, so none is known), to a C# method taking an int is marked at the signal's
     /// string, and one of a C# signal giving nothing to take_damage, which takes an amount, at the function's; died to
     /// OnDied, which takes nothing, is not.</summary>
-    [AvaloniaFact]
-    public void A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked()
+    private void A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked()
     {
         string connects = Script.Replace("        float health = (float)GetNode(\"Enemy\").Get(\"health\");\n",
             "        float health = (float)GetNode(\"Enemy\").Get(\"health\");\n        GetNode(\"Enemy\").Connect(\"died\", new Callable(this, MethodName.OnHurt));\n"
@@ -277,8 +301,7 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
     /// <summary>A GDScript function with a rest parameter takes any count past the ones it requires (#1211): a scene's
     /// connection of a signal giving it three is no mark, one giving none is; a C# Call giving it one is no mark, one
     /// giving none is, where the string is written.</summary>
-    [AvaloniaFact]
-    public void A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call()
+    private void A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call()
     {
         File.WriteAllText(game.PathOf("enemy.gd"), Enemy + "\n\nsignal talked(a, b, c)\nsignal hushed()\n\n\nfunc shout(first, ...rest) -> void:\n\tprint(first, rest)\n");
         File.WriteAllText(game.PathOf("main.tscn"), Scene + "[connection signal=\"talked\" from=\"Enemy\" to=\"Enemy\" method=\"shout\"]\n"

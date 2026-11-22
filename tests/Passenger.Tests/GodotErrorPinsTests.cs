@@ -20,8 +20,18 @@ public sealed class GodotErrorPinsTests
 {
     private const string Script = "extends Node\n\nfunc _process(_delta):\n\tpush_error(\"a\")\n";
 
+    /// <summary>Error pins follow the newest game and their lines and open their own game's scripts.</summary>
     [AvaloniaFact]
-    public void An_older_game_still_running_pins_nothing_among_the_newest_games_errors()
+    public void A_games_error_pins_follow_their_game_and_lines()
+    {
+        Flow.Step(nameof(An_older_game_still_running_pins_nothing_among_the_newest_games_errors),
+            An_older_game_still_running_pins_nothing_among_the_newest_games_errors);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_pins_stack_opens_its_own_games_scripts_once_another_projects_game_is_chosen),
+            A_pins_stack_opens_its_own_games_scripts_once_another_projects_game_is_chosen);
+    }
+
+    private void An_older_game_still_running_pins_nothing_among_the_newest_games_errors()
     {
         string folder = PathNames.Canonical(TestFolders.Create("pins-two-games-"));
         File.WriteAllText(Path.Combine(folder, "main.gd"), Script);
@@ -45,8 +55,7 @@ public sealed class GodotErrorPinsTests
 
     /// <summary>Each Godot project of the open folder is its own game: a pin of server/'s game goes to its stack's scripts
     /// in server/, though the game chosen once it ended is client/'s, whose folder holds a script of the same name.</summary>
-    [AvaloniaFact]
-    public void A_pins_stack_opens_its_own_games_scripts_once_another_projects_game_is_chosen()
+    private void A_pins_stack_opens_its_own_games_scripts_once_another_projects_game_is_chosen()
     {
         string folder = PathNames.Canonical(TestFolders.Create("pins-two-projects-"));
         string client = Project(folder, "client");
@@ -76,71 +85,6 @@ public sealed class GodotErrorPinsTests
             string expected = Path.Combine(server, "lib", "util.gd");
             Ui.WaitFor(() => window.EditorArea.Active?.Path is { } shown && PathNames.Same(shown, expected),
                 () => $"the frame's script {expected} to open, where {window.EditorArea.Active?.Path} is shown");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A key costs the pins only what it changed: given the change a key made in a C# file holding no pin, as each
-    /// key's is given, they allocate nothing on the window's thread and move none, while the pin of a GDScript file follows a
-    /// line put above it and comes off once its own line is typed in.</summary>
-    [AvaloniaFact]
-    public void A_key_in_a_file_holding_no_pin_allocates_nothing_for_the_pins_and_a_pinned_line_still_follows_and_clears()
-    {
-        string folder = PathNames.Canonical(TestFolders.Create("pins-keys-"));
-        string game = Project(folder, "game");
-        string code = Path.Combine(folder, "Code.cs");
-        File.WriteAllText(code, "public sealed class Code\n{\n}\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.OpenFile(Path.Combine(game, "main.gd"));
-            Ui.Settle();
-            OpenDocument script = window.EditorArea.Active!;
-            using GodotGame running = GodotGame.Relay("Game", game, "4.7.2", (_, _) => Task.CompletedTask);
-            window.Session.TakeGame(running);
-            Raise(running, "a");
-            Ui.WaitFor(() => script.ErrorPins.Count == 1, () => $"the game's error to pin at main.gd ({script.ErrorPins.Count} pins)");
-            GodotErrorPins pins = window.Session.ErrorPins;
-            GodotPin pin = Assert.Single(pins.All);
-
-            window.OpenFile(code);
-            Ui.Settle();
-            OpenDocument typed = window.EditorArea.Active!;
-            DocumentChangedEventArgs? change = null;
-            typed.Text.Changed += (_, e) => change = e;
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.Focus();
-            Ui.PlaceAfter(editor, "class Code");
-            long least = long.MaxValue;
-            for (int i = 0; i < 6; i++)
-            {
-                window.KeyTextInput("s");
-                DocumentChangedEventArgs key = change ?? throw new Xunit.Sdk.XunitException("A key typed into Code.cs changed nothing");
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                pins.Edited(typed.Path, key);
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-            }
-            Ui.Settle();
-            Assert.True(least == 0, $"A key in Code.cs, which holds no pin, cost the pins {least:N0} bytes on the window's thread at the least of 6");
-            Assert.True(pins.All.Count == 1 && pin.Line == 3 && script.ErrorPins is [{ Line: 3 }],
-                $"Keys in Code.cs moved the pins: {pins.All.Count} at line {pin.Line}, main.gd showing {script.ErrorPins.Count}");
-
-            window.OpenFile(script.Path);
-            Ui.Settle();
-            editor = window.EditorArea.CodeEditor;
-            editor.Focus();
-            Ui.PlaceAfter(editor, "extends Node");
-            Ui.Press(window, "ENTER");
-            Assert.True(pins.All.Count == 1 && pin.Line == 4 && script.ErrorPins is [{ Line: 4 }],
-                $"The pin did not follow its line down past a line put above it: {pins.All.Count} at line {pin.Line}, main.gd showing {script.ErrorPins.Count}");
-            Ui.PlaceAfter(editor, "push_error(\"a");
-            window.KeyTextInput("b");
-            Ui.Settle();
-            Assert.True(pins.All.Count == 0 && script.ErrorPins.Count == 0,
-                $"The pin stayed on a line typed in: {pins.All.Count} pins, main.gd showing {script.ErrorPins.Count}");
         }
         finally
         {

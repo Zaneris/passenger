@@ -56,8 +56,22 @@ public sealed class GodotShaderFrontEndTests
 
     private readonly string folder = TestFolders.Create("godot-shader-front-end-");
 
+    /// <summary>A shader is marked with each error and warned as its project asks, its include read alone, its marks
+    /// kept until its project opens.</summary>
     [AvaloniaFact]
-    public void A_shader_with_several_errors_is_marked_with_each_in_Godots_words_at_its_line()
+    public void A_shader_is_marked_and_warned_as_godots_editor_does()
+    {
+        Flow.StepApart<GodotShaderFrontEndTests>(nameof(A_shader_with_several_errors_is_marked_with_each_in_Godots_words_at_its_line),
+            test => test.A_shader_with_several_errors_is_marked_with_each_in_Godots_words_at_its_line());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderFrontEndTests>(nameof(A_shader_that_compiles_is_warned_as_its_project_asks_its_include_read_alone_and_a_uniforms_card_says_what_the_check_read),
+            test => test.A_shader_that_compiles_is_warned_as_its_project_asks_its_include_read_alone_and_a_uniforms_card_says_what_the_check_read());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotShaderFrontEndTests>(nameof(A_shader_opened_before_its_project_keeps_its_marks_as_typing_pauses_once_the_project_is_open),
+            test => test.A_shader_opened_before_its_project_keeps_its_marks_as_typing_pauses_once_the_project_is_open());
+    }
+
+    private void A_shader_with_several_errors_is_marked_with_each_in_Godots_words_at_its_line()
     {
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Several\"\n");
         TestFolders.Write(folder, "several.gdshader", Several);
@@ -76,8 +90,7 @@ public sealed class GodotShaderFrontEndTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_shader_that_compiles_is_warned_as_its_project_asks_its_include_read_alone_and_a_uniforms_card_says_what_the_check_read()
+    private void A_shader_that_compiles_is_warned_as_its_project_asks_its_include_read_alone_and_a_uniforms_card_says_what_the_check_read()
     {
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Warned\"\n\n[debug]\n\nshader_language/warnings/unused_uniform=false\n");
         TestFolders.Write(folder, "warned.gdshader", Warned);
@@ -99,8 +112,7 @@ public sealed class GodotShaderFrontEndTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_shader_opened_before_its_project_keeps_its_marks_as_typing_pauses_once_the_project_is_open()
+    private void A_shader_opened_before_its_project_keeps_its_marks_as_typing_pauses_once_the_project_is_open()
     {
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Several\"\n");
         TestFolders.Write(folder, "several.gdshader", Several);

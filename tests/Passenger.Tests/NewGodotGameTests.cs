@@ -35,10 +35,30 @@ public sealed class NewGodotGameTests : IDisposable
         godot is null ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4's .NET build to run these tests"
             : $"The Godot found cannot make a C# game: {godot.WhyNot}");
 
+    /// <summary>A new Godot game, C# or GDScript, is made, opens, builds and runs on the .NET its Godot takes, or is
+    /// refused saying how to get Godot.</summary>
+    [AvaloniaFact]
+    public void A_new_godot_game_is_made_opens_builds_and_runs()
+    {
+        Flow.StepApart<NewGodotGameTests>(nameof(A_godot_game_with_no_godot_found_is_refused_saying_how_to_get_one),
+            test => test.A_godot_game_with_no_godot_found_is_refused_saying_how_to_get_one());
+        OpenWindows.CloseAll();
+        Flow.StepApart<NewGodotGameTests>(nameof(A_gdscript_game_on_a_godot_older_than_4_is_refused_saying_where_godot_4_comes_from),
+            test => test.A_gdscript_game_on_a_godot_older_than_4_is_refused_saying_where_godot_4_comes_from());
+        OpenWindows.CloseAll();
+        Flow.StepApart<NewGodotGameTests>(nameof(A_csharp_godot_game_is_made_on_the_godots_sdk_opens_built_and_runs_printing),
+            test => test.A_csharp_godot_game_is_made_on_the_godots_sdk_opens_built_and_runs_printing());
+        OpenWindows.CloseAll();
+        Flow.StepApart<NewGodotGameTests>(nameof(A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it_or_passenger_says_why_not),
+            test => test.A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it_or_passenger_says_why_not());
+        OpenWindows.CloseAll();
+        Flow.StepApart<NewGodotGameTests>(nameof(A_gdscript_godot_game_is_its_folder_alone_which_opens_and_runs_printing),
+            test => test.A_gdscript_godot_game_is_its_folder_alone_which_opens_and_runs_printing());
+    }
+
     /// <summary>The Godot 4 Game made in C#, its solution and project in one folder, opens built with Passenger offered as
     /// Godot's script editor, and runs, its script printing.</summary>
-    [AvaloniaFact]
-    public void A_csharp_godot_game_is_made_on_the_godots_sdk_opens_built_and_runs_printing()
+    private void A_csharp_godot_game_is_made_on_the_godots_sdk_opens_built_and_runs_printing()
     {
         SkipWithoutGodot();
         MainWindow window = Started();
@@ -71,8 +91,7 @@ public sealed class NewGodotGameTests : IDisposable
     /// project, as Godot's editor lays a game out, and Godot's own editor, started through its Godot Editor configuration
     /// (headless, building the solution and quitting), builds it there into its .godot folder; or, where that editor builds
     /// no C# game here (#1726), Passenger says why in the Run window before the editor starts, which then fails as said.</summary>
-    [AvaloniaFact]
-    public void A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it_or_passenger_says_why_not()
+    private void A_csharp_godot_games_solution_sits_beside_project_godot_by_default_where_godots_editor_builds_it_or_passenger_says_why_not()
     {
         SkipWithoutGodot();
         MainWindow window = Started();
@@ -225,8 +244,7 @@ public sealed class NewGodotGameTests : IDisposable
 
     /// <summary>The Godot 4 Game made in GDScript is its folder alone, no solution or project, which opens and runs, its script
     /// printing.</summary>
-    [AvaloniaFact]
-    public void A_gdscript_godot_game_is_its_folder_alone_which_opens_and_runs_printing()
+    private void A_gdscript_godot_game_is_its_folder_alone_which_opens_and_runs_printing()
     {
         SkipWithoutGodot();
         MainWindow window = Started();
@@ -249,8 +267,7 @@ public sealed class NewGodotGameTests : IDisposable
 
     /// <summary>With no Godot where Settings names one, the Godot 4 Game is noted and refused before anything is made,
     /// saying where Godot comes from.</summary>
-    [AvaloniaFact]
-    public void A_godot_game_with_no_godot_found_is_refused_saying_how_to_get_one()
+    private void A_godot_game_with_no_godot_found_is_refused_saying_how_to_get_one()
     {
         MainWindow window = Started();
         NewProjectDialog dialog = new(place, null, godot: Path.Combine(place, "no-godot", "Godot")) { Workloads = window.InstallAskedWorkloadsAsync, WorkloadPlace = window.WorkloadFoldersAsync };
@@ -275,8 +292,7 @@ public sealed class NewGodotGameTests : IDisposable
 
     /// <summary>A GDScript game on a Godot older than 4, by its download's name, is noted and refused before anything is made,
     /// as its Run would refuse that Godot.</summary>
-    [AvaloniaFact]
-    public void A_gdscript_game_on_a_godot_older_than_4_is_refused_saying_where_godot_4_comes_from()
+    private void A_gdscript_game_on_a_godot_older_than_4_is_refused_saying_where_godot_4_comes_from()
     {
         string old = TestFolders.Create("old-godot-");
         string three = TestFolders.Write(old, "Godot_v3.5.3-stable_x11.64", string.Empty);

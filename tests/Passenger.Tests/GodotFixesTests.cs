@@ -124,11 +124,31 @@ public sealed class GodotFixesTests : IClassFixture<GodotFixesTests.Game>
         Assert.True(built.Succeeded, $"the game to build: {built.Message}; {string.Join("; ", built.Problems.Select(p => p.Message))}");
     }
 
+    /// <summary>A scene's fixes make the missing method, node path, export, action, group or autoload where Godot
+    /// looks.</summary>
+    [AvaloniaFact]
+    public void A_scenes_fixes_make_what_the_scene_asks_for()
+    {
+        Flow.Step(nameof(A_connection_to_a_method_the_script_lacks_makes_it_with_the_signals_parameters_from_the_code_and_the_scene),
+            A_connection_to_a_method_the_script_lacks_makes_it_with_the_signals_parameters_from_the_code_and_the_scene);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_node_path_no_node_answers_takes_the_nearest_and_a_wrong_type_the_nodes_own),
+            A_node_path_no_node_answers_takes_the_nearest_and_a_wrong_type_the_nodes_own);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_property_the_scene_sets_that_the_script_lacks_is_made_exported_of_its_values_type),
+            A_property_the_scene_sets_that_the_script_lacks_is_made_exported_of_its_values_type);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_unknown_action_group_or_autoload_is_added_where_godot_looks_once_the_person_agrees_to_its_line),
+            An_unknown_action_group_or_autoload_is_added_where_godot_looks_once_the_person_agrees_to_its_line);
+    }
+
     /// <summary>The scene's connection to a method Main lacks makes it from Main's mark, after the handler the scene connects,
     /// taking what the signal gives; the open scene's connection of a toggle to another makes it from the scene's mark with
     /// the toggle's bool; Undo takes the first back whole; each mark goes and the game builds.</summary>
-    [AvaloniaFact]
-    public void A_connection_to_a_method_the_script_lacks_makes_it_with_the_signals_parameters_from_the_code_and_the_scene()
+    private void A_connection_to_a_method_the_script_lacks_makes_it_with_the_signals_parameters_from_the_code_and_the_scene()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -165,8 +185,7 @@ public sealed class GodotFixesTests : IClassFixture<GodotFixesTests.Game>
 
     /// <summary>A GetNode path no node answers changes to the scene's label near it, and a Button asked of the scene's Label
     /// takes Label, with the local it declares; each mark goes and the game builds.</summary>
-    [AvaloniaFact]
-    public void A_node_path_no_node_answers_takes_the_nearest_and_a_wrong_type_the_nodes_own()
+    private void A_node_path_no_node_answers_takes_the_nearest_and_a_wrong_type_the_nodes_own()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -193,8 +212,7 @@ public sealed class GodotFixesTests : IClassFixture<GodotFixesTests.Game>
 
     /// <summary>A property the scene sets that Main lacks is made exported with the type of the scene's value, after Main's
     /// other exported property, from Main's mark; the scene's mark of it goes with it, and the game builds.</summary>
-    [AvaloniaFact]
-    public void A_property_the_scene_sets_that_the_script_lacks_is_made_exported_of_its_values_type()
+    private void A_property_the_scene_sets_that_the_script_lacks_is_made_exported_of_its_values_type()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -227,8 +245,7 @@ public sealed class GodotFixesTests : IClassFixture<GodotFixesTests.Game>
     /// <summary>An input action, a group and an autoload the project's files lack are added where Godot looks once the person
     /// agrees to the line each writes: project.godot's [input] and [autoload], made where it has none, and Main's header in
     /// the scene; declined, nothing is written. Each mark goes.</summary>
-    [AvaloniaFact]
-    public void An_unknown_action_group_or_autoload_is_added_where_godot_looks_once_the_person_agrees_to_its_line()
+    private void An_unknown_action_group_or_autoload_is_added_where_godot_looks_once_the_person_agrees_to_its_line()
     {
         string project = File.ReadAllText(ProjectPath);
         MainWindow window = game.Open(ScriptPath);

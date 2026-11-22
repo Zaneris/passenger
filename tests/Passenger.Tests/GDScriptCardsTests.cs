@@ -29,8 +29,19 @@ public sealed class GDScriptCardsTests
         TestFolders.Write(folder, "main.gd", Script);
     }
 
+    /// <summary>A script's and the engine's members' cards say their signatures and their doc comment or the class
+    /// reference's words.</summary>
     [AvaloniaFact]
-    public void A_scripts_members_card_says_its_signature_and_its_doc_comment()
+    public void A_gdscript_members_card_says_its_signature_and_words()
+    {
+        Flow.StepApart<GDScriptCardsTests>(nameof(A_scripts_members_card_says_its_signature_and_its_doc_comment),
+            test => test.A_scripts_members_card_says_its_signature_and_its_doc_comment());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCardsTests>(nameof(An_engines_members_card_says_its_signature_and_the_class_references_words),
+            test => test.An_engines_members_card_says_its_signature_and_the_class_references_words());
+    }
+
+    private void A_scripts_members_card_says_its_signature_and_its_doc_comment()
     {
         (MainWindow window, TaskCompletionSource release) = Open();
         try
@@ -61,8 +72,7 @@ public sealed class GDScriptCardsTests
 
     /// <summary>An engine's member hovered says its signature as Godot writes it and its class reference's words, BBCode made
     /// words; a utility function's item in the list says its own.</summary>
-    [AvaloniaFact]
-    public void An_engines_members_card_says_its_signature_and_the_class_references_words()
+    private void An_engines_members_card_says_its_signature_and_the_class_references_words()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the class reference is dumped from it");
         (MainWindow window, TaskCompletionSource release) = Open();

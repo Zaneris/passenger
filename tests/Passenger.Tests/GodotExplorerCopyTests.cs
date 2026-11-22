@@ -67,12 +67,29 @@ public sealed class GodotExplorerCopyTests : IDisposable
         TestFolders.Delete(folder + "-home");
     }
 
+    /// <summary>A folder or file copied in a Godot project takes uids of its own as Godot's Duplicate gives them, and a
+    /// texture moved is followed and loaded from its new place.</summary>
+    [AvaloniaFact]
+    public void A_copy_or_move_in_a_godot_project_is_followed_as_godot_follows_it()
+    {
+        Flow.StepApart<GodotExplorerCopyTests>(nameof(A_folder_and_a_file_copied_in_a_godot_project_take_uids_of_their_own_as_godots_duplicate_gives_them),
+            test => test.A_folder_and_a_file_copied_in_a_godot_project_take_uids_of_their_own_as_godots_duplicate_gives_them());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotExplorerCopyTests>(nameof(A_folders_binary_scene_and_resource_copied_in_a_godot_project_take_uids_of_their_own_and_load_the_copies),
+            test => test.A_folders_binary_scene_and_resource_copied_in_a_godot_project_take_uids_of_their_own_and_load_the_copies());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotExplorerCopyTests>(nameof(A_texture_moved_in_a_godot_project_is_followed_by_the_binary_scene_and_resource_naming_it),
+            test => test.A_texture_moved_in_a_godot_project_is_followed_by_the_binary_scene_and_resource_naming_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotExplorerCopyTests>(nameof(A_texture_moved_in_the_explorer_is_loaded_from_its_new_place_by_the_game_run_at_once),
+            test => test.A_texture_moved_in_the_explorer_is_loaded_from_its_new_place_by_the_game_run_at_once());
+    }
+
     /// <summary>A folder holding a script, a scene and an imported texture, then the script alone, copied and pasted into
     /// another folder of the project: each copy takes a uid none of the project's other files gives, the scene copied names
     /// the copied script and texture, the script copied alone has a .uid of its own, and the originals keep theirs, so Godot
     /// opens the project finding no two files of one uid.</summary>
-    [AvaloniaFact]
-    public void A_folder_and_a_file_copied_in_a_godot_project_take_uids_of_their_own_as_godots_duplicate_gives_them()
+    private void A_folder_and_a_file_copied_in_a_godot_project_take_uids_of_their_own_as_godots_duplicate_gives_them()
     {
         // Godot has opened the project, so the texture has the .import Godot gives it.
         Assert.True(Godot(["--import"]) is { } first && first.Contains("Godot Engine", StringComparison.Ordinal), "Godot's first import wrote no log of its run");
@@ -116,8 +133,7 @@ public sealed class GodotExplorerCopyTests : IDisposable
     /// project: Godot's import finds no two files of one uid, the originals are as they were, and the copied scene loads its
     /// script and textures from the copies. A resource of a binary format Passenger doesn't know, copied, stays as it was,
     /// the paste saying so.</summary>
-    [AvaloniaFact]
-    public void A_folders_binary_scene_and_resource_copied_in_a_godot_project_take_uids_of_their_own_and_load_the_copies()
+    private void A_folders_binary_scene_and_resource_copied_in_a_godot_project_take_uids_of_their_own_and_load_the_copies()
     {
         TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Copies\"\n\n"
             + "[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/maker/plugin.cfg\")\n");
@@ -184,8 +200,7 @@ public sealed class GodotExplorerCopyTests : IDisposable
     /// names it at its new path, keeping its uid and every other byte, as one command Undo takes back whole and Redo makes
     /// again, and Godot, finding each by the path written where it knows no uid, loads the scene with the texture from its
     /// new place. A resource of a binary format Passenger doesn't know is left as it was, the move saying so.</summary>
-    [AvaloniaFact]
-    public void A_texture_moved_in_a_godot_project_is_followed_by_the_binary_scene_and_resource_naming_it()
+    private void A_texture_moved_in_a_godot_project_is_followed_by_the_binary_scene_and_resource_naming_it()
     {
         TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Copies\"\n\n"
             + "[editor_plugins]\n\nenabled=PackedStringArray(\"res://addons/maker/plugin.cfg\")\n");
@@ -264,8 +279,7 @@ public sealed class GodotExplorerCopyTests : IDisposable
     /// <summary>A texture the main scene names by its uid, moved in the Explorer of a project Godot has opened: the game, run
     /// headless at once with no editor between, loads it from its new place, the uid cache Godot finds a uid's file by
     /// naming it there; Undo has the cache name it back where it was, and Redo where it went again.</summary>
-    [AvaloniaFact]
-    public void A_texture_moved_in_the_explorer_is_loaded_from_its_new_place_by_the_game_run_at_once()
+    private void A_texture_moved_in_the_explorer_is_loaded_from_its_new_place_by_the_game_run_at_once()
     {
         TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Copies\"\nrun/main_scene=\"res://main.tscn\"\n");
         TestFolders.Write(folder, "main.gd", Shower);

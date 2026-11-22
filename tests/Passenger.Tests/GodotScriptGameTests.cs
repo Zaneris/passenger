@@ -36,10 +36,78 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     private string TickerPath => Path.Combine(PathNames.Canonical(game.Folder), "ticker.gd");
 
+    /// <summary>A GDScript game runs from its configurations, imports what it lacks, keeps its settings, and takes the
+    /// helper only where Godot lets it.</summary>
+    [AvaloniaFact]
+    public void A_gdscript_game_runs_and_takes_the_helper_as_godot_lets_it()
+    {
+        Flow.Step(nameof(The_projects_game_and_editor_are_its_configurations_build_has_nothing_to_build_and_Run_starts_the_game),
+            The_projects_game_and_editor_are_its_configurations_build_has_nothing_to_build_and_Run_starts_the_game);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window),
+            The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why),
+            A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other),
+            Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Run_of_a_game_whose_asset_has_no_import_file_imports_it_first_and_the_game_loads_it),
+            Run_of_a_game_whose_asset_has_no_import_file_imports_it_first_and_the_game_loads_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Run_puts_back_the_project_settings_an_editor_plugin_saves_in_its_import),
+            Run_puts_back_the_project_settings_an_editor_plugin_saves_in_its_import);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_helper_godot_refuses_while_the_root_sets_its_children_up_says_so_as_its_own_and_comes_in_on_a_later_call),
+            A_helper_godot_refuses_while_the_root_sets_its_children_up_says_so_as_its_own_and_comes_in_on_a_later_call);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once),
+            A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once);
+    }
+
+    /// <summary>A GDScript game stops at breakpoints and conditions, takes saved scripts and an agent's reload, and is
+    /// profiled by its frames alone.</summary>
+    [AvaloniaFact]
+    public void A_gdscript_game_is_debugged_reloaded_and_profiled()
+    {
+        Flow.Step(nameof(A_breakpoint_stops_the_game_debugged_alone_and_a_member_set_from_Variables_is_what_it_says_after),
+            A_breakpoint_stops_the_game_debugged_alone_and_a_member_set_from_Variables_is_what_it_says_after);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_conditional_breakpoint_and_a_tracepoint_in_the_games_ready_hold_while_godot_sets_its_tree_up),
+            A_conditional_breakpoint_and_a_tracepoint_in_the_games_ready_hold_while_godot_sets_its_tree_up);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload), A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit),
+            An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Profile_records_the_games_frames_alone_and_says_it_takes_no_samples),
+            Profile_records_the_games_frames_alone_and_says_it_takes_no_samples);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it),
+            Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone),
+            Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone);
+    }
+
     /// <summary>The game's and the editor's configurations are generated for the project.godot, Build is greyed saying there
     /// is nothing to build, and Run starts the game, which says its word.</summary>
-    [AvaloniaFact]
-    public void The_projects_game_and_editor_are_its_configurations_build_has_nothing_to_build_and_Run_starts_the_game()
+    private void The_projects_game_and_editor_are_its_configurations_build_has_nothing_to_build_and_Run_starts_the_game()
     {
         MainWindow window = Open();
         try
@@ -65,8 +133,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     /// <summary>A game whose project stretches nothing draws at its window's size in pixels, so the Game window has Passenger's
     /// helper lay it out at its project's size and scale it to its window, and a place smaller than that still shows it whole.</summary>
-    [AvaloniaFact]
-    public void The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window()
+    private void The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window()
     {
         MainWindow window = Open();
         try
@@ -89,8 +156,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     /// <summary>A configuration that starts the game in Passenger's Game window runs it in a window of its own where it cannot
     /// draw there: a headless game has no picture, so the Game window says why, holds no game, and the game runs as ever.</summary>
-    [AvaloniaFact]
-    public void A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why()
+    private void A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why()
     {
         MainWindow window = Open();
         try
@@ -118,8 +184,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     /// <summary>Input aimed at a control gone since it was found (freed, or taken out of the tree) is refused saying so, never
     /// given to what has the keys, whose text stays as it was; input aimed at nothing goes where the keys are, as ever.</summary>
-    [AvaloniaFact]
-    public void Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other()
+    private void Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other()
     {
         File.WriteAllText(TickerPath, Boxes);
         MainWindow window = Open();
@@ -162,8 +227,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>Run of a game whose asset has no .import beside it, which a game cannot load, imports the project first: the
     /// asset is written with none, opening the folder makes none (no Godot editor starts at a script's opening), and Run's
     /// import makes it for the game, which loads the asset.</summary>
-    [AvaloniaFact]
-    public void Run_of_a_game_whose_asset_has_no_import_file_imports_it_first_and_the_game_loads_it()
+    private void Run_of_a_game_whose_asset_has_no_import_file_imports_it_first_and_the_game_loads_it()
     {
         string icon = Path.Combine(PathNames.Canonical(game.Folder), "icon.svg");
         File.WriteAllText(icon, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\" fill=\"#478cbf\"/></svg>\n");
@@ -192,8 +256,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>Run's import of a game whose editor plugin saves the project's settings leaves project.godot byte for byte as
     /// it was: Godot's save is its own by the safe save's file the folder's watcher hears, a word that may come only after the
     /// import has ended, and is put back before the game starts.</summary>
-    [AvaloniaFact]
-    public void Run_puts_back_the_project_settings_an_editor_plugin_saves_in_its_import()
+    private void Run_puts_back_the_project_settings_an_editor_plugin_saves_in_its_import()
     {
         string folder = PathNames.Canonical(game.Folder);
         string settings = Path.Combine(folder, "project.godot");
@@ -230,8 +293,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>Debug starts the game under its GDScript session alone, in one tab of the configuration's name: a breakpoint in
     /// _process stops it there, a local's Set Value is greyed saying Godot sets no local, and the script's word set from
     /// Variables is what the game says once it runs on.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_stops_the_game_debugged_alone_and_a_member_set_from_Variables_is_what_it_says_after()
+    private void A_breakpoint_stops_the_game_debugged_alone_and_a_member_set_from_Variables_is_what_it_says_after()
     {
         MainWindow window = Open();
         try
@@ -280,8 +342,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// open script's values are asked of the game too: the tracepoint logs its message at every turn up to the stop, the
     /// condition stops the game where it holds alone, and Passenger's helper, which no tree setting nodes up takes, is
     /// brought in only once the game runs on, so nothing it would raise is said as the game's or an expression's.</summary>
-    [AvaloniaFact]
-    public void A_conditional_breakpoint_and_a_tracepoint_in_the_games_ready_hold_while_godot_sets_its_tree_up()
+    private void A_conditional_breakpoint_and_a_tracepoint_in_the_games_ready_hold_while_godot_sets_its_tree_up()
     {
         File.WriteAllText(TickerPath, Readying);
         MainWindow window = Open();
@@ -330,8 +391,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>A call on Passenger's helper that brings it in while the game's root calls a method through its nodes, after the
     /// game has run its loop, where Godot adds no node: the call says at once why the helper could not come in, Godot's refusal
     /// is none of the game's errors, and a call once the root is done brings the helper in and is answered.</summary>
-    [AvaloniaFact]
-    public void A_helper_godot_refuses_while_the_root_sets_its_children_up_says_so_as_its_own_and_comes_in_on_a_later_call()
+    private void A_helper_godot_refuses_while_the_root_sets_its_children_up_says_so_as_its_own_and_comes_in_on_a_later_call()
     {
         File.WriteAllText(TickerPath, Growing);
         MainWindow window = Open();
@@ -378,8 +438,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>An agent's app_tree on a game whose own add_child fails each frame brings Passenger's helper in and says where
     /// the nodes are drawn: Godot's refusals of the game's own child, raised while the helper came in, are the game's errors,
     /// said in Problems, never taken as Godot refusing the helper; and the helper is in the game's tree once.</summary>
-    [AvaloniaFact]
-    public void A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once()
+    private void A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once()
     {
         File.WriteAllText(TickerPath, Readding);
         MainWindow window = Open();
@@ -420,8 +479,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     /// <summary>A script saved while Run runs the game with Hot Reload reaches it: what it says after is the edit's, its count
     /// going on.</summary>
-    [AvaloniaFact]
-    public void A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload()
+    private void A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload()
     {
         MainWindow window = Open();
         try
@@ -445,8 +503,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>A script edited and left unsaved while Run runs the game with Hot Reload: Apply Hot Reload Changes, greyed
     /// while nothing is unsaved, is offered, and an agent's hot_reload saves the script, saying so, and the game then says
     /// the edit's words.</summary>
-    [AvaloniaFact]
-    public void An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit()
+    private void An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit()
     {
         MainWindow window = Open();
         try
@@ -484,8 +541,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     /// <summary>Profile records the game's frames as Godot's own profiler measures them, its script's _process among them,
     /// and says the run has no samples, a game of GDScript alone running no .NET code.</summary>
-    [AvaloniaFact]
-    public void Profile_records_the_games_frames_alone_and_says_it_takes_no_samples()
+    private void Profile_records_the_games_frames_alone_and_says_it_takes_no_samples()
     {
         MainWindow window = Open();
         try
@@ -514,8 +570,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     /// <summary>Debug with the configuration's external console runs the game in a tab of the Terminal window, which shows what
     /// it says rather than the Debug window's console, its GDScript session still stopping it at a breakpoint; Stop ends it
     /// there.</summary>
-    [AvaloniaFact]
-    public void Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it()
+    private void Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it()
     {
         MainWindow window = Open();
         try
@@ -550,8 +605,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     /// <summary>Attach Profiler to the game Run runs records its frames as Godot's own profiler measures them, its script's
     /// _process among them, and says the run has no samples: the game runs no .NET code, so no EventPipe session is asked of it.</summary>
-    [AvaloniaFact]
-    public void Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone()
+    private void Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone()
     {
         MainWindow window = Open();
         try

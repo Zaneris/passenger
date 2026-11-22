@@ -66,8 +66,22 @@ public sealed class GodotProjectPageTests
 
         """;
 
+    /// <summary>The project page shows project.godot's settings, leads to their lines, names uids by their paths and
+    /// keeps what Godot saves meanwhile.</summary>
     [AvaloniaFact]
-    public void The_page_shows_the_projects_settings_and_a_click_on_an_action_goes_to_its_line_in_project_godot()
+    public void The_project_page_shows_and_keeps_project_godots_settings()
+    {
+        Flow.Step(nameof(The_page_shows_the_projects_settings_and_a_click_on_an_action_goes_to_its_line_in_project_godot),
+            The_page_shows_the_projects_settings_and_a_click_on_an_action_goes_to_its_line_in_project_godot);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths),
+            A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes),
+            What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes);
+    }
+
+    private void The_page_shows_the_projects_settings_and_a_click_on_an_action_goes_to_its_line_in_project_godot()
     {
         string folder = TestFolders.Create("godot-page-");
         TestFolders.Write(folder, GodotProject.FileName, Project);
@@ -211,8 +225,7 @@ public sealed class GodotProjectPageTests
 
     /// <summary>A main scene and an autoload project.godot names by their uids, as Godot 4.4 and newer write them, are shown by
     /// their res:// paths.</summary>
-    [AvaloniaFact]
-    public void A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths()
+    private void A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths()
     {
         string folder = TestFolders.Create("godot-page-uids-");
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\nrun/main_scene=\"uid://cmainhop\"\n"
@@ -245,8 +258,7 @@ public sealed class GodotProjectPageTests
     /// <summary>What Godot's editor saves in project.godot while the gate asks to write over what it holds there (a hold
     /// the test stands in, as the addon would say it) stays: the page's plugin box and its new action each write their
     /// change into project.godot as that save left it.</summary>
-    [AvaloniaFact]
-    public void What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes()
+    private void What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes()
     {
         string folder = TestFolders.Create("godot-page-held-");
         TestFolders.Write(folder, GodotProject.FileName, Project);

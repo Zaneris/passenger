@@ -86,11 +86,35 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         return window;
     }
 
+    /// <summary>A GDScript game stops at breakpoints and errors, steps and evaluates, takes saved scripts, and runs and
+    /// reruns the scene open.</summary>
+    [AvaloniaFact]
+    public void A_gdscript_game_stops_steps_and_reruns_its_scene()
+    {
+        Flow.Step(nameof(A_breakpoint_in_a_scripts_process_stops_the_game_with_its_locals_a_step_goes_to_the_next_line_and_an_evaluation_answers),
+            A_breakpoint_in_a_scripts_process_stops_the_game_with_its_locals_a_step_goes_to_the_next_line_and_an_evaluation_answers);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_script_error_stops_the_game_where_it_was_raised_and_with_GDScript_Errors_off_it_runs_on),
+            A_script_error_stops_the_game_where_it_was_raised_and_with_GDScript_Errors_off_it_runs_on);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload_its_members_kept),
+            A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload_its_members_kept);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Run_Current_Scene_starts_the_game_in_the_scene_open_and_a_configuration_can_start_in_the_scene_open),
+            Run_Current_Scene_starts_the_game_in_the_scene_open_and_a_configuration_can_start_in_the_scene_open);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_game_Run_Current_Scene_started_restarts_and_reruns_in_that_scene_whatever_is_open_then),
+            A_game_Run_Current_Scene_started_restarts_and_reruns_in_that_scene_whatever_is_open_then);
+    }
+
     /// <summary>A breakpoint on _process's call of twice stops the game there in a GDScript tab of its own beside the game's,
     /// the breakpoint bound, Variables showing the frame's locals and self; Step Over goes to the next line, the local it set
     /// shown; an evaluation in the frame calls the script's own method; and the game, its breakpoint gone, runs on.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_in_a_scripts_process_stops_the_game_with_its_locals_a_step_goes_to_the_next_line_and_an_evaluation_answers()
+    private void A_breakpoint_in_a_scripts_process_stops_the_game_with_its_locals_a_step_goes_to_the_next_line_and_an_evaluation_answers()
     {
         MainWindow window = Open(TickerPath);
         try
@@ -139,8 +163,7 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
 
     /// <summary>A script error stops the game where it was raised, as Godot's own editor stops it, the status bar saying the
     /// error; a step is refused there, and with GDScript Errors turned off the game runs on past the next.</summary>
-    [AvaloniaFact]
-    public void A_script_error_stops_the_game_where_it_was_raised_and_with_GDScript_Errors_off_it_runs_on()
+    private void A_script_error_stops_the_game_where_it_was_raised_and_with_GDScript_Errors_off_it_runs_on()
     {
         File.WriteAllText(Path.Combine(game.Folder, "fail.txt"), "fail\n");
         MainWindow window = Open(TickerPath);
@@ -174,8 +197,7 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
 
     /// <summary>A GDScript file saved while Run runs the game with Hot Reload reaches the game: what the script prints after is
     /// the edit's, its counter going on from where it was, and the Run console says what Godot's reload keeps.</summary>
-    [AvaloniaFact]
-    public void A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload_its_members_kept()
+    private void A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload_its_members_kept()
     {
         MainWindow window = Open(TickerPath);
         try
@@ -198,8 +220,7 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
 
     /// <summary>Run Current Scene with the second scene open starts the game in it, its res:// path on Godot's command line;
     /// a configuration whose scene is the one open does the same from its script.</summary>
-    [AvaloniaFact]
-    public void Run_Current_Scene_starts_the_game_in_the_scene_open_and_a_configuration_can_start_in_the_scene_open()
+    private void Run_Current_Scene_starts_the_game_in_the_scene_open_and_a_configuration_can_start_in_the_scene_open()
     {
         MainWindow window = Open(Path.Combine(game.Folder, "other.tscn"));
         try
@@ -227,8 +248,7 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
     /// <summary>A game Run Current Scene started with Hot Reload in the second scene starts in that scene again as Hot Reload
     /// restarts it for an edit it cannot apply, and on Rerun, though the main scene is the one open by then: its res:// path
     /// on Godot's command line each time, and only that scene ready.</summary>
-    [AvaloniaFact]
-    public void A_game_Run_Current_Scene_started_restarts_and_reruns_in_that_scene_whatever_is_open_then()
+    private void A_game_Run_Current_Scene_started_restarts_and_reruns_in_that_scene_whatever_is_open_then()
     {
         const string Name = "Spinner on Godot";
         MainWindow window = Open(Path.Combine(game.Folder, "other.tscn"));

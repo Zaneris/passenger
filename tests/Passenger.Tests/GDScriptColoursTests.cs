@@ -36,8 +36,19 @@ public sealed class GDScriptColoursTests : FileColoursFolder
         return kinds.Distinct().ToArray() is [var one] ? one : null;
     }
 
+    /// <summary>A GDScript's names are drawn in C#'s colours for what they are, drawn again by the next reading where
+    /// typing overtook one.</summary>
     [AvaloniaFact]
-    public void A_gdscripts_names_are_drawn_in_csharps_colours_for_what_they_are_in_both_themes()
+    public void Gdscript_names_are_drawn_in_csharps_colours()
+    {
+        Flow.StepApart<GDScriptColoursTests>(nameof(A_gdscripts_names_are_drawn_in_csharps_colours_for_what_they_are_in_both_themes),
+            test => test.A_gdscripts_names_are_drawn_in_csharps_colours_for_what_they_are_in_both_themes());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptColoursTests>(nameof(A_name_replaced_while_typing_overtook_its_reading_is_drawn_again_by_the_next_reading),
+            test => test.A_name_replaced_while_typing_overtook_its_reading_is_drawn_again_by_the_next_reading());
+    }
+
+    private void A_gdscripts_names_are_drawn_in_csharps_colours_for_what_they_are_in_both_themes()
     {
         bool engine = GodotExecutables.Find(null) is { Exists: true };
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
@@ -94,8 +105,7 @@ public sealed class GDScriptColoursTests : FileColoursFolder
     /// <summary>A name replaced by one of its length loses its colour at the key. Typing on while that reading ran leaves it
     /// out of date, and the next reading, which gives the same name back its colour at the same place, still asks for its
     /// row to be drawn again: the layer's colours are compared as they were shown, not as they were before the name went.</summary>
-    [AvaloniaFact]
-    public void A_name_replaced_while_typing_overtook_its_reading_is_drawn_again_by_the_next_reading()
+    private void A_name_replaced_while_typing_overtook_its_reading_is_drawn_again_by_the_next_reading()
     {
         const string Wealthy = "extends Node\n\nvar health := 10\nvar wealth := 20\n\n\nfunc heal() -> void:\n\tprint(health)\n\tprint(1)\n";
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };

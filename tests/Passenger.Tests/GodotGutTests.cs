@@ -198,12 +198,56 @@ public sealed class GodotGutTests : IDisposable
 
     private string TestsPath => Path.Combine(folder, "test", "test_spinner.gd");
 
+    /// <summary>GUT's tests are found from their scripts and configs, follow their bases and leave as they
+    /// change.</summary>
+    [AvaloniaFact]
+    public void Gut_tests_are_found_from_their_scripts_and_configs()
+    {
+        Flow.StepApart<GodotGutTests>(nameof(A_folder_without_a_solution_is_read_for_its_tests_once_as_its_walk_for_projects_lands),
+            test => test.A_folder_without_a_solution_is_read_for_its_tests_once_as_its_walk_for_projects_lands());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(Tests_extending_the_projects_own_test_class_are_found_and_leave_once_it_is_no_test_class),
+            test => test.Tests_extending_the_projects_own_test_class_are_found_and_leave_once_it_is_no_test_class());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_listing_under_way_as_a_script_becomes_a_test_class_leaves_the_tests_extending_it_shown),
+            test => test.A_listing_under_way_as_a_script_becomes_a_test_class_leaves_the_tests_extending_it_shown());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_test_a_script_inherits_shows_under_the_script_that_runs_it_and_leaves_with_its_base),
+            test => test.A_test_a_script_inherits_shows_under_the_script_that_runs_it_and_leaves_with_its_base());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them),
+            test => test.Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_test_a_script_inherits_has_the_code_of_the_script_declaring_it_as_that_changes),
+            test => test.A_test_a_script_inherits_has_the_code_of_the_script_declaring_it_as_that_changes());
+    }
+
+    /// <summary>GUT's tests run on the Godot found, the chosen alone, fail at their lines and stop at
+    /// breakpoints.</summary>
+    [AvaloniaFact]
+    public void Gut_tests_run_and_debug_on_the_godot_found()
+    {
+        Flow.StepApart<GodotGutTests>(nameof(A_GUT_test_is_found_in_GDScript_runs_on_the_Godot_found_fails_at_its_line_and_stops_at_a_breakpoint),
+            test => test.A_GUT_test_is_found_in_GDScript_runs_on_the_Godot_found_fails_at_its_line_and_stops_at_a_breakpoint());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_run_of_GUT_tests_takes_the_tests_chosen_and_no_other_whose_name_holds_theirs),
+            test => test.A_run_of_GUT_tests_takes_the_tests_chosen_and_no_other_whose_name_holds_theirs());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_gut_configs_own_pre_run_hook_still_runs_for_tests_chosen),
+            test => test.A_gut_configs_own_pre_run_hook_still_runs_for_tests_chosen());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_test_a_script_inherits_is_told_where_a_run_of_the_script_ran_it),
+            test => test.A_test_a_script_inherits_is_told_where_a_run_of_the_script_ran_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotGutTests>(nameof(A_GUT_test_of_a_CSharp_game_stops_at_a_breakpoint_in_the_CSharp_it_calls),
+            test => test.A_GUT_test_of_a_CSharp_game_stops_at_a_breakpoint_in_the_CSharp_it_calls());
+    }
+
     /// <summary>Both tests are in the tree from the GDScript before any run; Run All Tests imports the project, passes one
     /// and fails the other at its assertion's line, linked, with what it printed; the open file's gutter marks each test by
     /// how it ran; Debug of the failing one stops at a breakpoint inside it in the GDScript debugger, and Resume lets the run
     /// end with its failure.</summary>
-    [AvaloniaFact]
-    public void A_GUT_test_is_found_in_GDScript_runs_on_the_Godot_found_fails_at_its_line_and_stops_at_a_breakpoint()
+    private void A_GUT_test_is_found_in_GDScript_runs_on_the_Godot_found_fails_at_its_line_and_stops_at_a_breakpoint()
     {
         Assert.SkipWhen(godot is not { WhyNotScripts: null }, godot is null
             ? "No Godot was found (GODOT, the PATH, Applications): install Godot 4 to run these tests"
@@ -303,8 +347,7 @@ public sealed class GodotGutTests : IDisposable
 
     /// <summary>A run does what was chosen: one test, though another's name holds its name; two of a script's three; a test of
     /// an inner class, though the script and another class hold one of its name.</summary>
-    [AvaloniaFact]
-    public void A_run_of_GUT_tests_takes_the_tests_chosen_and_no_other_whose_name_holds_theirs()
+    private void A_run_of_GUT_tests_takes_the_tests_chosen_and_no_other_whose_name_holds_theirs()
     {
         Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
         Make();
@@ -329,8 +372,7 @@ public sealed class GodotGutTests : IDisposable
 
     /// <summary>A hook of the project's own, which a run's hook stands in for on GUT's command line, still runs before the
     /// tests of a run that chooses some of a script's.</summary>
-    [AvaloniaFact]
-    public void A_gut_configs_own_pre_run_hook_still_runs_for_tests_chosen()
+    private void A_gut_configs_own_pre_run_hook_still_runs_for_tests_chosen()
     {
         Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
         Make();
@@ -354,8 +396,7 @@ public sealed class GodotGutTests : IDisposable
 
     /// <summary>A whole script's run takes what it inherits, which has its row under the script: its failure shows there,
     /// counts in the run's tally and reaches an agent's answer through the run's outcomes.</summary>
-    [AvaloniaFact]
-    public void A_test_a_script_inherits_is_told_where_a_run_of_the_script_ran_it()
+    private void A_test_a_script_inherits_is_told_where_a_run_of_the_script_ran_it()
     {
         Assert.SkipWhen(godot is not { WhyNotScripts: null }, "No Godot 4 that runs GDScript was found: install one to run this test");
         Make();
@@ -391,8 +432,7 @@ public sealed class GodotGutTests : IDisposable
 
     /// <summary>A folder with no solution is read for its tests once as its walk lands, which asks beside the look its opening
     /// left waiting: each is a walk of the project's scripts. Needs no Godot: nothing runs.</summary>
-    [AvaloniaFact]
-    public void A_folder_without_a_solution_is_read_for_its_tests_once_as_its_walk_for_projects_lands()
+    private void A_folder_without_a_solution_is_read_for_its_tests_once_as_its_walk_for_projects_lands()
     {
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
         WriteGut(folder);
@@ -415,8 +455,7 @@ public sealed class GodotGutTests : IDisposable
 
     /// <summary>A test a script inherits stands on the code of the script declaring it, closed or as it is typed, through a chain
     /// of them: a result is only old by that code, which the deriving script's own text never shows. Needs no Godot: nothing runs.</summary>
-    [AvaloniaFact]
-    public void A_test_a_script_inherits_has_the_code_of_the_script_declaring_it_as_that_changes()
+    private void A_test_a_script_inherits_has_the_code_of_the_script_declaring_it_as_that_changes()
     {
         string tester = Path.Combine(folder, "test", "tools", "spin_tester.gd");
         string chain = Path.Combine(folder, "test", "test_chain.gd");
@@ -478,8 +517,7 @@ public sealed class GodotGutTests : IDisposable
 
     /// <summary>In a Godot 4 C# game, Debug of a GUT test that calls the game's C# stops at a breakpoint in that C# under
     /// .NET's debugger, in the Godot GUT's run starts, and going on lets the test pass.</summary>
-    [AvaloniaFact]
-    public void A_GUT_test_of_a_CSharp_game_stops_at_a_breakpoint_in_the_CSharp_it_calls()
+    private void A_GUT_test_of_a_CSharp_game_stops_at_a_breakpoint_in_the_CSharp_it_calls()
     {
         Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
         GodotTests.Game.Make(folder, godot!.Version!, godot.Packages!, "using Godot;\n\npublic partial class Main : Node\n{\n}\n",
@@ -520,8 +558,7 @@ public sealed class GodotGutTests : IDisposable
     /// <summary>Tests in scripts extending the project's own test class (a class_name extending GutTest), by its name, by
     /// its path and through a class extending it, and in an inner class extending it, are in the tree from the GDScript before
     /// any run, as GUT runs them; once the base extends a Node instead, they leave it. Needs no Godot: nothing runs.</summary>
-    [AvaloniaFact]
-    public void Tests_extending_the_projects_own_test_class_are_found_and_leave_once_it_is_no_test_class()
+    private void Tests_extending_the_projects_own_test_class_are_found_and_leave_once_it_is_no_test_class()
     {
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
         WriteGut(folder);
@@ -554,8 +591,7 @@ public sealed class GodotGutTests : IDisposable
     /// <summary>A listing under way as a script becomes a test class, whose reads land after that was found, leaves the tests
     /// extending it shown: it read with what its project derived as it began, and those reads stood for the files for good,
     /// so the window said it had no tests until a file changed. Needs no Godot: nothing runs.</summary>
-    [AvaloniaFact]
-    public void A_listing_under_way_as_a_script_becomes_a_test_class_leaves_the_tests_extending_it_shown()
+    private void A_listing_under_way_as_a_script_becomes_a_test_class_leaves_the_tests_extending_it_shown()
     {
         string tester = Path.Combine(folder, "test", "tools", "spin_tester.gd");
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
@@ -602,8 +638,7 @@ public sealed class GodotGutTests : IDisposable
     /// a chain of them, at the line of the class running it; one a script declares again is its own, once, on its own line; a
     /// script that only inherits holds tests; and once its base no longer has a test it leaves them all. Needs no Godot:
     /// nothing runs.</summary>
-    [AvaloniaFact]
-    public void A_test_a_script_inherits_shows_under_the_script_that_runs_it_and_leaves_with_its_base()
+    private void A_test_a_script_inherits_shows_under_the_script_that_runs_it_and_leaves_with_its_base()
     {
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
         WriteGut(folder);
@@ -647,8 +682,7 @@ public sealed class GodotGutTests : IDisposable
     /// GUT's prefix, as GUT runs them, what they inherit among them: not a template outside them nor a helper without the
     /// prefix, though a test class outside them still makes those extending it tests; and once the config names another
     /// folder, its tests come in. Needs no Godot: nothing runs.</summary>
-    [AvaloniaFact]
-    public void Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them()
+    private void Where_a_gut_config_names_its_folders_the_tests_are_its_scripts_under_them()
     {
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\nconfig/features=PackedStringArray(\"4.7\")\n");
         WriteGut(folder);

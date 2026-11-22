@@ -263,46 +263,77 @@ public sealed class GDScriptGodotErrorsTests
         TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Errors\"\n");
     }
 
+    /// <summary>Each kind of error Godot's own server reports in a script is said in its words at its line.</summary>
     [AvaloniaFact]
-    public void Names_godot_does_not_find_are_its_errors_in_its_words() => Compared(("names.gd", Names), ("calls.gd", Calls), ("types.gd", Types));
+    public void Gdscripts_errors_are_godots_own_in_its_words()
+    {
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Names_godot_does_not_find_are_its_errors_in_its_words),
+            test => test.Names_godot_does_not_find_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Values_its_targets_take_none_of_are_its_errors_in_its_words),
+            test => test.Values_its_targets_take_none_of_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Operators_casts_and_type_tests_godot_refuses_are_its_errors_in_its_words),
+            test => test.Operators_casts_and_type_tests_godot_refuses_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Static_misuse_indices_loops_and_typed_collections_godot_refuses_are_its_errors_in_its_words),
+            test => test.Static_misuse_indices_loops_and_typed_collections_godot_refuses_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Declarations_godot_refuses_are_its_errors_in_its_words),
+            test => test.Declarations_godot_refuses_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Members_reaching_themselves_and_an_instances_members_read_from_its_class_are_its_errors_in_its_words),
+            test => test.Members_reaching_themselves_and_an_instances_members_read_from_its_class_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Assignments_to_constants_and_read_only_properties_and_a_new_it_refuses_are_its_errors_in_its_words),
+            test => test.Assignments_to_constants_and_read_only_properties_and_a_new_it_refuses_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(An_onready_it_refuses_is_its_error_in_its_words),
+            test => test.An_onready_it_refuses_is_its_error_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Calls_it_makes_as_it_reads_given_what_they_refuse_are_its_errors_in_its_words),
+            test => test.Calls_it_makes_as_it_reads_given_what_they_refuse_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Getters_and_setters_it_refuses_are_its_errors_in_its_words),
+            test => test.Getters_and_setters_it_refuses_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Bases_it_refuses_are_its_errors_in_its_words),
+            test => test.Bases_it_refuses_are_its_errors_in_its_words());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Self_free_is_its_error_in_its_words_where_it_is_one),
+            test => test.Self_free_is_its_error_in_its_words_where_it_is_one());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptGodotErrorsTests>(nameof(Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words),
+            test => test.Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words());
+    }
 
-    [AvaloniaFact]
-    public void Values_its_targets_take_none_of_are_its_errors_in_its_words() => Compared(("mismatches.gd", Mismatches));
+    private void Names_godot_does_not_find_are_its_errors_in_its_words() => Compared(("names.gd", Names), ("calls.gd", Calls), ("types.gd", Types));
 
-    [AvaloniaFact]
-    public void Operators_casts_and_type_tests_godot_refuses_are_its_errors_in_its_words() => Compared(("operators.gd", Operators));
+    private void Values_its_targets_take_none_of_are_its_errors_in_its_words() => Compared(("mismatches.gd", Mismatches));
 
-    [AvaloniaFact]
-    public void Static_misuse_indices_loops_and_typed_collections_godot_refuses_are_its_errors_in_its_words() => Compared(("statics.gd", Statics));
+    private void Operators_casts_and_type_tests_godot_refuses_are_its_errors_in_its_words() => Compared(("operators.gd", Operators));
 
-    [AvaloniaFact]
-    public void Declarations_godot_refuses_are_its_errors_in_its_words() => Compared([("base.gd", Base)], ("decls.gd", Declarations));
+    private void Static_misuse_indices_loops_and_typed_collections_godot_refuses_are_its_errors_in_its_words() => Compared(("statics.gd", Statics));
 
-    [AvaloniaFact]
-    public void Members_reaching_themselves_and_an_instances_members_read_from_its_class_are_its_errors_in_its_words() =>
+    private void Declarations_godot_refuses_are_its_errors_in_its_words() => Compared([("base.gd", Base)], ("decls.gd", Declarations));
+
+    private void Members_reaching_themselves_and_an_instances_members_read_from_its_class_are_its_errors_in_its_words() =>
         Compared([("cycles_other.gd", CyclesOther)], ("cycles.gd", Cycles));
 
-    [AvaloniaFact]
-    public void Assignments_to_constants_and_read_only_properties_and_a_new_it_refuses_are_its_errors_in_its_words() =>
+    private void Assignments_to_constants_and_read_only_properties_and_a_new_it_refuses_are_its_errors_in_its_words() =>
         Compared([("abstract_thing.gd", AbstractThing)], ("assigns.gd", Assigns), ("makes.gd", Makes));
 
-    [AvaloniaFact]
-    public void An_onready_it_refuses_is_its_error_in_its_words() => Compared(("onready.gd", Onready), ("onready_inner.gd", OnreadyInner));
+    private void An_onready_it_refuses_is_its_error_in_its_words() => Compared(("onready.gd", Onready), ("onready_inner.gd", OnreadyInner));
 
-    [AvaloniaFact]
-    public void Calls_it_makes_as_it_reads_given_what_they_refuse_are_its_errors_in_its_words() => Compared(("evaluated.gd", Evaluated));
+    private void Calls_it_makes_as_it_reads_given_what_they_refuse_are_its_errors_in_its_words() => Compared(("evaluated.gd", Evaluated));
 
-    [AvaloniaFact]
-    public void Getters_and_setters_it_refuses_are_its_errors_in_its_words() => Compared([("props_base.gd", PropertiesBase)], ("props.gd", Properties));
+    private void Getters_and_setters_it_refuses_are_its_errors_in_its_words() => Compared([("props_base.gd", PropertiesBase)], ("props.gd", Properties));
 
-    [AvaloniaFact]
-    public void Bases_it_refuses_are_its_errors_in_its_words() => Compared(("inherits.gd", Inherits), ("inner_base.gd", InnerBase), ("kinds.gd", BaseKinds));
+    private void Bases_it_refuses_are_its_errors_in_its_words() => Compared(("inherits.gd", Inherits), ("inner_base.gd", InnerBase), ("kinds.gd", BaseKinds));
 
-    [AvaloniaFact]
-    public void Self_free_is_its_error_in_its_words_where_it_is_one() => Compared(("frees.gd", Frees));
+    private void Self_free_is_its_error_in_its_words_where_it_is_one() => Compared(("frees.gd", Frees));
 
-    [AvaloniaFact]
-    public void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()
+    private void Files_the_project_lacks_and_names_its_singletons_have_are_its_errors_in_its_words()
     {
         TestFolders.Write(folder, "project.godot", FilesProject);
         Compared(FilesBeside, Files);

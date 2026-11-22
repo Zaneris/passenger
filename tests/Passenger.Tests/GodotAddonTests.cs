@@ -257,11 +257,82 @@ public sealed class GodotAddonTests : IDisposable
 
     private string Ready => Path.Combine(folder, "ready.txt");
 
+    /// <summary>Godot's Play through the addon stops at breakpoints, relays each game and lets go of one out of reach,
+    /// and Run in Godot Editor plays there or says why not.</summary>
+    [AvaloniaFact]
+    public void The_addon_plays_debugs_and_relays_godots_editor_games()
+    {
+        Flow.StepApart<GodotAddonTests>(nameof(Godots_Play_through_the_addon_stops_at_a_breakpoint_in_Ready_shows_its_tree_and_pinned_error_and_a_build_error_stops_it),
+            test => test.Godots_Play_through_the_addon_stops_at_a_breakpoint_in_Ready_shows_its_tree_and_pinned_error_and_a_build_error_stops_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Run_in_Godot_Editor_plays_the_game_in_the_editor_through_the_addon_and_Stop_ends_it_there),
+            test => test.Run_in_Godot_Editor_plays_the_game_in_the_editor_through_the_addon_and_Stop_ends_it_there());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build),
+            test => test.Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one),
+            test => test.Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it),
+            test => test.A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends),
+            test => test.Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(An_editor_ended_while_it_plays_leaves_no_game_naming_it),
+            test => test.An_editor_ended_while_it_plays_leaves_no_game_naming_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_played_game_the_debugger_cannot_reach_is_let_go_to_run_on_saying_why),
+            test => test.A_played_game_the_debugger_cannot_reach_is_let_go_to_run_on_saying_why());
+    }
+
+    /// <summary>A write over what Godot's editor holds unsaved asks the person and is refused to an agent, and an
+    /// agent's and the outline's edits go through Godot's own editor and undo.</summary>
+    [AvaloniaFact]
+    public void Writes_and_edits_meet_godots_editor_as_it_holds_the_scene()
+    {
+        Flow.StepApart<GodotAddonTests>(nameof(A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused),
+            test => test.A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline),
+            test => test.A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back),
+            test => test.An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here),
+            test => test.An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds),
+            test => test.A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes),
+            test => test.An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running),
+            test => test.Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names),
+            test => test.Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node),
+            test => test.Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style),
+            test => test.Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each),
+            test => test.A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override),
+            test => test.A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override());
+    }
+
     /// <summary>The game played stops at the breakpoint in _Ready, held at its start until the debugger took it; Stop lets it
     /// go on in Godot, and the game, relayed through the editor's session, shows its tree in the Live Visual Tree and its
     /// error pinned to its line; Godot's Stop ends it there. Then a build error stops the next Play, the error in Problems.</summary>
-    [AvaloniaFact]
-    public void Godots_Play_through_the_addon_stops_at_a_breakpoint_in_Ready_shows_its_tree_and_pinned_error_and_a_build_error_stops_it()
+    private void Godots_Play_through_the_addon_stops_at_a_breakpoint_in_Ready_shows_its_tree_and_pinned_error_and_a_build_error_stops_it()
     {
         MainWindow window = Opened();
         try
@@ -315,8 +386,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>A game held at its start whose runtime turns its debugger off (DOTNET_EnableDiagnostics_Debugger=0 in the
     /// editor it inherits from) is let go by Passenger, which reads that through its diagnostic port before attaching: it runs
     /// on undebugged past the breakpoint, the window and Godot's Output saying why, and no Debug tab opens for it.</summary>
-    [AvaloniaFact]
-    public void A_played_game_the_debugger_cannot_reach_is_let_go_to_run_on_saying_why()
+    private void A_played_game_the_debugger_cannot_reach_is_let_go_to_run_on_saying_why()
     {
         MainWindow window = Opened();
         try
@@ -387,8 +457,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>Run in Godot Editor through the addon: Run has the editor play the game, built here, undebugged and relayed,
     /// and Stop ends it in the editor; Debug has it play held at its start, stopped at the breakpoint in _Ready, and Stop
     /// ends that play in the editor too, not only the debugger's hold of it.</summary>
-    [AvaloniaFact]
-    public void Run_in_Godot_Editor_plays_the_game_in_the_editor_through_the_addon_and_Stop_ends_it_there()
+    private void Run_in_Godot_Editor_plays_the_game_in_the_editor_through_the_addon_and_Stop_ends_it_there()
     {
         MainWindow window = Opened();
         try
@@ -426,8 +495,7 @@ public sealed class GodotAddonTests : IDisposable
 
     /// <summary>Run in Godot Editor where the editor is open without the addon: the game is built here and played through
     /// the editor's IDE messaging, which Stop stops there; and the editor takes the assemblies of a build here on its own.</summary>
-    [AvaloniaFact]
-    public void Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build()
+    private void Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build()
     {
         MainWindow window = Opened(addon: false);
         try
@@ -457,8 +525,7 @@ public sealed class GodotAddonTests : IDisposable
     }
 
     /// <summary>Run in Godot Editor with no editor open on the project says so, naming the configuration that opens one.</summary>
-    [AvaloniaFact]
-    public void Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one()
+    private void Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one()
     {
         MainWindow window = Opened(addon: false);
         try
@@ -477,8 +544,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>A game Godot's Play starts, relayed here, shows its members' values at their lines as one Passenger starts does,
     /// its monitors charted with its own custom one, an agent's click through app_click reaches its button, and Attach
     /// Profiler records its C# with Godot's own frames, relayed by the addon.</summary>
-    [AvaloniaFact]
-    public void A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it()
+    private void A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it()
     {
         MainWindow window = Opened();
         try
@@ -529,8 +595,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>Three instances Godot's Play starts at once (its Run Multiple Instances) are each relayed and debugged through
     /// their own session; the one given a user argument to quit ended, the other two are still relayed and debugged, each by
     /// its own session's debugger, whatever place the editor now gives their debuggers.</summary>
-    [AvaloniaFact]
-    public void Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends()
+    private void Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends()
     {
         MainWindow window = Opened();
         try
@@ -574,8 +639,7 @@ public sealed class GodotAddonTests : IDisposable
     }
 
     /// <summary>The editor ended while it plays leaves no game behind: every process naming it as its editor ends with it.</summary>
-    [AvaloniaFact]
-    public void An_editor_ended_while_it_plays_leaves_no_game_naming_it()
+    private void An_editor_ended_while_it_plays_leaves_no_game_naming_it()
     {
         MainWindow window = Opened();
         try
@@ -602,8 +666,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>With Godot's editor holding unsaved edits in the scene, a rename whose edits reach the scene's connection asks
     /// the person first, saying so, and declined leaves the scene and the code as they were; an agent's is refused, naming
     /// what Godot holds, and asks nobody.</summary>
-    [AvaloniaFact]
-    public void A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused()
+    private void A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused()
     {
         MainWindow window = Opened();
         try
@@ -808,8 +871,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>A scene Godot's editor has open and saved, written by Passenger (a rename reaching its connection), is read
     /// again there, so no question of a newer file comes; and a node selected in Godot's scene dock shows here, the scene
     /// shown at its node, which the outline follows.</summary>
-    [AvaloniaFact]
-    public void A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline()
+    private void A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline()
     {
         MainWindow window = Opened();
         try
@@ -849,8 +911,7 @@ public sealed class GodotAddonTests : IDisposable
     /// none is connected; then it opens the scene and reads it unasked, is asked before its first change, sets a node's
     /// property and adds a node through Godot's undo, and reads both back from the edited scene, its file as it was and the
     /// scene held unsaved for Passenger's writes; one undo in Godot takes the node added away, the next the property set.</summary>
-    [AvaloniaFact]
-    public void An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back()
+    private void An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back()
     {
         MainWindow window = Opened();
         using Agent agent = new();
@@ -908,8 +969,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>An agent's godot_editor selects a node unasked, the selection read back; moves a node, connects a signal and
     /// removes a node, each one step of Godot's undo, which takes each back in turn, the node moved back with its owner and
     /// connection; and plays the scene in the editor, the game debugged here.</summary>
-    [AvaloniaFact]
-    public void An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here()
+    private void An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here()
     {
         MainWindow window = Opened();
         using Agent agent = new();
@@ -959,8 +1019,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>What the addon's remove empties, its own script run in the Godot found over a tree a script of the test's makes:
     /// a path through a unique name that finds the node or one below it, and paths an array or dictionary holds at any depth, a
     /// dictionary's keys too; a path to any other node is left. A move leaves a unique name, which finds its node wherever it goes.</summary>
-    [AvaloniaFact]
-    public void A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds()
+    private void A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds()
     {
         Assert.SkipWhen(godot is not { WhyNot: null }, "No Godot 4 was found to run the addon's script in");
         const string probe = """
@@ -1025,8 +1084,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>An agent's godot_editor moves a node another's NodePath leads to, the path written again in the same step of
     /// Godot's undo, one undo putting both back; and its read of an instance lists only what the scene instancing it
     /// changes, not what the scene it instances sets.</summary>
-    [AvaloniaFact]
-    public void An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes()
+    private void An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes()
     {
         MainWindow window = Opened();
         using Agent agent = new();
@@ -1116,8 +1174,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>Open in Godot Editor, with the editor running through the addon: on the script, its scene's node it is on; on
     /// the node path at the caret, the node it names; in the scene, the node whose section the caret is in; each shown in
     /// that one editor, no second one started, and the window here staying on the file it was on.</summary>
-    [AvaloniaFact]
-    public void Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running()
+    private void Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running()
     {
         MainWindow window = Opened();
         try
@@ -1154,8 +1211,7 @@ public sealed class GodotAddonTests : IDisposable
 
     /// <summary>Open in Godot Editor in a GDScript, its paths read by Passenger's GDScript parser: on <c>$Panel/Button</c> and
     /// on <c>%Button</c>, the button each names in the scene the script is attached in, selected in the editor running.</summary>
-    [AvaloniaFact]
-    public void Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names()
+    private void Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names()
     {
         MainWindow window = Opened(files:
         [
@@ -1186,8 +1242,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>Open in Godot Editor with no editor open: the folder's Godot Editor configuration starts one on the scene the
     /// caret's node path leads to, Godot's command line naming the scene alone, and the addon there, once it connects,
     /// selects the node.</summary>
-    [AvaloniaFact]
-    public void Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node()
+    private void Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node()
     {
         MainWindow window = Opened();
         try
@@ -1218,8 +1273,7 @@ public sealed class GodotAddonTests : IDisposable
     /// scene's Ui, the script in the project's namespace as the project writes its C#, and the project builds with no warning;
     /// the project's .editorconfig changed, the window offers to write them again, writing nothing until that is taken; the
     /// game's project written anew without leaving them out of its build, the window leaves them out again.</summary>
-    [AvaloniaFact]
-    public void Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style()
+    private void Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style()
     {
         // The solution beside the project, as Godot makes one with its game: without it, Godot writes both again as it makes a C# script.
         MainWindow window = Opened(addon: false, files:
@@ -1313,8 +1367,7 @@ public sealed class GodotAddonTests : IDisposable
     /// and its script's exported enum: its position typed in an axis, its modulate picked in the colour picker and the enum
     /// chosen each write one line of the node's and nothing else, one step of Undo each; the game Godot runs from the scene
     /// prints the new values.</summary>
-    [AvaloniaFact]
-    public void A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each()
+    private void A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each()
     {
         MainWindow window = Opened(addon: false, files: [("Main.cs", Paced), ("main.tscn", PacedScene)]);
         try
@@ -1439,8 +1492,7 @@ public sealed class GodotAddonTests : IDisposable
     /// line taken out, a new one goes where Godot's save puts it (Godot's next save of the scene changing none of the node's
     /// lines), an array is edited as text, a C# export whose default is made by its initializer shows it, and an instance's
     /// property, shown as the scene it instances sets it, is written as the instancing scene's override, that scene untouched.</summary>
-    [AvaloniaFact]
-    public void A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override()
+    private void A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override()
     {
         MainWindow window = Opened(addon: false, files: [("Main.cs", Ranked), ("main.tscn", RankedScene), ("enemy.tscn", Enemy)]);
         string enemy = Path.Combine(folder, "enemy.tscn");

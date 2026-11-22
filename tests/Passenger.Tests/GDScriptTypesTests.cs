@@ -33,8 +33,40 @@ public sealed class GDScriptTypesTests
         TestFolders.Write(folder, "main.gd", Script);
     }
 
+    /// <summary>A script's inferred types, declarations and a node's C# members answer from Passenger's reading,
+    /// Godot's warnings marked and a script reformatted, one command each.</summary>
     [AvaloniaFact]
-    public void Types_inferred_where_none_is_written_are_shown_after_their_names()
+    public void Gdscript_types_and_declarations_answer_as_passenger_reads_them()
+    {
+        Flow.StepApart<GDScriptTypesTests>(nameof(Types_inferred_where_none_is_written_are_shown_after_their_names),
+            test => test.Types_inferred_where_none_is_written_are_shown_after_their_names());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(Completion_and_go_to_declaration_answer_before_godots_server_has_started),
+            test => test.Completion_and_go_to_declaration_answer_before_godots_server_has_started());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(Go_to_declaration_of_another_open_scripts_function_lands_on_it_as_the_editor_holds_that_script),
+            test => test.Go_to_declaration_of_another_open_scripts_function_lands_on_it_as_the_editor_holds_that_script());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(A_nodes_csharp_scripts_members_complete_hover_and_go_to_their_declaration_from_a_gdscript),
+            test => test.A_nodes_csharp_scripts_members_complete_hover_and_go_to_their_declaration_from_a_gdscript());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(Godots_warnings_and_errors_are_marked_before_its_server_starts_and_each_fix_is_one_command),
+            test => test.Godots_warnings_and_errors_are_marked_before_its_server_starts_and_each_fix_is_one_command());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(A_script_opened_before_its_project_is_read_as_the_projects_alone_once_the_project_is_open),
+            test => test.A_script_opened_before_its_project_is_read_as_the_projects_alone_once_the_project_is_open());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(Reformat_code_lays_a_gdscript_out_by_godots_style_guide_as_one_command_a_selection_only_its_lines),
+            test => test.Reformat_code_lays_a_gdscript_out_by_godots_style_guide_as_one_command_a_selection_only_its_lines());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(A_key_in_a_gdscript_of_3000_lines_allocates_on_the_window_thread_what_one_in_30_lines_does),
+            test => test.A_key_in_a_gdscript_of_3000_lines_allocates_on_the_window_thread_what_one_in_30_lines_does());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptTypesTests>(nameof(A_node_path_completes_the_members_of_the_node_the_scene_running_the_script_gives_it),
+            test => test.A_node_path_completes_the_members_of_the_node_the_scene_running_the_script_gives_it());
+    }
+
+    private void Types_inferred_where_none_is_written_are_shown_after_their_names()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -66,8 +98,7 @@ public sealed class GDScriptTypesTests
         }
     }
 
-    [AvaloniaFact]
-    public void Completion_and_go_to_declaration_answer_before_godots_server_has_started()
+    private void Completion_and_go_to_declaration_answer_before_godots_server_has_started()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -101,8 +132,7 @@ public sealed class GDScriptTypesTests
 
     /// <summary>Another script open with lines typed above its function and not saved: Go to Declaration of a call of the
     /// function lands on it where the editor holds that script, not where the disk has it.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_of_another_open_scripts_function_lands_on_it_as_the_editor_holds_that_script()
+    private void Go_to_declaration_of_another_open_scripts_function_lands_on_it_as_the_editor_holds_that_script()
     {
         TestFolders.Write(folder, "helper.gd", "class_name Helper\nextends RefCounted\n\n\nfunc assist() -> int:\n\treturn 1\n");
         TestFolders.Write(folder, "user.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tHelper.new().assist()\n");
@@ -139,8 +169,7 @@ public sealed class GDScriptTypesTests
 
     /// <summary>A node its scene runs a C# script on (<c>$Player</c>, Player.cs): its dot completes the C# class's members,
     /// TakeDamage among them, the card on one says it as C# declares it, and Go to Declaration opens the C# file at it.</summary>
-    [AvaloniaFact]
-    public void A_nodes_csharp_scripts_members_complete_hover_and_go_to_their_declaration_from_a_gdscript()
+    private void A_nodes_csharp_scripts_members_complete_hover_and_go_to_their_declaration_from_a_gdscript()
     {
         TestFolders.Write(folder, "Player.cs", "using Godot;\n\npublic partial class Player : Node2D\n{\n    [Signal]\n    public delegate void HitEventHandler(int amount);\n\n    public int Health { get; set; } = 3;\n\n    public void TakeDamage(int amount)\n    {\n        Health -= amount;\n    }\n}\n");
         TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=3 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n[ext_resource type=\"Script\" path=\"res://Player.cs\" id=\"2\"]\n\n"
@@ -190,8 +219,7 @@ public sealed class GDScriptTypesTests
 
     /// <summary>A node path of a script its scene runs: <c>$Title</c>, a Label there, completes the Label's members, its
     /// text among them, which Node has not.</summary>
-    [AvaloniaFact]
-    public void A_node_path_completes_the_members_of_the_node_the_scene_running_the_script_gives_it()
+    private void A_node_path_completes_the_members_of_the_node_the_scene_running_the_script_gives_it()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): a Label's members come from its API");
         TestFolders.Write(folder, "main.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://main.gd\" id=\"1\"]\n\n"
@@ -220,8 +248,7 @@ public sealed class GDScriptTypesTests
     private const string Warned = "extends Node\n\n\nfunc coroutine() -> int:\n\tawait get_tree().process_frame\n\tprint(\"waited\")\n\n\n"
         + "func _ready() -> void:\n\tvar unused := 1\n\tcoroutine()\n";
 
-    [AvaloniaFact]
-    public void Godots_warnings_and_errors_are_marked_before_its_server_starts_and_each_fix_is_one_command()
+    private void Godots_warnings_and_errors_are_marked_before_its_server_starts_and_each_fix_is_one_command()
     {
         TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Types\"\n\n[debug]\n\n"
             + "gdscript/warnings/inferred_declaration=1\ngdscript/warnings/missing_await=1\n");
@@ -269,8 +296,7 @@ public sealed class GDScriptTypesTests
     /// a variable warned of that the project's settings say nothing of. Once its project opens, the project's reading is its
     /// one reading: the class's type shown after the name and the warning gone, as typing pauses too, and its names coloured
     /// by that reading alone over the grammar's.</summary>
-    [AvaloniaFact]
-    public void A_script_opened_before_its_project_is_read_as_the_projects_alone_once_the_project_is_open()
+    private void A_script_opened_before_its_project_is_read_as_the_projects_alone_once_the_project_is_open()
     {
         TestFolders.Write(folder, "project.godot", "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Types\"\n\n[debug]\n\n"
             + "gdscript/warnings/unused_variable=0\n");
@@ -335,8 +361,7 @@ public sealed class GDScriptTypesTests
     private const string Unformatted = "extends Node\nvar speed:=2.0\nfunc _ready():\n    var party = [\n        \"Godot\",\n        \"Godette\"\n    ]\n"
         + "    print (party,speed*2)\nfunc heal(amount):\n    speed+=amount\n";
 
-    [AvaloniaFact]
-    public void Reformat_code_lays_a_gdscript_out_by_godots_style_guide_as_one_command_a_selection_only_its_lines()
+    private void Reformat_code_lays_a_gdscript_out_by_godots_style_guide_as_one_command_a_selection_only_its_lines()
     {
         TestFolders.Write(folder, "unformatted.gd", Unformatted);
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open("unformatted.gd");
@@ -394,8 +419,7 @@ public sealed class GDScriptTypesTests
     /// script's tree and types kept as for any open script: the key notes its edit and the pause restarts, the parse and
     /// the types made off the window's thread once typing pauses, a list of hints set only where a type changed. No
     /// project.godot, so no Godot server starts.</summary>
-    [AvaloniaFact]
-    public void A_key_in_a_gdscript_of_3000_lines_allocates_on_the_window_thread_what_one_in_30_lines_does()
+    private void A_key_in_a_gdscript_of_3000_lines_allocates_on_the_window_thread_what_one_in_30_lines_does()
     {
         string scripts = TestFolders.Create("gdscript-keys-");
         TestFolders.Write(scripts, "small.gd", Generated(10));

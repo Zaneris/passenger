@@ -28,8 +28,28 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         Assert.SkipWhen(game.Godot?.WhyNotScripts is not null || game.Godot is null, game.Skipped);
     }
 
+    /// <summary>Copies of a game run and debug each in its own tab and console, restarted alone, and Stop ends them
+    /// all.</summary>
     [AvaloniaFact]
-    public void Three_copies_debug_each_in_its_own_tab_and_console_one_stops_alone_another_comes_beside_and_Stop_ends_them_all()
+    public void Copies_of_a_game_run_and_debug_each_on_its_own()
+    {
+        Flow.Step(nameof(Three_copies_debug_each_in_its_own_tab_and_console_one_stops_alone_another_comes_beside_and_Stop_ends_them_all),
+            Three_copies_debug_each_in_its_own_tab_and_console_one_stops_alone_another_comes_beside_and_Stop_ends_them_all);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on),
+            Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all),
+            Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it),
+            A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it),
+            A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it);
+    }
+
+    private void Three_copies_debug_each_in_its_own_tab_and_console_one_stops_alone_another_comes_beside_and_Stop_ends_them_all()
     {
         MainWindow window = Open();
         try
@@ -72,8 +92,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
 
     /// <summary>Hot Reload's restart of one copy debugged beside another restarts it alone: its session stopped and the copy
     /// launched again in its place, its tab live with its own role again, the other's session debugged on as it was.</summary>
-    [AvaloniaFact]
-    public void Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on()
+    private void Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on()
     {
         MainWindow window = Open();
         try
@@ -102,8 +121,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
     /// <summary>Run of a configuration of two copies runs each in a tab of the Terminal window of its own, named for its
     /// place, each printing its own role there and a source in the Live Visual Tree's chooser; Run Another Copy runs a third
     /// beside them; Stop ends all three.</summary>
-    [AvaloniaFact]
-    public void Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all()
+    private void Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all()
     {
         MainWindow window = Open();
         try
@@ -145,8 +163,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
 
     /// <summary>A person's configuration named as a copy of another would be is its own game: Debug starts it as the first of
     /// its own copies, and Debug Another Copy finds it and counts on from it.</summary>
-    [AvaloniaFact]
-    public void A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it()
+    private void A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it()
     {
         const string Own = "Lobby #2";
         MainWindow window = Open();
@@ -167,8 +184,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
 
     /// <summary>A copy beside a configuration called what that copy would be goes by another name, so debugging that configuration
     /// comes in a tab of its own and the copy's tab and session stay as they were.</summary>
-    [AvaloniaFact]
-    public void A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it()
+    private void A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it()
     {
         string own = $"{Name} #2";
         string second = GameCopies.Name(Name, 2, [own]);

@@ -27,11 +27,37 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         Assert.SkipWhen(game.Godot?.WhyNotScripts is not null || game.Godot is null, game.Skipped);
     }
 
+    /// <summary>A game's loop pauses and steps, Select Element picks its nodes, and the helper answers every count and
+    /// comes in again after the game frees it.</summary>
+    [AvaloniaFact]
+    public void A_games_loop_is_paused_stepped_picked_and_read_by_the_helper()
+    {
+        Flow.Step(nameof(Select_Element_picks_the_node_at_a_point_in_2D_and_in_3D_the_tree_choosing_it_with_its_scripts_link),
+            Select_Element_picks_the_node_at_a_point_in_2D_and_in_3D_the_tree_choosing_it_with_its_scripts_link);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Pause_Game_Loop_holds_the_game_its_frame_count_stopping_and_Next_Frame_steps_it_by_one),
+            Pause_Game_Loop_holds_the_game_its_frame_count_stopping_and_Next_Frame_steps_it_by_one);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts),
+            The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values),
+            A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands),
+            A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to),
+            A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them),
+            A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them);
+    }
+
     /// <summary>Select Element in 2D picks the control at a point, the tree choosing it with its script a link, and is off
     /// once it has; in 3D it picks the body at the middle of the camera's view, its group in Godot's editor picked for the
     /// shape under the point; a point with no node Godot picks there (the view's corner) is said so, with no collision shape there.</summary>
-    [AvaloniaFact]
-    public void Select_Element_picks_the_node_at_a_point_in_2D_and_in_3D_the_tree_choosing_it_with_its_scripts_link()
+    private void Select_Element_picks_the_node_at_a_point_in_2D_and_in_3D_the_tree_choosing_it_with_its_scripts_link()
     {
         MainWindow window = Open();
         try
@@ -79,8 +105,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     /// <summary>Pause Game Loop holds the game at its frame without breaking into the debugger: the line under the buttons
     /// says the frame, and the game prints no frame more however long it is held; Next Frame runs exactly one (the count and
     /// the game's own output one more, then still again), and Resume Game Loop lets it run on, the count moving with it.</summary>
-    [AvaloniaFact]
-    public void Pause_Game_Loop_holds_the_game_its_frame_count_stopping_and_Next_Frame_steps_it_by_one()
+    private void Pause_Game_Loop_holds_the_game_its_frame_count_stopping_and_Next_Frame_steps_it_by_one()
     {
         MainWindow window = Open();
         try
@@ -125,8 +150,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     /// <summary>Passenger's helper, brought into a game by counts of its frames asked the moment its scene is up, several at
     /// once so they reach the game as its script is set, answers every one, on each of several starts of the game: a call that
     /// comes while the helper's members are still being made waits for them rather than going unanswered.</summary>
-    [AvaloniaFact]
-    public void The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts()
+    private void The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts()
     {
         MainWindow window = Open();
         try
@@ -152,8 +176,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     /// <summary>A game that frees Passenger's helper partway (Main frees the node of root's once told to) has it brought in
     /// again by the next call: the frame count is answered after the free, the values shown in main.gd climb on, and the game
     /// holds one helper, not a second made beside the first.</summary>
-    [AvaloniaFact]
-    public void A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values()
+    private void A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values()
     {
         MainWindow window = Open();
         try
@@ -201,8 +224,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     /// of nodes stands, fails at once saying the helper was freed, or is answered by the helper brought in again once
     /// Passenger heard it go; no question of the game's waits out the whole of an answer's limit, a count asked after is
     /// answered, and the values shown in main.gd climb on.</summary>
-    [AvaloniaFact]
-    public void A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands()
+    private void A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands()
     {
         MainWindow window = Open();
         try
@@ -237,8 +259,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     /// <summary>A game that changes its scene (Main changes to next.tscn once told to) has the values shown in main.gd read
     /// from the scene it changed to, every call of the helper's sent beside the scene the game's tree names once its count of
     /// nodes has changed, none beside the scene gone, where no call is answered.</summary>
-    [AvaloniaFact]
-    public void A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to()
+    private void A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to()
     {
         MainWindow window = Open();
         try
@@ -266,8 +287,7 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
     /// <summary>The game's monitors charted in the Live Visual Tree once asked for: its frame time and frames a second, and
     /// the custom monitor its script adds, each a line under its heading with its latest value, more coming each second; an
     /// agent's telemetry of kind metrics reads the same; hidden again, nothing is charted.</summary>
-    [AvaloniaFact]
-    public void A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them()
+    private void A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them()
     {
         MainWindow window = Open();
         try

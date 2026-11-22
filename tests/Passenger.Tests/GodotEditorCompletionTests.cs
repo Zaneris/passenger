@@ -101,10 +101,22 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
         return labels;
     }
 
+    /// <summary>A label's theme colours complete from Godot's default theme, and an open editor's unsaved names until
+    /// it ends.</summary>
+    [AvaloniaFact]
+    public void Theme_colours_complete_from_godots_editor_or_its_default_theme()
+    {
+        Flow.Step(nameof(With_no_editor_a_labels_theme_colors_complete_from_godots_default_theme_and_a_name_it_lacks_is_marked),
+            With_no_editor_a_labels_theme_colors_complete_from_godots_default_theme_and_a_name_it_lacks_is_marked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_open_editors_unsaved_input_action_and_its_nodes_theme_colors_complete_until_it_ends),
+            An_open_editors_unsaved_input_action_and_its_nodes_theme_colors_complete_until_it_ends);
+    }
+
     /// <summary>With no Godot editor open, a Label's theme color completes from Godot's default theme Passenger carries, and a
     /// name it lacks is an error naming the class; the script's own Control completes the Label's, the node its scene runs it on.</summary>
-    [AvaloniaFact]
-    public void With_no_editor_a_labels_theme_colors_complete_from_godots_default_theme_and_a_name_it_lacks_is_marked()
+    private void With_no_editor_a_labels_theme_colors_complete_from_godots_default_theme_and_a_name_it_lacks_is_marked()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -126,8 +138,7 @@ public sealed class GodotEditorCompletionTests : IClassFixture<GodotEditorComple
     /// <summary>With a headless Godot editor of the test's open on the project and its scene, the input action only that
     /// editor holds completes, project.godot never naming it, and the script's own node's theme colors complete for the
     /// Label the scene runs it on; the editor ended, the action is not offered, the Label's colors still are, as its scene says.</summary>
-    [AvaloniaFact]
-    public void An_open_editors_unsaved_input_action_and_its_nodes_theme_colors_complete_until_it_ends()
+    private void An_open_editors_unsaved_input_action_and_its_nodes_theme_colors_complete_until_it_ends()
     {
         GodotFound godot = game.Godot!;
         string meta = GodotIdeMessaging.MetaPath(game.Folder);

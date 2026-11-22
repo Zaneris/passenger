@@ -163,11 +163,138 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     internal static List<string> Marked(MainWindow window) =>
         [.. window.EditorArea.Active!.Markers.Where(m => m.Kind == MarkerKind.Error && !m.Message.StartsWith("CS", StringComparison.Ordinal)).Select(m => m.Message)];
 
+    /// <summary>A Godot game's C# is checked and completed against its scenes, leads to their uids, files and class
+    /// reference, and Structure lists a scene.</summary>
+    [AvaloniaFact]
+    public void A_scenes_code_is_checked_completed_and_followed_through_its_scenes()
+    {
+        Flow.Step(nameof(A_wrong_node_path_or_type_in_GetNode_is_an_error_naming_the_scene_and_its_line),
+            A_wrong_node_path_or_type_in_GetNode_is_an_error_naming_the_scene_and_its_line);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Node_paths_and_res_paths_complete_from_the_scenes_and_a_res_path_leads_to_its_file),
+            Node_paths_and_res_paths_complete_from_the_scenes_and_a_res_path_leads_to_its_file);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_signals_connection_and_its_handler_lead_to_each_other_and_one_to_a_missing_method_is_marked),
+            A_signals_connection_and_its_handler_lead_to_each_other_and_one_to_a_missing_method_is_marked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name),
+            A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_open_scene_marks_a_missing_resource_and_a_broken_connection),
+            An_open_scene_marks_a_missing_resource_and_a_broken_connection);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked),
+            An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource),
+            An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk),
+            An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Context_help_browses_an_engine_members_place_in_godots_class_reference),
+            Context_help_browses_an_engine_members_place_in_godots_class_reference);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_uid_leads_to_its_file_from_the_code_and_from_a_scene), A_uid_leads_to_its_file_from_the_code_and_from_a_scene);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread),
+            A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_res_path_in_a_scene_completes_from_the_projects_files), A_res_path_in_a_scene_completes_from_the_projects_files);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each),
+            Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each);
+    }
+
+    /// <summary>A node's rename from the code or the scene, a script, scene or include moved, and a handler, export or
+    /// signal renamed reach every scene, script and string naming them, one step of Undo.</summary>
+    [AvaloniaFact]
+    public void Renames_and_moves_follow_through_every_godot_file()
+    {
+        Flow.Step(nameof(Renaming_a_node_from_its_path_in_the_code_renames_it_in_the_scene_and_the_code_one_step_of_undo),
+            Renaming_a_node_from_its_path_in_the_code_renames_it_in_the_scene_and_the_code_one_step_of_undo);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes),
+            Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in),
+            Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped),
+            A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node),
+            A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node),
+            A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went),
+            A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_scripts_class_moves_its_file_with_its_scenes_text_and_binary_and_its_uid_following),
+            Renaming_a_scripts_class_moves_its_file_with_its_scenes_text_and_binary_and_its_uid_following);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_scene_moved_in_the_explorer_is_followed_by_every_res_path_naming_it),
+            A_scene_moved_in_the_explorer_is_followed_by_every_res_path_naming_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_scene_moved_in_the_explorer_is_followed_by_the_gdscripts_naming_it),
+            A_scene_moved_in_the_explorer_is_followed_by_the_gdscripts_naming_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it),
+            A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_handler_renames_the_method_its_scenes_connections_call),
+            Renaming_a_handler_renames_the_method_its_scenes_connections_call);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script),
+            Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it),
+            Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it),
+            Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_signal_renames_its_event_SignalName_and_strings_in_every_script_and_the_game_builds),
+            Renaming_a_signal_renames_its_event_SignalName_and_strings_in_every_script_and_the_game_builds);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere),
+            Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere);
+    }
+
     /// <summary>A path GetNode is given that the scene has no node of, and one whose node is a Label asked for as a Button, are
     /// errors where the path is written, naming the scene and its line; a res:// path no file answers is an error too, and the
     /// paths the scene answers (a child's, a unique name's, an instanced scene's node) and the file there are not marked.</summary>
-    [AvaloniaFact]
-    public void A_wrong_node_path_or_type_in_GetNode_is_an_error_naming_the_scene_and_its_line()
+    private void A_wrong_node_path_or_type_in_GetNode_is_an_error_naming_the_scene_and_its_line()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -195,8 +322,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>Completion in the string GetNode&lt;Label&gt; is given offers the scene's labels by their paths from the script's
     /// node, its unique one by its %name, and no button; in a res:// string it offers the project's files, and Go to Declaration
     /// from one opens its file.</summary>
-    [AvaloniaFact]
-    public void Node_paths_and_res_paths_complete_from_the_scenes_and_a_res_path_leads_to_its_file()
+    private void Node_paths_and_res_paths_complete_from_the_scenes_and_a_res_path_leads_to_its_file()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -230,8 +356,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>Rename on Score in a GetNode path renames the node in the scene, the nodes and connections under it following,
     /// and every path of the code naming it, its %name too, as one command: Undo puts the scene and the code back.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_node_from_its_path_in_the_code_renames_it_in_the_scene_and_the_code_one_step_of_undo()
+    private void Renaming_a_node_from_its_path_in_the_code_renames_it_in_the_scene_and_the_code_one_step_of_undo()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -266,8 +391,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A node a GDScript of the same scene names follows a rename begun in C#: its $ path and its get_node string, one
     /// step of Undo with the rest, or that script no longer finds its node.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes()
+    private void Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes()
     {
         const string gdscript = "extends CanvasLayer\n\n@onready var score = $Score\n\n\nfunc _ready():\n\tget_node(\"Score\").hide()\n";
         string script = game.PathOf("hud.gd");
@@ -295,8 +419,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A node's name may hold a backslash: the code's strings take it escaped as C# escapes it, the scene's as Godot does,
     /// so the string still says the name and the scene still loads it.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in()
+    private void Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -320,8 +443,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>The string a rename wrote with an escape in it names the node as any other does: the next rename, from that very
     /// string, writes it again, and a verbatim string saying the path follows too.</summary>
-    [AvaloniaFact]
-    public void A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped()
+    private void A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped()
     {
         File.WriteAllText(ScriptPath, Script.Replace("GetNode<Label>(\"Hud/Score\")", "GetNode<Label>(\"Hud/Score\") ?? GetNode<Label>(@\"Hud/Score\")", StringComparison.Ordinal));
         MainWindow window = game.Open(ScriptPath);
@@ -357,8 +479,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>A line written above a node's path while Rename's box is open on it (by the file's other window, by an agent)
     /// moves the name down: the rename finds the node where its name now is and renames it, rather than looking where the box
     /// opened and refusing the file as changed.</summary>
-    [AvaloniaFact]
-    public void A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node()
+    private void A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -386,8 +507,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>A line written above a node's name in its scene while Rename's box is open on it moves the name down: the rename
     /// finds the node where its name now is and renames it, rather than looking where the box opened and refusing the scene as
     /// changed.</summary>
-    [AvaloniaFact]
-    public void A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node()
+    private void A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -416,8 +536,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// the handler does not take is one on the handler's, each naming the scene and its line; Find Usages of the handler lists
     /// the connection calling it, and Go to Declaration from that connection's method in the scene goes back to the handler, as
     /// it does from the name Godot's source generator writes for it.</summary>
-    [AvaloniaFact]
-    public void A_signals_connection_and_its_handler_lead_to_each_other_and_one_to_a_missing_method_is_marked()
+    private void A_signals_connection_and_its_handler_lead_to_each_other_and_one_to_a_missing_method_is_marked()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -461,8 +580,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>A string Godot's calls take naming a method or a signal Main lacks is an error where it is written, as is a
     /// method connected by strings to a signal it takes other arguments than; Go to Declaration from a string naming a signal
     /// goes to its delegate, and from one naming a method to the method.</summary>
-    [AvaloniaFact]
-    public void A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name()
+    private void A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -498,8 +616,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>An open scene is marked where Godot would not load what it says: its connection to a method Main lacks, and
     /// the one of other arguments than the handler takes, where it writes them; and an external resource whose file is not
     /// there, once typed so and the typing pauses. The HUD's connection, which holds, is not marked.</summary>
-    [AvaloniaFact]
-    public void An_open_scene_marks_a_missing_resource_and_a_broken_connection()
+    private void An_open_scene_marks_a_missing_resource_and_a_broken_connection()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -528,8 +645,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>An exported node the scene sets to a node of another type, and an exported NodePath it sets to a path no node
     /// answers, are errors on the member's name naming the scene and its line.</summary>
-    [AvaloniaFact]
-    public void An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked()
+    private void An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -551,8 +667,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>An open scene marks where it sets an exported node to a node of another type than the script's member, or a
     /// NodePath to no node, at the path, as the script's file marks it at the member; and a SubResource no sub_resource of the
     /// file has, once typed so, where the one it has is not marked.</summary>
-    [AvaloniaFact]
-    public void An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource()
+    private void An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -586,8 +701,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A handler taken out of its script on disk while the script is closed, by another program, marks the open scene's
     /// connections to it, once the language server has read the script so.</summary>
-    [AvaloniaFact]
-    public void An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk()
+    private void An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -611,8 +725,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>A script moved in the Explorer takes the .uid beside it along, and the open scene its path; the scene is
     /// checked against the script where it went (a connection of other arguments than its handler takes marked, no handler
     /// said missing), and the script, opened there, against the scene (a GetNode path no node answers).</summary>
-    [AvaloniaFact]
-    public void A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went()
+    private void A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -651,8 +764,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>Rename of the script's class with its file moves the file, and what loads it follows within the rename's one
     /// command, as a move in the Explorer has it follow: the text scene's path, the .uid beside it, and a scene Godot saved as
     /// bytes, its path written anew with every other byte kept; one Undo puts every file back as it was.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_scripts_class_moves_its_file_with_its_scenes_text_and_binary_and_its_uid_following()
+    private void Renaming_a_scripts_class_moves_its_file_with_its_scenes_text_and_binary_and_its_uid_following()
     {
         string maker = TestFolders.Create("godot-binary-");
         try
@@ -712,8 +824,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>Context Help on Node2D's Position, which Main sets, browses the property's place on Node2D's page of Godot's
     /// class reference for the version of the Godot found; on Main's override of _Ready, Node's virtual _ready's place on
     /// Node's; on a signal Button's base class gives, its place there; on the project's own handler it says there is none.</summary>
-    [AvaloniaFact]
-    public void Context_help_browses_an_engine_members_place_in_godots_class_reference()
+    private void Context_help_browses_an_engine_members_place_in_godots_class_reference()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -748,8 +859,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A uid:// in the code leads to the scene whose header gives it, its card saying which, and one in a scene's
     /// external resource to the script the .uid file beside it gives it to.</summary>
-    [AvaloniaFact]
-    public void A_uid_leads_to_its_file_from_the_code_and_from_a_scene()
+    private void A_uid_leads_to_its_file_from_the_code_and_from_a_scene()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -774,8 +884,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A scene moved in the Explorer takes every res:// path naming it along, the external resource of the scene
     /// instancing it and the code's string, as one command Undo in the Explorer takes back whole.</summary>
-    [AvaloniaFact]
-    public void A_scene_moved_in_the_explorer_is_followed_by_every_res_path_naming_it()
+    private void A_scene_moved_in_the_explorer_is_followed_by_every_res_path_naming_it()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -807,8 +916,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A scene moved in the Explorer takes a GDScript's paths along, its preload and its load, as one command with the
     /// rest, or the script no longer loads it.</summary>
-    [AvaloniaFact]
-    public void A_scene_moved_in_the_explorer_is_followed_by_the_gdscripts_naming_it()
+    private void A_scene_moved_in_the_explorer_is_followed_by_the_gdscripts_naming_it()
     {
         const string gdscript = "extends Node\n\nconst Player = preload(\"res://player.tscn\")\n\n\nfunc _ready():\n\tprint(load('res://player.tscn'))\n";
         string script = game.PathOf("spawner.gd");
@@ -833,8 +941,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A shader include moved in the Explorer takes the shaders' #include along, one written from the shader's folder
     /// among them, as one command with the rest, or the shader no longer compiles; one Undo puts them back.</summary>
-    [AvaloniaFact]
-    public void A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it()
+    private void A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it()
     {
         const string shaderCode = "shader_type canvas_item;\n\n#include \"res://noise.gdshaderinc\"\n#include \"noise.gdshaderinc\"\n";
         string shader = game.PathOf("glow.gdshader");
@@ -879,8 +986,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// <summary>A res:// string's list is made off the UI thread: the project's files made into items and the server's matched
     /// against them there, so with 2,000 files more in the project the list costs the UI thread, from Complete to the list
     /// open, what it did before them, counted rather than timed.</summary>
-    [AvaloniaFact]
-    public void A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread()
+    private void A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread()
     {
         string crates = game.PathOf("crates");
         MainWindow window = game.Open(ScriptPath);
@@ -930,8 +1036,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A res:// string in a scene completes from the project's files as its "res://" is typed, the scene itself and
     /// Godot's own folders left out, and the file chosen goes in whole in place of the string.</summary>
-    [AvaloniaFact]
-    public void A_res_path_in_a_scene_completes_from_the_projects_files()
+    private void A_res_path_in_a_scene_completes_from_the_projects_files()
     {
         MainWindow window = game.Open(ScenePath);
         try
@@ -953,8 +1058,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     }
 
     /// <summary>Rename of the handler in the code renames the method the scene's connections call, one step of Undo with the code's.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_handler_renames_the_method_its_scenes_connections_call()
+    private void Renaming_a_handler_renames_the_method_its_scenes_connections_call()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -987,8 +1091,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>An export set on a sub-resource running the script is its key too: Safe Delete lists it among the uses it would
     /// break, and the rename takes it with the node's, or the resource would load its default.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script()
+    private void Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script()
     {
         File.WriteAllText(ScenePath, Scene.Replace("[sub_resource type=\"Theme\" id=\"Theme_1\"]",
             "[sub_resource type=\"Theme\" id=\"Theme_1\"]\n\n[sub_resource type=\"Resource\" id=\"Held_1\"]\nscript = ExtResource(\"1_main\")\nSpeed = 9.0", StringComparison.Ordinal));
@@ -1019,8 +1122,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A scene saved a moment before a rename, the folder's watcher yet to tell of it (here, never to), holds its keys
     /// where the save put them: the rename changes the key it names, never whatever now lies where the key was read.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
+    private void Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -1046,8 +1148,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>A scene saved a moment before a node's rename, the folder's watcher yet to tell of it (here, never to), is one
     /// the rename waits to read: its name changes where the save left it, what the save wrote kept, never a refusal.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
+    private void Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -1076,8 +1177,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// connection; its rename renames those wherever the code uses them (its event, its SignalName, its EmitSignal call) and
     /// the strings Godot's calls take naming it, in its own script and another, and the scene's connection to it: the game
     /// then builds with no error, and one Undo puts every file back.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_signal_renames_its_event_SignalName_and_strings_in_every_script_and_the_game_builds()
+    private void Renaming_a_signal_renames_its_event_SignalName_and_strings_in_every_script_and_the_game_builds()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -1124,8 +1224,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
 
     /// <summary>Rename from a use of a signal's event, in a script other than the one declaring it, renames the signal: its
     /// delegate takes the new name with EventHandler after it, and every other name of it and the scene follow, so the game builds.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere()
+    private void Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere()
     {
         MainWindow window = game.Open(HudPath);
         try
@@ -1159,8 +1258,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     /// its script and the scene it instances and its signals' connections: choosing a node goes to its line in the scene,
     /// the keys moving onto its script stay in the scene, and choosing the script, the instanced scene or a connection goes
     /// to the script, to that scene and to the handler the connection calls.</summary>
-    [AvaloniaFact]
-    public void Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each()
+    private void Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each()
     {
         MainWindow window = game.Open(ScenePath);
         try

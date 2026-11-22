@@ -24,8 +24,19 @@ public sealed class GDScriptFormatTests
         + "\teffect.interpolate_property(sprite,\n\t\t\t\"transform/scale\",\n\t\t\tsprite.get_scale(),\n\t\t\tVector2(2.0, 2.0), 0.3,\n\t\t\tTween.TRANS_QUAD,\n\t\t\tTween.EASE_OUT)\n"
         + "\tvar party = [\n\t\t\"Godot\",\n\t\t\"Godette\",\n\t\t\"Steve\",\n\t]\n";
 
+    /// <summary>Reformat Code wraps lines as settings and the editorconfig say, a save reformats when asked, and Order
+    /// Script Parts refuses what would run otherwise.</summary>
     [AvaloniaFact]
-    public void Reformat_code_wraps_long_lines_as_settings_and_the_editorconfig_say_and_a_save_reformats_when_asked()
+    public void Gdscript_reformats_and_orders_its_parts_as_asked()
+    {
+        Flow.Step(nameof(Reformat_code_wraps_long_lines_as_settings_and_the_editorconfig_say_and_a_save_reformats_when_asked),
+            Reformat_code_wraps_long_lines_as_settings_and_the_editorconfig_say_and_a_save_reformats_when_asked);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Order_script_parts_lays_out_the_guides_code_order_and_refuses_a_value_reading_what_would_come_after_it),
+            Order_script_parts_lays_out_the_guides_code_order_and_refuses_a_value_reading_what_would_come_after_it);
+    }
+
+    private void Reformat_code_wraps_long_lines_as_settings_and_the_editorconfig_say_and_a_save_reformats_when_asked()
     {
         string folder = TestFolders.Create("gdscript-format-");
         string script = TestFolders.Write(folder, "wrap.gd", Long);
@@ -89,8 +100,7 @@ public sealed class GDScriptFormatTests
 
     /// <summary>Order Script's Parts puts a script's parts in the style guide's Code order, each with its comment, as one
     /// command of Undo; a script whose variable's value reads a constant that would come after it is refused, saying so.</summary>
-    [AvaloniaFact]
-    public void Order_script_parts_lays_out_the_guides_code_order_and_refuses_a_value_reading_what_would_come_after_it()
+    private void Order_script_parts_lays_out_the_guides_code_order_and_refuses_a_value_reading_what_would_come_after_it()
     {
         string folder = TestFolders.Create("gdscript-order-");
         string script = TestFolders.Write(folder, "order.gd", Unordered);

@@ -38,8 +38,85 @@ public sealed class GDScriptCompletionTests
         TestFolders.Write(folder, "enemy.gd", "class_name Enemy\nextends Node2D\n");
     }
 
+    /// <summary>GDScript completes keywords, members, enums, constants, locals and names by place from Passenger's own
+    /// reading.</summary>
     [AvaloniaFact]
-    public void Keywords_complete_where_a_statement_or_a_class_body_takes_them_and_annotations_by_place()
+    public void Gdscript_completes_by_place_as_passengers_reading_says()
+    {
+        Flow.StepApart<GDScriptCompletionTests>(nameof(Keywords_complete_where_a_statement_or_a_class_body_takes_them_and_annotations_by_place),
+            test => test.Keywords_complete_where_a_statement_or_a_class_body_takes_them_and_annotations_by_place());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(After_a_class_name_the_list_holds_what_the_class_has_and_nothing_only_an_instance_has),
+            test => test.After_a_class_name_the_list_holds_what_the_class_has_and_nothing_only_an_instance_has());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(After_a_class_name_new_goes_in_with_its_parentheses_and_an_abstract_class_lists_none),
+            test => test.After_a_class_name_new_goes_in_with_its_parentheses_and_an_abstract_class_lists_none());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_static_function_completes_only_what_needs_no_instance),
+            test => test.A_static_function_completes_only_what_needs_no_instance());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_constants_value_and_an_enums_complete_only_what_godot_folds),
+            test => test.A_constants_value_and_an_enums_complete_only_what_godot_folds());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_static_function_offers_no_node_paths),
+            test => test.A_static_function_offers_no_node_paths());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(An_enums_value_lists_the_values_before_it_and_a_call_in_it_takes_any_constant),
+            test => test.An_enums_value_lists_the_values_before_it_and_a_call_in_it_takes_any_constant());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(After_a_closing_bracket_the_list_holds_what_the_bracket_closes),
+            test => test.After_a_closing_bracket_the_list_holds_what_the_bracket_closes());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(After_a_member_read_off_another_the_list_holds_what_that_member_has),
+            test => test.After_a_member_read_off_another_the_list_holds_what_that_member_has());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_blocks_local_completes_in_its_block_and_not_after_it),
+            test => test.A_blocks_local_completes_in_its_block_and_not_after_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_name_typed_after_a_raw_string_ending_in_a_backslash_completes),
+            test => test.A_name_typed_after_a_raw_string_ending_in_a_backslash_completes());
+    }
+
+    /// <summary>GDScript completes the engine's members, globals, virtuals, types, node paths and strings beside the
+    /// script's own, while Godot's server serves the script.</summary>
+    [AvaloniaFact]
+    public void Gdscript_completes_the_engines_names_and_the_scenes()
+    {
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_list_opened_on_a_name_already_typed_shows_its_first_items_card_as_it_opens),
+            test => test.A_list_opened_on_a_name_already_typed_shows_its_first_items_card_as_it_opens());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_name_holding_marks_is_narrowed_by_and_replaced_whole),
+            test => test.A_name_holding_marks_is_narrowed_by_and_replaced_whole());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_node_path_completes_from_the_scenes_running_the_script),
+            test => test.A_node_path_completes_from_the_scenes_running_the_script());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_string_godots_call_takes_completes_the_names_of_its_kind),
+            test => test.A_string_godots_call_takes_completes_the_names_of_its_kind());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(Type_names_complete_after_a_colon_an_arrow_and_extends),
+            test => test.Type_names_complete_after_a_colon_an_arrow_and_extends());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(A_scripts_own_members_are_listed_before_those_its_engine_class_gives_it),
+            test => test.A_scripts_own_members_are_listed_before_those_its_engine_class_gives_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(An_engine_enums_values_complete_in_a_script_on_its_class_and_after_a_built_in_types_name),
+            test => test.An_engine_enums_values_complete_in_a_script_on_its_class_and_after_a_built_in_types_name());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(After_a_scripts_enum_the_list_holds_its_values_and_a_constant_dictionarys_functions),
+            test => test.After_a_scripts_enum_the_list_holds_its_values_and_a_constant_dictionarys_functions());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(The_engines_globals_complete_beside_the_scripts_names_and_a_function_goes_in_with_its_parentheses),
+            test => test.The_engines_globals_complete_beside_the_scripts_names_and_a_function_goes_in_with_its_parentheses());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(After_func_the_engines_virtual_functions_complete_whole),
+            test => test.After_func_the_engines_virtual_functions_complete_whole());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GDScriptCompletionTests>(nameof(Passengers_lists_answer_while_godots_server_serves_the_script),
+            test => test.Passengers_lists_answer_while_godots_server_serves_the_script());
+    }
+
+    private void Keywords_complete_where_a_statement_or_a_class_body_takes_them_and_annotations_by_place()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -76,79 +153,9 @@ public sealed class GDScriptCompletionTests
         }
     }
 
-    /// <summary>What is typed after an annotation's @ while its list's first rows are still being made, as a loaded machine's
-    /// thread pool leaves them, narrows the list as it shows, and an Escape pressed then dismisses the list before it shows.</summary>
-    [AvaloniaFact]
-    public void Keys_typed_while_a_lists_first_rows_are_made_narrow_the_list_or_dismiss_it()
-    {
-        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
-        TaskCompletionSource made = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource dismissed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            NewLineAfter(window, editor, "var counter := 0");
-            ClearLine(window, editor);
-            Task held = window.Assist.HoldNextCompletionRows(made.Task);
-            window.KeyTextInput("@");
-            Ui.AwaitPumped(held, "the annotations' first rows held as their list opened", TimeSpan.FromSeconds(60));
-            window.KeyTextInput("export_r");
-            made.SetResult();
-            First(window, "@export_range", "a member's annotation narrowed by what was typed as its list was made");
-            Assert.Equal("@export_r", window.Assist.CompletionNarrowedBy);
-
-            Ui.Press(window, "ESCAPE", settle: false);
-            ClearLine(window, editor);
-            held = window.Assist.HoldNextCompletionRows(dismissed.Task);
-            window.KeyTextInput("@");
-            Ui.AwaitPumped(held, "the annotations' first rows held as their list opened again", TimeSpan.FromSeconds(60));
-            Ui.Press(window, "ESCAPE", settle: false);
-            dismissed.SetResult();
-            Ui.Hold(TimeSpan.FromMilliseconds(200), "the held rows landing, which must not show the list Escape dismissed");
-            Assert.False(window.Assist.IsCompletionOpen,
-                $"The list Escape dismissed as its rows were made showed once they came: {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
-        }
-        finally
-        {
-            made.TrySetResult();
-            dismissed.TrySetResult();
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>An Escape pressed after an annotation's @ while the script is still being read for its list lets the list
-    /// go: once the reading lands, nothing opens.</summary>
-    [AvaloniaFact]
-    public void An_escape_pressed_while_an_annotations_list_is_asked_for_lets_it_go()
-    {
-        (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
-        TaskCompletionSource read = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            NewLineAfter(window, editor, "var counter := 0");
-            ClearLine(window, editor);
-            Task held = window.Session.HoldNextScriptReading(read.Task);
-            window.KeyTextInput("@");
-            Ui.AwaitPumped(held, "the script's reading for the annotations' list held", TimeSpan.FromSeconds(60));
-            Ui.Press(window, "ESCAPE", settle: false);
-            read.SetResult();
-            Assert.False(Ui.Pumped(() => window.Assist.IsCompletionOpen, TimeSpan.FromSeconds(2)),
-                $"The annotations' list Escape let go as it was asked for opened once the script was read: {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
-        }
-        finally
-        {
-            read.TrySetResult();
-            window.Close();
-            release.SetResult();
-        }
-    }
-
     /// <summary>After self's dot, and among the names in scope, the script's own members come before those its engine class
     /// gives it, however their names sort; a function returning nothing says void.</summary>
-    [AvaloniaFact]
-    public void A_scripts_own_members_are_listed_before_those_its_engine_class_gives_it()
+    private void A_scripts_own_members_are_listed_before_those_its_engine_class_gives_it()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's members come from its API");
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
@@ -172,8 +179,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>After a class's name and its dot the list holds what the class has itself, its static members and constants,
     /// and nothing Godot rejects there, an instance's variables, functions and signals; a value of the class has them all.</summary>
-    [AvaloniaFact]
-    public void After_a_class_name_the_list_holds_what_the_class_has_and_nothing_only_an_instance_has()
+    private void After_a_class_name_the_list_holds_what_the_class_has_and_nothing_only_an_instance_has()
     {
         TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n\nsignal finished\n\nconst LIMIT := 3\n\nvar instance_field := 1\n\n\n"
             + "func instance_fn() -> int:\n\treturn 1\n\n\nstatic func static_fn() -> int:\n\treturn 2\n");
@@ -203,8 +209,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>After a class's name <c>new</c> goes in with its parentheses, the caret inside them where its constructor takes
     /// arguments and after them where it takes none; a class Godot refuses to make lists none.</summary>
-    [AvaloniaFact]
-    public void After_a_class_name_new_goes_in_with_its_parentheses_and_an_abstract_class_lists_none()
+    private void After_a_class_name_new_goes_in_with_its_parentheses_and_an_abstract_class_lists_none()
     {
         TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n");
         TestFolders.Write(folder, "boss.gd", "class_name Boss\nextends Node\n\n\nfunc _init(rank: int) -> void:\n\tpass\n");
@@ -242,8 +247,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>In a static function the list holds what needs no instance, the class's static members, and none of what Godot
     /// rejects there, an instance's variables, functions and signals and <c>self</c>; a function beside it has them all.</summary>
-    [AvaloniaFact]
-    public void A_static_function_completes_only_what_needs_no_instance()
+    private void A_static_function_completes_only_what_needs_no_instance()
     {
         TestFolders.Write(folder, "main.gd", "extends Node\n\nsignal spent\n\nstatic var shared_count := 1\nvar stock := 1\n\n\n"
             + "func spend() -> void:\n\tprint(1)\n\n\nstatic func spawn() -> void:\n\tprint(2)\n");
@@ -273,8 +277,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>An engine class's enum values complete in a script built on the class, and a built-in type's enum and its values
     /// after the type's name.</summary>
-    [AvaloniaFact]
-    public void An_engine_enums_values_complete_in_a_script_on_its_class_and_after_a_built_in_types_name()
+    private void An_engine_enums_values_complete_in_a_script_on_its_class_and_after_a_built_in_types_name()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's enums come from its API");
         (MainWindow window, _, TaskCompletionSource release) = Open();
@@ -301,8 +304,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>After a script's enum by its name the list holds its values and the Dictionary functions Godot lets it call, a
     /// function that takes arguments going in with the caret between its parentheses.</summary>
-    [AvaloniaFact]
-    public void After_a_scripts_enum_the_list_holds_its_values_and_a_constant_dictionarys_functions()
+    private void After_a_scripts_enum_the_list_holds_its_values_and_a_constant_dictionarys_functions()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): Dictionary's functions come from the engine's API");
         TestFolders.Write(folder, "main.gd", "extends Node\n\nenum Mood { CALM }\n\n\nfunc _ready() -> void:\n\tprint(1)\n");
@@ -331,8 +333,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A constant's value and an enum's list a constant and none of what Godot refuses there, a variable, a function, a
     /// signal, <c>self</c>; a variable's value beside them lists them all.</summary>
-    [AvaloniaFact]
-    public void A_constants_value_and_an_enums_complete_only_what_godot_folds()
+    private void A_constants_value_and_an_enums_complete_only_what_godot_folds()
     {
         TestFolders.Write(folder, "main.gd", "extends Node\n\nsignal spent\n\nconst steps := 1\nvar stock := 1\n\n\nfunc spend() -> void:\n\tprint(1)\n");
         (MainWindow window, _, TaskCompletionSource release) = Open();
@@ -362,8 +363,7 @@ public sealed class GDScriptCompletionTests
     }
 
     /// <summary>A function beside a static one lists the scene's nodes after <c>$</c>; the static one, where Godot refuses it, none.</summary>
-    [AvaloniaFact]
-    public void A_static_function_offers_no_node_paths()
+    private void A_static_function_offers_no_node_paths()
     {
         TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tprint(1)\n\n\nstatic func spawn() -> void:\n\tprint(2)\n");
         (MainWindow window, _, TaskCompletionSource release) = Open();
@@ -390,8 +390,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>An enum's value lists the values before it, a named enum's too, and neither itself nor what comes after; inside a
     /// call the integer can be made from any constant, so <c>PI</c> is listed there and only there, and <c>as</c> beside a value.</summary>
-    [AvaloniaFact]
-    public void An_enums_value_lists_the_values_before_it_and_a_call_in_it_takes_any_constant()
+    private void An_enums_value_lists_the_values_before_it_and_a_call_in_it_takes_any_constant()
     {
         TestFolders.Write(folder, "main.gd", "extends Node\n\nconst PINE := 1\nvar stock := 1\n");
         (MainWindow window, _, TaskCompletionSource release) = Open();
@@ -430,8 +429,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>After a closing bracket the list holds what the bracket closes, a call's result rather than its last argument's
     /// type, and a group's parentheses list what they hold.</summary>
-    [AvaloniaFact]
-    public void After_a_closing_bracket_the_list_holds_what_the_bracket_closes()
+    private void After_a_closing_bracket_the_list_holds_what_the_bracket_closes()
     {
         TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n\nvar instance_field := 1\n\n\nfunc twin(other: Vector2) -> Worker:\n\treturn self\n");
         (MainWindow window, _, TaskCompletionSource release) = Open();
@@ -456,8 +454,7 @@ public sealed class GDScriptCompletionTests
     }
 
     /// <summary>After a member read off a class or a value the list holds that member's own, however many dots came before.</summary>
-    [AvaloniaFact]
-    public void After_a_member_read_off_another_the_list_holds_what_that_member_has()
+    private void After_a_member_read_off_another_the_list_holds_what_that_member_has()
     {
         TestFolders.Write(folder, "worker.gd", "class_name Worker\nextends Node\n\nvar buddy: Worker\nvar instance_field := 1\n\n\n"
             + "class Inner:\n\tconst DEEP := 3\n\n\tstatic func make() -> int:\n\t\treturn 1\n");
@@ -485,8 +482,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A local declared in a block is offered in that block and not after it, where Godot rejects it; a local around
     /// the block is offered at both.</summary>
-    [AvaloniaFact]
-    public void A_blocks_local_completes_in_its_block_and_not_after_it()
+    private void A_blocks_local_completes_in_its_block_and_not_after_it()
     {
         TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tvar here_value := 2\n\tif here_value > 0:\n\t\tvar hidden_value := 1\n"
             + "\t\tprint(hidden_value)\n\tprint(1)\n");
@@ -515,8 +511,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A name typed after a raw string whose backslash comes before another completes, the string closed at its
     /// quote as Godot closes it.</summary>
-    [AvaloniaFact]
-    public void A_name_typed_after_a_raw_string_ending_in_a_backslash_completes()
+    private void A_name_typed_after_a_raw_string_ending_in_a_backslash_completes()
     {
         TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc _ready() -> void:\n\tvar named_path := \"x\"\n\tvar p = r\"C:\\\\\" + \n");
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
@@ -537,8 +532,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A list opened on a name typed before it, by its key or as typing outruns the list, shows its first item's card
     /// as it opens, the item chosen before the list shows.</summary>
-    [AvaloniaFact]
-    public void A_list_opened_on_a_name_already_typed_shows_its_first_items_card_as_it_opens()
+    private void A_list_opened_on_a_name_already_typed_shows_its_first_items_card_as_it_opens()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -560,8 +554,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A name holding marks (नमस्ते's virama and vowel sign), one name to Godot, is narrowed by and replaced whole:
     /// a list asked for after it is typed, and one opened by its first letter that its marks typed on narrow.</summary>
-    [AvaloniaFact]
-    public void A_name_holding_marks_is_narrowed_by_and_replaced_whole()
+    private void A_name_holding_marks_is_narrowed_by_and_replaced_whole()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -595,8 +588,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>The engine's utility functions, built-in types, classes, singletons and global constants complete beside the
     /// script's own names, and a function goes in with its call's parentheses, the caret inside them where it takes arguments.</summary>
-    [AvaloniaFact]
-    public void The_engines_globals_complete_beside_the_scripts_names_and_a_function_goes_in_with_its_parentheses()
+    private void The_engines_globals_complete_beside_the_scripts_names_and_a_function_goes_in_with_its_parentheses()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's globals come from its API");
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
@@ -627,8 +619,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>After <c>$</c> the paths the scene running the script gives from its node, after <c>%</c> its unique names,
     /// each with the node's class and scene, a chosen one put in whole.</summary>
-    [AvaloniaFact]
-    public void A_node_path_completes_from_the_scenes_running_the_script()
+    private void A_node_path_completes_from_the_scenes_running_the_script()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -658,8 +649,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A string Godot's call takes completes what it names: an input action of project.godot's, a node's path from
     /// the script's node, a file's res:// path, a signal of the script's own; the item chosen takes the string's text.</summary>
-    [AvaloniaFact]
-    public void A_string_godots_call_takes_completes_the_names_of_its_kind()
+    private void A_string_godots_call_takes_completes_the_names_of_its_kind()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -692,8 +682,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>After <c>func</c> at a class's level the engine's virtual functions the class may override, one chosen put in
     /// whole with its parameters, what it returns and its colon; one the script defines already is not offered.</summary>
-    [AvaloniaFact]
-    public void After_func_the_engines_virtual_functions_complete_whole()
+    private void After_func_the_engines_virtual_functions_complete_whole()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the virtual functions come from its API");
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
@@ -720,8 +709,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>A type's name completes after a variable's colon (the project's class_name among them), void after a
     /// function's arrow, and a class after extends; a name being declared after var opens no list.</summary>
-    [AvaloniaFact]
-    public void Type_names_complete_after_a_colon_an_arrow_and_extends()
+    private void Type_names_complete_after_a_colon_an_arrow_and_extends()
     {
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();
         try
@@ -749,8 +737,7 @@ public sealed class GDScriptCompletionTests
 
     /// <summary>Once Godot's server serves the script, the lists are still Passenger's own: the scene's nodes after <c>$</c>
     /// with their classes and scenes, and the input action in a string, as before it started.</summary>
-    [AvaloniaFact]
-    public void Passengers_lists_answer_while_godots_server_serves_the_script()
+    private void Passengers_lists_answer_while_godots_server_serves_the_script()
     {
         Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): Godot's server runs in its editor");
         (MainWindow window, OpenDocument document, TaskCompletionSource release) = Open();

@@ -233,10 +233,75 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             () => $"Go to Declaration from {after} to open {file} on '{line}' ({window.EditorArea.Active?.Name}: {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}; {window.Status})");
     }
 
+    /// <summary>An input action, group, animation, autoload, shader parameter, layer and translation key complete, are
+    /// checked, lead to where they are made and rename there.</summary>
+    [AvaloniaFact]
+    public void A_projects_names_complete_check_lead_and_rename_in_its_strings()
+    {
+        Flow.Step(nameof(An_input_action_completes_from_project_godot_is_checked_leads_to_it_is_listed_and_is_renamed_there),
+            An_input_action_completes_from_project_godot_is_checked_leads_to_it_is_listed_and_is_renamed_there);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_group_completes_from_the_scenes_is_checked_leads_to_its_node_and_is_renamed_there),
+            A_group_completes_from_the_scenes_is_checked_leads_to_its_node_and_is_renamed_there);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_animation_completes_from_its_players_library_is_checked_leads_to_it_and_is_renamed_there),
+            An_animation_completes_from_its_players_library_is_checked_leads_to_it_and_is_renamed_there);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_autoload_completes_from_project_godot_is_checked_leads_to_it_and_is_renamed_there),
+            An_autoload_completes_from_project_godot_is_checked_leads_to_it_and_is_renamed_there);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there),
+            A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers),
+            A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_animation_trees_parameter_completes_from_its_tree_and_is_checked),
+            An_animation_trees_parameter_completes_from_its_tree_and_is_checked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked),
+            An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_global_shader_uniform_completes_from_project_godot_and_is_checked),
+            A_global_shader_uniform_completes_from_project_godot_and_is_checked);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there),
+            A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there);
+    }
+
+    /// <summary>A rename of a string's name escapes it for its quotes and finds each file as the last write left
+    /// it.</summary>
+    [AvaloniaFact]
+    public void A_strings_rename_finds_each_file_as_it_stands()
+    {
+        Flow.Step(nameof(Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string),
+            Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_rename_right_after_another_finds_each_file_as_that_one_left_it),
+            A_rename_right_after_another_finds_each_file_as_that_one_left_it);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_rename_a_moment_after_another_program_wrote_a_file_waits_for_it_and_keeps_what_it_wrote),
+            A_rename_a_moment_after_another_program_wrote_a_file_waits_for_it_and_keeps_what_it_wrote);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action),
+            A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action);
+    }
+
     /// <summary>A new name holding a quote is written for each string it goes in: escaped in a GDScript's single quotes, as it
     /// is in project.godot and C#, or the script no longer parses.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string()
+    private void Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string()
     {
         File.WriteAllText(HudPath, Hud.Replace("\"jump\"", "'jump'", StringComparison.Ordinal));
         MainWindow window = game.Open(ScriptPath);
@@ -255,8 +320,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>The first rename writes hud.gd, closed, and the folder's watcher never tells of it here: the second finds it as
     /// the first left it, rather than refusing a file its index read before.</summary>
-    [AvaloniaFact]
-    public void A_rename_right_after_another_finds_each_file_as_that_one_left_it()
+    private void A_rename_right_after_another_finds_each_file_as_that_one_left_it()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -275,8 +339,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>A file another program wrote a moment before, the folder's watcher yet to tell of it (here, never to), is one
     /// the rename waits to read, keeping what was written, never a refusal to try again.</summary>
-    [AvaloniaFact]
-    public void A_rename_a_moment_after_another_program_wrote_a_file_waits_for_it_and_keeps_what_it_wrote()
+    private void A_rename_a_moment_after_another_program_wrote_a_file_waits_for_it_and_keeps_what_it_wrote()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -298,8 +361,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
     /// <summary>A line written above an action's string while Rename's box is open on it (by the file's other window, by an
     /// agent) moves the name down: the rename finds the action where its string now is and renames it, rather than looking
     /// where the box opened and refusing Main.cs as changed.</summary>
-    [AvaloniaFact]
-    public void A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action()
+    private void A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -357,8 +419,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
     /// <summary>An input action project.godot lacks is an error, its own and Godot's ui_ ones are not; completion offers them,
     /// Go to Declaration opens project.godot on the action, Find Usages lists project.godot's key, the C# string and the
     /// GDScript's, and Rename renames it in all three.</summary>
-    [AvaloniaFact]
-    public void An_input_action_completes_from_project_godot_is_checked_leads_to_it_is_listed_and_is_renamed_there()
+    private void An_input_action_completes_from_project_godot_is_checked_leads_to_it_is_listed_and_is_renamed_there()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -393,8 +454,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>A group no scene gives a node is an error; completion offers the scene's, Go to Declaration opens the scene on
     /// the node, and Rename renames the group there and in every string naming it.</summary>
-    [AvaloniaFact]
-    public void A_group_completes_from_the_scenes_is_checked_leads_to_its_node_and_is_renamed_there()
+    private void A_group_completes_from_the_scenes_is_checked_leads_to_its_node_and_is_renamed_there()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -417,8 +477,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
     /// <summary>An animation the player the code gets lacks is an error naming the player; completion offers its library's,
     /// Go to Declaration opens the scene on the library's animation, and Rename renames it there, in the player's autoplay
     /// and in every string naming it.</summary>
-    [AvaloniaFact]
-    public void An_animation_completes_from_its_players_library_is_checked_leads_to_it_and_is_renamed_there()
+    private void An_animation_completes_from_its_players_library_is_checked_leads_to_it_and_is_renamed_there()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -441,8 +500,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>A GetNode path through /root naming no autoload is an error; completion from its "/" offers the autoloads,
     /// Go to Declaration opens project.godot on the autoload, and Rename renames it there and in every path through it.</summary>
-    [AvaloniaFact]
-    public void An_autoload_completes_from_project_godot_is_checked_leads_to_it_and_is_renamed_there()
+    private void An_autoload_completes_from_project_godot_is_checked_leads_to_it_and_is_renamed_there()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -466,8 +524,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
     /// <summary>A shader parameter the uniforms of the node's material's shader lack is an error naming the shader; completion
     /// offers its uniforms, Go to Declaration opens the shader on the uniform, and Rename renames it there, in the shader's
     /// code, in the material setting it and in every string naming it.</summary>
-    [AvaloniaFact]
-    public void A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there()
+    private void A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -491,8 +548,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>A layer's number hovers the name project.godot's [layer_names] gives it and leads there, and one outside the
     /// layers Godot numbers is an error naming them.</summary>
-    [AvaloniaFact]
-    public void A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers()
+    private void A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -510,8 +566,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>An AnimationTree's parameter its tree does not make is an error naming the tree; completion offers those it
     /// makes, its state machine's playback and its transition's condition among them.</summary>
-    [AvaloniaFact]
-    public void An_animation_trees_parameter_completes_from_its_tree_and_is_checked()
+    private void An_animation_trees_parameter_completes_from_its_tree_and_is_checked()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -528,8 +583,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>An animation an animated sprite's SpriteFrames lack is an error naming the sprite; completion offers its
     /// frames' animations, and Go to Declaration opens the scene on the animation's name.</summary>
-    [AvaloniaFact]
-    public void An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked()
+    private void An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -546,8 +600,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>A global shader uniform project.godot's [shader_globals] lacks is an error; completion offers its own, and Go
     /// to Declaration opens project.godot on it.</summary>
-    [AvaloniaFact]
-    public void A_global_shader_uniform_completes_from_project_godot_and_is_checked()
+    private void A_global_shader_uniform_completes_from_project_godot_and_is_checked()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -564,8 +617,7 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 
     /// <summary>A translation's key the CSV project.godot lists lacks is an error naming it; completion offers its keys, Go to
     /// Declaration opens the CSV on the key, and Rename renames it there and in every string naming it.</summary>
-    [AvaloniaFact]
-    public void A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there()
+    private void A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there()
     {
         MainWindow window = game.Open(ScriptPath);
         try

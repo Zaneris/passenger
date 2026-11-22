@@ -15,10 +15,22 @@ namespace Passenger.Tests;
 /// GdUnit4's adapter writes into the project, which Git's view leaves out too.</summary>
 public sealed class GodotFolderTests
 {
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_godot_folder_is_dimmed_as_build_output_and_passed_over_by_go_to_file_and_find_in_files(bool eachFolder)
+    /// <summary>A Godot folder and GdUnit4's runner are build output to the Explorer, Go to File, Find in Files and
+    /// Git.</summary>
+    [AvaloniaFact]
+    public void A_godot_folder_and_a_runners_build_are_build_output()
+    {
+        Flow.Step("A_godot_folder_is_dimmed_as_build_output_and_passed_over_by_go_to_file_and_find_in_files(false)",
+            () => A_godot_folder_is_dimmed_as_build_output_and_passed_over_by_go_to_file_and_find_in_files(false));
+        OpenWindows.CloseAll();
+        Flow.Step("A_godot_folder_is_dimmed_as_build_output_and_passed_over_by_go_to_file_and_find_in_files(true)",
+            () => A_godot_folder_is_dimmed_as_build_output_and_passed_over_by_go_to_file_and_find_in_files(true));
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(GdUnit4s_test_runner_in_a_game_is_build_output_to_the_explorer_and_gits_view),
+            GdUnit4s_test_runner_in_a_game_is_build_output_to_the_explorer_and_gits_view);
+    }
+
+    private void A_godot_folder_is_dimmed_as_build_output_and_passed_over_by_go_to_file_and_find_in_files(bool eachFolder)
     {
         string folder = TestFolders.Create("godot-cache-");
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n");
@@ -59,8 +71,7 @@ public sealed class GodotFolderTests
 
     /// <summary>The test runner GdUnit4's adapter writes into a game, which git leaves unversioned there, is dimmed in the
     /// Explorer and left out of Git's view, where a script of the person's made beside it is listed.</summary>
-    [AvaloniaFact]
-    public void GdUnit4s_test_runner_in_a_game_is_build_output_to_the_explorer_and_gits_view()
+    private void GdUnit4s_test_runner_in_a_game_is_build_output_to_the_explorer_and_gits_view()
     {
         string folder = TestFolders.Create("godot-gdunit4-");
         TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n");

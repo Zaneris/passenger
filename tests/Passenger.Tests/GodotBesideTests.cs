@@ -106,11 +106,26 @@ public sealed class GodotBesideTests : IClassFixture<GodotBesideTests.Game>
 
     private static string Leads(SceneMark? mark) => mark is null ? "no mark" : string.Join("; ", mark.Leads.Select(l => l.Words));
 
+    /// <summary>A class mark lists its scenes, a res path's card previews what it names, and a sound plays
+    /// decoded.</summary>
+    [AvaloniaFact]
+    public void A_scenes_marks_and_cards_show_what_they_name()
+    {
+        Flow.Step(nameof(A_class_mark_lists_its_scenes_a_handlers_names_its_connection_and_a_node_path_shows_its_node),
+            A_class_mark_lists_its_scenes_a_handlers_names_its_connection_and_a_node_path_shows_its_node);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(A_res_paths_card_previews_a_texture_a_sound_and_a_scene), A_res_paths_card_previews_a_texture_a_sound_and_a_scene);
+        OpenWindows.CloseAll();
+        game.Reset();
+        Flow.Step(nameof(An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound),
+            An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound);
+    }
+
     /// <summary>The class's mark lists main.tscn and level.tscn, which instances it, and its menu goes to the node in level.tscn;
     /// a third scene written on disk joins the list. The handler's mark names the connection calling it, and the GetNode path
     /// ends in a hint of the Label it comes to.</summary>
-    [AvaloniaFact]
-    public void A_class_mark_lists_its_scenes_a_handlers_names_its_connection_and_a_node_path_shows_its_node()
+    private void A_class_mark_lists_its_scenes_a_handlers_names_its_connection_and_a_node_path_shows_its_node()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -148,8 +163,7 @@ public sealed class GodotBesideTests : IClassFixture<GodotBesideTests.Game>
 
     /// <summary>A res:// path's card previews what it names: the texture drawn small, the sound with Play, which plays it, and
     /// the scene's root with its children.</summary>
-    [AvaloniaFact]
-    public void A_res_paths_card_previews_a_texture_a_sound_and_a_scene()
+    private void A_res_paths_card_previews_a_texture_a_sound_and_a_scene()
     {
         MainWindow window = game.Open(ScriptPath);
         try
@@ -177,8 +191,7 @@ public sealed class GodotBesideTests : IClassFixture<GodotBesideTests.Game>
     /// <summary>An Ogg Vorbis and an MP3 sound's Play on its res:// path's card hands the system's player a WAV decoded from
     /// it into the state's cache, as long as the sound (the MP3's with its encoder's delay and padding), so each plays on every
     /// system; the window nobody sees plays neither.</summary>
-    [AvaloniaFact]
-    public void An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound()
+    private void An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound()
     {
         MainWindow window = game.Open(ScriptPath);
         try
