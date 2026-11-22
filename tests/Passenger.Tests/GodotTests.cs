@@ -288,7 +288,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     /// <summary>The GDScript of <see cref="Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function"/>:
     /// each frame it spins in wander, then has the C# Ledger spin, which calls back into its crawl.</summary>
     private const string Crawler = "extends Node\n\nvar ledger\nvar total := 0\n\nfunc _ready():\n\tledger = load(\"res://Ledger.cs\").new()\n\n"
-        + "func _process(_delta):\n\twander()\n\ttotal += ledger.Tally(200000, self)\n\nfunc wander():\n\tvar sum := 0\n\tfor i in 60000:\n\t\tsum += i\n\ttotal = sum\n\n"
+        + "func _process(_delta):\n\twander()\n\ttotal += ledger.Tally(2000000, self)\n\nfunc wander():\n\tvar sum := 0\n\tfor i in 60000:\n\t\tsum += i\n\ttotal = sum\n\n"
         + "func crawl():\n\tvar sum := 0\n\tfor i in 40000:\n\t\tsum += i\n\treturn sum\n";
 
     /// <summary>Profile of a game whose GDScript calls C# and whose C# calls GDScript back puts both languages' functions in
@@ -348,8 +348,9 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
                 Assert.True(scripts.Ordered.FirstOrDefault(n => n.Name == function) is { Script: not null, Self: > 0 } node && node.Module == $"wander.gd:{LineOf(Crawler, line) + 1}",
                     $"The call tree's GDScript lacks {function} at its line with its own time: {named}");
             }
-            Assert.True(Nodes(view.Rows.Where(r => r.Depth == 0 && r.Node != scripts).Select(r => r.Node)).Any(n => n.Name.Contains("Ledger.Tally", StringComparison.Ordinal) && n.Self > 0),
-                "The call tree beside the GDScript names no time of the C# method the GDScript called");
+            Passenger.Profiler.CallNode[] sampled = [.. Nodes(view.Rows.Where(r => r.Depth == 0 && r.Node != scripts).Select(r => r.Node)).Where(n => n.Self > 0)];
+            Assert.True(sampled.Any(n => n.Name.Contains("Ledger.Tally", StringComparison.Ordinal)),
+                $"The call tree beside the GDScript names no time of the C# method the GDScript called: {string.Join("; ", sampled.OrderByDescending(n => n.Self).Take(8).Select(n => $"{n.Name} {n.Self}/{n.Total}"))}");
 
             view.ShowPage(Passenger.App.Profiling.ProfilerPage.Frames);
             Passenger.App.Profiling.GameFramesView frames = view.GamePage;
