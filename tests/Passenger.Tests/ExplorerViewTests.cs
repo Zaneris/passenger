@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// <summary>The Explorer's view, the solution's projects or the folder's files: the view a person switches to, by its
 /// switch, Find Action or a key of their own, is kept with the folder, which opens in it again, after a restart too, while
 /// another folder opens in its own; a folder never switched opens in the Solution view, as before the view was kept.</summary>
+[SameOnEverySystem]
 public sealed class ExplorerViewTests : IDisposable
 {
     private readonly string shop = PathNames.Canonical(TestFolders.Create("explorer-view-shop-"));

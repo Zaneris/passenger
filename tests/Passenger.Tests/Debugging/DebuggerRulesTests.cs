@@ -12,6 +12,7 @@ namespace Passenger.Tests.Debugging;
 /// one way: no string outside <see cref="DapRows"/> is one of its rows' names, and no catch lists the runtime's failures
 /// by hand rather than through Failures.OfRuntime. Its tests say where their processes stood only once they failed.</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class DebuggerRulesTests
 {
     [Fact]
@@ -61,7 +62,7 @@ public sealed class DebuggerRulesTests
                 && describing.Contains(name.Identifier.ValueText) && !OnceFailed(call, describing) ? call.ToString() : null),
         ];
         Assert.True(found.Count == 0, $"{Plural.Of(found.Count, "call")} {Plural.Agreeing(found.Count, "describes", "describe")} where a debugging test's processes stood whether it failed or "
-            + $"not, which on macOS samples each for a second at every pass, the test waiting meanwhile: make them only in a throw or an Assert.Fail:\n"
+            + $"not, which samples each for a second at every pass where NativeStacks can, the test waiting meanwhile: make them only in a throw or an Assert.Fail:\n"
             + string.Join("\n", found));
 
         // Inside a throw, an Assert.Fail, or a member making those words itself.

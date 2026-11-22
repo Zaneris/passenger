@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// file now stands, a line an agent added above it kept, and refused, writing nothing, where the call's own text was
 /// changed meanwhile; and picked in an editor at the window's smallest, where the picker shows whole under its line, or
 /// over it below the navigation bar.</summary>
+[SameOnEverySystem]
 public sealed class ColourSwatchesTests : IDisposable
 {
     private const string Palette = "class Palette\n{\n    static object Brand = Avalonia.Media.Color.FromRgb(0x33, 0x66, 0x99);\n}\n";

@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// <summary>Split editors: Split Right shows a file twice over one text, each split with its own caret; a tab dragged
 /// to a split's edge splits there and onto another's strip moves into it; Close takes the tab of the split worked in
 /// alone, and a split whose last tab goes gives its room back.</summary>
+[SameOnEverySystem]
 public sealed class EditorSplitTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("splits-");

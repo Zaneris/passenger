@@ -23,6 +23,7 @@ namespace Passenger.Tests;
 /// outside it; following the typing and the editor's scroll; its links opening the browser, another file or a heading;
 /// a typing pause in a long file reading again only what it reached; text nested too deep ending nothing; and the
 /// file's headings as its outline in Structure and File Structure.</summary>
+[SameOnEverySystem]
 public sealed class MarkdownPreviewTests
 {
     /// <summary>A shop folder with a README of every kind of block, an image inside it and one beside it, outside.</summary>
@@ -347,7 +348,7 @@ public sealed class MarkdownPreviewTests
             }
             if (version % 10 == 0)
             {
-                text.Append("\n```csharp\npublic sealed class Widget\n{\n    public void Resize(int width) => Width = width;\n}\n```\n\n| Platform | Fixed |\n| :--- | ---: |\n| macOS | yes |\n| Windows | yes |\n");
+                text.Append("\n```csharp\npublic sealed class Widget\n{\n    public void Resize(int width) => Width = width;\n}\n```\n\n| Platform | Fixed |\n| :--- | ---: |\n| Desktop | yes |\n| Phone | yes |\n");
             }
             text.Append('\n');
         }

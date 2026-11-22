@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 
 /// <summary>An agent's ide_action waits for the works an action begins as it runs and answers what they came to: so an
 /// action holds its work from its first moment, and tells what it came to.</summary>
+[SameOnEverySystem]
 public sealed class ActionWorkRulesTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("action-work-");

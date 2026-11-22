@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 /// and a program's colours and styles drawn as it set them, every other control sequence showing nothing, a secret masked
 /// where a colour code splits it; a masked stream made one string a read for its mask, and shown alike however its reads
 /// split it.</summary>
+[SameOnEverySystem]
 public sealed class ConsoleSinkTests
 {
     private const string Prefix = "web | ";

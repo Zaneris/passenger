@@ -14,6 +14,7 @@ namespace Passenger.Tests;
 
 /// <summary>Code folding through the window, as a person folds: Rider's Ctrl+M chords, the gutter's chevrons, and a
 /// caret that goes into folded code unfolding it. The regions come from the file's own parse.</summary>
+[SameOnEverySystem]
 public sealed class FoldingTests : IDisposable
 {
     private const string Source =

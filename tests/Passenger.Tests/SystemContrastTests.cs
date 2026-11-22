@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// Contrast shows in the chosen theme's place, in the system's dark or light, Settings saying why its Theme row has no
 /// effect; Use High Contrast turned off brings the chosen theme back while the system still asks; and the chosen theme
 /// comes back once the system no longer asks.</summary>
+[SameOnEverySystem]
 public sealed class SystemContrastTests : IDisposable
 {
     private static readonly SourcedTheme Cubicle = SourcedTheme.BuiltIn("Cubicle");

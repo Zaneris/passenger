@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// Reformat Code would, one Undo taking each back with its key or alone; a for loop's header, a string and a comment stay
 /// as typed, so does everything with the setting off, and an agent's edit is written as given. In Vim mode the layout
 /// joins the insert session's one step, and . types again what the session typed.</summary>
+[SameOnEverySystem]
 public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
 {
     /// <summary>A method with an empty line in its body, where each test types at the left margin.</summary>

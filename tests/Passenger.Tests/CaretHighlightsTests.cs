@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// leaves them or the text changes; a word chosen that the server lights nothing for (a keyword, a word in a comment)
 /// lighting its other places by their text; Highlight Usages in File keeping them; and the bracket at the caret with its
 /// pair, which Move Caret to Matching Brace goes between, from the file's own parse, in windows with no language server.</summary>
+[SameOnEverySystem]
 public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Project>
 {
     private const string Totals = "static class Totals\n{\n    public static int Sum(int[] values)\n    {\n        int total = 0;\n"

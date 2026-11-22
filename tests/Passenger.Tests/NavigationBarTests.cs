@@ -14,6 +14,7 @@ namespace Passenger.Tests;
 /// (a C# file's from its own parse, with no language server), each part listing what stands beside it to go to, by the
 /// pointer and by the keys; Jump to Navigation Bar and Previous Region give it the keys, and with the setting off it is
 /// gone, the action listing the caret's part itself.</summary>
+[SameOnEverySystem]
 public sealed class NavigationBarTests : IDisposable
 {
     private const string Cart = "namespace Contoso.Shop;\n\npublic sealed class Cart\n{\n    private readonly List<string> lines = [];\n\n"

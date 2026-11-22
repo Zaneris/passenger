@@ -351,5 +351,5 @@ public abstract class SharedProject : IAsyncLifetime
     /// <summary>Whether a path is under what restores and builds write, bin or obj.</summary>
     private bool Made(string path) => Parts(path).Any(part => part is "bin" or "obj");
 
-    private string[] Parts(string path) => Path.GetRelativePath(Folder, path).Split(Path.DirectorySeparatorChar);
+    private string[] Parts(string path) => PathNames.Route(path, Folder).Split('/');
 }

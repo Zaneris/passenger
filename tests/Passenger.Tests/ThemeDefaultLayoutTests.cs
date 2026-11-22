@@ -11,6 +11,7 @@ namespace Passenger.Tests;
 /// <summary>A theme's default layout as a person meets it: a window on a fresh state opens with the tool windows where the
 /// theme docks them, a layout the person arranged wins at the next start, Restore Default Layout goes back to the theme's,
 /// and windows standing where a theme put them follow the next theme chosen.</summary>
+[SameOnEverySystem]
 public sealed class ThemeDefaultLayoutTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("theme-layout-");
@@ -75,7 +76,7 @@ public sealed class ThemeDefaultLayoutTests : IDisposable
             Ui.Settle();
             Assert.True(Placed(dock, ToolWindowIds.Explorer) == (ToolAnchor.LeftTop, 0, true) && Placed(dock, ToolWindowIds.Problems).Anchor == ToolAnchor.BottomLeft
                 && !dock.IsShown(ToolWindowIds.Problems) && dock.Capture().RightWidth == 300,
-                $"Windows standing where the theme put them did not follow Passenger's own theme, chosen after it: {Shown(dock)}");
+                $"Tool windows standing where the theme put them did not follow Passenger's own theme, chosen after it: {Shown(dock)}");
         }
         finally
         {

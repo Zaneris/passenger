@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// are coloured as such, a type's uses lit up together, and a change to the other file's using is followed in this
 /// one's colours, uses and problems. A name no using brings in any more keeps the colour its syntax gives it, never a
 /// local's, until the server binds it again.</summary>
+[SameOnEverySystem]
 public sealed class GlobalUsingsTests : IClassFixture<GlobalUsingsTests.Project>
 {
     private const string Usings = "global using System.Diagnostics;\n";
