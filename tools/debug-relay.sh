@@ -1,21 +1,23 @@
 #!/bin/sh
 # Passenger's debug relay (src/Passenger.DebugRelay/relay.c), the native piece a Debug app on a device loads as its
 # runtime's profiler, built into artifacts/debug-relay/<rid>/, which the app carries under debugger/relay/<rid>/.
-# Android's with Apple's clang and two packs of .NET's Android workload (its SDK pack's linker, its CoreCLR runtime
-# pack's C runtime objects and stub libraries; no NDK, Android SDK or Java); iOS's and Mac Catalyst's with Xcode's SDKs.
-# On macOS only.
+# Android's with clang and two packs of .NET's Android workload (its SDK pack's linker, its CoreCLR runtime pack's C
+# runtime objects and stub libraries; no NDK, Android SDK or Java), on macOS or Linux; iOS's and Mac Catalyst's with
+# Xcode's SDKs, on macOS.
 #   tools/debug-relay.sh [android] [apple]
 set -e
 . "$(dirname "$0")/release-common.sh"
 root=$(checkout_root)
 src=$root/src/Passenger.DebugRelay/relay.c
 out=$root/artifacts/debug-relay
-# The Android workload is in the .NET that installed it: DOTNET_ROOT's, the dotnet on PATH's or ~/.dotnet, the first with it.
+# This system's Android SDK pack, in DOTNET_ROOT's .NET, the dotnet on PATH's or ~/.dotnet, the first with it.
+host=Darwin
+[ "$(uname -s)" != Linux ] || host=Linux
 on_path=$(command -v dotnet || true)
 [ -z "$on_path" ] || on_path=$(dirname "$(realpath "$on_path")")
 for dotnet_root in ${DOTNET_ROOT:+"$DOTNET_ROOT"} ${on_path:+"$on_path"} "$HOME/.dotnet"; do
   packs=$dotnet_root/packs
-  bin=$(ls -d "$packs"/Microsoft.Android.Sdk.Darwin/*/tools/Darwin/binutils/bin 2>/dev/null | tail -1)
+  bin=$(ls -d "$packs"/Microsoft.Android.Sdk.$host/*/tools/$host/binutils/bin 2>/dev/null | tail -1)
   [ -z "$bin" ] || break
 done
 for target in ${@:-android apple}; do

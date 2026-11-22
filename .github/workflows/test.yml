@@ -72,14 +72,25 @@ jobs:
             os: ubuntu-26.04
             time_scale: 2
             processes: 2
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 80
+    # The report lane's first shard on macOS, which runs the classes needing iOS's simulators and Mac Catalyst, is on the
+    # image with Xcode 27, whose SDKs .NET 11's iOS workload builds with; its minutes of set-up before the tests (SET_UP)
+    # come on top of the others' 80.
+    runs-on: ${{ matrix.system == 'macOS' && matrix.lane == 'report' && matrix.shard == 1 && 'xcode-27' || matrix.os }}
+    timeout-minutes: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' && 95 || 80 }}
     env:
       LANE: ${{ matrix.lane }}
       SHARDS: ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
       LABEL: ${{ matrix.lane == 'gate' && 'Gate' || 'Report' }}, ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
       # The job's tests' time, whichever lanes they are of.
       TEST_MINUTES: 60
+      # Whether this job sets up what the report lane's classes dealt apart need (test-shards.py's SET_UPS), which the
+      # report lane's first shard on macOS and Linux runs alone. Windows deals none apart: no Android emulator runs on its
+      # runner (no nested virtualization), no iOS app builds there, and its AppHosts keep their record in the person's
+      # profile, so the tests of a real one skip there.
+      SET_UP: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' }}
+      # Aspire's dashboard and orchestrator, and the run's own aspire CLI, downloaded by the restore and named in the
+      # tests' build (Passenger.Tests.csproj) where the job sets up for them.
+      PassengerAspireRuntime: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' }}
     defaults:
       run:
         shell: bash
@@ -170,6 +181,72 @@ jobs:
         with:
           path: ~/.nuget/packages
           key: ${{ steps.nuget.outputs.cache-primary-key }}
+
+      # .NET's mobile workloads at the workload set the tests are written for, MAUI's packages for each mobile platform
+      # (tests/MauiGraphs) and the debug relays, which the build carries: on Linux Android's, on macOS iOS's and Mac
+      # Catalyst's, with the Xcode the workload's iOS SDK names, whose simulators the tests boot themselves; and the JDK
+      # the Android workload takes, as JAVA_HOME. What fails here only has the tests needing it skip, saying why.
+      - name: The mobile workloads and the debug relays
+        if: env.SET_UP == 'true'
+        continue-on-error: true
+        env:
+          WORKLOADS: 11.0.100.1
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            # Into the runner's .NET, which only root may write where the image put it there.
+            dotnet workload install android maui-android --version "$WORKLOADS" \
+              || sudo "$(command -v dotnet)" workload install android maui-android --version "$WORKLOADS"
+            echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+            dotnet restore tests/MauiGraphs/Android
+            tools/debug-relay.sh android
+          else
+            dotnet workload install android ios maccatalyst maui --version "$WORKLOADS"
+            echo "JAVA_HOME=$JAVA_HOME_21_arm64" >> "$GITHUB_ENV"
+            xcode=$(ls -d "$DOTNET_ROOT"/packs/Microsoft.iOS.Sdk.net11.0_* | tail -n 1)
+            sudo xcode-select --switch "/Applications/Xcode_${xcode##*_}.app"
+            xcodebuild -version
+            dotnet restore tests/MauiGraphs/Android
+            dotnet restore tests/MauiGraphs/iOS
+            tools/debug-relay.sh apple
+          fi
+
+      # An emulator of Android 37 on Linux, KVM being the runner's own, started to boot while the solution builds, which
+      # the Android tests run on (ANDROID_SERIAL).
+      - name: An Android emulator
+        if: env.SET_UP == 'true' && runner.os == 'Linux'
+        continue-on-error: true
+        env:
+          IMAGE: system-images;android-37.0;default;x86_64
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          tools=$ANDROID_HOME/cmdline-tools/latest/bin
+          { yes || true; } | "$tools/sdkmanager" --licenses > /dev/null
+          "$tools/sdkmanager" --install emulator "$IMAGE" > /dev/null
+          echo no | "$tools/avdmanager" create avd --force --name passenger --package "$IMAGE"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd passenger -no-window -no-audio -no-boot-anim -no-snapshot \
+            -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
+
+      # Azure Functions Core Tools 4, whose func runs the Functions app a real AppHost adds, on the PATH: its release's
+      # archive, its SHA-256 checked against the one the release gives.
+      - name: Azure Functions Core Tools
+        if: env.SET_UP == 'true'
+        continue-on-error: true
+        run: |
+          case "$RUNNER_OS" in
+            Linux) file=Azure.Functions.Cli.linux-x64.4.16.0.zip
+              sum=c68c7780d94c7583157f7a7d1a05e0ec3e34057c3d55e4c7be71fc4aa0c23667 ;;
+            macOS) file=Azure.Functions.Cli.osx-arm64.4.16.0.zip
+              sum=5698d54038fd0507a614af53e8bd3f91c89f96e60ae081c113373b3d2af375f3 ;;
+          esac
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/func.zip" "https://github.com/Azure/azure-functions-core-tools/releases/download/4.16.0/$file"
+          echo "$sum  $RUNNER_TEMP/func.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/func.zip" -d "$RUNNER_TEMP/func"
+          chmod +x "$RUNNER_TEMP/func/func"
+          "$RUNNER_TEMP/func/func" --version
+          echo "$RUNNER_TEMP/func" >> "$GITHUB_PATH"
 
       # The build's check, every analyzer and code-style rule with warnings as errors, is the gate's first shard's on each
       # system, which every run has; the others build the same code without running the analyzers (generators still
@@ -304,9 +381,11 @@ jobs:
           cp artifacts/test-lists/whole.txt "$results/whole.txt"
           check=
           [ "$number" != 1 ] || check=--check
+          apart=
+          [ "$SYSTEM" = Windows ] || apart="--apart aspire --apart mobile"
           "$python" -I tools/test-shards.py split "$results/suite.txt" --lane report --whole "$results/whole.txt" \
             --system "$SYSTEM" --of "$REPORT_SHARDS" --after artifacts/test-lists/gate.txt --after-of "$GATE_SHARDS" \
-            --processes "$PROCESSES" --checks-first --out "$results/shards" $check
+            --processes "$PROCESSES" --checks-first --out "$results/shards" $check $apart
           [ "$LANE" = gate ] || exit 0
           echo "shard=$number" >> "$GITHUB_OUTPUT"
           echo "label=Report, $NAME, shard $number of $REPORT_SHARDS, after the gate's shard $SHARD" >> "$GITHUB_OUTPUT"
@@ -362,6 +441,25 @@ jobs:
         with:
           path: ${{ runner.temp }}/godot.zip
           key: ${{ steps.godot-cache.outputs.cache-primary-key }}
+
+      # The emulator started before the build, booted (sys.boot_completed) before the tests; one that never boots leaves
+      # the Android tests to start it themselves.
+      - name: Wait for the Android emulator
+        if: env.SET_UP == 'true' && runner.os == 'Linux'
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          adb=$ANDROID_HOME/platform-tools/adb
+          for _ in $(seq 120); do
+            if [ "$("$adb" -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; then
+              "$adb" devices -l
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning title=Android emulator::It did not boot in 10 minutes, so the Android tests start it themselves"
+          tail -n 50 "$RUNNER_TEMP/emulator.log"
+          exit 1
 
       # A job's tests have TEST_MINUTES in all: a gate job's report shard has what its gate tests left.
       - name: Start the clock on the job's tests
