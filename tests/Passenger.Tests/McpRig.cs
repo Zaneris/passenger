@@ -494,7 +494,8 @@ public abstract class McpRig : IDisposable
         }
     }
 
-    /// <summary>Where the managed threads of the Passenger the test started last stood, as a call it never answered says.</summary>
+    /// <summary>Where the managed threads of the Passenger the test started last stood, as a call it never answered says, or
+    /// how it ended where it had: a call to a Passenger gone waits out its limit, its client never told.</summary>
     private string Stacks()
     {
         Process? last;
@@ -502,7 +503,18 @@ public abstract class McpRig : IDisposable
         {
             last = passengers.Count == 0 ? null : passengers[^1];
         }
-        return last is null || !DotnetProcesses.Runs(last.Id) ? string.Empty : ManagedStacks.Describe("Where Passenger's threads were", last.Id);
+        if (last is null)
+        {
+            return string.Empty;
+        }
+        if (DotnetProcesses.Runs(last))
+        {
+            return ManagedStacks.Describe("Where Passenger's threads were", last.Id);
+        }
+        last.WaitForExit();
+        // .NET gives a child a signal ended on macOS and Linux 128 and the signal's number.
+        return $"\nPassenger (process {last.Id}) had ended, with exit code {last.ExitCode}"
+            + (!OperatingSystem.IsWindows() && last.ExitCode > 128 ? $", by signal {last.ExitCode - 128}" : string.Empty);
     }
 
     /// <summary>What Passenger said before something went wrong: its standard error, and the end of its log, of its C#
