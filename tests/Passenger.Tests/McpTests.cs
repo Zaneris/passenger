@@ -89,7 +89,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     {
         await Flow.StepApartAsync("an agent where global json asks for an SDK not installed hears so from workspace and run", () => new McpTests(restored), t => t.An_agent_where_global_json_asks_for_an_SDK_not_installed_hears_so_from_workspace_and_run());
         await Flow.StepApartAsync("an agents own Passenger trusts the folder it was started on and says so", () => new McpTests(restored), t => t.An_agents_own_Passenger_trusts_the_folder_it_was_started_on_and_says_so());
-        await Flow.StepApartAsync("an agent whose projects have no SDK hears why from each code tool rather than nothing found", () => new McpTests(restored), t => t.An_agent_whose_projects_have_no_SDK_hears_why_from_each_code_tool_rather_than_nothing_found());
+        await Flow.StepApartAsync("an agent whose projects have no SDK or whose language server could not start hears why from each code tool at once rather than nothing found", () => new McpTests(restored), t => t.An_agent_whose_projects_have_no_SDK_or_whose_language_server_could_not_start_hears_why_from_each_code_tool_at_once_rather_than_nothing_found());
         await Flow.StepApartAsync("an agent asking of a project that did not load hears why and the loaded one answers", () => new McpTests(restored), t => t.An_agent_asking_of_a_project_that_did_not_load_hears_why_and_the_loaded_one_answers());
         await Flow.StepApartAsync("an agents question after its change of a project file waits for the project to load again", () => new McpTests(restored), t => t.An_agents_question_after_its_change_of_a_project_file_waits_for_the_project_to_load_again());
         await Flow.StepApartAsync("an agent on a folder whose solution does not read hears where and why from workspace", () => new McpTests(restored), t => t.An_agent_on_a_folder_whose_solution_does_not_read_hears_where_and_why_from_workspace());
@@ -366,8 +366,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>The code tools asked of a folder whose projects have no SDK to load with, its language server ready with
-    /// none of their code: each says so, why and what mends it, as workspace does, never an empty answer.</summary>
-    private async Task An_agent_whose_projects_have_no_SDK_hears_why_from_each_code_tool_rather_than_nothing_found()
+    /// none of their code: each says so, why and what mends it, as workspace does, never an empty answer. Of a folder whose
+    /// language server could not start (its folder missing), each refuses at once saying why, folder-wide diagnostics too,
+    /// where each waited out its limit and said the server was still loading.</summary>
+    private async Task An_agent_whose_projects_have_no_SDK_or_whose_language_server_could_not_start_hears_why_from_each_code_tool_at_once_rather_than_nothing_found()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-no-sdk-code-"));
         DeleteAtEnd(folder);
@@ -385,6 +387,21 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             CallToolResult answer = await Result(client, tool, arguments);
             Assert.True(answer.IsError == true && Text(answer).Contains(Missing, StringComparison.Ordinal),
                 $"{tool} {JsonSerializer.Serialize(arguments)}, of a project with no SDK to load with, answered: {Text(answer)}");
+        }
+
+        string unstarted = PathNames.Canonical(TestFolders.Create("mcp-no-server-"));
+        DeleteAtEnd(unstarted);
+        File.WriteAllText(Path.Combine(unstarted, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(unstarted, "Greeter.cs"), Greeter);
+        File.WriteAllText(Path.Combine(unstarted, "Caller.cs"), Caller);
+        await using McpClient serverless = await Start(["--mcp", unstarted],
+            environment: new() { [global::Passenger.Lsp.RoslynServerFolder.ServerVariable] = Path.Combine(unstarted, "no-server") });
+        string couldNot = Refusals.CSharpUnavailable("The Roslyn language server is missing");
+        foreach ((string tool, Dictionary<string, object?> arguments) in CodeAsks("Greeter.cs", "Caller.cs").Append((McpTools.Diagnostics, new())))
+        {
+            CallToolResult answer = await Result(serverless, tool, arguments);
+            Assert.True(answer.IsError == true && Text(answer).Contains(couldNot, StringComparison.Ordinal),
+                $"{tool} {JsonSerializer.Serialize(arguments)}, where the language server could not start, answered: {Text(answer)}");
         }
     }
 

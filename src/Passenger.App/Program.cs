@@ -60,6 +60,7 @@ internal static class Program
             _ = Mcp.McpHost.StartsLanguageServer;
             _ = MainWindow.WatchSaysLater;
             _ = CSharp.CSharpService.SlowLoad;
+            _ = Lsp.RoslynServerFolder.ServerFrom;
             _ = Editors.TypingPauses.Diagnostics;
             _ = Mcp.AgentCall.Every;
             _ = Mcp.PassengerTools.ServerLimit;

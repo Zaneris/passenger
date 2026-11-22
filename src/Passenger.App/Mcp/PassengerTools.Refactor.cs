@@ -500,7 +500,8 @@ public sealed partial class PassengerTools
 
     /// <summary>Optimize Imports or Code Cleanup, as the window's command makes it, on a file or on each C# file of a
     /// project or of the solution: those open first, each as its own command makes it, then those not open, read without a
-    /// tab, as one command that Undo takes back whole.</summary>
+    /// tab, as one command that Undo takes back whole; one the language server holds in no project yet left as it is,
+    /// saying why, as a file's alone is refused.</summary>
     private async Task<RefactorAnswer> TidyAsync(string kind, string? path, JsonElement? options, bool describe, CancellationToken cancel)
     {
         bool cleanup = kind == "code_cleanup";
@@ -553,6 +554,7 @@ public sealed partial class PassengerTools
         }
         // Answers before the server has loaded the solution as it stands come from a file it knows alone, or from the code before.
         await SettledServer(cancel);
+        IReadOnlyList<(string Path, string Project)> untaken = await UntakenAsync(cancel) ?? [];
         CSharpService service = Session.CSharp ?? throw new InvalidOperationException(Session.WhyNoCSharp);
         List<RefactorFile> tidied = [];
         List<string> left = [];
@@ -560,6 +562,11 @@ public sealed partial class PassengerTools
         foreach (OpenDocument open in Editors.Documents.Where(d => named.Contains(d.Path)).ToList())
         {
             cancel.ThrowIfCancellationRequested();
+            if (Untaken(open.Path) is { } notTaken)
+            {
+                left.Add(notTaken);
+                continue;
+            }
             await Tidied(open, service.For(open)?.Lsp);
         }
         using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.RecordWrites(name))
@@ -568,6 +575,11 @@ public sealed partial class PassengerTools
             foreach (string file in files.Where(f => !shown.Contains(f)))
             {
                 cancel.ThrowIfCancellationRequested();
+                if (Untaken(file) is { } notTaken)
+                {
+                    left.Add(notTaken);
+                    continue;
+                }
                 recording.Watch(file);
                 if (Editors.Borrow(file) is not ({ } borrowed, { } hold))
                 {
@@ -591,6 +603,11 @@ public sealed partial class PassengerTools
         }
         await LandedAsync(cancel);
         return new RefactorAnswer(kind, $"{name} changed {Numbers.Said(tidied.Count)} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);
+
+        // A file the server holds in no project yet, or whose project it has not loaded again, is refused as a file's tidy refuses it.
+        string? Untaken(string file) => untaken.FirstOrDefault(u => PathNames.Same(u.Path, file)
+            || CSharpService.IsReload(u) && Session.ProjectOf(file) is { } owner && PathNames.Same(owner.Path, u.Project)) is { Path: not null } waited
+            ? NotTakenIn([waited]) : null;
 
         async Task Tidied(OpenDocument document, LspDocument? lsp)
         {

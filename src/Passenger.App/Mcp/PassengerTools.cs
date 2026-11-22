@@ -3565,10 +3565,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new InvalidOperationException(Session.WhyNoCSharp);
         }
         // The session's server, which starts again when its projects change: each look is at the one there is then.
-        if (Session.CSharp is { IsReady: false })
+        if (Session.CSharp is { IsReady: false } && ServerDown() is null)
         {
             AgentCall.Say("Waiting for the C# language server to load the solution");
-            await When(() => Session.CSharp is not { IsReady: false, IsStopped: false } || Unloadable() is not null, ServerLimit, cancel, ServerState(), SdkState());
+            await When(() => Session.CSharp is not { IsReady: false } || ServerDown() is not null || Unloadable() is not null, ServerLimit, cancel, ServerState(), SdkState());
             AgentCall.Say(null);
         }
         if (Unloadable() is null && Session.CSharp is { IsReady: true })
@@ -3577,9 +3577,18 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         return Unloadable() is { } found ? throw new InvalidOperationException(found)
             : Session.CSharp is { IsReady: true, Session: { } server } ? server
-            : Session.CSharp is { IsStopped: true } ? throw new InvalidOperationException(Refusals.CSharpStopped)
+            : ServerDown() is { } down ? throw new InvalidOperationException(down)
             : throw new TimeoutException(Refusals.StillLoading(ServerLimit, Session.CSharp?.State ?? "none"));
     }
+
+    /// <summary>Why the C# language server will answer nothing however long a question waits, in Refusals' words: left
+    /// stopped, or unable to start; null while it runs or starts.</summary>
+    private string? ServerDown() => Session.CSharp switch
+    {
+        { IsStopped: true } => Refusals.CSharpStopped,
+        { Unavailable: { } why } => Refusals.CSharpUnavailable(why),
+        _ => null,
+    };
 
     /// <summary>The folder's projects found to have no .NET SDK, or one again: what a wait for the server's load wakes on too.</summary>
     private Wake SdkState()
@@ -3728,9 +3737,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             AgentCall.Say(null);
         }
-        if (Session.CSharp is { IsStopped: true })
+        if (ServerDown() is { } down)
         {
-            throw new InvalidOperationException(Refusals.CSharpStopped);
+            throw new InvalidOperationException(down);
         }
         if (waited && Session.CSharp?.RanOutReading is { } ranOut && ranOut.At > began)
         {
@@ -3748,7 +3757,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
         bool Settled()
         {
-            if (Session.CSharp is not { } csharp || csharp.IsStopped)
+            if (Session.CSharp is not { } csharp || ServerDown() is not null)
             {
                 return settled = true;
             }
@@ -3818,7 +3827,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             return await Code(path, cancel);
         }
         OpenDocument copy = await DocumentAsync(path, cancel);
-        await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
+        await When(() => Session.CSharp is not { IsReady: false } || ServerDown() is not null, ServerLimit, cancel, ServerState());
+        if (ServerDown() is { } down)
+        {
+            throw new InvalidOperationException(down);
+        }
         (LspDocument? lsp, string? why) = Session.CSharp is { } service ? await service.Generated.AskableAsync(copy, cancel) : (null, Session.WhyNoCSharp);
         return lsp is null ? throw new InvalidOperationException(why) : (copy, lsp);
     }

@@ -119,7 +119,7 @@ public sealed partial class PassengerTools
         if (Bdd.FeatureChecks.IsFeature(document.Path))
         {
             // Its steps are matched once the C# server has read the step definitions.
-            await When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
+            await When(() => Session.CSharp is not { IsReady: false } || ServerDown() is not null, ServerLimit, cancel, ServerState());
             return new FeatureServed(document);
         }
         if (document.Language.Service == Languages.LanguageService.CSharp)
@@ -296,7 +296,7 @@ public sealed partial class PassengerTools
 
     /// <summary>Waits for the C# server to load the workspace, when one runs: an element's field is found in the code-behind
     /// through it, as a C# symbol's usages are, and before it has loaded none are.</summary>
-    private Task CodeBehindRead(CancellationToken cancel) => When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
+    private Task CodeBehindRead(CancellationToken cancel) => When(() => Session.CSharp is not { IsReady: false } || ServerDown() is not null, ServerLimit, cancel, ServerState());
 
     /// <summary>Waits, for a place in a MAUI page's C# expression, as a question of the page's C# waits (<see cref="Code"/>),
     /// the expression being answered from the code MAUI's generator makes: until the server holds the C# files come under

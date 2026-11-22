@@ -629,8 +629,12 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// (<see cref="Restart"/>).</summary>
     public bool IsStopped { get; private set; }
 
-    /// <summary>Whether the server could not start, <see cref="State"/> saying why, until it is started again.</summary>
-    public bool IsUnavailable { get; private set; }
+    /// <summary>Why the server could not start, in the words of what stopped it, until it is started again; null while it
+    /// could.</summary>
+    public string? Unavailable { get; private set; }
+
+    /// <summary>Whether the server could not start, <see cref="Unavailable"/> saying why, until it is started again.</summary>
+    public bool IsUnavailable => Unavailable is not null;
 
     /// <summary>The server ended on its own or stopped answering, with what was done about it: started again, or left stopped
     /// (<see cref="IsStopped"/>), saying why. Raised on the UI thread.</summary>
@@ -1308,7 +1312,8 @@ public sealed partial class CSharpService : IAsyncDisposable
         starting?.Cancel();
         CancellationTokenSource cancel = new();
         starting = cancel;
-        IsStopped = IsUnavailable = false;
+        IsStopped = false;
+        Unavailable = null;
         reloadingRestored = restoreFailed = restoringTheirs = restoredLoaded = false;
         restoring.Clear();
         restoredNone.Clear();
@@ -1741,7 +1746,7 @@ public sealed partial class CSharpService : IAsyncDisposable
             string why = error is LanguageServerFailed failed ? failed.Reason : error.Message;
             IdeErrors.Write($"The C# language server could not start for {opening.Folder}: {error}");
             Progress = null;
-            IsUnavailable = true;
+            Unavailable = why;
             SetState($"C# unavailable: {why}");
         }
         finally

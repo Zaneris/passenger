@@ -455,13 +455,14 @@ public sealed class LanguageServer : IAsyncDisposable
     public static async Task<LanguageServer> StartRoslynAsync(string folder, string logFolder, CancellationToken cancel, IReadOnlyDictionary<string, object>? options = null,
         string? stateCache = null)
     {
-        string carried = Path.Combine(RoslynServerFolder.Carried, RoslynServerFolder.Assembly);
+        string from = RoslynServerFolder.ServerFrom;
+        string carried = Path.Combine(from, RoslynServerFolder.Assembly);
         if (!File.Exists(carried))
         {
             throw new FileNotFoundException("The Roslyn language server is missing from the app's folder.", carried);
         }
-        string? copy = await RoslynServerFolder.CopyAsync(stateCache, cancel).ConfigureAwait(false);
-        string server = Path.Combine(copy ?? RoslynServerFolder.Carried, RoslynServerFolder.Assembly);
+        string? copy = await RoslynServerFolder.CopyAsync(from, stateCache, cancel).ConfigureAwait(false);
+        string server = Path.Combine(copy ?? from, RoslynServerFolder.Assembly);
         Directory.CreateDirectory(logFolder);
         List<string> arguments =
         [

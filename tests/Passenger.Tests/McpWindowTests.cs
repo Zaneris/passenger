@@ -860,7 +860,8 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A file come into a project while the language server's load of the project again for it is held (its
     /// design-time builds not yet given), so in none of the server's projects once the wait for it runs out: an agent's
     /// find_symbol over the solution answers with what the loaded code declares, naming the file it went without, where it
-    /// was refused whole; a tool asked of a file of that project still waits for it, refused naming it once the wait runs out.</summary>
+    /// was refused whole; a tool asked of a file of that project still waits for it, refused naming it once the wait runs out,
+    /// and the project's Optimize Imports leaves it as it is saying so, where it tidied it from no project.</summary>
     private void An_agents_find_symbol_answers_without_a_file_still_loading_naming_it_while_a_tool_of_its_project_waits_for_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-still-loading-"));
@@ -874,7 +875,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task held = window.Session.DesignTimeBuilds.HoldNextAsked(lib, building.Task);
-            TestFolders.Write(folder, "Lib/Late.cs", "namespace Lib;\n\npublic static class Late\n{\n}\n");
+            string written = TestFolders.Write(folder, "Lib/Late.cs", "using System.Text;\n\nnamespace Lib;\n\npublic static class Late\n{\n}\n");
             // Pumped, not settled: the server's load held waits on the window.
             Ui.PumpUntil(() => held.IsCompleted, "the server's load of Lib again, for the file come into it, to be held", AgentLimit);
             string late = Path.Combine("Lib", "Late.cs");
@@ -892,6 +893,17 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             string answered = Text(asked);
             Assert.True(asked.IsError == true && answered.Contains(Refusals.NotTakenIn(late, "Lib"), StringComparison.Ordinal),
                 $"symbol_info in Lib, asked while Late.cs is still loading into it, did not wait for Late.cs and say so: {answered}");
+
+            Task<CallToolResult> tidying = Waiting.Apart(() => Result(client, McpTools.Refactor,
+                new() { ["kind"] = "optimize_imports", ["path"] = "Lib/Lib.csproj", ["options"] = new { scope = "project" } }));
+            Ui.PumpUntil(() => Questions(window).Any(), "the question for the agent's Optimize Imports", AgentLimit);
+            // Pumped, not settled: the server's load held waits on the window.
+            Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(Questions(window).Single()).OfType<Avalonia.Controls.Button>()
+                .First(b => (string?)b.Content == AgentToolDialog.AllowForSession), settle: false);
+            CallToolResult tidied = Ui.AwaitPumped(tidying, "the agent's Optimize Imports of Lib", AgentLimit);
+            string[] left = tidied.IsError == true ? [] : [.. JsonDocument.Parse(Text(tidied)).RootElement.GetProperty("notApplied").EnumerateArray().Select(l => l.GetString()!)];
+            Assert.True(left.Contains(Refusals.NotTakenIn(late, "Lib")) && File.ReadAllText(written).StartsWith("using System.Text;", StringComparison.Ordinal),
+                $"Optimize Imports of Lib, asked while Late.cs is still loading into it, did not leave Late.cs as it is saying why: {Text(tidied)}");
         }
         finally
         {

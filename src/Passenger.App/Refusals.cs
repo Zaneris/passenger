@@ -130,6 +130,10 @@ public static class Refusals
     /// <summary>The C# language server ended too often and was left stopped, until a person starts it again.</summary>
     public const string CSharpStopped = "The C# language server ended too often and was left stopped until it is started again";
 
+    /// <summary>The C# language server could not start, why in the words of what stopped it, until a person starts it again.</summary>
+    public static string CSharpUnavailable(string why) =>
+        $"The C# language server could not start, so it has none of the folder's code to answer from until it is started again: {why}";
+
     /// <summary>The folder's C# language server asked of has not started yet, or has ended: a clause, after what it stopped
     /// or as <see cref="Passenger.Lsp.LanguageServerFailed"/>'s reason, or a sentence through <see cref="Sentence"/>.</summary>
     public const string CSharpNotRunning = "the C# language server is not running";
