@@ -1890,17 +1890,18 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         if (Folder is not null)
         {
-            Read(WorkspaceModel.ReadSolution(Folder, NamedSolution, out UnreadSolution? unread), unread);
+            Read(WorkspaceModel.ReadSolution(Folder, NamedSolution, out UnreadSolution? unread, out string? none), unread, none);
         }
     }
 
     /// <summary>The same folder opened again, with the solution or project named this time, or none: the folder is read
-    /// again with it, and the language server starts again only when what it loads changed.</summary>
-    public void Reopen(string? named, WorkspaceModel? withSolution, UnreadSolution? unread)
+    /// again with it, and the language server starts again only when what it loads changed. Why its read found no solution
+    /// is <paramref name="none"/> (<see cref="WorkspaceModel.NoSolution"/>).</summary>
+    public void Reopen(string? named, WorkspaceModel? withSolution, UnreadSolution? unread, string? none)
     {
         NamedSolution = named;
         OpenedByPerson(withSolution);
-        Read(withSolution, unread);
+        Read(withSolution, unread, none);
     }
 
     /// <summary>A solution opened outside an agent's call is the person's to reach from, what an agent wrote of it taken as
@@ -1917,12 +1918,12 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Takes the folder's solution, read now, with the programs beside it it had; or for a folder without one (or
-    /// with one that does not read, <paramref name="unread"/>) the projects it had, read again now; and those added or gone
-    /// since once a worker has walked its folders for them.</summary>
-    private void Read(WorkspaceModel? withSolution, UnreadSolution? unread)
+    /// with one that does not read, <paramref name="unread"/>; why none, <paramref name="none"/>) the projects it had, read
+    /// again now; and those added or gone since once a worker has walked its folders for them.</summary>
+    private void Read(WorkspaceModel? withSolution, UnreadSolution? unread, string? none)
     {
         reads++;
-        Reload(withSolution?.KeepingPrograms(Workspace!) ?? Workspace!.Reread() with { Unread = unread });
+        Reload(withSolution?.KeepingPrograms(Workspace!) ?? Workspace!.Reread() with { Unread = unread, NoSolution = none });
         WalkForProjects();
     }
 
@@ -1991,6 +1992,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// solution, or other projects.</summary>
     private void Reload(WorkspaceModel read)
     {
+        if (Workspace?.Solution is { } had && read.Solution is null && read.ProjectFile is null)
+        {
+            IdeLog.Write(IdeLog.Ide, $"A read of {Folder} found no solution where it had {had.Path}: {read.NoSolution ?? "its read gave no reason"}");
+        }
         bool loaded = Workspace is not null && Workspace.LoadsAs(read);
         IReadOnlyList<string>? programs = loaded ? null : Workspace?.ProgramsAddedIn(read);
         TakeFilter(read);

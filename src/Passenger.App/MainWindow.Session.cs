@@ -173,14 +173,14 @@ public partial class MainWindow
     /// named), read with that one, its files and what it runs kept.</summary>
     private void ReadAgain(string folder, string? named)
     {
-        WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named ?? session.NamedSolution, out UnreadSolution? unread);
+        WorkspaceModel? withSolution = WorkspaceModel.ReadSolution(folder, named ?? session.NamedSolution, out UnreadSolution? unread, out string? none);
         if ((withSolution?.OpenedAs ?? folder) == session.Workspace?.OpenedAs)
         {
-            session.Reopen(session.NamedSolution, withSolution, unread);
+            session.Reopen(session.NamedSolution, withSolution, unread, none);
             return;
         }
         Autosave();
-        session.Reopen(named, withSolution, unread);
+        session.Reopen(named, withSolution, unread, none);
         Explorer.Load(session.Workspace!, explorerView);
         ShowWorkspaceName();
         UpdateStatus();

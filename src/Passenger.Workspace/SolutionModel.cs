@@ -70,15 +70,28 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
     /// <summary>The solution at a folder's top: the one named for the folder if there are several, and of a .sln and a
     /// .slnx alike the .slnx, which <c>dotnet sln migrate</c> writes beside the .sln it leaves; none in a folder that is
     /// gone (deleted under the window) or cannot be read. The window asks <see cref="WorkspaceModel"/>, never this.</summary>
-    public static string? Find(string folder)
+    public static string? Find(string folder) => Find(folder, out _);
+
+    /// <summary>The solution at a folder's top as <see cref="Find(string)"/> finds it; where there is none, why in
+    /// <paramref name="none"/>, as the listing found it: the folder could not be listed, or it lists no solution (its first
+    /// few files named).</summary>
+    public static string? Find(string folder, out string? none)
     {
-        List<string> found;
+        none = null;
+        List<string> files;
         try
         {
-            found = [.. Directory.EnumerateFiles(folder).Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".sln" or ".slnx")];
+            files = [.. Directory.EnumerateFiles(folder)];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
+            none = $"{folder} could not be listed: {error.Message}";
+            return null;
+        }
+        List<string> found = [.. files.Where(f => System.IO.Path.GetExtension(f).ToLowerInvariant() is ".sln" or ".slnx")];
+        if (found.Count == 0)
+        {
+            none = $"{folder} lists no .sln or .slnx at its top, {Listed(files)}";
             return null;
         }
         string name = System.IO.Path.GetFileName(folder);
@@ -87,6 +100,18 @@ public sealed record SolutionModel(string Path, string Name, IReadOnlyList<Solut
             .ThenBy(f => f.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(f => f, StringComparer.Ordinal)
             .FirstOrDefault();
+    }
+
+    /// <summary>The files a folder's top lists, by name, the first ten of them in order.</summary>
+    private static string Listed(List<string> files)
+    {
+        const int Named = 10;
+        if (files.Count == 0)
+        {
+            return "where it lists no file";
+        }
+        List<string> names = [.. files.Select(System.IO.Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal).Take(Named)];
+        return $"where it lists {string.Join(", ", names)}{(files.Count > Named ? $" and {files.Count - Named} more" : string.Empty)}";
     }
 
     private static SolutionModel LoadSlnx(string path)

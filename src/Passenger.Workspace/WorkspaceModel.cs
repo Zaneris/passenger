@@ -29,6 +29,10 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     /// null for any other workspace.</summary>
     public UnreadSolution? Unread { get; init; }
 
+    /// <summary>Why the read found no solution, in words for the log: the one named is gone, the folder lists none or could
+    /// not be listed, or the solution did not read; null where it found one, or was opened as a project.</summary>
+    public string? NoSolution { get; init; }
+
     /// <summary>The solution file it was read from and the filter it was read through, each stamped just before it was read:
     /// one whose stamp no longer holds was written since.</summary>
     public IReadOnlyList<Stamp> ReadFrom { get; init; } = [];
@@ -164,9 +168,9 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
     public static WorkspaceModel Read(string folder, string? named = null)
     {
         List<string> games = [];
-        return ReadSolution(folder, named, out UnreadSolution? unread) is { } read
+        return ReadSolution(folder, named, out UnreadSolution? unread, out string? none) is { } read
             ? read.WithPrograms(Walk(folder, [.. read.Projects.Where(p => !p.IsProgram).Select(p => p.Folder)], games)) with { GodotGames = games }
-            : new WorkspaceModel(folder, null, [.. Walk(folder, null, games).Select(ProjectModel.Unevaluated)]) { Unread = unread, GodotGames = games };
+            : new WorkspaceModel(folder, null, [.. Walk(folder, null, games).Select(ProjectModel.Unevaluated)]) { Unread = unread, NoSolution = none, GodotGames = games };
     }
 
     /// <summary>The folders of the Godot projects its walk found with no C# project of their own: a project.godot in a
@@ -195,18 +199,28 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
 
     /// <summary>A folder read as <see cref="ReadSolution(string, string?)"/> reads it, with why its solution did not read in
     /// <paramref name="unread"/> when that is why there is none.</summary>
-    public static WorkspaceModel? ReadSolution(string folder, string? named, out UnreadSolution? unread)
+    public static WorkspaceModel? ReadSolution(string folder, string? named, out UnreadSolution? unread) => ReadSolution(folder, named, out unread, out _);
+
+    /// <summary>A folder read as <see cref="ReadSolution(string, string?, out UnreadSolution?)"/> reads it, with why it found
+    /// no solution in <paramref name="none"/>, in words for the log, where it found none (<see cref="NoSolution"/>).</summary>
+    public static WorkspaceModel? ReadSolution(string folder, string? named, out UnreadSolution? unread, out string? none)
     {
         unread = null;
+        none = null;
         if (named is not null && IsProject(named) && File.Exists(named))
         {
             return new WorkspaceModel(folder, null, [ProjectModel.Unevaluated(named)]) { ProjectFile = named };
         }
-        string? path = named is not null && IsSolution(named) && File.Exists(named) ? named : SolutionModel.Find(folder);
+        string? path = named is not null && IsSolution(named) && File.Exists(named) ? named : SolutionModel.Find(folder, out none);
+        if (path is null && named is not null && !File.Exists(named))
+        {
+            none = $"{named}, which it was opened by, is not there, and {none}";
+        }
         List<Stamp> stamped = path is null ? [] : [Stamps.File(path)];
         SolutionFilter? filter = path is not null && SolutionFilter.Is(path) ? SolutionFilter.Read(path) : null;
         if (path is not null && SolutionFilter.Is(path))
         {
+            none = filter is null ? $"the solution filter {path} did not read, or names no solution" : null;
             path = filter?.Solution;
             if (path is not null)
             {
@@ -214,13 +228,19 @@ public sealed record WorkspaceModel(string Folder, SolutionModel? Solution, IRea
             }
         }
         // A Docker Compose project is read as XML for its run configurations, a shared project for its files: neither loads.
-        return path is not null && SolutionModel.Load(path, out unread) is { } solution
-            ? new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path) && !Workspace.SharedProjects.Is(p.Path))])
+        if (path is not null && SolutionModel.Load(path, out unread) is { } solution)
+        {
+            return new WorkspaceModel(folder, solution, [.. solution.Projects.Where(p => !IsComposeProject(p.Path) && !Workspace.SharedProjects.Is(p.Path))])
             {
                 Filter = filter,
                 ReadFrom = stamped,
-            }
-            : null;
+            };
+        }
+        if (unread is not null)
+        {
+            none = $"{unread.Path} did not read{(unread.Line > 0 ? $" at line {unread.Line}, column {unread.Column}" : string.Empty)}: {unread.Why}";
+        }
+        return null;
     }
 
     /// <summary>The solution's shared projects (.shproj), each the home of the files its items file brings into the projects
