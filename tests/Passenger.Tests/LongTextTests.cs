@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// <summary>The editor as quick on long text as on short: a line of a million characters (minified code, a program's
 /// output with no breaks) is typed in and moved through at the cost of a short one, as only what is on screen of it is
 /// laid out; carets stop at a thousand, and say so; and the sideways scroll is as wide as what is there.</summary>
+[SameOnEverySystem]
 public sealed class LongTextTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("long-");

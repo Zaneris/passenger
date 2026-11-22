@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// names it and where it came from, a save trims, ends and writes the file as the .editorconfig asks, and an
 /// .editorconfig changed on disk is followed at once. A section whose glob cannot be used matches no file, marked in
 /// the open .editorconfig.</summary>
+[SameOnEverySystem]
 public sealed class IndentationTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("indent-"));

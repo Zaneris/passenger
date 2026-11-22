@@ -342,6 +342,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
 
 /// <summary>A key in a long soft-wrapped file costs the line it changed, never a wrap of the whole file, and about what it
 /// costs with soft wrap off, in the characters it wraps and the bytes it allocates on the UI thread.</summary>
+[SameOnEverySystem]
 public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
 {
     /// <summary>A key in twenty thousand soft-wrapped lines wraps only the line it changed, a key in a screen of

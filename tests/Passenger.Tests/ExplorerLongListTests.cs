@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// <summary>The Explorer with every folder open, thousands of rows long: its scrollbar's thumb stays under the pointer
 /// through a drag, a scroll step hands the rows on screen other files rather than making them again, and what the UI
 /// thread does for a step, a file written elsewhere or File Nesting turned off costs what it does in a short list.</summary>
+[SameOnEverySystem]
 public sealed class ExplorerLongListTests : IDisposable
 {
     private readonly List<string> folders = [];

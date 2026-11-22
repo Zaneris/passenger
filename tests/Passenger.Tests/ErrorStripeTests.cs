@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 
 /// <summary>The error stripe on the editor's scrollbar, its problems set as the language server sets them: what a mark
 /// says under the pointer, how it is drawn, and that keeping the marks costs a change, not a frame.</summary>
+[SameOnEverySystem]
 public sealed class ErrorStripeTests
 {
     private const string Unused = "CS0219: The variable is assigned but its value is never used";

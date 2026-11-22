@@ -8,8 +8,9 @@ using System.Text.RegularExpressions;
 namespace Passenger.Tests;
 
 /// <summary>What a class marked [SameOnEverySystem] may run, read from the built tests: the mark keeps it to one system's
-/// report lane, so nothing it runs may behave otherwise on another, the C# language server, the project host's reads and
-/// the language servers whose answers it reads counted alike everywhere. Read are its tests, constructors and disposal,
+/// report lane, so nothing it runs may behave otherwise on another, the C# language server, the project host's reads, the
+/// language servers whose answers it reads and what its own thread allocates under the headless platform counted alike
+/// everywhere. Read are its tests, constructors and disposal,
 /// its bases', its class fixtures' and every method of the tests they reach (a lambda's, an async method's body): a call
 /// out of the tests is held to <see cref="Differing"/>, a helper of theirs to <see cref="DifferingHelpers"/>, the actions
 /// they name to <see cref="Starting"/>, its own words to naming no system and no Godot project's file. What the IL cannot
@@ -77,8 +78,7 @@ public sealed partial class SameOnEverySystemRulesTests
         ("System.Net.Sockets.", "speaks through the system's sockets"),
         ("System.Net.Http.", "speaks through the system's sockets"),
         ("System.Net.HttpListener", "speaks through the system's sockets"),
-        ("System.GC::GetAllocatedBytesForCurrentThread", "measures what the system's runtime, drawing and text shaping allocate"),
-        ("System.GC::GetTotalAllocatedBytes", "measures what the system's runtime, drawing and text shaping allocate"),
+        ("System.GC::GetTotalAllocatedBytes", "counts every thread's allocations, the system's runtime's own among them"),
         ("Xunit.Assert::Skip", "skips"),
     ];
 
@@ -132,8 +132,9 @@ public sealed partial class SameOnEverySystemRulesTests
 
     /// <summary>A class marked [SameOnEverySystem] starts no process, build, run, terminal, debugger, Git or container of its
     /// own, no browser, file watcher, socket, font, shaping, screen reader, input method, system key or path separator,
-    /// asks no system's name, measures no allocation and skips nothing; it is in neither the gate, which runs on every
-    /// system, nor the Alone collection, whose classes hold to a time, debug or count every thread's allocations.</summary>
+    /// asks no system's name, counts no allocation but its own thread's and skips nothing; it is in neither the gate,
+    /// which runs on every system, nor the Alone collection, whose classes hold to a time, debug or count every thread's
+    /// allocations.</summary>
     [Fact]
     public void A_class_marked_same_on_every_system_runs_nothing_that_behaves_otherwise_on_another()
     {

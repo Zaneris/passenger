@@ -11,6 +11,7 @@ namespace Passenger.Tests;
 /// <summary>The Explorer's filter: Find's keys give it the keys, its text narrows the tree to the files whose names hold
 /// it with their folders, in the Solution view and the Files view, Down takes the keys into the tree, and Escape empties it
 /// and gives the tree its keys back, the rows open again as they were.</summary>
+[SameOnEverySystem]
 public sealed class ExplorerFilterTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("explorer-filter-"));
@@ -192,7 +193,7 @@ public sealed class ExplorerFilterTests : IDisposable
             ?? throw new InvalidOperationException($"The Explorer does not show {path}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
     }
 
-    private string At(string relative) => Path.Combine(folder, relative.Replace('/', Path.DirectorySeparatorChar));
+    private string At(string relative) => Path.GetFullPath(Path.Combine(folder, relative));
 
     private MainWindow Open()
     {

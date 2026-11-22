@@ -8,6 +8,7 @@ namespace Passenger.Tests;
 /// copies the path, or a key holding it, for each test. What the model keeps it makes, so a bound on what it makes bounds
 /// what it keeps (#1247).</summary>
 [Collection(Beside.Name)]
+[SameOnEverySystem]
 public sealed class TestModelMemoryTests
 {
     private const int Classes = 250;

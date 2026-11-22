@@ -6,10 +6,11 @@ namespace Passenger.Tests;
 
 /// <summary>A report class whose subject behaves the same on every system: CI's report lane runs it on one system alone,
 /// the others leaving it out by its trait, SameOnEverySystem=true (tools/test-shards.py's ONE_SYSTEM). The C# language
-/// server, the projects it and the project host read and the language servers whose answers a test reads count as alike
-/// everywhere; nothing else another system could do otherwise may run. <see cref="SameOnEverySystemRulesTests"/> holds
-/// that from the built tests, and each IDE window a marked test opens is followed: the programs started in its folder
-/// (<see cref="Started"/>) and Git as it closes (<see cref="Follow"/>).</summary>
+/// server, the projects it and the project host read, the language servers whose answers a test reads and what a test's
+/// own thread allocates under the headless platform count as alike everywhere; nothing else another system could do
+/// otherwise may run. <see cref="SameOnEverySystemRulesTests"/> holds that from the built tests, and each IDE window a
+/// marked test opens is followed: the programs started in its folder (<see cref="Started"/>) and Git as it closes
+/// (<see cref="Follow"/>).</summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
 public sealed class SameOnEverySystemAttribute : Attribute, ITraitAttribute
 {

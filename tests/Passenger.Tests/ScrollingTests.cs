@@ -18,6 +18,7 @@ namespace Passenger.Tests;
 /// make no shape for the squiggles and marks they move, and the error stripe is drawn as the rectangles its track has room
 /// for, never one for each line with a problem. The files are the project's from the start, so one warm server compiles
 /// them once. What it counts is the window's thread's own, which nothing beside it changes.</summary>
+[SameOnEverySystem]
 public sealed class ScrollingTests : IClassFixture<ScrollingTests.Project>
 {
     private readonly Project project;

@@ -623,6 +623,7 @@ public sealed class FileColoursTests : FileColoursFolder
 
 /// <summary>A key in a long file of a language TextMate colours costs the UI thread what one in a short file does, counted
 /// in the lines the grammar reads and the bytes the UI thread allocates.</summary>
+[SameOnEverySystem]
 public sealed class FileColoursResponsivenessTests : FileColoursFolder
 {
     /// <summary>A key colours only what it changed: in twenty thousand lines of XML or five thousand of Markdown it
