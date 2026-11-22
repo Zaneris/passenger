@@ -73,7 +73,7 @@ jobs:
             time_scale: 2
             processes: 2
     # The report lane's first shard on macOS, which runs the classes needing iOS's simulators and Mac Catalyst, is on the
-    # image with Xcode 27, whose SDKs .NET 11's iOS workload builds with; its minutes of set-up before the tests (SET_UP)
+    # image with Xcode 27, whose SDKs .NET 11's iOS workload builds with; its minutes of set-up before the tests (MOBILE)
     # come on top of the others' 80.
     runs-on: ${{ matrix.system == 'macOS' && matrix.lane == 'report' && matrix.shard == 1 && 'xcode-27' || matrix.os }}
     timeout-minutes: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' && 95 || 80 }}
@@ -83,14 +83,15 @@ jobs:
       LABEL: ${{ matrix.lane == 'gate' && 'Gate' || 'Report' }}, ${{ matrix.name }}, shard ${{ matrix.shard }} of ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
       # The job's tests' time, whichever lanes they are of.
       TEST_MINUTES: 60
-      # Whether this job sets up what the report lane's classes dealt apart need (test-shards.py's SET_UPS), which the
-      # report lane's first shard on macOS and Linux runs alone. Windows deals none apart: no Android emulator runs on its
-      # runner (no nested virtualization), no iOS app builds there, and its AppHosts keep their record in the person's
-      # profile, so the tests of a real one skip there.
-      SET_UP: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' }}
+      # Whether this job sets up what the report lane's classes needing a set-up of minutes need (test-shards.py's
+      # SET_UPS), each in one job on macOS and Linux: the mobile workloads and devices in the first shard's, which runs
+      # those classes alone, Aspire's own runtime in the second's. Windows sets up neither: no Android emulator runs on its
+      # runner (no nested virtualization), no iOS app builds there, and its tests of a real AppHost skip by design.
+      MOBILE: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' }}
+      ASPIRE: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system != 'Windows' }}
       # Aspire's dashboard and orchestrator, and the run's own aspire CLI, downloaded by the restore and named in the
       # tests' build (Passenger.Tests.csproj) where the job sets up for them.
-      PassengerAspireRuntime: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' }}
+      PassengerAspireRuntime: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system != 'Windows' }}
     defaults:
       run:
         shell: bash
@@ -187,7 +188,7 @@ jobs:
       # Catalyst's, with the Xcode the workload's iOS SDK names, whose simulators the tests boot themselves; and the JDK
       # the Android workload takes, as JAVA_HOME. What fails here only has the tests needing it skip, saying why.
       - name: The mobile workloads and the debug relays
-        if: env.SET_UP == 'true'
+        if: env.MOBILE == 'true'
         continue-on-error: true
         env:
           WORKLOADS: 11.0.100.1
@@ -205,15 +206,17 @@ jobs:
             xcode=$(ls -d "$DOTNET_ROOT"/packs/Microsoft.iOS.Sdk.net11.0_* | tail -n 1)
             sudo xcode-select --switch "/Applications/Xcode_${xcode##*_}.app"
             xcodebuild -version
+            xcrun simctl list runtimes
             dotnet restore tests/MauiGraphs/Android
             dotnet restore tests/MauiGraphs/iOS
             tools/debug-relay.sh apple
           fi
 
       # An emulator of Android 37 on Linux, KVM being the runner's own, started to boot while the solution builds, which
-      # the Android tests run on (ANDROID_SERIAL).
+      # the Android tests run on (ANDROID_SERIAL); its AVD where ANDROID_AVD_HOME names, which avdmanager, the emulator
+      # and the tests all read, as on the runner avdmanager otherwise writes where the emulator never looks.
       - name: An Android emulator
-        if: env.SET_UP == 'true' && runner.os == 'Linux'
+        if: env.MOBILE == 'true' && runner.os == 'Linux'
         continue-on-error: true
         env:
           IMAGE: system-images;android-37.0;default;x86_64
@@ -222,6 +225,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           tools=$ANDROID_HOME/cmdline-tools/latest/bin
+          export ANDROID_AVD_HOME=$RUNNER_TEMP/avd
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           { yes || true; } | "$tools/sdkmanager" --licenses > /dev/null
           "$tools/sdkmanager" --install emulator "$IMAGE" > /dev/null
           echo no | "$tools/avdmanager" create avd --force --name passenger --package "$IMAGE"
@@ -232,7 +238,7 @@ jobs:
       # Azure Functions Core Tools 4, whose func runs the Functions app a real AppHost adds, on the PATH: its release's
       # archive, its SHA-256 checked against the one the release gives.
       - name: Azure Functions Core Tools
-        if: env.SET_UP == 'true'
+        if: env.ASPIRE == 'true'
         continue-on-error: true
         run: |
           case "$RUNNER_OS" in
@@ -382,7 +388,7 @@ jobs:
           check=
           [ "$number" != 1 ] || check=--check
           apart=
-          [ "$SYSTEM" = Windows ] || apart="--apart aspire --apart mobile"
+          [ "$SYSTEM" = Windows ] || apart="--apart mobile --second aspire"
           "$python" -I tools/test-shards.py split "$results/suite.txt" --lane report --whole "$results/whole.txt" \
             --system "$SYSTEM" --of "$REPORT_SHARDS" --after artifacts/test-lists/gate.txt --after-of "$GATE_SHARDS" \
             --processes "$PROCESSES" --checks-first --out "$results/shards" $check $apart
@@ -445,7 +451,7 @@ jobs:
       # The emulator started before the build, booted (sys.boot_completed) before the tests; one that never boots leaves
       # the Android tests to start it themselves.
       - name: Wait for the Android emulator
-        if: env.SET_UP == 'true' && runner.os == 'Linux'
+        if: env.MOBILE == 'true' && runner.os == 'Linux'
         continue-on-error: true
         timeout-minutes: 12
         run: |
