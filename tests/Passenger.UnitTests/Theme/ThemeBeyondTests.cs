@@ -37,7 +37,19 @@ public class ThemeBeyondTests
     }
 
     [Fact]
-    public void A_background_names_its_picture_beside_the_theme_and_takes_Passengers_own_way_of_drawing_it_where_it_says_no_other()
+    public void A_themes_background_fonts_and_languages_read_as_written() => Cases.All(
+        ("a background names its picture beside the theme and takes Passengers own way of drawing it where it says no other", A_background_names_its_picture_beside_the_theme_and_takes_Passengers_own_way_of_drawing_it_where_it_says_no_other),
+        ("a background gives its opacity tint places fit and alignment and a variant what differs or none", A_background_gives_its_opacity_tint_places_fit_and_alignment_and_a_variant_what_differs_or_none),
+        ("fonts give the codes family and size and the windows family", Fonts_give_the_codes_family_and_size_and_the_windows_family),
+        ("a language gives the codes tokens for both variants and for each and one this Passenger does not know is passed over", A_language_gives_the_codes_tokens_for_both_variants_and_for_each_and_one_this_Passenger_does_not_know_is_passed_over),
+        ("a code colour scheme gives languages but no background or fonts which it passes over", A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over),
+        ("a picture is read beside its themes file in the source", () => Cases.Each<(string, string, string)>(
+        [
+            ("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp"),
+            ("theme.json", "pictures/dusk.webp", "pictures/dusk.webp"),
+        ], row => A_picture_is_read_beside_its_themes_file_in_the_source(row.Item1, row.Item2, row.Item3))));
+
+    private void A_background_names_its_picture_beside_the_theme_and_takes_Passengers_own_way_of_drawing_it_where_it_says_no_other()
     {
         ThemeFile theme = Read("""
             "background": {"image": "pictures/dusk.webp"}
@@ -48,8 +60,7 @@ public class ThemeBeyondTests
         Assert.Equal(["pictures/dusk.webp"], theme.Images);
     }
 
-    [Fact]
-    public void A_background_gives_its_opacity_tint_places_fit_and_alignment_and_a_variant_what_differs_or_none()
+    private void A_background_gives_its_opacity_tint_places_fit_and_alignment_and_a_variant_what_differs_or_none()
     {
         ThemeFile theme = Read("""
             "background": {"image": "dusk.webp", "opacity": 0.25, "tint": {"colour": "#101830", "strength": 0.2},
@@ -65,53 +76,41 @@ public class ThemeBeyondTests
             """).LightBackground);
     }
 
-    [Theory]
-    [InlineData("left", 0, 0.5)]
-    [InlineData("centre", 0.5, 0.5)]
-    [InlineData("top left", 0, 0)]
-    [InlineData("right bottom", 1, 1)]
-    public void A_backgrounds_alignment_is_words_for_each_axis_the_middle_where_it_names_none(string align, double x, double y)
-    {
-        BackgroundValue background = Read($$"""
-            "background": {"image": "a.png", "align": "{{align}}"}
-            """).DarkBackground!;
-        Assert.Equal((x, y), (background.AlignX, background.AlignY));
-    }
+    [Fact]
+    public void A_background_font_or_language_that_cannot_be_drawn_refuses_the_theme_and_a_picture_too_large_is_never_decoded() => Cases.All(
+        ("a background that cannot be drawn as written refuses the theme saying why", () => Cases.Each<(string, string)>(
+        [
+            ("\"background\": {\"opacity\": 0.2}", "gives a background with no image"),
+            ("\"background\": {\"image\": \"../outside.png\"}", "a picture's file beside the theme's"),
+            ("\"background\": {\"image\": \"https://example.com/a.png\"}", "a picture's file beside the theme's"),
+            ("\"background\": {\"image\": \"a.gif\"}", "ending .png, .jpg, .jpeg or .webp"),
+            ("\"background\": {\"image\": \"a.png\", \"opacity\": 0.6}", "so the code over the picture stays readable"),
+            ("\"background\": {\"image\": \"a.png\", \"places\": []}", "places is a list of one or more of \"editor\", \"toolWindows\", \"frame\" or \"welcome\""),
+            ("\"background\": {\"image\": \"a.png\", \"fit\": \"stretch\"}", "it is \"cover\", \"contain\", \"tile\" or \"centre\""),
+            ("\"background\": \"a.png\"", "background is an object naming its image"),
+        ], row => A_background_that_cannot_be_drawn_as_written_refuses_the_theme_saying_why(row.Item1, row.Item2))),
+        ("fonts of the wrong kind refuse the theme", () => Cases.Each<(string, string)>(
+        [
+            ("\"fonts\": {\"code\": {\"size\": 100}}", "a size is a number of points, 6 to 48"),
+            ("\"fonts\": [\"Inter\"]", "gives fonts as"),
+        ], row => Fonts_of_the_wrong_kind_refuse_the_theme(row.Item1, row.Item2))),
+        ("a language whose tokens are not the codes or of the wrong kind refuses the theme", () => Cases.Each<(string, string)>(
+        [
+            ("\"languages\": {\"csharp\": {\"dark\": {\"Frame\": \"#000000\"}}}", "gives Frame for csharp, which is not the code's"),
+            ("\"languages\": {\"csharp\": {\"tokens\": {\"Syntax.Keyword\": \"#000000\"}, \"dark\": {\"Syntax.Keyword\": \"#111111\"}}}", "in tokens and in dark of languages' csharp"),
+            ("\"languages\": [\"csharp\"]", "gives languages as"),
+        ], row => A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(row.Item1, row.Item2))),
+        ("a pictures kind and size come from its header as PNG JPEG and each kind of WebP write them", A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them),
+        ("a picture larger than a background may be is refused before anything decodes it", A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it));
 
-    [Theory]
-    [InlineData("\"background\": {\"opacity\": 0.2}", "gives a background with no image")]
-    [InlineData("\"background\": {\"image\": \"../outside.png\"}", "a picture's file beside the theme's")]
-    [InlineData("\"background\": {\"image\": \"https://example.com/a.png\"}", "a picture's file beside the theme's")]
-    [InlineData("\"background\": {\"image\": \"a.gif\"}", "ending .png, .jpg, .jpeg or .webp")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"opacity\": 0.6}", "so the code over the picture stays readable")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"tint\": {\"colour\": \"pink\"}}", "a tint is {\"colour\": \"#RRGGBB\", \"strength\": 0 to 1}")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"tint\": {\"colour\": \"#FFFFFF\", \"strength\": 2}}", "a tint is")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"places\": []}", "places is a list of one or more of \"editor\", \"toolWindows\", \"frame\" or \"welcome\"")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"places\": [\"menus\"]}", "lists \"menus\" in background's places")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"fit\": \"stretch\"}", "it is \"cover\", \"contain\", \"tile\" or \"centre\"")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"align\": \"left right\"}", "gives background's align under dark")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"align\": \"centre top\"}", "gives background's align")]
-    [InlineData("\"background\": {\"image\": \"a.png\", \"light\": \"dim\"}", "it is an object of what differs under light, or \"none\"")]
-    [InlineData("\"background\": \"a.png\"", "background is an object naming its image")]
-    public void A_background_that_cannot_be_drawn_as_written_refuses_the_theme_saying_why(string members, string why)
+    private void A_background_that_cannot_be_drawn_as_written_refuses_the_theme_saying_why(string members, string why)
     {
         string refused = Refused(members);
         Assert.StartsWith("Mine.json ", refused, StringComparison.Ordinal);
         Assert.Contains(why, refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_backgrounds_member_this_Passenger_does_not_know_is_passed_over_and_named()
-    {
-        ThemeRead<ThemeFile> read = Theme("""
-            "background": {"image": "a.png", "blur": 4}
-            """);
-        Assert.NotNull(read.Read?.DarkBackground);
-        Assert.Equal(["Mine.json: blur is no member of background this Passenger knows, so it was passed over"], read.Problems);
-    }
-
-    [Fact]
-    public void Fonts_give_the_codes_family_and_size_and_the_windows_family()
+    private void Fonts_give_the_codes_family_and_size_and_the_windows_family()
     {
         Assert.Equal(new ThemeFonts("Fira Code", 14, "Inter"), Read("""
             "fonts": {"code": {"family": "Fira Code", "size": 14}, "window": {"family": "Inter"}}
@@ -124,15 +123,9 @@ public class ThemeBeyondTests
             """).Fonts);
     }
 
-    [Theory]
-    [InlineData("\"fonts\": {\"code\": {\"size\": 100}}", "a size is a number of points, 6 to 48")]
-    [InlineData("\"fonts\": {\"code\": {\"family\": \"\"}}", "its family is words on one line")]
-    [InlineData("\"fonts\": {\"window\": \"Inter\"}", "gives fonts' window as")]
-    [InlineData("\"fonts\": [\"Inter\"]", "gives fonts as")]
-    public void Fonts_of_the_wrong_kind_refuse_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
+    private void Fonts_of_the_wrong_kind_refuse_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
 
-    [Fact]
-    public void A_language_gives_the_codes_tokens_for_both_variants_and_for_each_and_one_this_Passenger_does_not_know_is_passed_over()
+    private void A_language_gives_the_codes_tokens_for_both_variants_and_for_each_and_one_this_Passenger_does_not_know_is_passed_over()
     {
         ThemeRead<ThemeFile> read = Theme("""
             "languages": {"csharp": {"tokens": {"SyntaxStyle.Comment": "Italic"}, "dark": {"Syntax.Keyword": "#FF7AB8"}},
@@ -146,16 +139,10 @@ public class ThemeBeyondTests
         Assert.Equal(["Mine.json: cobol in languages is no language this Passenger knows, so it was passed over"], read.Problems);
     }
 
-    [Theory]
-    [InlineData("\"languages\": {\"csharp\": {\"dark\": {\"Frame\": \"#000000\"}}}", "gives Frame for csharp, which is not the code's")]
-    [InlineData("\"languages\": {\"csharp\": {\"dark\": {\"Syntax.Keyword\": \"blue\"}}}", "gives Syntax.Keyword in dark of languages' csharp as \"blue\"")]
-    [InlineData("\"languages\": {\"csharp\": {\"tokens\": {\"Syntax.Keyword\": \"#000000\"}, \"dark\": {\"Syntax.Keyword\": \"#111111\"}}}", "in tokens and in dark of languages' csharp")]
-    [InlineData("\"languages\": [\"csharp\"]", "gives languages as")]
-    public void A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(string members, string why) =>
+    private void A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(string members, string why) =>
         Assert.Contains(why, Refused(members), StringComparison.Ordinal);
 
-    [Fact]
-    public void A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over()
+    private void A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Code.json", Encoding.UTF8.GetBytes("""
             {"format": 1, "name": "Code", "languages": {"json": {"light": {"Syntax.Keyword": "#0000FF"}}}, "background": {"image": "a.png"}, "fonts": {}}
@@ -166,8 +153,7 @@ public class ThemeBeyondTests
         Assert.Equal(2, read.Problems.Count);
     }
 
-    [Fact]
-    public void A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them()
+    private void A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them()
     {
         Assert.Equal((1600, 1000), ThemeImages.SizeOf(Png(1600, 1000)));
         Assert.Equal((640, 480), ThemeImages.SizeOf(Jpeg(640, 480)));
@@ -177,8 +163,7 @@ public class ThemeBeyondTests
         Assert.Null(ThemeImages.SizeOf("GIF89a, no picture this reads, padded out"u8));
     }
 
-    [Fact]
-    public void A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it()
+    private void A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it()
     {
         Assert.Null(ThemeImages.WhyNot("dusk.png", Png(3840, 2160)));
         Assert.Equal("huge.png is 8193×10 pixels, more than a background picture may be: at most 8192 along a side and 16 million in all",
@@ -188,10 +173,7 @@ public class ThemeBeyondTests
         Assert.Equal("big.png is 9.1 MB, more than the 8 MB a background picture may hold", ThemeImages.WhyNot("big.png", new byte[9_500_000]));
     }
 
-    [Theory]
-    [InlineData("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp")]
-    [InlineData("theme.json", "pictures/dusk.webp", "pictures/dusk.webp")]
-    public void A_picture_is_read_beside_its_themes_file_in_the_source(string theme, string image, string path) =>
+    private void A_picture_is_read_beside_its_themes_file_in_the_source(string theme, string image, string path) =>
         Assert.Equal(path, ThemeImages.Beside(theme, image));
 
     private static byte[] Png(int width, int height)

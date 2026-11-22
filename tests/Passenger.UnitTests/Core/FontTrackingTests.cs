@@ -12,22 +12,27 @@ public class FontTrackingTests
     private static readonly byte[] Table = Trak([12, 13, 14], (-1, [-28, -40, -50]), (0, [0, -12, -22]));
 
     [Fact]
-    public void The_normal_tracks_value_at_a_size_it_names_is_that_value_in_the_sizes_units()
+    public void A_faces_tracking_is_its_normal_track_at_the_size_drawn() => Cases.All(
+        ("the normal tracks value at a size it names is that value in the sizes units", The_normal_tracks_value_at_a_size_it_names_is_that_value_in_the_sizes_units),
+        ("between two sizes it is a straight line and past the ends the nearest sizes value", Between_two_sizes_it_is_a_straight_line_and_past_the_ends_the_nearest_sizes_value),
+        ("a table with no normal track or cut short has no tracking", A_table_with_no_normal_track_or_cut_short_has_no_tracking),
+        ("a shaper tracks every size by the normal track at its own size else by a lone track", A_shaper_tracks_every_size_by_the_normal_track_at_its_own_size_else_by_a_lone_track),
+        ("only a face with a style table is tracked by name or by a shaper", Only_a_face_with_a_style_table_is_tracked_by_name_or_by_a_shaper));
+
+    private void The_normal_tracks_value_at_a_size_it_names_is_that_value_in_the_sizes_units()
     {
         Assert.Equal(-12.0 / 2048 * 13, FontTracking.Of(Table, 2048, 13)!.Value, 9);
         Assert.Equal(0, FontTracking.Of(Table, 2048, 12)!.Value, 9);
     }
 
-    [Fact]
-    public void Between_two_sizes_it_is_a_straight_line_and_past_the_ends_the_nearest_sizes_value()
+    private void Between_two_sizes_it_is_a_straight_line_and_past_the_ends_the_nearest_sizes_value()
     {
         Assert.Equal(-17.0 / 2048 * 13.5, FontTracking.Of(Table, 2048, 13.5)!.Value, 9);
         Assert.Equal(0, FontTracking.Of(Table, 2048, 9)!.Value, 9);
         Assert.Equal(-22.0 / 2048 * 20, FontTracking.Of(Table, 2048, 20)!.Value, 9);
     }
 
-    [Fact]
-    public void A_table_with_no_normal_track_or_cut_short_has_no_tracking()
+    private void A_table_with_no_normal_track_or_cut_short_has_no_tracking()
     {
         Assert.Null(FontTracking.Of(Trak([12, 13], (-1, [-28, -40])), 2048, 13));
         Assert.Null(FontTracking.Of(Table.AsSpan(0, 20), 2048, 13));
@@ -36,8 +41,7 @@ public class FontTrackingTests
 
     /// <summary>PingFang SC's one loose track, 21 units of 1000 at 12 points and 13 at 24, which a shaper told no size sets at
     /// every size and macOS, by its normal track alone, never.</summary>
-    [Fact]
-    public void A_shaper_tracks_every_size_by_the_normal_track_at_its_own_size_else_by_a_lone_track()
+    private void A_shaper_tracks_every_size_by_the_normal_track_at_its_own_size_else_by_a_lone_track()
     {
         Assert.Equal(-12, FontTracking.ByShaper(Table, styled: true, 13));
         byte[] pingFang = Trak([10, 11, 12, 13, 14, 15, 16, 17, 20, 22, 28, 32, 36, 50], (1, [22, 22, 21, 20, 20, 20, 20, 19, 19, 13, 13, 9, 8, 4]));
@@ -47,27 +51,9 @@ public class FontTrackingTests
         Assert.Equal(0, FontTracking.ByShaper([], styled: true, 12));
     }
 
-    [Fact]
-    public void With_no_normal_track_a_shaper_tracks_by_a_straight_line_between_the_tracks_either_side_else_by_the_nearest()
-    {
-        Assert.Equal(0, FontTracking.ByShaper(Trak([12, 13], (-1, [-28, -40]), (1, [28, 40])), styled: true, 12));
-        Assert.Equal(-14, FontTracking.ByShaper(Trak([12, 13], (-1, [-28, -40]), (3, [28, 40])), styled: true, 12));
-        Assert.Equal(-28, FontTracking.ByShaper(Trak([12, 13], (-2, [-56, -60]), (-1, [-28, -40])), styled: true, 12));
-        Assert.Equal(28, FontTracking.ByShaper(Trak([12, 13], (1, [28, 40]), (2, [56, 60])), styled: true, 12));
-    }
-
-    [Fact]
-    public void A_shaper_sets_whole_units_of_the_em_half_a_unit_rounded_away_from_zero()
-    {
-        byte[] between = Trak([10, 14], (0, [-11, -14]));
-        Assert.Equal(-13, FontTracking.ByShaper(between, styled: true, 12));
-        Assert.Equal(-12.5 / 2048 * 12, FontTracking.Of(between, 2048, 12)!.Value, 9);
-    }
-
     /// <summary>Hoefler Text's tracks with no 'STAT' table: neither macOS nor a shaper sets them; San Francisco's normal track
     /// with one, which both set.</summary>
-    [Fact]
-    public void Only_a_face_with_a_style_table_is_tracked_by_name_or_by_a_shaper()
+    private void Only_a_face_with_a_style_table_is_tracked_by_name_or_by_a_shaper()
     {
         byte[] hoefler = Trak([2, 10, 12, 24, 196, 197], (-1, [8, -25, -33, -55, -150, -150]), (0, [100, 0, -20, -30, -100, -100]), (2, [170, 170, 170, 170, 170, 170]));
         Assert.Equal(0, FontTracking.ByName(hoefler, styled: false, 2000, 13), 9);

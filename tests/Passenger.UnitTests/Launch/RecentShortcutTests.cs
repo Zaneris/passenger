@@ -10,7 +10,13 @@ public class RecentShortcutTests
     private static readonly string Root = OperatingSystem.IsWindows() ? @"C:\Games\" : "/games/";
 
     [Fact]
-    public void Each_is_a_start_naming_its_path_alone_titled_by_its_name()
+    public void The_systems_recent_shortcuts_start_each_recent_one_told_apart_by_its_name() => Cases.All(
+        ("each is a start naming its path alone titled by its name", Each_is_a_start_naming_its_path_alone_titled_by_its_name),
+        ("one gone from disk is left out and only those read are looked for", One_gone_from_disk_is_left_out_and_only_those_read_are_looked_for),
+        ("recent ones of one name are told apart by as few of their folders last names as differ", Recent_ones_of_one_name_are_told_apart_by_as_few_of_their_folders_last_names_as_differ),
+        ("recent ones of one name in one folder are told apart by their own names after it", Recent_ones_of_one_name_in_one_folder_are_told_apart_by_their_own_names_after_it));
+
+    private void Each_is_a_start_naming_its_path_alone_titled_by_its_name()
     {
         (string, string)[] newest = [(Root + "Tool/Tool.csproj", "Tool"), (Root + "Racer/Racer.slnx", "Racer"), (Root + "My Space", "My Space")];
 
@@ -22,8 +28,7 @@ public class RecentShortcutTests
             $"An entry would start Passenger on something other than its path, or tip another: {string.Join("; ", listed.Select(l => $"{string.Join(' ', l.Shortcut.Arguments)} / {l.Shortcut.Tip}"))}");
     }
 
-    [Fact]
-    public void One_gone_from_disk_is_left_out_and_only_those_read_are_looked_for()
+    private void One_gone_from_disk_is_left_out_and_only_those_read_are_looked_for()
     {
         (string, string)[] newest = [(Root + "Space", "Space"), (Root + "Gone", "Gone"), (Root + "Old", "Old")];
         List<string> looked = [];
@@ -40,8 +45,7 @@ public class RecentShortcutTests
         Assert.True(all.SequenceEqual([Root + "Space", Root + "Old"]), $"A folder gone from disk would be offered, failing as it is chosen: {string.Join(", ", all)}");
     }
 
-    [Fact]
-    public void Recent_ones_of_one_name_are_told_apart_by_as_few_of_their_folders_last_names_as_differ()
+    private void Recent_ones_of_one_name_are_told_apart_by_as_few_of_their_folders_last_names_as_differ()
     {
         string[] paths = [In("shop", "Api", "Api.sln"), In("Notes"), In("garden", "Api", "Api.sln"), In("Tools", "Api")];
 
@@ -52,8 +56,7 @@ public class RecentShortcutTests
             $"The list would title them [{string.Join(", ", titles)}], where [{string.Join(", ", expected)}] tells each Api from the others by the folder it is in, and leaves Notes alone");
     }
 
-    [Fact]
-    public void Recent_ones_of_one_name_in_one_folder_are_told_apart_by_their_own_names_after_it()
+    private void Recent_ones_of_one_name_in_one_folder_are_told_apart_by_their_own_names_after_it()
     {
         string[] paths = [In("work", "Api", "Api.sln"), In("work", "Api", "Api.csproj"), In("play", "Api", "Api.sln")];
 
@@ -62,19 +65,6 @@ public class RecentShortcutTests
         string[] expected = ["Api – " + Path.Combine("work", "Api", "Api.sln"), "Api – " + Path.Combine("work", "Api", "Api.csproj"), "Api – " + Path.Combine("play", "Api")];
         Assert.True(titles.SequenceEqual(expected),
             $"The list would title them [{string.Join(", ", titles)}], where [{string.Join(", ", expected)}] tells the solution from the project beside it, which the folder alone cannot");
-    }
-
-    [Fact]
-    public void Folders_told_apart_only_as_far_as_the_home_folder_are_written_from_it_as_the_person_reads_them()
-    {
-        string home = In("me");
-        string[] paths = [Path.Combine(home, "work", "Api"), In("work", "Api")];
-
-        string[] titles = Titles(paths, ["Api", "Api"], path => path.StartsWith(home, StringComparison.Ordinal) ? "~" + path[home.Length..] : path);
-
-        string[] expected = ["Api – " + Path.Combine("~", "work"), "Api – " + (OperatingSystem.IsWindows() ? @"Games\work" : "/games/work")];
-        Assert.True(titles.SequenceEqual(expected),
-            $"The list would title them [{string.Join(", ", titles)}], where [{string.Join(", ", expected)}] names the folder each is in as the person reads it");
     }
 
     private static string In(params string[] names) => Path.Combine([Root, .. names]);

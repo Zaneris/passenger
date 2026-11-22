@@ -9,7 +9,13 @@ namespace Passenger.UnitTests.ToolWindows;
 public sealed class TreeRowsTests
 {
     [Fact]
-    public void Each_open_row_is_followed_by_its_own_rows_and_a_closed_one_by_none()
+    public void A_trees_rows_follow_each_open_row_however_deep_on_a_small_stack() => Cases.All(
+        ("each open row is followed by its own rows and a closed one by none", Each_open_row_is_followed_by_its_own_rows_and_a_closed_one_by_none),
+        ("a row closed as the rows are listed shows none of its own", A_row_closed_as_the_rows_are_listed_shows_none_of_its_own),
+        ("a tree open thousands of levels deep is listed with no frame per level", A_tree_open_thousands_of_levels_deep_is_listed_with_no_frame_per_level),
+        ("a tree open a hundred thousand levels deep is listed on a small stack", A_tree_open_a_hundred_thousand_levels_deep_is_listed_on_a_small_stack));
+
+    private void Each_open_row_is_followed_by_its_own_rows_and_a_closed_one_by_none()
     {
         Row inner = new("inner", 2, [], open: true);
         Row shut = new("shut", 1, [new Row("hidden", 2, [], open: true)], open: false);
@@ -19,8 +25,7 @@ public sealed class TreeRowsTests
         Assert.Equal(["first", "a", "inner", "shut", "second", "b"], TreeRows<Row>.Shown([first, second], r => r.Below).Select(r => r.Name));
     }
 
-    [Fact]
-    public void A_row_closed_as_the_rows_are_listed_shows_none_of_its_own()
+    private void A_row_closed_as_the_rows_are_listed_shows_none_of_its_own()
     {
         Row top = new("top", 0, [new Row("under", 1, [], open: false)], open: true);
         List<string> listed = [];
@@ -34,8 +39,7 @@ public sealed class TreeRowsTests
         Assert.Equal(["top"], listed);
     }
 
-    [Fact]
-    public void A_tree_open_thousands_of_levels_deep_is_listed_with_no_frame_per_level()
+    private void A_tree_open_thousands_of_levels_deep_is_listed_with_no_frame_per_level()
     {
         const int Levels = 2_000;
         Row top = Chain(Levels);
@@ -56,8 +60,7 @@ public sealed class TreeRowsTests
             + "a tree opened deep enough would end the IDE");
     }
 
-    [Fact]
-    public void A_tree_open_a_hundred_thousand_levels_deep_is_listed_on_a_small_stack()
+    private void A_tree_open_a_hundred_thousand_levels_deep_is_listed_on_a_small_stack()
     {
         const int Levels = 100_000;
         Row top = Chain(Levels);

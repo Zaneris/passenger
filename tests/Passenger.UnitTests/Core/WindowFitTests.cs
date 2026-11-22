@@ -15,21 +15,26 @@ public class WindowFitTests
     /// <summary>A system's title bar and borders round a dialog's client area.</summary>
     private static readonly (double Width, double Height) Frame = (16, 40);
 
-    /// <summary>Each large window as it asks to open: its size and its least.</summary>
-    public static TheoryData<string, double, double, double, double> Windows() => new()
-    {
-        { "Settings", 980, 700, 640, 400 },
-        { "Diff", 1200, 760, 600, 300 },
-        { "Merge", 1300, 800, 800, 400 },
-        { "Run Configurations", 980, 660, 700, 440 },
-        { "New Project", 920, 640, 720, 480 },
-        { "Interactive Test", 1040, 640, 640, 420 },
-        { "Attach to Process", 900, 520, 560, 300 },
-    };
+    /// <summary>Large windows as they ask to open, their size and their least: the widest, the one whose least is tallest and
+    /// the smallest.</summary>
+    private static readonly (string Name, double Width, double Height, double LeastWidth, double LeastHeight)[] Windows =
+    [
+        ("Merge", 1300, 800, 800, 400),
+        ("New Project", 920, 640, 720, 480),
+        ("Attach to Process", 900, 520, 560, 300),
+    ];
 
-    [Theory]
-    [MemberData(nameof(Windows))]
-    public void A_window_larger_than_a_small_screen_opens_wholly_on_it_over_an_owner_anywhere_on_it(string name, double width, double height, double leastWidth, double leastHeight)
+    [Fact]
+    public void Every_window_opens_wholly_on_a_small_screen_over_its_owner_and_a_kept_place_moves_only_back_onto_it() => Cases.All(
+        ("a window larger than a small screen opens wholly on it over an owner anywhere on it", () => Cases.Each(Windows,
+            row => A_window_larger_than_a_small_screen_opens_wholly_on_it_over_an_owner_anywhere_on_it(row.Name, row.Width, row.Height, row.LeastWidth, row.LeastHeight), row => row.Name)),
+        ("a window that fits keeps its size and opens centred over its owner", A_window_that_fits_keeps_its_size_and_opens_centred_over_its_owner),
+        ("a window whose least is taller than the screen keeps its least with its title bar at the area's top",
+            A_window_whose_least_is_taller_than_the_screen_keeps_its_least_with_its_title_bar_at_the_areas_top),
+        ("a window kept where it was placed moves only back onto the area and one on it stays",
+            A_window_kept_where_it_was_placed_moves_only_back_onto_the_area_and_one_on_it_stays));
+
+    private static void A_window_larger_than_a_small_screen_opens_wholly_on_it_over_an_owner_anywhere_on_it(string name, double width, double height, double leastWidth, double leastHeight)
     {
         // The owner maximized, then a small window of it in each corner and half off the area's edge.
         WindowFit.Box[] owners = [Laptop, new(0, 0, 960, 600), new(960, 432, 960, 600), new(1500, 900, 960, 600), new(-400, -200, 960, 600)];
@@ -45,8 +50,7 @@ public class WindowFitTests
         }
     }
 
-    [Fact]
-    public void A_window_that_fits_keeps_its_size_and_opens_centred_over_its_owner()
+    private static void A_window_that_fits_keeps_its_size_and_opens_centred_over_its_owner()
     {
         WindowFit.Box owner = new(300, 200, 1200, 700);
         WindowFit.Fitted fit = WindowFit.Within(Laptop, Scaling, (520, 360), (420, 280), Frame, owner);
@@ -56,8 +60,7 @@ public class WindowFitTests
             $"A dialog that fits opened at {frame}, not centred over its owner at {owner}");
     }
 
-    [Fact]
-    public void A_window_whose_least_is_taller_than_the_screen_keeps_its_least_with_its_title_bar_at_the_areas_top()
+    private static void A_window_whose_least_is_taller_than_the_screen_keeps_its_least_with_its_title_bar_at_the_areas_top()
     {
         WindowFit.Box area = new(0, 0, 1024, 600);
         WindowFit.Fitted fit = WindowFit.Within(area, 1, (1300, 800), (800, 700), Frame, area);
@@ -65,8 +68,7 @@ public class WindowFitTests
         Assert.True(fit.Y == area.Y, $"A window taller than the screen opened at y {fit.Y}, its title bar off the area's top at {area.Y}");
     }
 
-    [Fact]
-    public void A_window_kept_where_it_was_placed_moves_only_back_onto_the_area_and_one_on_it_stays()
+    private static void A_window_kept_where_it_was_placed_moves_only_back_onto_the_area_and_one_on_it_stays()
     {
         // A second screen left of the first, its pixels at negative places.
         WindowFit.Box left = new(-1920, 0, 1920, 1032);

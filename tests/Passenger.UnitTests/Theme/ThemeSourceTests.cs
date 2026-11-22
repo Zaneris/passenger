@@ -17,7 +17,14 @@ public class ThemeSourceTests
     }
 
     [Fact]
-    public void A_repository_is_owner_and_name_or_its_address_on_GitHub_read_through_its_raw_files_at_its_default_branch()
+    public void A_theme_source_is_a_repository_an_address_or_a_folder_kept_where_a_file_system_takes_it() => Cases.All(
+        ("a repository is owner and name or its address on GitHub read through its raw files at its default branch", A_repository_is_owner_and_name_or_its_address_on_GitHub_read_through_its_raw_files_at_its_default_branch),
+        ("an address is https or http on this machine the files under it its index left out", An_address_is_https_or_http_on_this_machine_the_files_under_it_its_index_left_out),
+        ("a folder is a full path and Passengers own two sources are named as settings keep them", A_folder_is_a_full_path_and_Passengers_own_two_sources_are_named_as_settings_keep_them),
+        ("each source and each name is kept in a folder of its own whose name a file system takes", Each_source_and_each_name_is_kept_in_a_folder_of_its_own_whose_name_a_file_system_takes),
+        ("a theme and a code colour scheme chosen in 0 3 are the same from the themes repository", A_theme_and_a_code_colour_scheme_chosen_in_0_3_are_the_same_from_the_themes_repository));
+
+    private void A_repository_is_owner_and_name_or_its_address_on_GitHub_read_through_its_raw_files_at_its_default_branch()
     {
         foreach (string words in (string[])["Zaneris/passenger-themes", " Zaneris/passenger-themes ", "https://github.com/Zaneris/passenger-themes", "https://github.com/Zaneris/passenger-themes.git", "https://github.com/Zaneris/passenger-themes/"])
         {
@@ -31,8 +38,7 @@ public class ThemeSourceTests
         Assert.Contains("no repository's own address on GitHub", Refused("https://github.com/Zaneris"), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void An_address_is_https_or_http_on_this_machine_the_files_under_it_its_index_left_out()
+    private void An_address_is_https_or_http_on_this_machine_the_files_under_it_its_index_left_out()
     {
         Assert.Equal(new ThemeSource(ThemeSourceKind.Web, "https://example.org/themes/"), Source("https://example.org/themes"));
         Assert.Equal(new ThemeSource(ThemeSourceKind.Web, "https://example.org/themes/"), Source("https://example.org/themes/passenger-themes.json"));
@@ -44,8 +50,7 @@ public class ThemeSourceTests
         Assert.Contains("no http or https address", Refused("ftp://example.org/themes/"), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_folder_is_a_full_path_and_Passengers_own_two_sources_are_named_as_settings_keep_them()
+    private void A_folder_is_a_full_path_and_Passengers_own_two_sources_are_named_as_settings_keep_them()
     {
         string folder = OperatingSystem.IsWindows() ? @"C:\Themes\Mine" : "/themes/mine";
         Assert.Equal(new ThemeSource(ThemeSourceKind.Folder, folder), Source(folder + Path.DirectorySeparatorChar));
@@ -58,8 +63,7 @@ public class ThemeSourceTests
         Assert.Equal("Harbour (Zaneris/passenger-themes)", SourcedTheme.Repository("Harbour").Shown);
     }
 
-    [Fact]
-    public void Each_source_and_each_name_is_kept_in_a_folder_of_its_own_whose_name_a_file_system_takes()
+    private void Each_source_and_each_name_is_kept_in_a_folder_of_its_own_whose_name_a_file_system_takes()
     {
         ThemeSource[] all = [ThemeSource.Repository, Source("https://example.org/themes/"), Source("https://example.org/Themes/"), Source("zaneris/passenger-themes"),
             ThemeSource.Added, ThemeSource.BuiltIn, Source(OperatingSystem.IsWindows() ? @"C:\passenger-themes" : "/passenger-themes")];
@@ -74,8 +78,7 @@ public class ThemeSourceTests
         });
     }
 
-    [Fact]
-    public void A_theme_and_a_code_colour_scheme_chosen_in_0_3_are_the_same_from_the_themes_repository()
+    private void A_theme_and_a_code_colour_scheme_chosen_in_0_3_are_the_same_from_the_themes_repository()
     {
         JsonObject settings = new() { ["look"] = "harbour", ["colourScheme"] = "Rider", ["editorFontSize"] = 14 };
         ThemeSource.MoveFormerChoices(settings, "look", "colourScheme");

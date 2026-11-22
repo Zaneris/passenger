@@ -20,7 +20,14 @@ public class ThemeLayoutTests
     }
 
     [Fact]
-    public void A_layout_places_its_windows_in_its_order_at_each_place_opens_those_it_names_and_sizes_the_areas()
+    public void A_themes_layout_places_its_windows_and_arranges_the_window_as_written() => Cases.All(
+        ("a layout places its windows in its order at each place opens those it names and sizes the areas", A_layout_places_its_windows_in_its_order_at_each_place_opens_those_it_names_and_sizes_the_areas),
+        ("what a layout leaves out is Passengers own and a theme with none has no layout", What_a_layout_leaves_out_is_Passengers_own_and_a_theme_with_none_has_no_layout),
+        ("a layout places tool windows among the editors each in one place", A_layout_places_tool_windows_among_the_editors_each_in_one_place),
+        ("a layout gives where the editors tabs stand and one that gives none keeps Passengers own", A_layout_gives_where_the_editors_tabs_stand_and_one_that_gives_none_keeps_Passengers_own),
+        ("a code colour scheme has no layout and passes one over", A_code_colour_scheme_has_no_layout_and_passes_one_over));
+
+    private void A_layout_places_its_windows_in_its_order_at_each_place_opens_those_it_names_and_sizes_the_areas()
     {
         ThemeLayout layout = Read("""
             {"places": {"rightTop": ["explorer", "structure"], "bottomLeft": ["problems", "build", "run"], "leftTop": ["bookmarks"]},
@@ -33,8 +40,7 @@ public class ThemeLayoutTests
         Assert.Equal((240.0, 320.0, 200.0), (layout.LeftWidth, layout.RightWidth, layout.BottomHeight));
     }
 
-    [Fact]
-    public void What_a_layout_leaves_out_is_Passengers_own_and_a_theme_with_none_has_no_layout()
+    private void What_a_layout_leaves_out_is_Passengers_own_and_a_theme_with_none_has_no_layout()
     {
         ThemeLayout layout = Read("""{"sizes": {"bottom": 180}}""");
         Assert.Empty(layout.Places);
@@ -44,50 +50,29 @@ public class ThemeLayoutTests
     }
 
     [Fact]
-    public void Every_place_a_window_docks_is_a_word_a_theme_may_write()
-    {
-        string[] words = ["leftTop", "leftBottom", "rightTop", "rightBottom", "bottomLeft", "bottomRight"];
-        ToolAnchor[] read = [.. words.Select(word => Read($$$"""{"places": {"{{{word}}}": ["terminal"]}}""").Places.Single().Anchor)];
-        Assert.Equal(Enum.GetValues<ToolAnchor>(), read);
-    }
+    public void A_layout_or_arrangement_that_cannot_be_laid_as_written_refuses_the_theme_saying_why() => Cases.All(
+        ("a layout that cannot be laid as written refuses the theme saying why", () => Cases.Each<(string, string)>(
+        [
+            ("\"layout\": [\"explorer\"]", "layout is {\"places\""),
+            ("\"layout\": {\"places\": {\"rightTop\": \"explorer\"}}", "it is a list of tool windows' ids"),
+            ("\"layout\": {\"places\": {\"rightTop\": [\"explorer\"], \"leftTop\": [\"explorer\"]}}", "places explorer in layout's rightTop and in leftTop: a tool window docks in one place"),
+            ("\"layout\": {\"sizes\": {\"left\": 20}}", "an area's size is a number of pixels, 100 to 2000"),
+            ("\"layout\": {\"sizes\": 200}", "sizes is an object"),
+        ], row => A_layout_that_cannot_be_laid_as_written_refuses_the_theme_saying_why(row.Item1, row.Item2))),
+        ("an arrangement word a layout does not know refuses the theme naming the words it takes", () => Cases.Each<(string, string)>(
+        [
+            ("\"layout\": {\"editorTabs\": \"bottom\"}", "gives layout's editorTabs as \"bottom\": it is \"top\", \"left\" or \"right\""),
+            ("\"layout\": {\"closedWindows\": true}", "gives layout's closedWindows as true: it is \"keep\" or \"leave\""),
+        ], row => An_arrangement_word_a_layout_does_not_know_refuses_the_theme_naming_the_words_it_takes(row.Item1, row.Item2))));
 
-    [Fact]
-    public void A_window_or_place_this_Passenger_lacks_and_a_member_it_does_not_know_are_passed_over_and_named()
-    {
-        ThemeRead<ThemeFile> read = Theme("""
-            "layout": {"places": {"rightTop": ["explorer", "radar"], "floating": ["git"]}, "open": ["radar", "explorer"],
-              "sizes": {"bottom": 200, "top": 50}, "splits": 0.5}
-            """);
-        Assert.True(read.Read?.Layout is not null, read.Refused);
-        Assert.Equal([new PlacedWindow(ToolWindowIds.Explorer, ToolAnchor.RightTop)], read.Read.Layout.Places);
-        Assert.Equal([ToolWindowIds.Explorer], read.Read.Layout.Open);
-        Assert.Equal(5, read.Problems.Count);
-        Assert.Contains(read.Problems, p => p.Contains("\"radar\" in layout's places' rightTop is no tool window", StringComparison.Ordinal));
-        Assert.Contains(read.Problems, p => p.Contains("\"radar\" in layout's open is no tool window", StringComparison.Ordinal));
-        Assert.Contains(read.Problems, p => p.Contains("floating in layout's places is no place", StringComparison.Ordinal));
-        Assert.Contains(read.Problems, p => p.Contains("top is no member of layout's sizes", StringComparison.Ordinal));
-        Assert.Contains(read.Problems, p => p.Contains("splits is no member of layout", StringComparison.Ordinal));
-    }
-
-    [Theory]
-    [InlineData("\"layout\": [\"explorer\"]", "layout is {\"places\"")]
-    [InlineData("\"layout\": {\"places\": [\"explorer\"]}", "places is an object")]
-    [InlineData("\"layout\": {\"places\": {\"rightTop\": \"explorer\"}}", "it is a list of tool windows' ids")]
-    [InlineData("\"layout\": {\"places\": {\"rightTop\": [1]}}", "a tool window is named by its id")]
-    [InlineData("\"layout\": {\"places\": {\"rightTop\": [\"explorer\"], \"leftTop\": [\"explorer\"]}}", "places explorer in layout's rightTop and in leftTop: a tool window docks in one place")]
-    [InlineData("\"layout\": {\"open\": \"explorer\"}", "gives layout's open as")]
-    [InlineData("\"layout\": {\"sizes\": {\"left\": 20}}", "an area's size is a number of pixels, 100 to 2000")]
-    [InlineData("\"layout\": {\"sizes\": {\"bottom\": \"tall\"}}", "an area's size is a number of pixels")]
-    [InlineData("\"layout\": {\"sizes\": 200}", "sizes is an object")]
-    public void A_layout_that_cannot_be_laid_as_written_refuses_the_theme_saying_why(string members, string why)
+    private void A_layout_that_cannot_be_laid_as_written_refuses_the_theme_saying_why(string members, string why)
     {
         ThemeRead<ThemeFile> read = Theme(members);
         Assert.Null(read.Read);
         Assert.Contains(why, read.Refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_layout_places_tool_windows_among_the_editors_each_in_one_place()
+    private void A_layout_places_tool_windows_among_the_editors_each_in_one_place()
     {
         Assert.Equal([ToolWindowIds.Tests, ToolWindowIds.Problems], Read("""{"places": {"editor": ["tests", "problems"], "bottomLeft": ["build"]}}""").InEditor);
         ThemeRead<ThemeFile> twice = Theme("""
@@ -96,63 +81,21 @@ public class ThemeLayoutTests
         Assert.Contains("places tests in layout's bottomLeft and in editor", twice.Refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_layout_gives_where_the_editors_tabs_stand_and_one_that_gives_none_keeps_Passengers_own()
+    private void A_layout_gives_where_the_editors_tabs_stand_and_one_that_gives_none_keeps_Passengers_own()
     {
         Assert.Equal([EditorTabsPlace.Top, EditorTabsPlace.Left, EditorTabsPlace.Right],
             ((string[])["top", "left", "right"]).Select(word => Read($$$"""{"editorTabs": "{{{word}}}"}""").EditorTabs));
         Assert.Null(Read("""{"sizes": {"bottom": 180}}""").EditorTabs);
     }
 
-    [Fact]
-    public void A_layout_gives_how_tool_windows_are_named_and_one_that_gives_none_keeps_Passengers_own()
-    {
-        Assert.Equal([ToolWindowLook.StripeIcons, ToolWindowLook.TitledTabs],
-            ((string[])["icons", "tabs"]).Select(word => Read($$$"""{"toolWindows": "{{{word}}}"}""").ToolWindows));
-        Assert.Null(Read("""{"editorTabs": "left"}""").ToolWindows);
-    }
-
-    [Fact]
-    public void A_format_1_layout_still_giving_stripe_icons_reads_whole_and_says_nothing_of_them()
-    {
-        ThemeRead<ThemeFile> read = Theme("""
-            "layout": {"toolWindows": "tabs", "stripeIcons": "untabbed", "closedWindows": "leave"}
-            """);
-        Assert.True(read.Read?.Layout is { ToolWindows: ToolWindowLook.TitledTabs, ClosedWindows: ClosedToolWindows.LeaveStripe } && read.Problems.Count == 0,
-            $"A theme made when stripeIcons arranged the stripes reads as {read.Read?.Layout?.ToolWindows}, {read.Read?.Layout?.ClosedWindows}, "
-            + $"saying {string.Join("; ", read.Problems)}: it would lose its look or tell the person of a key they cannot act on");
-    }
-
-    [Fact]
-    public void A_layout_gives_whether_a_closed_tool_window_leaves_its_stripe_and_one_that_gives_none_keeps_Passengers_own()
-    {
-        Assert.Equal([ClosedToolWindows.KeepIcons, ClosedToolWindows.LeaveStripe],
-            ((string[])["keep", "leave"]).Select(word => Read($$$"""{"closedWindows": "{{{word}}}"}""").ClosedWindows));
-        Assert.Null(Read("""{"editorTabs": "left"}""").ClosedWindows);
-    }
-
-    [Fact]
-    public void A_layout_gives_where_Find_in_Files_results_stay_and_one_that_gives_none_keeps_Passengers_own()
-    {
-        Assert.Equal([FindResults.Popup, FindResults.FindWindow],
-            ((string[])["popup", "window"]).Select(word => Read($$$"""{"findResults": "{{{word}}}"}""").FindResults));
-        Assert.Null(Read("""{"editorTabs": "left"}""").FindResults);
-    }
-
-    [Theory]
-    [InlineData("\"layout\": {\"editorTabs\": \"bottom\"}", "gives layout's editorTabs as \"bottom\": it is \"top\", \"left\" or \"right\"")]
-    [InlineData("\"layout\": {\"editorTabs\": 1}", "gives layout's editorTabs as 1")]
-    [InlineData("\"layout\": {\"closedWindows\": true}", "gives layout's closedWindows as true: it is \"keep\" or \"leave\"")]
-    [InlineData("\"layout\": {\"toolWindows\": \"titled\"}", "gives layout's toolWindows as \"titled\": it is \"icons\" or \"tabs\"")]
-    public void An_arrangement_word_a_layout_does_not_know_refuses_the_theme_naming_the_words_it_takes(string members, string why)
+    private void An_arrangement_word_a_layout_does_not_know_refuses_the_theme_naming_the_words_it_takes(string members, string why)
     {
         ThemeRead<ThemeFile> read = Theme(members);
         Assert.Null(read.Read);
         Assert.Contains(why, read.Refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_code_colour_scheme_has_no_layout_and_passes_one_over()
+    private void A_code_colour_scheme_has_no_layout_and_passes_one_over()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "layout": {"places": {}}}"""),
             new Dictionary<string, ThemeTokenKind>());

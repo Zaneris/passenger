@@ -10,14 +10,19 @@ public sealed class BulkArrivalsTests
     private static readonly DateTime Start = new(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public void A_hundred_files_at_once_are_read_and_one_more_is_a_bulk_arrival()
+    public void Files_coming_together_are_one_bulk_arrival_while_they_come() => Cases.All(
+        ("a hundred files at once are read and one more is a bulk arrival", A_hundred_files_at_once_are_read_and_one_more_is_a_bulk_arrival),
+        ("files coming within a quiet moment of others count with them and a bulk arrival lasts while they come", Files_coming_within_a_quiet_moment_of_others_count_with_them_and_a_bulk_arrival_lasts_while_they_come),
+        ("files coming after a quiet moment count on their own", Files_coming_after_a_quiet_moment_count_on_their_own),
+        ("a file made during a bulk arrival is its and one made before or after is not", A_file_made_during_a_bulk_arrival_is_its_and_one_made_before_or_after_is_not));
+
+    private void A_hundred_files_at_once_are_read_and_one_more_is_a_bulk_arrival()
     {
         Assert.False(new BulkArrivals().Came(BulkArrivals.AtOnce, Start), "A hundred files come at once were taken for a bulk arrival, so none is read");
         Assert.True(new BulkArrivals().Came(BulkArrivals.AtOnce + 1, Start), "More than a hundred files come at once were each read");
     }
 
-    [Fact]
-    public void Files_coming_within_a_quiet_moment_of_others_count_with_them_and_a_bulk_arrival_lasts_while_they_come()
+    private void Files_coming_within_a_quiet_moment_of_others_count_with_them_and_a_bulk_arrival_lasts_while_they_come()
     {
         BulkArrivals arrivals = new();
         Assert.False(arrivals.Came(60, Start), "Sixty files come together were taken for a bulk arrival");
@@ -28,8 +33,7 @@ public sealed class BulkArrivalsTests
         Assert.False(arrivals.Came(1, Start + TimeSpan.FromSeconds(2.5) + BulkArrivals.Quiet), "A file come once a bulk arrival had been quiet was passed over");
     }
 
-    [Fact]
-    public void Files_coming_after_a_quiet_moment_count_on_their_own()
+    private void Files_coming_after_a_quiet_moment_count_on_their_own()
     {
         BulkArrivals arrivals = new();
         Assert.False(arrivals.Came(60, Start), "Sixty files come together were taken for a bulk arrival");
@@ -37,8 +41,7 @@ public sealed class BulkArrivalsTests
         Assert.False(arrivals.Came(60, Start + BulkArrivals.Quiet), "Sixty files come after a quiet moment were counted with the sixty before");
     }
 
-    [Fact]
-    public void A_file_made_during_a_bulk_arrival_is_its_and_one_made_before_or_after_is_not()
+    private void A_file_made_during_a_bulk_arrival_is_its_and_one_made_before_or_after_is_not()
     {
         BulkArrivals arrivals = new();
         Assert.True(arrivals.Came(500, Start), "Five hundred files come at once were each read");

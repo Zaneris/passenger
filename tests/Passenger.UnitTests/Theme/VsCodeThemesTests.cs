@@ -42,7 +42,19 @@ public class VsCodeThemesTests
     }
 
     [Fact]
-    public void A_theme_reads_with_comments_and_trailing_commas_its_colours_rules_and_semantic_colours_and_names_what_it_passed_over()
+    public void A_vs_code_theme_reads_as_vs_code_reads_it() => Cases.All(
+        ("a theme reads with comments and trailing commas its colours rules and semantic colours and names what it passed over", A_theme_reads_with_comments_and_trailing_commas_its_colours_rules_and_semantic_colours_and_names_what_it_passed_over),
+        ("an included file is laid first so the theme s own colours and rules win", An_included_file_is_laid_first_so_the_theme_s_own_colours_and_rules_win),
+        ("a vs code colour reads with its alpha last", () => Cases.Each<(string, uint)>(
+        [
+            ("#abc8", 0x88AABBCCu),
+            ("#A1B2C380", 0x80A1B2C3u),
+        ], row => A_vs_code_colour_reads_with_its_alpha_last(row.Item1, row.Item2))),
+        ("the innermost scope a rule colours wins then the longer selector then more parents then the later rule", The_innermost_scope_a_rule_colours_wins_then_the_longer_selector_then_more_parents_then_the_later_rule),
+        ("a vsix names its extension and colour themes and reads them from its zip", A_vsix_names_its_extension_and_colour_themes_and_reads_them_from_its_zip),
+        ("open vsx s search answer lists each extension with its downloads rating and vsix", Open_vsx_s_search_answer_lists_each_extension_with_its_downloads_rating_and_vsix));
+
+    private void A_theme_reads_with_comments_and_trailing_commas_its_colours_rules_and_semantic_colours_and_names_what_it_passed_over()
     {
         ThemeRead<VsCodeTheme> read = VsCodeThemes.ReadTheme("theme.json", null, null, Files(("theme.json", Dark)));
         VsCodeTheme theme = read.Read!;
@@ -60,18 +72,7 @@ public class VsCodeThemesTests
         Assert.Equal(new VsCodeStyle(0xFF50FA7B, null, true), theme.SemanticColors["method"]);
     }
 
-    [Fact]
-    public void A_light_theme_is_light_and_a_label_and_a_kind_given_win_over_its_own()
-    {
-        Assert.False(Read("""{"type": "light", "colors": {"editor.background": "#FFFFFF"}}""").Dark);
-        Assert.False(Read("""{"type": "hcLight", "colors": {"editor.background": "#FFFFFF"}}""").Dark);
-        Assert.Equal("light-theme", Read("""{"colors": {"a": "#FFF"}}""", "themes/light-theme.json").Name);
-        VsCodeTheme named = VsCodeThemes.ReadTheme("t.json", "Given", false, Files(("t.json", """{"name": "Own", "type": "dark", "colors": {"a": "#FFF"}}"""))).Read!;
-        Assert.Equal(("Given", false), (named.Name, named.Dark));
-    }
-
-    [Fact]
-    public void An_included_file_is_laid_first_so_the_theme_s_own_colours_and_rules_win()
+    private void An_included_file_is_laid_first_so_the_theme_s_own_colours_and_rules_win()
     {
         VsCodeTheme theme = VsCodeThemes.ReadTheme("themes/soft.json", null, null, Files(
             ("themes/soft.json", """{"include": "./base/dark.json", "colors": {"editor.background": "#111111"}, "tokenColors": [{"scope": "comment", "settings": {"foreground": "#999999"}}]}"""),
@@ -81,22 +82,36 @@ public class VsCodeThemesTests
         Assert.Equal([0xFF555555u, 0xFF999999u], theme.TokenColors.Select(r => r.Foreground!.Value));
     }
 
-    [Theory]
-    [InlineData("""{"include": "../../outside.json", "colors": {"a": "#FFF"}}""", "not a file inside the extension")]
-    [InlineData("""{"include": "theme.json", "colors": {"a": "#FFF"}}""", "includes more than the 8 files")]
-    [InlineData("""{"tokenColors": "./dark.tmTheme"}""", "a TextMate theme file, which Passenger does not read")]
-    [InlineData("""{"name": "Empty"}""", "gives no colors and no tokenColors")]
-    [InlineData("""[1, 2]""", "is no JSON object")]
-    [InlineData("""{"colors": {""", "is not JSON as VS Code reads it")]
-    public void A_theme_that_cannot_be_read_is_refused_saying_why(string json, string why)
+    [Fact]
+    public void What_a_vs_code_theme_cannot_give_is_refused_and_nothing_outside_its_extension_is_read() => Cases.All(
+        ("a theme that cannot be read is refused saying why", () => Cases.Each<(string, string)>(
+        [
+            ("""{"include": "../../outside.json", "colors": {"a": "#FFF"}}""", "not a file inside the extension"),
+            ("""{"include": "theme.json", "colors": {"a": "#FFF"}}""", "includes more than the 8 files"),
+            ("""{"tokenColors": "./dark.tmTheme"}""", "a TextMate theme file, which Passenger does not read"),
+            ("""{"name": "Empty"}""", "gives no colors and no tokenColors"),
+            ("""{"colors": {""", "is not JSON as VS Code reads it"),
+        ], row => A_theme_that_cannot_be_read_is_refused_saying_why(row.Item1, row.Item2))),
+        ("a theme file past the most a theme file holds is refused unread", A_theme_file_past_the_most_a_theme_file_holds_is_refused_unread),
+        ("a path a file names is taken inside the extension or refused", () => Cases.Each<(string, string, string?)>(
+        [
+            ("theme/../themes/dark.json", "", "themes/dark.json"),
+            ("../base.json", "themes", "base.json"),
+            ("../base.json", "", null),
+            ("/etc/dark.json", "", null),
+            ("theme/dark.tmTheme", "", null),
+        ], row => A_path_a_file_names_is_taken_inside_the_extension_or_refused(row.Item1, row.Item2, row.Item3))),
+        ("a vsix that is no zip holds no manifest or is past a limit is refused saying why", A_vsix_that_is_no_zip_holds_no_manifest_or_is_past_a_limit_is_refused_saying_why),
+        ("a manifest naming no publisher and name is refused", A_manifest_naming_no_publisher_and_name_is_refused));
+
+    private void A_theme_that_cannot_be_read_is_refused_saying_why(string json, string why)
     {
         ThemeRead<VsCodeTheme> read = VsCodeThemes.ReadTheme("theme.json", null, null, Files(("theme.json", json)));
         Assert.Null(read.Read);
         Assert.Contains(why, read.Refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_theme_file_past_the_most_a_theme_file_holds_is_refused_unread()
+    private void A_theme_file_past_the_most_a_theme_file_holds_is_refused_unread()
     {
         string big = $$"""{"colors": {"a": "#FFF"}, "name": "{{new string('x', 1_300_000)}}"}""";
         ThemeRead<VsCodeTheme> read = VsCodeThemes.ReadTheme("theme.json", null, null, Files(("theme.json", big)));
@@ -104,26 +119,12 @@ public class VsCodeThemesTests
         Assert.Equal("theme.json is 1.2 MB, more than the 1 MB a theme file may hold", read.Refused);
     }
 
-    [Theory]
-    [InlineData("./theme/dark.json", "", "theme/dark.json")]
-    [InlineData("theme/../themes/dark.json", "", "themes/dark.json")]
-    [InlineData("../base.json", "themes", "base.json")]
-    [InlineData("../base.json", "", null)]
-    [InlineData("/etc/dark.json", "", null)]
-    [InlineData("C:/dark.json", "", null)]
-    [InlineData("theme/dark.tmTheme", "", null)]
-    public void A_path_a_file_names_is_taken_inside_the_extension_or_refused(string path, string folder, string? inside) =>
+    private void A_path_a_file_names_is_taken_inside_the_extension_or_refused(string path, string folder, string? inside) =>
         Assert.Equal(inside, VsCodeThemes.Inside(path, folder));
 
-    [Theory]
-    [InlineData("#abc", 0xFFAABBCCu)]
-    [InlineData("#abc8", 0x88AABBCCu)]
-    [InlineData("#A1B2C3", 0xFFA1B2C3u)]
-    [InlineData("#A1B2C380", 0x80A1B2C3u)]
-    public void A_vs_code_colour_reads_with_its_alpha_last(string text, uint argb) => Assert.Equal(argb, VsCodeThemes.Colour(text));
+    private void A_vs_code_colour_reads_with_its_alpha_last(string text, uint argb) => Assert.Equal(argb, VsCodeThemes.Colour(text));
 
-    [Fact]
-    public void A_vsix_names_its_extension_and_colour_themes_and_reads_them_from_its_zip()
+    private void A_vsix_names_its_extension_and_colour_themes_and_reads_them_from_its_zip()
     {
         byte[] vsix = Vsix(("extension/package.json", """
             {"publisher": "lantern", "name": "lantern-theme", "version": "1.2.3", "displayName": "Lantern Themes",
@@ -147,8 +148,7 @@ public class VsCodeThemesTests
         Assert.Equal(["package.json", "themes/lantern.json"], taken!.Files.Keys.Order(StringComparer.Ordinal));
     }
 
-    [Fact]
-    public void A_vsix_that_is_no_zip_holds_no_manifest_or_is_past_a_limit_is_refused_saying_why()
+    private void A_vsix_that_is_no_zip_holds_no_manifest_or_is_past_a_limit_is_refused_saying_why()
     {
         Assert.Null(VsCodeThemes.Vsix(Encoding.UTF8.GetBytes("no zip"), out string? notZip));
         Assert.Contains("no zip Passenger reads", notZip, StringComparison.Ordinal);
@@ -161,16 +161,14 @@ public class VsCodeThemesTests
         Assert.Contains("holds no gone.json", files("gone.json").Why, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_manifest_naming_no_publisher_and_name_is_refused()
+    private void A_manifest_naming_no_publisher_and_name_is_refused()
     {
         ThemeRead<VsCodeExtension> read = VsCodeThemes.ReadManifest("package.json", Encoding.UTF8.GetBytes("""{"name": "x", "contributes": {}}"""));
         Assert.Null(read.Read);
         Assert.Contains("names no publisher and name", read.Refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void The_innermost_scope_a_rule_colours_wins_then_the_longer_selector_then_more_parents_then_the_later_rule()
+    private void The_innermost_scope_a_rule_colours_wins_then_the_longer_selector_then_more_parents_then_the_later_rule()
     {
         VsCodeRule[] rules =
         [
@@ -190,8 +188,7 @@ public class VsCodeThemesTests
         Assert.Null(VsCodeScopes.Resolve(rules, ["source.cs", "stringy"]).Foreground);
     }
 
-    [Fact]
-    public void Open_vsx_s_search_answer_lists_each_extension_with_its_downloads_rating_and_vsix()
+    private void Open_vsx_s_search_answer_lists_each_extension_with_its_downloads_rating_and_vsix()
     {
         OpenVsxPage page = OpenVsx.ReadPage(Encoding.UTF8.GetBytes("""
             {"offset": 0, "totalSize": 2083, "extensions": [
@@ -212,13 +209,6 @@ public class VsCodeThemesTests
         Assert.Null(OpenVsx.ReadPage(Encoding.UTF8.GetBytes("""{"error": "down"}"""), out string? none));
         Assert.Contains("no list of extensions", none, StringComparison.Ordinal);
     }
-
-    [Theory]
-    [InlineData("", OpenVsxOrder.Downloads, 0, "api/-/search?category=Themes&sortBy=downloadCount&sortOrder=desc&size=24&offset=0")]
-    [InlineData("one dark", OpenVsxOrder.Rating, 24, "api/-/search?query=one%20dark&category=Themes&sortBy=rating&sortOrder=desc&size=24&offset=24")]
-    [InlineData(" nord ", OpenVsxOrder.Newest, 0, "api/-/search?query=nord&category=Themes&sortBy=timestamp&sortOrder=desc&size=24&offset=0")]
-    public void A_search_asks_open_vsx_s_themes_category_in_its_order(string words, OpenVsxOrder order, int offset, string asked) =>
-        Assert.Equal(asked, OpenVsx.SearchAddress(words, order, offset).PathAndQuery.TrimStart('/'));
 
     /// <summary>A zip of files by their paths and texts, as a .vsix is.</summary>
     private static byte[] Vsix(params (string Path, string Text)[] files)

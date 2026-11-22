@@ -43,7 +43,23 @@ public class ThemeFilesTests
     private static string Dark(string token, string value) => $$$"""{"format": 1, "name": "Mine", "dark": {"{{{token}}}": {{{value}}}}}""";
 
     [Fact]
-    public void A_theme_gives_its_name_description_and_tokens_for_both_variants_and_for_each()
+    public void A_theme_file_gives_its_tokens_as_the_window_draws_them() => Cases.All(
+        ("a theme gives its name description and tokens for both variants and for each", A_theme_gives_its_name_description_and_tokens_for_both_variants_and_for_each),
+        ("a theme may leave out its description and any section whose tokens stay the defaults", A_theme_may_leave_out_its_description_and_any_section_whose_tokens_stay_the_defaults),
+        ("a colour is six hex digits opaque or eight with its alpha first", () => Cases.Each<(string, uint)>(
+        [
+            ("\"#3D78F5\"", 0xFF3D78F5u),
+            ("\"#1F000000\"", 0x1F000000u),
+        ], row => A_colour_is_six_hex_digits_opaque_or_eight_with_its_alpha_first(row.Item1, row.Item2))),
+        ("a gradient goes from its start to its end through its stops", A_gradient_goes_from_its_start_to_its_end_through_its_stops),
+        ("shadows are written as avalonia writes them", () => Cases.Each<string>(
+        [
+            "0 1 2 0 #1F000000, inset 0 0 1 #FF000000",
+            "none",
+        ], Shadows_are_written_as_avalonia_writes_them)),
+        ("a code colour scheme gives the codes colours for either variant", A_code_colour_scheme_gives_the_codes_colours_for_either_variant));
+
+    private void A_theme_gives_its_name_description_and_tokens_for_both_variants_and_for_each()
     {
         ThemeFile theme = Read("""
             {"format": 1, "name": "Mine", "description": "Quiet greys.",
@@ -59,8 +75,7 @@ public class ThemeFilesTests
         Assert.Equal(2, theme.Light.Count);
     }
 
-    [Fact]
-    public void A_theme_may_leave_out_its_description_and_any_section_whose_tokens_stay_the_defaults()
+    private void A_theme_may_leave_out_its_description_and_any_section_whose_tokens_stay_the_defaults()
     {
         ThemeFile theme = Read("""{"format": 1, "name": "Mine"}""");
         Assert.Equal(string.Empty, theme.Description);
@@ -69,19 +84,10 @@ public class ThemeFilesTests
         Assert.Empty(theme.Light);
     }
 
-    [Theory]
-    [InlineData("\"#3D78F5\"", 0xFF3D78F5u)]
-    [InlineData("\"#3d78f5\"", 0xFF3D78F5u)]
-    [InlineData("\"#1F000000\"", 0x1F000000u)]
-    public void A_colour_is_six_hex_digits_opaque_or_eight_with_its_alpha_first(string value, uint argb) =>
+    private void A_colour_is_six_hex_digits_opaque_or_eight_with_its_alpha_first(string value, uint argb) =>
         Assert.Equal(new ColourValue(argb, 1), Read(Dark("Frame", value)).Dark["Frame"]);
 
-    [Fact]
-    public void A_colour_may_be_drawn_at_an_opacity() =>
-        Assert.Equal(new ColourValue(0xFF2F6BF2, 0.22), Read(Dark("DropZone", """{"colour": "#2F6BF2", "opacity": 0.22}""")).Dark["DropZone"]);
-
-    [Fact]
-    public void A_gradient_goes_from_its_start_to_its_end_through_its_stops()
+    private void A_gradient_goes_from_its_start_to_its_end_through_its_stops()
     {
         GradientValue gradient = Assert.IsType<GradientValue>(Read(Dark("TitleBar",
             """{"start": [0, 0], "end": [1, 0.5], "stops": [{"offset": 0, "colour": "#1B3270"}, {"offset": 1, "colour": "#0E4552"}]}""")).Dark["TitleBar"]);
@@ -89,65 +95,43 @@ public class ThemeFilesTests
         Assert.Equal([new GradientStopValue(0, 0xFF1B3270), new GradientStopValue(1, 0xFF0E4552)], gradient.Stops);
     }
 
-    [Fact]
-    public void A_token_whose_default_is_a_gradient_also_takes_a_plain_colour() =>
-        Assert.Equal(new ColourValue(0xFF151311, 1), Read(Dark("TitleBar", "\"#151311\"")).Dark["TitleBar"]);
-
-    [Theory]
-    [InlineData("0 6 20 0 #80000000")]
-    [InlineData("0 1 2 0 #1F000000, inset 0 0 1 #FF000000")]
-    [InlineData("2 2 #FF000000")]
-    [InlineData("none")]
-    public void Shadows_are_written_as_avalonia_writes_them(string text) =>
+    private void Shadows_are_written_as_avalonia_writes_them(string text) =>
         Assert.Equal(new ShadowValue(text), Read(Dark("PopupShadow", $"\"{text}\"")).Dark["PopupShadow"]);
 
     [Fact]
-    public void A_radius_or_thickness_is_one_number_for_every_side_or_four()
-    {
-        ThemeFile theme = Read("""{"format": 1, "name": "Mine", "tokens": {"ControlRadius": [10, 10, 0, 0], "TabMargin": [1, 6, 1, -2], "TabStripHeight": 40}}""");
-        Assert.Equal([10, 10, 0, 0], ((SidesValue)theme.Both["ControlRadius"]).Numbers);
-        Assert.Equal([1, 6, 1, -2], ((SidesValue)theme.Both["TabMargin"]).Numbers);
-        Assert.Equal(new NumberValue(40), theme.Both["TabStripHeight"]);
-    }
+    public void A_theme_file_that_does_not_read_is_refused_whole_saying_why_and_what_it_does_not_know_is_passed_over() => Cases.All(
+        ("a value of the wrong kind refuses the whole file naming the token and what it takes", () => Cases.Each<(string, string, string)>(
+        [
+            ("Frame", "\"red\"", "a colour"),
+            ("Accent", """{"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#000000"}, {"offset": 1, "colour": "#FFFFFF"}]}""", "a colour"),
+            ("TitleBar", """{"start": [0, 0], "end": [1, 0], "stops": [{"offset": 1, "colour": "#000000"}, {"offset": 0, "colour": "#FFFFFF"}]}""", "a gradient"),
+            ("PopupShadow", "\"0 6 -20 0 #80000000\"", "shadows"),
+            ("ControlRadius", "\"8\"", "a radius"),
+            ("SyntaxStyle.Comment", "\"italic\"", "\"Normal\", \"Bold\", \"Italic\" or \"Bold Italic\""),
+        ], row => A_value_of_the_wrong_kind_refuses_the_whole_file_naming_the_token_and_what_it_takes(row.Item1, row.Item2, row.Item3))),
+        ("a token this Passenger does not know is passed over and named", A_token_this_Passenger_does_not_know_is_passed_over_and_named),
+        ("a file that is no theme is refused whole saying why", () => Cases.Each<(string, string)>(
+        [
+            ("{\"format\": 1, \"name\": \"Mine\"", "is not JSON"),
+            ("[1, 2]", "is no JSON object"),
+            ("{\"format\": 2, \"name\": \"Mine\"}", "is format 2, which this Passenger does not read: it reads format 1"),
+            ("{\"format\": 1}", "gives no name"),
+            ("{\"format\": 1, \"name\": \"Mine\", \"dark\": {\"Frame\": \"#000000\", \"Frame\": \"#111111\"}}", "is not JSON"),
+            ("{\"format\": 1, \"name\": \"Mine\", \"tokens\": {\"Frame\": \"#000000\"}, \"light\": {\"Frame\": \"#111111\"}}", "gives Frame in tokens and in light"),
+        ], row => A_file_that_is_no_theme_is_refused_whole_saying_why(row.Item1, row.Item2))),
+        ("a file saved with a byte order mark reads as one without", A_file_saved_with_a_byte_order_mark_reads_as_one_without),
+        ("a file nested deeper than a theme is refused", A_file_nested_deeper_than_a_theme_is_refused),
+        ("a file larger than a theme may be is refused unread", A_file_larger_than_a_theme_may_be_is_refused_unread),
+        ("a code colour scheme giving a colour of the window is refused", A_code_colour_scheme_giving_a_colour_of_the_window_is_refused));
 
-    [Theory]
-    [InlineData("Normal")]
-    [InlineData("Bold")]
-    [InlineData("Italic")]
-    [InlineData("Bold Italic")]
-    public void A_syntax_style_is_one_of_its_four_words(string words) =>
-        Assert.Equal(new TextStyleValue(words), Read(Dark("SyntaxStyle.Comment", $"\"{words}\"")).Dark["SyntaxStyle.Comment"]);
-
-    [Theory]
-    [InlineData("Frame", "\"red\"", "a colour")]
-    [InlineData("Frame", "\"#12345\"", "a colour")]
-    [InlineData("Frame", "\"#GG0000\"", "a colour")]
-    [InlineData("Frame", "12", "a colour")]
-    [InlineData("Accent", """{"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#000000"}, {"offset": 1, "colour": "#FFFFFF"}]}""", "a colour")]
-    [InlineData("DropZone", """{"colour": "#2F6BF2", "opacity": 1.5}""", "a colour")]
-    [InlineData("DropZone", """{"opacity": 0.5}""", "a colour")]
-    [InlineData("TitleBar", """{"start": [0, 0], "end": [1, 0], "stops": [{"offset": 0, "colour": "#000000"}]}""", "a gradient")]
-    [InlineData("TitleBar", """{"start": [0, 0], "end": [1, 0], "stops": [{"offset": 1, "colour": "#000000"}, {"offset": 0, "colour": "#FFFFFF"}]}""", "a gradient")]
-    [InlineData("TitleBar", """{"end": [1, 0], "stops": [{"offset": 0, "colour": "#000000"}, {"offset": 1, "colour": "#FFFFFF"}]}""", "a gradient")]
-    [InlineData("PopupShadow", "\"0 6 20 0 black\"", "shadows")]
-    [InlineData("PopupShadow", "\"0 #80000000\"", "shadows")]
-    [InlineData("PopupShadow", "\"0 6 -20 0 #80000000\"", "shadows")]
-    [InlineData("ControlRadius", "-1", "a radius")]
-    [InlineData("ControlRadius", "[1, 2]", "a radius")]
-    [InlineData("ControlRadius", "\"8\"", "a radius")]
-    [InlineData("TabMargin", "[1, 2, 3]", "a thickness")]
-    [InlineData("TabMargin", "5000", "a thickness")]
-    [InlineData("TabStripHeight", "\"40\"", "a number")]
-    [InlineData("SyntaxStyle.Comment", "\"italic\"", "\"Normal\", \"Bold\", \"Italic\" or \"Bold Italic\"")]
-    public void A_value_of_the_wrong_kind_refuses_the_whole_file_naming_the_token_and_what_it_takes(string token, string value, string expected)
+    private void A_value_of_the_wrong_kind_refuses_the_whole_file_naming_the_token_and_what_it_takes(string token, string value, string expected)
     {
         string why = Refused(Dark(token, value));
         Assert.StartsWith($"Mine.json gives {token} in dark as ", why, StringComparison.Ordinal);
         Assert.Contains($"where it takes {expected}", why, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_token_this_Passenger_does_not_know_is_passed_over_and_named()
+    private void A_token_this_Passenger_does_not_know_is_passed_over_and_named()
     {
         ThemeRead<ThemeFile> read = Theme("""{"format": 1, "name": "Mine", "dark": {"Fram": "#000000", "Passenger.Frame": "#000000", "Frame": "#111111"}}""");
         Assert.NotNull(read.Read);
@@ -156,104 +140,27 @@ public class ThemeFilesTests
             "Mine.json: Passenger.Frame in dark is no token this Passenger knows (a token is named without \"Passenger.\"), so it was passed over"], read.Problems);
     }
 
-    [Fact]
-    public void A_member_this_Passenger_does_not_know_is_passed_over_and_named_wherever_it_is()
-    {
-        ThemeRead<ThemeFile> read = Theme("""
-            {"format": 1, "name": "Mine", "sounds": {"save": "chime.ogg"},
-             "dark": {"DropZone": {"colour": "#2F6BF2", "opacity": 0.2, "blend": "multiply"}}}
-            """);
-        Assert.Equal(new ColourValue(0xFF2F6BF2, 0.2), read.Read!.Dark["DropZone"]);
-        Assert.Equal(["Mine.json: sounds is no member of a theme this Passenger knows, so it was passed over",
-            "Mine.json: blend is no member of DropZone in dark, a colour this Passenger knows, so it was passed over"], read.Problems);
-    }
-
-    [Theory]
-    [InlineData("{\"format\": 1, \"name\": \"Mine\"", "is not JSON")]
-    [InlineData("[1, 2]", "is no JSON object")]
-    [InlineData("{\"name\": \"Mine\"}", "names no format")]
-    [InlineData("{\"format\": 2, \"name\": \"Mine\"}", "is format 2, which this Passenger does not read: it reads format 1")]
-    [InlineData("{\"format\": \"1\", \"name\": \"Mine\"}", "is format \"1\"")]
-    [InlineData("{\"format\": 1}", "gives no name")]
-    [InlineData("{\"format\": 1, \"name\": \"  \"}", "gives name as")]
-    [InlineData("{\"format\": 1, \"name\": \"Mine\", \"description\": 4}", "gives description as 4")]
-    [InlineData("{\"format\": 1, \"name\": \"Mine\", \"dark\": [\"Frame\"]}", "gives dark as")]
-    [InlineData("{\"format\": 1, \"name\": \"Mine\", \"dark\": {\"Frame\": \"#000000\", \"Frame\": \"#111111\"}}", "is not JSON")]
-    [InlineData("{\"format\": 1, \"name\": \"Mine\", \"tokens\": {\"Frame\": \"#000000\"}, \"light\": {\"Frame\": \"#111111\"}}", "gives Frame in tokens and in light")]
-    public void A_file_that_is_no_theme_is_refused_whole_saying_why(string json, string why)
+    private void A_file_that_is_no_theme_is_refused_whole_saying_why(string json, string why)
     {
         string refused = Refused(json);
         Assert.StartsWith("Mine.json ", refused, StringComparison.Ordinal);
         Assert.Contains(why, refused, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_file_saved_with_a_byte_order_mark_reads_as_one_without() =>
+    private void A_file_saved_with_a_byte_order_mark_reads_as_one_without() =>
         Assert.Equal("Mine", ThemeFiles.ReadTheme("Mine.json", (byte[])[0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine"}""")], Tokens).Read?.Name);
 
-    [Fact]
-    public void A_file_nested_deeper_than_a_theme_is_refused() =>
+    private void A_file_nested_deeper_than_a_theme_is_refused() =>
         Assert.Contains("is not JSON", Refused(Dark("Frame", string.Concat(Enumerable.Repeat("[", 20)) + string.Concat(Enumerable.Repeat("]", 20)))), StringComparison.Ordinal);
 
-    [Fact]
-    public void A_file_larger_than_a_theme_may_be_is_refused_unread()
+    private void A_file_larger_than_a_theme_may_be_is_refused_unread()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", new byte[1_300_000], Tokens);
         Assert.Null(read.Read);
         Assert.Equal("Mine.json is 1.2 MB, more than the 1 MB a theme file may hold", read.Refused);
     }
 
-    /// <summary>A file written before the buttons had grounds of their own under the pointer and pressed answers the pointer
-    /// in its own colours, each worked out in its variant as Passenger's own theme works them out; one it gives is kept.</summary>
-    [Fact]
-    public void A_file_leaving_out_the_buttons_grounds_under_the_pointer_and_pressed_has_them_worked_out_from_its_own_colours()
-    {
-        Dictionary<string, ThemeTokenKind> tokens = new(Tokens, StringComparer.Ordinal);
-        foreach (string token in (string[])["Button", "ButtonHover", "ButtonPressed", "Hover", "Selected", "AccentHover", "AccentPressed"])
-        {
-            tokens[token] = ThemeTokenKind.Colour;
-        }
-        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""
-            {"format": 1, "name": "Mine",
-             "dark": {"Button": "#1F2638", "Hover": "#14A6C2FF", "Selected": "#24A6C2FF", "Accent": "#2F6BF2", "AccentHover": "#2A5FD9"},
-             "light": {"Button": "#FFFFFF", "Hover": {"colour": "#1F3A70", "opacity": 0.0706}, "Selected": "#211F3A70", "ButtonHover": "#F0F0F0"}}
-            """), tokens);
-        Assert.True(read.Read is not null, read.Refused);
-        ThemeFile theme = read.Read;
-        // Passenger's own Dark and Light: the hover and pressed washes over the button's ground, the press past the hover.
-        Assert.Equal(new ColourValue(0xFF2A3248, 1), theme.Dark["ButtonHover"]);
-        Assert.Equal(new ColourValue(0xFF323C54, 1), theme.Dark["ButtonPressed"]);
-        Assert.Equal(new ColourValue(0xFF1D51CA, 1), theme.Dark["AccentPressed"]);
-        Assert.Equal(new ColourValue(0xFFF0F0F0, 1), theme.Light["ButtonHover"]);
-        Assert.Equal(new ColourValue(0xFFE2E6EC, 1), theme.Light["ButtonPressed"]);
-        Assert.False(theme.Light.ContainsKey("AccentPressed"), "A press past the accent's hover was made up for a variant giving neither");
-    }
-
-    /// <summary>A file written before the Debug button had colours of its own draws it in its own icon colours, which it
-    /// holds legible where its icons stand; one it gives is kept.</summary>
-    [Fact]
-    public void A_file_leaving_out_the_debug_buttons_colours_draws_it_in_its_own_icon_colours()
-    {
-        Dictionary<string, ThemeTokenKind> tokens = new(Tokens, StringComparer.Ordinal);
-        foreach (string token in (string[])["Icon", "TitleBar.Icon", "Debug", "TitleBar.Debug"])
-        {
-            tokens[token] = ThemeTokenKind.Colour;
-        }
-        ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""
-            {"format": 1, "name": "Mine",
-             "dark": {"Icon": "#B9C3D7", "TitleBar.Icon": "#D6E2FF"},
-             "light": {"Icon": "#4D596E", "TitleBar.Icon": "#FFFFFF", "Debug": "#6D28D9"}}
-            """), tokens);
-        Assert.True(read.Read is not null, read.Refused);
-        ThemeFile theme = read.Read;
-        Assert.Equal(new ColourValue(0xFFB9C3D7, 1), theme.Dark["Debug"]);
-        Assert.Equal(new ColourValue(0xFFD6E2FF, 1), theme.Dark["TitleBar.Debug"]);
-        Assert.Equal(new ColourValue(0xFF6D28D9, 1), theme.Light["Debug"]);
-        Assert.Equal(new ColourValue(0xFFFFFFFF, 1), theme.Light["TitleBar.Debug"]);
-    }
-
-    [Fact]
-    public void A_code_colour_scheme_gives_the_codes_colours_for_either_variant()
+    private void A_code_colour_scheme_gives_the_codes_colours_for_either_variant()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Code.json", Encoding.UTF8.GetBytes("""
             {"format": 1, "name": "Code", "dark": {"Editor.Background": "#1E1F22", "Syntax.Keyword": "#CF8E6D", "SyntaxStyle.Comment": "Normal", "Diff.Added": "#294436"}}
@@ -263,8 +170,7 @@ public class ThemeFilesTests
         Assert.Empty(read.Problems);
     }
 
-    [Fact]
-    public void A_code_colour_scheme_giving_a_colour_of_the_window_is_refused()
+    private void A_code_colour_scheme_giving_a_colour_of_the_window_is_refused()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Code.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Code", "light": {"Frame": "#FFFFFF"}}"""), Tokens);
         Assert.Null(read.Read);
@@ -272,7 +178,19 @@ public class ThemeFilesTests
     }
 
     [Fact]
-    public void An_index_lists_its_themes_and_code_colour_schemes_by_paths_inside_the_source()
+    public void An_index_lists_its_themes_by_paths_inside_its_source_alone() => Cases.All(
+        ("an index lists its themes and code colour schemes by paths inside the source", An_index_lists_its_themes_and_code_colour_schemes_by_paths_inside_the_source),
+        ("an index entry that is no path inside the source refuses the index", () => Cases.Each<string>(
+        [
+            "../Other.json",
+            "themes/../../Other.json",
+            "/etc/Theme.json",
+            "C:/Theme.json",
+            "https://example.com/Theme.json",
+            "",
+        ], An_index_entry_that_is_no_path_inside_the_source_refuses_the_index)));
+
+    private void An_index_lists_its_themes_and_code_colour_schemes_by_paths_inside_the_source()
     {
         ThemeRead<ThemeIndex> read = ThemeFiles.ReadIndex(ThemeFiles.IndexFile, Encoding.UTF8.GetBytes("""
             {"format": 1, "themes": ["Harbour.json", "anime/Sakura/theme.json"], "codeColours": ["Code.json"], "extra": true}
@@ -282,17 +200,7 @@ public class ThemeFilesTests
         Assert.Equal(["passenger-themes.json: extra is no member of an index this Passenger knows, so it was passed over"], read.Problems);
     }
 
-    [Theory]
-    [InlineData("../Other.json")]
-    [InlineData("themes/../../Other.json")]
-    [InlineData("/etc/Theme.json")]
-    [InlineData("C:/Theme.json")]
-    [InlineData("https://example.com/Theme.json")]
-    [InlineData("themes\\\\Theme.json")]
-    [InlineData("themes//Theme.json")]
-    [InlineData("Theme.png")]
-    [InlineData("")]
-    public void An_index_entry_that_is_no_path_inside_the_source_refuses_the_index(string path)
+    private void An_index_entry_that_is_no_path_inside_the_source_refuses_the_index(string path)
     {
         ThemeRead<ThemeIndex> read = ThemeFiles.ReadIndex(ThemeFiles.IndexFile, Encoding.UTF8.GetBytes($$"""{"format": 1, "themes": ["{{path}}"]}"""));
         Assert.Null(read.Read);

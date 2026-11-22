@@ -11,7 +11,12 @@ public class FontAxesTests
     private static readonly byte[] Table = Fvar(("wdth", 30, 100, 150), ("opsz", 17, 28, 96), ("GRAD", 400, 400, 1000), ("wght", 1, 400, 1000));
 
     [Fact]
-    public void Each_axis_is_read_with_its_least_default_and_greatest_value_in_the_tables_order()
+    public void A_variable_faces_axes_are_read_from_its_table_and_a_size_held_to_them() => Cases.All(
+        ("each axis is read with its least default and greatest value in the tables order", Each_axis_is_read_with_its_least_default_and_greatest_value_in_the_tables_order),
+        ("an optical size below the axis is its least and one above its greatest", An_optical_size_below_the_axis_is_its_least_and_one_above_its_greatest),
+        ("a table cut short or of another version has no axes", A_table_cut_short_or_of_another_version_has_no_axes));
+
+    private void Each_axis_is_read_with_its_least_default_and_greatest_value_in_the_tables_order()
     {
         IReadOnlyList<FontAxis> axes = FontAxes.Of(Table);
         Assert.Equal(((string[])["wdth", "opsz", "GRAD", "wght"]).Select(FontAxes.TagOf), axes.Select(a => a.Tag));
@@ -20,8 +25,7 @@ public class FontAxesTests
         Assert.Equal(700, axes.Single(a => a.Tag == FontAxes.Weight).Held(700));
     }
 
-    [Fact]
-    public void An_optical_size_below_the_axis_is_its_least_and_one_above_its_greatest()
+    private void An_optical_size_below_the_axis_is_its_least_and_one_above_its_greatest()
     {
         FontAxis opsz = FontAxes.Of(Table).Single(a => a.Tag == FontAxes.OpticalSize);
         Assert.Equal(17, opsz.Held(13));
@@ -29,8 +33,7 @@ public class FontAxesTests
         Assert.Equal(96, opsz.Held(120));
     }
 
-    [Fact]
-    public void A_table_cut_short_or_of_another_version_has_no_axes()
+    private void A_table_cut_short_or_of_another_version_has_no_axes()
     {
         Assert.Empty(FontAxes.Of(Table.AsSpan(0, 40)));
         Assert.Empty(FontAxes.Of([]));

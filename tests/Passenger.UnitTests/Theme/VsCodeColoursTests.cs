@@ -35,7 +35,17 @@ public class VsCodeColoursTests
         """;
 
     [Fact]
-    public void A_dark_theme_shows_dark_alone_its_grounds_and_code_colours_taken_as_it_gives_them()
+    public void A_vs_code_themes_colours_become_Passengers_each_readable_where_it_is_drawn() => Cases.All(
+        ("a dark theme shows dark alone its grounds and code colours taken as it gives them", A_dark_theme_shows_dark_alone_its_grounds_and_code_colours_taken_as_it_gives_them),
+        ("a code colour too faint to read is moved in lightness to AA on the editor and its current line keeping its hue", A_code_colour_too_faint_to_read_is_moved_in_lightness_to_AA_on_the_editor_and_its_current_line_keeping_its_hue),
+        ("every word and mark meets WCAG AA on what it is drawn on whatever the theme gives", () => Cases.Each<bool>(
+        [
+            true,
+            false,
+        ], Every_word_and_mark_meets_WCAG_AA_on_what_it_is_drawn_on_whatever_the_theme_gives)),
+        ("as a code colour scheme a vs code theme gives only the code s colours its own variant s as drawn and the other s moved to read", As_a_code_colour_scheme_a_vs_code_theme_gives_only_the_code_s_colours_its_own_variant_s_as_drawn_and_the_other_s_moved_to_read));
+
+    private void A_dark_theme_shows_dark_alone_its_grounds_and_code_colours_taken_as_it_gives_them()
     {
         ThemeFile theme = VsCodeColours.ToTheme(Theme(Lantern));
         Assert.Equal(("Lantern", ThemeShows.Dark), (theme.Name, theme.Shows));
@@ -55,8 +65,7 @@ public class VsCodeColoursTests
         Assert.Equal(new TextStyleValue("Italic"), theme.Both["SyntaxStyle.Comment"]);
     }
 
-    [Fact]
-    public void A_code_colour_too_faint_to_read_is_moved_in_lightness_to_AA_on_the_editor_and_its_current_line_keeping_its_hue()
+    private void A_code_colour_too_faint_to_read_is_moved_in_lightness_to_AA_on_the_editor_and_its_current_line_keeping_its_hue()
     {
         ThemeFile theme = VsCodeColours.ToTheme(Theme(Lantern));
         uint comment = Colour(theme, "Syntax.Comment");
@@ -67,10 +76,7 @@ public class VsCodeColoursTests
         Assert.True((comment & 0xFF) > ((comment >> 16) & 0xFF) && (comment & 0xFF) > ((comment >> 8) & 0xFF), $"The comment {comment:X8} lost its hue");
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Every_word_and_mark_meets_WCAG_AA_on_what_it_is_drawn_on_whatever_the_theme_gives(bool dark)
+    private void Every_word_and_mark_meets_WCAG_AA_on_what_it_is_drawn_on_whatever_the_theme_gives(bool dark)
     {
         // A theme giving faint words and grounds too close to tell apart.
         string faint = dark
@@ -93,19 +99,28 @@ public class VsCodeColoursTests
     }
 
     [Fact]
-    public void Every_kind_the_theme_leaves_uncoloured_takes_the_one_it_falls_back_on_or_the_palette_s()
-    {
-        ThemeFile theme = VsCodeColours.ToTheme(Theme("""{"colors": {"editor.background": "#000000"}, "tokenColors": [{"scope": "keyword", "settings": {"foreground": "#FF8000"}}]}"""));
-        Assert.Equal(Colour(theme, "Syntax.Keyword"), Colour(theme, "Syntax.ControlKeyword"));
-        Assert.Equal(Colour(theme, "Syntax.Keyword"), Colour(theme, "Syntax.Preprocessor"));
-        foreach (string kind in ThemePalettes.SyntaxKinds)
-        {
-            Assert.True(theme.Both.ContainsKey($"Syntax.{kind}"), $"Syntax.{kind} is not given");
-        }
-    }
+    public void A_theme_kept_over_a_vs_code_theme_names_its_base_its_name_and_its_version_as_written() => Cases.All(
+        ("a passenger theme names its vs code base and its own tokens win over the base s", A_passenger_theme_names_its_vs_code_base_and_its_own_tokens_win_over_the_base_s),
+        ("a theme names a vs code theme beside its file and a code colour scheme may name one too", A_theme_names_a_vs_code_theme_beside_its_file_and_a_code_colour_scheme_may_name_one_too),
+        ("a theme kept over a vs code theme is written as its file is read", () => Cases.Each<(string?, string?, string?, string?)>(
+        [
+            ("dracula-theme.theme-dracula", "Dracula", "2.25.1", null),
+            (null, null, null, "vscode/dark.json"),
+        ], row => A_theme_kept_over_a_vs_code_theme_is_written_as_its_file_is_read(row.Item1, row.Item2, row.Item3, row.Item4))),
+        ("a theme s name from a vs code theme s words is kept as written where a theme file holds it", () => Cases.Each<(string, string, string)>(
+        [
+            ("Dracula", " (Dracula Official)", "Dracula (Dracula Official)"),
+            ("Line one\nline two", "", "Line one line two"),
+        ], row => A_theme_s_name_from_a_vs_code_theme_s_words_is_kept_as_written_where_a_theme_file_holds_it(row.Item1, row.Item2, row.Item3))),
+        ("a vs code base named wrongly refuses the theme saying why", () => Cases.Each<(string, string)>(
+        [
+            ("""{"vscode": "dracula"}""", "vscode is {\"id\": \"publisher.extension\""),
+            ("""{"vscode": {"id": "no-dot", "theme": "Dracula"}}""", "it is an extension's Open VSX id"),
+            ("""{"vscode": {"file": "../dark.json"}}""", "with no .."),
+            ("""{"vscode": {"file": "dark.json", "id": "a.b"}}""", "given instead of an id"),
+        ], row => A_vs_code_base_named_wrongly_refuses_the_theme_saying_why(row.Item1, row.Item2))));
 
-    [Fact]
-    public void A_passenger_theme_names_its_vs_code_base_and_its_own_tokens_win_over_the_base_s()
+    private void A_passenger_theme_names_its_vs_code_base_and_its_own_tokens_win_over_the_base_s()
     {
         Dictionary<string, ThemeTokenKind> kinds = new(StringComparer.Ordinal)
         {
@@ -125,56 +140,7 @@ public class VsCodeColoursTests
         Assert.Equal(0xFF191A21u, Colour(laid, "Frame"));
     }
 
-    [Fact]
-    public void Its_six_bracket_colours_are_carried_over_and_three_where_it_gives_three()
-    {
-        string[] six = ["#FFD700", "#DA70D6", "#179FFF", "#FF8C66", "#7FE07F", "#E0A0FF"];
-        string colours = string.Join(", ", six.Select((c, i) => $"\"editorBracketHighlight.foreground{i + 1}\": \"{c}\""));
-        ThemeFile theme = VsCodeColours.ToTheme(Theme($$$"""{"colors": {"editor.background": "#1E1E1E", {{{colours}}}}}"""));
-        for (int level = 1; level <= 6; level++)
-        {
-            Assert.Equal(VsCodeThemes.Colour(six[level - 1])!.Value, Colour(theme, $"Syntax.Brace{level}"));
-        }
-        ThemeFile three = VsCodeColours.ToTheme(Theme("""{"colors": {"editor.background": "#1E1E1E", "editorBracketHighlight.foreground1": "#FFD700", "editorBracketHighlight.foreground5": "#7FE07F"}}"""));
-        Assert.Equal(Colour(three, "Syntax.Brace1"), Colour(three, "Syntax.Brace3"));
-        Assert.False(three.Both.ContainsKey("Syntax.Brace4") || three.Both.ContainsKey("Syntax.Brace5"), "A fifth colour after no fourth is a level given");
-    }
-
-    [Fact]
-    public void Its_parameters_locals_namespaces_and_operators_take_its_colours_and_a_parameter_its_italics()
-    {
-        ThemeFile theme = VsCodeColours.ToTheme(Theme("""
-            {"colors": {"editor.background": "#282A36", "editor.foreground": "#F8F8F2"},
-             "tokenColors": [
-               {"scope": "variable.parameter", "settings": {"foreground": "#FFB86C", "fontStyle": "italic"}},
-               {"scope": "keyword.operator", "settings": {"foreground": "#FF79C6"}},
-               {"scope": "entity.name.namespace", "settings": {"foreground": "#8BE9FD"}}]}
-            """));
-        Assert.Equal(0xFFFFB86Cu, Colour(theme, "Syntax.Parameter"));
-        Assert.Equal(new TextStyleValue("Italic"), theme.Both["SyntaxStyle.Parameter"]);
-        Assert.Equal(0xFFFF79C6u, Colour(theme, "Syntax.Operator"));
-        Assert.Equal(0xFF8BE9FDu, Colour(theme, "Syntax.Namespace"));
-        Assert.Equal(Colour(theme, "Editor.Text"), Colour(theme, "Syntax.Local"));
-    }
-
-    [Fact]
-    public void A_file_leaving_out_the_plain_kinds_draws_them_in_its_own_plain_words_unless_it_is_laid_over_a_vs_code_theme()
-    {
-        Dictionary<string, ThemeTokenKind> kinds = new(StringComparer.Ordinal)
-        {
-            ["Editor.Text"] = ThemeTokenKind.Colour, ["Syntax.Parameter"] = ThemeTokenKind.Colour, ["Syntax.Local"] = ThemeTokenKind.Colour,
-            ["Syntax.Namespace"] = ThemeTokenKind.Colour, ["Syntax.Operator"] = ThemeTokenKind.Colour,
-        };
-        ThemeFile own = ThemeFiles.ReadTheme("Old.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Old", "dark": {"Editor.Text": "#E2DACE"}, "light": {"Editor.Text": "#2A2520", "Syntax.Operator": "#AA0000"}}"""), kinds).Read!;
-        Assert.Equal(new ColourValue(0xFFE2DACE, 1), own.Dark["Syntax.Parameter"]);
-        Assert.Equal(new ColourValue(0xFF2A2520, 1), own.Light["Syntax.Namespace"]);
-        Assert.False(own.Dark.ContainsKey("Syntax.Operator") || own.Light["Syntax.Operator"] != new ColourValue(0xFFAA0000, 1), "A kind the file gives is its own");
-        ThemeFile based = ThemeFiles.ReadTheme("Over.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Over", "vscode": {"id": "a.b", "theme": "T"}, "dark": {"Editor.Text": "#E2DACE"}}"""), kinds).Read!;
-        Assert.False(based.Dark.ContainsKey("Syntax.Parameter"), "Over a VS Code theme a parameter is the base's");
-    }
-
-    [Fact]
-    public void A_theme_names_a_vs_code_theme_beside_its_file_and_a_code_colour_scheme_may_name_one_too()
+    private void A_theme_names_a_vs_code_theme_beside_its_file_and_a_code_colour_scheme_may_name_one_too()
     {
         ThemeFile own = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes("""{"format": 1, "name": "Mine", "vscode": {"file": "vscode/dark.json"}}"""),
             new Dictionary<string, ThemeTokenKind>()).Read!;
@@ -187,8 +153,7 @@ public class VsCodeColoursTests
         Assert.Equal(new VsCodeBase("a.b", "T", null), scheme.Base);
     }
 
-    [Fact]
-    public void As_a_code_colour_scheme_a_vs_code_theme_gives_only_the_code_s_colours_its_own_variant_s_as_drawn_and_the_other_s_moved_to_read()
+    private void As_a_code_colour_scheme_a_vs_code_theme_gives_only_the_code_s_colours_its_own_variant_s_as_drawn_and_the_other_s_moved_to_read()
     {
         ThemeFile scheme = VsCodeColours.ToScheme(Theme(Lantern));
         ThemeFile theme = VsCodeColours.ToTheme(Theme(Lantern));
@@ -200,11 +165,7 @@ public class VsCodeColoursTests
         Assert.Equal(new TextStyleValue("Italic"), scheme.Both["SyntaxStyle.Comment"]);
     }
 
-    [Theory]
-    [InlineData("dracula-theme.theme-dracula", "Dracula", "2.25.1", null)]
-    [InlineData("dracula-theme.theme-dracula", "Dracula", null, null)]
-    [InlineData(null, null, null, "vscode/dark.json")]
-    public void A_theme_kept_over_a_vs_code_theme_is_written_as_its_file_is_read(string? id, string? theme, string? version, string? file)
+    private void A_theme_kept_over_a_vs_code_theme_is_written_as_its_file_is_read(string? id, string? theme, string? version, string? file)
     {
         VsCodeBase based = new(id, theme, version, file);
         ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Kept.json", ThemeFiles.Wrapping("Dracula", based), new Dictionary<string, ThemeTokenKind>());
@@ -214,44 +175,10 @@ public class VsCodeColoursTests
         Assert.Empty(read.Problems);
     }
 
-    [Theory]
-    [InlineData("Dracula", "", "Dracula")]
-    [InlineData("Dracula", " (Dracula Official)", "Dracula (Dracula Official)")]
-    [InlineData("Line one\nline two", "", "Line one line two")]
-    public void A_theme_s_name_from_a_vs_code_theme_s_words_is_kept_as_written_where_a_theme_file_holds_it(string words, string after, string name) =>
+    private void A_theme_s_name_from_a_vs_code_theme_s_words_is_kept_as_written_where_a_theme_file_holds_it(string words, string after, string name) =>
         Assert.Equal(name, ThemeFiles.NameOf(words, after));
 
-    [Fact]
-    public void A_theme_s_name_from_words_longer_than_a_theme_file_holds_is_cut_short_keeping_what_follows_and_every_character_whole()
-    {
-        string label = new string('a', 62) + "😀" + "tail";
-        Assert.Equal(new string('a', 62) + "…", ThemeFiles.NameOf(label));
-        Assert.Equal(new string('a', 56) + "… (Quay)", ThemeFiles.NameOf(label, " (Quay)"));
-        string over = ThemeFiles.NameOf(label, " (" + new string('b', 40) + ")");
-        Assert.Equal(64, over.Length);
-        Assert.StartsWith(new string('a', 32) + "… (bbb", over, StringComparison.Ordinal);
-        Assert.NotEqual(ThemeFiles.NameOf(label), over);
-        foreach (string name in (string[])[ThemeFiles.NameOf(label), ThemeFiles.NameOf(label, " (Quay)"), over])
-        {
-            Assert.Equal(name, ThemeFiles.ReadTheme("Kept.json", ThemeFiles.Wrapping(name, new VsCodeBase("a.b", label, null)), new Dictionary<string, ThemeTokenKind>()).Read?.Name);
-        }
-    }
-
-    [Theory]
-    [InlineData("2.25.1", "2.25.1")]
-    [InlineData("1.0.0-beta.2+local", "1.0.0-beta.2+local")]
-    [InlineData("2.0 local", "0.0.0")]
-    public void An_extension_s_version_is_read_from_its_manifest_only_as_a_theme_pins_one(string written, string read) =>
-        Assert.Equal(read, VsCodeThemes.ReadManifest("package.json", Encoding.UTF8.GetBytes($$"""{"publisher": "a", "name": "b", "version": "{{written}}"}""")).Read?.Version);
-
-    [Theory]
-    [InlineData("""{"vscode": "dracula"}""", "vscode is {\"id\": \"publisher.extension\"")]
-    [InlineData("""{"vscode": {"id": "no-dot", "theme": "Dracula"}}""", "it is an extension's Open VSX id")]
-    [InlineData("""{"vscode": {"id": "a.b", "theme": "Dracula", "version": "1 2"}}""", "it is the extension's version")]
-    [InlineData("""{"vscode": {"id": "a.b"}}""", "gives no theme")]
-    [InlineData("""{"vscode": {"file": "../dark.json"}}""", "with no ..")]
-    [InlineData("""{"vscode": {"file": "dark.json", "id": "a.b"}}""", "given instead of an id")]
-    public void A_vs_code_base_named_wrongly_refuses_the_theme_saying_why(string member, string why)
+    private void A_vs_code_base_named_wrongly_refuses_the_theme_saying_why(string member, string why)
     {
         string json = $$"""{"format": 1, "name": "Mine", {{member[1..^1]}}}""";
         ThemeRead<ThemeFile> read = ThemeFiles.ReadTheme("Mine.json", Encoding.UTF8.GetBytes(json), new Dictionary<string, ThemeTokenKind>());

@@ -9,7 +9,12 @@ public class CrashTextTests
     private static readonly DateTime At = new(2026, 11, 14, 9, 30, 15, 250);
 
     [Fact]
-    public void A_crash_kept_reads_back_as_its_time_type_and_message_with_its_text_whole()
+    public void A_crash_kept_reads_back_whole_and_a_file_holding_none_says_nothing() => Cases.All(
+        ("a crash kept reads back as its time type and message with its text whole", A_crash_kept_reads_back_as_its_time_type_and_message_with_its_text_whole),
+        ("an exception with no message inner exceptions and lines written on Windows reads as its outer type", An_exception_with_no_message_inner_exceptions_and_lines_written_on_Windows_reads_as_its_outer_type),
+        ("a file holding no crash says nothing and one with no time takes the files own", A_file_holding_no_crash_says_nothing_and_one_with_no_time_takes_the_files_own));
+
+    private void A_crash_kept_reads_back_as_its_time_type_and_message_with_its_text_whole()
     {
         string text = CrashText.Of(Thrown(new InvalidOperationException("No font is listed")), At, 4321, "0.4.0 (abc1234)");
 
@@ -23,8 +28,7 @@ public class CrashTextTests
             $"The error's details would not hold the file's text, its version and where it was thrown:\n{read.Details}");
     }
 
-    [Fact]
-    public void An_exception_with_no_message_inner_exceptions_and_lines_written_on_Windows_reads_as_its_outer_type()
+    private void An_exception_with_no_message_inner_exceptions_and_lines_written_on_Windows_reads_as_its_outer_type()
     {
         string text = CrashText.Of(new AggregateException(new ArgumentException("inner")), At, 1, "0.4.0 (no commit)").ReplaceLineEndings("\r\n");
         string bare = CrashText.Of(new NotSupportedException(string.Empty), At, 1, "0.4.0 (no commit)");
@@ -38,8 +42,7 @@ public class CrashTextTests
             $"An exception with no message would be said as {plain}");
     }
 
-    [Fact]
-    public void A_file_holding_no_crash_says_nothing_and_one_with_no_time_takes_the_files_own()
+    private void A_file_holding_no_crash_says_nothing_and_one_with_no_time_takes_the_files_own()
     {
         DateTime written = new(2026, 11, 13, 22, 0, 0);
 

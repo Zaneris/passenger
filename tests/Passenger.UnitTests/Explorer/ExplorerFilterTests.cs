@@ -16,7 +16,12 @@ public sealed class ExplorerFilterTests
     ];
 
     [Fact]
-    public void Names_beginning_with_the_text_come_before_names_holding_it_and_a_folder_s_name_matches_nothing()
+    public void The_Explorers_filter_lists_names_beginning_with_the_text_first_and_counts_the_rest() => Cases.All(
+        ("names beginning with the text come before names holding it and a folder s name matches nothing", Names_beginning_with_the_text_come_before_names_holding_it_and_a_folder_s_name_matches_nothing),
+        ("past the most shown the rest are counted those beginning with the text kept first", Past_the_most_shown_the_rest_are_counted_those_beginning_with_the_text_kept_first),
+        ("a name holding the text fills what names beginning with it leave", A_name_holding_the_text_fills_what_names_beginning_with_it_leave));
+
+    private void Names_beginning_with_the_text_come_before_names_holding_it_and_a_folder_s_name_matches_nothing()
     {
         ExplorerFilter.Matches found = ExplorerFilter.Of(Files, "ORDER");
         Assert.Equal([Files[1], Files[3], Files[2]], found.Files);
@@ -24,8 +29,7 @@ public sealed class ExplorerFilterTests
         Assert.Equal(0, found.More);
     }
 
-    [Fact]
-    public void Past_the_most_shown_the_rest_are_counted_those_beginning_with_the_text_kept_first()
+    private void Past_the_most_shown_the_rest_are_counted_those_beginning_with_the_text_kept_first()
     {
         ExplorerFilter.Matches found = ExplorerFilter.Of(Files, "order", most: 2);
         Assert.Equal([Files[1], Files[3]], found.Files);
@@ -33,8 +37,7 @@ public sealed class ExplorerFilterTests
         Assert.Equal(1, found.More);
     }
 
-    [Fact]
-    public void A_name_holding_the_text_fills_what_names_beginning_with_it_leave()
+    private void A_name_holding_the_text_fills_what_names_beginning_with_it_leave()
     {
         ExplorerFilter.Matches found = ExplorerFilter.Of(Files, "r", most: 3);
         Assert.Equal([Files[2], Files[4], Files[0]], found.Files);
