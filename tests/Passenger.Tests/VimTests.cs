@@ -207,7 +207,6 @@ public sealed partial class VimTests
             (vimCase, _, _) => vimCase.Keys.SkipWhile(key => key != "J").Contains(".")),
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
-        ($"A count on * and # counts from another match; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedStar)),
         ($"An operator over words with a count reaching the text's end takes whole lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedWords)),
         ($"A line command with a count past the text's last line does what it can where Vim does nothing; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedLines)),
         ($"is and as on an empty or one-word line take the line whole; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
@@ -231,7 +230,6 @@ public sealed partial class VimTests
             && Enumerable.Range('2', 8).All(name => vim.Registers[(char)name].Text == passenger.Registers[(char)(name - 1)].Text)
             && "0-abz".All(name => vim.Registers[name].Text == passenger.Registers[name].Text);
 
-    private const string CountedStar = "a count on * or #";
     private const string CountedWords = "an operator over words with a count";
     private const string CountedLines = "a line command with a count";
     private const string Block = "visual block mode";
@@ -435,7 +433,6 @@ public sealed partial class VimTests
                 break;
             case 10:
                 keys.AddRange(Each(count + Pick(random, ["*", "#"])));
-                uses.UnionWith(count.Length > 0 ? [CountedStar] : []);
                 break;
             case 11:
                 keys.AddRange(Each("ma"));
