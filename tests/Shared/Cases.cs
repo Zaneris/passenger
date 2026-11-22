@@ -5,7 +5,8 @@ namespace Passenger.TestTables;
 
 /// <summary>One test over a table of rows, where a theory would list each row as a test of its own: every row runs
 /// whatever another does, and a failure names each row that failed, by its values (or the name given it), with what it
-/// found. A row that skips is passed over, said in the test's output, and a table whose every row skipped skips. A table
+/// found. A row that skips is passed over, said in the test's output, and a table whose every row skipped skips. Each row
+/// runs in a copy of the caller's execution context, so nothing ambient a row sets reaches the next. A table
 /// keeps a few well-chosen rows, each one that most surely catches a regression of its rule; linked into both test
 /// projects.</summary>
 public static class Cases
@@ -46,7 +47,11 @@ public static class Cases
     {
         try
         {
-            check();
+            Flow.InOwnContext(() =>
+            {
+                check();
+                return true;
+            });
         }
         catch (SkipException skip)
         {
@@ -62,7 +67,7 @@ public static class Cases
     {
         try
         {
-            await check();
+            await Flow.InOwnContext(check);
         }
         catch (SkipException skip)
         {

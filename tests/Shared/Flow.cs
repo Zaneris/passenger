@@ -7,7 +7,8 @@ namespace Passenger.TestTables;
 /// <summary>A test told as named steps in turn, each the check a test of its own once made, sharing what the steps before
 /// it made: a window test's one window, project and server load. A step's name says what holds, so a failure names the
 /// step and what no longer holds, with the steps that passed before it; each passed step and its time go to the test's
-/// output. The first step that fails ends the flow, as the steps after it stand on it.</summary>
+/// output. The first step that fails ends the flow, as the steps after it stand on it. Each step runs in a copy of the
+/// caller's execution context, so nothing ambient a step sets reaches the next.</summary>
 public static class Flow
 {
     /// <summary>The steps each running test has passed, in turn, by the test.</summary>
@@ -25,7 +26,7 @@ public static class Flow
         T made;
         try
         {
-            made = step();
+            made = InOwnContext(step);
         }
         catch (Exception failure) when (failure is not SkipException)
         {
@@ -47,7 +48,7 @@ public static class Flow
         T made;
         try
         {
-            made = await step();
+            made = await InOwnContext(step);
         }
         catch (Exception failure) when (failure is not SkipException)
         {
@@ -90,6 +91,19 @@ public static class Flow
             (apart as IDisposable)?.Dispose();
         }
     });
+
+    /// <summary>A step run in a copy of the caller's execution context, so nothing ambient it sets (an AsyncLocal) reaches
+    /// the steps after it, as when each was a test of its own; what it makes is handed on as ever.</summary>
+    internal static T InOwnContext<T>(Func<T> step)
+    {
+        if (ExecutionContext.Capture() is not { } context)
+        {
+            return step();
+        }
+        T made = default!;
+        ExecutionContext.Run(context, _ => made = step(), null);
+        return made;
+    }
 
     private static void Pass(string name, long began)
     {

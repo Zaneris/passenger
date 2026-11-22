@@ -93,7 +93,25 @@ public sealed class TablesAndFlowsTests
         Flow.StepApart("the next another, made by its constructor, the one before disposed", () => new Apart(), made => apart.Add(made.Number + (made.Disposed ? 100 : 0)));
         Assert.True(apart.Count == 2 && apart[1] == apart[0] + 1 && Apart.Disposals >= 2,
             $"Steps apart did not each have an instance of their own disposed after it: {string.Join(", ", apart)}, {Apart.Disposals} disposed");
+
+        // Each step and row in a context of its own: what one sets of an AsyncLocal, as an agent's call marks its flow, the next never sees.
+        List<string?> seen = [];
+        Flow.Step("a step sets an ambient value", () => Ambient.Value = "set by a step");
+        Flow.Step("the next step does not see it", () => seen.Add(Ambient.Value));
+        await Flow.StepAsync("a waiting step sets one before it waits", () =>
+        {
+            Ambient.Value = "set by a waiting step";
+            return Task.CompletedTask;
+        });
+        seen.Add(Ambient.Value);
+        Cases.All(("a row sets an ambient value", () => Ambient.Value = "set by a row"), ("the next row does not see it", () => seen.Add(Ambient.Value)));
+        seen.Add(Ambient.Value);
+        Assert.True(seen.All(value => value is null),
+            $"A value one step or row set of an AsyncLocal reached the next, so a step runs as what the one before it began (an agent's call): {string.Join(", ", seen)}");
     }
+
+    /// <summary>A value carried by the flow of the code that sets it, as an agent's call is.</summary>
+    private static readonly AsyncLocal<string?> Ambient = new();
 
     /// <summary>A test class's instance as a step apart makes one: numbered as made, and counted as disposed.</summary>
     private sealed class Apart : IDisposable
