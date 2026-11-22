@@ -80,7 +80,8 @@ public sealed class IntelliJPlaceKeysTests : IDisposable
         }
     }
 
-    internal void On_the_Mac_Cmd_R_in_the_Run_window_reruns_and_in_the_editor_replaces()
+    [AvaloniaFact]
+    public void On_the_Mac_Cmd_R_in_the_Run_window_reruns_and_in_the_editor_replaces()
     {
         Assert.SkipUnless(Mac, "Cmd+R is IntelliJ IDEA's Rerun in the Run window on the Mac alone; Ctrl+F5 is its own elsewhere");
         string runs = Path.Combine(folder, "runs.txt");

@@ -29,10 +29,10 @@ public sealed partial class UiaTextTests
     private const string Notes = "first line\r\n    int count = 10;\r\nlast line\r\n";
 
     /// <summary>A screen reader on Windows reads the editor's and the terminal's text through UI Automation's text
-    /// pattern: by character, word and line after the caret, found, chosen and pointed at, the terminal's lines read-
-    /// only; Avalonia's bridge hands it the element's window, a reader after each key costs in a million-character line
-    /// what it does in ten thousand, closed editors are let go, and the element's window passes clicks through at every
-    /// scale.</summary>
+    /// pattern, read here through the providers' own methods: by character, word and line after the caret, found,
+    /// chosen and pointed at, the terminal's lines read-only; Avalonia's bridge hands it the element's window, a reader
+    /// after each key costs in a million-character line what it does in ten thousand, and closed editors are let
+    /// go.</summary>
     [AvaloniaFact]
     public void A_screen_reader_on_Windows_reads_the_editors_and_the_terminals_text_through_UI_Automation()
     {
@@ -42,6 +42,13 @@ public sealed partial class UiaTextTests
         Flow.StepApart<UiaTextTests>("Avalonia's bridge hands UI Automation its peer for a native window as that window's element", t => t.Avalonias_bridge_hands_UI_Automation_its_peer_for_a_native_window_as_that_windows_element());
         Flow.StepApart<UiaTextTests>("a reader listening and asking after each key costs in a line of a million characters what it does in one of ten thousand", t => t.A_reader_listening_and_asking_after_each_key_costs_in_a_line_of_a_million_characters_what_it_does_in_one_of_ten_thousand());
         Flow.StepApart<UiaTextTests>("editors and a terminal a reader touched are let go of once closed and on Windows their windows with them", t => t.Editors_and_a_terminal_a_reader_touched_are_let_go_of_once_closed_and_on_Windows_their_windows_with_them());
+    }
+
+    /// <summary>On Windows the element's window answers UI Automation with the element, passes every click through to
+    /// the editor under it and covers it at every interface scale.</summary>
+    [AvaloniaFact]
+    public void On_Windows_the_elements_window_answers_UI_Automation_passes_clicks_through_and_covers_its_editor()
+    {
         Flow.StepApart<UiaTextTests>("on Windows the element's window answers UI Automation with the element and passes every click through", t => t.On_Windows_the_elements_window_answers_UI_Automation_with_the_element_and_passes_every_click_through());
         Flow.StepApart<UiaTextTests>("on Windows the element's window covers its editor at every interface scale", t => t.On_Windows_the_elements_window_covers_its_editor_at_every_interface_scale());
     }

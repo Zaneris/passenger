@@ -240,7 +240,8 @@ public sealed class CaseTellingFolderTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(root);
 
-    internal void Two_files_whose_names_differ_only_in_case_open_as_two_documents_each_saved_to_its_own_file()
+    [AvaloniaFact]
+    public void Two_files_whose_names_differ_only_in_case_open_as_two_documents_each_saved_to_its_own_file()
     {
         (string place, bool mounted) = CaseTelling();
         try

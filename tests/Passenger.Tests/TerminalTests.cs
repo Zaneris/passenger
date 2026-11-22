@@ -33,7 +33,8 @@ public sealed class TerminalTests
     /// <summary>A shell in the Terminal starts in the window's folder, takes commands and hides as it exits; a full-
     /// screen program's screen gives the shell's back, a program's questions are answered, an emoji takes two columns
     /// and an input method's text goes in as committed; the scrollback holds output, its place, a selection and a long
-    /// line through a resize, Clear Buffer leaves the prompt, and the cursor takes the shape set.</summary>
+    /// line through a resize, a long log costing per line and frame what a short one does, Clear Buffer leaves the
+    /// prompt, and the cursor takes the shape set.</summary>
     [AvaloniaFact]
     public void A_shell_in_the_terminal_takes_commands_draws_what_programs_write_and_keeps_its_scrollback()
     {
@@ -47,9 +48,10 @@ public sealed class TerminalTests
         Flow.StepApart<TerminalTests>("scrolled back the terminal holds its place as output arrives", t => t.Scrolled_back_the_terminal_holds_its_place_as_output_arrives());
         Flow.StepApart<TerminalTests>("a selection stays on its text as output streams past the scrollback's limit", t => t.A_selection_stays_on_its_text_as_output_streams_past_the_scrollbacks_limit());
         Flow.StepApart<TerminalTests>("a long line reads whole after the terminal narrows and widens again and the prompt keeps its cursor", t => t.A_long_line_reads_whole_after_the_terminal_narrows_and_widens_again_and_the_prompt_keeps_its_cursor());
+        Flow.StepApart<TerminalTests>("a log three times the scrollback costs the window no more for each line than one just past it", t => t.A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it());
+        Flow.StepApart<TerminalTests>("a log in colour streaming up the screen costs a frame what one changed row does", t => t.A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does());
         Flow.StepApart<TerminalTests>("copy on selection copies a finished drag only when enabled", t => t.Copy_on_selection_copies_a_finished_drag_only_when_enabled());
         Flow.StepApart<TerminalTests>("the terminal draws the configured cursor shape", t => t.The_terminal_draws_the_configured_cursor_shape(CursorShape.Bar, false, true, false));
-        Flow.StepApart<TerminalTests>("programs override the configured cursor and reset restores it", t => t.Programs_override_the_configured_cursor_and_reset_restores_it("\\033[0 q"));
     }
 
     /// <summary>Keys reach a program in the terminal as xterm sends them in either cursor mode, Enter with each
@@ -66,24 +68,20 @@ public sealed class TerminalTests
         Flow.StepApart<TerminalTests>("the terminal shown by its stripe button takes the keys from the file", t => t.The_terminal_shown_by_its_stripe_button_takes_the_keys_from_the_file());
     }
 
-    /// <summary>Nothing reaches a terminal's shell to run that the person did not mean: a paste never ends its own
-    /// bracket and runs the line after it, a dropped file whose name holds a command is read as its name, what
-    /// Passenger took out of its environment and a tmux or screen it was started in reach no shell or run, and nothing
-    /// run in one terminal or started by the IDE can type into another.</summary>
+    /// <summary>Nothing reaches a terminal's shell to run that the person did not mean: a dropped file whose name holds
+    /// a command is read as its name, and what Passenger took out of its environment and a tmux or screen it was
+    /// started in reach no shell or run.</summary>
     [AvaloniaFact]
     public void Nothing_reaches_a_terminals_shell_to_run_that_the_person_did_not_type()
     {
         Flow.StepApart<TerminalTests>("a file dropped on the terminal whose name holds a command is read as its name and nothing runs", t => t.A_file_dropped_on_the_terminal_whose_name_holds_a_command_is_read_as_its_name_and_nothing_runs());
         Flow.StepApart<TerminalTests>("what Passenger takes out of its environment as it starts reaches no shell in its terminal", t => t.What_Passenger_takes_out_of_its_environment_as_it_starts_reaches_no_shell_in_its_terminal());
         Flow.StepApart<TerminalTests>("a tmux or screen Passenger was started in reaches no shell or run in its terminal", t => t.A_tmux_or_screen_Passenger_was_started_in_reaches_no_shell_or_run_in_its_terminal());
-        Flow.StepApart<TerminalTests>("nothing run in one terminal or started by the IDE can type into another terminal", t => t.Nothing_run_in_one_terminal_or_started_by_the_IDE_can_type_into_another_terminal());
-        Flow.StepApart<TerminalTests>("a paste cannot end its own bracket and run the line after it", t => t.A_paste_cannot_end_its_own_bracket_and_run_the_line_after_it());
     }
 
     /// <summary>A program run in the terminal reads a key and a line typed there and draws in colour where it puts the
     /// cursor, one needing a terminal in the Run window is offered one, Stop ends it with what it started, a variable
-    /// the run takes away never reaches it while macOS's loader keeps its own, and a line it writes as it ends at once
-    /// is on its tab every run.</summary>
+    /// the run takes away never reaches it, and a line it writes as it ends at once is on its tab every run.</summary>
     [AvaloniaFact]
     public void A_program_run_in_the_terminal_reads_what_is_typed_shows_all_it_wrote_and_ends_with_what_it_started()
     {
@@ -92,8 +90,17 @@ public sealed class TerminalTests
         Flow.StepApart<TerminalTests>("stop ends a program running in the terminal and what it started", t => t.Stop_ends_a_program_running_in_the_terminal_and_what_it_started());
         Flow.StepApart<TerminalTests>("a variable a run in the terminal takes away never reaches its program", t => t.A_variable_a_run_in_the_terminal_takes_away_never_reaches_its_program());
         Flow.StepApart<TerminalTests>("a program that writes a line and ends at once has it on its tab every run", t => t.A_program_that_writes_a_line_and_ends_at_once_has_it_on_its_tab_every_run());
-        Flow.StepApart<TerminalTests>("a run in the terminal that takes a variable away keeps the loader's variables on macOS", t => t.A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS());
     }
+
+    /// <summary>On a Unix pseudo-terminal a program's reset gives the cursor back the shape the person set, and nothing
+    /// run in one terminal or started by the IDE can type into another.</summary>
+    [AvaloniaFact]
+    public void On_a_Unix_terminal_a_programs_reset_restores_the_cursor_and_nothing_types_into_another_terminal()
+    {
+        Flow.StepApart<TerminalTests>("a program's reset gives back the cursor shape the person set", t => t.Programs_override_the_configured_cursor_and_reset_restores_it("\\033[0 q"));
+        Flow.StepApart<TerminalTests>("nothing run in one terminal or started by the IDE can type into another terminal", t => t.Nothing_run_in_one_terminal_or_started_by_the_IDE_can_type_into_another_terminal());
+    }
+
 
     /// <summary>An address or a file's path in the terminal opens with a click, and words a program links (OSC 8) are a
     /// link a click opens: a web address in the browser, a file only on this machine, the disk asked only on the click,
@@ -551,7 +558,8 @@ public sealed class TerminalTests
         }
     }
 
-    private void A_paste_cannot_end_its_own_bracket_and_run_the_line_after_it()
+    [AvaloniaFact]
+    public void A_paste_cannot_end_its_own_bracket_and_run_the_line_after_it()
     {
         // zsh's line editor brackets pastes (as the Mac's own shell, it is always there on a Mac).
         Assert.SkipUnless(File.Exists("/bin/zsh"), "zsh, whose line editor asks for bracketed pastes, is not installed here");
@@ -995,7 +1003,7 @@ public sealed class TerminalTests
     /// <summary>A log longer than the scrollback holds costs the window's thread nothing for each line past it: the line a
     /// full scrollback lets go is the next row. 30,000 lines allocate on the UI thread under 64 bytes a line more than
     /// 12,000, where a new row's cells alone take 16 bytes a column; the terminal is hidden meanwhile, so no frame counts.</summary>
-    internal void A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it()
+    private void A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it()
     {
         long few = UiBytesForLog(12_000);
         long many = UiBytesForLog(30_000);
@@ -1049,7 +1057,7 @@ public sealed class TerminalTests
     /// <summary>A log in colour streaming up a full screen costs a frame on the UI thread what a frame with one row of an
     /// empty screen written again costs, and what drawing each other row as it was shaped records, under 2 KB a row where
     /// shaping one of these takes tens; so does a full-screen program drawing its whole screen again with one row changed.</summary>
-    internal void A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does()
+    private void A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -1355,7 +1363,8 @@ public sealed class TerminalTests
     /// <summary>On macOS a run in the terminal that takes a variable away (the outer tmux's) still hands its program the
     /// loader's variables, which the loader takes out of a protected program's environment (env's, sh's): one Passenger
     /// inherited, held as a parent's are in the process's own environment, and one the run configuration gives.</summary>
-    private void A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS()
+    [AvaloniaFact]
+    public void A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's loader takes its variables out of what a program it guards runs");
         string folder = TestFolders.Create("terminal-loader-");
@@ -1871,15 +1880,12 @@ public sealed class TerminalTests
 [Collection(Alone.Name)]
 public sealed class TerminalResponsivenessTests
 {
-    /// <summary>The terminal never holds the window: a log three times the scrollback costs the window no more for each
-    /// line than one just past it, a log in colour streaming up the screen costs a frame what one changed row does, a
-    /// flood of output leaves the window taking keys and Ctrl+C stops it, a paste a program reads none of neither holds
-    /// the window nor its end, and the shell echoes what is typed while every thread of the pool is busy.</summary>
+    /// <summary>A Unix pseudo-terminal never holds the window: a flood of output leaves it taking keys and Ctrl+C stops
+    /// it, a paste a program reads none of neither holds the window nor its end, and the shell echoes what is typed
+    /// while every thread of the pool is busy.</summary>
     [AvaloniaFact]
     public void The_terminal_never_holds_the_window_whatever_its_programs_write_or_leave_unread()
     {
-        Flow.StepApart<TerminalTests>("a log three times the scrollback costs the window no more for each line than one just past it", t => t.A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it());
-        Flow.StepApart<TerminalTests>("a log in colour streaming up the screen costs a frame what one changed row does", t => t.A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does());
         Flow.StepApart<TerminalResponsivenessTests>("a flood of output leaves the window taking keys and Ctrl C stops it", t => t.A_flood_of_output_leaves_the_window_taking_keys_and_Ctrl_C_stops_it());
         Flow.StepApart<TerminalResponsivenessTests>("a paste into a program that reads nothing leaves the window taking keys", t => t.A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys());
         Flow.StepApart<TerminalResponsivenessTests>("a terminal whose program read none of a paste ends without holding the window", t => t.A_terminal_whose_program_read_none_of_a_paste_ends_without_holding_the_window());

@@ -28,8 +28,8 @@ public sealed class ParentFoldersTests : IDisposable
     /// <summary>What a folder's parents decide (an .editorconfig, a TypeScript) is taken from the person's own parents
     /// alone: a walk up from home reads every folder to the root of its disk, an .editorconfig in the person's own
     /// parent decides the indent whatever the folder's trust, one in a parent another user owns or put in the person's
-    /// own is passed over with the log saying where the walk ended, a TypeScript in another user's parent never runs,
-    /// and an .editorconfig at the top of an exFAT volume still decides the indent below it.</summary>
+    /// own is passed over with the log saying where the walk ended, and a TypeScript in another user's parent never
+    /// runs.</summary>
     [AvaloniaFact]
     public void What_a_parent_folder_decides_is_taken_only_from_the_persons_own()
     {
@@ -38,7 +38,6 @@ public sealed class ParentFoldersTests : IDisposable
         Flow.StepApart<ParentFoldersTests>("an editorconfig in a parent folder another user owns is passed over and the log says where the walk ended", t => t.An_editorconfig_in_a_parent_folder_another_user_owns_is_passed_over_and_the_log_says_where_the_walk_ended());
         Flow.StepApart<ParentFoldersTests>("an editorconfig another user put in the person's own parent is passed over", t => t.An_editorconfig_another_user_put_in_the_persons_own_parent_is_passed_over());
         Flow.StepApart<ParentFoldersTests>("a TypeScript in a parent another user owns never runs and one in the person's own parent serves the folder", t => t.A_TypeScript_in_a_parent_another_user_owns_never_runs_and_one_in_the_persons_own_parent_serves_the_folder());
-        Flow.StepApart<ParentFoldersTests>("an editorconfig at the top of an exFAT volume decides the indent of a project below it", t => t.An_editorconfig_at_the_top_of_an_exFAT_volume_decides_the_indent_of_a_project_below_it());
     }
 
     private void A_walk_up_from_the_persons_home_reads_every_folder_to_the_root_of_its_disk()
@@ -142,7 +141,8 @@ public sealed class ParentFoldersTests : IDisposable
         }
     }
 
-    private void An_editorconfig_at_the_top_of_an_exFAT_volume_decides_the_indent_of_a_project_below_it()
+    [AvaloniaFact]
+    public void An_editorconfig_at_the_top_of_an_exFAT_volume_decides_the_indent_of_a_project_below_it()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "A test's exFAT volume is a disk image, on macOS alone");
         string volume = Directory.CreateDirectory(Path.Combine(parent, "volume")).FullName;

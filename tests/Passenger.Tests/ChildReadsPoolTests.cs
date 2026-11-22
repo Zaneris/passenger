@@ -15,20 +15,18 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class ChildReadsPoolTests
 {
-    /// <summary>What Passenger starts is read and ended through ChildProcesses, leaving nothing behind: a window
-    /// reading more children's output than its pool has threads still hears its language server, a read failing partway
-    /// ends the child and fails the run, a child disposed on another thread as it is killed has what it started ended
-    /// too, a helper takes its host's properties and conserves memory unless the person set it, and a child forking as
-    /// it is killed leaves nothing of its group to write after.</summary>
+    /// <summary>What Passenger starts is read and ended through ChildProcesses, leaving nothing behind: a read failing
+    /// partway ends the child and fails the run, a child disposed on another thread as it is killed has what it started
+    /// ended too, a helper takes its host's properties and conserves memory unless the person set it, and a window
+    /// reading more children's output than its pool has threads still hears its language server.</summary>
     [AvaloniaFact]
     public async Task What_passenger_starts_is_read_and_ended_through_its_one_way_leaving_nothing_behind()
     {
-        Flow.StepApart<ChildReadsPoolTests>("a window reading more children's output than its pool has threads still hears its language server's answers", t => t.A_window_reading_more_childrens_output_than_its_pool_has_threads_still_hears_its_language_servers_answers());
         await Flow.StepApartAsync("a read of a child's output that fails part of the way ends the child and fails the run with what it threw", () => new ChildReadsTests(), t => t.A_read_of_a_childs_output_that_fails_part_of_the_way_ends_the_child_and_fails_the_run_with_what_it_threw());
         await Flow.StepApartAsync("a child disposed on another thread as it is killed has what it started ended too", () => new ChildKillTests(), t => t.A_child_disposed_on_another_thread_as_it_is_killed_has_what_it_started_ended_too());
         await Flow.StepApartAsync("a helper's properties of every kind reach it as its own host gives them", () => new HelperHostTests(), t => t.A_helpers_properties_of_every_kind_reach_it_as_its_own_host_gives_them());
         Flow.StepApart<HelperMemoryTests>("a helper runs conserving memory unless the person set it themselves", t => t.A_helper_runs_conserving_memory_unless_the_person_set_it_themselves());
-        await Flow.StepApartAsync("a child forking as it is killed leaves nothing of its group to write after", () => new ChildGroupKillTests(), t => t.A_child_forking_as_it_is_killed_leaves_nothing_of_its_group_to_write_after());
+        Flow.StepApart<ChildReadsPoolTests>("a window reading more children's output than its pool has threads still hears its language server's answers", t => t.A_window_reading_more_childrens_output_than_its_pool_has_threads_still_hears_its_language_servers_answers());
     }
 
     private void A_window_reading_more_childrens_output_than_its_pool_has_threads_still_hears_its_language_servers_answers()

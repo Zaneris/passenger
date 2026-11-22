@@ -9,10 +9,20 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class ChildGroupKillTests
 {
+
+    /// <summary>A child killed on Unix ends with its whole process group: one forking as it is killed leaves nothing of the
+    /// group to write after, and a kill costs no more with three hundred other processes running. Alone, as the kill's cost
+    /// is counted.</summary>
+    [Fact]
+    public async Task A_child_killed_on_Unix_ends_with_its_whole_group_and_costs_the_same_among_many_processes()
+    {
+        await Flow.StepApartAsync("a child forking as it is killed leaves nothing of its group to write after", () => new ChildGroupKillTests(), t => t.A_child_forking_as_it_is_killed_leaves_nothing_of_its_group_to_write_after());
+        await Flow.StepApartAsync("a kill allocates no more with three hundred other processes running", () => new ChildKillCostTests(TestContext.Current.TestOutputHelper!), t => t.A_kill_allocates_no_more_with_three_hundred_other_processes_running());
+    }
     /// <summary>Each of the child's forks writes a line a fifth of a second after it starts, so one that outlived the kill
     /// is seen writing after it, where what was writing as the child was killed has landed by a twentieth of a second.
     /// Thirty rounds, as one kill of the group passed over such a fork in about one round of twenty.</summary>
-    internal async Task A_child_forking_as_it_is_killed_leaves_nothing_of_its_group_to_write_after()
+    private async Task A_child_forking_as_it_is_killed_leaves_nothing_of_its_group_to_write_after()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows ends a child with its tree and held family, not a process group");
         CancellationToken cancel = TestContext.Current.CancellationToken;

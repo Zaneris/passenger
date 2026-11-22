@@ -43,8 +43,8 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>An open file's unsaved edits are never lost to what another program does on disk: a change asks which
     /// to keep and nothing is saved over the disk's version while it asks, a stray key answers neither way, a file
     /// deleted stays open and saving writes it back, open files follow their folder renamed and a folder trashed makes
-    /// no autosave write it again, an agent's edit there says why it was not saved, a BOM added on disk survives the
-    /// next save, and two files whose names differ only in letter case are each saved to their own file.</summary>
+    /// no autosave write it again, an agent's edit there says why it was not saved, and a BOM added on disk survives
+    /// the next save.</summary>
     [AvaloniaFact]
     public void An_open_files_unsaved_edits_are_never_lost_to_what_another_program_does_to_it_on_disk()
     {
@@ -56,13 +56,13 @@ public sealed class FolderWatchTests : IDisposable
         Flow.StepApart<FolderWatchTests>("a folder trashed elsewhere closes its open files and no autosave makes it again", t => t.A_folder_trashed_elsewhere_closes_its_open_files_and_no_autosave_makes_it_again(OperatingSystem.IsLinux()));
         Flow.StepApart<FolderWatchTests>("an agent's edit of a file whose folder has gone says why it was not saved", t => t.An_agents_edit_of_a_file_whose_folder_has_gone_says_why_it_was_not_saved());
         Flow.StepApart<FolderWatchTests>("a BOM added on disk or a conversion to UTF-8 survives the next save without a question", t => t.A_BOM_added_on_disk_or_a_conversion_to_UTF_8_survives_the_next_save_without_a_question());
-        Flow.StepApart<CaseTellingFolderTests>("two files whose names differ only in case open as two documents each saved to its own file", t => t.Two_files_whose_names_differ_only_in_case_open_as_two_documents_each_saved_to_its_own_file());
     }
 
     /// <summary>Changes the platform's watcher lost (an error, an overflow, nothing heard, Git's watch failing) are
-    /// found again, as the watcher looks again or the window comes in front; and Linux's way, a watch for each folder
-    /// from a pool with a limit, leaves build output, dependencies and Git's objects unwatched, says once how to raise
-    /// the limit when it runs out, and leaves nothing watched under a moved folder's old name.</summary>
+    /// found again, as the watcher looks again or the window comes in front; Linux's way, a watch for each folder from
+    /// a pool with a limit, leaves build output, dependencies and Git's objects unwatched and says once how to raise
+    /// the limit when it runs out; and the system's watchers are shared and given back as windows come and
+    /// go.</summary>
     [AvaloniaFact]
     public void Changes_the_watcher_lost_are_found_and_linuxs_watches_stay_within_their_limit()
     {
@@ -77,7 +77,6 @@ public sealed class FolderWatchTests : IDisposable
         Flow.StepApart<SystemWatchesTests>("hundreds of folders watched apart share a few of the system's watchers and each hears its own changes", t => t.Hundreds_of_folders_watched_apart_share_a_few_of_the_systems_watchers_and_each_hears_its_own_changes());
         Flow.StepApart<SystemWatchesTests>("a window over a solution of many projects and packages reads their folders through a few watchers", t => t.A_window_over_a_solution_of_many_projects_and_packages_reads_their_folders_through_a_few_watchers());
         Flow.StepApart<SystemWatchesTests>("a drop taken for lost is not taken for lost again as its burst is looked at once quiet", t => t.A_drop_taken_for_lost_is_not_taken_for_lost_again_as_its_burst_is_looked_at_once_quiet());
-        Flow.StepApart<FolderWatchTests>("a folder moved away whose own watch is heard ending first leaves nothing watched under its old name", t => t.A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name());
     }
 
     /// <summary>What macOS's watcher drops from a stream read late, or falls minutes behind on saying nothing, is
@@ -551,7 +550,8 @@ public sealed class FolderWatchTests : IDisposable
     /// where it went, each heard on its own thread: heard ending first, the folder lets go of the folders watched under it
     /// too, so none stays watched under its old name, and one made again there is watched anew. The system's watchers hear
     /// nothing while the folder moves but the moved folder's own watch ending.</summary>
-    private void A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name()
+    [AvaloniaFact]
+    public void A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows moves a watched folder only once its watch lets go");
         Write("src/Feature/Deep/Deep.cs", "class Deep { }\n");
@@ -1233,15 +1233,14 @@ public sealed class FolderWatchTests : IDisposable
 [Collection(Alone.Name)]
 public sealed class FolderWatchBytesTests
 {
-    /// <summary>What a file made or deleted costs Go to File among twenty thousand against two thousand, a change under
-    /// build output no watch matches, and a child's kill with three hundred other processes running, each held to what
-    /// it costs in the small case, counted on every thread as this class runs alone.</summary>
+    /// <summary>What a file made or deleted costs Go to File among twenty thousand against two thousand, and what a
+    /// change under build output no watch matches costs, each held to the small case, counted on every thread as this
+    /// class runs alone.</summary>
     [AvaloniaFact]
     public async Task What_a_file_change_and_a_childs_kill_cost_stays_the_same_as_the_folder_and_the_machine_grow()
     {
         Flow.StepApart<FolderWatchBytesTests>("a file made or deleted among twenty thousand costs Go to File what it does among two thousand", t => t.A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand());
         Flow.StepApart<WatcherChurnTests>("a change under build output no registration matches costs no allocation", t => t.A_change_under_build_output_no_registration_matches_costs_no_allocation());
-        await Flow.StepApartAsync("a kill allocates no more with three hundred other processes running", () => new ChildKillCostTests(TestContext.Current.TestOutputHelper!), t => t.A_kill_allocates_no_more_with_three_hundred_other_processes_running());
     }
 
     /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over
