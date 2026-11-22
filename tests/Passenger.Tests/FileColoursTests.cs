@@ -186,21 +186,25 @@ public sealed class FileColoursTests : FileColoursFolder
 
     /// <summary>A script whose first line, a comment, the grammar runs out of its time reading, as a grammar reading its
     /// patterns for the first time on a busy machine does: the line keeps its comment's colour, and the next line is read
-    /// from where the comment's line began, its keyword a keyword rather than more of the comment.</summary>
+    /// from where the comment's line began, its keyword a keyword rather than more of the comment. The lines after the
+    /// comment are read once first with a line's whole time, so their own patterns are parsed before the millisecond.</summary>
     private void A_comment_line_the_grammar_runs_out_of_time_on_leaves_the_next_lines_keyword_a_keyword()
     {
         string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
-        Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1");
         MainWindow window = Window();
         try
         {
+            const string Code = "function greet(name) {\n    return \"Hello, \" + name;\n}\n";
+            Assert.Equal(TokenKind.Keyword, KindOf(Open(window, "warm.js", Code), "function"));
+            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1");
             // JSDoc tags the grammar has no name for keep it searching along the line: tens of milliseconds, however warm.
             string comment = "/** " + string.Concat(Enumerable.Repeat("@a ", 6600)) + "*/";
-            CodeEditor editor = Open(window, "site.js", comment + "\nfunction greet(name) {\n    return \"Hello, \" + name;\n}\n");
+            CodeEditor editor = Open(window, "site.js", comment + "\n" + Code);
             TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
             Assert.True(colours.LinesOutOfTime > 0, "The grammar read the long comment within a millisecond, twice, so nothing here ran out of its time");
             Assert.True(KindOf(editor, "function") == TokenKind.Keyword,
-                $"The line after a comment the grammar ran out of time on is coloured {KindOf(editor, "function")?.ToString() ?? "in several kinds"}: the comment's rule reached past its line");
+                $"The line after a comment the grammar ran out of time on is coloured {KindOf(editor, "function")?.ToString() ?? "in several kinds"}, "
+                + $"{Passenger.Core.Plural.Of(colours.LinesOutOfTime, "line")} of the script run out of a millisecond twice: the comment's rule reached past its line, or the line ran out of its own time");
             // Its tags take their own colour wherever the reading reached them, so only the comment's opening is the comment's.
             Assert.Equal(TokenKind.Comment, KindOf(editor, "/**"));
         }
