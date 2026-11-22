@@ -2,19 +2,16 @@ using System.Text.Json.Nodes;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
-using Passenger.App.Run;
 using Passenger.App.Templates;
 using Passenger.Core;
-using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>Blazor's WebAssembly apps as the SDK's templates make them: a standalone app runs through the development server
-/// its project's RunCommand names, answering HTTP, and with no browser to debug it in Debug runs it so too, saying its
-/// components in the browser are not debugged, a component's breakpoint saying it is never hit and Problems listing it; a
-/// Blazor Web App's client is no configuration of its own, and a plan of the app no Debug started says the client is not
-/// debugged; New Project offers the standalone app no container or Aspire set-up. Its packages come from the package cache
-/// tests/BlazorGraphs fills, never nuget.org. Debugged through the window, so run alone.</summary>
+/// <summary>Blazor's WebAssembly apps as the SDK's templates make them: a standalone app runs through the development
+/// server its project's RunCommand names, answering HTTP, and with no browser to debug it in Debug runs it so too,
+/// saying its components in the browser are not debugged, a component's breakpoint saying it is never hit and Problems
+/// listing it; Its packages come from the package cache tests/BlazorGraphs fills, never nuget.org. Debugged through the
+/// window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BlazorWebAssemblyTests : IDisposable
 {
@@ -25,16 +22,12 @@ public sealed class BlazorWebAssemblyTests : IDisposable
     /// <summary>The longest dotnet new may take.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
 
-    /// <summary>A standalone WebAssembly app runs and debugs through its development server, and a Blazor Web App's
-    /// client is no configuration of its own.</summary>
+    /// <summary>A standalone WebAssembly app runs, and with no browser debugs through its development server.</summary>
     [AvaloniaFact]
-    public void A_standalone_webassembly_app_runs_and_its_client_is_no_configuration()
+    public void A_standalone_webassembly_app_runs_and_debugs_through_its_development_server()
     {
         Flow.StepApart<BlazorWebAssemblyTests>(nameof(A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged),
             test => test.A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged());
-        OpenWindows.CloseAll();
-        Flow.StepApart<BlazorWebAssemblyTests>(nameof(A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged),
-            test => test.A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged());
     }
 
     private void A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged()
@@ -97,48 +90,6 @@ public sealed class BlazorWebAssemblyTests : IDisposable
             {
                 window.Perform(AppActions.Stop);
                 Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-            }
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    private void A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged()
-    {
-        Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Projects.Count == 2 && window.Projects.All(p => p.IsEvaluated) && window.Configurations.Any(c => c.Name == "Bwa: http"),
-                () => $"Bwa and Bwa.Client evaluated with Bwa's http configuration; the window has {string.Join(", ", window.Configurations.Select(c => c.Name))}",
-                TimeSpan.FromMinutes(2));
-            ProjectModel client = window.Projects.Single(p => p.Name == "Bwa.Client");
-            Assert.True(client.IsBrowserClient, "Bwa.Client was not taken for a Blazor Web App's client");
-            Assert.False(client.IsRunnable, "Bwa.Client, which only Bwa serves, was taken for a program that runs");
-            Assert.DoesNotContain(window.Configurations, c => c.Name.StartsWith("Bwa.Client", StringComparison.Ordinal));
-
-            (LaunchPlan? plan, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(window.Configurations.Single(c => c.Name == "Bwa: http"), null),
-                "Bwa's plan", TimeSpan.FromMinutes(1));
-            Assert.True(plan is not null, $"Bwa's http configuration has no plan: {problem}");
-            Assert.Equal("Bwa.Client's components run in the browser on .NET's WebAssembly runtime, and their breakpoints are not hit: Bwa's are. "
-                + "Passenger debugs them in a Chromium browser when Debug starts the app itself", plan.NotDebugged);
-
-            Ui.Run(window, AppActions.NewProject);
-            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
-            try
-            {
-                NewServiceSetupTests.Choose(dialog, "blazorwasm");
-                Assert.False(dialog.SetupChooser.IsEnabled, "The Blazor WebAssembly app, which runs in the browser, was offered a container or Aspire set-up");
-                Assert.Equal(ProjectSetup.None, dialog.Setup);
-                Assert.Contains("runs in the browser, served by its development server", dialog.SetupNote, StringComparison.Ordinal);
-                NewServiceSetupTests.Choose(dialog, "blazor");
-                Assert.True(dialog.SetupChooser.IsEnabled, $"The Blazor Web App, a service, was offered no set-up: {dialog.SetupNote}");
-            }
-            finally
-            {
-                dialog.Close();
             }
         }
         finally

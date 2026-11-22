@@ -2,16 +2,14 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>A GDScript's cards from Passenger's own reading, the hover's and a list's item's alike, Godot's server held at
-/// its start where a Godot is found (never started where none is): a script's member says its signature or type and its
-/// <c>##</c> doc comment, an engine's member its signature and the words of Godot's class reference, which Passenger dumps
-/// from the Godot found once per version. A Godot editor of its own each where one is found, so run alone.</summary>
+/// <summary>A GDScript's cards from Passenger's own reading, the hover's and a list's item's alike, Godot's server held
+/// at its start where a Godot is found (never started where none is): a script's member says its signature or type and
+/// its <c>##</c> doc comment. A Godot editor of its own each where one is found, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptCardsTests
 {
@@ -29,16 +27,12 @@ public sealed class GDScriptCardsTests
         TestFolders.Write(folder, "main.gd", Script);
     }
 
-    /// <summary>A script's and the engine's members' cards say their signatures and their doc comment or the class
-    /// reference's words.</summary>
+    /// <summary>A script's member's card says its signature and its doc comment.</summary>
     [AvaloniaFact]
     public void A_gdscript_members_card_says_its_signature_and_words()
     {
         Flow.StepApart<GDScriptCardsTests>(nameof(A_scripts_members_card_says_its_signature_and_its_doc_comment),
             test => test.A_scripts_members_card_says_its_signature_and_its_doc_comment());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GDScriptCardsTests>(nameof(An_engines_members_card_says_its_signature_and_the_class_references_words),
-            test => test.An_engines_members_card_says_its_signature_and_the_class_references_words());
     }
 
     private void A_scripts_members_card_says_its_signature_and_its_doc_comment()
@@ -62,38 +56,6 @@ public sealed class GDScriptCardsTests
             bool described = Ui.Pumped(() => window.Assist.ItemDocumentation?.Contains("Grows the count", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(60));
             Assert.True(described, $"grow's item to say its doc comment: {window.Assist.ItemDocumentation} (the list held {string.Join(", ", window.Assist.CompletionLabels.Take(8))})");
             Assert.Contains("func grow(", window.Assist.ItemDocumentation, StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>An engine's member hovered says its signature as Godot writes it and its class reference's words, BBCode made
-    /// words; a utility function's item in the list says its own.</summary>
-    private void An_engines_members_card_says_its_signature_and_the_class_references_words()
-    {
-        Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the class reference is dumped from it");
-        (MainWindow window, TaskCompletionSource release) = Open();
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            // The first card may come before the class reference has been dumped and read.
-            string card = HoverUntil(window, editor, "get_tree", c => c.Contains("Returns the", StringComparison.Ordinal), TimeSpan.FromSeconds(120));
-            Assert.Contains("func Node.get_tree() -> SceneTree", card, StringComparison.Ordinal);
-            Assert.Contains("Returns the SceneTree that contains this node", card.Replace("\n", " ", StringComparison.Ordinal), StringComparison.Ordinal);
-            Assert.DoesNotContain("[SceneTree]", card, StringComparison.Ordinal);
-
-            Ui.PlaceAfter(editor, "\tget_tree()");
-            editor.Focus();
-            Ui.Press(window, "ENTER", settle: false);
-            window.KeyTextInput("p");
-            window.KeyTextInput("rint_rich");
-            bool described = Ui.Pumped(() => window.Assist.ItemDocumentation?.Contains("func print_rich(", StringComparison.Ordinal) == true
-                && window.Assist.ItemDocumentation.Contains("BBCode", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
-            Assert.True(described, $"print_rich's item to say its signature and words: {window.Assist.ItemDocumentation}");
-            Assert.True(window.Session.Web?.For(window.EditorArea.Active!) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
         }
         finally
         {

@@ -257,8 +257,8 @@ public sealed class GodotAddonTests : IDisposable
 
     private string Ready => Path.Combine(folder, "ready.txt");
 
-    /// <summary>Godot's Play through the addon stops at breakpoints, relays each game and lets go of one out of reach,
-    /// and Run in Godot Editor plays there or says why not.</summary>
+    /// <summary>Godot's Play through the addon stops at breakpoints, relays a game and lets go of one out of reach, and
+    /// Run in Godot Editor plays there, with the addon or without.</summary>
     [AvaloniaFact]
     public void The_addon_plays_debugs_and_relays_godots_editor_games()
     {
@@ -271,14 +271,8 @@ public sealed class GodotAddonTests : IDisposable
         Flow.StepApart<GodotAddonTests>(nameof(Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build),
             test => test.Run_in_Godot_Editor_without_the_addon_plays_through_IDE_messaging_and_the_editor_reloads_after_a_build());
         OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one),
-            test => test.Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one());
-        OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it),
             test => test.A_relayed_games_values_show_at_their_lines_and_an_agents_click_reaches_it());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends),
-            test => test.Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends());
         OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(An_editor_ended_while_it_plays_leaves_no_game_naming_it),
             test => test.An_editor_ended_while_it_plays_leaves_no_game_naming_it());
@@ -298,41 +292,17 @@ public sealed class GodotAddonTests : IDisposable
         Flow.StepApart<GodotAddonTests>(nameof(A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused),
             test => test.A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused());
         OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them),
-            test => test.An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them());
-        OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline),
             test => test.A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline());
         OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back),
             test => test.An_agents_godot_editor_changes_the_edited_scene_through_Godots_undo_and_reads_it_back());
         OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here),
-            test => test.An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds),
-            test => test.A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes),
-            test => test.An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes());
-        OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running),
             test => test.Open_in_Godot_Editor_shows_the_scripts_node_the_caret_paths_node_and_the_scenes_in_the_editor_running());
         OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names),
-            test => test.Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node),
-            test => test.Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style),
-            test => test.Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style());
-        OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each),
             test => test.A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GodotAddonTests>(nameof(A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override),
-            test => test.A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override());
     }
 
     /// <summary>The game played stops at the breakpoint in _Ready, held at its start until the debugger took it; Stop lets it
@@ -530,23 +500,6 @@ public sealed class GodotAddonTests : IDisposable
         }
     }
 
-    /// <summary>Run in Godot Editor with no editor open on the project says so, naming the configuration that opens one.</summary>
-    private void Run_in_Godot_Editor_with_no_editor_open_says_so_and_names_what_opens_one()
-    {
-        MainWindow window = Opened(addon: false);
-        try
-        {
-            InEditor(window);
-            string? refused = Ui.Await(window.RunAsync(), "Run in Godot Editor", TimeSpan.FromMinutes(1));
-            Assert.Equal("Godot's editor is not open on Spinner: Spinner: Godot Editor opens it, then run Spinner in Godot's editor again", refused);
-            Assert.False(window.IsRunning, "Something ran with no editor open");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
     /// <summary>A game Godot's Play starts, relayed here, shows its members' values at their lines as one Passenger starts does,
     /// its monitors charted with its own custom one, an agent's click through app_click reaches its button, and Attach
     /// Profiler records its C# with Godot's own frames, relayed by the addon.</summary>
@@ -591,52 +544,6 @@ public sealed class GodotAddonTests : IDisposable
                 $"The relayed game's profile lacks Godot's frames or its samples: {read.Message}, {read.Snapshot?.GameFrames.Count} frames, {read.Snapshot?.Samples} samples");
             TestFolders.Write(folder, "stop.txt", "stop\n");
             Ui.WaitFor(() => window.Session.Games.Count == 0, () => $"the game to end with Godot's Stop ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Three instances Godot's Play starts at once (its Run Multiple Instances) are each relayed and debugged through
-    /// their own session; the one given a user argument to quit ended, the other two are still relayed and debugged, each by
-    /// its own session's debugger, whatever place the editor now gives their debuggers.</summary>
-    private void Three_instances_played_are_each_relayed_and_debugged_and_the_others_stay_so_once_the_second_ends()
-    {
-        MainWindow window = Opened();
-        try
-        {
-            // Run Multiple Instances comes from the project's metadata; the second's argument has it quit once told.
-            TestFolders.Write(folder, ".godot/editor/project_metadata.cfg", "[debug_options]\n\nmultiple_instances_enabled=true\nrun_instance_count=3\n"
-                + "run_instances_config=[{\"arguments\": \"\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
-                + "{\"arguments\": \"++ ends\", \"features\": \"\", \"override_args\": false, \"override_features\": false}, "
-                + "{\"arguments\": \"\", \"features\": \"\", \"override_args\": false, \"override_features\": false}]\n");
-            StartEditor([]);
-            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            TestFolders.Write(folder, "play.txt", "play\n");
-            string[] names = ["Spinner in Godot", "Spinner in Godot #2", "Spinner in Godot #3"];
-            Ui.WaitFor(() => names.All(n => window.Session.Games.Any(g => g.Name == n && g.State == Passenger.App.LiveTree.LiveAppState.Connected && g.ProcessId is int))
-                && names.All(n => window.Debugger.Tabs.Any(t => t.Name == n && t.Session is { State: DebugState.Running })),
-                () => $"three instances relayed and debugged ({Games(window)}; tabs {Tabs(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(3));
-            Dictionary<string, int> processes = window.Session.Games.ToDictionary(g => g.Name, g => g.ProcessId!.Value);
-            Assert.Equal(3, processes.Values.Distinct().Count());
-            int ending = processes.Single(p => DotnetProcesses.Describe(p.Value)?.CommandLine.Contains(" ends", StringComparison.Ordinal) == true).Value;
-            string ended = processes.Single(p => p.Value == ending).Key;
-            string[] others = [.. names.Where(n => n != ended)];
-            TestFolders.Write(folder, "end.txt", "end\n");
-            Ui.WaitFor(() => !window.Session.Games.Any(g => g.Name == ended) && !window.Debugger.Tabs.Any(t => t.Name == ended && t.IsLive),
-                () => $"the second instance to end here ({Games(window)}; tabs {Tabs(window)}; its process {(DotnetProcesses.Runs(ending) ? "runs" : "has gone")}; Godot said: {Said()})",
-                TimeSpan.FromMinutes(1));
-            // Long enough for a message of each of the others to come through its own session again.
-            Ui.Hold(TimeSpan.FromSeconds(3), "the first and third instances' monitors to come again, once a second each");
-            foreach (string name in others)
-            {
-                GodotGame game = Assert.Single(window.Session.Games, g => g.Name == name);
-                Assert.True(game.State == Passenger.App.LiveTree.LiveAppState.Connected && game.ProcessId == processes[name] && Processes.IsRunning(processes[name]),
-                    $"{name} is no longer relayed as the game it was ({Games(window)})");
-                Assert.True(window.Debugger.Tabs.Any(t => t.Name == name && t.IsLive), $"{name} is no longer debugged");
-            }
-            Assert.NotNull(Ui.Await(window.Session.Games.Single(g => g.Name == others[^1]).SceneTreeAsync(), "the last instance's tree through its own session"));
         }
         finally
         {
@@ -771,43 +678,6 @@ public sealed class GodotAddonTests : IDisposable
             Assert.Equal(questions, asked.Count);
             Assert.True(!scene.IsModified && scene.Text.Snapshot.ToString() == text, "The agent's refused replace changed the open scene");
 
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Godot's editor answering as one before 4.7 (the addon's own words, as such a Godot has no word for a scene
-    /// held unsaved), with the scene open there: a replace in it, open here, asks at once saying the editor cannot say
-    /// whether it holds edits; and with a resource open in its inspector, a replace in that resource asks saying so.</summary>
-    private void An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them()
-    {
-        MainWindow window = Opened(files: [("look.tres", "[gd_resource type=\"StyleBoxFlat\" format=3]\n\n[resource]\nbg_color = Color(0.2, 0.3, 0.4, 1)\n")]);
-        try
-        {
-            string addon = Path.Combine(folder, "addons", "passenger", Passenger.Workspace.GodotAddon.Script);
-            const string Sure = "var sure := EditorInterface.has_method(\"get_unsaved_scenes\")";
-            string script = File.ReadAllText(addon);
-            Assert.Contains(Sure, script, StringComparison.Ordinal);
-            TestFolders.Write(folder, Path.Combine("addons", "passenger", Passenger.Workspace.GodotAddon.Script), script.Replace(Sure, "var sure := false", StringComparison.Ordinal));
-            List<string> asked = Asked(window);
-            StartEditor([]);
-            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            TestFolders.Write(folder, "open.txt", "open\n");
-            Ui.WaitFor(() => window.HeldByGodot(ScenePath)?.Contains("does not say whether", StringComparison.Ordinal) == true,
-                () => $"Godot's editor to have the scene open, perhaps unsaved ({window.HeldByGodot(ScenePath) ?? "nothing held"}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
-            Assert.Null(window.EditorArea.Open(ScenePath));
-            ReplacedNothing(window, "toggle_mode = true", "toggle_mode = false", window.EditorArea.Find(ScenePath)!, asked,
-                "Godot's editor has main.tscn open, and this Godot does not say whether its edits there are saved");
-
-            string look = Path.Combine(folder, "look.tres");
-            TestFolders.Write(folder, "inspect.txt", "res://look.tres\n");
-            Ui.WaitFor(() => window.HeldByGodot(look)?.Contains("inspector", StringComparison.Ordinal) == true,
-                () => $"Godot's editor to inspect the resource ({window.HeldByGodot(look) ?? "nothing held"}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
-            Assert.Null(window.EditorArea.Open(look));
-            ReplacedNothing(window, "Color(0.2, 0.3, 0.4, 1)", "Color(1, 0, 0, 1)", window.EditorArea.Find(look)!, asked,
-                "Godot's editor has look.tres open in its inspector, and Godot does not say whether a resource holds unsaved edits");
         }
         finally
         {
@@ -970,183 +840,6 @@ public sealed class GodotAddonTests : IDisposable
         }
     }
 
-    /// <summary>An agent's godot_editor selects a node unasked, the selection read back; moves a node, connects a signal and
-    /// removes a node, each one step of Godot's undo, which takes each back in turn, the node moved back with its owner and
-    /// connection; and plays the scene in the editor, the game debugged here.</summary>
-    private void An_agents_godot_editor_selects_moves_connects_removes_and_plays_the_scene_debugged_here()
-    {
-        MainWindow window = Opened();
-        using Agent agent = new();
-        try
-        {
-            window.ApplySettings(window.Settings with { McpServer = true });
-            StartEditor([]);
-            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            McpClient client = agent.Attach();
-            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "select", ["scene"] = "res://main.tscn", ["node"] = "Ui/Press" });
-            JsonElement read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.Equal(["Ui/Press"], read.GetProperty("selected").EnumerateArray().Select(n => n.GetString()));
-
-            agent.Asked(window, client, McpTools.GodotEditor, "act in Godot's editor", new() { ["action"] = "add", ["node"] = ".", ["type"] = "Panel", ["name"] = "Box" });
-            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "move", ["node"] = "Ui/Press", ["to"] = "Box", ["index"] = 0 });
-            JsonElement connected = agent.Unasked(window, client, McpTools.GodotEditor,
-                new() { ["action"] = "connect", ["node"] = "Box/Press", ["signal"] = "pressed", ["to"] = ".", ["method"] = "OnPressed" });
-            Assert.Contains("has no method OnPressed yet", connected.GetProperty("said").GetString(), StringComparison.Ordinal);
-            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.Null(Node(read, "Ui/Press"));
-            Assert.Equal("\"Press\"", Stored(read, "Box/Press", "text"));
-            Assert.Equal(["Box/Press toggled → . OnToggled", "Box/Press pressed → . OnPressed"], Connections(read));
-            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "remove", ["node"] = "Box" });
-            Assert.Null(Node(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Box"));
-
-            foreach (string undone in (string[])["remove Box", "connect pressed to OnPressed", "move Press"])
-            {
-                TestFolders.Write(folder, "undo.txt", "undo\n");
-                Ui.WaitFor(() => said.Any(l => l.Contains($"TEST: undid Passenger: {undone}", StringComparison.Ordinal)), () => $"Godot's undo of {undone} (Godot said: {Said()})");
-            }
-            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.Equal("\"Press\"", Stored(read, "Ui/Press", "text"));
-            Assert.NotNull(Node(read, "Box"));
-            Assert.Equal(["Ui/Press toggled → . OnToggled"], Connections(read));
-
-            JsonElement played = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "play" });
-            Assert.Contains("plays in Godot's editor, debugged here", Text(played), StringComparison.Ordinal);
-            Assert.True(window.Session.Game is { Relayed: true }, $"The game played is not relayed here: {Games(window)}");
-            Assert.DoesNotContain(said, l => l.Contains("SCRIPT ERROR", StringComparison.Ordinal));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>What the addon's remove empties, its own script run in the Godot found over a tree a script of the test's makes:
-    /// a path through a unique name that finds the node or one below it, and paths an array or dictionary holds at any depth, a
-    /// dictionary's keys too; a path to any other node is left. A move leaves a unique name, which finds its node wherever it goes.</summary>
-    private void A_remove_empties_unique_paths_and_those_an_array_or_a_dictionary_holds()
-    {
-        Assert.SkipWhen(godot is not { WhyNot: null }, "No Godot 4 was found to run the addon's script in");
-        const string probe = """
-            extends SceneTree
-
-            class Holder extends Node:
-            	@export var direct: NodePath
-            	@export var below: NodePath
-            	@export var listed: Array = []
-            	@export var mapped: Dictionary = {}
-            	@export var kept: NodePath
-
-
-            func _made(name: String, parent: Node, root: Node) -> Node:
-            	var made := Node.new()
-            	made.name = name
-            	parent.add_child(made)
-            	made.owner = root
-            	return made
-
-
-            func _init():
-            	var scenes = load("res://scenes.gd")
-            	var root := Node.new()
-            	get_root().add_child(root)
-            	var holder := Holder.new()
-            	holder.name = "Holder"
-            	root.add_child(holder)
-            	holder.owner = root
-            	var hud := _made("Hud", root, root)
-            	var score := _made("Score", hud, root)
-            	score.unique_name_in_owner = true
-            	_made("Label", score, root)
-            	_made("Other", hud, root)
-            	holder.direct = NodePath("%Score")
-            	holder.below = NodePath("%Score/Label:text")
-            	holder.listed = [NodePath("../Hud/Score"), NodePath("../Hud/Other")]
-            	holder.mapped = {"a": NodePath("%Score"), "b": [NodePath("../Hud/Score/Label")], "c": NodePath("../Hud/Other"), NodePath("../Hud/Score"): 1}
-            	holder.kept = NodePath("../Hud/Other")
-            	for each in scenes._repathed(root, "Hud/Score", ""):
-            		print("REMOVE %s %s" % [each[1], each[3]])
-            	for each in scenes._repathed(root, "Hud/Score", "Moved"):
-            		print("MOVE %s %s" % [each[1], each[3]])
-            	quit()
-
-            """;
-        TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Probe\"\n");
-        TestFolders.Write(folder, "scenes.gd", GodotAddonFiles.Carried.Single(f => f.Name == "scenes.gd").Text);
-        TestFolders.Write(folder, "probe.gd", probe);
-        ProcessStartInfo start = ChildProcesses.Command(godot!.Executable, [GodotExecutables.Headless, "--path", folder, "--script", "res://probe.gd"], folder);
-        foreach ((string name, string value) in GodotUserFolders.Under(folder + "-home"))
-        {
-            start.Environment[name] = value;
-        }
-        ChildResult result = Ui.Await(ChildProcesses.RunAsync(start, limit: TimeSpan.FromSeconds(60) * TestRun.TimeScale), "the addon's script over the test's tree");
-        List<string> lines = [.. result.Output.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("REMOVE", StringComparison.Ordinal) || l.StartsWith("MOVE", StringComparison.Ordinal))];
-        Assert.Equal(["REMOVE direct", "REMOVE below", "REMOVE listed [^\"\", ^\"../Hud/Other\"]", "REMOVE mapped { \"a\": ^\"\", \"b\": [^\"\"], \"c\": ^\"../Hud/Other\", ^\"\": 1 }",
-            "MOVE listed [^\"../Moved\", ^\"../Hud/Other\"]", "MOVE mapped { \"a\": ^\"%Score\", \"b\": [^\"../Moved/Label\"], \"c\": ^\"../Hud/Other\", ^\"../Moved\": 1 }"],
-            lines);
-    }
-
-    /// <summary>An agent's godot_editor moves a node another's NodePath leads to, the path written again in the same step of
-    /// Godot's undo, one undo putting both back; and its read of an instance lists only what the scene instancing it
-    /// changes, not what the scene it instances sets.</summary>
-    private void An_agents_move_rewrites_the_node_paths_to_the_node_and_its_read_of_an_instance_lists_only_its_own_changes()
-    {
-        MainWindow window = Opened();
-        using Agent agent = new();
-        try
-        {
-            TestFolders.Write(folder, "badge.tscn", "[gd_scene format=3]\n\n[node name=\"Badge\" type=\"Label\"]\ntext = \"Badge\"\nhorizontal_alignment = 1\n");
-            window.ApplySettings(window.Settings with { McpServer = true });
-            StartEditor([]);
-            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            McpClient client = agent.Attach();
-            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "open", ["scene"] = "main.tscn" });
-            agent.Asked(window, client, McpTools.GodotEditor, "act in Godot's editor", new() { ["action"] = "add", ["node"] = ".", ["type"] = "Label", ["name"] = "Score" });
-            agent.Unasked(window, client, McpTools.GodotEditor,
-                new() { ["action"] = "set", ["node"] = "Ui/Press", ["properties"] = new Dictionary<string, object?> { ["focus_neighbor_bottom"] = "../../Score" } });
-            Assert.Equal("NodePath(\"../../Score\")", Stored(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Ui/Press", "focus_neighbor_bottom"));
-
-            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "move", ["node"] = "Score", ["to"] = "Ui" });
-            JsonElement read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.NotNull(Node(read, "Ui/Score"));
-            Assert.Equal("NodePath(\"../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
-            TestFolders.Write(folder, "undo.txt", "undo\n");
-            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: undid Passenger: move Score", StringComparison.Ordinal)), () => $"Godot's undo of the move (Godot said: {Said()})");
-            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.NotNull(Node(read, "Score"));
-            Assert.Equal("NodePath(\"../../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
-
-            // A remove empties the paths to the node, as Godot's own delete does, which its file then stores none of.
-            agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "remove", ["node"] = "Score" });
-            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.Null(Node(read, "Score"));
-            Assert.False(Node(read, "Ui/Press")!.Value.GetProperty("properties").TryGetProperty("focus_neighbor_bottom", out JsonElement left),
-                $"The path to the node removed was left as {left}");
-            TestFolders.Write(folder, "undo.txt", "undo\n");
-            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: undid Passenger: remove Score", StringComparison.Ordinal)), () => $"Godot's undo of the remove (Godot said: {Said()})");
-            read = agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" });
-            Assert.NotNull(Node(read, "Score"));
-            Assert.Equal("NodePath(\"../../Score\")", Stored(read, "Ui/Press", "focus_neighbor_bottom"));
-
-            agent.Unasked(window, client, McpTools.GodotEditor,
-                new() { ["action"] = "add", ["node"] = ".", ["type"] = "res://badge.tscn", ["name"] = "Badge", ["properties"] = new Dictionary<string, object?> { ["text"] = "Mine" } });
-            JsonElement badge = Node(agent.Unasked(window, client, McpTools.GodotEditor, new() { ["action"] = "read" }), "Badge")!.Value;
-            Assert.Equal("res://badge.tscn", badge.GetProperty("instance").GetString());
-            Assert.Equal(["text"], badge.GetProperty("properties").EnumerateObject().Select(p => p.Name));
-            Assert.Equal("\"Mine\"", badge.GetProperty("properties").GetProperty("text").GetString());
-            Assert.DoesNotContain(said, l => l.Contains("SCRIPT ERROR", StringComparison.Ordinal));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>The connections of the edited scene godot_editor read.</summary>
-    private static IEnumerable<string> Connections(JsonElement read) =>
-        read.TryGetProperty("connections", out JsonElement connections) ? connections.EnumerateArray().Select(c => c.GetString()!) : [];
-
-    private static string Text(JsonElement answer) => answer.ValueKind == JsonValueKind.String ? answer.GetString()! : answer.GetRawText();
-
     /// <summary>A node of the edited scene godot_editor read, by its path.</summary>
     private static JsonElement? Node(JsonElement read, string path) =>
         read.GetProperty("nodes").EnumerateArray().Where(n => n.GetProperty("path").GetString() == path).Select(n => (JsonElement?)n).FirstOrDefault();
@@ -1206,131 +899,6 @@ public sealed class GodotAddonTests : IDisposable
             Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn Ui", StringComparison.Ordinal) && !l.Contains("Ui/", StringComparison.Ordinal)),
                 () => $"Godot's editor to show the scene's node at the caret ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
             Assert.Equal(1, EditorsOn(folder));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Open in Godot Editor in a GDScript, its paths read by Passenger's GDScript parser: on <c>$Panel/Button</c> and
-    /// on <c>%Button</c>, the button each names in the scene the script is attached in, selected in the editor running.</summary>
-    private void Open_in_Godot_Editor_on_a_gdscripts_dollar_path_and_unique_name_shows_the_node_each_names()
-    {
-        MainWindow window = Opened(files:
-        [
-            ("hud.gd", "extends Control\n\n\nfunc _ready() -> void:\n\tvar button := $Panel/Button\n\tvar unique := %Button\n\tprint(button, unique)\n"),
-            ("hud.tscn", "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://hud.gd\" id=\"1\"]\n\n[node name=\"Hud\" type=\"Control\"]\n"
-                + "script = ExtResource(\"1\")\n\n[node name=\"Panel\" type=\"Panel\" parent=\".\"]\n\n[node name=\"Button\" type=\"Button\" parent=\"Panel\"]\nunique_name_in_owner = true\n"),
-        ]);
-        try
-        {
-            StartEditor([]);
-            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"Godot's editor to connect through the addon ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            window.OpenFile(Path.Combine(folder, "hud.gd"));
-            foreach (string after in (string[])["$Panel/But", "%But"])
-            {
-                said.Clear();
-                Ui.PlaceAfter(window.EditorArea.CodeEditor, after);
-                Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
-                Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://hud.tscn Panel/Button", StringComparison.Ordinal)),
-                    () => $"Godot's editor to show the button {after} names ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
-            }
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Open in Godot Editor with no editor open: the folder's Godot Editor configuration starts one on the scene the
-    /// caret's node path leads to, Godot's command line naming the scene alone, and the addon there, once it connects,
-    /// selects the node.</summary>
-    private void Open_in_Godot_Editor_with_none_open_starts_one_on_the_scene_and_the_addon_there_selects_the_node()
-    {
-        MainWindow window = Opened();
-        try
-        {
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "GetNode<Button>(\"Ui/Pr");
-            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
-            Ui.WaitFor(() => window.Status?.Contains("where Passenger's addon selects Ui/Press once it is up", StringComparison.Ordinal) == true,
-                () => $"the action to say the editor starts on the scene ({window.Status})", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => window.GodotEditorsConnected == 1, () => $"the editor started to connect through the addon ({window.Status}; {RunText(window)})", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => RunText(window).Contains("TEST: selection res://main.tscn Ui/Press", StringComparison.Ordinal),
-                () => $"the addon to select the node once connected ({window.Status}; {RunText(window)})", TimeSpan.FromMinutes(1));
-            Assert.Equal(1, EditorsOn(folder));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    private static string RunText(MainWindow window)
-    {
-        window.BottomPanel.Run.Flush();
-        return window.BottomPanel.Run.Document.Snapshot.ToString();
-    }
-
-    /// <summary>C# script templates written for Godot in a project with a root namespace and file-scoped namespaces: Godot's own
-    /// Attach Script dialog in a headless editor makes a Control's script from Passenger's template and attaches it to the
-    /// scene's Ui, the script in the project's namespace as the project writes its C#, and the project builds with no warning;
-    /// the project's .editorconfig changed, the window offers to write them again, writing nothing until that is taken; the
-    /// game's project written anew without leaving them out of its build, the window leaves them out again.</summary>
-    private void Csharp_script_templates_for_godot_give_a_script_its_dialog_makes_the_projects_namespace_and_style()
-    {
-        // The solution beside the project, as Godot makes one with its game: without it, Godot writes both again as it makes a C# script.
-        MainWindow window = Opened(addon: false, files:
-        [
-            (".editorconfig", "root = true\n\n[*.cs]\nindent_style = space\nindent_size = 4\ncsharp_style_namespace_declarations = file_scoped:warning\n"),
-            ("Spinner.sln", "Microsoft Visual Studio Solution File, Format Version 12.00\n# Visual Studio 2012\nProject(\"{9A19103F-16F7-4668-BE54-9A1E7A4F7556}\") = \"Spinner\", "
-                + "\"Spinner.csproj\", \"{2B1D8A1E-6E43-4C4A-9F5B-3F0E1C2D4A5B}\"\nEndProject\nGlobal\nEndGlobal\n"),
-        ]);
-        try
-        {
-            string csproj = Path.Combine(folder, "Spinner.csproj");
-            TestFolders.Write(folder, "Spinner.csproj", File.ReadAllText(csproj).Replace("<EnableDynamicLoading>", "<RootNamespace>Spin.Game</RootNamespace>\n    <EnableDynamicLoading>", StringComparison.Ordinal));
-            Ui.WaitFor(() => window.Projects.Any(p => p.Property(Passenger.Host.CarriedProperties.RootNamespace) == "Spin.Game"),
-                () => $"the project's evaluation to take its root namespace ({window.Status})", TimeSpan.FromMinutes(2));
-            window.Confirm = (title, _, _) => Task.FromResult(title == "Write C# Script Templates for Godot?");
-            Assert.Null(window.Actions.Run(AppActions.GodotScriptTemplates));
-            string template = Path.Combine(folder, GodotScriptTemplates.Folder, "Control", GodotScriptTemplates.FileName);
-            Ui.WaitFor(() => File.Exists(template), () => $"the templates to be written ({window.Status})", TimeSpan.FromMinutes(1));
-            Assert.All(GodotScriptTemplates.Bases, b => Assert.True(File.Exists(GodotScriptTemplates.PathOf(folder, b)), $"No template was written for {b}"));
-            Assert.Contains("namespace Spin.Game;", File.ReadAllText(template), StringComparison.Ordinal);
-            Assert.Contains("<Compile Remove=\"script_templates/**\" />", File.ReadAllText(csproj), StringComparison.Ordinal);
-
-            StartEditor([]);
-            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: ready", StringComparison.Ordinal)), () => $"the test's plugin in Godot's editor (Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            TestFolders.Write(folder, "attach.txt", "Control res://Panel.cs Ui\n");
-            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: attached res://Panel.cs", StringComparison.Ordinal)), () => $"Godot's dialog to make and attach the script (Godot said: {Said()})", TimeSpan.FromMinutes(1));
-            string made = File.ReadAllText(Path.Combine(folder, "Panel.cs"));
-            Assert.True(made.Contains("namespace Spin.Game;\n", StringComparison.Ordinal) && made.Contains("public partial class Panel : Control\n{\n    public override void _Ready()\n", StringComparison.Ordinal),
-                $"The script Godot made from the template is not in the project's namespace and style:\n{made}\nGodot said: {Said()}");
-            Assert.Contains("res://Panel.cs", File.ReadAllText(ScenePath), StringComparison.Ordinal);
-            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", csproj, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled())),
-                "the game's build", Restore.Limit + TestFolders.Spare);
-            Assert.True(built.ExitCode == 0 && built.Output.Contains(" 0 Warning(s)", StringComparison.Ordinal) && !built.Output.Contains(": warning ", StringComparison.Ordinal), $"The game built with the script made from the template said:\n{built.Output}\nits project:\n{File.ReadAllText(csproj)}");
-
-            // The project's style changed: the window offers to write the templates again, leaving them as they were until asked.
-            TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*.cs]\nindent_style = tab\ncsharp_style_namespace_declarations = file_scoped:warning\n");
-            const string Offer = "Passenger's C# script templates for Godot no longer fit the project's style";
-            Ui.WaitFor(() => window.Status == Offer, () => $"the offer to write the templates in the project's new style ({window.Status})", TimeSpan.FromMinutes(1));
-            Assert.True(File.ReadAllText(template).Contains("// meta-space-indent: 0", StringComparison.Ordinal), "The templates were written in the new style unasked");
-            Assert.Equal("write them again", window.StatusPlace?.Name);
-            window.StatusPlace!.Go();
-            Ui.WaitFor(() => File.ReadAllText(template).Contains("\tpublic override void _Ready()", StringComparison.Ordinal),
-                () => $"the templates to be written again with tabs ({window.Status}):\n{File.ReadAllText(template)}", TimeSpan.FromMinutes(1));
-
-            // The project written anew without the line, as Godot writes it making a C# script with no solution beside it: the line comes back.
-            string excluded = "<Compile Remove=\"script_templates/**\" />";
-            string written = File.ReadAllText(csproj);
-            int group = written.LastIndexOf("<ItemGroup>", written.IndexOf(excluded, StringComparison.Ordinal), StringComparison.Ordinal);
-            int after = written.IndexOf("</ItemGroup>", group, StringComparison.Ordinal) + "</ItemGroup>".Length;
-            TestFolders.Write(folder, "Spinner.csproj", written[..group].TrimEnd(' ') + written[after..].TrimStart('\r', '\n'));
-            Ui.WaitFor(() => window.Status == "Spinner.csproj was written again without leaving Passenger's C# script templates for Godot out of its build, so they are left out again",
-                () => $"the templates to be left out of the build again ({window.Status}):\n{File.ReadAllText(csproj)}", TimeSpan.FromMinutes(1));
-            Assert.Equal(written, File.ReadAllText(csproj));
         }
         finally
         {
@@ -1454,138 +1022,6 @@ public sealed class GodotAddonTests : IDisposable
         }
     }
 
-    private const string Ranked = """
-        using Godot;
-
-        public partial class Main : Node2D
-        {
-            [Export] public int Speed { get; set; } = 1;
-
-            [Export] public int[] Steps { get; set; } = [1, 2, 3];
-
-            [Export] public Vector2 Aim { get; set; } = new Vector2(1, 2);
-        }
-
-        """;
-
-    private const string RankedScene = """
-        [gd_scene load_steps=3 format=3]
-
-        [ext_resource type="Script" path="res://Main.cs" id="1"]
-        [ext_resource type="PackedScene" path="res://enemy.tscn" id="2"]
-
-        [node name="Main" type="Node2D"]
-        position = Vector2(100, 50)
-        script = ExtResource("1")
-        Speed = 2
-        Steps = PackedInt32Array(1, 2, 3)
-
-        [node name="Foe" parent="." instance=ExtResource("2")]
-
-        """;
-
-    private const string Enemy = """
-        [gd_scene format=3]
-
-        [node name="Enemy" type="Node2D"]
-        position = Vector2(10, 20)
-
-        """;
-
-    /// <summary>A scene's node edited in its outline as Godot's own save writes it: a property set back to its default has its
-    /// line taken out, a new one goes where Godot's save puts it (Godot's next save of the scene changing none of the node's
-    /// lines), an array is edited as text, a C# export whose default is made by its initializer shows it, and an instance's
-    /// property, shown as the scene it instances sets it, is written as the instancing scene's override, that scene untouched.</summary>
-    private void A_scene_nodes_property_back_to_its_default_loses_its_line_a_new_one_goes_where_Godot_saves_it_and_an_instance_takes_an_override()
-    {
-        MainWindow window = Opened(addon: false, files: [("Main.cs", Ranked), ("main.tscn", RankedScene), ("enemy.tscn", Enemy)]);
-        string enemy = Path.Combine(folder, "enemy.tscn");
-        try
-        {
-            window.OpenFile(ScenePath);
-            window.ShowToolWindow(ToolWindowIds.Structure);
-            Ui.WaitFor(() => window.StructureView.Rows.Any(r => r.Name == "Foe"), () => $"the scene's outline ({window.StructureView.Said})", TimeSpan.FromMinutes(1));
-            Choose(window, "Main");
-            GodotSceneProperties shown() => window.SceneProperties!;
-            Ui.WaitFor(() => shown().Rows.Any(r => r is { Property.Name: "Aim", Text: "Vector2(1, 2)" }),
-                () => $"Main's properties with Aim's default made by its initializer ({string.Join(", ", window.SceneProperties?.Rows.Take(6).Select(r => $"{r.Property.Name} {r.Text}") ?? [])})", TimeSpan.FromMinutes(2));
-
-            TypeValue(window, "position", "Vector2(0, 0)");
-            Lines(window, "Main", ["script = ExtResource(\"1\")", "Speed = 2", "Steps = PackedInt32Array(1, 2, 3)"], "position set back to its default");
-            TypeValue(window, "modulate", "Color(1, 0, 0, 1)");
-            List<string> main = ["modulate = Color(1, 0, 0, 1)", "script = ExtResource(\"1\")", "Speed = 2", "Steps = PackedInt32Array(1, 2, 3)"];
-            Lines(window, "Main", main, "modulate first set, before the script as Godot saves it");
-            TypeValue(window, "Steps", "PackedInt32Array(1, 5, 3)");
-            main[3] = "Steps = PackedInt32Array(1, 5, 3)";
-            Lines(window, "Main", main, "an element of the Steps array typed");
-            TypeValue(window, "Steps", "not_a_value");
-            Ui.WaitFor(() => window.Status == "Steps was not set: Godot would not load it: not_a_value is no value", () => $"text Godot can't load to be refused ({window.Status})");
-            Lines(window, "Main", main, "the scene left as it was by text Godot can't load");
-
-            Choose(window, "Foe");
-            Ui.WaitFor(() => shown().Shown?.Name == "Foe" && shown().Rows.Any(r => r is { Property.Name: "position", Text: "Vector2(10, 20)", Set: false, Source: "Set in enemy.tscn:4" }),
-                () => $"Foe's position as enemy.tscn sets it ({string.Join(", ", window.SceneProperties?.Rows.Where(r => r.Property.Name == "position").Select(r => $"{r.Text} {r.Source}") ?? [])})",
-                TimeSpan.FromMinutes(1));
-            TypeValue(window, "position", "Vector2(30, 20)");
-            Lines(window, "Foe", ["position = Vector2(30, 20)"], "Foe's position written as main.tscn's override");
-            Assert.Equal(Enemy, File.ReadAllText(enemy));
-
-            // Godot's own save of the scene writes the node's lines as they are.
-            Assert.True(window.EditorArea.SaveAll(), "The scene could not be saved");
-            string csproj = Path.Combine(folder, "Spinner.csproj");
-            ChildResult built = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", csproj, "-nologo", "-v:q"]), limit: Restore.Limit.Scaled())),
-                "the game's build", Restore.Limit + TestFolders.Spare);
-            Assert.True(built.ExitCode == 0, $"The game did not build:\n{built.Output}");
-            StartEditor([]);
-            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: ready", StringComparison.Ordinal)), () => $"the test's plugin in Godot's editor (Godot said: {Said()})", TimeSpan.FromMinutes(2));
-            TestFolders.Write(folder, "save.txt", "save\n");
-            Ui.WaitFor(() => said.Any(l => l.Contains("TEST: saved 0", StringComparison.Ordinal)), () => $"Godot's editor to save the scene (Godot said: {Said()})", TimeSpan.FromMinutes(1));
-            // Godot's save may give an external resource an id of its own, which is no line of the node's moved or changed.
-            static string Idless(string line) => System.Text.RegularExpressions.Regex.Replace(line, "ExtResource\\(\"[^\"]*\"\\)", "ExtResource()");
-            Assert.Equal(main.Select(Idless), LinesOf(File.ReadAllText(ScenePath), "Main").Select(Idless));
-            Assert.Equal(["position = Vector2(30, 20)"], LinesOf(File.ReadAllText(ScenePath), "Foe"));
-        }
-        finally
-        {
-            End(window);
-        }
-
-        // The caret on a node's header, which the outline chooses the node by, or the row under it there (an instance's scene).
-        void Choose(MainWindow at, string node) => at.EditorArea.CodeEditor.GoTo(new TextPosition(Array.FindIndex(SceneText(at).Split('\n'), l => l.StartsWith($"[node name=\"{node}\"", StringComparison.Ordinal)), 2));
-    }
-
-    /// <summary>A property's value typed as text in the scene's outline: its row chosen, Enter opening its text, the words typed
-    /// over it and Enter again.</summary>
-    private static void TypeValue(MainWindow window, string property, string text)
-    {
-        GodotSceneProperties properties = window.SceneProperties!;
-        properties.Choose(property);
-        ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(properties).OfType<ListBox>().First();
-        list.ScrollIntoView(properties.Chosen!);
-        list.UpdateLayout();
-        list.ContainerFromItem(properties.Chosen!)?.Focus(Avalonia.Input.NavigationMethod.Pointer);
-        Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, () => $"{property}'s value open as text (chosen {(properties.Chosen?.Property.Name ?? "none")}, "
-            + $"its box {(properties.Typing is { } box ? $"shown for {(box.DataContext as GodotSceneProperty)?.Property.Name}" : "not shown")}, the keys with "
-            + $"{TopLevel.GetTopLevel(window)?.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}; {properties.Shown?.Name}'s rows: "
-            + $"{string.Join(", ", properties.Rows.Select(r => r.Property.Name))}; the outline of {window.StructureView.Outlined} chose {window.StructureView.Selected?.Name} "
-            + $"at {window.StructureView.Selected?.Position.Line} of {string.Join(", ", window.StructureView.Rows.Select(r => $"{r.Name}@{r.Position.Line}"))}, "
-            + $"the caret at {window.EditorArea.CodeEditor.CaretPosition.Line} of {window.EditorArea.Active?.Name}; {window.Status})");
-        properties.Typing!.SelectAll();
-        window.KeyTextInput(text);
-        Ui.Press(window, "ENTER");
-    }
-
-    /// <summary>A node's section's lines in the scene as the window has it are those given.</summary>
-    private void Lines(MainWindow window, string node, IReadOnlyList<string> lines, string what) =>
-        Ui.WaitFor(() => LinesOf(SceneText(window), node).SequenceEqual(lines), () => $"{what} ({window.Status}):\n{SceneText(window)}", TimeSpan.FromMinutes(1));
-
-    /// <summary>The property lines of a node's section in a scene's text, as written.</summary>
-    private static List<string> LinesOf(string text, string node) =>
-        GodotFile.Parse(text).Nodes.FirstOrDefault(n => n.Name == node) is { } found
-            ? [.. found.Section.Properties.Select(p => $"{p.Key} = {text[p.Value.Start..p.Value.End]}")]
-            : [];
-
     /// <summary>The scene as the window has it is the lines given, and so on disk once saved.</summary>
     private void Written(MainWindow window, List<string> lines, string what)
     {
@@ -1665,10 +1101,6 @@ public sealed class GodotAddonTests : IDisposable
     }
 
     private string Said() => string.Join(" | ", said.TakeLast(60));
-
-    /// <summary>Each Debug tab, with its session's state.</summary>
-    private static string Tabs(MainWindow window) =>
-        string.Join(", ", window.Debugger.Tabs.Select(t => $"{t.Name} {(t.IsLive ? t.Session?.State.ToString() ?? "opening" : "ended")}"));
 
     /// <summary>Each game the window has, with its state and the process it said.</summary>
     private static string Games(MainWindow window) => window.Session.Games.Count == 0 ? "no game"

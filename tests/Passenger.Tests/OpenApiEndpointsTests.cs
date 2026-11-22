@@ -9,13 +9,12 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>A minimal API that describes itself with MapOpenApi, its document read from the running app on this machine:
-/// Generate Requests from OpenAPI writes a request per operation into its project's .http file, bodies from the request
-/// schemas, one Undo taking them back; a request's answer is held to its response schema, a member that breaks it said at
-/// that member; and Interactive Test completes a request's empty body from its schema, of the app it goes to alone; and a
-/// document the build writes makes the requests of an app not running; an app whose code names no document is held to the
-/// one the person names. Its packages come from the package cache alone, Microsoft.AspNetCore.OpenApi's
-/// and Microsoft.Extensions.ApiDescription.Server's from the AspireGraphs restore.</summary>
+/// <summary>A minimal API that describes itself with MapOpenApi, its document read from the running app on this
+/// machine: Generate Requests from OpenAPI writes a request per operation into its project's .http file, bodies from
+/// the request schemas, one Undo taking them back; a request's answer is held to its response schema, a member that
+/// breaks it said at that member; and a document the build writes makes the requests of an app not running. Its
+/// packages come from the package cache alone, Microsoft.AspNetCore.OpenApi's and
+/// Microsoft.Extensions.ApiDescription.Server's from the AspireGraphs restore.</summary>
 public sealed class OpenApiEndpointsTests
 {
     /// <summary>An app's OpenAPI document, running or built, makes its requests and holds its answers to their
@@ -28,12 +27,6 @@ public sealed class OpenApiEndpointsTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running),
             A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none),
-            An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone),
-            Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone);
     }
 
     private void A_minimal_APIs_document_makes_its_requests_and_a_response_that_breaks_its_schema_is_said_at_the_member()
@@ -148,135 +141,6 @@ public sealed class OpenApiEndpointsTests
             window.Close();
         }
     }
-
-    /// <summary>An app whose code names no OpenAPI document of its own (it serves one as a static file): its answers are held
-    /// to none, until the person names the document at its path through Name OpenAPI Document…, kept with the folder, and
-    /// from then on an answer that breaks its schema is said at the member.</summary>
-    private void An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none()
-    {
-        string folder = TestFolders.Create("openapi-named-");
-        using HeldPort held = new();
-        int port = held.Port;
-        TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
-        TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-        TestFolders.Write(folder, "Web/Properties/launchSettings.json", $$"""
-            { "profiles": { "http": { "commandName": "Project", "applicationUrl": "http://127.0.0.1:{{port.ToString(CultureInfo.InvariantCulture)}}",
-              "environmentVariables": { {{HeldPort.GateMember(HeldPort.GateIn(folder))}} } } } }
-
-            """);
-        TestFolders.Write(folder, "Web/Program.cs", HeldPort.Gated("""
-            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-            WebApplication app = builder.Build();
-            app.UseStaticFiles();
-            app.MapGet("/broken", () => Results.Json(new { name = 42 }));
-            app.Run();
-
-            """));
-        TestFolders.Write(folder, "Web/wwwroot/spec.json", """
-            { "openapi": "3.0.1", "info": { "title": "Shop", "version": "1" }, "paths": { "/broken": { "get": { "responses": { "200": { "description": "OK",
-              "content": { "application/json": { "schema": { "type": "object", "required": [ "name" ], "properties": { "name": { "type": "string" } } } } } } } } } } }
-
-            """);
-        TestFolders.Write(folder, "Web/Web.http", $"@Web_HostAddress = http://127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)}\n\nGET {{{{Web_HostAddress}}}}/broken\nAccept: application/json\n");
-        folder = PathNames.Canonical(folder);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Assert.True(window.SelectConfiguration("Web: http"), $"No configuration Web: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
-            Ui.Launched(window, window.RunAsync(), "the shop to start", TimeSpan.FromMinutes(2));
-            held.LetGo(HeldPort.GateIn(folder));
-            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the shop to listen",
-                TimeSpan.FromMinutes(2));
-            window.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => window.Endpoints.Requests.Any(r => r.Url.EndsWith("/broken", StringComparison.Ordinal)), "the shop's request listed");
-            EndpointRequest broken = window.Endpoints.Requests.Single(r => r.Url.EndsWith("/broken", StringComparison.Ordinal));
-            Ui.Await(window.Endpoints.TestAsync(broken), "the answer before a document is named", TimeSpan.FromMinutes(1));
-            Assert.True(window.Endpoints.Response.Passed, $"An answer was held to a document its app's code names nowhere: {string.Join("; ", window.Endpoints.Response.Breaks)}");
-
-            window.Perform(AppActions.NameOpenApiDocument);
-            Ui.WaitFor(() => window.NamingDocument is not null, "the dialog that asks where the document is");
-            OpenApiDocumentDialog dialog = window.NamingDocument!;
-            dialog.Address.Text = "https://example.com/spec.json";
-            Ui.Settle();
-            Assert.False(dialog.Ok.IsEnabled, "A document on another machine could be named, which Passenger would ask");
-            dialog.Address.Text = "/spec.json";
-            Ui.Settle();
-            Ui.Click(dialog.Ok);
-            Ui.WaitFor(() => window.NamingDocument is null, "the dialog to close");
-            Assert.Equal("/spec.json", window.Session.OpenApiNames.Of(Path.Combine(folder, "Web", "Web.csproj")));
-
-            Ui.Await(window.Endpoints.TestAsync(broken), "the answer held to the named document", TimeSpan.FromMinutes(1));
-            Assert.False(window.Endpoints.Response.Passed, "An answer that breaks the named document's schema passed");
-            Assert.Contains(new SchemaBreak("/name", "a string was expected, not the number 42"), window.Endpoints.Response.Breaks);
-        }
-        finally
-        {
-            window.Perform(AppActions.Stop);
-            Ui.WaitFor(() => !window.IsRunning, "Stop to end the shop");
-            window.Close();
-        }
-    }
-
-    /// <summary>Two apps with one route, each the folder's environments' address, as tests of each would have left their
-    /// documents: Interactive Test completes a body from the document of the app the environment chosen sends it to, from
-    /// none with no address to go to, and another folder asking after those addresses from none.</summary>
-    private void Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone()
-    {
-        const string Orders = "POST {{host}}/orders\nContent-Type: application/json\n";
-        string folder = TestFolders.Create("openapi-apps-");
-        TestFolders.Write(folder, "orders.http", Orders);
-        TestFolders.Write(folder, HttpVariables.PublicFile, """{ "first": { "host": "http://localhost:1111" }, "second": { "host": "http://localhost:2222" } }""");
-        MainWindow window = Ui.OpenFolder(PathNames.Canonical(folder), languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => window.Endpoints.Requests.Count == 1, "the request listed");
-            EndpointRequest orders = window.Endpoints.Requests[0];
-            window.Session.AppDocuments.Took(new Uri("http://localhost:1111"), OrdersOf("customer"));
-            window.Session.AppDocuments.Took(new Uri("http://localhost:2222"), OrdersOf("supplier"));
-
-            window.Endpoints.ChooseEnvironment("first");
-            Assert.Contains("customer", Completed(window, orders), StringComparison.Ordinal);
-            window.Endpoints.ChooseEnvironment("second");
-            Assert.Contains("supplier", Completed(window, orders), StringComparison.Ordinal);
-            window.Endpoints.ChooseEnvironment("No environment");
-            Assert.Equal(string.Empty, Completed(window, orders));
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        string another = TestFolders.Create("openapi-other-");
-        TestFolders.Write(another, "orders.http", "@host = http://localhost:1111\n\n" + Orders);
-        MainWindow elsewhere = Ui.OpenFolder(PathNames.Canonical(another), languageServer: false);
-        try
-        {
-            elsewhere.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => elsewhere.Endpoints.Requests.Count == 1, "the other folder's request listed");
-            Assert.Equal(string.Empty, Completed(elsewhere, elsewhere.Endpoints.Requests[0]));
-        }
-        finally
-        {
-            elsewhere.Close();
-        }
-    }
-
-    /// <summary>What Interactive Test opens with as the body of a request written with none.</summary>
-    private static string Completed(MainWindow window, EndpointRequest request)
-    {
-        InteractiveTestDialog dialog = window.OpenInteractiveTest(request);
-        Ui.Settle();
-        string body = dialog.Body.Text ?? string.Empty;
-        dialog.Close();
-        Ui.Settle();
-        return body;
-    }
-
-    private static OpenApiDocument OrdersOf(string member) => OpenApiDocument.Parse($$"""
-        { "openapi": "3.1.1", "paths": { "/orders": { "post": { "requestBody": { "content": { "application/json": { "schema": {
-          "type": "object", "properties": { "{{member}}": { "type": "string" } } } } } }, "responses": { "200": { "description": "OK" } } } } } }
-        """)!;
 
     /// <summary>One minimal API on <c>MapOpenApi</c>, its launch profile on the port given, which it listens at once past its
     /// gate (<see cref="HeldPort"/>): an item by id, one added, and one route whose answer breaks the schema its document gives

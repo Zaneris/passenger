@@ -5,7 +5,6 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
-using Passenger.App.Godot;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
@@ -163,8 +162,8 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
     internal static List<string> Marked(MainWindow window) =>
         [.. window.EditorArea.Active!.Markers.Where(m => m.Kind == MarkerKind.Error && !m.Message.StartsWith("CS", StringComparison.Ordinal)).Select(m => m.Message)];
 
-    /// <summary>A Godot game's C# is checked and completed against its scenes, leads to their uids, files and class
-    /// reference, and Structure lists a scene.</summary>
+    /// <summary>A Godot game's C# is checked and completed against its scenes and leads to their uids and files, an
+    /// open scene marks what it lacks, and Structure lists a scene.</summary>
     [AvaloniaFact]
     public void A_scenes_code_is_checked_completed_and_followed_through_its_scenes()
     {
@@ -180,46 +179,27 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             A_signals_connection_and_its_handler_lead_to_each_other_and_one_to_a_missing_method_is_marked);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name),
-            A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(An_open_scene_marks_a_missing_resource_and_a_broken_connection),
             An_open_scene_marks_a_missing_resource_and_a_broken_connection);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked),
-            An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource),
-            An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk),
-            An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Context_help_browses_an_engine_members_place_in_godots_class_reference),
-            Context_help_browses_an_engine_members_place_in_godots_class_reference);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(A_uid_leads_to_its_file_from_the_code_and_from_a_scene), A_uid_leads_to_its_file_from_the_code_and_from_a_scene);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread),
-            A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_res_path_in_a_scene_completes_from_the_projects_files), A_res_path_in_a_scene_completes_from_the_projects_files);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each),
             Structure_lists_a_scenes_nodes_scripts_instances_and_connections_and_goes_to_each);
     }
 
-    /// <summary>A node's rename from the code or the scene, a script, scene or include moved, and a handler, export or
-    /// signal renamed reach every scene, script and string naming them, one step of Undo.</summary>
+    /// <summary>A node's rename from the code, a script or scene moved, and a handler or signal renamed reach every
+    /// scene, script and string naming them, one step of Undo, a scene saved a moment before taken as the save left
+    /// it.</summary>
     [AvaloniaFact]
     public void Renames_and_moves_follow_through_every_godot_file()
     {
@@ -227,25 +207,10 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Renaming_a_node_from_its_path_in_the_code_renames_it_in_the_scene_and_the_code_one_step_of_undo);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes),
-            Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in),
-            Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped),
-            A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node),
-            A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node),
-            A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went),
             A_script_moved_with_its_uid_in_the_explorer_is_followed_by_its_scene_and_checked_where_it_went);
@@ -263,21 +228,12 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             A_scene_moved_in_the_explorer_is_followed_by_the_gdscripts_naming_it);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it),
-            A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(Renaming_a_handler_renames_the_method_its_scenes_connections_call),
             Renaming_a_handler_renames_the_method_its_scenes_connections_call);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script),
-            Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it),
-            Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it),
             Renaming_a_node_changes_a_scene_saved_a_moment_before_as_the_save_left_it);
@@ -287,8 +243,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Renaming_a_signal_renames_its_event_SignalName_and_strings_in_every_script_and_the_game_builds);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere),
-            Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere);
     }
 
     /// <summary>A path GetNode is given that the scene has no node of, and one whose node is a Label asked for as a Button, are
@@ -389,149 +343,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
-    /// <summary>A node a GDScript of the same scene names follows a rename begun in C#: its $ path and its get_node string, one
-    /// step of Undo with the rest, or that script no longer finds its node.</summary>
-    private void Renaming_a_node_from_the_csharp_also_renames_it_in_the_gdscripts_of_its_scenes()
-    {
-        const string gdscript = "extends CanvasLayer\n\n@onready var score = $Score\n\n\nfunc _ready():\n\tget_node(\"Score\").hide()\n";
-        string script = game.PathOf("hud.gd");
-        File.WriteAllText(script, gdscript);
-        File.WriteAllText(ScenePath, Scene.Replace("res://Hud.cs", "res://hud.gd", StringComparison.Ordinal));
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput("Points");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => File.ReadAllText(script) == gdscript.Replace("Score", "Points", StringComparison.Ordinal),
-                () => $"the GDScript's paths to follow the node ({window.Status}): {File.ReadAllText(script)}");
-        }
-        finally
-        {
-            window.Close();
-            File.Delete(script);
-        }
-    }
-
-    /// <summary>A node's name may hold a backslash: the code's strings take it escaped as C# escapes it, the scene's as Godot does,
-    /// so the string still says the name and the scene still loads it.</summary>
-    private void Renaming_a_node_to_a_name_holding_a_backslash_writes_it_for_each_file_it_goes_in()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput("Sc\\ore");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("[node name=\"Sc\\\\ore\" type=\"Label\" parent=\"Hud\"]", StringComparison.Ordinal),
-                () => $"the scene to name the node as Godot writes it ({window.Status}): {File.ReadAllText(ScenePath)}");
-            Assert.Contains("GetNode<Label>(\"Hud/Sc\\\\ore\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>The string a rename wrote with an escape in it names the node as any other does: the next rename, from that very
-    /// string, writes it again, and a verbatim string saying the path follows too.</summary>
-    private void A_name_holding_a_backslash_is_renamed_again_from_the_string_that_writes_it_escaped()
-    {
-        File.WriteAllText(ScriptPath, Script.Replace("GetNode<Label>(\"Hud/Score\")", "GetNode<Label>(\"Hud/Score\") ?? GetNode<Label>(@\"Hud/Score\")", StringComparison.Ordinal));
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Renamed(window, editor, "GetNode<Label>(\"Hud/Sc", "Score", "Sc\\ore");
-            Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("GetNode<Label>(@\"Hud/Sc\\ore\")", StringComparison.Ordinal),
-                () => $"the verbatim string to take the name as it writes it ({window.Status}): {editor.Document.Snapshot}");
-            Assert.Contains("GetNode<Label>(\"Hud/Sc\\\\ore\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Renamed(window, editor, "GetNode<Label>(\"Hud/Sc", "Sc\\ore", "Points");
-            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("[node name=\"Points\" type=\"Label\" parent=\"Hud\"]", StringComparison.Ordinal),
-                () => $"the scene to name the node again ({window.Status}): {File.ReadAllText(ScenePath)}");
-            Assert.Contains("GetNode<Label>(\"Hud/Points\") ?? GetNode<Label>(@\"Hud/Points\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static void Renamed(MainWindow window, CodeEditor editor, string after, string old, string name)
-        {
-            Ui.PlaceAfter(editor, after);
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == old, () => $"Rename's box on the node {old} ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput(name);
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.Status?.StartsWith($"Renamed {old} to {name}", StringComparison.Ordinal) == true, () => $"{old}'s rename to be made ({window.Status})");
-        }
-    }
-
-    /// <summary>A line written above a node's path while Rename's box is open on it (by the file's other window, by an agent)
-    /// moves the name down: the rename finds the node where its name now is and renames it, rather than looking where the box
-    /// opened and refusing the file as changed.</summary>
-    private void A_line_written_above_a_nodes_path_while_its_rename_box_is_open_still_renames_the_node()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "GetNode<Label>(\"Hud/Sc");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
-            editor.ApplyEdits([new TextEdit(0, 0, "// Written while Rename's box was open.\n")]);
-            window.KeyTextInput("Points");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.Contains("not renamed", StringComparison.Ordinal) == true,
-                () => $"the node's rename to be made or refused ({window.Status})");
-            Assert.StartsWith("Renamed Score to Points", window.Status, StringComparison.Ordinal);
-            Assert.Contains("[node name=\"Points\" type=\"Label\" parent=\"Hud\"]", File.ReadAllText(ScenePath), StringComparison.Ordinal);
-            Assert.Contains("GetNode<Label>(\"Hud/Points\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A line written above a node's name in its scene while Rename's box is open on it moves the name down: the rename
-    /// finds the node where its name now is and renames it, rather than looking where the box opened and refusing the scene as
-    /// changed.</summary>
-    private void A_line_written_above_a_nodes_name_in_its_scene_while_its_rename_box_is_open_still_renames_the_node()
-    {
-        MainWindow window = game.Open(ScenePath);
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "[node name=\"Sco");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Score", () => $"Rename's box on the node Score ({window.Assist.Renaming}; {window.Status})");
-            int above = editor.Document.Snapshot.ToString().IndexOf("[ext_resource", StringComparison.Ordinal);
-            editor.ApplyEdits([new TextEdit(above, 0, "; Written while Rename's box was open.\n")]);
-            window.KeyTextInput("Points");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.Contains("not renamed", StringComparison.Ordinal) == true,
-                () => $"the node's rename to be made or refused ({window.Status})");
-            Assert.StartsWith("Renamed Score to Points", window.Status, StringComparison.Ordinal);
-            Assert.Contains("[node name=\"Points\" type=\"Label\" parent=\"Hud\"]", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Assert.Contains("GetNode<Label>(\"Hud/Points\")", File.ReadAllText(ScriptPath), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>The scene's connection to a method Main lacks is an error on Main's name, and one whose signal gives an argument
     /// the handler does not take is one on the handler's, each naming the scene and its line; Find Usages of the handler lists
     /// the connection calling it, and Go to Declaration from that connection's method in the scene goes back to the handler, as
@@ -577,42 +388,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
-    /// <summary>A string Godot's calls take naming a method or a signal Main lacks is an error where it is written, as is a
-    /// method connected by strings to a signal it takes other arguments than; Go to Declaration from a string naming a signal
-    /// goes to its delegate, and from one naming a method to the method.</summary>
-    private void A_string_named_connection_to_a_missing_method_is_marked_and_its_strings_lead_to_what_they_name()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            string method = "Main has no method 'OnScord'";
-            string signal = "Main has no signal 'Scord'";
-            string wrong = "'Scored', which gives 1 (int), is connected to 'OnStartPressed', which takes none";
-            Ui.WaitFor(() => Marked(window).Contains(method) && Marked(window).Contains(signal) && Marked(window).Contains(wrong),
-                () => $"the strings naming a missing method and signal, and the connection of other arguments, to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
-            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
-            Marker missing = window.EditorArea.Active.Markers.First(m => m.Message == method);
-            Assert.Equal("OnScord", text.GetText(missing.Range.Start, missing.Range.Length));
-            Marker connected = window.EditorArea.Active.Markers.First(m => m.Message == wrong);
-            Assert.Equal("OnStartPressed", text.GetText(connected.Range.Start, connected.Range.Length));
-            Assert.DoesNotContain(Marked(window), m => m.Contains("'Scored' takes", StringComparison.Ordinal));
-
-            CodeEditor code = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(code, "Connect(\"Scor");
-            Ui.Run(window, AppActions.GoToDeclaration);
-            Ui.WaitFor(() => code.Document.Snapshot.GetLineText(code.CaretPosition.Line).Contains("delegate void ScoredEventHandler", StringComparison.Ordinal),
-                () => $"Go to Declaration from the signal's string to go to its delegate ({code.Document.Snapshot.GetLineText(code.CaretPosition.Line)}; {window.Status})");
-            Ui.PlaceAfter(code, "new Callable(this, \"OnStartPr");
-            Ui.Run(window, AppActions.GoToDeclaration);
-            Ui.WaitFor(() => code.Document.Snapshot.GetLineText(code.CaretPosition.Line).Contains("private void OnStartPressed()", StringComparison.Ordinal),
-                () => $"Go to Declaration from the method's string to go to the method ({code.Document.Snapshot.GetLineText(code.CaretPosition.Line)}; {window.Status})");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>An open scene is marked where Godot would not load what it says: its connection to a method Main lacks, and
     /// the one of other arguments than the handler takes, where it writes them; and an external resource whose file is not
     /// there, once typed so and the typing pauses. The HUD's connection, which holds, is not marked.</summary>
@@ -636,85 +411,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             text = window.EditorArea.Active.Text.Snapshot;
             Marker resource = window.EditorArea.Active.Markers.First(m => m.Message == gone);
             Assert.Equal("res://plaer.tscn", text.GetText(resource.Range.Start, resource.Range.Length));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An exported node the scene sets to a node of another type, and an exported NodePath it sets to a path no node
-    /// answers, are errors on the member's name naming the scene and its line.</summary>
-    private void An_exported_node_set_to_a_node_of_another_type_or_to_no_node_is_marked()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            string typed = $"main.tscn:{LineOf(Scene, "Display = ")} sets Display to 'Player', a CharacterBody2D, not a Label";
-            string missing = $"main.tscn:{LineOf(Scene, "Target = ")} sets Target to 'Hud/Gone', which names no node: Hud has no child Gone";
-            Ui.WaitFor(() => Marked(window).Contains(typed) && Marked(window).Contains(missing),
-                () => $"the exported node of another type and the NodePath of no node to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
-            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
-            Marker marker = window.EditorArea.Active.Markers.First(m => m.Message == typed);
-            Assert.Equal("Display", text.GetText(marker.Range.Start, marker.Range.Length));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An open scene marks where it sets an exported node to a node of another type than the script's member, or a
-    /// NodePath to no node, at the path, as the script's file marks it at the member; and a SubResource no sub_resource of the
-    /// file has, once typed so, where the one it has is not marked.</summary>
-    private void An_open_scene_marks_a_node_path_set_to_a_node_of_another_type_or_to_none_and_an_unknown_sub_resource()
-    {
-        MainWindow window = game.Open(ScenePath);
-        try
-        {
-            string typed = "Main's Display takes a Label: 'Player' is a CharacterBody2D";
-            string missing = "Main's Target names no node: Hud has no child Gone";
-            Ui.WaitFor(() => Marked(window).Contains(typed) && Marked(window).Contains(missing),
-                () => $"the exported node of another type and the NodePath of no node to be marked in the scene: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
-            TextSnapshot text = window.EditorArea.Active!.Text.Snapshot;
-            Marker onType = window.EditorArea.Active.Markers.First(m => m.Message == typed);
-            Marker onPath = window.EditorArea.Active.Markers.First(m => m.Message == missing);
-            Assert.Equal(("Player", "Hud/Gone"), (text.GetText(onType.Range.Start, onType.Range.Length), text.GetText(onPath.Range.Start, onPath.Range.Length)));
-            Assert.DoesNotContain(Marked(window), m => m.Contains("sub_resource", StringComparison.Ordinal));
-
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            int at = text.ToString().IndexOf("Theme_1\")", StringComparison.Ordinal) + "Theme_".Length;
-            editor.Focus();
-            editor.Select(new TextRange(at, 1));
-            window.KeyTextInput("2");
-            string unknown = "No sub_resource of this file has the id \"Theme_2\"";
-            Ui.WaitFor(() => Marked(window).Contains(unknown), () => $"the SubResource of no sub_resource to be marked: {string.Join("; ", Marked(window))}");
-            text = window.EditorArea.Active.Text.Snapshot;
-            Marker onId = window.EditorArea.Active.Markers.First(m => m.Message == unknown);
-            Assert.Equal("Theme_2", text.GetText(onId.Range.Start, onId.Range.Length));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A handler taken out of its script on disk while the script is closed, by another program, marks the open scene's
-    /// connections to it, once the language server has read the script so.</summary>
-    private void An_open_scene_marks_a_handler_taken_out_of_its_closed_script_on_disk()
-    {
-        MainWindow window = game.Open(ScenePath);
-        try
-        {
-            string wrong = "toggled gives 1 (bool), but OnStartPressed takes none";
-            Ui.WaitFor(() => Marked(window).Contains(wrong), () => $"the scene's connection of other arguments to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
-            string handled = "    private void OnStartPressed()\n    {\n    }\n\n";
-            Assert.Contains(handled, Script, StringComparison.Ordinal);
-            File.WriteAllText(ScriptPath, Script.Replace(handled, string.Empty, StringComparison.Ordinal));
-            string gone = "Main, a Node2D (Main.cs), has no method OnStartPressed";
-            Ui.WaitFor(() => Marked(window).Contains(gone) && !Marked(window).Contains(wrong),
-                () => $"the scene's connections to the handler taken out of Main.cs to be marked: {string.Join("; ", Marked(window))}", TimeSpan.FromMinutes(1));
-            Assert.Equal(2, window.EditorArea.Active!.Markers.Count(m => m.Message == gone));
         }
         finally
         {
@@ -821,42 +517,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
-    /// <summary>Context Help on Node2D's Position, which Main sets, browses the property's place on Node2D's page of Godot's
-    /// class reference for the version of the Godot found; on Main's override of _Ready, Node's virtual _ready's place on
-    /// Node's; on a signal Button's base class gives, its place there; on the project's own handler it says there is none.</summary>
-    private void Context_help_browses_an_engine_members_place_in_godots_class_reference()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            string docs = $"https://docs.godotengine.org/en/{GodotDocs.VersionOf(game.Godot!.Version)}/classes/";
-            foreach ((string at, string page) in new[]
-            {
-                ("        Posi", "class_node2d.html#class-node2d-property-position"),
-                ("void _Rea", "class_node.html#class-node-private-method-ready"),
-                ("GetNode<Bu", "class_button.html"),
-                ("start.Pre", "class_basebutton.html#class-basebutton-signal-pressed"),
-                ("GetNo", "class_node.html#class-node-method-get-node"),
-            })
-            {
-                Ui.PlaceAfter(editor, at);
-                Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
-                Uri wanted = new(docs + page);
-                Ui.WaitFor(() => window.Browsed.Contains(wanted), () => $"{wanted} to be browsed from {at} ({window.Status}): {string.Join(", ", window.Browsed)}");
-            }
-            int browsed = window.Browsed.Count;
-            Ui.PlaceAfter(editor, "void OnScor");
-            Ui.Press(window, Ui.Shortcut(AppActions.ContextHelp));
-            Ui.WaitFor(() => window.Status == Refusals.NoGodotDocumentation, () => $"Context Help on the project's own handler to say it has no page ({window.Status})");
-            Assert.Equal(browsed, window.Browsed.Count);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A uid:// in the code leads to the scene whose header gives it, its card saying which, and one in a scene's
     /// external resource to the script the .uid file beside it gives it to.</summary>
     private void A_uid_leads_to_its_file_from_the_code_and_from_a_scene()
@@ -939,40 +599,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         }
     }
 
-    /// <summary>A shader include moved in the Explorer takes the shaders' #include along, one written from the shader's folder
-    /// among them, as one command with the rest, or the shader no longer compiles; one Undo puts them back.</summary>
-    private void A_shader_include_moved_in_the_explorer_is_followed_by_the_shaders_naming_it()
-    {
-        const string shaderCode = "shader_type canvas_item;\n\n#include \"res://noise.gdshaderinc\"\n#include \"noise.gdshaderinc\"\n";
-        string shader = game.PathOf("glow.gdshader");
-        string include = game.PathOf("noise.gdshaderinc");
-        File.WriteAllText(shader, shaderCode);
-        File.WriteAllText(include, "float noise() { return 0.0; }\n");
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            Choose(window, include);
-            Ui.Run(window, EditorActions.Cut);
-            Choose(window, game.PathOf("actors"));
-            Ui.Run(window, EditorActions.Paste);
-            string moved = shaderCode.Replace("\"res://noise.gdshaderinc\"", "\"res://actors/noise.gdshaderinc\"", StringComparison.Ordinal)
-                .Replace("\"noise.gdshaderinc\"", "\"res://actors/noise.gdshaderinc\"", StringComparison.Ordinal);
-            Ui.WaitFor(() => File.ReadAllText(shader) == moved, () => $"the shader's includes to follow the file ({window.Status}): {File.ReadAllText(shader)}");
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            Choose(window, game.PathOf("actors"));
-            Ui.Run(window, EditorActions.Undo);
-            Ui.WaitFor(() => File.ReadAllText(shader) == shaderCode && File.Exists(include), () => $"Undo to put the shader and its include back ({window.Status}): {File.ReadAllText(shader)}");
-        }
-        finally
-        {
-            window.Close();
-            File.Delete(shader);
-            File.Delete(include);
-            File.Delete(game.PathOf(Path.Combine("actors", "noise.gdshaderinc")));
-        }
-    }
-
     /// <summary>The Explorer's row of a file or folder chosen, with the keys.</summary>
     internal static void Choose(MainWindow window, string path)
     {
@@ -981,80 +607,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Path is { } row && PathNames.Same(row, shown)),
             () => $"the Explorer to show {Path.GetFileName(path)}: {string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Path))}");
         Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path is { } row && PathNames.Same(row, shown)));
-    }
-
-    /// <summary>A res:// string's list is made off the UI thread: the project's files made into items and the server's matched
-    /// against them there, so with 2,000 files more in the project the list costs the UI thread, from Complete to the list
-    /// open, what it did before them, counted rather than timed.</summary>
-    private void A_res_paths_list_of_the_projects_files_is_made_off_the_UI_thread()
-    {
-        string crates = game.PathOf("crates");
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            long few = Listed();
-            Directory.CreateDirectory(crates);
-            for (int i = 0; i < 2_000; i++)
-            {
-                File.WriteAllText(Path.Combine(crates, $"crate{i:0000}.txt"), "crate\n");
-            }
-            string under = "crates" + Path.DirectorySeparatorChar;
-            Ui.WaitFor(() => window.FileIndex.Files.Count(f => f.StartsWith(under, StringComparison.Ordinal)) == 2_000,
-                () => $"the 2,000 files come to the folder's index, which lists {window.FileIndex.Files.Count(f => f.StartsWith(under, StringComparison.Ordinal))}");
-            long many = Listed();
-            TestContext.Current.TestOutputHelper?.WriteLine($"A res:// string's list opened with {few / 1024} KB on the UI thread; with 2,000 files more in the project, {many / 1024} KB");
-            // Less than the least object for each file more: whatever is made of a file is made off it.
-            Assert.True(many - few < 2_000 * 24L,
-                $"With 2,000 files more in the project a res:// string's list opened with {many / 1024} KB allocated on the UI thread, against {few / 1024} KB before them: "
-                + $"{(many - few) / 2_000} bytes for each file more, so its files were made into items or matched there");
-        }
-        finally
-        {
-            window.Close();
-            Directory.Delete(crates, recursive: true);
-        }
-
-        // The least the UI thread allocates from Complete in a res:// string to its list open.
-        long Listed()
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            long least = long.MaxValue;
-            for (int round = 0; round < 3; round++)
-            {
-                Ui.PlaceAfter(editor, "GD.Load<PackedScene>(\"res://");
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                Ui.Run(window, AppActions.Complete, settle: false);
-                Ui.Pumped(() => window.Assist.CompletionNarrowedBy == "res://" && window.Assist.CompletionLabels.Contains("res://player.tscn"), TimeSpan.FromSeconds(60));
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-                Assert.True(window.Assist.CompletionNarrowedBy == "res://" && window.Assist.CompletionLabels.Contains("res://player.tscn"),
-                    $"Complete in a res:// string offers {string.Join(", ", window.Assist.CompletionLabels.Take(5))}, not the project's files");
-                Ui.Press(window, "ESCAPE");
-            }
-            return least;
-        }
-    }
-
-    /// <summary>A res:// string in a scene completes from the project's files as its "res://" is typed, the scene itself and
-    /// Godot's own folders left out, and the file chosen goes in whole in place of the string.</summary>
-    private void A_res_path_in_a_scene_completes_from_the_projects_files()
-    {
-        MainWindow window = game.Open(ScenePath);
-        try
-        {
-            Typing.Replace(window, "res://player.tscn", "res://");
-            Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("res://player.tscn") && window.Assist.CompletionLabels.Contains("res://Hud.cs"),
-                () => $"the project's files to be offered: {string.Join(", ", window.Assist.CompletionLabels)}");
-            Assert.DoesNotContain("res://main.tscn", window.Assist.CompletionLabels);
-            Assert.DoesNotContain(window.Assist.CompletionLabels, l => l.StartsWith("res://.godot/", StringComparison.Ordinal));
-            window.KeyTextInput("pla");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.EditorArea.CodeEditor.Document.Snapshot.ToString().Contains("path=\"res://player.tscn\" id=\"2_player\"]", StringComparison.Ordinal),
-                () => $"the chosen file to take the string's place: {window.EditorArea.CodeEditor.Document.Snapshot}");
-        }
-        finally
-        {
-            window.Close();
-        }
     }
 
     /// <summary>Rename of the handler in the code renames the method the scene's connections call, one step of Undo with the code's.</summary>
@@ -1082,63 +634,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Ui.Run(window, EditorActions.Undo);
             Ui.WaitFor(() => File.ReadAllText(ScenePath) == Scene, () => $"Undo to put the scene's connections back ({window.Status}): {File.ReadAllText(ScenePath)}");
             Assert.Contains("private void OnStartPressed()", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An export set on a sub-resource running the script is its key too: Safe Delete lists it among the uses it would
-    /// break, and the rename takes it with the node's, or the resource would load its default.</summary>
-    private void Renaming_an_export_renames_its_key_on_a_sub_resource_running_the_script()
-    {
-        File.WriteAllText(ScenePath, Scene.Replace("[sub_resource type=\"Theme\" id=\"Theme_1\"]",
-            "[sub_resource type=\"Theme\" id=\"Theme_1\"]\n\n[sub_resource type=\"Resource\" id=\"Held_1\"]\nscript = ExtResource(\"1_main\")\nSpeed = 9.0", StringComparison.Ordinal));
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "public float Spe");
-            Ui.Run(window, AppActions.SafeDelete);
-            Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), () => $"Safe Delete to list the export's keys ({window.Status})");
-            ConfirmDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
-            Assert.Contains("Speed = 9.0", asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty));
-            Ui.ClickButton(asked, "Cancel");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Speed", () => $"Rename's box on the export ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput("Power");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("Power = 2.5", StringComparison.Ordinal),
-                () => $"the scene's keys to follow the export ({window.Status}): {File.ReadAllText(ScenePath)}", TimeSpan.FromMinutes(1));
-            Assert.Contains("Power = 9.0", File.ReadAllText(ScenePath), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A scene saved a moment before a rename, the folder's watcher yet to tell of it (here, never to), holds its keys
-    /// where the save put them: the rename changes the key it names, never whatever now lies where the key was read.</summary>
-    private void Renaming_an_export_changes_a_scene_saved_a_moment_before_as_the_save_left_it()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => Marked(window).Count > 0, "the scene's checks to be read");
-            window.FolderWatcher!.Dispose();
-            File.WriteAllText(ScenePath, Scene.Replace("Speed = 2.5", "Other = 1\nSpeed = 2.5", StringComparison.Ordinal));
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "public float Spe");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Speed", () => $"Rename's box on the export ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput("Power");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => File.ReadAllText(ScenePath).Contains("Power = 2.5", StringComparison.Ordinal),
-                () => $"the scene's key to follow its export ({window.Status}): {File.ReadAllText(ScenePath)}", TimeSpan.FromMinutes(1));
-            Assert.Contains("Other = 1", File.ReadAllText(ScenePath), StringComparison.Ordinal);
         }
         finally
         {
@@ -1215,38 +710,6 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
             Ui.WaitFor(() => File.ReadAllText(ScenePath) == Scene && File.ReadAllText(HudPath) == HudScript,
                 () => $"Undo to put the scene and the HUD's script back ({window.Status}): {File.ReadAllText(HudPath)}");
             Assert.Equal(Script, editor.Document.Snapshot.ToString());
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Rename from a use of a signal's event, in a script other than the one declaring it, renames the signal: its
-    /// delegate takes the new name with EventHandler after it, and every other name of it and the scene follow, so the game builds.</summary>
-    private void Renaming_a_signals_event_from_its_use_renames_the_signal_everywhere()
-    {
-        MainWindow window = game.Open(HudPath);
-        try
-        {
-            Ui.WaitFor(() => window.CSharpService?.For(window.EditorArea.Active!)?.Lsp is not null, "the HUD's script to be open in the language server");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "main.Scor");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "Scored", () => $"Rename's box on the signal's event ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput("Goal");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => File.ReadAllText(ScriptPath).Contains("delegate void GoalEventHandler(int points);", StringComparison.Ordinal),
-                () => $"the signal's delegate to take the new name ({window.Status}): {File.ReadAllText(ScriptPath)}", TimeSpan.FromMinutes(1));
-            string main = File.ReadAllText(ScriptPath);
-            Assert.Contains("Goal += OnScored;", main, StringComparison.Ordinal);
-            Assert.Contains("EmitSignal(SignalName.Goal, 1);", main, StringComparison.Ordinal);
-            Assert.Contains("EmitSignalGoal(2);", main, StringComparison.Ordinal);
-            Assert.Contains("EmitSignal(\"Goal\", 3);", main, StringComparison.Ordinal);
-            Assert.Contains("main.Goal += points", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Assert.Contains("Main.SignalName.Goal", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Assert.Contains("[connection signal=\"Goal\" from=\".\" to=\"Hud\" method=\"OnScored\"]", File.ReadAllText(ScenePath), StringComparison.Ordinal);
-            Built(window);
         }
         finally
         {

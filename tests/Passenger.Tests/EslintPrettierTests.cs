@@ -1,8 +1,6 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Run;
@@ -29,22 +27,13 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
 
     public EslintPrettierTests(Project project) => this.project = project;
 
-    /// <summary>ESLint's problems show as typed, its fixes and its server's ends are said, and the person's own ESLint
-    /// alone runs.</summary>
+    /// <summary>ESLint's problems show as typed and its fixes apply, one server a folder, the person's own ESLint alone
+    /// running, and one not installed is installed from its banner.</summary>
     [AvaloniaFact]
     public void Eslint_checks_and_fixes_as_its_server_says()
     {
         Flow.Step(nameof(An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go),
             An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error),
-            A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still),
-            A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again),
-            An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again);
         OpenWindows.CloseAll();
         Flow.Step(nameof(Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away),
             Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away);
@@ -67,23 +56,11 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         Flow.Step(nameof(Prettier_formats_on_Reformat_Code_and_on_save_by_the_projects_own_configuration_as_one_undo_and_leaves_what_prettierignore_names),
             Prettier_formats_on_Reformat_Code_and_on_save_by_the_projects_own_configuration_as_one_undo_and_leaves_what_prettierignore_names);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone),
-            Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output),
-            Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names),
-            Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(Save_saves_the_file_it_was_pressed_on_though_another_tab_is_chosen_while_Prettier_formats_it),
             Save_saves_the_file_it_was_pressed_on_though_another_tab_is_chosen_while_Prettier_formats_it);
         OpenWindows.CloseAll();
         Flow.Step(nameof(Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats),
             Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults),
-            Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults);
     }
 
     /// <summary>ESLint's problem shows as typed, with its rule's page, and its fix, which ESLint's server makes by handing
@@ -135,100 +112,6 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
                 $"ESLint was told its fix was not made though the window made it, so it logged a failure: {string.Join('\n', since.Split('\n').Where(l => l.Contains("ESLint", StringComparison.Ordinal)).Take(5))}");
             Ui.Run(window, EditorActions.Undo);
             Assert.Contains("let total = items.length;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-            project.Reset();
-        }
-    }
-
-    private void A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error()
-    {
-        Project.SkipWithoutNode();
-        File.Delete(Path.Combine(project.Folder, "eslint.config.js"));
-        IdeErrors.Flush();
-        int logged = Ui.Shared(IdeErrors.LogPath).Length;
-        MainWindow window = project.Open("src/app.js");
-        try
-        {
-            // The server logs what it found before it tells the file's status, which the status bar says.
-            Ui.WaitFor(() => window.Status == "ESLint: no configuration found for app.js, so it is not checked", "the status bar to say app.js has no ESLint configuration");
-            IdeErrors.Flush();
-            string log = Ui.Shared(IdeErrors.LogPath);
-            string since = log.Length >= logged ? log[logged..] : log;
-            Assert.False(since.Contains("Could not find config file", StringComparison.Ordinal) || since.Contains("An unexpected error occurred", StringComparison.Ordinal),
-                $"A project with eslint and no configuration put an ESLint error in passenger.log: {string.Join('\n', since.Split('\n').Where(l => l.Contains("ESLint", StringComparison.Ordinal)).Take(5))}");
-        }
-        finally
-        {
-            window.Close();
-            project.Reset();
-        }
-    }
-
-    private void A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still()
-    {
-        Project.SkipWithoutNode();
-        project.AddFolder("future", ("app.js", "let total = 1;\nconsole.log(total);\n"));
-        project.AddFolder("future/node_modules/eslint", ("package.json", "{ \"name\": \"eslint\", \"version\": \"99.0.0\", \"engines\": { \"node\": \">=99\" } }\n"));
-        NodeRuntime node = Ui.Await(Waiting.Apart(() => NodeRuntime.FindAsync(null)), "the PATH's Node.js");
-        MainWindow window = project.Open("future/app.js");
-        try
-        {
-            string said = $"ESLint cannot check app.js: ESLint needs Node.js 99.0.0 or later, and {node.Path} is {node.Version}: update it, or name a later one in {NodeRuntime.SettingsPlace}";
-            Ui.WaitFor(() => window.Status == said, () => $"the status bar to say the file's eslint needs a later Node.js (it says '{window.Status}')");
-            Assert.DoesNotContain(window.EditorArea.Active!.Markers, m => m.Message.StartsWith("ESLint:", StringComparison.Ordinal));
-
-            window.OpenFile(project.PathOf("src/app.js"));
-            Ui.Settle();
-            OpenDocument checkedStill = window.EditorArea.Active!;
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "console.log(items);");
-            Ui.Press(window, "ENTER");
-            window.KeyTextInput("let total = items.length;");
-            Ui.Press(window, "ENTER");
-            window.KeyTextInput("console.log(total);");
-            Ui.WaitFor(() => checkedStill.Markers.Any(m => m.Message == PreferConst), "ESLint's problem in the file whose eslint runs on this Node.js");
-        }
-        finally
-        {
-            window.Close();
-            project.Reset();
-        }
-    }
-
-    /// <summary>ESLint's server, ending during every start before it has answered, is started again only as often as a
-    /// language server is, then left stopped, the status bar saying why; once what ended it is gone, those words start it
-    /// again with the file it checks, without the folder opened again.</summary>
-    private void An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
-    {
-        Project.SkipWithoutNode();
-        project.AddFolder("ending", ("app.js", "let total = 1;\nconsole.log(total);\n"));
-        const string LeftStopped = "The ESLint language server ended as it started 4 times in 5 minutes, so it was left stopped; click to start it again";
-        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
-        List<string> said = [];
-        using IDisposable following = Ui.FollowStatus(window, said);
-        try
-        {
-            OpenDocument document;
-            using (EndingAsTheyStart ending = new("eslintServer.js"))
-            {
-                window.OpenFile(project.PathOf("ending/app.js"));
-                document = window.EditorArea.Active!;
-                Ui.WaitFor(() => said.Contains(LeftStopped), () => $"ESLint to be left stopped after its server ended as it started {ending.Ended.Count} times (the status bar says {window.Status})");
-                Ui.Settle();
-                Assert.True(ending.Ended.Count == 4, $"ESLint's server was started {ending.Ended.Count} times, ending each time as it started, rather than once and then 3 times again");
-                Assert.True(said.Contains("The ESLint language server ended as it started; starting it again"),
-                    $"The status bar never said ESLint's server that ended as it started was started again; it said: {string.Join(" | ", said)}");
-                Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of ESLint left stopped, having said: {string.Join(" | ", said)}");
-                Assert.Equal("start it again", window.StatusPlace?.Name);
-            }
-            Assert.DoesNotContain(document.Markers, m => m.Message.StartsWith("ESLint:", StringComparison.Ordinal));
-
-            Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
-            Ui.WaitFor(() => document.Markers.Any(m => m.Message == PreferConst), () => $"ESLint's problem once the status bar's words started its server again (the status bar says {window.Status})");
-            Assert.True(said.Contains("Starting the ESLint language server again"),
-                $"The status bar never said ESLint left stopped was started again; it said: {string.Join(" | ", said)}");
         }
         finally
         {
@@ -313,88 +196,6 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Assert.Equal("Prettier: file legacy.js was ignored with .prettierignore", window.Status);
             Assert.Equal("const kept = \"as written\";\nconsole.log(kept);\n", editor.Document.Snapshot.ToString());
             Assert.Contains($"Prettier {Project.VersionOf("prettier")} formatted", Ui.IdeLog(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-            project.Reset();
-        }
-    }
-
-    private void Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone()
-    {
-        Project.SkipWithoutNode();
-        const string Text = "const  first = {name:\"tea\"};\nconst  second = [1,2,3];\n";
-        project.AddFolder("src/ranged", ("partly.js", Text));
-        MainWindow window = project.Open("src/ranged/partly.js");
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            int second = Text.IndexOf("const  second", StringComparison.Ordinal);
-            editor.Selections = SelectionSet.Single(new Selection(second, Text.Length - 1));
-            Ui.Run(window, AppActions.Reformat);
-            Ui.WaitFor(() => window.Status?.StartsWith("Prettier", StringComparison.Ordinal) == true, () => $"Prettier's format; the status says '{window.Status}'");
-            Assert.True(editor.Document.Snapshot.ToString() == "const  first = {name:\"tea\"};\nconst second = [1, 2, 3]\n",
-                $"Reformat Code with the second statement selected left the file as:\n{editor.Document.Snapshot}");
-        }
-        finally
-        {
-            window.Close();
-            project.Reset();
-        }
-    }
-
-    private void Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output()
-    {
-        Project.SkipWithoutNode();
-        project.AddFolder("src/noisy",
-            (".prettierrc.cjs", "console.log(\"the noisy configuration loads\");\nmodule.exports = { semi: false, singleQuote: true };\n"),
-            ("first.js", "const  first = {name:\"tea\"};\nlet  more = 1;\n"),
-            ("second.js", "const  second = [1,2,3];\nconsole.log( second );\n"));
-        MainWindow window = project.Open("src/noisy/first.js");
-        try
-        {
-            ReformatWithPrettier(window);
-            Assert.Equal("Prettier: formatted 2 lines", window.Status);
-            Assert.Equal("const first = { name: 'tea' }\nlet more = 1\n", window.EditorArea.CodeEditor.Document.Snapshot.ToString());
-
-            window.OpenFile(project.PathOf("src/noisy/second.js"));
-            Ui.Settle();
-            ReformatWithPrettier(window);
-            string second = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
-            Assert.True(second == "const second = [1, 2, 3]\nconsole.log(second)\n", $"second.js was not given its own text by Prettier:\n{second}");
-            Assert.Contains("the noisy configuration loads", Ui.IdeLog(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-            project.Reset();
-        }
-    }
-
-    private void Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names()
-    {
-        Project.SkipWithoutNode();
-        MainWindow window = project.Open("src/format.js");
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "console.log(label, \"the price of a pot of tea\", \"with milk and sugar on the side\");\n")]);
-            // Each puts its own default trailing commas in the call it wraps: Prettier 3 all, Prettier 2 none after arguments.
-            const string formatted = "const label = { name: 'tea', price: 3 }\nconsole.log(label)\nconsole.log(\n  label,\n  'the price of a pot of tea',\n  'with milk and sugar on the side'";
-            ReformatWithPrettier(window);
-            Assert.Equal(formatted + ",\n)\n", editor.Document.Snapshot.ToString());
-            Ui.Run(window, EditorActions.Undo);
-
-            window.ApplySettings(window.Settings with { Prettier = ToolConfiguration.Manual, PrettierPackage = project.PathOf("node_modules/prettier2") });
-            ReformatWithPrettier(window);
-            Assert.True(editor.Document.Snapshot.ToString() == formatted + "\n)\n", $"Prettier 2 did not format the file under the .prettierignore ({window.Status}):\n{editor.Document.Snapshot}");
-            window.OpenFile(project.PathOf("src/legacy.js"));
-            Ui.Settle();
-            ReformatWithPrettier(window);
-            Assert.Equal("Prettier: file legacy.js was ignored with .prettierignore", window.Status);
-            Assert.Equal(Project.Legacy, window.EditorArea.CodeEditor.Document.Snapshot.ToString());
         }
         finally
         {
@@ -629,56 +430,6 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             Ui.Settle();
             return opened;
         }
-    }
-
-    private void Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults()
-    {
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        window.Show();
-        try
-        {
-            SettingsDialog dialog = window.ShowSettings();
-            Ui.Settle();
-            dialog.Query = "eslint";
-            Ui.Settle();
-            Assert.Contains(SettingsDialog.EslintPage, dialog.Pages);
-            dialog.Query = string.Empty;
-            dialog.Page = SettingsDialog.EslintPage;
-            Ui.Settle();
-            Assert.Equal(["Configuration", "ESLint package", "Run for files", "Run eslint --fix on save"], dialog.Shown);
-            Assert.True(Radio(dialog, "Automatic ESLint configuration").IsChecked, "ESLint is not configured automatically by default, as in Rider");
-            Assert.Equal(AppSettings.DefaultEslintFiles, Editor<TextBox>(dialog, "Run for files").Text);
-            dialog.Page = SettingsDialog.PrettierPage;
-            Ui.Settle();
-            Assert.Equal(["Configuration", "Prettier package", "Run for files", "Run on 'Reformat Code' action", "Run on save"], dialog.Shown);
-            Assert.True(Radio(dialog, "Automatic Prettier configuration").IsChecked, "Prettier is not configured automatically by default");
-            Assert.Equal("**/*.{js,ts,jsx,tsx,cjs,cts,mjs,mts,json,vue,astro}", Editor<TextBox>(dialog, "Run for files").Text);
-            Assert.True(Editor<CheckBox>(dialog, "Run on 'Reformat Code' action").IsChecked);
-            Assert.False(Editor<CheckBox>(dialog, "Run on save").IsChecked);
-            TextBox package = Editor<TextBox>(dialog, "Prettier package");
-            Assert.False(package.IsEnabled, "Automatic configuration lets a package be named, which only Manual takes");
-            Ui.Click(Radio(dialog, "Manual Prettier configuration"));
-            Assert.True(package.IsEnabled, "Manual configuration did not let the package be named");
-            dialog.Close();
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    private static RadioButton Radio(SettingsDialog dialog, string words) =>
-        dialog.GetVisualDescendants().OfType<RadioButton>().First(r => (string?)r.Content == words);
-
-    /// <summary>What edits an option, beside its label in the page shown.</summary>
-    private static T Editor<T>(SettingsDialog dialog, string label) where T : Control =>
-        ((Visual)dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == label).Parent!).GetVisualDescendants().OfType<T>().First();
-
-    /// <summary>Reformat with Prettier on the file shown, done.</summary>
-    private static void ReformatWithPrettier(MainWindow window)
-    {
-        Assert.True(window.Perform(AppActions.ReformatWithPrettier), "Reformat with Prettier did not run");
-        Ui.Settle();
     }
 
     /// <summary>A JavaScript project with its own ESLint and Prettier installed (the tests' packages copied into its

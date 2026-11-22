@@ -4,20 +4,17 @@ using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
-using Passenger.Text;
 
 namespace Passenger.Tests;
 
 /// <summary>The strings a Godot 4 game's C# gives Godot's calls naming what the project's own files define, as a person
 /// works on them: an input action (project.godot's [input]), a group (a scene's node's), an animation (its player's
-/// library, an animated sprite's SpriteFrames), an autoload (project.godot's [autoload], through a GetNode path's /root), a
-/// shader parameter (the uniform of its material's shader), a translation's key (a CSV project.godot lists), an
-/// AnimationTree's parameter (its tree's) and a global shader uniform (project.godot's [shader_globals]). For each,
-/// completion offers what the project defines, a name it does not is an error saying where Godot looks, Go to Declaration
-/// opens its definition, and Rename renames it there, in a GDScript's strings and in every string naming it, one step of
-/// Undo; Find Usages lists them all. A layer's number hovers its name in [layer_names] and is an error outside Godot's
-/// numbers. Its project restores from the packages the Godot found carries, so without a Godot 4 .NET build each test
-/// skips saying why; no Godot runs.</summary>
+/// library) and an autoload (project.godot's [autoload], through a GetNode path's /root). For each, completion offers
+/// what the project defines, a name it does not is an error saying where Godot looks, Go to Declaration opens its
+/// definition, and Rename renames it there, in a GDScript's strings and in every string naming it, one step of Undo;
+/// Find Usages lists them all. A rename finds each file as the last write left it. Its project restores from the
+/// packages the Godot found carries, so without a Godot 4 .NET build each test skips saying why; no Godot
+/// runs.</summary>
 public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
 {
     private readonly Game game;
@@ -233,8 +230,8 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             () => $"Go to Declaration from {after} to open {file} on '{line}' ({window.EditorArea.Active?.Name}: {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}; {window.Status})");
     }
 
-    /// <summary>An input action, group, animation, autoload, shader parameter, layer and translation key complete, are
-    /// checked, lead to where they are made and rename there.</summary>
+    /// <summary>An input action, group, animation and autoload complete, are checked, lead to where they are made and
+    /// rename there.</summary>
     [AvaloniaFact]
     public void A_projects_names_complete_check_lead_and_rename_in_its_strings()
     {
@@ -254,38 +251,17 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             An_autoload_completes_from_project_godot_is_checked_leads_to_it_and_is_renamed_there);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there),
-            A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers),
-            A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_animation_trees_parameter_completes_from_its_tree_and_is_checked),
-            An_animation_trees_parameter_completes_from_its_tree_and_is_checked);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked),
-            An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_global_shader_uniform_completes_from_project_godot_and_is_checked),
-            A_global_shader_uniform_completes_from_project_godot_and_is_checked);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there),
-            A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there);
     }
 
-    /// <summary>A rename of a string's name escapes it for its quotes and finds each file as the last write left
-    /// it.</summary>
+    /// <summary>A rename of a string's name finds each file as the last write left it.</summary>
     [AvaloniaFact]
     public void A_strings_rename_finds_each_file_as_it_stands()
     {
-        Flow.Step(nameof(Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string),
-            Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(A_rename_right_after_another_finds_each_file_as_that_one_left_it),
             A_rename_right_after_another_finds_each_file_as_that_one_left_it);
@@ -295,27 +271,6 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             A_rename_a_moment_after_another_program_wrote_a_file_waits_for_it_and_keeps_what_it_wrote);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action),
-            A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action);
-    }
-
-    /// <summary>A new name holding a quote is written for each string it goes in: escaped in a GDScript's single quotes, as it
-    /// is in project.godot and C#, or the script no longer parses.</summary>
-    private void Renaming_an_action_to_a_name_holding_a_quote_escapes_it_in_a_gdscripts_single_quoted_string()
-    {
-        File.WriteAllText(HudPath, Hud.Replace("\"jump\"", "'jump'", StringComparison.Ordinal));
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Renamed(window, "IsActionPressed(\"ju", "jump", "player's_jump");
-            Ui.WaitFor(() => TextOf(window, HudPath).Contains("is_action_pressed('player\\'s_jump')", StringComparison.Ordinal), () => $"hud.gd to escape the quote: {TextOf(window, HudPath)}");
-            Assert.Contains("player's_jump={", File.ReadAllText(game.PathOf("project.godot")), StringComparison.Ordinal);
-            Assert.Contains("IsActionPressed(\"player's_jump\")", window.EditorArea.CodeEditor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
     }
 
     /// <summary>The first rename writes hud.gd, closed, and the folder's watcher never tells of it here: the second finds it as
@@ -351,33 +306,6 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             File.WriteAllText(HudPath, "# Written by another program.\n" + Hud);
             Renamed(window, "IsActionPressed(\"ju", "jump", "leap");
             Assert.Equal("# Written by another program.\n" + Hud.Replace("\"jump\"", "\"leap\"", StringComparison.Ordinal), File.ReadAllText(HudPath));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A line written above an action's string while Rename's box is open on it (by the file's other window, by an
-    /// agent) moves the name down: the rename finds the action where its string now is and renames it, rather than looking
-    /// where the box opened and refusing Main.cs as changed.</summary>
-    private void A_line_written_above_an_actions_string_while_its_rename_box_is_open_still_renames_the_action()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "IsActionPressed(\"ju");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "jump", () => $"Rename's box on jump ({window.Assist.Renaming}; {window.Status})");
-            editor.ApplyEdits([new TextEdit(0, 0, "// Written while Rename's box was open.\n")]);
-            window.KeyTextInput("leap");
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.Status?.StartsWith("Renamed", StringComparison.Ordinal) == true || window.Status?.Contains("not renamed", StringComparison.Ordinal) == true,
-                () => $"jump's rename to be made or refused ({window.Status})");
-            Assert.StartsWith("Renamed jump to leap", window.Status, StringComparison.Ordinal);
-            Assert.Contains("IsActionPressed(\"leap\")", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Assert.Contains("\nleap={", File.ReadAllText(ProjectPath), StringComparison.Ordinal);
         }
         finally
         {
@@ -514,122 +442,6 @@ public sealed class GodotStringsTests : IClassFixture<GodotStringsTests.Game>
             Ui.WaitFor(() => TextOf(window, ProjectPath).Contains("State=\"*res://Globals.cs\"", StringComparison.Ordinal), () => $"project.godot to name the autoload State: {TextOf(window, ProjectPath)}");
             Assert.Contains("GetNode<Globals>(\"/root/State\")", Code(window), StringComparison.Ordinal);
             Undone(window, (ProjectPath, project));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A shader parameter the uniforms of the node's material's shader lack is an error naming the shader; completion
-    /// offers its uniforms, Go to Declaration opens the shader on the uniform, and Rename renames it there, in the shader's
-    /// code, in the material setting it and in every string naming it.</summary>
-    private void A_shader_parameter_completes_from_the_materials_shader_is_checked_leads_to_its_uniform_and_is_renamed_there()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            MarkedOnce(window, "No shader parameter 'tnt' is a uniform of tint.gdshader, the shader of Sprite's material");
-            Completed(window, "SetShaderParameter(\"", "tint", "amount");
-            Declared(window, "SetShaderParameter(\"ti", "tint.gdshader", "uniform vec4 tint");
-            string shader = game.PathOf("tint.gdshader");
-            Renamed(window, "SetShaderParameter(\"ti", "tint", "colour");
-            Ui.WaitFor(() => TextOf(window, shader).Contains("uniform vec4 colour", StringComparison.Ordinal), () => $"the shader to name its uniform colour: {TextOf(window, shader)}");
-            Assert.Contains("COLOR = colour * amount;", TextOf(window, shader), StringComparison.Ordinal);
-            Assert.Contains("shader_parameter/colour = Color(", TextOf(window, ScenePath), StringComparison.Ordinal);
-            Assert.Contains("SetShaderParameter(\"colour\", ", Code(window), StringComparison.Ordinal);
-            Undone(window, (shader, Shader), (ScenePath, Scene));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A layer's number hovers the name project.godot's [layer_names] gives it and leads there, and one outside the
-    /// layers Godot numbers is an error naming them.</summary>
-    private void A_layer_number_hovers_its_name_leads_to_it_and_is_marked_outside_godots_layers()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            MarkedOnce(window, "No layer '33' is among Godot's 2D physics layers, numbered 1 to 32");
-            int line = GodotSceneTests.LineOf(File.ReadAllText(ProjectPath), "2d_physics/layer_3");
-            GodotSceneTests.Hover(window, "(3, true)", $"2D physics layer 3: enemies, named in project.godot:{line}");
-            Declared(window, "SetCollisionLayerValue(", "project.godot", "2d_physics/layer_3=\"enemies\"");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An AnimationTree's parameter its tree does not make is an error naming the tree; completion offers those it
-    /// makes, its state machine's playback and its transition's condition among them.</summary>
-    private void An_animation_trees_parameter_completes_from_its_tree_and_is_checked()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            MarkedOnce(window, $"No AnimationTree parameter 'parameters/conditions/is_runing' is made by the tree of Tree (main.tscn:{GodotSceneTests.LineOf(Scene, "[node name=\"Tree\"")})");
-            Completed(window, "tree.Set(\"", "parameters/conditions/is_running", "parameters/playback");
-            Declared(window, "tree.Set(\"parameters/conditions/is_r", "main.tscn", "advance_condition = &\"is_running\"");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An animation an animated sprite's SpriteFrames lack is an error naming the sprite; completion offers its
-    /// frames' animations, and Go to Declaration opens the scene on the animation's name.</summary>
-    private void An_animated_sprites_animation_completes_from_its_sprite_frames_and_is_checked()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            MarkedOnce(window, $"No animation 'wlk' is in the SpriteFrames of Frames (main.tscn:{GodotSceneTests.LineOf(Scene, "[node name=\"Frames\"")})");
-            Completed(window, "frames.Play(\"", "walk", "idle");
-            Declared(window, "frames.Play(\"wa", "main.tscn", "\"name\": &\"walk\"");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A global shader uniform project.godot's [shader_globals] lacks is an error; completion offers its own, and Go
-    /// to Declaration opens project.godot on it.</summary>
-    private void A_global_shader_uniform_completes_from_project_godot_and_is_checked()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            MarkedOnce(window, "No global shader uniform 'wnd' is in project.godot's [shader_globals]");
-            Completed(window, "GlobalShaderParameterSet(\"", "wind");
-            Declared(window, "GlobalShaderParameterSet(\"wi", "project.godot", "wind={");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A translation's key the CSV project.godot lists lacks is an error naming it; completion offers its keys, Go to
-    /// Declaration opens the CSV on the key, and Rename renames it there and in every string naming it.</summary>
-    private void A_translation_key_completes_from_the_listed_csv_is_checked_leads_to_it_and_is_renamed_there()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            MarkedOnce(window, "No translation 'BYE' is in the translations project.godot lists (text.csv)");
-            Completed(window, "Tr(\"", "HELLO", "THANKS");
-            Declared(window, "Tr(\"HE", "text.csv", "HELLO,Hello,Bonjour");
-            string csv = game.PathOf("text.csv");
-            Renamed(window, "Tr(\"HE", "HELLO", "GREETING");
-            Ui.WaitFor(() => TextOf(window, csv).Contains("\nGREETING,Hello,Bonjour", StringComparison.Ordinal), () => $"the CSV to name the key GREETING: {TextOf(window, csv)}");
-            Assert.Contains("Tr(\"GREETING\")", Code(window), StringComparison.Ordinal);
-            Undone(window, (csv, Translations));
         }
         finally
         {

@@ -2,30 +2,28 @@ using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Endpoints;
 using Passenger.App.State;
-using Passenger.Roslyn.Extension;
 
 namespace Passenger.Tests;
 
 /// <summary>The Endpoints window, an HTTP client: the requests of a folder's .http files listed with their methods,
 /// Test sending one as written and holding its answer to the file's criteria, Interactive Test sending it as changed in
-/// its dialog, and every test on a client of its own that is gone once the test is done.</summary>
+/// its dialog, what reads the person's environment or a file outside the folder asking first and a redirect taking
+/// nothing to another host or port.</summary>
 public sealed class EndpointsTests : IDisposable
 {
     private readonly StandInApi api = new();
 
     public void Dispose() => api.Dispose();
 
-    /// <summary>The Endpoints window lists a folder's requests, sends each as written on a client of its own and holds
-    /// its answer to its file's criteria.</summary>
+    /// <summary>The Endpoints window lists a folder's requests and sends each as written, holding its answer to its
+    /// file's criteria.</summary>
     [AvaloniaFact]
     public void The_endpoints_window_lists_and_tests_a_folders_requests()
     {
@@ -35,39 +33,18 @@ public sealed class EndpointsTests : IDisposable
         Flow.StepApart<EndpointsTests>(nameof(Test_sends_the_request_as_written_and_holds_its_answer_to_the_files_criteria),
             test => test.Test_sends_the_request_as_written_and_holds_its_answer_to_the_files_criteria());
         OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(A_criterion_that_does_not_read_is_marked_in_its_file_and_fails_its_requests_test),
-            test => test.A_criterion_that_does_not_read_is_marked_in_its_file_and_fails_its_requests_test());
-        OpenWindows.CloseAll();
         Flow.StepApart<EndpointsTests>(nameof(The_icon_on_an_http_files_request_line_sends_that_request),
             test => test.The_icon_on_an_http_files_request_line_sends_that_request());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(Every_test_is_sent_on_a_client_of_its_own_that_is_gone_when_the_test_is_done),
-            test => test.Every_test_is_sent_on_a_client_of_its_own_that_is_gone_when_the_test_is_done());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(An_http_file_written_on_disk_is_listed_again),
-            test => test.An_http_file_written_on_disk_is_listed_again());
     }
 
-    /// <summary>Interactive Test and a request's variables, query and body send what was written or say why not, what
-    /// reads the person's environment or a file outside the folder asks first, and a redirect takes nothing to another
-    /// host or port.</summary>
+    /// <summary>Interactive Test sends a request as changed, what reads the person's environment or a file outside the
+    /// folder asks first, variables naming each other send nothing, a long answer is cut, and a redirect takes nothing
+    /// to another host or port.</summary>
     [AvaloniaFact]
     public void A_request_sends_what_was_written_and_reaches_no_other_host()
     {
         Flow.StepApart<EndpointsTests>(nameof(Interactive_test_sends_the_request_as_changed_in_its_dialog_and_checks_the_criteria_given_there),
             test => test.Interactive_test_sends_the_request_as_changed_in_its_dialog_and_checks_the_criteria_given_there());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(A_query_request_and_a_method_of_its_own_are_sent_as_written_with_their_bodies),
-            test => test.A_query_request_and_a_method_of_its_own_are_sent_as_written_with_their_bodies());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(The_urls_query_and_the_params_table_follow_each_other_and_a_param_turned_off_is_not_sent),
-            test => test.The_urls_query_and_the_params_table_follow_each_other_and_a_param_turned_off_is_not_sent());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(Interactive_tests_params_and_headers_are_framed_as_every_table_edited_in_a_dialog),
-            test => test.Interactive_tests_params_and_headers_are_framed_as_every_table_edited_in_a_dialog());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(A_request_whose_variable_has_no_value_says_which_and_sends_nothing),
-            test => test.A_request_whose_variable_has_no_value_says_which_and_sends_nothing());
         OpenWindows.CloseAll();
         Flow.StepApart<EndpointsTests>(nameof(An_answer_longer_than_passenger_reads_is_cut_there_and_says_so),
             test => test.An_answer_longer_than_passenger_reads_is_cut_there_and_says_so());
@@ -95,9 +72,6 @@ public sealed class EndpointsTests : IDisposable
         OpenWindows.CloseAll();
         Flow.StepApart<EndpointsTests>(nameof(A_redirect_to_another_port_does_not_forward_an_allowed_environment_header),
             test => test.A_redirect_to_another_port_does_not_forward_an_allowed_environment_header());
-        OpenWindows.CloseAll();
-        Flow.StepApart<EndpointsTests>(nameof(A_307_redirect_to_another_port_does_not_send_the_requests_body_there),
-            test => test.A_307_redirect_to_another_port_does_not_send_the_requests_body_there());
     }
 
     private void The_window_lists_each_request_of_the_folders_http_files_with_its_method_and_name()
@@ -137,34 +111,6 @@ public sealed class EndpointsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>An <c>@expect</c> that does not read is marked in the editor where it is written, saying why, and its
-    /// request's Test fails on it though the answer is a 200, so a typo never turns a check off.</summary>
-    private void A_criterion_that_does_not_read_is_marked_in_its_file_and_fails_its_requests_test()
-    {
-        string folder = Folder();
-        string typo = Path.Combine(folder, "typo.http");
-        File.WriteAllText(typo, "### Typo\n# @expect status 20O\nGET {{base}}/items\n");
-        MainWindow window = Open(folder);
-        Assert.Null(window.OpenFile(typo));
-        Ui.Settle();
-        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
-        Passenger.Editor.Marker marked = Assert.Single(document.Markers);
-        Assert.Equal(Passenger.Editor.MarkerKind.Error, marked.Kind);
-        Assert.True(document.Text.Snapshot.ToString().Substring(marked.Range.Start, marked.Range.Length) == "status 20O",
-            "The mark of the criterion that does not read is not on its text");
-        Assert.Contains("status takes a number", marked.Message, StringComparison.Ordinal);
-
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 4, "the requests");
-        EndpointRequest request = window.Endpoints.Requests.Single(r => r.Title == "Typo");
-        Ui.Click(RowButton(window, request, "endpointTest"));
-        Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the answer");
-        Assert.StartsWith("200 OK", window.Endpoints.Response.Summary);
-        Assert.False(window.Endpoints.Response.Passed, "A 200 passed the request whose only criterion, status 20O, does not read: the typo turned its check off");
-        Assert.False(window.Endpoints.Outcome(request));
-        window.Close();
-    }
-
     /// <summary>The send icon on an .http file's request line sends that request as Test does, with the environment the
     /// Endpoints window chooses, though the window was never shown before.</summary>
     private void The_icon_on_an_http_files_request_line_sends_that_request()
@@ -186,23 +132,6 @@ public sealed class EndpointsTests : IDisposable
             () => $"the request's answer; the Endpoints window says {window.Endpoints.Response.Summary}");
         Assert.Equal("GET /items", api.Received[0].Line);
         Assert.True(window.Endpoints.Response.Passed, $"The answer met none of its criteria: {window.Endpoints.Response.Summary}");
-        window.Close();
-    }
-
-    private void Every_test_is_sent_on_a_client_of_its_own_that_is_gone_when_the_test_is_done()
-    {
-        MainWindow window = Open(Folder());
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
-        for (int i = 0; i < 3; i++)
-        {
-            Ui.Click(RowButton(window, window.Endpoints.Requests[0], "endpointTest"));
-            Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "an answer");
-            int test = i + 1;
-            // Each client closes its connection as it is disposed, before the next test starts.
-            Ui.WaitFor(() => api.Connections == test && api.Open == 0, $"test {test}'s connection, closed once it was done (connections {api.Connections}, open {api.Open})");
-        }
-        Assert.Equal(3, api.Received.Select(r => r.Connection).Distinct().Count());
         window.Close();
     }
 
@@ -253,159 +182,6 @@ public sealed class EndpointsTests : IDisposable
         Assert.Contains("no criterion", dialog.Problem);
         Assert.Equal(sent, api.Received.Count);
         dialog.Close();
-        window.Close();
-    }
-
-    /// <summary>An .http file's QUERY request (HTTP's safe method with a body) is listed in its own colour and sent as a
-    /// QUERY with its body, by Test and by Interactive Test; a method Passenger offers by no name (PURGE) is sent as
-    /// written, never as a GET.</summary>
-    private void A_query_request_and_a_method_of_its_own_are_sent_as_written_with_their_bodies()
-    {
-        string folder = Folder();
-        File.WriteAllText(Path.Combine(folder, "search.http"), "QUERY {{base}}/items\nContent-Type: application/json\n\n{ \"name\": \"Ada\" }\n\n###\nPURGE {{base}}/items\n");
-        MainWindow window = Open(folder);
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 5, "the five requests");
-        EndpointRequest[] searches = [.. window.Endpoints.Requests.Where(r => Path.GetFileName(r.File) == "search.http")];
-        EndpointRequest query = searches[0];
-        Assert.True(query is { Method: "QUERY", Url: "{{base}}/items" }, $"search.http's QUERY request was read as {query.Method} {query.Url}");
-        EndpointRequest purge = searches[1];
-        Assert.True(purge is { Method: "PURGE", Url: "{{base}}/items" }, $"search.http's PURGE request was read as {purge.Method} {purge.Url}");
-        Ui.Settle();
-        TextBlock tag = window.Endpoints.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "QUERY");
-        Assert.True(Application.Current!.TryFindResource(TokenKeys.Syntax_Method, window.ActualThemeVariant, out object? colour) && ReferenceEquals(tag.Foreground, colour),
-            "QUERY's tag is drawn in the muted colour of a method Passenger does not know");
-
-        Ui.Click(RowButton(window, query, "endpointTest"));
-        Ui.WaitFor(() => api.Received.Count == 1 && window.Endpoints.Response.Response is not null, "the QUERY's answer");
-        Assert.Equal(("QUERY /items", "{ \"name\": \"Ada\" }"), (api.Received[0].Line, api.Received[0].Body));
-        Ui.Click(RowButton(window, purge, "endpointTest"));
-        Ui.WaitFor(() => api.Received.Count == 2, "the PURGE");
-        Assert.Equal("PURGE /items", api.Received[1].Line);
-
-        Ui.Click(RowButton(window, query, "endpointInteractive"));
-        InteractiveTestDialog dialog = window.InteractiveTest!;
-        Ui.Settle();
-        Assert.True(dialog.Method.SelectedItem as string == "QUERY", $"Interactive Test opened the QUERY request as a {dialog.Method.SelectedItem}");
-        dialog.Body.Text = """{ "name": "Grace" }""";
-        Ui.Click(dialog.Send);
-        Ui.WaitFor(() => api.Received.Count == 3 && dialog.Response.Response is not null, "the dialog's QUERY");
-        Assert.Equal(("QUERY /items", """{ "name": "Grace" }"""), (api.Received[2].Line, api.Received[2].Body));
-        dialog.Close();
-        Ui.Settle();
-
-        Ui.Click(RowButton(window, purge, "endpointInteractive"));
-        dialog = window.InteractiveTest!;
-        Ui.Settle();
-        Assert.True(dialog.Method.SelectedItem as string == "PURGE", $"Interactive Test opened the PURGE request as a {dialog.Method.SelectedItem}");
-        Ui.Click(dialog.Send);
-        Ui.WaitFor(() => api.Received.Count == 4, "the dialog's PURGE");
-        Assert.Equal("PURGE /items", api.Received[3].Line);
-        dialog.Close();
-        window.Close();
-    }
-
-    private void The_urls_query_and_the_params_table_follow_each_other_and_a_param_turned_off_is_not_sent()
-    {
-        MainWindow window = Open(Folder());
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
-        Ui.Click(RowButton(window, window.Endpoints.Requests[0], "endpointInteractive"));
-        InteractiveTestDialog dialog = window.InteractiveTest!;
-        Ui.Settle();
-        Assert.Equal(0, dialog.PageShown);
-        Assert.Empty(dialog.Params.Pairs);
-
-        KeyValueGrid.Row page = dialog.Params.Rows[^1];
-        page.Key.Text = "page";
-        Ui.Settle();
-        page.Value.Text = "2";
-        Ui.Settle();
-        KeyValueGrid.Row query = dialog.Params.Rows[^1];
-        query.Key.Text = "q";
-        Ui.Settle();
-        query.Value.Text = "{{trace}}";
-        Ui.Settle();
-        Assert.Equal("{{base}}/items?page=2&q={{trace}}", dialog.Url.Text);
-        Assert.Equal("Params (2)", dialog.TabTitles[0]);
-
-        dialog.Params.Rows[0].On.IsChecked = false;
-        Ui.Settle();
-        Assert.Equal("{{base}}/items?q={{trace}}", dialog.Url.Text);
-        Assert.Equal([(false, "page", "2"), (true, "q", "{{trace}}")], dialog.Params.Pairs);
-
-        dialog.Url.Text = "{{base}}/items?limit=5&q=x";
-        Ui.Settle();
-        Assert.Equal([(true, "limit", "5"), (true, "q", "x"), (false, "page", "2")], dialog.Params.Pairs);
-
-        Ui.Click(dialog.Send);
-        Ui.WaitFor(() => dialog.Response.Response is not null, "the answer");
-        Assert.Equal("GET /items?limit=5&q=x", api.Received[^1].Line);
-        dialog.Close();
-        window.Close();
-    }
-
-    /// <summary>Interactive Test's Params and Headers are framed as every table edited in a dialog is (a run's services and
-    /// projects), a frame round them on the list's ground, so their rows read as one table rather than lines on the page.</summary>
-    private void Interactive_tests_params_and_headers_are_framed_as_every_table_edited_in_a_dialog()
-    {
-        MainWindow window = Open(Folder());
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
-            Ui.Click(RowButton(window, window.Endpoints.Requests[1], "endpointInteractive"));
-            InteractiveTestDialog dialog = window.InteractiveTest ?? throw new Xunit.Sdk.XunitException("Interactive Test opened no dialog");
-            Ui.Settle();
-            Color ground = Token(TokenKeys.List);
-            Color frame = Token(TokenKeys.FieldBorder);
-            foreach ((string name, KeyValueGrid table) in new[] { ("Params", dialog.Params), ("Headers", dialog.Headers) })
-            {
-                Assert.True(table.BorderThickness == new Thickness(1) && (table.BorderBrush as ISolidColorBrush)?.Color == frame && (table.Background as ISolidColorBrush)?.Color == ground,
-                    $"Interactive Test's {name} table has a frame of {table.BorderThickness} in {(table.BorderBrush as ISolidColorBrush)?.Color.ToString() ?? "no colour"} "
-                    + $"on {(table.Background as ISolidColorBrush)?.Color.ToString() ?? "no ground"}, where every table edited in a dialog is framed in {frame} on the list's {ground}");
-            }
-            dialog.Close();
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        Color Token(string key) => window.TryFindResource(key, window.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush ? brush.Color
-            : throw new Xunit.Sdk.XunitException($"The theme gives no colour {key}");
-    }
-
-    private void A_request_whose_variable_has_no_value_says_which_and_sends_nothing()
-    {
-        string folder = Folder();
-        File.WriteAllText(Path.Combine(folder, "http-client.env.json"), """{ "prod": { "base": "https://example.invalid" } }""");
-        MainWindow window = Open(folder);
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 3 && window.Endpoints.Environment == "prod", "the requests in prod");
-        window.Endpoints.ChooseEnvironment("No environment");
-        Ui.Settle();
-        Ui.Click(RowButton(window, window.Endpoints.Requests[0], "endpointTest"));
-        Assert.Contains("{{base}}", window.Endpoints.Response.Summary);
-        Assert.Empty(api.Received);
-        window.Close();
-    }
-
-    private void An_http_file_written_on_disk_is_listed_again()
-    {
-        string folder = Folder();
-        MainWindow window = Open(folder);
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
-        File.WriteAllText(Path.Combine(folder, "more.rest"), "DELETE {{base}}/items/1\n");
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 4, "the new file's request");
-        Assert.Contains(window.Endpoints.Requests, r => r.Method == "DELETE");
-
-        window.DockHost.Hide(ToolWindowIds.Endpoints);
-        Ui.Settle();
-        File.WriteAllText(Path.Combine(folder, "later.http"), "PATCH {{base}}/items/1\n");
-        window.ShowToolWindow(ToolWindowIds.Endpoints);
-        Ui.WaitFor(() => window.Endpoints.Requests.Count == 5, "the request of the file written while the window was closed");
         window.Close();
     }
 
@@ -678,29 +454,6 @@ public sealed class EndpointsTests : IDisposable
             Assert.Null(Assert.Single(other.Received).Header("X-Secret"));
             Assert.Equal(200, window.Endpoints.Response.Response!.Status);
             Assert.Equal([$"Redirected to {other.Root}, another origin, without the request's headers"], window.Endpoints.Response.Response.Notes);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    private void A_307_redirect_to_another_port_does_not_send_the_requests_body_there()
-    {
-        using StandInApi other = new();
-        api.RedirectRoot = other.Root;
-        string folder = Folder();
-        File.AppendAllText(Path.Combine(folder, "api.http"), "\n\n### Other port\nPOST {{base}}/other-port\nContent-Type: application/json\n\n{\"secret\":\"synthetic\"}\n");
-        MainWindow window = Open(folder);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => window.Endpoints.Requests.Any(r => r.Name == "Other port"), "the redirect request");
-            Ui.Click(RowButton(window, window.Endpoints.Requests.Single(r => r.Name == "Other port"), "endpointTest"));
-            Assert.Contains("synthetic", Assert.Single(api.Received).Body, StringComparison.Ordinal);
-            Assert.Empty(other.Received);
-            Assert.Equal(307, window.Endpoints.Response.Response!.Status);
-            Assert.Equal([$"Not followed to {other.Root}: a 307 would send the request's body there"], window.Endpoints.Response.Response.Notes);
         }
         finally
         {

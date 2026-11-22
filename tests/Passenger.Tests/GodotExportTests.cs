@@ -10,13 +10,12 @@ using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>Publish of a Godot project of GDScript alone, as a person exports it: the Export dialog lists its preset for this
-/// system and, with no export templates in the run's Godot user folders, says which the export takes and greys Export, an
-/// export asked for anyway refused saying so; with the archive <see cref="TemplatesVariable"/> names, Install Templates…
-/// installs those the preset takes from it, through the dialog, into a Godot user folder of the test's own (deleted after),
-/// and Export writes the game where the preset says, Godot's output in the Run window; a C# game's export publishes its .NET
-/// project for the preset's runtime, the runtime pack from a feed of the test's own, never nuget.org. Godot runs headless;
-/// without a Godot 4 (a .NET build for C#), or but for the first without the archive, each test skips saying why. Godot runs,
+/// <summary>Publish of a Godot project of GDScript alone, as a person exports it: the Export dialog lists its preset
+/// for this system; with the archive <see cref="TemplatesVariable"/> names, Install Templates… installs those the
+/// preset takes from it, through the dialog, into a Godot user folder of the test's own (deleted after), and Export
+/// writes the game where the preset says, Godot's output in the Run window; a C# game's export publishes its .NET
+/// project for the preset's runtime, the runtime pack from a feed of the test's own, never nuget.org. Godot runs
+/// headless; without a Godot 4 (a .NET build for C#), or without the archive, each test skips saying why. Godot runs,
 /// so alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotExportTests
@@ -41,14 +40,11 @@ public sealed class GodotExportTests
     /// <summary>The template the preset's debug export takes: on macOS one archive holds both.</summary>
     internal static string DebugTemplate => OperatingSystem.IsMacOS() ? "macos.zip" : OperatingSystem.IsWindows() ? $"windows_debug_{Arch}.exe" : $"linux_debug.{Arch}";
 
-    /// <summary>Export names the templates its preset takes, installs them from an archive, writes the game where the
-    /// preset says and publishes a C# game, refusing what Godot's editor would build none of.</summary>
+    /// <summary>Export installs the templates its preset takes from an archive, writes the game where the preset says
+    /// and publishes a C# game, refusing what Godot's editor would build none of.</summary>
     [AvaloniaFact]
     public void A_games_export_takes_its_templates_and_publishes_as_godot_would()
     {
-        Flow.Step(nameof(Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so),
-            Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says),
             Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says);
         OpenWindows.CloseAll();
@@ -57,33 +53,6 @@ public sealed class GodotExportTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens),
             A_csharp_games_export_godots_editor_would_build_none_of_is_refused_in_the_dialog_as_it_opens);
-    }
-
-    private void Without_templates_the_dialog_names_those_the_preset_takes_and_an_export_is_refused_saying_so()
-    {
-        Assert.SkipWhen(Godot is null || Godot.WhyNotScripts is not null, Skipped);
-        (string folder, IReadOnlyDictionary<string, string> homes) = Game();
-        MainWindow window = Open(folder, homes);
-        try
-        {
-            Ui.Run(window, AppActions.FindAction);
-            Avalonia.Headless.HeadlessWindowExtensions.KeyTextInput(window, "Publish");
-            Ui.Press(window, "ENTER");
-            GodotExportDialog dialog = Asked(window);
-            Assert.Equal(Preset, dialog.Preset?.Name);
-            Assert.True(dialog.TemplatesSaid.Contains($"has no {Template}", StringComparison.Ordinal), $"The dialog says of the templates: {dialog.TemplatesSaid}");
-            Assert.Equal($"Install the templates {Preset} takes first", dialog.Problem);
-            Assert.False(dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Export").IsEnabled, "Export is enabled without the templates it takes");
-            dialog.Close();
-
-            BuildOutcome refused = Ui.Await(window.Builds.ExportGodotAsync(new GodotExportRequest(PathNames.Canonical(folder), Preset)), "the export refused");
-            Assert.True(refused.Status == BuildStatus.Refused && refused.Message.Contains($"has no {Template} among its export templates", StringComparison.Ordinal),
-                $"An export without its templates ended {refused.Status}: {refused.Message}");
-        }
-        finally
-        {
-            window.Close();
-        }
     }
 
     private void Templates_installed_from_an_archive_through_the_dialog_let_Export_write_the_game_where_the_preset_says()

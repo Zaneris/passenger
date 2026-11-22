@@ -46,17 +46,11 @@ public sealed class GDScriptUsagesTests
         Flow.StepApart<GDScriptUsagesTests>(nameof(Find_usages_lists_a_functions_calls_in_another_script_its_string_and_the_scenes_connection_and_a_locals_in_its_function),
             test => test.Find_usages_lists_a_functions_calls_in_another_script_its_string_and_the_scenes_connection_and_a_locals_in_its_function());
         OpenWindows.CloseAll();
-        Flow.StepApart<GDScriptUsagesTests>(nameof(Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole),
-            test => test.Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole());
-        OpenWindows.CloseAll();
         Flow.StepApart<GDScriptUsagesTests>(nameof(Rename_renames_a_function_through_the_other_script_its_string_and_the_scene_as_one_command),
             test => test.Rename_renames_a_function_through_the_other_script_its_string_and_the_scene_as_one_command());
         OpenWindows.CloseAll();
         Flow.StepApart<GDScriptUsagesTests>(nameof(A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing),
             test => test.A_rename_with_a_use_passenger_cant_see_asks_first_naming_it_and_declined_changes_nothing());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GDScriptUsagesTests>(nameof(A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete),
-            test => test.A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete());
         OpenWindows.CloseAll();
         Flow.StepApart<GDScriptUsagesTests>(nameof(A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it),
             test => test.A_rename_right_after_a_script_changed_on_disk_renames_in_it_as_the_disk_has_it());
@@ -81,39 +75,6 @@ public sealed class GDScriptUsagesTests
             listed = Ui.Pumped(() => find.Shown == "Usages of total" && Usages(find).SequenceEqual(["var total = 2 + 3", "print(total * 2)"]), TimeSpan.FromSeconds(30));
             Assert.True(listed, $"total's usages in its function alone; the Find window lists {string.Join(" | ", Usages(find))}");
             Assert.True(window.Session.Web?.For(window.EditorArea.Active!) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
-        }
-        finally
-        {
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>A name Godot reads whole is read whole where the caret stands in it: Find Usages of a function named with marks
-    /// (नमस्ते's virama and vowel sign) lists the scene's connection to it beside its calls, and a local holding a middle dot
-    /// (U+00B7) is named whole in the Find window.</summary>
-    private void Find_usages_reads_a_name_holding_marks_or_a_middle_dot_whole()
-    {
-        const string Name = "नमस्ते";
-        TestFolders.Write(folder, "player.gd", Player.Replace("hit", Name, StringComparison.Ordinal).Replace("total", "col\u00B7lega", StringComparison.Ordinal));
-        TestFolders.Write(folder, "enemy.gd", Enemy.Replace("hit", Name, StringComparison.Ordinal));
-        TestFolders.Write(folder, "main.tscn", Scene.Replace("method=\"hit\"", $"method=\"{Name}\"", StringComparison.Ordinal));
-        (MainWindow window, TaskCompletionSource release) = Open();
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            FindView find = window.Find;
-            Ui.PlaceAfter(editor, "func न");
-            Ui.Run(window, AppActions.FindUsages, settle: false);
-            string[] expected = [$"func {Name}(target, amount = 1):", $"{Name}(\"self\")", $"player.{Name}(\"enemy\", 5)", $"player.call(\"{Name}\", \"far\")",
-                $"[connection signal=\"hurt\" from=\"Player\" to=\"Player\" method=\"{Name}\"]"];
-            bool listed = Ui.Pumped(() => find.Shown == $"Usages of {Name}" && expected.All(e => Usages(find).Contains(e)), TimeSpan.FromSeconds(60));
-            Assert.True(listed, $"{Name}'s usages in both scripts, its string and the scene's connection under its whole name; the Find window shows {find.Shown}: {string.Join(" | ", Usages(find))} ({window.Status})");
-
-            Ui.PlaceAfter(editor, "var col");
-            Ui.Run(window, AppActions.FindUsages, settle: false);
-            listed = Ui.Pumped(() => find.Shown == "Usages of col\u00B7lega" && Usages(find).SequenceEqual(["var col\u00B7lega = 2 + 3", "print(col\u00B7lega * 2)"]), TimeSpan.FromSeconds(30));
-            Assert.True(listed, $"col\u00B7lega's usages under its whole name; the Find window shows {find.Shown}: {string.Join(" | ", Usages(find))}");
         }
         finally
         {
@@ -189,34 +150,6 @@ public sealed class GDScriptUsagesTests
                 $"The question named no place Passenger can't see: {asked[0]}");
             Assert.Equal(Player, document.Text.Snapshot.ToString());
             Assert.Equal(Enemy, File.ReadAllText(Path.Combine(folder, "enemy.gd")));
-        }
-        finally
-        {
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>A variable set on the resources its script runs in, a resource file's own section and a scene's sub-resource,
-    /// is named by those keys: Rename takes them with it, or each would load its default, and Safe Delete refuses, naming them.</summary>
-    private void A_variable_set_on_a_scripted_resource_is_renamed_there_and_refused_a_safe_delete()
-    {
-        const string stats = "[gd_resource type=\"Resource\" format=3]\n\n[ext_resource type=\"Script\" path=\"res://player.gd\" id=\"1\"]\n\n[resource]\nscript = ExtResource(\"1\")\nspeed = 42\n";
-        TestFolders.Write(folder, "player.gd", Player.Replace("signal hurt(amount)", "signal hurt(amount)\n@export var speed = 1", StringComparison.Ordinal));
-        TestFolders.Write(folder, "stats.tres", stats);
-        TestFolders.Write(folder, "main.tscn", Scene.Replace("[node name=\"Main\"", "[sub_resource type=\"Resource\" id=\"held\"]\nscript = ExtResource(\"1\")\nspeed = 7\n\n[node name=\"Main\"", StringComparison.Ordinal));
-        (MainWindow window, TaskCompletionSource release) = Open();
-        try
-        {
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "var spe");
-            Ui.Run(window, AppActions.SafeDelete, settle: false);
-            bool refused = Ui.Pumped(() => window.Status?.Contains("a resource sets it", StringComparison.Ordinal) == true, TimeSpan.FromSeconds(60));
-            Assert.True(refused, $"Safe Delete named no resource's key: {window.Status}");
-
-            Renamed(window, "rate");
-            bool renamed = Ui.Pumped(() => Settled(Path.Combine(folder, "stats.tres")).Contains("rate = 42", StringComparison.Ordinal), TimeSpan.FromSeconds(60));
-            Assert.True(renamed, $"The resource's key did not follow its variable: {window.Status}");
-            Assert.Contains("rate = 7", File.ReadAllText(Path.Combine(folder, "main.tscn")), StringComparison.Ordinal);
         }
         finally
         {

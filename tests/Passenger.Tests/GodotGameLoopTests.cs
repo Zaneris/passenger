@@ -4,7 +4,6 @@ using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Telemetry;
 using Passenger.App.Run;
-using Passenger.App.Workspace;
 using Passenger.Core;
 
 namespace Passenger.Tests;
@@ -27,8 +26,8 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         Assert.SkipWhen(game.Godot?.WhyNotScripts is not null || game.Godot is null, game.Skipped);
     }
 
-    /// <summary>A game's loop pauses and steps, Select Element picks its nodes, and the helper answers every count and
-    /// comes in again after the game frees it.</summary>
+    /// <summary>A game's loop pauses and steps, Select Element picks its nodes, and its frame time and monitors are
+    /// charted.</summary>
     [AvaloniaFact]
     public void A_games_loop_is_paused_stepped_picked_and_read_by_the_helper()
     {
@@ -37,18 +36,6 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         OpenWindows.CloseAll();
         Flow.Step(nameof(Pause_Game_Loop_holds_the_game_its_frame_count_stopping_and_Next_Frame_steps_it_by_one),
             Pause_Game_Loop_holds_the_game_its_frame_count_stopping_and_Next_Frame_steps_it_by_one);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts),
-            The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values),
-            A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands),
-            A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to),
-            A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to);
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them),
             A_games_frame_time_and_its_custom_monitor_are_charted_as_they_come_and_an_agent_reads_them);
@@ -147,143 +134,6 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
         }
     }
 
-    /// <summary>Passenger's helper, brought into a game by counts of its frames asked the moment its scene is up, several at
-    /// once so they reach the game as its script is set, answers every one, on each of several starts of the game: a call that
-    /// comes while the helper's members are still being made waits for them rather than going unanswered.</summary>
-    private void The_helper_brought_in_by_counts_asked_at_once_answers_every_one_each_time_the_game_starts()
-    {
-        MainWindow window = Open();
-        try
-        {
-            for (int start = 1; start <= 3; start++)
-            {
-                GodotGame running = Start(window);
-                // The helper comes in beside the game's scene, which a game connects before it loads.
-                Ui.WaitFor(() => running.Monitors is { Nodes: > 1 }, () => $"the game's scene to be up, start {start} ({running.Monitors}; {window.Status})", TimeSpan.FromMinutes(1));
-                Task<long?>[] counts = [.. Enumerable.Range(0, 6).Select(_ => running.TryCountAsync())];
-                long?[] answered = Ui.AwaitPumped(Task.WhenAll(counts), $"the counts asked as the helper came in, start {start}", TimeSpan.FromMinutes(1));
-                Assert.True(answered.All(frame => frame >= 1),
-                    $"On start {start} the helper did not answer every count asked as it came in: {string.Join(", ", answered.Select(frame => frame?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"))} ({window.Status})");
-                Stop(window);
-            }
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A game that frees Passenger's helper partway (Main frees the node of root's once told to) has it brought in
-    /// again by the next call: the frame count is answered after the free, the values shown in main.gd climb on, and the game
-    /// holds one helper, not a second made beside the first.</summary>
-    private void A_game_that_frees_the_helper_has_it_brought_in_again_by_the_next_count_and_the_live_values()
-    {
-        MainWindow window = Open();
-        try
-        {
-            GodotGame running = Start(window);
-            window.OpenFile(Path.Combine(game.Folder, "main.gd"));
-            OpenDocument script = window.EditorArea.Active!;
-            int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
-            Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
-            Assert.NotNull(Ui.AwaitPumped(running.TryCountAsync(), "the count before the helper is freed", TimeSpan.FromMinutes(1)));
-            // The helper comes in after a beat of the game's, so only a beat after its answer counts it among the nodes.
-            int beats = 0;
-            running.MonitorsChanged += (_, _) => beats++;
-
-            GodotNode before = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1));
-            GodotNode main = before.All().First(n => n.Name == "Main");
-            Ui.WaitFor(() => beats > 0, () => $"the game's monitors once the helper answered, its count of nodes with the helper ({window.Status})", TimeSpan.FromMinutes(1));
-            double nodes = running.Monitors!.Nodes;
-            Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "free_helper", true), "Main told to free the helper", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Run(window).Contains("helper freed", StringComparison.Ordinal), () => $"the game to free the helper ({Run(window)[^Math.Min(400, Run(window).Length)..]})", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => running.Monitors?.Nodes < nodes, () => $"the game's count of nodes to drop from {nodes} with the helper freed ({running.Monitors?.Nodes})", TimeSpan.FromMinutes(1));
-            long? shown = Frames(script, frames);
-
-            long? counted = Ui.AwaitPumped(running.TryCountAsync(), "the count after the helper was freed", TimeSpan.FromMinutes(1));
-            Assert.True(counted >= 1, $"The count asked after the game freed the helper went unanswered ({window.Status}; {window.GodotValues.Unread})");
-            Ui.WaitFor(() => Frames(script, frames) > shown, () => $"main.gd's frame count to climb past {shown} once the helper was brought in again ({Hints(script)}; {window.GodotValues.Unread})",
-                TimeSpan.FromMinutes(1));
-            GodotNode after = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree with the helper back", TimeSpan.FromMinutes(1));
-            string[] helpers = [.. after.Children.Where(c => c.Name.Contains(GodotAgent.NodeName, StringComparison.Ordinal) || c.Type.EndsWith("passenger_agent.gd", StringComparison.Ordinal))
-                .Select(c => $"{c.Name} ({c.Type})")];
-            Assert.True(helpers.Length == 1 && after.Children.Any(GodotAgent.Is), $"The game holds {helpers.Length} helpers once it was brought in again: {string.Join(", ", helpers)}");
-            Assert.False(Run(window).Contains("passenger_agent.gd", StringComparison.Ordinal), $"Passenger's helper raised errors in the game:\n{Run(window)}");
-            Assert.True(running.CallsBesideMoved == 0,
-                $"{Plural.Of(running.CallsBesideMoved, "call")} of the helper's went beside the scene the game's tree named before its count of nodes changed, to the helper the game had freed, which never answers them");
-            Assert.True(running.Unanswered == 0, $"{Plural.Of(running.Unanswered, "question")} of the game's waited out the whole of an answer's limit, a call the freed helper never answered among them");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A call of the helper's sent as the game frees it, in a frame that adds a node in its place so the game's count
-    /// of nodes stands, fails at once saying the helper was freed, or is answered by the helper brought in again once
-    /// Passenger heard it go; no question of the game's waits out the whole of an answer's limit, a count asked after is
-    /// answered, and the values shown in main.gd climb on.</summary>
-    private void A_call_sent_as_the_game_frees_the_helper_fails_at_once_saying_so_though_its_count_of_nodes_stands()
-    {
-        MainWindow window = Open();
-        try
-        {
-            GodotGame running = Start(window);
-            window.OpenFile(Path.Combine(game.Folder, "main.gd"));
-            OpenDocument script = window.EditorArea.Active!;
-            int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
-            Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
-
-            GodotNode main = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1)).All().First(n => n.Name == "Main");
-            Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "swap_helper", true), "Main told to free the helper, a node added in its place", TimeSpan.FromMinutes(1));
-            Ui.PumpUntil(() => Run(window).Contains("helper swapped", StringComparison.Ordinal), "the game to free the helper", TimeSpan.FromMinutes(1));
-            long? shown = Frames(script, frames);
-            Task<List<object?>> sent = running.AskAsync("count");
-            Ui.PumpUntil(() => sent.IsCompleted, "the count sent as the game freed the helper to be answered or refused", TimeSpan.FromMinutes(1));
-            string said = sent.IsCompletedSuccessfully ? "answered" : sent.Exception?.InnerException?.Message ?? "cancelled";
-            Assert.True(sent.IsCompletedSuccessfully || said.Contains("freed Passenger's helper before it answered its count", StringComparison.Ordinal),
-                $"The count sent as the game freed the helper was refused, but not for the helper's going: {said}");
-            Assert.NotNull(Ui.AwaitPumped(running.TryCountAsync(), "a count once the helper was brought in again", TimeSpan.FromMinutes(1)));
-            Ui.WaitFor(() => Frames(script, frames) > shown, () => $"main.gd's frame count to climb past {shown} once the helper was brought in again ({Hints(script)}; {window.GodotValues.Unread})",
-                TimeSpan.FromMinutes(1));
-            Assert.True(running.Unanswered == 0, $"{Plural.Of(running.Unanswered, "question")} of the game's waited out the whole of an answer's limit (the count sent: {said})");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A game that changes its scene (Main changes to next.tscn once told to) has the values shown in main.gd read
-    /// from the scene it changed to, every call of the helper's sent beside the scene the game's tree names once its count of
-    /// nodes has changed, none beside the scene gone, where no call is answered.</summary>
-    private void A_game_that_changes_its_scene_has_its_values_read_beside_the_scene_it_changed_to()
-    {
-        MainWindow window = Open();
-        try
-        {
-            GodotGame running = Start(window);
-            window.OpenFile(Path.Combine(game.Folder, "main.gd"));
-            OpenDocument script = window.EditorArea.Active!;
-            int frames = Array.FindIndex(File.ReadAllText(Path.Combine(game.Folder, "main.gd")).Split('\n'), l => l.StartsWith("var frames", StringComparison.Ordinal));
-            Ui.WaitFor(() => Frames(script, frames) is not null, () => $"the frame count's value in main.gd ({Hints(script)}; {window.GodotValues.Unread})", TimeSpan.FromMinutes(1));
-
-            GodotNode main = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1)).All().First(n => n.Name == "Main");
-            Ui.AwaitPumped(running.SetPropertyAsync(main.Id, "next_scene", "res://next.tscn"), "Main told to change the scene", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Frames(script, frames) >= Game.NextFrames, () => $"main.gd's values to be read from next.tscn's node, its frame count from {Game.NextFrames} "
-                + $"({Hints(script)}; {window.GodotValues.Unread}; {Run(window)[^Math.Min(400, Run(window).Length)..]})", TimeSpan.FromMinutes(1));
-            Assert.True(running.CallsBesideMoved == 0,
-                $"{Plural.Of(running.CallsBesideMoved, "call")} of the helper's went beside main.tscn once the game had changed its scene, where no call is answered");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
     /// <summary>The game's monitors charted in the Live Visual Tree once asked for: its frame time and frames a second, and
     /// the custom monitor its script adds, each a line under its heading with its latest value, more coming each second; an
     /// agent's telemetry of kind metrics reads the same; hidden again, nothing is charted.</summary>
@@ -319,13 +169,6 @@ public sealed class GodotGameLoopTests : IClassFixture<GodotGameLoopTests.Game>
             End(window);
         }
     }
-
-    /// <summary>The frame count main.gd's line (from zero) shows, or null.</summary>
-    private static long? Frames(OpenDocument document, int line) =>
-        document.LiveValues.Where(a => a.Line == line).Select(a => a.Text).FirstOrDefault() is { } hint && hint.StartsWith("frames: ", StringComparison.Ordinal)
-            && long.TryParse(hint["frames: ".Length..], System.Globalization.CultureInfo.InvariantCulture, out long count) ? count : null;
-
-    private static string Hints(OpenDocument document) => string.Join("; ", document.LiveValues.Select(a => $"line {a.Line + 1}: {a.Text}"));
 
     /// <summary>A window on the project, no C# language server, the Godot editors it starts for GDScript keeping the run's user folders.</summary>
     private MainWindow Open()

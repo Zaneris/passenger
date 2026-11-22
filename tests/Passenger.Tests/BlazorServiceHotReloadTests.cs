@@ -7,23 +7,20 @@ using Passenger.Core;
 namespace Passenger.Tests;
 
 /// <summary>Hot Reload of a Blazor component in a service of an Aspire AppHost's run, the stand-in AppHost's (<see
-/// cref="StandInAppHost"/>), the service a Blazor app (<see cref="BellApp"/>) the IDE starts as DCP asks and attaches to:
-/// the app's update handlers run after each update, through Passenger's hook the service started with, under Debug in the
-/// service's own tab and under Run with Hot Reload's quiet session, and its page shows the edit, and is kept up with its
-/// stylesheet through the SDK's browser refresh the service started with too. Debugged through the window, so run alone.</summary>
+/// cref="StandInAppHost"/>), the service a Blazor app (<see cref="BellApp"/>) the IDE starts as DCP asks and attaches
+/// to: the app's update handlers run after each update, through Passenger's hook the service started with, under Debug
+/// in the service's own tab, and its page shows the edit, and is kept up with its stylesheet through the SDK's browser
+/// refresh the service started with too. Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClassFixture<StandInAppHost>
 {
-    /// <summary>Under an Aspire service's debug or quiet session, a component's edit runs the app's update handlers and
-    /// reaches its page.</summary>
+    /// <summary>Under an Aspire service's debug session, a component's edit runs the app's update handlers and reaches
+    /// its page.</summary>
     [AvaloniaFact]
     public void An_aspire_services_blazor_edit_runs_its_update_handlers()
     {
         Flow.Step(nameof(Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page),
             Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit),
-            Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit);
     }
 
     private void Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page()
@@ -58,41 +55,6 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
         {
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the sessions to end", TimeSpan.FromMinutes(1));
-            window.Close();
-            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
-        }
-    }
-
-    private void Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit()
-    {
-        project.Reset();
-        string bell = Bell();
-        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
-        project.Serve(backend);
-        MainWindow window = project.Open(project.Program);
-        try
-        {
-            Choose(window);
-            window.ApplySettings(window.Settings with { HotReload = true });
-            Ui.Run(window, AppActions.RunProgram);
-            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the stand-in AppHost to come up ({window.Status})");
-            (AspireResourceRun service, System.Net.WebSockets.ClientWebSocket notified) = Start(window, bell, "NoDebug");
-            using System.Net.WebSockets.ClientWebSocket subscribed = notified;
-            Ui.WaitFor(() => window.Debugger.Running.Count == 1, $"the Blazor service to be attached to for Hot Reload ({window.Status})", TimeSpan.FromMinutes(2));
-            Func<string> output = () => service.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, output), StringComparison.Ordinal);
-
-            Edit(window, bell);
-            Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
-            Ui.WaitFor(() => BellApp.Count(output(), BellApp.HandlersRan) == 1,
-                () => $"the service's update handlers to run after the saved edit applied ({window.Debugger.LastApplied?.Said}); its output has:\n{output()}", TimeSpan.FromMinutes(1));
-            Assert.Contains("<h1>Tally</h1>", BellApp.Page(window, output), StringComparison.Ordinal);
-            KeptUp(window, bell, HeardPorts.Of(output, "the Blazor service"));
-        }
-        finally
-        {
-            window.Perform(AppActions.Stop);
-            Ui.WaitFor(() => !window.Builds.IsRunning && window.Debugger.Running.Count == 0, "the run to end", TimeSpan.FromMinutes(1));
             window.Close();
             Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
         }

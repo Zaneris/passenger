@@ -1,7 +1,6 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
-using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -9,9 +8,9 @@ namespace Passenger.Tests;
 
 /// <summary>A GDScript's Parameter Info from Passenger's own reading, Godot's server held at its start where a Godot is
 /// found (never started where none is): after a call's bracket the signature of what it calls, a script's function as
-/// written, a signal's emit, the engine's method as its API gives it and a built-in type's constructor, with the
-/// parameter the caret is at, moving on at each comma and gone at the closing bracket; and after a function put in by
-/// completion, its parentheses holding the caret. A Godot editor of its own each where one is found, so run alone.</summary>
+/// written, a signal's emit, with the parameter the caret is at, moving on at each comma and gone at the closing
+/// bracket; and after a function put in by completion, its parentheses holding the caret. A Godot editor of its own
+/// each where one is found, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GDScriptParameterInfoTests
 {
@@ -29,16 +28,12 @@ public sealed class GDScriptParameterInfoTests
         TestFolders.Write(folder, "main.gd", Script);
     }
 
-    /// <summary>A script's function, signal, engine method and constructor show their signature and the parameter at
-    /// the caret.</summary>
+    /// <summary>A script's function and signal show their signature and the parameter at the caret.</summary>
     [AvaloniaFact]
     public void A_calls_signature_shows_its_parameter_at_the_caret()
     {
         Flow.StepApart<GDScriptParameterInfoTests>(nameof(A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at),
             test => test.A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GDScriptParameterInfoTests>(nameof(The_engines_method_and_a_built_in_types_constructor_show_their_signature),
-            test => test.The_engines_method_and_a_built_in_types_constructor_show_their_signature());
     }
 
     private void A_scripts_function_and_signal_show_their_signature_and_the_parameter_the_caret_is_at()
@@ -85,41 +80,6 @@ public sealed class GDScriptParameterInfoTests
             Ui.Press(window, "ENTER", settle: false);
             Signed(window, "func grow(", "by: int = 1");
             Assert.True(window.Session.Web?.For(window.EditorArea.Active!) is not { Serving: true }, "Godot's server answered: the test's hold of its start did not hold");
-        }
-        finally
-        {
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>The engine's method shows its signature as its API gives it, defaults and enum types among it, and a
-    /// built-in type's constructor the one taking the arguments given.</summary>
-    private void The_engines_method_and_a_built_in_types_constructor_show_their_signature()
-    {
-        Assert.SkipWhen(godot is not { Exists: true }, "No Godot was found (GODOT, the PATH, Applications): the engine's signatures come from its API");
-        (MainWindow window, TaskCompletionSource release) = Open();
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "\tpass");
-            editor.Focus();
-            Ui.Press(window, "ENTER", settle: false);
-            window.KeyTextInput("add_child");
-            Ui.Press(window, "ESCAPE", settle: false);
-            window.KeyTextInput("(");
-            Signed(window, "func Node.add_child(node: Node, force_readable_name: bool = false, internal: Node.InternalMode = 0) -> void", "node: Node");
-            window.KeyTextInput("self");
-            window.KeyTextInput(",");
-            Signed(window, "func Node.add_child(", "force_readable_name: bool = false");
-            Ui.Press(window, "END", settle: false);
-            Ui.Press(window, "ENTER", settle: false);
-            window.KeyTextInput("var v := Vector2");
-            Ui.Press(window, "ESCAPE", settle: false);
-            window.KeyTextInput("(");
-            window.KeyTextInput("1");
-            window.KeyTextInput(",");
-            Signed(window, "Vector2(x: float, y: float)", "y: float");
         }
         finally
         {

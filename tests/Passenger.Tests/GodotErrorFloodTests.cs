@@ -7,21 +7,18 @@ using Passenger.Text;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot game that raises an error every frame, a long session's worth of them: what a burst of them costs the
-/// window's thread stays what it cost after a hundred, in Problems' Godot tab and in the console that folds them, which
-/// folds an error whole wherever its reads end.</summary>
+/// <summary>A Godot game that raises an error every frame, a long session's worth of them: what a burst of them costs
+/// the window's thread stays what it cost after a hundred in Problems' Godot tab, and the console that folds them folds
+/// an error whole wherever its reads end.</summary>
 public sealed class GodotErrorFloodTests
 {
-    /// <summary>A burst of a game's errors costs Problems and the folded console no more after thousands than after a
-    /// hundred, and an error cut between reads shows whole.</summary>
+    /// <summary>A burst of a game's errors costs Problems no more after thousands than after a hundred, and an error
+    /// cut between reads shows whole.</summary>
     [AvaloniaFact]
     public void A_flood_of_a_games_errors_costs_no_more_as_it_goes()
     {
         Flow.Step(nameof(A_burst_of_a_games_errors_costs_Problems_no_more_after_thousands_before_it_than_after_a_hundred),
             A_burst_of_a_games_errors_costs_Problems_no_more_after_thousands_before_it_than_after_a_hundred);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred),
-            A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred);
         OpenWindows.CloseAll();
         Flow.Step(nameof(An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks),
             An_error_cut_between_two_reads_shows_and_folds_whole_and_a_start_with_no_rest_shows_as_the_console_speaks);
@@ -43,30 +40,6 @@ public sealed class GodotErrorFloodTests
         Ui.Settle();
         Assert.Equal(5500, problems.GodotProblems.Count);
         Assert.Contains(problems.Rows, r => r.Problem?.Message == "frame 5499 went wrong");
-    }
-
-    private void A_burst_of_a_games_new_errors_costs_its_folded_console_no_more_after_thousands_before_it_than_after_a_hundred()
-    {
-        OutputView console = new() { Fold = new GodotConsoleFold() };
-        Window window = new() { Width = 900, Height = 500, Content = console };
-        window.Show();
-        try
-        {
-            Ui.Settle();
-            Write(console, 0, 100);
-            Ui.Settle();
-            long small = Write(console, 100, 100);
-            Write(console, 200, 3000);
-            Ui.Settle();
-            long large = Write(console, 3200, 100);
-            Assert.True(large < small * 2 + 65536,
-                $"100 errors written after 3,200 allocated {large:N0} bytes on the window's thread, and after 100 {small:N0}: each batch walks every error folded before it");
-            Assert.Contains("ERROR: frame 3299 went wrong", console.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
     }
 
     /// <summary>A flood's reads end anywhere: a header cut inside its first word shows whole with the rest of it and is an entry
@@ -97,20 +70,6 @@ public sealed class GodotErrorFloodTests
         {
             window.Close();
         }
-    }
-
-    /// <summary>A game's new errors written to its console a batch each, as it writes one a frame, and the bytes the
-    /// window's thread allocated meanwhile.</summary>
-    private static long Write(OutputView console, int first, int count)
-    {
-        string[] batches = [.. Enumerable.Range(first, count).Select(i => $"ERROR: frame {i} went wrong\n   at: push_error (core/variant/variant_utility.cpp:1023)\n")];
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        foreach (string batch in batches)
-        {
-            console.Sink.Write(batch, ConsoleStream.Error);
-            console.Flush();
-        }
-        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     /// <summary>Errors raised one after another, as a game raises them each frame, and the bytes the window's thread

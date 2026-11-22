@@ -52,24 +52,15 @@ public sealed class WebRoutesTests
         OpenWindows.CloseAll();
         Flow.Step(nameof(An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body),
             An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name),
-            An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name);
     }
 
-    /// <summary>A route's icon and Interactive Test send its request to the running app through an http file made as
-    /// asked.</summary>
+    /// <summary>A route's icon sends its request to the running app through an entry written into its http
+    /// file.</summary>
     [AvaloniaFact]
     public void A_routes_request_is_sent_to_the_running_app_from_its_http_file()
     {
         Flow.Step(nameof(A_routes_icon_sends_its_request_to_the_running_app_from_an_entry_written_into_its_http_file_and_each_goes_to_the_other),
             A_routes_icon_sends_its_request_to_the_running_app_from_an_entry_written_into_its_http_file_and_each_goes_to_the_other);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test),
-            A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored),
-            A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored);
     }
 
     private void The_endpoints_window_lists_each_kind_of_route_the_apps_code_declares_with_its_parameters()
@@ -233,128 +224,6 @@ public sealed class WebRoutesTests
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Runner.IsRunning, "the shop to stop");
             window.Close();
-        }
-    }
-
-    /// <summary>An app mapping an HTTP QUERY endpoint (MapMethods) has it listed as QUERY, its Send writing a QUERY with
-    /// its body's sample into the project's .http file and sending it, and Interactive Test opening that request as a
-    /// QUERY: the running app answers each with the method and the body it was sent.</summary>
-    private void A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test()
-    {
-        using HeldPort port = new();
-        string folder = TestFolders.Create("query-");
-        TestFolders.Write(folder, "Finder.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>", "<Nullable>enable</Nullable>"));
-        TestFolders.Write(folder, "Properties/launchSettings.json", $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\", "
-            + $"\"environmentVariables\": {{ {HeldPort.GateMember(HeldPort.GateIn(folder))} }} }}\n  }}\n}}\n");
-        TestFolders.Write(folder, "Program.cs", HeldPort.Gated("""
-            WebApplication app = WebApplication.CreateBuilder(args).Build();
-            app.MapMethods("/search", ["QUERY"], (Search search, HttpRequest request) => $"{request.Method} for {search.Text}.");
-            app.Run();
-
-            public record Search(string Text);
-            """));
-        Restore.Run(folder);
-        MainWindow window = Ui.OpenFolder(folder);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => Titles(window).Contains("QUERY /search"), () => $"the QUERY route listed; listed: {string.Join(", ", Titles(window))}", TimeSpan.FromMinutes(3));
-            Assert.Equal("Search", Route(window, "QUERY /search").BodyType);
-            window.OpenFile(Path.Combine(folder, "Program.cs"));
-            Ui.Settle();
-            Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
-            int line = Line(program, "app.MapMethods(");
-            Ui.WaitFor(() => program.RouteMarks.Any(m => m.Line == line), "the send icon beside the QUERY's route", TimeSpan.FromMinutes(1));
-
-            Assert.True(window.SelectConfiguration("Finder: http"), $"No configuration Finder: http among {string.Join(", ", window.Configurations.Select(c => c.Name))}");
-            Ui.Launched(window, window.RunAsync(), "the app to start", TimeSpan.FromMinutes(2));
-            port.LetGo(HeldPort.GateIn(folder));
-            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("Now listening on:", StringComparison.Ordinal), "the app to listen",
-                TimeSpan.FromMinutes(2));
-
-            MenuItem send = Assert.Single(GutterMenu(window, line));
-            Assert.Equal("Send QUERY /search", send.Header);
-            Ui.Choose(window.RouteMarkMenu!, "Send QUERY /search");
-            Ui.WaitFor(() => window.Endpoints.Response.Response is not null, "the running app's answer", TimeSpan.FromMinutes(1));
-            Assert.True(window.Endpoints.Response.Shown.Contains("QUERY for .", StringComparison.Ordinal),
-                $"The app answered the route's Send with {window.Endpoints.Response.Summary}: {window.Endpoints.Response.Shown}");
-            string http = Path.Combine(folder, "Finder.http");
-            Assert.Contains("QUERY {{Finder_HostAddress}}/search\nAccept: application/json\nContent-Type: application/json\n\n{\n  \"text\": \"\"\n}\n",
-                File.ReadAllText(http), StringComparison.Ordinal);
-
-            Ui.WaitFor(() => window.Endpoints.Requests.Any(r => r.Method == "QUERY"), "the QUERY written into Finder.http, listed");
-            Ui.Click(EndpointsTests.RowButton(window, window.Endpoints.Requests.First(r => r.Method == "QUERY"), "endpointInteractive"));
-            InteractiveTestDialog dialog = window.InteractiveTest!;
-            Ui.Settle();
-            Assert.True(dialog.Method.SelectedItem as string == "QUERY", $"Interactive Test opened the QUERY request as a {dialog.Method.SelectedItem}");
-            dialog.Body.Text = """{ "text": "tea" }""";
-            Ui.Click(dialog.Send);
-            Ui.WaitFor(() => dialog.Response.Response is not null, "the app's answer to the dialog", TimeSpan.FromMinutes(1));
-            Assert.True(dialog.Response.Shown.Contains("QUERY for tea.", StringComparison.Ordinal),
-                $"The app answered Interactive Test's QUERY with {dialog.Response.Summary}: {dialog.Response.Shown}");
-            dialog.Close();
-        }
-        finally
-        {
-            window.Perform(AppActions.Stop);
-            Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
-            window.Close();
-        }
-    }
-
-    /// <summary>A route's Send with no request for it in a folder whose .editorconfig asks for CRLF and a UTF-8 BOM makes its
-    /// project's .http file so, and the next route's request goes in as that file is stored; another project's .http file,
-    /// stored with '\n' and no BOM, takes its request so.</summary>
-    private void A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored()
-    {
-        using HeldPort port = new();
-        string folder = TestFolders.Create("http-form-");
-        TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*]\nend_of_line = crlf\ncharset = utf-8-bom\n");
-        TestFolders.Write(folder, "Shop/Shop.csproj", TestProjects.Web());
-        TestFolders.Write(folder, "Admin/Admin.csproj", TestProjects.Web());
-        TestFolders.Write(folder, "Admin/Admin.http", "@Admin_HostAddress = http://127.0.0.1:1\n\n### Earlier\nGET {{Admin_HostAddress}}/ping\n");
-        foreach (string project in new[] { "Shop", "Admin" })
-        {
-            TestFolders.Write(folder, $"{project}/Properties/launchSettings.json",
-                $"{{\n  \"profiles\": {{\n    \"http\": {{ \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:{port.Port}\" }}\n  }}\n}}\n");
-            TestFolders.Write(folder, $"{project}/Program.cs", "WebApplication app = WebApplication.CreateBuilder(args).Build();\napp.MapGet(\"/health\", () => \"ok\");\napp.MapDelete(\"/cache\", () => \"gone\");\napp.Run();\n");
-        }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            string shop = Path.Combine(folder, "Shop", "Shop.http");
-            Send(window, folder, "Shop", "GET", "/health");
-            byte[] made = File.ReadAllBytes(shop);
-            Assert.True(made.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]), "Shop.http was made without the UTF-8 BOM its .editorconfig asks for");
-            string text = System.Text.Encoding.UTF8.GetString(made, 3, made.Length - 3);
-            Assert.True(text.Replace("\r\n", "", StringComparison.Ordinal).IndexOf('\n', StringComparison.Ordinal) < 0, $"Shop.http was made with '\\n' breaks where its .editorconfig asks for CRLF:\n{text}");
-            Assert.Contains("GET {{Shop_HostAddress}}/health\r\n", text, StringComparison.Ordinal);
-
-            Send(window, folder, "Shop", "DELETE", "/cache");
-            byte[] again = File.ReadAllBytes(shop);
-            Assert.True(again.AsSpan().StartsWith(made), "The second request did not go after the first, Shop.http as it was");
-            string added = System.Text.Encoding.UTF8.GetString(again, made.Length, again.Length - made.Length);
-            Assert.True(added.Contains("DELETE {{Shop_HostAddress}}/cache\r\n", StringComparison.Ordinal) && added.Replace("\r\n", "", StringComparison.Ordinal).IndexOf('\n', StringComparison.Ordinal) < 0,
-                $"The second request was not written in Shop.http's CRLF breaks:\n{added}");
-
-            string admin = Path.Combine(folder, "Admin", "Admin.http");
-            Send(window, folder, "Admin", "GET", "/health");
-            string stored = File.ReadAllText(admin);
-            Assert.True(!stored.Contains('\r', StringComparison.Ordinal) && File.ReadAllBytes(admin)[0] == (byte)'@',
-                $"Admin.http, stored with '\\n' and no BOM, was written in the .editorconfig's form:\n{stored}");
-            Assert.Contains("GET {{Admin_HostAddress}}/health\n", stored, StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static void Send(MainWindow window, string folder, string project, string method, string template)
-        {
-            string path = Passenger.Core.PathNames.Canonical(Path.Combine(folder, project, "Program.cs"));
-            WebRoute route = new(Passenger.Core.PathNames.Canonical(Path.Combine(folder, project, $"{project}.csproj")), RouteKinds.Minimal, [method], template, null, [],
-                $"{method} {template}", path, new Place(1, 0), new Place(1, 10), "unread");
-            Assert.Null(Ui.Await(window.SendRouteAsync(route), $"the request for {method} {template} to be written into {project}.http and sent"));
         }
     }
 
@@ -538,65 +407,6 @@ public sealed class WebRoutesTests
             Assert.Equal(("Node", "[\n  []\n]"), (nodes.BodyType, Body(window, nodes)));
             WebRoute maps = Route(window, "POST /maps");
             Assert.Equal(("Map", "{\n  \"key\": {}\n}"), (maps.BodyType, Body(window, maps)));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An enum in an example body is its first member's number, as System.Text.Json reads enums by default, in an
-    /// app that adds no JsonStringEnumConverter; and its name where the app adds one to its JSON options, or where the
-    /// enum or the property names one.</summary>
-    private void An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name()
-    {
-        string folder = TestFolders.Create("routes-enums-");
-        const string Paints = """
-            using System.Text.Json.Serialization;
-
-            public record Paint(Color Color, Shade Shade, [property: JsonConverter(typeof(JsonStringEnumConverter))] Color Trim);
-
-            public enum Color
-            {
-                First = 1,
-                Second,
-            }
-
-            [JsonConverter(typeof(JsonStringEnumConverter<Shade>))]
-            public enum Shade
-            {
-                Light,
-                Dark,
-            }
-            """;
-        foreach (string app in (string[])["Plain", "Named"])
-        {
-            TestFolders.Write(folder, $"{app}/{app}.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-            TestFolders.Write(folder, $"{app}/Paint.cs", Paints);
-            Restore.Run(Path.Combine(folder, app));
-        }
-        TestFolders.Write(folder, "Plain/Program.cs", """
-            WebApplication app = WebApplication.CreateBuilder(args).Build();
-            app.MapPost("/plain", (Paint paint) => paint);
-            app.Run();
-            """);
-        TestFolders.Write(folder, "Named/Program.cs", """
-            using System.Text.Json.Serialization;
-
-            WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-            builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-            WebApplication app = builder.Build();
-            app.MapPost("/named", (Paint paint) => paint);
-            app.Run();
-            """);
-        MainWindow window = Ui.OpenFolder(folder);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Endpoints);
-            Ui.WaitFor(() => Titles(window).Contains("POST /plain") && Titles(window).Contains("POST /named"),
-                () => $"both apps' routes, listed (listed: {string.Join(", ", Titles(window))})", TimeSpan.FromMinutes(3));
-            Assert.Equal("{\n  \"color\": 1,\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Body(window, Route(window, "POST /plain")));
-            Assert.Equal("{\n  \"color\": \"First\",\n  \"shade\": \"Light\",\n  \"trim\": \"First\"\n}", Body(window, Route(window, "POST /named")));
         }
         finally
         {

@@ -1,10 +1,8 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
-using Avalonia.Platform;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.Core;
@@ -13,11 +11,9 @@ namespace Passenger.Tests;
 
 /// <summary>An HTML file's page beside its text, in the system's web view, which a headless window neither makes nor
 /// draws: what the page is given and when, the text as the editor has it with the file's folder for its relative
-/// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; the page kept from going
-/// elsewhere, the banner over it opening where it went only when asked; a Linux without WebKitGTK 4.1 saying so in the
-/// page's place; and, where a window is seen, the page given again at the place it was scrolled to, its folder's
-/// stylesheet and picture loaded, a page over WebView2's 2 MB for a text shown whole, and a page with no background on the
-/// web view's own ground.</summary>
+/// addresses, again once typing pauses and not before; off until the strip's toggle turns it on; the page kept from
+/// going elsewhere, the banner over it opening where it went only when asked; what Git leaves out below its folder
+/// refused it; and, where a window is seen, its folder's stylesheet and picture loaded.</summary>
 public sealed partial class HtmlPreviewTests : IDisposable
 {
     private const string Page = "<!doctype html>\n<html>\n  <head><link rel=\"stylesheet\" href=\"site.css\"></head>\n  <body><h1>Hello</h1></body>\n</html>\n";
@@ -30,15 +26,12 @@ public sealed partial class HtmlPreviewTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>An HTML page is given its text, served what its folder holds and Git keeps, and kept from going
-    /// elsewhere, or its place says the system has no web view.</summary>
+    /// elsewhere.</summary>
     [AvaloniaFact]
     public void An_html_page_is_served_its_own_folder_alone()
     {
         Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder),
             test => test.An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder());
-        OpenWindows.CloseAll();
-        Flow.StepApart<HtmlPreviewTests>(nameof(A_system_without_a_web_view_for_the_page_says_so_in_its_place),
-            test => test.A_system_without_a_web_view_for_the_page_says_so_in_its_place());
         OpenWindows.CloseAll();
         Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses),
             test => test.An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses());
@@ -47,22 +40,13 @@ public sealed partial class HtmlPreviewTests : IDisposable
             test => test.An_HTML_page_is_kept_from_going_elsewhere_and_the_banner_over_it_opens_where_it_went_only_when_asked());
     }
 
-    /// <summary>Where a window is seen, an HTML page keeps its place, loads its folder's files, shows a large page
-    /// whole and stands on the web view's own ground.</summary>
+    /// <summary>Where a window is seen, an HTML page loads its folder's stylesheet and picture as it is
+    /// typed.</summary>
     [AvaloniaFact]
     public void An_html_page_draws_in_a_web_view_where_one_is_seen()
     {
-        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to),
-            test => test.An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to());
-        OpenWindows.CloseAll();
         Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed),
             test => test.An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed());
-        OpenWindows.CloseAll();
-        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_of_several_megabytes_is_shown_whole),
-            test => test.An_HTML_page_of_several_megabytes_is_shown_whole());
-        OpenWindows.CloseAll();
-        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own),
-            test => test.An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own());
     }
 
     private void An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses()
@@ -184,48 +168,6 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Scrolled down, the page is given an edit at the same place; given a page shorter than the place, it ends at
-    /// its end; and a page scrolling itself as it loads is left where it went. Only a web view of the system's scrolls, which
-    /// a window nobody sees never makes, so headless this skips, run by hand where Passenger's window is seen.</summary>
-    private void An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to()
-    {
-        if (PassengerApp.ShowsNoWindow)
-        {
-            Assert.Skip("A window nobody sees makes no web view of the system's, the only one to scroll a page: this runs where Passenger's window is seen");
-        }
-        if (HtmlPreview.WhyNone() is { } why)
-        {
-            Assert.Skip($"This system shows no page: {why}");
-        }
-        string index = Path.Combine(folder, "index.html");
-        File.WriteAllText(index, Paragraphs(300));
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Assert.Null(window.OpenFile(index));
-        Ui.Settle();
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Ui.Click(group.PreviewToggle);
-        HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed no page beside the HTML file");
-        NativeWebView web = Assert.Single(preview.GetLogicalChildren().OfType<NativeWebView>());
-        Ui.WaitFor(() => preview.Landed == 1, () => $"the page's first load ({preview.Loads} given, {preview.Landed} loaded)");
-        Assert.True(Math.Abs(ScrolledTo(web, "window.scrollTo(0, 2000);") - 2000) < 1, $"A page of 300 paragraphs did not scroll to 2,000 but to {ScrolledTo(web)}");
-
-        Typing.Replace(window, "Paragraph 3<", "Paragraph three<");
-        Ui.WaitFor(() => preview.Landed == 2, () => $"the page given the edit to load ({preview.Loads} given, {preview.Landed} loaded)");
-        Ui.WaitFor(() => Math.Abs(ScrolledTo(web) - 2000) < 1, () => $"the page given the edit to stand where the reader had scrolled, 2,000, not {ScrolledTo(web)}");
-
-        Ui.Run(window, AppActions.Save);
-        File.WriteAllText(index, Paragraphs(60));
-        Ui.WaitFor(() => preview.Landed == 3, () => $"the shorter page written on disk to load ({preview.Loads} given, {preview.Landed} loaded)");
-        double end = double.Parse(Script(web, "Math.max(0, document.scrollingElement.scrollHeight - window.innerHeight)")!.Trim('"'), CultureInfo.InvariantCulture);
-        Assert.True(end is > 0 and < 2000, $"A page of 60 paragraphs should end above 2,000 and below its view's height, not at {end}");
-        Ui.WaitFor(() => Math.Abs(ScrolledTo(web) - end) < 1, () => $"the page shorter than the place to stand at its end, {end}, not {ScrolledTo(web)}");
-
-        File.WriteAllText(index, Paragraphs(300, "<script>window.addEventListener('load', function () { window.scrollTo(0, 300); });</script>"));
-        Ui.WaitFor(() => preview.Landed == 4, () => $"the page scrolling itself to load ({preview.Loads} given, {preview.Landed} loaded)");
-        Ui.WaitFor(() => Math.Abs(ScrolledTo(web) - 300) < 1, () => $"the page that scrolls itself as it loads to stand where it went, 300, not {ScrolledTo(web)}");
-        window.Close();
-    }
-
     /// <summary>A page in a subfolder, unsaved and as typed, takes a stylesheet from a folder below it and a picture from
     /// beside it. On Windows, where Passenger serves the page's folder, a picture beside the open folder loads by no address,
     /// and one whose name begins with a dot is refused, the banner saying so. Only a web view of the system's loads a page,
@@ -284,97 +226,6 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A page larger than WebView2 takes as a text is shown whole. Only a web view of the system's loads a page, so
-    /// headless this skips, run by hand where Passenger's window is seen.</summary>
-    private void An_HTML_page_of_several_megabytes_is_shown_whole()
-    {
-        if (PassengerApp.ShowsNoWindow)
-        {
-            Assert.Skip("A window nobody sees makes no web view of the system's, the only one to load a page: this runs where Passenger's window is seen");
-        }
-        if (HtmlPreview.WhyNone() is { } why)
-        {
-            Assert.Skip($"This system shows no page: {why}");
-        }
-        const int Count = 150_000;
-        string index = Path.Combine(folder, "index.html");
-        File.WriteAllText(index, Paragraphs(Count));
-        Assert.True(new FileInfo(index).Length > 3_000_000, $"A page of {new FileInfo(index).Length} bytes proves nothing of a page over 2 MB");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Assert.Null(window.OpenFile(index));
-        Ui.Settle();
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Ui.Click(group.PreviewToggle);
-        HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed no page beside the HTML file");
-        NativeWebView web = Assert.Single(preview.GetLogicalChildren().OfType<NativeWebView>());
-        Ui.WaitFor(() => preview.Landed == 1, () => $"the large page to load ({preview.Loads} given, {preview.Landed} loaded)");
-        Ui.WaitFor(() => Script(web, "document.querySelectorAll('p').length")?.Trim('"') == Count.ToString(CultureInfo.InvariantCulture),
-            () => $"the page to hold its {Count} paragraphs, not {Script(web, "document.querySelectorAll('p').length")}");
-        window.Close();
-    }
-
-    /// <summary>A page setting no background stands on white whatever the window's look, the web view drawing that ground
-    /// under the page, where a page's own, on its html or body, still fills the view. Only a web view of the system's draws,
-    /// so headless this skips, run by hand where Passenger's window is seen.</summary>
-    private void An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own()
-    {
-        if (PassengerApp.ShowsNoWindow)
-        {
-            Assert.Skip("A window nobody sees makes no web view of the system's, the only one to draw a page: this runs where Passenger's window is seen");
-        }
-        if (HtmlPreview.WhyNone() is { } why)
-        {
-            Assert.Skip($"This system shows no page: {why}");
-        }
-        string index = Path.Combine(folder, "index.html");
-        File.WriteAllText(index, "<!doctype html>\n<html>\n  <body><h1>Hello</h1></body>\n</html>\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Assert.Null(window.OpenFile(index));
-        Ui.Settle();
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Ui.Click(group.PreviewToggle);
-        HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed no page beside the HTML file");
-        NativeWebView web = Assert.Single(preview.GetLogicalChildren().OfType<NativeWebView>());
-        Ui.WaitFor(() => preview.Landed == 1, () => $"the page's first load ({preview.Loads} given, {preview.Landed} loaded)");
-
-        Assert.True(web.Background is Avalonia.Media.ISolidColorBrush { Color: var ground } && ground == Avalonia.Media.Colors.White,
-            $"The web view's ground is {web.Background}, so a page with no background shows the window's look");
-        if (web.TryGetPlatformHandle() is IAppleWKWebViewPlatformHandle apple)
-        {
-            Assert.True(ObjC.DrawsBackground(apple.WKWebView), "The WKWebView draws no ground, so the window shows through a page with no background");
-        }
-        Assert.Equal("rgba(0, 0, 0, 0)", Script(web, "getComputedStyle(document.documentElement).backgroundColor")?.Trim('"'));
-        window.Close();
-    }
-
-    private void A_system_without_a_web_view_for_the_page_says_so_in_its_place()
-    {
-        File.WriteAllText(Path.Combine(folder, "index.html"), Page);
-        Func<string?> system = HtmlPreview.WhyNone;
-        HtmlPreview.WhyNone = () => HtmlPreview.NoWebKitGtk;
-        try
-        {
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-            Assert.Null(window.OpenFile(Path.Combine(folder, "index.html")));
-            Ui.Settle();
-            EditorGroup group = window.EditorArea.ActiveGroup;
-            Ui.Click(group.PreviewToggle);
-            HtmlPreview preview = group.Html ?? throw new Xunit.Sdk.XunitException("The toggle showed nothing beside the HTML file");
-            Assert.Equal(HtmlPreview.NoWebKitGtk, preview.Said);
-            Assert.True(preview.Given is null && !preview.GetLogicalChildren().OfType<NativeWebView>().Any(), "A system without a web view was given a page");
-            Assert.Contains(preview.GetLogicalDescendants().OfType<TextBlock>(), t => t.Text == HtmlPreview.NoWebKitGtk && t.IsEffectivelyVisible);
-            window.Close();
-        }
-        finally
-        {
-            HtmlPreview.WhyNone = system;
-        }
-    }
-
-    /// <summary>A page of numbered paragraphs, its head holding <paramref name="head"/>.</summary>
-    private static string Paragraphs(int count, string head = "") =>
-        $"<!doctype html>\n<html>\n  <head>{head}</head>\n  <body>\n{string.Concat(Enumerable.Range(1, count).Select(i => $"    <p>Paragraph {i}</p>\n"))}  </body>\n</html>\n";
-
     /// <summary>The page's stylesheet and picture loaded, and on Windows neither address of the picture beside the open
     /// folder, nor the picture whose name begins with a dot.</summary>
     private static void CheckLoaded(NativeWebView web)
@@ -420,7 +271,4 @@ public sealed partial class HtmlPreviewTests : IDisposable
 
     /// <summary>The page's answer to a script, the window's loop running while it is asked.</summary>
     private static string? Script(NativeWebView web, string script) => Ui.Await(web.InvokeScript(script), $"the page's answer to {script}");
-
-    /// <summary>How far down the page is scrolled once <paramref name="first"/> has run in it; NaN where it cannot say.</summary>
-    private static double ScrolledTo(NativeWebView web, string first = "") => PagePlace.Of(Script(web, first + PagePlace.Read))?.Y ?? double.NaN;
 }

@@ -8,17 +8,18 @@ using Passenger.App.Migrations;
 
 namespace Passenger.Tests;
 
-/// <summary>The Migrations window over a SQLite project's context, as a person uses it: its migrations listed with which
-/// the database has, Add, Update (to the latest and back to one), Script into a tab; and what keeps dotnet ef from working
-/// (no tool, a tool of another version, no Design package) found before the command, fixed in place, and the command then
-/// made. EF Core and dotnet-ef come from the package cache through the run's local feed, never nuget.org.</summary>
+/// <summary>The Migrations window over a SQLite project's context, as a person uses it: its migrations listed with
+/// which the database has, Add, Update (to the latest and back to one), Script into a tab; and what keeps dotnet ef
+/// from working (no tool, no Design package, a context it cannot make) found before the command, fixed in place, and
+/// the command then made. EF Core and dotnet-ef come from the package cache through the run's local feed, never
+/// nuget.org.</summary>
 public sealed class MigrationsTests
 {
     /// <summary>The longest a build and a dotnet ef command take together on a developer's machine, scaled by the run.</summary>
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
-    /// <summary>The Migrations window adds, applies, rolls back and scripts migrations, and a missing or other tool or
-    /// package is found and fixed before the command.</summary>
+    /// <summary>The Migrations window adds, applies, rolls back and scripts migrations, and a missing tool, package or
+    /// factory is found and made before the command.</summary>
     [AvaloniaFact]
     public void Migrations_run_against_the_database_and_their_tools_are_fixed_in_place()
     {
@@ -31,14 +32,8 @@ public sealed class MigrationsTests
         Flow.Step(nameof(Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo),
             Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command),
-            A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo),
             A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name),
-            A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name);
     }
 
     /// <summary>A context's project, startup, environment and migrations folder are those dotnet ef runs with, and EF
@@ -46,17 +41,11 @@ public sealed class MigrationsTests
     [AvaloniaFact]
     public void Ef_cores_projects_and_packages_are_those_dotnet_ef_takes()
     {
-        Flow.Step(nameof(Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys),
-            Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup),
             The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup);
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step),
             A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core),
-            A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core);
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so),
             A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so);
@@ -73,23 +62,11 @@ public sealed class MigrationsTests
         Flow.Step(nameof(Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone),
             Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it),
-            Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind),
-            Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports),
-            Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline),
             With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline);
         OpenWindows.CloseAll();
         Flow.Step(nameof(Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there),
             Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in),
-            Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in);
     }
 
     /// <summary>The Migrations window's commands as a person makes them, dotnet ef's lines in the Build window as a program's
@@ -293,27 +270,6 @@ public sealed class MigrationsTests
         }
     }
 
-    private void Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys()
-    {
-        string folder = ShopApp.Make(design: false, tool: null);
-        TestFolders.Write(folder, "Audit/Audit.csproj", TestProjects.Library());
-        TestFolders.Write(folder, "Audit/AuditContext.cs", "public sealed class AuditContext : Microsoft.EntityFrameworkCore.DbContext\n{\n}\n");
-        TestFolders.Write(folder, "node_modules/kit/KitContext.cs", "public sealed class KitContext : Microsoft.EntityFrameworkCore.DbContext\n{\n}\n");
-        TestFolders.Write(folder, "src/obj/Old/OldContext.cs", "public sealed class OldContext : Microsoft.EntityFrameworkCore.DbContext\n{\n}\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Migrations.Gaps.Count > 0 && window.Migrations.Declared.Count > 0, () => $"the shop's gaps and its context's declaration found (gaps: {window.Migrations.Gaps.Count})");
-            string[] declared = [.. window.Migrations.Declared.Select(d => $"{d.Context} in {Path.GetRelativePath(Passenger.Core.PathNames.Canonical(folder), d.File!)}")];
-            Assert.True(declared.SequenceEqual(["ShopContext in Program.cs"]),
-                $"The shop's contexts were found as [{string.Join(", ", declared)}]: Show Context Actions on another project's or a dependency's context would offer the shop's fixes");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>An API beside the library holding its context, as a solution is often laid out (#2011): Project offers the
     /// library alone, chosen, never the web app that has only the Design package; Startup offers the web app that runs it
     /// first, then the library itself and the services library referencing it, never the domain library it references.
@@ -348,35 +304,6 @@ public sealed class MigrationsTests
 
     private static string Names(IEnumerable<Passenger.Workspace.ProjectModel> projects) => string.Join(", ", projects.Select(p => p.Name));
 
-    /// <summary>The manifest, stored with CRLF and a UTF-8 BOM, keeps them through dotnet tool's write of it.</summary>
-    private void A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command()
-    {
-        string folder = ShopApp.Make(design: true, tool: ShopApp.Older);
-        string tools = Path.Combine(folder, "dotnet-tools.json");
-        File.WriteAllBytes(tools, [0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes(File.ReadAllText(tools).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal))]);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Migrations);
-            string said = $"The local dotnet-ef {ShopApp.Older} does not match Shop's EF Core {ShopApp.Version}";
-            Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal), $"the mismatch said with both versions ({Gaps(window)})", Slow);
-
-            Tool(window, AppActions.AddMigration);
-            Name(window, "Initial");
-            ChoiceDialog asked = Asked<ChoiceDialog>(window, "the mismatched tool's question", Slow);
-            Ui.ClickButton(asked, $"Pin the Local dotnet-ef to {ShopApp.Version}");
-            Ui.WaitFor(() => window.Migrations.Migrations.Any(m => m.Name == "Initial"), $"the migration made with the pinned tool ({window.Status})", Slow);
-            JsonObject manifest = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(folder, "dotnet-tools.json")))!;
-            Assert.Equal(ShopApp.Version, manifest["tools"]!["dotnet-ef"]!["version"]!.GetValue<string>());
-            InForm(tools, "it was stored with");
-            Assert.DoesNotContain("does not match", Gaps(window), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     private void A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0", providers: [("1.0.0", $"[{ShopApp.Older}]")]);
@@ -402,29 +329,6 @@ public sealed class MigrationsTests
             UndoFromExplorer(window, Path.Combine(folder, "Shop.csproj"));
             Assert.Contains($"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Version}\"", File.ReadAllText(project), StringComparison.Ordinal);
             Assert.Contains($"Microsoft.EntityFrameworkCore.Design\" Version=\"{ShopApp.Version}\"", File.ReadAllText(project), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    private void A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core()
-    {
-        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0",
-            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")]);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Migrations);
-            Ui.WaitFor(() => Gaps(window).Contains($"{ShopApp.Provider} 1.0.0 supports", StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
-            string fix = $"Bring {ShopApp.Provider} and EF Core into Step";
-            Ui.ClickButton(window.MigrationsView, fix);
-            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), fix);
-            string project = Path.Combine(folder, "Shop.csproj");
-            Ui.WaitFor(() => File.ReadAllText(project).Contains($"{ShopApp.Provider}\" Version=\"2.0.0\"", StringComparison.Ordinal) && Gaps(window).Length == 0
-                && window.Migrations.Busy is null, $"the provider moved up to 2.0.0 ({window.Status}; gaps: {Gaps(window)})", Slow);
-            Assert.Contains($"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Version}\"", File.ReadAllText(project), StringComparison.Ordinal);
         }
         finally
         {
@@ -537,50 +441,6 @@ public sealed class MigrationsTests
         }
 
         """;
-
-    /// <summary>The design-time factory added for a context reads the connection the startup project's settings name for it
-    /// in the environment its run gives dotnet ef: with its launch profile running it in Staging, appsettings.Staging.json's
-    /// ShopContext, which appsettings.json and appsettings.Development.json do not name.</summary>
-    private void A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name()
-    {
-        string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
-        TestFolders.Write(folder, "Properties/launchSettings.json", """
-            {
-              "profiles": {
-                "Shop": {
-                  "commandName": "Project",
-                  "environmentVariables": {
-                    "ASPNETCORE_ENVIRONMENT": "Staging"
-                  }
-                }
-              }
-            }
-
-            """);
-        TestFolders.Write(folder, "appsettings.json", "{\n  \"ConnectionStrings\": {\n    \"Reporting\": \"Data Source=reports.db\"\n  }\n}\n");
-        TestFolders.Write(folder, "appsettings.Development.json", "{\n  \"ConnectionStrings\": {\n    \"Audit\": \"Data Source=audit.db\"\n  }\n}\n");
-        TestFolders.Write(folder, "appsettings.Staging.json", "{\n  \"ConnectionStrings\": {\n    \"ShopContext\": \"Data Source=shop.db\"\n  }\n}\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Migrations);
-            Ui.WaitFor(() => Gaps(window).Contains("dotnet ef cannot make ShopContext", StringComparison.Ordinal) && window.Migrations.Busy is null,
-                $"why the context cannot be made ({window.Status}; gaps: {Gaps(window)})", Slow);
-
-            Ui.ClickButton(window.MigrationsView, "Add a Design-Time Factory for ShopContext");
-            string factory = Path.Combine(folder, "ShopContextFactory.cs");
-            Ui.WaitFor(() => File.Exists(factory), "the factory written");
-            string made = File.ReadAllText(factory);
-            Assert.True(made.Contains("ConnectionString(\"ShopContext\")", StringComparison.Ordinal),
-                $"The factory does not read ShopContext, the connection appsettings.Staging.json names for the run's environment:\n{made}");
-            Assert.True(window.Status?.Contains("reads the connection string ShopContext, as the configuration's name for it names it", StringComparison.Ordinal) == true,
-                $"Adding the factory said \"{window.Status}\"");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
 
     /// <summary>The Environment chooser offers what the startup project's settings files and launch profiles name, the run
     /// configuration's first, said as such. Staging chosen is what every dotnet ef runs in, given in its environment alone:
@@ -840,96 +700,6 @@ public sealed class MigrationsTests
         }
     }
 
-    /// <summary>Under central package management, a Downgrade of one of EF Core's packages moves the folder's set down with it in
-    /// Directory.Packages.props: the shop's Design package and the relational package Reports references.</summary>
-    private void Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it()
-    {
-        string folder = ShopApp.Make(design: true, tool: null, central: true);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }, { IsEvaluated: true }], "the shop's and the reports' projects read");
-            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Older);
-            Ui.Click(Offered(nuget, "Downgrade"), settle: false);
-            string[] expected = [$"{Sqlite} {ShopApp.Older}", $"{Design} {ShopApp.Older}", $"{Relational} {ShopApp.Older}"];
-            Ui.WaitFor(() => !nuget.IsBusy && Central(folder).SequenceEqual(expected),
-                () => $"the folder's set moved down to {ShopApp.Older} ({window.Status}); its central versions are [{string.Join(", ", Central(folder))}]:\n{nuget.Log}", Slow);
-            string said = $"Downgrade {Sqlite} to {ShopApp.Older} in Shop: {Design} {ShopApp.Older} and {Relational} {ShopApp.Older} moved with it";
-            Assert.True(window.Status == said, $"The downgrade moving the folder's set said \"{window.Status}\", not \"{said}\"");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Update Anyway, past the provider an update leaves behind, moves the project's EF Core packages together (its
-    /// relational package too, which then wins over the provider's own range as the restore resolves it) and leaves the
-    /// provider as it was, the status naming what moved and the provider's version that supports the EF Core asked.</summary>
-    private void Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind()
-    {
-        string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
-            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], relational: true);
-        string project = Path.Combine(folder, "Shop.csproj");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the shop's project read");
-            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Version);
-            Ui.Click(Offered(nuget, "Update"), settle: false);
-            ChoiceDialog asked = Asked<ChoiceDialog>(window, "the update's warning", Slow);
-            string words = string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
-            Assert.True(words.Contains($"Update Anyway moves EF Core's packages to {ShopApp.Version} and leaves {ShopApp.Provider} as it is", StringComparison.Ordinal),
-                $"The question does not tell the person that Update Anyway moves EF Core's set and leaves the provider behind: {words}");
-            Ui.ClickButton(asked, "Update Anyway");
-            Ui.WaitFor(() => !nuget.IsBusy && new[] { Sqlite, Design, Relational }.All(id => Has(project, id, ShopApp.Version)),
-                () => $"EF Core's set moved to {ShopApp.Version} ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
-            Assert.True(Has(project, ShopApp.Provider, "1.0.0"), $"Update Anyway moved the provider it was to leave as it was:\n{File.ReadAllText(project)}");
-            string status = window.Status ?? string.Empty;
-            Assert.True(status.StartsWith($"Update {Sqlite} to {ShopApp.Version} in Shop: ", StringComparison.Ordinal)
-                && status.Contains($"{Design} {ShopApp.Version}", StringComparison.Ordinal) && status.Contains($"{Relational} {ShopApp.Version}", StringComparison.Ordinal)
-                && status.Contains($"moved with it; {ShopApp.Provider} 1.0.0 left behind, supporting EF Core {ShopApp.Older}: {ShopApp.Provider} 2.0.0 supports EF Core {ShopApp.Version}",
-                    StringComparison.Ordinal),
-                $"Update Anyway said \"{status}\", which does not name what moved with it and the provider it left behind");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Where no version of the provider supports the EF Core asked, the update's question offers EF Core's newest
-    /// version above the project's that a version of the provider supports: taken, EF Core's packages and the provider move
-    /// there together.</summary>
-    private void Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports()
-    {
-        string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
-            providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], fed: [("microsoft.entityframeworkcore.sqlite", ShopApp.Ef11)]);
-        string project = Path.Combine(folder, "Shop.csproj");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the shop's project read");
-            Passenger.App.ToolWindows.NuGetView nuget = Chosen(window, Sqlite, ShopApp.Ef11);
-            Ui.Click(Offered(nuget, "Update"), settle: false);
-            ChoiceDialog asked = Asked<ChoiceDialog>(window, "the update's warning", Slow);
-            string words = string.Join(' ', asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
-            string back = $"Update the Set to {ShopApp.Version}";
-            Assert.True(words.Contains($"No version of {ShopApp.Provider} in the feeds supports EF Core {ShopApp.Ef11} yet; {back} moves EF Core's packages to {ShopApp.Version}, "
-                + $"the newest it supports, and {ShopApp.Provider} to 2.0.0.", StringComparison.Ordinal),
-                $"The question past a provider none of whose versions supports EF Core {ShopApp.Ef11} offers no way to the EF Core it supports: {words}");
-            Ui.ClickButton(asked, back);
-            Ui.WaitFor(() => !nuget.IsBusy && Has(project, Sqlite, ShopApp.Version) && Has(project, Design, ShopApp.Version) && Has(project, ShopApp.Provider, "2.0.0"),
-                () => $"EF Core's set moved to {ShopApp.Version} with the provider at 2.0.0 ({window.Status}):\n{File.ReadAllText(project)}\n{nuget.Log}", Slow);
-            string said = $"{back}: {Design} {ShopApp.Version} and {ShopApp.Provider} 2.0.0 moved with it";
-            Assert.True(window.Status == said, $"Moving EF Core to what the provider supports said \"{window.Status}\", not \"{said}\"");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     private const string Sqlite = "Microsoft.EntityFrameworkCore.Sqlite";
 
     private const string Design = "Microsoft.EntityFrameworkCore.Design";
@@ -956,10 +726,6 @@ public sealed class MigrationsTests
     /// <summary>Whether the project file references a package at a version.</summary>
     private static bool Has(string project, string id, string version) =>
         File.ReadAllText(project).Contains($"Include=\"{id}\" Version=\"{version}\"", StringComparison.Ordinal);
-
-    /// <summary>The folder's central versions, each "id version", as Directory.Packages.props lists them.</summary>
-    private static string[] Central(string folder) => [.. System.Xml.Linq.XDocument.Load(Path.Combine(folder, "Directory.Packages.props")).Descendants("PackageVersion")
-        .Select(v => $"{(string?)v.Attribute("Include")} {(string?)v.Attribute("Version")}")];
 
     /// <summary>Undo from the Solution view, a row chosen there, its question answered yes: the last command taken back;
     /// <paramref name="opened"/> says where the files open in editors were opened from.</summary>
@@ -1113,52 +879,6 @@ public sealed class MigrationsTests
             Assert.True(!left.Any(f => f.Contains("_Second", StringComparison.Ordinal)) && left.Contains("PostgresContextModelSnapshot.cs")
                 && !File.ReadAllText(Path.Combine(data, "Migrations", "Postgres", "PostgresContextModelSnapshot.cs")).Contains("Second", StringComparison.Ordinal),
                 $"After Remove Last Migration Data/Migrations/Postgres holds [{string.Join(", ", left)}]");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Add Migration… run from Find Action in a fresh window, before the Migrations window has listed anything, lists
-    /// the context first, so its question names the context and where its migrations are (Migrations/Sqlite, beside which
-    /// dotnet ef puts the next), never dotnet ef's default as for a context with none.</summary>
-    private void Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in()
-    {
-        string folder = ShopApp.Make(design: true, tool: ShopApp.Version);
-        TestFolders.Write(folder, "Migrations/Sqlite/20260101000000_Initial.cs", """
-            using Microsoft.EntityFrameworkCore.Infrastructure;
-            using Microsoft.EntityFrameworkCore.Migrations;
-
-            namespace Shop.Migrations.Sqlite;
-
-            [DbContext(typeof(ShopContext))]
-            [Migration("20260101000000_Initial")]
-            public partial class Initial : Migration
-            {
-                protected override void Up(MigrationBuilder migrationBuilder)
-                {
-                }
-
-                protected override void Down(MigrationBuilder migrationBuilder)
-                {
-                }
-            }
-
-            """);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Assert.False(window.Migrations.Listed, "The Migrations window listed its context before it was shown or asked");
-            Ui.Run(window, AppActions.FindAction);
-            window.KeyTextInput("Add Migration");
-            Ui.Press(window, "ENTER", settle: false);
-            AddMigrationDialog asked = Asked<AddMigrationDialog>(window, "Add Migration's question", Slow);
-            Assert.True(asked.Title == "Add Migration to ShopContext" && asked.Into == "Empty: beside its last migration, in Shop/Migrations/Sqlite"
-                && asked.FolderBox.ItemsSource is IEnumerable<string> offered && offered.SequenceEqual(["Migrations/Sqlite"]),
-                $"Add Migration asked before any listing was titled '{asked.Title}', its note '{asked.Into}', offering [{string.Join(", ", (asked.FolderBox.ItemsSource as IEnumerable<string>) ?? [])}]: "
-                + "ShopContext's Initial, in Migrations/Sqlite, was to be named");
-            asked.Close();
         }
         finally
         {

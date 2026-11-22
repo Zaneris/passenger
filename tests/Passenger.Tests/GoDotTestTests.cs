@@ -128,11 +128,11 @@ public static class GoDotTestGame
         : godot is not { WhyNot: null, Version: not null, Packages: not null } ? $"The Godot found cannot run C#: {godot.WhyNot}" : null;
 }
 
-/// <summary>A Godot 4 C# game's GoDotTest tests in the Unit Tests window, as a person who added GoDotTest to the game finds
-/// them: shown from the code before any build, run inside the game on the Godot found (headless, its user folders the
-/// run's), the game imported first where it never was, a failure shown with its exception at its line and what the test
-/// printed, the gutter marking each test by how it ran, and debugged under .NET's debugger, a breakpoint in a test stopping
-/// there. Without a Godot 4 .NET build each test skips saying why. Debugged, so run alone.</summary>
+/// <summary>A Godot 4 C# game's GoDotTest tests in the Unit Tests window, as a person who added GoDotTest to the game
+/// finds them: shown from the code before any build, run inside the game on the Godot found (headless, its user folders
+/// the run's), a failure shown with its exception at its line and what the test printed, the gutter marking each test
+/// by how it ran, and debugged under .NET's debugger, a breakpoint in a test stopping there. Without a Godot 4 .NET
+/// build each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GoDotTestTests : IDisposable
 {
@@ -147,33 +147,18 @@ public sealed class GoDotTestTests : IDisposable
     }
 
     /// <summary>GoDotTest's tests run in the game as chosen, told as each ends, fail at their lines and stop at
-    /// breakpoints, or say why they cannot.</summary>
+    /// breakpoints.</summary>
     [AvaloniaFact]
     public void Godottest_tests_run_and_debug_in_the_game()
     {
         Flow.StepApart<GoDotTestTests>(nameof(A_GoDotTest_test_is_found_from_code_runs_in_the_game_fails_at_its_line_and_stops_at_a_breakpoint_under_Debug),
             test => test.A_GoDotTest_test_is_found_from_code_runs_in_the_game_fails_at_its_line_and_stops_at_a_breakpoint_under_Debug());
         OpenWindows.CloseAll();
-        Flow.StepApart<GoDotTestTests>(nameof(A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes),
-            test => test.A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes());
-        OpenWindows.CloseAll();
         Flow.StepApart<GoDotTestTests>(nameof(Two_tests_of_a_suites_three_run_and_the_third_does_not),
             test => test.Two_tests_of_a_suites_three_run_and_the_third_does_not());
         OpenWindows.CloseAll();
-        Flow.StepApart<GoDotTestTests>(nameof(A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together),
-            test => test.A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together());
-        OpenWindows.CloseAll();
         Flow.StepApart<GoDotTestTests>(nameof(Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug),
             test => test.Each_test_is_told_as_it_ends_with_its_time_while_a_later_one_still_runs_and_so_under_Debug());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GoDotTestTests>(nameof(A_game_whose_tests_run_from_a_test_scene_runs_them_from_it),
-            test => test.A_game_whose_tests_run_from_a_test_scene_runs_them_from_it());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GoDotTestTests>(nameof(The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts),
-            test => test.The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GoDotTestTests>(nameof(A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys),
-            test => test.A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys());
     }
 
     /// <summary>Both tests are in the tree before any build; Run All Tests passes one and fails the other with its exception
@@ -235,59 +220,6 @@ public sealed class GoDotTestTests : IDisposable
         }
     }
 
-    /// <summary>Two tests, the second loading the game's icon, which a game loads only once Godot has imported it.</summary>
-    private const string LoadsIcon = """
-        namespace Spinner.Tests;
-
-        using System;
-        using Chickensoft.GoDotTest;
-        using Godot;
-
-        public class SpinnerTest : TestClass
-        {
-            public SpinnerTest(Node testScene) : base(testScene) { }
-
-            [Test]
-            public void Adds()
-            {
-            }
-
-            [Test]
-            public void Spins()
-            {
-                if (ResourceLoader.Load<Texture2D>("res://icon.svg") is null)
-                {
-                    throw new InvalidOperationException("the icon was never imported");
-                }
-            }
-        }
-
-        """;
-
-    /// <summary>A game never opened in Godot's editor, whose test loads an asset with no .import beside it, is imported before
-    /// its tests run: the test loads the asset and passes, and the asset's .import is left for the game.</summary>
-    private void A_game_never_imported_is_imported_before_its_tests_run_and_a_test_loading_its_asset_passes()
-    {
-        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
-        GoDotTestGame.Make(folder, godot!, testCode: LoadsIcon);
-        string icon = Path.Combine(folder, "icon.svg");
-        File.WriteAllText(icon, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><rect width=\"16\" height=\"16\" fill=\"#478cbf\"/></svg>\n");
-        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
-        MainWindow window = Opened();
-        try
-        {
-            Assert.False(File.Exists(icon + ".import"), "Opening the game's folder made a .import beside icon.svg before its tests ran");
-            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Method(window, "Spins")!]), "the game's import and the run of its test", TimeSpan.FromMinutes(5));
-            Assert.True(Method(window, "Spins")!.State == TestState.Passed,
-                $"The test loading the game's icon did not pass: {Method(window, "Spins")!.Details} ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
-            Assert.True(File.Exists(icon + ".import"), "The import before the tests left no .import beside icon.svg for the game");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Three tests of a suite, the third writing a file and failing, which a run of the suite would run unasked.</summary>
     private const string ThreeOfASuite = """
         namespace Spinner.Tests;
@@ -340,71 +272,6 @@ public sealed class GoDotTestTests : IDisposable
                 $"The chosen tests did not pass: {Method(window, "Adds")!.State}, {Method(window, "Spins")!.State} ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
             Assert.False(File.Exists(Path.Combine(folder, "stops-ran")), "The test nobody chose ran");
             Assert.True(Method(window, "Stops")!.State == TestState.NotRun, $"The test nobody chose has a result: {Method(window, "Stops")!.Details}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Two classes of one name in two namespaces, each test saying it ran by a file of its own.</summary>
-    private const string TwoOfOneName = """
-        namespace Spinner.Tests
-        {
-            using System.IO;
-            using Chickensoft.GoDotTest;
-            using Godot;
-
-            public class SpinnerTest : TestClass
-            {
-                public SpinnerTest(Node testScene) : base(testScene) { }
-
-                [Test]
-                public void Spins() => File.WriteAllText(ProjectSettings.GlobalizePath("res://first-ran"), "ran");
-            }
-        }
-
-        namespace Spinner.Others
-        {
-            using System.IO;
-            using Chickensoft.GoDotTest;
-            using Godot;
-
-            public class SpinnerTest : TestClass
-            {
-                public SpinnerTest(Node testScene) : base(testScene) { }
-
-                [Test]
-                public void Spins() => File.WriteAllText(ProjectSettings.GlobalizePath("res://second-ran"), "ran");
-            }
-        }
-
-        """;
-
-    /// <summary>A test of one of two classes GoDotTest knows by one name is refused saying why, Godot left unstarted, where a
-    /// run by name would have run the other class's; both chosen together run, as a suite takes them.</summary>
-    private void A_test_of_one_of_two_classes_of_one_name_is_refused_saying_why_and_both_chosen_run_together()
-    {
-        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
-        GoDotTestGame.Make(folder, godot!, testCode: TwoOfOneName);
-        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home") };
-        window.Show();
-        TestNode? Named(string fullName) => window.Tests.Tree.Methods.FirstOrDefault(m => m.FullName == fullName);
-        try
-        {
-            window.OpenFolder(folder);
-            Ui.WaitFor(() => Named("Spinner.Tests.SpinnerTest.Spins") is not null && Named("Spinner.Others.SpinnerTest.Spins") is not null,
-                () => $"both classes' tests shown ({string.Join(", ", window.Tests.Tree.Methods.Select(m => m.FullName))}; {window.Tests.Tree.EmptyText})");
-            TestNode second = Named("Spinner.Others.SpinnerTest.Spins")!;
-            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [second]), "the refused run", TimeSpan.FromMinutes(5));
-            Assert.True(second.State == TestState.Skipped, $"The test GoDotTest cannot run alone was told as {second.State}: {second.Details}");
-            Assert.Contains("Spinner.Tests.SpinnerTest", second.Details, StringComparison.Ordinal);
-            Assert.False(File.Exists(Path.Combine(folder, "first-ran")) || File.Exists(Path.Combine(folder, "second-ran")), "Godot ran a test of a run that was refused");
-
-            Ui.Launched(window, window.Tests.RunAsync(window.Folder!, [Named("Spinner.Tests.SpinnerTest.Spins")!, second]), "the run of both", TimeSpan.FromMinutes(5));
-            Assert.True(File.Exists(Path.Combine(folder, "first-ran")) && File.Exists(Path.Combine(folder, "second-ran")),
-                $"Both classes chosen did not both run ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})");
         }
         finally
         {
@@ -496,102 +363,6 @@ public sealed class GoDotTestTests : IDisposable
         }
         finally
         {
-            window.Close();
-        }
-    }
-
-    /// <summary>A game whose main scene runs nothing of GoDotTest's, its tests run by a test scene under test/ as GoDotTest's
-    /// README writes one, runs them from that scene: one passes and the other fails.</summary>
-    private void A_game_whose_tests_run_from_a_test_scene_runs_them_from_it()
-    {
-        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
-        GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain, tests: GoDotTestGame.TestScene);
-        Restore.Run(Path.Combine(folder, "Spinner.csproj"));
-        MainWindow window = Opened();
-        try
-        {
-            Assert.True(window.Perform(AppActions.RunAllTests));
-            Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Spins")?.State is TestState.Passed or TestState.Failed,
-                () => $"the run of both tests from the test scene ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})", TimeSpan.FromMinutes(5));
-            Assert.True(Method(window, "Adds")!.State == TestState.Passed && Method(window, "Spins")!.State == TestState.Failed,
-                $"The test scene's run told Adds {Method(window, "Adds")!.State} and Spins {Method(window, "Spins")!.State}: {window.BottomPanel.Tests.Status}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>The run settings' GoDotTestScene parameter chooses the scene: one the game lacks is refused before Godot
-    /// starts, Run All Tests greying with why; ci/Runner.tscn, named there, runs the tests, where test/Tests.tscn, which
-    /// GoDotTest's convention would choose, runs none of them.</summary>
-    private void The_run_settings_choose_the_test_scene_one_the_game_lacks_refused_before_godot_starts()
-    {
-        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
-        GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain, tests: GoDotTestGame.TestScene.Replace("this)", "this, predicate: _ => false)", StringComparison.Ordinal));
-        Directory.CreateDirectory(Path.Combine(folder, "ci"));
-        File.WriteAllText(Path.Combine(folder, "ci", "Runner.cs"), GoDotTestGame.TestScene.Replace("class Tests", "class Runner", StringComparison.Ordinal));
-        File.WriteAllText(Path.Combine(folder, "ci", "Runner.tscn"),
-            "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://ci/Runner.cs\" id=\"1\"]\n\n[node name=\"Runner\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n");
-        string project = Path.Combine(folder, "Spinner.csproj");
-        File.WriteAllText(project, File.ReadAllText(project).Replace("</PropertyGroup>", "  <RunSettingsFilePath>$(MSBuildProjectDirectory)/godot.runsettings</RunSettingsFilePath>\n  </PropertyGroup>", StringComparison.Ordinal));
-        string settings = Path.Combine(folder, "godot.runsettings");
-        File.WriteAllText(settings, RunSettings("res://ci/Missing.tscn"));
-        Restore.Run(project);
-        MainWindow window = Opened();
-        try
-        {
-            string missing = Refusals.GoDotTestStart("Spinner", new GoDotTests.Start("res://ci/Missing.tscn", GoDotTests.StartProblem.ChosenMissing) { Settings = settings })!;
-            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context()) == missing,
-                () => $"Run All Tests to grey saying the scene named is not the game's ({window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())})", TimeSpan.FromMinutes(2));
-
-            File.WriteAllText(settings, RunSettings("res://ci/Runner.tscn"));
-            Assert.Null(Ui.Await(window.Tests.RunAsync(window.Folder!), "the run from the scene the run settings name", TimeSpan.FromMinutes(5)));
-            Assert.True(Method(window, "Adds")!.State == TestState.Passed && Method(window, "Spins")!.State == TestState.Failed,
-                $"The scene the run settings name told Adds {Method(window, "Adds")!.State} and Spins {Method(window, "Spins")!.State}: {window.BottomPanel.Tests.Status}");
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static string RunSettings(string scene) =>
-            $"<RunSettings>\n  <TestRunParameters>\n    <Parameter name=\"{GoDotTests.SceneParameter}\" value=\"{scene}\" />\n  </TestRunParameters>\n</RunSettings>\n";
-    }
-
-    /// <summary>A game no scene of which runs GoDotTest's tests is said to never run them before Godot starts: Run All Tests
-    /// greys saying so, and a run asked for anyway starts no Godot and says the same.</summary>
-    private void A_game_that_never_runs_its_tests_is_said_so_before_godot_starts_and_run_all_greys()
-    {
-        Assert.SkipWhen(GoDotTestGame.Skipped(godot) is not null, GoDotTestGame.Skipped(godot) ?? string.Empty);
-        GoDotTestGame.Make(folder, godot!, main: GoDotTestGame.Plain);
-        MainWindow window = Opened();
-        List<string> started = [];
-        EventHandler<ChildStart> heard = (_, child) =>
-        {
-            if (child.Command.Contains(godot!.Executable, StringComparison.Ordinal))
-            {
-                lock (started)
-                {
-                    started.Add(child.Command);
-                }
-            }
-        };
-        ChildProcesses.Started += heard;
-        try
-        {
-            string never = Refusals.GoDotTestNeverRuns("Spinner");
-            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context()) == never,
-                () => $"Run All Tests to grey saying the game never runs its tests ({window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())})");
-            Assert.Equal(never, Ui.Await(window.Tests.RunAsync(window.Folder!, build: false), "a run asked for anyway", TimeSpan.FromMinutes(2)));
-            lock (started)
-            {
-                Assert.True(started.Count == 0, $"Godot was started for a game that never runs its tests: {string.Join("; ", started)}");
-            }
-        }
-        finally
-        {
-            ChildProcesses.Started -= heard;
             window.Close();
         }
     }

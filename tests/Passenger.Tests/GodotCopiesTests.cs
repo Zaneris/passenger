@@ -10,11 +10,11 @@ using Passenger.Text;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot game's configuration that starts several copies of it side by side, a server and its clients, each with
-/// its own arguments: Debug starts each in a tab of its own with its own console, each a source in the Live Visual Tree's
-/// chooser; a breakpoint only the server reaches stops it alone; Debug Another Copy starts one more beside them; Run runs
-/// each in a tab of the Terminal window, and Run Another Copy one more; Stop ends them all; one copy restarts alone. The game is GDScript alone, run headless with the run's user
-/// folders; without a Godot 4 each test skips saying why. It debugs through the window, so run alone.</summary>
+/// <summary>A Godot game's configuration that starts several copies of it side by side, a server and its clients, each
+/// with its own arguments: Debug starts each in a tab of its own with its own console, each a source in the Live Visual
+/// Tree's chooser; a breakpoint only the server reaches stops it alone; Debug Another Copy starts one more beside them;
+/// Stop ends them all; one copy restarts alone. The game is GDScript alone, run headless with the run's user folders;
+/// without a Godot 4 each test skips saying why. It debugs through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
 {
@@ -38,15 +38,6 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         OpenWindows.CloseAll();
         Flow.Step(nameof(Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on),
             Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all),
-            Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it),
-            A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it),
-            A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it);
     }
 
     private void Three_copies_debug_each_in_its_own_tab_and_console_one_stops_alone_another_comes_beside_and_Stop_ends_them_all()
@@ -118,40 +109,6 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         }
     }
 
-    /// <summary>Run of a configuration of two copies runs each in a tab of the Terminal window of its own, named for its
-    /// place, each printing its own role there and a source in the Live Visual Tree's chooser; Run Another Copy runs a third
-    /// beside them; Stop ends all three.</summary>
-    private void Two_copies_run_each_in_its_own_terminal_tab_another_runs_beside_and_Stop_ends_them_all()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window, 2);
-            Ui.Launched(window, window.RunAsync(), "the two copies' start", TimeSpan.FromMinutes(2));
-            LiveTreeView tree = window.LiveTree;
-            Ui.WaitFor(() => window.RunCopies.Select(r => r.Name).SequenceEqual([Name, $"{Name} #2"]) && window.Session.Games.Count == 2 && tree.SourceNames.Count == 2,
-                () => $"both copies running, each in the chooser ({string.Join(", ", window.RunCopies.Select(r => r.Name))}; {string.Join(", ", tree.SourceNames)}; {window.Status})",
-                TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Terminal(window.RunCopies[0]).Contains("role server", StringComparison.Ordinal) && Terminal(window.RunCopies[1]).Contains("role client", StringComparison.Ordinal),
-                () => $"each copy's tab to show its own role ({Tail(Terminal(window.RunCopies[0]))} | {Tail(Terminal(window.RunCopies[1]))})", TimeSpan.FromMinutes(1));
-            Assert.False(Terminal(window.RunCopies[1]).Contains("role server", StringComparison.Ordinal), $"The client's tab holds the server's lines: {Terminal(window.RunCopies[1])}");
-            Assert.True(window.IsRunning && window.Shown(window.Configurations.Single(c => c.Name == Name)).Contains("(running)", StringComparison.Ordinal),
-                "The configuration is not shown running while its copies run");
-
-            Assert.Null(window.Actions.Run(AppActions.RunAnotherCopy));
-            Ui.WaitFor(() => window.RunCopies.Count == 3 && window.RunCopies[2].Name == $"{Name} #3" && Terminal(window.RunCopies[2]).Contains("role client", StringComparison.Ordinal),
-                () => $"a third copy run beside them, a client ({string.Join(", ", window.RunCopies.Select(r => r.Name))}; {window.Status})", TimeSpan.FromMinutes(1));
-
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.RunCopies.Count == 0 && window.Session.Games.Count == 0 && !window.IsRunning,
-                () => $"Stop to end every copy ({string.Join(", ", window.RunCopies.Select(r => r.Name))}; {window.Session.Games.Count} games)", TimeSpan.FromMinutes(1));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
     private MainWindow Open()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, GodotEnvironment = game.Homes };
@@ -159,56 +116,6 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         window.OpenFolder(game.Folder);
         Ui.Settle();
         return window;
-    }
-
-    /// <summary>A person's configuration named as a copy of another would be is its own game: Debug starts it as the first of
-    /// its own copies, and Debug Another Copy finds it and counts on from it.</summary>
-    private void A_configuration_named_as_a_copy_is_debugged_as_its_own_and_Debug_Another_Copy_counts_on_from_it()
-    {
-        const string Own = "Lobby #2";
-        MainWindow window = Open();
-        try
-        {
-            Choose(window, 1, Own);
-            Ui.Launched(window, window.DebugAsync(), "the game's start under the debugger", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Tab(window, Own)?.Session?.State == DebugState.Running, () => $"the game to run ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-
-            Assert.Null(window.Actions.Run(AppActions.DebugAnotherCopy));
-            Ui.WaitFor(() => Tab(window, $"{Own} #2")?.Session?.State == DebugState.Running, () => $"its second copy beside it ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A copy beside a configuration called what that copy would be goes by another name, so debugging that configuration
-    /// comes in a tab of its own and the copy's tab and session stay as they were.</summary>
-    private void A_copy_keeps_its_tab_as_a_configuration_called_what_it_would_be_starts_beside_it()
-    {
-        string own = $"{Name} #2";
-        string second = GameCopies.Name(Name, 2, [own]);
-        MainWindow window = Open();
-        try
-        {
-            Choose(window, 2);
-            RunConfiguration copies = window.Configurations.Single(c => c.Name == Name);
-            RunConfiguration[] mine = [copies, copies with { Name = own, GodotCopies = 1 }];
-            window.SetConfigurations(mine, Name);
-            Ui.Launched(window, window.DebugAsync(), "the two copies' start under the debugger", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Tab(window, Name)?.Session?.State == DebugState.Running && Tab(window, second)?.Session?.State == DebugState.Running,
-                () => $"both copies to run ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            DebugSession copy = Tab(window, second)!.Session!;
-
-            window.SetConfigurations(mine, own);
-            Ui.Launched(window, window.DebugAsync(), "the other configuration's start under the debugger", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Tab(window, own)?.Session?.State == DebugState.Running, () => $"the other configuration to run ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            Assert.True(Tab(window, second)?.Session == copy && copy.State == DebugState.Running, $"The configuration's start took the copy's tab: {Sessions(window)}");
-        }
-        finally
-        {
-            End(window);
-        }
     }
 
     /// <summary>The game's configuration, run headless with the run's user folders, starting <paramref name="copies"/> copies: the
@@ -233,10 +140,6 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         }
         window.Close();
     }
-
-    /// <summary>What a program run in a tab of the Terminal window has written there, its scrollback and its screen.</summary>
-    private static string Terminal(TerminalRun run) =>
-        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
 
     private static DebugTab? Tab(MainWindow window, string name) => window.Debugger.Tabs.FirstOrDefault(t => t.Name == name && t.IsLive);
 

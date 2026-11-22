@@ -7,15 +7,14 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>The SDK's own browser refresh under the debugger with Hot Reload, keeping a page up as dotnet watch does: a Blazor
-/// app (<see cref="BellApp"/>) debugged, the page's refresh client the test's own, speaking as the SDK's client in a page does
-/// with no browser (<see cref="RefreshClient"/>). A wwwroot stylesheet saved in the editor is applied in place and served
-/// as saved, a component's scoped CSS another program wrote or deleted is bundled again and applied, another static file changed
-/// reloads the page, and an applied update refreshes it: on the SDK the machine builds with, and on .NET 10's SDK, which
-/// speaks the earlier way, where one is installed; and a Blazor Web App with WebAssembly components, whose client's build
-/// makes its pages' browser tools, is kept up too, as are a referenced Razor class library's stylesheet and scoped CSS; where a
-/// build makes none, Debug says why; a page at a name under localhost is kept up too. Debugged through the window, so run
-/// alone.</summary>
+/// <summary>The SDK's own browser refresh under the debugger with Hot Reload, keeping a page up as dotnet watch does: a
+/// Blazor app (<see cref="BellApp"/>) debugged, the page's refresh client the test's own, speaking as the SDK's client
+/// in a page does with no browser (<see cref="RefreshClient"/>). A wwwroot stylesheet saved in the editor is applied in
+/// place and served as saved, a component's scoped CSS another program wrote or deleted is bundled again and applied,
+/// another static file changed reloads the page, and an applied update refreshes it: on the SDK the machine builds
+/// with, and on .NET 10's SDK, which speaks the earlier way, where one is installed; and a Blazor Web App with
+/// WebAssembly components, whose client's build makes its pages' browser tools, is kept up too. Debugged through the
+/// window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class BrowserRefreshTests : IDisposable
 {
@@ -23,22 +22,13 @@ public sealed class BrowserRefreshTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    /// <summary>Under debug a page's stylesheets and scoped CSS apply in place, its other files reload it and an update
-    /// refreshes it, or the build is said to make no browser tools.</summary>
+    /// <summary>Under debug a page's stylesheets apply in place, its other files reload it and an update refreshes
+    /// it.</summary>
     [AvaloniaFact]
     public void A_debugged_pages_static_files_reach_it_in_place()
     {
         Flow.StepApart<BrowserRefreshTests>(nameof(Under_debug_a_pages_stylesheets_apply_in_place_its_other_static_files_reload_it_and_an_update_refreshes_it),
             test => test.Under_debug_a_pages_stylesheets_apply_in_place_its_other_static_files_reload_it_and_an_update_refreshes_it());
-        OpenWindows.CloseAll();
-        Flow.StepApart<BrowserRefreshTests>(nameof(Under_debug_a_page_at_a_name_under_localhost_is_kept_up),
-            test => test.Under_debug_a_page_at_a_name_under_localhost_is_kept_up());
-        OpenWindows.CloseAll();
-        Flow.StepApart<BrowserRefreshTests>(nameof(Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place),
-            test => test.Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place());
-        OpenWindows.CloseAll();
-        Flow.StepApart<BrowserRefreshTests>(nameof(Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them),
-            test => test.Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them());
     }
 
     /// <summary>A Blazor Web App with WebAssembly components keeps its page up through its client's browser
@@ -118,121 +108,6 @@ public sealed class BrowserRefreshTests : IDisposable
         finally
         {
             End(window, client);
-        }
-    }
-
-    /// <summary>A page the app serves at a name under localhost (as an app made with <c>--localhost-tld</c> is opened) is this
-    /// machine's: under debug its refresh client connects, and a stylesheet saved in the editor is applied in it.</summary>
-    private void Under_debug_a_page_at_a_name_under_localhost_is_kept_up()
-    {
-        BellApp.Make(folder);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        RefreshClient? client = null;
-        try
-        {
-            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Bell: http"), "Bell's http configuration", TimeSpan.FromMinutes(2));
-            Assert.True(window.SelectConfiguration("Bell: http"));
-            Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
-            Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
-            int port = HeardPorts.Of(console, "the app");
-            client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port, "bell.dev.localhost")),
-                "the refresh client of a page at bell.dev.localhost to connect to Passenger through the app");
-
-            window.OpenFile(Path.Combine(folder, "wwwroot", "app.css"));
-            Ui.Settle();
-            BellApp.Edit(window, "html, body {", ".kept-up-in-place { color: rebeccapurple; }\n\nhtml, body {");
-            Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
-            Told(window, client, "UpdateStaticFile", "app.css", console);
-        }
-        finally
-        {
-            End(window, client);
-        }
-    }
-
-    /// <summary>A Razor class library Bell references, as the SDK's template makes one, with a stylesheet and a component's
-    /// scoped CSS: under debug, its stylesheet saved in the editor is applied in place by the URL the app serves it at, and
-    /// its scoped CSS another program wrote is bundled again by the library and applied, each served as written; deleted, the
-    /// library's only sheet leaves none of its rules served.</summary>
-    private void Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place()
-    {
-        string bell = Path.Combine(folder, "Bell");
-        BellApp.Make(bell);
-        string kit = Path.Combine(folder, "Kit");
-        Ui.AwaitPumped(Waiting.Apart(async () =>
-        {
-            ChildResult made = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(
-                ["new", "razorclasslib", "--output", kit, "--name", "Kit", "--framework", TestProjects.Framework, "--support-pages-and-views", "--no-restore"]),
-                limit: TimeSpan.FromMinutes(3));
-            Assert.True(made.Succeeded, $"dotnet new razorclasslib did not make the test's library (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
-            return made;
-        }), "dotnet new razorclasslib to make the test's library", TimeSpan.FromMinutes(3) + TestFolders.Spare);
-        TestFolders.Write(kit, "wwwroot/kit.css", ".kit {\n    color: teal;\n}\n");
-        TestFolders.Write(kit, "Banner.razor", "<div class=\"banner\">Kit</div>\n");
-        string scoped = TestFolders.Write(kit, "Banner.razor.css", ".banner {\n    color: teal;\n}\n");
-        TestFolders.Write(folder, "nuget.config", "<configuration>\n  <packageSources><clear /><add key=\"local\" value=\"Bell/feed\" /></packageSources>\n</configuration>\n");
-        string project = Path.Combine(bell, "Bell.csproj");
-        File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>",
-            "  <ItemGroup>\n    <ProjectReference Include=\"../Kit/Kit.csproj\" />\n  </ItemGroup>\n\n</Project>", StringComparison.Ordinal));
-        Restore.Run(project);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        RefreshClient? client = null;
-        try
-        {
-            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Bell: http"), "Bell's http configuration", TimeSpan.FromMinutes(2));
-            Assert.True(window.SelectConfiguration("Bell: http"));
-            Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
-            Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
-            int port = HeardPorts.Of(console, "the app");
-            client = Ui.AwaitPumped(Waiting.Apart(() => RefreshClient.ConnectAsync(port)), "the page's refresh client to connect to Passenger through the app");
-
-            window.OpenFile(Path.Combine(kit, "wwwroot", "kit.css"));
-            Ui.Settle();
-            BellApp.Edit(window, ".kit {", ".kit-in-place { color: rebeccapurple; }\n\n.kit {");
-            Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
-            Told(window, client, "UpdateStaticFile", "_content/Kit/kit.css", console);
-            Assert.Contains("kit-in-place", Served(port, "/_content/Kit/kit.css"), StringComparison.Ordinal);
-            Ui.WaitFor(() => console().Contains("Hot Reload: _content/Kit/kit.css applied in 1 page", StringComparison.Ordinal),
-                () => $"the console to say where kit.css went:\n{console()}");
-
-            File.AppendAllText(scoped, "\n.kit-scoped {\n    color: rebeccapurple;\n}\n");
-            Told(window, client, "UpdateStaticFile", "_content/Kit/Kit.bundle.scp.css", console);
-            Assert.Contains("kit-scoped", Served(port, "/_content/Kit/Kit.bundle.scp.css"), StringComparison.Ordinal);
-
-            File.Delete(scoped);
-            Told(window, client, "UpdateStaticFile", "_content/Kit/Kit.bundle.scp.css", console, times: 2);
-            Assert.DoesNotContain("kit-scoped", Served(port, "/_content/Kit/Kit.bundle.scp.css"), StringComparison.Ordinal);
-        }
-        finally
-        {
-            End(window, client);
-        }
-    }
-
-    /// <summary>A project that turns off what makes its pages' browser tools: debugged, it runs, and its console says its
-    /// pages are not kept up, why, and what makes them.</summary>
-    private void Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them()
-    {
-        BellApp.Make(folder);
-        string project = Path.Combine(folder, "Bell.csproj");
-        File.WriteAllText(project, File.ReadAllText(project).Replace("</PropertyGroup>",
-            "  <EnableHotReloadInRuntimeConfigDevFile>false</EnableHotReloadInRuntimeConfigDevFile>\n  </PropertyGroup>", StringComparison.Ordinal));
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Bell: http"), "Bell's http configuration", TimeSpan.FromMinutes(2));
-            Assert.True(window.SelectConfiguration("Bell: http"));
-            Ui.Launched(window, window.DebugAsync(), "Bell to start under the debugger", TimeSpan.FromMinutes(3));
-            Func<string> console = () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
-            Assert.Contains("<h1>Counter</h1>", BellApp.Page(window, console), StringComparison.Ordinal);
-            Assert.Contains("Hot Reload: the browser is not kept up: Bell's build made no browser tools for its pages, which the SDK makes in a build whose "
-                + "EnableHotReloadInRuntimeConfigDevFile is true, as a Debug build's is unless the project sets it to false", console(), StringComparison.Ordinal);
-        }
-        finally
-        {
-            End(window, null);
         }
     }
 

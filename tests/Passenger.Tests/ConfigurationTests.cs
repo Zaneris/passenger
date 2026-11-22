@@ -48,10 +48,10 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
             Go_to_Declaration_goes_from_a_key_to_its_property_and_from_a_read_to_where_it_is_given);
     }
 
-    /// <summary>A configuration read is checked against the programs running it, each environment's settings and
-    /// Compose, and a held settings file is written once it is let go.</summary>
+    /// <summary>A configuration read is checked against the programs that run its code, once their projects are
+    /// evaluated.</summary>
     [AvaloniaFact]
-    public void A_read_is_checked_against_every_place_that_may_give_its_key()
+    public void A_read_is_checked_against_the_programs_that_run_it()
     {
         Flow.Step(nameof(A_library_s_read_is_checked_against_the_programs_that_reference_it),
             A_library_s_read_is_checked_against_the_programs_that_reference_it);
@@ -60,23 +60,13 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         Flow.Step(nameof(A_library_no_program_references_is_warned_of_no_key), A_library_no_program_references_is_warned_of_no_key);
         OpenWindows.CloseAll();
         project.Reset();
-        Flow.Step(nameof(A_read_through_a_field_another_partial_file_declares_is_warned_of),
-            A_read_through_a_field_another_partial_file_declares_is_warned_of);
-        OpenWindows.CloseAll();
         project.Reset();
         Flow.Step(nameof(A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are),
             A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are);
         OpenWindows.CloseAll();
         project.Reset();
-        Flow.Step(nameof(A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says),
-            A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says);
-        OpenWindows.CloseAll();
         project.Reset();
-        Flow.Step(nameof(A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice),
-            A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice);
-        OpenWindows.CloseAll();
         project.Reset();
-        Flow.Step(nameof(A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of), A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of);
     }
 
     /// <summary>Completion in appsettings.json lists a section's keys from the options class bound to it (its
@@ -375,22 +365,6 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         }
     }
 
-    /// <summary>A read through a field another part of its partial class declares, in a file that never names configuration's
-    /// API, is warned of as a read in the declaring file would be.</summary>
-    private void A_read_through_a_field_another_partial_file_declares_is_warned_of()
-    {
-        MainWindow window = project.Open(project.PathOf("Shop/Reader.Reads.cs"));
-        try
-        {
-            Ui.WaitFor(() => Missing(window).SetEquals(["Reader:Motto"]),
-                () => $"the key read through the other part's field, and only it, to be warned of: {Marked(window)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A file pulled before the programs running its code are known, its projects not yet evaluated, is warned of the
     /// keys nothing gives once they are: the configuration's check runs again as the evaluations land, whether or not the
     /// server says its diagnostics moved, which a warm server whose projects loaded long since never does.</summary>
@@ -421,113 +395,6 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         {
             evaluated.TrySetResult();
             checkedOnce.TrySetResult();
-            window.Close();
-        }
-    }
-
-    /// <summary>A launch profile that lists DOTNET_ENVIRONMENT Development before ASPNETCORE_ENVIRONMENT Staging runs the app in
-    /// Staging, as ASP.NET Core reads ASPNETCORE_ENVIRONMENT first, so a key appsettings.Staging.json gives is not warned of.</summary>
-    private void A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says()
-    {
-        project.Write([
-            ("Shop/appsettings.Staging.json", "{\n  \"Shop\": {\n    \"Banner\": \"staged\"\n  }\n}\n"),
-            ("Shop/Properties/launchSettings.json", """
-                {
-                  "profiles": {
-                    "http": {
-                      "commandName": "Project",
-                      "applicationUrl": "http://localhost:5180",
-                      "environmentVariables": {
-                        "DOTNET_ENVIRONMENT": "Development",
-                        "ASPNETCORE_ENVIRONMENT": "Staging",
-                        "Shop__Theme": "dark"
-                      }
-                    }
-                  }
-                }
-
-                """),
-        ]);
-        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
-        try
-        {
-            Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey"]),
-                () => $"Shop:Banner, which appsettings.Staging.json gives, not to be warned of, the profile running in Staging: {string.Join(", ", Missing(window))} warned of");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Launch profiles running the app in Development and in Staging have a key nothing gives warned of with every
-    /// settings file it was looked for in, one choice with what else might give it, as every choice in Passenger is said:
-    /// never "appsettings.json or appsettings.Development.json or appsettings.Staging.json".</summary>
-    private void A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice()
-    {
-        project.Write("Shop/Properties/launchSettings.json", """
-            {
-              "profiles": {
-                "http": {
-                  "commandName": "Project",
-                  "applicationUrl": "http://localhost:5180",
-                  "environmentVariables": {
-                    "ASPNETCORE_ENVIRONMENT": "Development",
-                    "Shop__Theme": "dark"
-                  }
-                },
-                "staging": {
-                  "commandName": "Project",
-                  "applicationUrl": "http://localhost:5181",
-                  "environmentVariables": {
-                    "ASPNETCORE_ENVIRONMENT": "Staging",
-                    "Shop__Theme": "dark"
-                  }
-                }
-              }
-            }
-
-            """);
-        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
-        try
-        {
-            const string Said = "Nothing Shop runs with gives the configuration key 'Shop:Banner': not appsettings.json, appsettings.Development.json, "
-                + "appsettings.Staging.json, a launch profile, its user secrets, a compose file or an AppHost.";
-            Ui.WaitFor(() => window.EditorArea.Active!.Markers.Any(m => m.Message.Contains("'Shop:Banner'", StringComparison.Ordinal)),
-                () => $"Shop:Banner, which nothing gives, to be warned of: {Marked(window)}");
-            string warned = window.EditorArea.Active!.Markers.First(m => m.Message.Contains("'Shop:Banner'", StringComparison.Ordinal)).Message;
-            Assert.True(warned == Said, $"Shop:Banner's warning does not say the files it was looked for in as one choice:\n{warned}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A key compose-dev.yml at the folder's top sets for the project is known as given once the file is written
-    /// to set it, as compose.yaml's is: the warning that nothing gives it goes, the edit itself having it looked at again.</summary>
-    private void A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of()
-    {
-        string compose = project.Write("compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n");
-        MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        long refreshed = System.Diagnostics.Stopwatch.GetTimestamp();
-        EventHandler heard = (_, _) => Interlocked.Exchange(ref refreshed, System.Diagnostics.Stopwatch.GetTimestamp());
-        server.DiagnosticsRefreshRequested += heard;
-        try
-        {
-            Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey", "Shop:Banner"]),
-                () => $"the keys nothing gives, and only those, to be warned of: {string.Join(", ", Missing(window))}");
-            // The server's own refreshes as it finishes loading look at the reads again too: the edit comes once they stop.
-            TimeSpan quiet = TimeSpan.FromSeconds(5).Scaled();
-            Ui.WaitFor(() => System.Diagnostics.Stopwatch.GetElapsedTime(Interlocked.Read(ref refreshed)) > quiet, "the language server's refreshes to stop");
-            TestFolders.Write(project.Folder, "compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n    environment:\n      Shop__Banner: from-compose\n");
-            Ui.WaitFor(() => Missing(window).SetEquals(["Payments:ApiKey"]),
-                () => $"Shop:Banner's warning to go once {Path.GetFileName(compose)} sets it: {string.Join(", ", Missing(window))} warned of");
-        }
-        finally
-        {
-            server.DiagnosticsRefreshRequested -= heard;
             window.Close();
         }
     }

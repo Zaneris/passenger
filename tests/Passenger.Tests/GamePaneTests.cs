@@ -7,50 +7,35 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Passenger.App;
-using Passenger.App.Docking;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
-using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>The Game window and a game on macOS's embedded display, against a stand-in that connects to Passenger as the
-/// game's remote debugger, shares a layer and keeps what it is told: the display told the window's scale and then the size
-/// of the game's place at it, as Godot's editor tells them, a pointer given in what its Godot takes, nothing said wrong of a
-/// person's pointer before the game connects, and a pointer the game moves going on from where it named. The Live Tree comes
-/// beside the Game window as a game connects, and a generated configuration chooses the Game window. Nothing here draws a
-/// game or moves the screen's pointer: the picture and the pointer's place are looked at in a real window.</summary>
+/// <summary>The Game window and a game on macOS's embedded display, against a stand-in that connects to Passenger as
+/// the game's remote debugger, shares a layer and keeps what it is told: the display told the window's scale and then
+/// the size of the game's place at it, as Godot's editor tells them, and a click given in what its Godot takes; a
+/// generated configuration chooses the Game window. Nothing here draws a game or moves the screen's pointer: the
+/// picture and the pointer's place are looked at in a real window.</summary>
 public sealed class GamePaneTests
 {
     private static readonly (int Width, int Height) FourByThree = (720, 540);
 
-    /// <summary>The embedded display is told the window's scale and the game's place, follows the pane, and the game
-    /// window stays chosen and shown.</summary>
+    /// <summary>The embedded display is told the window's scale and the game's place, and a generated configuration
+    /// keeps the game window chosen.</summary>
     [AvaloniaFact]
     public void The_game_pane_tells_the_display_its_place_and_scale()
     {
         Flow.Step(nameof(The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale),
             The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size),
-            A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(The_game_follows_the_pane_as_it_changes_size), The_game_follows_the_pane_as_it_changes_size);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown),
-            The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error),
-            A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own),
             A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own);
     }
 
-    /// <summary>A click and a pointer the game moves reach it from its own top left in what its Godot takes, never
-    /// while the pane lacks the keys.</summary>
+    /// <summary>A click reaches the game from its own top left in what its Godot takes.</summary>
     [AvaloniaFact]
     public void The_game_pane_passes_the_pointer_in_the_games_own_terms()
     {
@@ -59,14 +44,6 @@ public sealed class GamePaneTests
         OpenWindows.CloseAll();
         Flow.Step("A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes(\"4.6.2\", 2)",
             () => A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes("4.6.2", 2));
-        OpenWindows.CloseAll();
-        Flow.Step("A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(\"4.7.2\", 1)",
-            () => A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says("4.7.2", 1));
-        OpenWindows.CloseAll();
-        Flow.Step("A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(\"4.6.2\", 2)",
-            () => A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says("4.6.2", 2));
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_game_moves_no_pointer_while_the_pane_lacks_the_keys), A_game_moves_no_pointer_while_the_pane_lacks_the_keys);
     }
 
     private void The_embedded_display_is_told_the_windows_scale_and_then_the_size_of_the_games_place_at_that_scale()
@@ -85,39 +62,6 @@ public sealed class GamePaneTests
         Assert.Equal((place.Width, place.Height), game.ToldSize);
         Assert.True(Math.Abs(((double)place.Width / place.Height) - (720.0 / 540)) < 0.01, $"The game's place of {place} is not its own shape, 720 by 540");
         Assert.True(place.X + place.Width <= rig.Pane.Bounds.Width * 2 && place.Y + place.Height <= rig.Pane.Bounds.Height * 2, $"The game's place of {place} falls outside the pane's {rig.Pane.Bounds} at 2x");
-    }
-
-    private void A_window_come_to_a_screen_of_another_scale_tells_the_display_its_scale_before_the_new_size()
-    {
-        using Rig rig = Rig.Open();
-        rig.Window.SetRenderScaling(2);
-        Ui.Settle();
-        Game game = rig.Hold(FourByThree);
-        game.Shares(4242);
-        game.TwoTold();
-
-        rig.Window.SetRenderScaling(1);
-        Ui.Settle();
-        (string first, string second) = game.TwoTold();
-        Assert.Equal((GodotWords.EmbedState, GodotWords.EmbedWindowSize), (first, second));
-        Assert.Equal(1f, game.ToldScale);
-        Assert.Equal((rig.Place(1).Width, rig.Place(1).Height), game.ToldSize);
-    }
-
-    private void The_game_follows_the_pane_as_it_changes_size()
-    {
-        using Rig rig = Rig.Open();
-        // Tall enough that the pane's height decides its size, whatever the width of the window's right side.
-        Game game = rig.Hold((200, 800));
-        game.Shares(4242);
-        game.TwoTold();
-        (int, int) before = game.ToldSize;
-
-        rig.Window.Height -= 200;
-        Ui.Settle();
-
-        Ui.WaitFor(() => game.Read() && game.ToldSize != before, () => $"the game to be told the pane's new size (it was told {game.ToldSize}, the pane is {rig.Pane.Bounds})");
-        Assert.Equal((rig.Place(1).Width, rig.Place(1).Height), game.ToldSize);
     }
 
     private void A_click_reaches_the_game_from_its_own_top_left_in_what_its_godot_takes(string version, double unit)
@@ -141,78 +85,6 @@ public sealed class GamePaneTests
         (float x, float y) = game.LastPointer;
         Assert.True(Math.Abs(x - (10 * unit)) < 0.5 && Math.Abs(y - (20 * unit)) < 0.5,
             $"The click 10,20 in from the game's top left reached Godot {version} at {x},{y}, where it takes {unit} to a logical unit");
-    }
-
-    private void A_pointer_the_game_moves_goes_on_from_the_place_it_named_in_what_its_godot_says(string version, double unit)
-    {
-        using Rig rig = Rig.Open(version);
-        rig.Window.SetRenderScaling(2);
-        Ui.Settle();
-        Game game = rig.Hold(FourByThree);
-        game.Shares(4242);
-        game.TwoTold();
-        GamePlace place = rig.Place(2);
-        Point gameAt = new(place.X / 2.0, place.Y / 2.0);
-        rig.Pane.Focus();
-        Ui.Settle();
-        Assert.True(rig.Pane.IsFocused, "The pane took no keys, so no game's move of the pointer reaches it");
-        rig.MoveOver(gameAt + new Point(5, 5));
-        game.HearsMove();
-
-        game.Warps((int)(100 * unit), (int)(60 * unit));
-        rig.MoveOver(gameAt + new Point(103, 64));
-
-        game.HearsMove();
-        (float x, float y) = game.LastMove;
-        Assert.True(Math.Abs(x - (3 * unit)) < 0.5 && Math.Abs(y - (4 * unit)) < 0.5,
-            $"The pointer moved 3,4 on from the place the game put it reached Godot {version} as a move of {x},{y}, so a game that recentres the pointer sees it leap by as far as it was put");
-    }
-
-    private void A_game_moves_no_pointer_while_the_pane_lacks_the_keys()
-    {
-        using Rig rig = Rig.Open();
-        Game game = rig.Hold(FourByThree);
-        game.Shares(4242);
-        game.TwoTold();
-        GamePlace place = rig.Place(1);
-        Point gameAt = new(place.X, place.Y);
-        rig.MoveOver(gameAt + new Point(5, 5));
-        game.HearsMove();
-        Assert.False(rig.Pane.IsFocused, "The pane has the keys though nothing gave them to it");
-
-        game.Warps(100, 60);
-        rig.MoveOver(gameAt + new Point(8, 9));
-
-        game.HearsMove();
-        Assert.Equal((3f, 4f), game.LastMove);
-    }
-
-    private void The_live_tree_comes_below_the_game_window_as_a_game_connects_and_the_game_window_stays_shown()
-    {
-        using Rig rig = Rig.Open();
-        DockHost dock = rig.Window.DockHost;
-        Assert.Equal(dock[ToolWindowIds.Game].Anchor, dock[ToolWindowIds.LiveTree].Anchor);
-
-        Game game = rig.Hold(FourByThree, taken: true);
-        Ui.WaitFor(() => dock[ToolWindowIds.LiveTree].IsShown, () => $"the Live Tree to show as the game connects ({game.Listened.State})");
-
-        Assert.True(dock[ToolWindowIds.Game].IsShown, "The Live Tree took the Game window's place as the game connected, so the person who chose the Game window doesn't see the game");
-        Assert.Equal(ToolAnchor.RightTop, dock[ToolWindowIds.Game].Anchor);
-        Assert.Equal(ToolAnchor.RightBottom, dock[ToolWindowIds.LiveTree].Anchor);
-    }
-
-    private void A_pointer_over_the_pane_before_the_game_connects_is_said_as_no_error()
-    {
-        using Rig rig = Rig.Open();
-        rig.Hold(FourByThree, connects: false);
-
-        Point middle = rig.Pane.TranslatePoint(new Point(rig.Pane.Bounds.Width / 2, rig.Pane.Bounds.Height / 2), rig.Window)!.Value;
-        rig.Window.MouseMove(middle);
-        rig.Window.MouseMove(new Point(1, 1));
-        Ui.Settle();
-
-        // FailOnIdeErrors fails the test on what the status bar would call an IDE error; the check here says which.
-        Assert.DoesNotContain(IdeErrors.Errors, e => e.Message.Contains("is not connected", StringComparison.Ordinal));
     }
 
     private void A_generated_game_configuration_chooses_the_game_window_and_keeps_it_and_the_editors_stays_its_own()

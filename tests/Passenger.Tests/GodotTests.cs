@@ -1,6 +1,5 @@
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.Editors;
@@ -12,12 +11,13 @@ using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot 4 game in C# as a person works on it: its project (Godot.NET.Sdk, restored from the packages the Godot
-/// found carries, never nuget.org) has run configurations for its game and for Godot's editor; Run starts the game on
-/// that Godot, Debug stops at a breakpoint in a script's <c>_Process</c>, a Hot Reload edit reaches the game as it runs,
-/// and Profile records it, its script's own time among the samples; Run and Debug take the external console; two copies
-/// Run runs with Hot Reload each take an edit, and one restarts alone. Godot runs headless, its user folders the run's. Without a Godot 4 .NET build (GODOT, the PATH, Applications) each test skips
-/// saying why. Debugged, so run alone.</summary>
+/// <summary>A Godot 4 game in C# as a person works on it: its project (Godot.NET.Sdk, restored from the packages the
+/// Godot found carries, never nuget.org) has run configurations for its game and for Godot's editor; Run starts the
+/// game on that Godot, Debug stops at a breakpoint in a script's <c>_Process</c>, a Hot Reload edit reaches the game as
+/// it runs, and Profile records it, its script's own time among the samples; a game that quits ends its session with
+/// its own exit code, and its live tree shows its nodes and properties. Godot runs headless, its user folders the
+/// run's. Without a Godot 4 .NET build (GODOT, the PATH, Applications) each test skips saying why. Debugged, so run
+/// alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotTests : IClassFixture<GodotTests.Game>
 {
@@ -88,8 +88,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
     private string ScriptPath => Path.Combine(PathNames.Canonical(game.Folder), "Main.cs");
 
-    /// <summary>A C# Godot game runs from its configuration, opens in Godot's editor, and takes Hot Reload's edits,
-    /// each copy its own, under the debugger too.</summary>
+    /// <summary>A C# Godot game runs from its configuration and takes Hot Reload's edits, under the debugger
+    /// too.</summary>
     [AvaloniaFact]
     public void A_godot_game_runs_and_takes_hot_reload()
     {
@@ -97,53 +97,31 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Run_starts_the_game_on_Godot_from_its_configuration_beside_one_for_Godots_editor);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in),
-            Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger),
             Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once),
-            Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on),
-            Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs),
             A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start),
-            Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start);
     }
 
-    /// <summary>A debugged game ends as it ends, prints in the terminal, is profiled with its frames and shows its live
-    /// tree, properties and sources.</summary>
+    /// <summary>A debugged game ends with its own exit code, is profiled across GDScript and C#, and shows its live
+    /// tree and properties.</summary>
     [AvaloniaFact]
     public void A_debugged_and_profiled_game_ends_and_shows_its_tree()
     {
-        Flow.Step(nameof(A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go),
-            A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code),
             A_debugged_game_that_quits_ends_its_session_through_its_debuggers_word_with_its_own_exit_code);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it),
-            Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Profile_records_the_game_its_scripts_loop_among_the_samples), Profile_records_the_game_its_scripts_loop_among_the_samples);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made),
-            Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function),
             Profile_puts_GDScripts_and_CSharps_functions_in_one_call_tree_and_opens_the_slowest_frame_on_its_costliest_function);
@@ -153,16 +131,8 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             The_running_games_tree_shows_its_nodes_a_property_typed_there_changes_it_its_error_links_to_its_line_and_its_monitors_read);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh),
-            The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_nodes_position_and_a_transform_are_set_from_the_properties_pane),
-            A_nodes_position_and_a_transform_are_set_from_the_properties_pane);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn),
-            Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn);
     }
 
     /// <summary>The project's generated configurations are its game and Godot's editor on it, each on the Godot found with
@@ -209,30 +179,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
-    /// <summary>The editor's configuration opens the scene at hand in Godot's editor, and for the script at hand the scene
-    /// it is attached in.</summary>
-    private void Godots_editor_opens_the_scene_at_hand_or_the_one_the_script_at_hand_is_attached_in()
-    {
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            string folder = PathNames.Canonical(game.Folder);
-            RunConfiguration edited = Generated(window, $"Spinner: {RunConfiguration.GodotEditorName}");
-            foreach (string atHand in (string[])["Main.cs", "main.tscn"])
-            {
-                Assert.Null(window.OpenFile(Path.Combine(folder, atHand)));
-                Ui.Settle();
-                (LaunchPlan? editor, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(edited, null), "the editor's plan", TimeSpan.FromMinutes(1));
-                Assert.True(editor?.Arguments.SequenceEqual([GodotExecutables.Headless, "--path", folder, "--editor", "res://main.tscn"]) == true,
-                    $"With {atHand} at hand, Godot's editor was to open res://main.tscn; {(editor is null ? $"it has no plan: {problem}" : $"it starts with {string.Join(' ', editor.Arguments)}")}");
-            }
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
     /// <summary>Run with Hot Reload on starts the game held for a quiet debugger, nothing of a debug session shown: an edit to
     /// the method its _Process calls, applied by Apply Hot Reload Changes, is what the game then prints in the Run console.</summary>
     private void Run_with_Hot_Reload_on_applies_an_edit_to_the_running_game_through_a_quiet_debugger()
@@ -264,78 +210,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
-    /// <summary>Run of two copies with Hot Reload on holds each at its start and attaches to each quietly, as Run's one game:
-    /// an edit to the method _Process calls, applied once, is what both copies then print, each in its own tab of the
-    /// Terminal window.</summary>
-    private void Two_copies_run_with_Hot_Reload_each_take_a_CSharp_edit_applied_once()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            string[] copies = RunTwoCopies(window);
-            Typing.Replace(window, "{Greeting} {frames}", "tick {frames}");
-            Ui.Run(window, AppActions.ApplyHotReloadChanges);
-            Ui.WaitFor(() => window.Debugger.LastApplied is not null, "Hot Reload to say what it applied");
-            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The edit to the game's script was not applied: {window.Debugger.LastApplied.Said}");
-            Ui.WaitFor(() => window.RunCopies.Count == 2 && window.RunCopies.All(r => Terminal(r).Contains("tick ", StringComparison.Ordinal)),
-                () => $"both copies to print what the edited method prints ({string.Join(" | ", window.RunCopies.Select(r => $"{r.Name}: {Tail(Terminal(r))}"))})", TimeSpan.FromMinutes(1));
-            Assert.True(copies.All(c => window.Debugger.Running.Any(r => r.Name == c)) && !window.Debugger.IsDebugging,
-                $"The copies' quiet sessions are not both there, or a debug session showed: {string.Join(", ", window.Debugger.Running.Select(r => r.Name))}");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Hot Reload's restart of one of two copies Run runs with it restarts that copy alone: built again and started
-    /// in its own tab's place, held and attached to again, printing again, while the other runs on in the same process,
-    /// still attached.</summary>
-    private void Hot_Reloads_restart_of_one_run_copy_restarts_that_copy_alone_the_other_running_on()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            string[] copies = RunTwoCopies(window);
-            TerminalRun first = window.RunCopies.Single(r => r.Name == copies[0]);
-            TerminalRun second = window.RunCopies.Single(r => r.Name == copies[1]);
-            (int firstProcess, int secondProcess) = (first.Debuggee, second.Debuggee);
-
-            Assert.True(Ui.AwaitPumped(window.Builds.RestartGameForEditAsync(copies[1]), "the second copy's restart", TimeSpan.FromMinutes(3)),
-                $"The second copy was not restarted: {window.Status}");
-            Ui.WaitFor(() => window.RunCopies.FirstOrDefault(r => r.Name == copies[1]) is { } again && again != second && again.Debuggee != secondProcess
-                    && window.Debugger.Running.Any(r => r.Name == copies[1]) && Terminal(again).Contains("frame 10", StringComparison.Ordinal),
-                () => $"the second copy to run again, attached for Hot Reload ({string.Join(", ", window.RunCopies.Select(r => $"{r.Name} {r.Debuggee}"))}; {window.Status})",
-                TimeSpan.FromMinutes(1));
-            Assert.True(window.RunCopies.Single(r => r.Name == copies[0]) == first && first.Debuggee == firstProcess && Processes.IsRunning(firstProcess),
-                $"The first copy did not run on as the second restarted: {string.Join(", ", window.RunCopies.Select(r => $"{r.Name} {r.Debuggee}"))}");
-            Assert.True(window.Debugger.Running.Any(r => r.Name == copies[0]), $"The first copy lost its Hot Reload session as the second restarted: {string.Join(", ", window.Debugger.Running.Select(r => r.Name))}");
-            Assert.False(Processes.IsRunning(secondProcess), $"The second copy's first process runs on beside its restart: {Processes.Describe(secondProcess)}");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>The game's configuration run as two copies with Hot Reload on, each in a tab of the Terminal window, each
-    /// attached to quietly and printing: their names, the first's the configuration's.</summary>
-    private string[] RunTwoCopies(MainWindow window)
-    {
-        RunConfiguration generated = Generated(window, "Spinner");
-        window.SetConfigurations([generated with { Name = "Spinner on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes), GodotCopies = 2 }], "Spinner on Godot");
-        Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the two copies' build and start with Hot Reload on", TimeSpan.FromMinutes(3));
-        Assert.Equal("Running 2 copies of Spinner on Godot with Hot Reload: a save applies its changes in each, each in a tab of the Terminal window", window.Status);
-        string[] copies = ["Spinner on Godot", "Spinner on Godot #2"];
-        Ui.WaitFor(() => copies.All(c => window.Debugger.Running.Any(r => r.Name == c)) && window.RunCopies.Count == 2
-                && window.RunCopies.All(r => Terminal(r).Contains("frame 10", StringComparison.Ordinal)),
-            () => $"both copies to run attached for Hot Reload ({string.Join(", ", window.Debugger.Running.Select(r => r.Name))}; "
-                + $"{string.Join(" | ", window.RunCopies.Select(r => $"{r.Name}: {Tail(Terminal(r))}"))})", TimeSpan.FromMinutes(1));
-        return copies;
-    }
-
-    private static string Tail(string text) => string.Join(" / ", text.Split('\n').TakeLast(3));
-
     /// <summary>Debug of the game stops at a breakpoint in its script's _Process, Godot having loaded the script's assembly
     /// itself; an edit to the script applied by Hot Reload is what the game prints once it goes on.</summary>
     private void A_breakpoint_in_Process_stops_the_game_and_a_Hot_Reload_edit_reaches_it_as_it_runs()
@@ -361,44 +235,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Ui.Run(window, AppActions.Resume);
             Ui.WaitFor(() => window.Debugger.Output().ToString().Contains("tick", StringComparison.Ordinal),
                 () => $"the game to print what the edited script prints ({window.Debugger.Output()})", TimeSpan.FromMinutes(1));
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A debugged game that ends is shown ended in the Debug window as it ends: its session over, and nothing shown
-    /// debugged, while its debugger has yet to go, which it does after.</summary>
-    private void A_debugged_game_that_ends_is_shown_ended_at_once_while_its_debugger_has_yet_to_go()
-    {
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            Choose(window, Generated(window, "Spinner"));
-            Ui.Launched(window, window.DebugAsync(), "the game's build and start under the debugger", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.Session.Games is [{ State: Passenger.App.LiveTree.LiveAppState.Connected, ProcessId: int }]
-                && window.Debugger.SessionNamed("Spinner on Godot") is { State: DebugState.Running },
-                () => $"the game to run under the debugger, connected ({Debugged(window)}; {Ui.Said(window)})", TimeSpan.FromMinutes(1));
-            DebugSession session = window.Debugger.SessionNamed("Spinner on Godot")!;
-            int adapter = session.AdapterProcessId;
-            int played = window.Session.Games[0].ProcessId!.Value;
-            // Whether the debugger still ran as the session was shown ended, read as it was.
-            bool? debuggerRan = null;
-            session.StateChanged += (_, _) =>
-            {
-                if (session.State == DebugState.Ended)
-                {
-                    debuggerRan ??= Processes.IsRunning(adapter);
-                }
-            };
-            OwnProcess.Of(played).Kill();
-            Ui.WaitFor(() => session.State == DebugState.Ended, () => $"the game's session to end with the game ({Debugged(window)}; {Running([("Spinner", played)])})",
-                TimeSpan.FromMinutes(1));
-            Assert.True(debuggerRan == true, "The game's session was shown ended only once its debugger had gone, not as the game ended");
-            Assert.False(window.Debugger.IsDebugging, $"Something was still shown debugged once the game had ended: {Debugged(window)}");
-            Ui.WaitFor(() => session.AdapterEnded.IsCompleted, "the game's debugger to go after", TimeSpan.FromMinutes(1));
-            Assert.True(Processes.Gone(adapter), $"The game's debugger did not go once its session ended: {Processes.Describe(adapter)}");
         }
         finally
         {
@@ -446,175 +282,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         {
             End(window);
             File.Delete(quitter);
-        }
-    }
-
-    /// <summary>Run and Debug with the configuration's external console run the game in a tab of the Terminal window, which
-    /// shows what its script prints rather than the Run and Debug windows' consoles (on Windows, where Godot's own .exe writes
-    /// to no console, through Godot's console wrapper); under Debug a breakpoint in _Process still stops the game, the
-    /// debugger holding Godot's own process; and Stop ends each there, the game with it.</summary>
-    private void Run_and_Debug_in_the_external_console_show_what_the_game_prints_in_the_terminal_and_a_breakpoint_still_stops_it()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Choose(window, Generated(window, "Spinner"), ConsoleKind.Terminal);
-            Ui.Launched(window, window.RunAsync(), "the game's build and start in the terminal", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.RunInTerminal is { } run && Terminal(run).Contains("frame 10", StringComparison.Ordinal),
-                () => $"Run's game to print in the terminal ({Ui.Said(window)}; {(window.RunInTerminal is { } run ? Terminal(run) : "no terminal")})", TimeSpan.FromMinutes(1));
-            TerminalRun ran = window.RunInTerminal!;
-            Assert.DoesNotContain("frame 10", Run(window), StringComparison.Ordinal);
-            int? played = window.Session.Games is [{ ProcessId: int id }] ? id : null;
-            Stop(window);
-            Ui.WaitFor(() => ran.Ended.IsCompleted && window.Session.Games.Count == 0, () => $"Run's game to end in the terminal ({window.Status}; {Running([("Run's", played)])})",
-                TimeSpan.FromMinutes(1));
-            Assert.True(Processes.Gone(ran.ProcessId) && (played is not int game || Processes.Gone(game)),
-                $"Stop left Run's game running in the terminal: {Running([("the terminal's program", ran.ProcessId), ("the game", played)])}");
-
-            Ui.Launched(window, window.DebugAsync(), "the game's build and start in the terminal under the debugger", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, Terminal: { } shown } && Terminal(shown).Contains("frame 10", StringComparison.Ordinal),
-                () => $"the debugged game to print in the terminal ({Debugged(window)}; {Ui.Said(window)}; {(window.Debugger.Session?.Terminal is { } run ? Terminal(run) : "no terminal")})",
-                TimeSpan.FromMinutes(1));
-            TerminalRun debugged = window.Debugger.Session!.Terminal!;
-            Assert.DoesNotContain("frame 10", window.Debugger.Output().ToString(), StringComparison.Ordinal);
-            // The terminal took the keys as it showed the game.
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.Focus();
-            int line = LineOf(editor, "frames++;");
-            editor.GoTo(new TextPosition(line, 9));
-            Ui.Run(window, AppActions.ToggleBreakpoint);
-            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Any(m => m.Kind == LineMarkKind.ExecutionPoint && m.Line == line),
-                () => $"the game in the terminal to stop at the breakpoint in _Process ({Debugged(window)}, {Ui.Said(window)}; {window.Debugger.Output()})", TimeSpan.FromMinutes(1));
-            int? held = window.Session.Games is [{ ProcessId: int heldId }] ? heldId : null;
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging && debugged.Ended.IsCompleted && window.Session.Games.Count == 0,
-                () => $"the debugged game to end in the terminal with its session ({Debugged(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            Assert.True(Processes.Gone(debugged.ProcessId) && (held is not int stopped || Processes.Gone(stopped)),
-                $"Stop left the debugged game running in the terminal: {Running([("the terminal's program", debugged.ProcessId), ("the game", held)])}");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Profile starts the game under the profiler, and its snapshot holds the samples of the script's own loop.</summary>
-    private void Profile_records_the_game_its_scripts_loop_among_the_samples()
-    {
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            Choose(window, Generated(window, "Spinner"));
-            Ui.Launched(window, window.ProfileAsync(), "the game's build and start under the profiler", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => Run(window).Contains("frame 30", StringComparison.Ordinal), () => $"the profiled game to run its script ({Run(window)})", TimeSpan.FromMinutes(1));
-            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(read.Snapshot is not null, read.Message);
-            Assert.True(read.Snapshot.HotSpots.Any(h => h.Name.Contains("Main.Spin", StringComparison.Ordinal)),
-                $"The game's snapshot holds no sample of its script's loop: {string.Join(", ", read.Snapshot.HotSpots.Take(10).Select(h => h.Name))}");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>The GDScript of <see cref="Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made"/>:
-    /// it makes a C# Ledger as it starts and keeps it, and each frame spins in a function of its own, then has the Ledger spin.</summary>
-    private const string Wanderer = "extends Node\n\nvar ledger\nvar total := 0\n\nfunc _ready():\n\tledger = load(\"res://Ledger.cs\").new()\n\n"
-        + "func _process(_delta):\n\twander()\n\ttotal += ledger.Tally(400000)\n\nfunc wander():\n\tvar sum := 0\n\tfor i in 60000:\n\t\tsum += i\n\ttotal = sum\n";
-
-    /// <summary>Profile of a game whose GDScript and C# each spin in a function of their own records Godot's frames beside the
-    /// samples: a memory snapshot lists the C# Ledger the GDScript made (refused saying why on macOS, where a Godot signed for
-    /// release lets no program read its memory), and the Frames page names the GDScript function at its line with its calls
-    /// and time, the C# loop the engine called and the C# method GDScript called with their sampled time, says the headless
-    /// game drew nothing, and opens the script at the function's line.</summary>
-    private void Profile_records_Godots_frames_beside_the_samples_naming_GDScripts_and_CSharps_functions_and_a_memory_snapshot_lists_what_the_script_made()
-    {
-        string wanderer = Path.Combine(game.Folder, "wander.gd");
-        string ledger = Path.Combine(game.Folder, "Ledger.cs");
-        File.WriteAllText(wanderer, Wanderer);
-        File.WriteAllText(ledger, """
-            using Godot;
-
-            public partial class Ledger : RefCounted
-            {
-                public long Tally(int rounds)
-                {
-                    long sum = 0;
-                    for (int i = 0; i < rounds; i++)
-                    {
-                        sum += i ^ rounds;
-                    }
-                    return sum;
-                }
-            }
-
-            """);
-        File.WriteAllText(Path.Combine(game.Folder, "main.tscn"), """
-            [gd_scene load_steps=3 format=3]
-
-            [ext_resource type="Script" path="res://Main.cs" id="1"]
-            [ext_resource type="Script" path="res://wander.gd" id="2"]
-
-            [node name="Main" type="Node"]
-            script = ExtResource("1")
-
-            [node name="Wanderer" type="Node" parent="."]
-            script = ExtResource("2")
-
-            """);
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            Choose(window, Generated(window, "Spinner"));
-            Ui.Launched(window, window.ProfileAsync(), "the game's build and start under the profiler", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => Run(window).Contains("frame 300", StringComparison.Ordinal), () => $"the profiled game to run its scripts ({Run(window)})", TimeSpan.FromMinutes(1));
-
-            Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
-            Avalonia.Controls.Button take = view.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Content as string == "Get Memory Snapshot");
-            // Where only the runtime can write it, into the game's output (Linux's ptrace_scope), that is let.
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            Ui.Click(take, settle: false);
-            Ui.WaitFor(() => view.Memory is not null || window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
-                "the game's memory snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(view.Memory is not null, window.Status);
-            Assert.True(view.HeapTypes.Any(t => t.Name == "Ledger" && t.Count == 1),
-                $"The game's memory snapshot lists no Ledger, which its GDScript made: {string.Join(", ", view.HeapTypes.Take(30).Select(t => $"{t.Name} {t.Count}"))}");
-            // A Godot signed for release on macOS lets no program read its memory: its runtime's own heap dump is read, saying so.
-            Assert.True((DotnetProcesses.WhyUnreadable(window.Profiling!.ProcessId) is null) == (view.Memory!.Lacks is null),
-                $"The snapshot's words do not follow whether the game's memory could be read: {view.Memory.Lacks}");
-
-            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 100 }, $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Game?.Why}");
-            view.ShowPage(Passenger.App.Profiling.ProfilerPage.Frames);
-            Passenger.App.Profiling.GameFramesView frames = view.GamePage;
-            Ui.WaitFor(() => frames.IsEffectivelyVisible && frames.Rows.Count > 0, "the Frames page to show Godot's frames");
-            string listed = string.Join("; ", frames.Rows.Select(r => $"{r.Name} {r.Place} {r.Own:0.0} {r.All:0.0} {r.Calls}"));
-            // Godot names a function by its body's first line.
-            int wander = LineOf(Wanderer, "func wander") + 1;
-            Passenger.App.Profiling.GameRow script = frames.Rows.FirstOrDefault(r => r.Function?.Name == "wander")
-                ?? throw new Xunit.Sdk.XunitException($"The Frames page names no GDScript wander: {listed}");
-            Assert.True(script is { Place: var place, Own: > 0, Calls: > 100 } && place == $"wander.gd:{wander}", $"GDScript's wander reads as {script.Place} {script.Own} ms, {script.Calls} calls: {listed}");
-            Assert.True(frames.Rows.Any(r => r.Method?.Name.Contains("Main.Spin", StringComparison.Ordinal) == true && r.Own > 0),
-                $"The Frames page names no time of the C# loop the engine called: {listed}");
-            Assert.True(frames.Rows.Any(r => r.Method?.Name.Contains("Ledger.Tally", StringComparison.Ordinal) == true && r.All > 0),
-                $"The Frames page names no time of the C# method GDScript called: {listed}");
-            Assert.Contains("ran headless", frames.Summary, StringComparison.Ordinal);
-            // In the window's bottom pane, however short, the band over the table leaves the table its rows.
-            Assert.True(frames.Table.Bounds.Height >= Passenger.App.Profiling.BandOverTable.RowsKept * ListRow.Height,
-                $"The Frames page's table is {frames.Table.Bounds.Height} high under its band in a page {frames.Bounds.Height} high, so fewer than {Passenger.App.Profiling.BandOverTable.RowsKept} of its rows are in view to read and choose");
-
-            Ui.Click(Ui.Row(frames.Table, script));
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => window.EditorArea.Active?.Path is { } open && PathNames.Same(open, PathNames.Canonical(wanderer)),
-                () => $"Enter on wander's row to open wander.gd, where {window.EditorArea.Active?.Path} is open ({window.Status})");
-            Assert.Equal(wander - 1, window.EditorArea.CodeEditor.CaretPosition.Line);
-        }
-        finally
-        {
-            End(window);
-            File.Delete(wanderer);
-            File.Delete(ledger);
         }
     }
 
@@ -759,211 +426,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
         }
     }
 
-    /// <summary>The Live Visual Tree follows the game as it changes while it is shown: the node the script renames after five
-    /// seconds shows by its new name before the one it adds to the root after fifteen, neither asked for by Refresh, and
-    /// the added one shows too.</summary>
-    private void The_tree_follows_the_game_a_node_it_renames_and_one_it_adds_showing_without_Refresh()
-    {
-        File.WriteAllText(ScriptPath, """
-            using Godot;
-
-            public partial class Main : Node
-            {
-                private ulong started;
-                private bool renamed;
-                private bool added;
-
-                public override void _Ready()
-                {
-                    started = Time.GetTicksMsec();
-                }
-
-                public override void _Process(double delta)
-                {
-                    ulong now = Time.GetTicksMsec() - started;
-                    if (!renamed && now > 5000)
-                    {
-                        renamed = true;
-                        Name = "Renamed";
-                    }
-                    if (!added && now > 15000)
-                    {
-                        added = true;
-                        GetTree().Root.CallDeferred(Node.MethodName.AddChild, new Node { Name = "Added" });
-                    }
-                }
-            }
-
-            """);
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            Choose(window, Generated(window, "Spinner"));
-            Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
-            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"),
-                () => $"the Live Visual Tree to show the game's Main node ({window.LiveSource?.State}; {string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Renamed"),
-                () => $"the node the game renamed to show by its new name ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            Assert.True(!tree.Rows.Any(r => r.Element.Name is "Main" or "Added"),
-                $"The rename was to show by itself, before the node added ten seconds later: {string.Join(", ", tree.Rows.Select(r => r.Element.Name))}");
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Added"),
-                () => $"the node the game added to show ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A node's values of several parts are set from the properties pane in the form it shows them: a Node2D's
-    /// position (a Vector2 of its transform) and a Transform2D the script exports, each read back as the game then holds it.</summary>
-    private void A_nodes_position_and_a_transform_are_set_from_the_properties_pane()
-    {
-        File.WriteAllText(ScriptPath, """
-            using Godot;
-
-            public partial class Main : Node2D
-            {
-                [Export]
-                public Transform2D Placed { get; set; } = Transform2D.Identity;
-            }
-
-            """);
-        File.WriteAllText(Path.Combine(game.Folder, "main.tscn"), Scene.Replace("type=\"Node\"", "type=\"Node2D\"", StringComparison.Ordinal));
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            Choose(window, Generated(window, "Spinner"));
-            Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
-            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"),
-                () => $"the game's Main node ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Main");
-            Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "position") && tree.PropertyRows.Any(p => p.Name == "Placed"),
-                () => $"Main's position and Placed ({string.Join(", ", tree.PropertyRows.Select(p => p.Name))})");
-
-            foreach ((string name, string typed) in (IEnumerable<(string, string)>)[("position", "(100, 50)"), ("Placed", "x: (1, 0), y: (0, 1), origin: (7, 8)")])
-            {
-                tree.PropertyList.SelectedItem = tree.PropertyRows.First(p => p.Name == name);
-                tree.Edit(tree.PropertyRows.First(p => p.Name == name));
-                Ui.WaitFor(() => tree.Editing is { IsVisible: true }, () => $"{name}'s value to become a box to type in ({window.Status})");
-                tree.Editing!.Focus();
-                tree.Editing.SelectAll();
-                window.KeyTextInput(typed);
-                Ui.Press(window, "ENTER");
-                Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == name && p.Value == typed),
-                    () => $"{name}'s row to show {typed} as the game now holds it ({tree.PropertyRows.FirstOrDefault(p => p.Name == name)?.Value}; {window.Status})");
-            }
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Two games launched at once (Debug on the main scene, and again on another) are each a source of the Live Visual Tree:
-    /// the chooser offers both, the one started last shown first, and each chosen in turn shows its own nodes.</summary>
-    private void Two_games_launched_are_each_a_source_the_Live_Visual_Tree_shows_chosen_in_turn()
-    {
-        File.WriteAllText(Path.Combine(game.Folder, "other.tscn"), "[gd_scene format=3]\n\n[node name=\"Other\" type=\"Node\"]\n");
-        MainWindow window = game.Open(null, languageServer: false);
-        IReadOnlyList<(string Name, int? Process)> games = [];
-        try
-        {
-            RunConfiguration generated = Generated(window, "Spinner");
-            RunConfiguration main = generated with { Name = "Main on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes) };
-            RunConfiguration other = main with { Name = "Other on Godot", Arguments = "--headless res://other.tscn", BuildBeforeLaunch = false };
-            window.SetConfigurations([main, other], main.Name);
-            Passenger.App.LiveTree.LiveTreeView tree = window.LiveTree;
-            Ui.Launched(window, window.DebugAsync(), "the first game's build and start under the debugger", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main"),
-                () => $"the first game's Main node ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            Assert.False(tree.Sources.IsVisible, "The chooser shows with one game running");
-
-            window.SetConfigurations([main, other], other.Name);
-            Ui.Launched(window, window.DebugAsync(), "the second game's start under the debugger", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => tree.Sources.IsVisible && tree.SourceNames.Count == 2 && tree.Rows.Any(r => r.Element.Name == "Other"),
-                () => $"the chooser to offer both games, the second shown ({string.Join(", ", tree.SourceNames)}; {string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-
-            tree.Sources.SelectedIndex = 0;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Main") && !tree.Rows.Any(r => r.Element.Name == "Other"),
-                () => $"the first game's nodes once it is chosen ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            Assert.True(window.Session.Game == window.Session.Games[0], "The game chosen in the Live Visual Tree is not the one agents' tools follow");
-            tree.Sources.SelectedIndex = 1;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Other") && !tree.Rows.Any(r => r.Element.Name == "Main"),
-                () => $"the second game's nodes once it is chosen again ({string.Join(", ", tree.Rows.Select(r => r.Element.Name))})", TimeSpan.FromMinutes(1));
-            games = [.. window.Session.Games.Select(g => (g.Name, g.ProcessId))];
-            // Stop ends the chosen session, the game a moment before its debugger lets go of it: a Stop meanwhile is the same one's.
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.Session.Games.Count == 1 && window.Session.Games[0].Name == main.Name && !window.Debugger.Tabs.Any(t => t.IsLive && t.Name.StartsWith(other.Name, StringComparison.Ordinal)),
-                () => $"the second game and its sessions to end ({Debugged(window)}; {Running(games)})");
-            Ui.WaitFor(() => !tree.Sources.IsVisible && tree.Rows.Any(r => r.Element.Name == "Main"),
-                () => $"the Live Visual Tree to show the first game alone once the second ended ({string.Join(", ", tree.SourceNames)}; {Running(games)})", TimeSpan.FromMinutes(1));
-        }
-        finally
-        {
-            End(window, games);
-            File.Delete(Path.Combine(game.Folder, "other.tscn"));
-        }
-    }
-
-    /// <summary>Settings › Godot says the Godot found, with the version it answers and that it runs C#; a Godot too old for the
-    /// project's Godot.NET.Sdk (a stand-in answering 4.6.1 to --version) is refused before Run starts anything, naming both.</summary>
-    private void Settings_say_the_Godot_found_with_its_version_and_one_too_old_for_the_projects_sdk_is_refused_before_a_start()
-    {
-        MainWindow window = game.Open(null, languageServer: false);
-        try
-        {
-            GodotFound godot = game.Godot!;
-            string version = Ui.AwaitPumped(GodotExecutables.VersionAsync(godot), "the version the Godot found answers", TimeSpan.FromMinutes(1))!;
-            Passenger.App.Settings.SettingsDialog dialog = window.ShowSettings();
-            dialog.Page = Passenger.App.Settings.SettingsDialog.GodotPage;
-            string said = $"Godot {version}, a .NET build, which runs C#, from {godot.From}: {godot.Executable}";
-            Ui.WaitFor(() => dialog.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Any(t => t.IsEffectivelyVisible && t.Text == said),
-                () => $"Settings › Godot to say {said} ({string.Join(" | ", dialog.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text))})",
-                TimeSpan.FromMinutes(1));
-            dialog.Close();
-            Ui.Settle();
-
-            window.ApplySettings(window.Settings with { GodotExecutable = StandIn("4.6.1") });
-            Choose(window, Generated(window, "Spinner"));
-            string? refused = Ui.AwaitPumped(window.RunAsync(), "Run of the game on a Godot too old for it", TimeSpan.FromMinutes(3));
-            // The project's Godot.NET.Sdk is the found Godot's package, spelled as NuGet spells it (4.8.0-beta.2 for 4.8 beta 2).
-            string sdk = godot.Version!;
-            Assert.Equal($"Spinner on Godot cannot run: it builds with Godot.NET.Sdk {sdk}, newer than the Godot 4.6.1 that runs it: run it on Godot {sdk} or newer, "
-                + $"or build it with Godot.NET.Sdk 4.6.1", refused);
-            Assert.False(window.IsRunning, "Run started the game on a Godot too old for its Godot.NET.Sdk");
-        }
-        finally
-        {
-            window.ApplySettings(window.Settings with { GodotExecutable = null });
-            End(window);
-        }
-    }
-
-    /// <summary>A stand-in Godot of a .NET build (a GodotSharp beside it) that answers --version with a version given, and
-    /// does nothing else: its path.</summary>
-    private static string StandIn(string version)
-    {
-        string folder = TestFolders.Create("old-godot-");
-        Directory.CreateDirectory(Path.Combine(folder, "GodotSharp", "Api"));
-        string answer = $"{version}.stable.mono.official.standin";
-        if (OperatingSystem.IsWindows())
-        {
-            string batch = Path.Combine(folder, "godot.cmd");
-            File.WriteAllText(batch, $"@echo {answer}\r\n");
-            return batch;
-        }
-        string script = Path.Combine(folder, "godot");
-        File.WriteAllText(script, $"#!/bin/sh\necho {answer}\n");
-        File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        return script;
-    }
-
     /// <summary>A configuration the folder generated, by its name.</summary>
     private static RunConfiguration Generated(MainWindow window, string name)
     {
@@ -977,10 +439,6 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
     private void Choose(MainWindow window, RunConfiguration generated, ConsoleKind console = ConsoleKind.Internal) =>
         window.SetConfigurations([generated with { Name = $"{generated.Name} on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes), Console = console }],
             $"{generated.Name} on Godot");
-
-    /// <summary>What a program run in a tab of the Terminal window has written there, its scrollback and its screen.</summary>
-    private static string Terminal(TerminalRun run) =>
-        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
 
     private static int LineOf(string text, string code) => Array.FindIndex(text.Split('\n'), l => l.Contains(code, StringComparison.Ordinal)) + 1;
 

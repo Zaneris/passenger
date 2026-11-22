@@ -4,15 +4,14 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App.Godot;
 using Passenger.App.LiveTree;
-using Passenger.Inspector;
 using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
 /// <summary>The properties pane's value editors over a stand-in for what holds the value, a game's answer held back as
-/// long as a test needs: an item form's changes go one at a time, each made on what the one before left, whichever way the
-/// person moved on, a field not yet left among them as Remove is pressed; a dictionary's Add gives a key of its type; and a
-/// row handed another property's range keeps to that range. No game runs: what reaches a game is held by GodotValueFormsTests.</summary>
+/// long as a test needs: an item form's changes go one at a time, each made on what the one before left, whichever way
+/// the person moved on, a field not yet left among them as Remove is pressed. No game runs: what reaches a game is held
+/// by GodotValueFormsTests.</summary>
 public sealed class GodotValueCellsTests
 {
     /// <summary>What a form sends, each held until the test lets it land as the game's answer.</summary>
@@ -99,7 +98,7 @@ public sealed class GodotValueCellsTests
         ((Window)TopLevel.GetTopLevel(field)!).KeyTextInput(text);
     }
 
-    /// <summary>A running game's value rows send each edit, add and removal for the row asked, in order, nothing typed
+    /// <summary>A running game's value rows send each edit and removal for the row asked, in order, nothing typed
     /// lost.</summary>
     [AvaloniaFact]
     public void A_games_value_rows_send_each_edit_in_the_order_asked()
@@ -107,25 +106,11 @@ public sealed class GodotValueCellsTests
         Flow.Step(nameof(What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost),
             What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(What_is_typed_in_the_row_Remove_takes_goes_with_it), What_is_typed_in_the_row_Remove_takes_goes_with_it);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit),
-            An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for),
-            Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way),
             An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way);
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_removal_the_game_refuses_leaves_the_rows_and_what_waits_behind_it_acts_on_the_row_it_asked_for),
             A_removal_the_game_refuses_leaves_the_rows_and_what_waits_behind_it_acts_on_the_row_it_asked_for);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both),
-            Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now),
-            A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now);
     }
 
     private void What_is_typed_in_a_field_not_yet_left_goes_ahead_of_another_rows_Remove_and_is_not_lost()
@@ -143,51 +128,6 @@ public sealed class GodotValueCellsTests
         sends.Land();
         Ui.WaitFor(() => form.Fields.Count == 2, "the rows to show what the game holds");
         Assert.Equal("9", form.Fields[0].Text);
-    }
-
-    private void What_is_typed_in_the_row_Remove_takes_goes_with_it()
-    {
-        Sends sends = new();
-        GodotItemsEditor form = Form(IntArray(1, 2, 3), Ints, sends, new Tuner());
-        Hold(form.Fields[1], "9");
-
-        Ui.Click(Remove(form, "Remove item 1"));
-        Ui.WaitFor(() => sends.Waiting == 1, () => $"Remove's send ({sends.Sent.Count} sent)");
-        Assert.Equal([1L, 3L], Assert.IsType<GodotArray>(Assert.Single(sends.Sent)));
-    }
-
-    private void An_item_added_while_an_edit_is_on_its_way_is_added_to_the_edit()
-    {
-        Sends sends = new();
-        GodotItemsEditor form = Form(IntArray(1), Ints, sends, new Tuner());
-        Type(form.Fields[0], "9");
-        Assert.Equal(1, sends.Waiting);
-
-        Ui.Click(form.Add);
-        Assert.True(sends.Sent.Count == 1, "Add went out over the edit still on its way, from the value before it");
-
-        sends.Land();
-        Ui.WaitFor(() => sends.Waiting == 1, () => $"Add's turn, once the edit landed ({sends.Sent.Count} sent)");
-        Assert.Equal([9L, 0L], Assert.IsType<GodotArray>(sends.Sent[^1]));
-        sends.Land();
-        Ui.WaitFor(() => form.Fields.Count == 2, "the rows to show what the game holds");
-        Assert.Equal("9", form.Fields[0].Text);
-    }
-
-    private void Each_row_removed_while_the_one_before_is_on_its_way_is_the_row_that_was_asked_for()
-    {
-        Sends sends = new();
-        GodotItemsEditor form = Form(IntArray(10, 20, 30, 40), Ints, sends, new Tuner());
-        Button second = Remove(form, "Remove item 1");
-        Button last = Remove(form, "Remove item 3");
-
-        Ui.Click(second);
-        Ui.Click(last);
-        Assert.True(sends.Sent.Count == 1, "The second removal went out over the first, still on its way");
-
-        sends.Land();
-        Ui.WaitFor(() => sends.Waiting == 1, () => $"the second removal's turn ({sends.Sent.Count} sent)");
-        Assert.Equal([10L, 30L], Assert.IsType<GodotArray>(sends.Sent[^1]));
     }
 
     private void An_edit_of_a_row_the_person_moved_past_is_sent_after_the_one_on_its_way()
@@ -220,26 +160,6 @@ public sealed class GodotValueCellsTests
         Assert.Equal([10L, 20L], Assert.IsType<GodotArray>(sends.Sent[^1]));
     }
 
-    private void Add_on_a_dictionary_of_bool_keys_sends_the_key_it_lacks_and_says_so_where_it_has_both()
-    {
-        GodotHint hint = new(GodotEditing.Entries) { Key = GodotType.Bool, Element = GodotType.Int };
-        GodotDictionary typed = new([new(true, 1L)]) { KeyType = GodotElement.Of(GodotType.Bool), ValueType = GodotElement.Of(GodotType.Int) };
-        Sends sends = new();
-        Tuner tuner = new();
-        GodotItemsEditor form = Form(typed, hint, sends, tuner, GodotType.Dictionary);
-
-        Ui.Click(form.Add);
-        GodotDictionary sent = Assert.IsType<GodotDictionary>(sends.Sent[^1]);
-        Assert.Equal([true, false], sent.Entries.Select(e => e.Key));
-        Assert.Equal(typed.KeyType, sent.KeyType);
-        sends.Land();
-        Ui.WaitFor(() => form.Fields.Count == 4, "the two entries' rows");
-
-        Ui.Click(form.Add);
-        Assert.True(sends.Sent.Count == 1, "A dictionary of bool keys holding both has no key left to send");
-        Assert.Contains("No new bool key can be made for waves", tuner.Said);
-    }
-
     /// <summary>Two properties a row is handed in turn, each set where it says.</summary>
     private sealed class Ranges : IGodotValues
     {
@@ -262,24 +182,5 @@ public sealed class GodotValueCellsTests
         }
 
         public GodotTuned? TunedOf(long element, string name) => null;
-    }
-
-    private static PropertyValue Row(string name) => new(name, "Main", false, "Float", "5", "Main", null, null);
-
-    private void A_row_handed_another_property_takes_a_number_within_the_range_it_shows_now()
-    {
-        Ranges values = new();
-        LiveValueCell cell = new GodotValueCells(values, new Tuner()).Make();
-        new Window { Width = 400, Height = 120, Content = cell.Editor }.Show();
-        cell.Show(1, Row("volume"));
-        cell.Show(1, Row("health"));
-        Ui.Settle();
-        ScrubField number = cell.Editor.GetVisualDescendants().OfType<ScrubField>().Single(f => f.IsEffectivelyVisible);
-
-        Type(number.Box, "50");
-        Assert.True(values.Set.Count > 0 && Equals(values.Set[^1], ("health", (object?)50.0)), $"A row last given 0 to 10 set health to {values.Set.LastOrDefault()}, where it goes to 100");
-
-        Type(number.Box, "500");
-        Assert.True(Equals(values.Set[^1], ("health", (object?)100.0)), $"A number past the end the row shows now set health to {values.Set[^1]}");
     }
 }

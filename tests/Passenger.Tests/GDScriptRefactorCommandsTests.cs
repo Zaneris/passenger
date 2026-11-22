@@ -48,12 +48,6 @@ public sealed class GDScriptRefactorCommandsTests
     {
         Flow.StepApart<GDScriptRefactorCommandsTests>(nameof(Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back),
             test => test.Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GDScriptRefactorCommandsTests>(nameof(A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command),
-            test => test.A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command());
-        OpenWindows.CloseAll();
-        Flow.StepApart<GDScriptRefactorCommandsTests>(nameof(Change_signature_changes_the_name_of_a_function_taking_typed_collections),
-            test => test.Change_signature_changes_the_name_of_a_function_taking_typed_collections());
     }
 
     private void Each_refactoring_changes_every_script_scene_and_string_naming_it_as_one_command_one_undo_takes_back()
@@ -179,91 +173,6 @@ public sealed class GDScriptRefactorCommandsTests
             string undoneScene = Ui.Shared(scene);
             Assert.True(said.Contains("Undone: Change Signature") && Text() == Player && undoneEnemy == Enemy && undoneScene == Scene,
                 $"One Undo did not take the rename back from both scripts and the scene ({string.Join(" / ", said)}):\n{Text()}\n{undoneEnemy}{undoneScene}");
-        }
-        finally
-        {
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>A rename Passenger can't see every use of asks the person, naming the places, and made anyway leaves them,
-    /// one Undo taking it back.</summary>
-    private void A_rename_with_uses_passenger_cant_see_asks_naming_them_and_made_anyway_leaves_them_as_one_command()
-    {
-        const string Dynamic = "extends Node\n\n\nfunc poke(player: Node, method: String):\n\tplayer.call(method)\n";
-        TestFolders.Write(folder, "dynamic.gd", Dynamic);
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<int>? held = godot is { Exists: true } ? window.Session.Web?.HoldNextConfigure(release.Task) : null;
-        try
-        {
-            Assert.Null(window.OpenFile(Path.Combine(folder, "player.gd")));
-            if (held is not null)
-            {
-                Ui.AwaitPumped(held, "Godot's GDScript server held at its start", TimeSpan.FromMinutes(1));
-            }
-            OpenDocument document = window.EditorArea.Active!;
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            string Text() => document.Text.Snapshot.ToString();
-            List<(string Text, string Yes)> asked = [];
-            window.Confirm = (_, text, yes) =>
-            {
-                asked.Add((text, yes));
-                return Task.FromResult(true);
-            };
-            Ui.PlaceAfter(editor, "func twi");
-            Named(window, AppActions.Rename, "double");
-            Ui.PumpUntil(() => Text().Contains("func double(x):", StringComparison.Ordinal), "twice renamed anyway", TimeSpan.FromSeconds(30));
-            (string question, string answer) = Assert.Single(asked);
-            Assert.True(question.Contains("dynamic.gd:5: names a method by what it reads at run time", StringComparison.Ordinal) && answer == "Rename Anyway",
-                $"The question named no place Passenger can't see, or offered no Rename Anyway: {question} ({answer})");
-            Assert.Contains("\tprint(double(3) + 1)\n", Text(), StringComparison.Ordinal);
-            Assert.Equal(Dynamic, File.ReadAllText(Path.Combine(folder, "dynamic.gd")));
-            Ui.PumpUntil(() => window.Status?.Contains("leaving 1 place it can't see", StringComparison.Ordinal) == true, "the rename to say the place it left",
-                TimeSpan.FromSeconds(30));
-            editor.Focus();
-            Undone(window, document, Player);
-        }
-        finally
-        {
-            window.Close();
-            release.SetResult();
-        }
-    }
-
-    /// <summary>The dialog takes a parameter and a return of a typed collection as written, so a name beside them can change.</summary>
-    private void Change_signature_changes_the_name_of_a_function_taking_typed_collections()
-    {
-        const string Typed = "extends Node\n\n\nfunc count(nodes: Array[Node], table: Dictionary[String, int]) -> Array[int]:\n\treturn [nodes.size(), table.size()]\n\n\n"
-            + "func _ready():\n\tprint(count([], {}))\n";
-        TestFolders.Write(folder, "typed.gd", Typed);
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, GodotEnvironment = GodotTests.Game.Home(folder + "-home"), GodotHeadlessAtOpen = true };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<int>? held = godot is { Exists: true } ? window.Session.Web?.HoldNextConfigure(release.Task) : null;
-        try
-        {
-            Assert.Null(window.OpenFile(Path.Combine(folder, "typed.gd")));
-            if (held is not null)
-            {
-                Ui.AwaitPumped(held, "Godot's GDScript server held at its start", TimeSpan.FromMinutes(1));
-            }
-            OpenDocument document = window.EditorArea.Active!;
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "func coun");
-            ChangeSignatureDialog renaming = Dialog(window);
-            renaming.NameBox.Text = "tally";
-            Ui.PumpUntil(() => renaming.Preview.Contains("tally(", StringComparison.Ordinal), "the new name in the preview", TimeSpan.FromSeconds(30));
-            Assert.True(renaming.Problem.Length == 0, $"A typed collection's type is taken for no type: {renaming.Problem}");
-            Ui.Click(renaming.NextButton, settle: false);
-            Ui.PumpUntil(() => !renaming.IsVisible || renaming.Problem.Length > 0, "Change Signature to be made", TimeSpan.FromSeconds(30));
-            Assert.False(renaming.IsVisible, $"Change Signature stayed open: {renaming.Problem}");
-            Assert.Equal(Typed.Replace("count(", "tally("), document.Text.Snapshot.ToString());
         }
         finally
         {

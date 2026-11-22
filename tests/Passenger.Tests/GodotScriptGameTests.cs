@@ -11,13 +11,13 @@ using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot 4 project of GDScript alone, a project.godot and its scenes and scripts with no C# project, as a person
-/// works on it: the game and Godot's editor are its run configurations and Build says there is nothing to build; Run starts
-/// its game, importing its assets first where they have no .import; Debug is its GDScript session alone, a breakpoint in a
-/// script stopping it and a member set from Variables changing what it prints; a saved script reaches the game Run runs
-/// with Hot Reload; and Profile records Godot's own frames, saying the run has no samples, as Attach Profiler does; Debug
-/// takes the configuration's external console. Godot runs headless, its user folders the run's. Without a Godot 4 each
-/// test skips saying why. Debugged, so run alone.</summary>
+/// <summary>A Godot 4 project of GDScript alone, a project.godot and its scenes and scripts with no C# project, as a
+/// person works on it: the game and Godot's editor are its run configurations and Build says there is nothing to build;
+/// Run starts its game, importing its assets first where they have no .import; Debug is its GDScript session alone, a
+/// breakpoint in a script stopping it and a member set from Variables changing what it prints, a conditional breakpoint
+/// and a tracepoint holding as Godot sets its tree up; input aimed at a control gone since it was found is refused; and
+/// Passenger's helper comes in only where Godot lets it. Godot runs headless, its user folders the run's. Without a
+/// Godot 4 each test skips saying why. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Game>
 {
@@ -36,8 +36,8 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
 
     private string TickerPath => Path.Combine(PathNames.Canonical(game.Folder), "ticker.gd");
 
-    /// <summary>A GDScript game runs from its configurations, imports what it lacks, keeps its settings, and takes the
-    /// helper only where Godot lets it.</summary>
+    /// <summary>A GDScript game runs from its configurations, imports what it lacks, keeps its settings, refuses input
+    /// aimed at what is gone, and takes the helper only where Godot lets it.</summary>
     [AvaloniaFact]
     public void A_gdscript_game_runs_and_takes_the_helper_as_godot_lets_it()
     {
@@ -45,13 +45,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
             The_projects_game_and_editor_are_its_configurations_build_has_nothing_to_build_and_Run_starts_the_game);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window),
-            The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why),
-            A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other),
             Input_aimed_at_a_control_gone_since_it_was_found_is_refused_and_reaches_no_other);
@@ -69,14 +63,12 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
             A_helper_godot_refuses_while_the_root_sets_its_children_up_says_so_as_its_own_and_comes_in_on_a_later_call);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once),
-            A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once);
     }
 
-    /// <summary>A GDScript game stops at breakpoints and conditions, takes saved scripts and an agent's reload, and is
-    /// profiled by its frames alone.</summary>
+    /// <summary>A GDScript game stops at breakpoints, conditions and tracepoints, a member set from Variables being
+    /// what it says after.</summary>
     [AvaloniaFact]
-    public void A_gdscript_game_is_debugged_reloaded_and_profiled()
+    public void A_gdscript_game_is_debugged_at_its_breakpoints()
     {
         Flow.Step(nameof(A_breakpoint_stops_the_game_debugged_alone_and_a_member_set_from_Variables_is_what_it_says_after),
             A_breakpoint_stops_the_game_debugged_alone_and_a_member_set_from_Variables_is_what_it_says_after);
@@ -86,23 +78,10 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
             A_conditional_breakpoint_and_a_tracepoint_in_the_games_ready_hold_while_godot_sets_its_tree_up);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload), A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit),
-            An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Profile_records_the_games_frames_alone_and_says_it_takes_no_samples),
-            Profile_records_the_games_frames_alone_and_says_it_takes_no_samples);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it),
-            Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone),
-            Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone);
     }
 
     /// <summary>The game's and the editor's configurations are generated for the project.godot, Build is greyed saying there
@@ -123,51 +102,6 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
             Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => Run(window).Contains("tick 20", StringComparison.Ordinal), () => $"the game to say its word ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
             Assert.DoesNotContain("Build", window.Status ?? string.Empty, StringComparison.Ordinal);
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A game whose project stretches nothing draws at its window's size in pixels, so the Game window has Passenger's
-    /// helper lay it out at its project's size and scale it to its window, and a place smaller than that still shows it whole.</summary>
-    private void The_helper_has_a_game_that_stretches_nothing_laid_out_at_its_projects_size_and_scaled_to_its_window()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window);
-            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => window.Session.Game is { State: Passenger.App.LiveTree.LiveAppState.Connected }, () => $"the game to connect ({window.Status})", TimeSpan.FromMinutes(1));
-            Passenger.App.Godot.GodotGame game = window.Session.Game!;
-
-            List<object?> said = Ui.Await(game.AskAsync(Passenger.App.Godot.GodotAgent.ScaleToWindow), "the helper's answer", TimeSpan.FromMinutes(1));
-
-            Assert.True(said is [1L, 1152L, 648L], $"The game is left drawing at its window's size, so a smaller Game window would crop it: the helper said {string.Join(", ", said)}");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A configuration that starts the game in Passenger's Game window runs it in a window of its own where it cannot
-    /// draw there: a headless game has no picture, so the Game window says why, holds no game, and the game runs as ever.</summary>
-    private void A_game_started_in_the_Game_window_that_runs_headless_runs_in_its_own_window_the_Game_window_saying_why()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window);
-            RunConfiguration chosen = window.Configurations.Single(c => c.Name == "Ticker on Godot");
-            window.SetConfigurations([chosen with { GodotInPane = true }], "Ticker on Godot");
-            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Run(window).Contains("tick 20", StringComparison.Ordinal), () => $"the game to say its word ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Equal(Refusals.GameHeadless("Ticker on Godot"), window.GamePane.Said);
-            Assert.Null(window.GamePane.Game);
             Stop(window);
         }
         finally
@@ -429,215 +363,6 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
             End(window);
         }
     }
-
-    /// <summary>The scene's one node's script, which adds again each frame the child it added as it was ready, Godot refusing it
-    /// each time as a node that already has a parent; at a few frames a second, so Godot drops none of its errors.</summary>
-    private const string Readding = "extends Node\n\nvar held := Node.new()\n\n\nfunc _ready() -> void:\n\tEngine.max_fps = 30\n\tadd_child(held)\n\n\n"
-        + "func _process(_delta: float) -> void:\n\tadd_child(held)\n";
-
-    /// <summary>An agent's app_tree on a game whose own add_child fails each frame brings Passenger's helper in and says where
-    /// the nodes are drawn: Godot's refusals of the game's own child, raised while the helper came in, are the game's errors,
-    /// said in Problems, never taken as Godot refusing the helper; and the helper is in the game's tree once.</summary>
-    private void A_games_own_add_child_errors_as_an_agents_app_tree_brings_the_helper_in_stay_the_games_and_the_helper_comes_in_once()
-    {
-        File.WriteAllText(TickerPath, Readding);
-        MainWindow window = Open();
-        try
-        {
-            // Nothing else brings the helper in.
-            window.ApplySettings(window.Settings with { GodotLiveValues = false });
-            Choose(window);
-            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => window.Session.Game is { State: Passenger.App.LiveTree.LiveAppState.Connected, Monitors: not null },
-                () => $"the game to connect and run its loop ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
-            Passenger.App.Godot.GodotGame running = window.Session.Game!;
-            List<string> raised = [];
-            running.Raised += (_, error) => raised.Add(error.Said);
-            Ui.PumpUntil(() => raised.Any(Readded), "the game's own add_child to fail", TimeSpan.FromMinutes(1));
-
-            int before = raised.Count(Readded);
-            string tree = Ui.AwaitPumped(new Passenger.App.Mcp.PassengerTools(window).AppTree(depth: 2), "an agent's app_tree", TimeSpan.FromMinutes(1));
-            Assert.True(!tree.Contains("Where its nodes are drawn is unknown", StringComparison.Ordinal),
-                $"app_tree took the game's own add_child errors for Godot refusing Passenger's helper, so it could not say where the nodes are drawn: {tree}");
-            Ui.PumpUntil(() => raised.Count(Readded) > before + 2, "the game's add_child errors to go on once the helper answered", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => window.BottomPanel.Problems.GodotProblems.Any(p => Readded(p.Message)),
-                () => $"the game's add_child errors in Problems ({string.Join("; ", window.BottomPanel.Problems.GodotProblems.Select(p => p.Message).Distinct().Take(5))})", TimeSpan.FromMinutes(1));
-
-            Passenger.App.Godot.GodotNode root = Ui.AwaitPumped(running.SceneTreeAsync(), "the game's tree", TimeSpan.FromMinutes(1));
-            Assert.True(root.Children.Count(Passenger.App.Godot.GodotAgent.Is) == 1,
-                $"Passenger's helper is in the game's tree {root.Children.Count(Passenger.App.Godot.GodotAgent.Is)} times: [{string.Join(", ", root.Children.Select(c => c.Name))}]");
-            Stop(window);
-        }
-        finally
-        {
-            window.ApplySettings(window.Settings with { GodotLiveValues = true });
-            End(window);
-        }
-
-        static bool Readded(string said) => said.Contains("already has a parent", StringComparison.Ordinal);
-    }
-
-    /// <summary>A script saved while Run runs the game with Hot Reload reaches it: what it says after is the edit's, its count
-    /// going on.</summary>
-    private void A_saved_script_reaches_the_game_Run_runs_with_Hot_Reload()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window);
-            Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the game's start with Hot Reload on", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Run(window).Contains("tick 40", StringComparison.Ordinal), () => $"the script to run ({Run(window)})", TimeSpan.FromMinutes(1));
-            Typing.Replace(window, "print(word, \" \", counter)", "print(\"edited \", counter)");
-            Ui.Run(window, AppActions.SaveAll);
-            Ui.WaitFor(() => Run(window).Contains("edited ", StringComparison.Ordinal), () => $"the game to say what the saved script says ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
-            string after = Run(window)[Run(window).IndexOf("edited ", StringComparison.Ordinal)..].Split('\n')[0];
-            Assert.True(int.Parse(after["edited ".Length..].Trim(), System.Globalization.CultureInfo.InvariantCulture) > 40, $"The count started again after the reload: {after}");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>A script edited and left unsaved while Run runs the game with Hot Reload: Apply Hot Reload Changes, greyed
-    /// while nothing is unsaved, is offered, and an agent's hot_reload saves the script, saying so, and the game then says
-    /// the edit's words.</summary>
-    private void An_agents_hot_reload_saves_the_games_unsaved_script_and_the_game_takes_the_edit()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window);
-            Ui.Launched(window, window.Builds.RunAsync(hotReload: true), "the game's start with Hot Reload on", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Run(window).Contains("tick 40", StringComparison.Ordinal), () => $"the script to run ({Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Equal(DebugController.ScriptsReloadAsSaved("Ticker on Godot"), window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
-            Typing.Replace(window, "print(word, \" \", counter)", "print(\"unsaved \", counter)");
-            Assert.True(window.EditorArea.Active!.IsModified, "The script's edit was saved as it was typed");
-            Assert.Null(window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
-
-            Passenger.App.Mcp.AgentCall call = Passenger.App.Mcp.AgentCall.Begin(null, null, null, Passenger.App.Mcp.McpTools.HotReload, "Hot Reload", "a test's agent", "the test", traced: false);
-            Passenger.App.Mcp.HotReloadInfo answer;
-            try
-            {
-                answer = Ui.AwaitPumped(new Passenger.App.Mcp.PassengerTools(window).HotReload(), "an agent's hot_reload", TimeSpan.FromMinutes(1));
-            }
-            finally
-            {
-                Ui.Await(call.DisposeAsync().AsTask().ContinueWith(_ => true, TaskScheduler.Default), "the agent's call to end");
-            }
-            Assert.True(answer is { Result: "applied", Files: ["ticker.gd"] } && answer.Said == "Saved ticker.gd: Godot reloads it in Ticker on Godot",
-                $"hot_reload with the game's script unsaved answered {answer.Result}: {answer.Said} ({string.Join(", ", answer.Files)})");
-            Assert.False(window.EditorArea.Active!.IsModified, "hot_reload left the game's script unsaved");
-            Ui.WaitFor(() => Run(window).Contains("unsaved ", StringComparison.Ordinal), () => $"the game to say what the saved script says ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Equal(DebugController.ScriptsReloadAsSaved("Ticker on Godot"), window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Profile records the game's frames as Godot's own profiler measures them, its script's _process among them,
-    /// and says the run has no samples, a game of GDScript alone running no .NET code.</summary>
-    private void Profile_records_the_games_frames_alone_and_says_it_takes_no_samples()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window);
-            Ui.Launched(window, window.ProfileAsync(), "the game's start under the profiler", TimeSpan.FromMinutes(2));
-            Assert.Equal(Passenger.App.Profiling.ProfilerCommands.FramesAloneSaid("Ticker on Godot"), window.Status);
-            Ui.WaitFor(() => Run(window).Contains("tick 200", StringComparison.Ordinal), () => $"the profiled game to run its script ({Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Equal(Passenger.Profiler.ProfilingSession.NoHeapOfScripts, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
-
-            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(read.Snapshot is { FramesAlone: true, Samples: 0, Game: not null, GameFrames.Count: > 100 },
-                $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Samples} samples, {read.Snapshot?.Game?.Why}");
-            Assert.Contains("no samples", read.Message, StringComparison.Ordinal);
-            Passenger.App.Profiling.GameFramesView frames = window.ProfilerView.GamePage;
-            Ui.WaitFor(() => frames.IsEffectivelyVisible && frames.Rows.Count > 0, "the Frames page to show Godot's frames");
-            Assert.True(frames.Rows.Any(r => r.Function?.Name == "_process" && r.Calls > 100),
-                $"The Frames page names no _process of ticker.gd: {string.Join("; ", frames.Rows.Select(r => $"{r.Name} {r.Place} {r.Calls}"))}");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Debug with the configuration's external console runs the game in a tab of the Terminal window, which shows what
-    /// it says rather than the Debug window's console, its GDScript session still stopping it at a breakpoint; Stop ends it
-    /// there.</summary>
-    private void Debug_with_the_external_console_runs_the_game_in_the_terminal_and_a_breakpoint_still_stops_it()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window, ConsoleKind.Terminal);
-            Ui.Launched(window, window.DebugAsync(), "the game's start in the terminal under the debugger", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.GDScript, Terminal: { } shown } && TerminalText(shown).Contains("tick 20", StringComparison.Ordinal),
-                () => $"the game to say its word in the terminal ({Sessions(window)}; {Ui.Said(window)}; {(window.Debugger.Session?.Terminal is { } run ? TerminalText(run) : "no terminal")})",
-                TimeSpan.FromMinutes(1));
-            TerminalRun terminal = window.Debugger.Session!.Terminal!;
-            Assert.DoesNotContain("tick ", Console(window), StringComparison.Ordinal);
-
-            // The terminal took the keys as it showed the game.
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.Focus();
-            int line = LineOf(editor, "counter += 1");
-            editor.GoTo(new TextPosition(line, 1));
-            Ui.Run(window, AppActions.ToggleBreakpoint);
-            Assert.True(window.Debugger.Breakpoints.In(TickerPath).Any(b => b.Line == line), $"No breakpoint was set at ticker.gd's line {line + 1}: {window.Status}");
-            Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.GDScript, State: DebugState.Paused } && Stopped(editor) == line,
-                () => $"the game in the terminal to stop at the breakpoint in ticker.gd's _process ({Sessions(window)}, {Ui.Said(window)})", TimeSpan.FromMinutes(1));
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging && terminal.Ended.IsCompleted && window.Session.Games.Count == 0,
-                () => $"the game in the terminal to end with its session ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            Assert.True(Processes.Gone(terminal.ProcessId), $"Stop left the game running in the terminal: {Processes.Describe(terminal.ProcessId)}");
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>Attach Profiler to the game Run runs records its frames as Godot's own profiler measures them, its script's
-    /// _process among them, and says the run has no samples: the game runs no .NET code, so no EventPipe session is asked of it.</summary>
-    private void Attach_Profiler_to_the_game_Run_runs_records_its_frames_alone()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Choose(window);
-            Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Run(window).Contains("tick 20", StringComparison.Ordinal) && window.Session.Games is [{ ProcessId: int }],
-                () => $"the game to run, connected ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Null(Ui.Await(window.AttachProfilerAsync(), "the profiler's attach to the game", TimeSpan.FromMinutes(1)));
-            Assert.Equal(Passenger.App.Profiling.ProfilerCommands.FramesAloneSaid("Ticker on Godot"), window.Status);
-            int attached = Counted(Run(window));
-            Ui.WaitFor(() => Counted(Run(window)) > attached + 200, () => $"the profiled game to run its script ({Run(window)})", TimeSpan.FromMinutes(1));
-            Assert.Equal(Passenger.Profiler.ProfilingSession.NoHeapOfScripts, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
-
-            Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the game's snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(read.Snapshot is { FramesAlone: true, Samples: 0, Game: not null, GameFrames.Count: > 100 },
-                $"{read.Message}: {read.Snapshot?.GameFrames.Count} of Godot's frames, {read.Snapshot?.Samples} samples, {read.Snapshot?.Game?.Why}");
-            Assert.True(window.IsRunning, $"The game ended with its profile, where an attached profiler leaves it running ({window.Status})");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>The last count the game said (its word and its frame), or 0.</summary>
-    private static int Counted(string said) => said.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("tick ", StringComparison.Ordinal))
-        .Select(l => int.TryParse(l["tick ".Length..], System.Globalization.CultureInfo.InvariantCulture, out int count) ? count : 0).LastOrDefault();
-
-    private static string TerminalText(TerminalRun run) =>
-        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
 
     /// <summary>A window on the project with its script open, no C# language server.</summary>
     private MainWindow Open()

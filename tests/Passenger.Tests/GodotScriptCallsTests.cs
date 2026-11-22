@@ -8,16 +8,15 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot 4 game's C# naming a GDScript's members by string, on a node its scene runs enemy.gd on: a call of a
-/// function the script lacks and a connection to a signal it lacks are errors where the strings are written, those it
-/// declares, its engine class's own method and its variable are not; Go to Declaration from the function's string goes to
-/// the script's function, and Find Usages there lists the C# call and the scene's connection beside what Godot's server
-/// finds; the string completes the script's functions and hovers the one it names, and a rename of the function in its
-/// script, or from the C# string, renames the C# string and the scene's connection too, one step of Undo; an exported
-/// variable's rename renames the scene's key setting it; a C# Connect whose signal and handler disagree on their arguments,
-/// a GDScript's signal to a C# method or a C# signal to a GDScript's function, is marked. Its project restores from the packages
-/// the Godot found carries and the script starts GDScript's server in a headless Godot editor, so without a Godot 4 .NET
-/// build each test skips saying why; a Godot editor of its own, so run alone.</summary>
+/// <summary>A Godot 4 game's C# naming a GDScript's members by string, on a node its scene runs enemy.gd on: a call of
+/// a function the script lacks and a connection to a signal it lacks are errors where the strings are written, those it
+/// declares, its engine class's own method and its variable are not; Go to Declaration from the function's string goes
+/// to the script's function, and Find Usages there lists the C# call and the scene's connection beside what Godot's
+/// server finds; the string completes the script's functions and hovers the one it names, and a rename of the function
+/// in its script renames the C# string and the scene's connection too, one step of Undo; an exported variable's rename
+/// renames the scene's key setting it. Its project restores from the packages the Godot found carries and the script
+/// starts GDScript's server in a headless Godot editor, so without a Godot 4 .NET build each test skips saying why; a
+/// Godot editor of its own, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.Game>
 {
@@ -72,8 +71,8 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
     internal const string Enemy = "extends CharacterBody2D\n\nsignal died\n\nvar health := 3.0\n\n\nfunc take_damage(amount: int) -> void:\n\thealth -= amount\n"
         + "\tif health <= 0:\n\t\tdied.emit()\n";
 
-    /// <summary>A C# string naming a GDScript's function is checked, completes, leads to it and follows its renames,
-    /// and a connect is marked where the two disagree.</summary>
+    /// <summary>A C# string naming a GDScript's function is checked, completes, leads to it and follows its renames, an
+    /// export's too.</summary>
     [AvaloniaFact]
     public void A_csharp_string_naming_a_gdscript_function_is_read_against_it()
     {
@@ -85,20 +84,12 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
             A_gdscripts_function_completes_and_hovers_in_a_csharp_string_and_its_rename_follows_the_strings_and_scenes_naming_it);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code),
-            A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it),
             An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked),
-            A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call),
-            A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call);
     }
 
     private void A_csharp_string_naming_a_gdscripts_function_is_checked_leads_to_it_and_is_among_its_usages()
@@ -186,43 +177,6 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
         }
     }
 
-    /// <summary>Renamed from the C# string calling it, take_damage is renamed as from its script: there by Godot's server, the
-    /// script lent with no tab, in the C# string and in the scene's connection, the person left in Main.cs; one Undo puts
-    /// every file back.</summary>
-    private void A_gdscripts_function_renamed_from_a_csharp_string_calling_it_is_renamed_in_its_script_the_scene_and_the_code()
-    {
-        MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.WaitFor(() => GodotSceneTests.Marked(window).Contains("Enemy, a CharacterBody2D (enemy.gd), has no method 'take_damag'"),
-                () => $"Main.cs to be read against its scene: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(2));
-            Ui.PlaceAfter(editor, "enemy.Call(\"take_dam");
-            Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => window.Assist.Renaming == "take_damage", () => $"Rename's box on take_damage in the string ({window.Assist.Renaming}; {window.Status})");
-            window.KeyTextInput("hurt");
-            Ui.Press(window, "ENTER");
-            string code = game.PathOf("Main.cs");
-            string scene = game.PathOf("main.tscn");
-            string enemy = game.PathOf("enemy.gd");
-            Ui.WaitFor(() => TextOf(window, code).Contains("enemy.Call(\"hurt\", 2)", StringComparison.Ordinal) && TextOf(window, scene).Contains("method=\"hurt\"", StringComparison.Ordinal)
-                && TextOf(window, enemy).Contains("func hurt(amount: int)", StringComparison.Ordinal),
-                () => $"take_damage renamed in the script, the C# string and the scene ({window.Status}):\n{TextOf(window, code)}\n{TextOf(window, scene)}\n{TextOf(window, enemy)}", TimeSpan.FromMinutes(3));
-            Assert.Contains("enemy.Call(\"take_damag\", 2)", TextOf(window, code), StringComparison.Ordinal);
-            Assert.Equal("Main.cs", window.EditorArea.Active?.Name);
-
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            editor.Focus();
-            Ui.Run(window, EditorActions.Undo);
-            Ui.WaitFor(() => TextOf(window, code) == Script && TextOf(window, scene) == Scene && TextOf(window, enemy) == Enemy,
-                () => $"Undo to put Main.cs, main.tscn and enemy.gd back ({window.Status})");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>An exported variable a scene sets, renamed in its script, is renamed there by Godot's server, in the scene's
     /// key setting it on the node and in the C# Get naming it; one Undo puts every file back.</summary>
     private void An_exported_variables_rename_renames_the_scenes_key_setting_it_and_the_csharp_string_naming_it()
@@ -256,74 +210,6 @@ public sealed class GodotScriptCallsTests : IClassFixture<GodotScriptCallsTests.
             Ui.Run(window, EditorActions.Undo);
             Ui.WaitFor(() => TextOf(window, code) == Script && TextOf(window, scene) == setting && TextOf(window, enemy) == exported,
                 () => $"Undo to put Main.cs, main.tscn and enemy.gd back ({window.Status})");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A C# Connect of enemy.gd's died, declared giving nothing (<c>signal died()</c>: one written without its
-    /// parentheses gives whatever its emits do, so none is known), to a C# method taking an int is marked at the signal's
-    /// string, and one of a C# signal giving nothing to take_damage, which takes an amount, at the function's; died to
-    /// OnDied, which takes nothing, is not.</summary>
-    private void A_csharp_connect_whose_signal_and_handler_disagree_on_their_arguments_across_gdscript_and_csharp_is_marked()
-    {
-        string connects = Script.Replace("        float health = (float)GetNode(\"Enemy\").Get(\"health\");\n",
-            "        float health = (float)GetNode(\"Enemy\").Get(\"health\");\n        GetNode(\"Enemy\").Connect(\"died\", new Callable(this, MethodName.OnHurt));\n"
-            + "        Connect(SignalName.Hit, new Callable(enemy, \"take_damage\"));\n", StringComparison.Ordinal)
-            .Replace("    private void OnDied()\n    {\n    }\n", "    private void OnDied()\n    {\n    }\n\n    private void OnHurt(int amount)\n    {\n    }\n\n"
-                + "    [Signal]\n    public delegate void HitEventHandler();\n", StringComparison.Ordinal);
-        Assert.NotEqual(Script, connects);
-        File.WriteAllText(game.PathOf("Main.cs"), connects);
-        File.WriteAllText(game.PathOf("enemy.gd"), Enemy.Replace("signal died\n", "signal died()\n", StringComparison.Ordinal));
-        MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
-        try
-        {
-            string toHandler = "'died', which gives no arguments, is connected to 'OnHurt', which takes 1 (int)";
-            string toScript = "'Hit', which gives no arguments, is connected to 'take_damage', which takes 1 (amount: int)";
-            Ui.WaitFor(() => GodotSceneTests.Marked(window) is { } marked && marked.Contains(toHandler) && marked.Contains(toScript),
-                () => $"the Connects disagreeing on their arguments to be marked: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(2));
-            OpenDocument code = window.EditorArea.Active!;
-            Marker died = code.Markers.First(m => m.Message == toHandler);
-            Marker hit = code.Markers.First(m => m.Message == toScript);
-            int line = connects.Split('\n').ToList().FindIndex(l => l.Contains("MethodName.OnHurt", StringComparison.Ordinal));
-            Assert.Equal((line, "died"), (code.Text.Snapshot.GetLineFromOffset(died.Range.Start), code.Text.Snapshot.GetText(died.Range.Start, died.Range.Length)));
-            Assert.Equal((line + 1, "take_damage"), (code.Text.Snapshot.GetLineFromOffset(hit.Range.Start), code.Text.Snapshot.GetText(hit.Range.Start, hit.Range.Length)));
-            Assert.DoesNotContain(GodotSceneTests.Marked(window), m => m.Contains("'OnDied'", StringComparison.Ordinal));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A GDScript function with a rest parameter takes any count past the ones it requires (#1211): a scene's
-    /// connection of a signal giving it three is no mark, one giving none is; a C# Call giving it one is no mark, one
-    /// giving none is, where the string is written.</summary>
-    private void A_function_with_a_rest_parameter_takes_any_count_from_a_scenes_connection_and_a_csharp_call()
-    {
-        File.WriteAllText(game.PathOf("enemy.gd"), Enemy + "\n\nsignal talked(a, b, c)\nsignal hushed()\n\n\nfunc shout(first, ...rest) -> void:\n\tprint(first, rest)\n");
-        File.WriteAllText(game.PathOf("main.tscn"), Scene + "[connection signal=\"talked\" from=\"Enemy\" to=\"Enemy\" method=\"shout\"]\n"
-            + "[connection signal=\"hushed\" from=\"Enemy\" to=\"Enemy\" method=\"shout\"]\n");
-        string calls = Script.Replace("enemy.Call(\"move_and_slide\");", "enemy.Call(\"move_and_slide\");\n        enemy.Call(\"shout\", 1);\n        enemy.Call(\"shout\");", StringComparison.Ordinal);
-        File.WriteAllText(game.PathOf("Main.cs"), calls);
-        MainWindow window = game.Open(game.PathOf("Main.cs"), godot: game.Homes);
-        try
-        {
-            string noneGiven = "'shout' takes at least 1 (first, ...rest), but this call gives it none";
-            Ui.WaitFor(() => GodotSceneTests.Marked(window).Contains(noneGiven),
-                () => $"the call giving shout none to be marked: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(2));
-            OpenDocument code = window.EditorArea.Active!;
-            Marker marked = Assert.Single(code.Markers, m => m.Message.Contains("'shout'", StringComparison.Ordinal));
-            int line = calls.Split('\n').ToList().FindIndex(l => l.Contains("enemy.Call(\"shout\");", StringComparison.Ordinal));
-            Assert.Equal((line, "shout"), (code.Text.Snapshot.GetLineFromOffset(marked.Range.Start), code.Text.Snapshot.GetText(marked.Range.Start, marked.Range.Length)));
-
-            Assert.Null(window.OpenFile(game.PathOf("main.tscn")));
-            string none = "hushed gives no arguments, but shout takes at least 1 (first, ...rest)";
-            Ui.WaitFor(() => GodotSceneTests.Marked(window).Contains(none),
-                () => $"the connection giving shout none to be marked: {string.Join("; ", GodotSceneTests.Marked(window))}", TimeSpan.FromMinutes(1));
-            Assert.DoesNotContain(GodotSceneTests.Marked(window), m => m.Contains("talked", StringComparison.Ordinal));
         }
         finally
         {

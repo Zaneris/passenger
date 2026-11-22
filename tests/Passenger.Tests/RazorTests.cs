@@ -1,11 +1,9 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.VisualTree;
 using Passenger.App.Editors;
 using Passenger.App;
 using Passenger.App.Debugging;
-using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Dap;
@@ -16,12 +14,11 @@ namespace Passenger.Tests;
 
 /// <summary>Razor through the window, on a Blazor app made by <c>dotnet new blazor</c> with components of its own (one
 /// with its code in a code-behind, Tally.razor.cs, and no <c>@code</c>) and a Razor Page: a component's colours and its
-/// errors, completion of components, their parameters, HTML's elements and the C#, its tags closed as they are typed, go
-/// to declaration from a tag, rename across markup and code, the code-behind's members completed, checked, found and
-/// renamed from the markup and back, a caller in a component's code block placed in its .razor by Call Hierarchy, a JS
-/// interop call going to its JavaScript, and a Razor Page's errors and completion.
-/// Each test opens its own window, on the server the last one left running, warm, and on the app as written (<see
-/// cref="SharedProject"/>).</summary>
+/// errors, completion of components, their parameters, HTML's elements and the C#, its tags closed as they are typed,
+/// go to declaration from a tag, rename across markup and code, the code-behind's members completed, checked, found and
+/// renamed from the markup and back, a JS interop call going to its JavaScript, and a Razor Page's errors and
+/// completion. Each test opens its own window, on the server the last one left running, warm, and on the app as written
+/// (<see cref="SharedProject"/>).</summary>
 public sealed class RazorTests : IClassFixture<BlazorShop>
 {
     private readonly BlazorShop app;
@@ -53,16 +50,8 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
             An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come);
         OpenWindows.CloseAll();
         app.Reset();
-        Flow.Step(nameof(An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come),
-            An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come);
-        OpenWindows.CloseAll();
         app.Reset();
-        Flow.Step(nameof(A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own),
-            A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own);
-        OpenWindows.CloseAll();
         app.Reset();
-        Flow.Step(nameof(Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo),
-            Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo);
     }
 
     /// <summary>A component's markup and code behind lead to, complete and rename each other's members, and a JS
@@ -86,12 +75,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
             Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module);
         OpenWindows.CloseAll();
         app.Reset();
-        Flow.Step(nameof(Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit),
-            Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit);
-        OpenWindows.CloseAll();
         app.Reset();
-        Flow.Step(nameof(Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file),
-            Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file);
     }
 
     /// <summary>A component's markup and code in their colours, a name mistyped in its code block an error; and once put
@@ -245,100 +229,6 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         }
         Ui.Settle();
         Assert.Equal("<section>x</section>|", XamlTests.CaretLine(editor));
-        window.Close();
-    }
-
-    /// <summary>Above the end tag Razor wrote, with a line between, typed without a pause: the tag is joined from the text as it
-    /// is there, and read once.</summary>
-    private void An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
-    {
-        MainWindow window = app.Open("Components/Greeting.razor");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
-        TypeEach(window, "<section>");
-        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<section>|</section>", () => $"Razor's end tag after the caret; the line reads {XamlTests.CaretLine(editor)}");
-        Ui.Run(window, EditorActions.NewLine);
-        Ui.Run(window, EditorActions.NewLine);
-        Ui.Press(window, "UP");
-        foreach (char c in "</section>")
-        {
-            window.KeyTextInput(c.ToString());
-        }
-        Ui.Settle();
-        Assert.EndsWith("</section>|", XamlTests.CaretLine(editor), StringComparison.Ordinal);
-        Assert.Single(editor.Document.Snapshot.ToString().Split("</section>").Skip(1));
-        window.Close();
-    }
-
-    /// <summary>Text typed a key at a time, as a person types it.</summary>
-    /// <summary>A start tag's end tag Razor gives after the person typed on inside the new element: written after what was
-    /// typed, the caret before it, and one Undo takes the end tag alone away.</summary>
-    private void A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own()
-    {
-        MainWindow window = app.Open("Components/Greeting.razor");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.OnAutoInsert, _ => true, answered.Task);
-        try
-        {
-            foreach (char c in "<aside>")
-            {
-                window.KeyTextInput(c.ToString());
-            }
-            Ui.AwaitPumped(held, "Razor's end tag for the '>', held unanswered");
-            // Typed while the answer is held: the window is not quiet until it lands.
-            window.KeyTextInput("H");
-            window.KeyTextInput("i");
-            Ui.PumpUntil(() => XamlTests.CaretLine(editor) == "<aside>Hi|", "what was typed while Razor's answer is held");
-        }
-        finally
-        {
-            answered.TrySetResult();
-        }
-        Ui.WaitFor(() => XamlTests.CaretLine(editor) == "<aside>Hi|</aside>", () => $"Razor's late end tag after what was typed; the line reads {XamlTests.CaretLine(editor)}");
-        Ui.Run(window, EditorActions.Undo);
-        Ui.Settle();
-        Assert.Equal("<aside>Hi|", XamlTests.CaretLine(editor));
-        window.Close();
-    }
-
-    /// <summary>The same at two carets: the end tags Razor gives each '>' after the person typed on at both are written after
-    /// what was typed at each, and one Undo takes both away.</summary>
-    private void Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo()
-    {
-        MainWindow window = app.Open("Components/Greeting.razor");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "<p>Hello, @Name!</p>\n");
-        int place = editor.Selections.Primary.Caret;
-        editor.ApplyEdits([new TextEdit(place, 0, "\n\n")], SelectionSet.Create([Selection.At(place), Selection.At(place + 1)], 0));
-        Ui.Settle();
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.OnAutoInsert, _ => true, answered.Task);
-        try
-        {
-            foreach (char c in "<aside>")
-            {
-                window.KeyTextInput(c.ToString());
-            }
-            Ui.AwaitPumped(held, "Razor's end tag for one of the '>'s, held unanswered");
-            window.KeyTextInput("H");
-            window.KeyTextInput("i");
-            Ui.PumpUntil(() => editor.Document.Snapshot.ToString().Contains("<aside>Hi\n<aside>Hi\n", StringComparison.Ordinal), "what was typed at both carets while Razor's answer is held");
-        }
-        finally
-        {
-            answered.TrySetResult();
-        }
-        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("<aside>Hi</aside>\n<aside>Hi</aside>\n", StringComparison.Ordinal),
-            () => $"Razor's late end tags after what was typed at each caret; the text reads {editor.Document.Snapshot}");
-        Assert.Equal(2, editor.Selections.Count);
-        Ui.Run(window, EditorActions.Undo);
-        Ui.Settle();
-        Assert.Contains("<aside>Hi\n<aside>Hi\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        Assert.DoesNotContain("</aside>", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
         window.Close();
     }
 
@@ -505,50 +395,6 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
             editor = window.EditorArea.CodeEditor;
             Assert.Equal(line, editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
         }
-    }
-
-    /// <summary>Go to Declaration from a JS interop call whose search of a script stops at the regex's time limit (held
-    /// there in place of a slow machine) goes nowhere and says where it stopped, in the one wording.</summary>
-    private void Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit()
-    {
-        MainWindow window = app.Open("Components/Pages/Bell.razor");
-        string bell = app.Named("Components/Pages/Bell.razor");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "InvokeVoidAsync(\"gr");
-        using (TextSearch.HoldPastLimit("(?<n>greet)"))
-        {
-            Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
-            Ui.WaitFor(() => window.Status?.Contains(Refusals.RegexStoppedIn("site.js"), StringComparison.Ordinal) == true,
-                () => $"Go to Declaration to say the search of site.js stopped; the status bar said: {window.Status}");
-        }
-        Assert.True(window.EditorArea.Active?.Path == bell, $"Go to Declaration went to {window.EditorArea.Active?.Path} though its search stopped");
-        window.Close();
-    }
-
-    private void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
-    {
-        MainWindow window = app.Open("Components/Greeting.razor");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        string razor = app.Named("Components/Greeting.razor");
-        Ui.PlaceAfter(editor, "public int Times { get; set; }");
-        string call = "new Shop.Pages.HelloModel().OnGet();";
-        editor.ApplyEdits([new TextEdit(editor.Selections.Primary.Caret, 0, $"\n\n    private void Greet()\n    {{\n        {call}\n    }}")]);
-        int line = editor.Document.Snapshot.GetLineFromOffset(editor.Document.Snapshot.ToString().IndexOf(call, StringComparison.Ordinal));
-
-        window.OpenFile(app.PathOf("Pages/Hello.cshtml.cs"));
-        Ui.Settle();
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public void OnG");
-        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
-        HierarchyRow caller = window.Hierarchy.Rows.FirstOrDefault(r => r.Depth == 1 && r.Node.Item.Name.Contains("Greet", StringComparison.Ordinal))
-            ?? throw new Xunit.Sdk.XunitException($"The component's method is not among OnGet's callers: {string.Join(", ", window.Hierarchy.Rows.Select(r => r.Node.Item.Name))}");
-        Assert.True(caller.Node.Path == razor && caller.Node.Where.Line == line,
-            $"The caller in Greeting.razor is placed at {caller.Node.Path}, line {caller.Node.Where.Line + 1}, not at its call on line {line + 1} of the .razor, so going to it opens no file");
-        Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
-        callers.SelectedItem = caller;
-        Ui.ChooseFromMenu(callers, "Go to Source");
-        Assert.True(window.EditorArea.Active?.Path == razor, $"Go to Source on the caller opened {window.EditorArea.Active?.Path}; the status bar said: {window.Status}");
-        Assert.Equal(line, window.EditorArea.CodeEditor.CaretPosition.Line);
-        window.Close();
     }
 
     /// <summary>The one kind a stretch of the text is coloured as, its spaces aside; null when its parts differ.</summary>

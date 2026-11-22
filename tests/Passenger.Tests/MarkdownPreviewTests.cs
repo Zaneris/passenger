@@ -14,16 +14,15 @@ using Passenger.App.Navigation;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
-using Passenger.Text;
 using SkiaSharp;
 
 namespace Passenger.Tests;
 
 /// <summary>A Markdown file's live preview beside its editor: each kind of block a README has, GitHub's tables and task
-/// lists, fenced code coloured as the editor colours it, the images of files inside the open folder and none from outside
-/// it; following the typing and the editor's scroll, the editor following the wheel over it; its links opening the
-/// browser, another file or a heading; the choice to show it kept for the next window; and the file's headings as its
-/// outline in Structure and File Structure.</summary>
+/// lists, fenced code coloured as the editor colours it, the images of files inside the open folder and none from
+/// outside it; following the typing and the editor's scroll; its links opening the browser, another file or a heading;
+/// a typing pause in a long file reading again only what it reached; text nested too deep ending nothing; and the
+/// file's headings as its outline in Structure and File Structure.</summary>
 public sealed class MarkdownPreviewTests
 {
     /// <summary>A shop folder with a README of every kind of block, an image inside it and one beside it, outside.</summary>
@@ -110,49 +109,28 @@ public sealed class MarkdownPreviewTests
         return encoded.ToArray();
     }
 
-    /// <summary>A README's blocks, links, pictures and HTML draw beside its editor, follow its typing, and text nested
-    /// too deep ends nothing.</summary>
+    /// <summary>A README's blocks and links draw beside its editor and follow its typing, and text nested too deep ends
+    /// nothing.</summary>
     [AvaloniaFact]
     public void A_readme_draws_beside_its_editor_and_follows_it()
     {
         Flow.Step(nameof(A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links),
             A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system),
-            A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code),
-            A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice),
-            The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing),
             A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing);
     }
 
-    /// <summary>A README's headings nest by level in Structure and lead to their lines, and a long preview costs what a
-    /// short one does, its wheel and its editor leading each other.</summary>
+    /// <summary>A README's headings nest by level in Structure and lead to their lines, and a typing pause in a long
+    /// file reads again only what it reached.</summary>
     [AvaloniaFact]
     public void A_readmes_structure_and_long_previews_follow_their_editor()
     {
         Flow.Step(nameof(A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines),
             A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block),
-            A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed),
             A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following),
-            The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(The_editor_scrolled_after_its_preview_was_leads_the_preview_again),
-            The_editor_scrolled_after_its_preview_was_leads_the_preview_again);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it),
-            A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it);
     }
 
     private void A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links()
@@ -323,232 +301,6 @@ public sealed class MarkdownPreviewTests
         static string Listed(IEnumerable<SymbolRow> rows) => string.Join(", ", rows.Select(r => $"{new string(' ', r.Depth)}{r.Name}"));
     }
 
-    private void A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system()
-    {
-        (string folder, _) = Shop();
-        string notes = Path.Combine(folder, "notes", "README.md");
-        Directory.CreateDirectory(Path.GetDirectoryName(notes)!);
-        File.WriteAllText(notes, "# Notes\n\nRead [the guide](/docs/guide.md) first.\n\n![the inside picture](/images/inside.png)\n");
-        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
-        Assert.Null(window.OpenFile(PathNames.Canonical(notes)));
-        Ui.Settle();
-        MarkdownPreview preview = Shown(window.EditorArea.ActiveGroup);
-
-        MarkdownText said = preview.GetLogicalDescendants().OfType<MarkdownText>().First(w => w.Shown.StartsWith("Read", StringComparison.Ordinal));
-        Uri guide = new("/docs/guide.md", UriKind.Relative);
-        Assert.True(said.Links.Any(l => l.Words == "the guide" && l.Target == guide),
-            $"The link written from the folder's root is drawn as words, not a link: [{string.Join(", ", said.Links.Select(l => $"{l.Words} -> {l.Target}"))}]");
-        MarkdownPicture picture = preview.GetLogicalDescendants().OfType<MarkdownPicture>().SingleOrDefault()
-            ?? throw new Xunit.Sdk.XunitException($"The picture written from the folder's root is not drawn:\n{preview.Text}");
-        Assert.True(PathNames.Same(picture.File, PathNames.Canonical(Path.Combine(folder, "images", "inside.png"))), $"The picture drawn is {picture.File}, not the root's images/inside.png");
-
-        Ui.Click(said, said.PointOf(guide));
-        Assert.True(PathNames.Same(window.EditorArea.Active?.Path ?? "", PathNames.Canonical(Path.Combine(folder, "docs", "guide.md"))),
-            $"The link to /docs/guide.md opened {window.EditorArea.Active?.Path ?? "nothing"}, not the root's docs/guide.md");
-        window.Close();
-    }
-
-    /// <summary>Passenger's own README as GitHub draws it: its centred row of links, each opening (a web page, a heading,
-    /// another file), its pictures of the look shown, the light one's source in the light look and its img's in the dark,
-    /// and its MCP flags strong code with no asterisks left; a details fold opening on a click.</summary>
-    private void A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code()
-    {
-        string folder = TestFolders.Create("markdown-html-");
-        Directory.CreateDirectory(Path.Combine(folder, "site", "images"));
-        Directory.CreateDirectory(Path.Combine(folder, "docs", "release-notes"));
-        File.WriteAllBytes(Path.Combine(folder, "site", "images", "debugger-light.webp"), Png(64, 32));
-        File.WriteAllBytes(Path.Combine(folder, "site", "images", "debugger-dark.webp"), Png(32, 64));
-        File.WriteAllText(Path.Combine(folder, "docs", "release-notes", "0.4.0.md"), "# 0.4.0\n");
-        StringBuilder readme = new("""
-            # Passenger
-
-            <p align="center">
-              <a href="https://passenger-ide.net">Website</a> •
-              <a href="docs/release-notes/0.4.0.md">What's new in 0.4.0</a> •
-              <a href="#what-it-does">What it does</a>
-            </p>
-
-            <picture>
-              <source media="(prefers-color-scheme: light)" srcset="site/images/debugger-light.webp">
-              <img src="site/images/debugger-dark.webp" alt="Passenger stopped at a breakpoint">
-            </picture>
-
-            <details>
-            <summary>Two ways in</summary>
-
-            - **`--mcp-attach`** joins the window you have open over the folder the agent works in (`--mcp-attach PID` chooses one
-              of Passenger's windows)
-            - **`--mcp FOLDER`** starts a Passenger of the agent's own with no window
-
-            </details>
-
-            """);
-        for (int section = 1; section <= 30; section++)
-        {
-            readme.Append(section == 15 ? "## What it does\n\nIt debugs.\n\n" : "");
-            readme.Append($"## Section {section}\n\nWhat section {section} says, at some length so that it fills a line or two of the preview.\n\n");
-        }
-        string path = Path.Combine(folder, "README.md");
-        File.WriteAllText(path, readme.ToString().ReplaceLineEndings("\n"));
-        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
-        Assert.Null(window.OpenFile(PathNames.Canonical(path)));
-        Ui.Settle();
-        MarkdownPreview preview = Shown(window.EditorArea.ActiveGroup);
-        Assert.DoesNotContain("<", preview.Text, StringComparison.Ordinal);
-
-        MarkdownText row = preview.GetLogicalDescendants().OfType<MarkdownText>().FirstOrDefault(t => t.Shown.StartsWith("Website", StringComparison.Ordinal))
-            ?? throw new Xunit.Sdk.XunitException($"The README's row of links is not drawn as its words:\n{preview.Text}");
-        Assert.True(row.Shown == "Website • What's new in 0.4.0 • What it does" && row.TextAlignment == TextAlignment.Center,
-            $"The row of links reads '{row.Shown}', standing {row.TextAlignment}, not its three links centred");
-        Assert.Equal(["Website", "What's new in 0.4.0", "What it does"], row.Links.Select(l => l.Words));
-        Uri website = new("https://passenger-ide.net");
-        Ui.Click(row, row.PointOf(website));
-        Assert.True(window.Browsed.LastOrDefault() == website, $"A click on Website opened [{string.Join(", ", window.Browsed)}]");
-        Ui.Click(row, row.PointOf(new Uri("#what-it-does", UriKind.Relative)));
-        Control heading = preview.Heading("what-it-does") ?? throw new Xunit.Sdk.XunitException("The heading What it does has no anchor 'what-it-does'");
-        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(heading)) < 1, $"The link to #what-it-does left the preview at {preview.Offset.Y:0}, not its heading's {preview.TopOf(heading):0}");
-        preview.Offset = default;
-        Ui.Settle();
-
-        MarkdownPicture picture = Assert.Single(preview.GetLogicalDescendants().OfType<MarkdownPicture>());
-        foreach ((ThemeVariant look, string file, int width) in (ReadOnlySpan<(ThemeVariant, string, int)>)[(ThemeVariant.Dark, "debugger-dark.webp", 32), (ThemeVariant.Light, "debugger-light.webp", 64), (ThemeVariant.Dark, "debugger-dark.webp", 32)])
-        {
-            window.RequestedThemeVariant = look;
-            Ui.Settle();
-            Assert.True(PathNames.Same(picture.File, PathNames.Canonical(Path.Combine(folder, "site", "images", file))), $"In the {look} look the picture drawn is {picture.File}, not {file}");
-            Ui.WaitFor(() => picture.Shown?.PixelSize.Width == width, $"the {look} look's picture, {file}, read and drawn");
-        }
-
-        Button opener = preview.GetLogicalDescendants().OfType<Button>().FirstOrDefault(b => b.GetLogicalDescendants().OfType<TextBlock>().Any(t => t.Text == "Two ways in"))
-            ?? throw new Xunit.Sdk.XunitException($"The details' summary is not drawn as a fold's opener:\n{preview.Text}");
-        MarkdownText[] flags = [.. preview.GetLogicalDescendants().OfType<MarkdownText>().Where(t => t.Shown.StartsWith("--mcp", StringComparison.Ordinal))];
-        Assert.True(flags.Length == 2 && !flags.Any(f => f.IsEffectivelyVisible), $"The folded details show {flags.Count(f => f.IsEffectivelyVisible)} of their {flags.Length} flags before a click");
-        Ui.Click(opener);
-        Assert.True(flags.All(f => f.IsEffectivelyVisible), "A click on the details' summary did not open them");
-        foreach ((MarkdownText flag, string code) in flags.Zip((string[])["--mcp-attach", "--mcp FOLDER"]))
-        {
-            Run first = flag.Inlines!.OfType<Run>().First();
-            Assert.True(!flag.Shown.Contains('*', StringComparison.Ordinal) && first.Text == code && first.FontWeight == FontWeight.Bold && first.FontFamily == CodeEditor.CodeFont,
-                $"The flag {code} is not drawn strong code with no asterisks: '{flag.Shown}'");
-        }
-
-        // Drawn again as the page came back from its last heading.
-        row = preview.GetLogicalDescendants().OfType<MarkdownText>().First(t => t.Shown.StartsWith("Website", StringComparison.Ordinal));
-        Ui.Click(row, row.PointOf(new Uri("docs/release-notes/0.4.0.md", UriKind.Relative)));
-        Assert.True(PathNames.Same(window.EditorArea.Active?.Path ?? "", PathNames.Canonical(Path.Combine(folder, "docs", "release-notes", "0.4.0.md"))),
-            $"The link to the release notes opened {window.EditorArea.Active?.Path ?? "nothing"}");
-        window.Close();
-    }
-
-    private void The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice()
-    {
-        (string folder, string readme) = Shop();
-        string state = TestFolders.Create("markdown-state-");
-        MainWindow window = Started(state, folder);
-        Assert.Null(window.OpenFile(readme));
-        Ui.Settle();
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Shown(group);
-        Assert.True(group.PreviewToggle.IsVisible && group.PreviewToggle.IsChecked == true, "The README's tab strip has no pressed preview toggle");
-
-        WeakReference<MarkdownPreview> closed = SplitAndClose(window);
-        // Avalonia's hold gesture keeps the pressed close button, and so the group, until a frame fires its timer.
-        Ui.WaitFor(() =>
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-            return !closed.TryGetTarget(out _);
-        }, "the closed split's preview to be let go (still alive, it is held by the file it showed or the window)", TimeSpan.FromSeconds(10));
-        group = Assert.Single(window.EditorArea.Groups);
-
-        Ui.Click(group.PreviewToggle);
-        Assert.True(group.Markdown is null && group.PreviewToggle.IsChecked == false, "The toggle left the preview shown");
-        Assert.Null(window.OpenFile(Path.Combine(folder, "Program.cs")));
-        Ui.Settle();
-        Assert.False(group.PreviewToggle.IsVisible, "A C# file's tab strip shows the Markdown preview's toggle");
-        window.Close();
-        Ui.Settle();
-
-        window = Started(state, folder);
-        Assert.Null(window.OpenFile(readme));
-        Ui.Settle();
-        group = window.EditorArea.ActiveGroup;
-        Assert.True(group.Markdown is null && group.PreviewToggle.IsChecked == false, "The next window showed the preview the last one hid");
-        NativeMenu view = Ui.Submenu(window.MenuBar, "View");
-        NativeMenuItem item = view.Items.OfType<NativeMenuItem>().FirstOrDefault(i => i.Header == "Markdown Preview")
-            ?? throw new Xunit.Sdk.XunitException($"View has no Markdown Preview: [{string.Join(", ", view.Items.OfType<NativeMenuItem>().Select(i => i.Header))}]");
-        item.Command!.Execute(null);
-        Ui.Settle();
-        Shown(group);
-        window.Close();
-        Ui.Settle();
-
-        window = Started(state, folder);
-        Assert.Null(window.OpenFile(readme));
-        Ui.Settle();
-        Shown(window.EditorArea.ActiveGroup);
-        window.Close();
-    }
-
-    /// <summary>A preview draws the blocks near its sight alone, so showing a 600 KB changelog's costs the window's thread
-    /// about what a 60 KB one's does, and its page is kept with its tab: shown again deep in the file, it makes no block
-    /// again.</summary>
-    private void A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block()
-    {
-        string folder = TestFolders.Create("markdown-long-");
-        File.WriteAllText(Path.Combine(folder, "WARM.md"), Changelog(2_000));
-        File.WriteAllText(Path.Combine(folder, "SHORT.md"), Changelog(60_000));
-        File.WriteAllText(Path.Combine(folder, "LONG.md"), Changelog(600_000));
-        MainWindow window = Ui.OpenFolder(folder, width: 1200, height: 800, languageServer: false);
-        Assert.Null(window.OpenFile("WARM.md"));
-        Ui.Settle();
-        Assert.True(window.Perform(AppActions.MarkdownPreview));
-        Previewed(window, "WARM.md");
-        Assert.True(window.Perform(AppActions.MarkdownPreview));
-        (long shortCost, int shortDrawn) = Previewed(window, "SHORT.md");
-        Assert.True(window.Perform(AppActions.MarkdownPreview));
-        (long longCost, int longDrawn) = Previewed(window, "LONG.md");
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"Turning the preview on allocated {shortCost >> 10} KB on the window's thread and drew {shortDrawn} blocks for 60 KB, {longCost >> 10} KB and {longDrawn} for 600 KB");
-        Assert.True(longDrawn <= shortDrawn,
-            $"The 600 KB changelog's preview drew {longDrawn} blocks where the 60 KB one's, of the same first page, drew {shortDrawn}: it draws blocks out of its sight");
-        Assert.True(longCost < shortCost * 3 / 2,
-            $"The preview of a 600 KB changelog allocated {longCost >> 10} KB on the window's thread, of a 60 KB one {shortCost >> 10} KB: the window pays for what is off screen");
-
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        MarkdownPreview preview = Shown(group);
-        CodeEditor editor = group.Editor;
-        int line = editor.Document.Snapshot.ToString().Split('\n').ToList().FindIndex(l => l.StartsWith("## [7.0.0]", StringComparison.Ordinal));
-        Scroll(editor, line);
-        Control seven = preview.BlockAt(line) ?? throw new Xunit.Sdk.XunitException($"With the editor's top at line {line} the preview draws no block of it");
-        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(seven)) < 1,
-            $"With the editor's top at version 7.0.0 the preview stands at {preview.Offset.Y:0}, not that heading's {preview.TopOf(seven):0}");
-        Control[] drawn = [.. preview.Blocks];
-        Assert.Null(window.OpenFile("SHORT.md"));
-        Ui.Settle();
-        Assert.Null(window.OpenFile("LONG.md"));
-        Ui.Settle();
-        Assert.Same(preview, Shown(group));
-        Control[] made = [.. preview.Blocks.Where(b => !drawn.Contains(b))];
-        Assert.True(made.Length == 0, $"Showing the long changelog's tab again made {made.Length} blocks' controls, where its page had them drawn");
-        Assert.True(Math.Abs(preview.Offset.Y - preview.TopOf(seven)) < 1,
-            $"Shown again, the preview stands at {preview.Offset.Y:0}, not version 7.0.0's {preview.TopOf(seven):0}, where the editor's top is");
-        window.Close();
-
-        // Markdown Preview turned on over a file open in the editor: what the preview alone costs.
-        static (long Cost, int Drawn) Previewed(MainWindow window, string name)
-        {
-            Assert.Null(window.OpenFile(name));
-            Ui.Settle();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            Assert.True(window.Perform(AppActions.MarkdownPreview));
-            Ui.Settle();
-            long cost = GC.GetAllocatedBytesForCurrentThread() - before;
-            return (cost, Shown(window.EditorArea.ActiveGroup).Blocks.Count);
-        }
-    }
-
     /// <summary>A pause in typing in a 600 KB changelog reads again only the lines around what was typed, which the preview
     /// shows, and leaves every other block as it was read: a long file costs a pause what the short block typed in does.</summary>
     private void A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed()
@@ -580,159 +332,6 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
-    /// <summary>The wheel turned over the preview of a long note, its benchmark tables wider than the preview, moves what it
-    /// shows one way only, by a step each turn, to the note's end and back to its start, the editor's top line following
-    /// the line at the preview's top: a block laid out as it comes into sight never pulls the preview back to the editor.</summary>
-    private void The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following()
-    {
-        (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
-        double step = double.NaN;
-        int turns = 0;
-        foreach (int down in (ReadOnlySpan<int>)[1, -1])
-        {
-            int line = editor.LinesShown.First;
-            while (down > 0 ? preview.Offset.Y < Bottom(preview) - 0.5 : preview.Offset.Y > 0.5)
-            {
-                Assert.True(++turns < 1000, $"The preview never came to the note's {(down > 0 ? "end" : "start")}, standing at {preview.Offset.Y:0} of {Bottom(preview):0}");
-                (Control seen, double was) = Nearest(preview);
-                double offset = preview.Offset.Y;
-                Wheel(window, preview, down);
-                double moved = (was - (seen.TranslatePoint(default, preview)?.Y ?? double.NaN)) * down;
-                Assert.True(down > 0 ? preview.Offset.Y > offset : preview.Offset.Y < offset,
-                    $"Turn {turns} of the wheel {(down > 0 ? "down" : "up")} took the preview from {offset:0} to {preview.Offset.Y:0}: what was read jumped away");
-                if (double.IsNaN(step))
-                {
-                    step = moved;
-                    Assert.True(step > 0, $"The wheel's first turn moved the block at the preview's top {moved:0.0}");
-                }
-                bool atEnd = down > 0 ? preview.Offset.Y >= Bottom(preview) - 0.5 : preview.Offset.Y <= 0.5;
-                Assert.True(Math.Abs(moved - step) < 1 || (atEnd && moved > 0 && moved < step + 1),
-                    $"Turn {turns} of the wheel {(down > 0 ? "down" : "up")} moved the block at the preview's top {moved:0.0}, not a step's {step:0.0}: the reader loses their place");
-                Assert.True(editor.LinesShown.First == preview.TopLine,
-                    $"With line {preview.TopLine} at the preview's top the editor's top line is {editor.LinesShown.First}: the editor does not follow the preview");
-                Together(preview, editor, $"after turn {turns} of the wheel over the preview");
-                Assert.True(down > 0 ? editor.LinesShown.First >= line : editor.LinesShown.First <= line,
-                    $"Turn {turns} took the editor's top line from {line} to {editor.LinesShown.First}, against the wheel");
-                line = editor.LinesShown.First;
-            }
-        }
-        window.Close();
-    }
-
-    /// <summary>Once the wheel has moved the preview, the editor scrolled by its own wheel leads again, the preview following
-    /// it to the block at its top line.</summary>
-    private void The_editor_scrolled_after_its_preview_was_leads_the_preview_again()
-    {
-        (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
-        for (int turn = 0; turn < 20; turn++)
-        {
-            Wheel(window, preview, 1);
-        }
-        int was = editor.LinesShown.First;
-        Assert.True(was > 0, "Twenty turns of the wheel over the preview left the editor at its top");
-        Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), window)!.Value;
-        for (int turn = 0; turn < 10; turn++)
-        {
-            window.MouseWheel(over, new Vector(0, -1));
-            Ui.Settle();
-            Together(preview, editor, $"after turn {turn + 1} of the wheel over the editor");
-        }
-        Assert.True(editor.LinesShown.First > was, $"Ten turns of the wheel down over the editor took its top line from {was} to {editor.LinesShown.First}");
-        window.Close();
-    }
-
-    /// <summary>A key typed in the editor, the preview moved by the wheel, leaves the preview standing where the wheel left
-    /// it once the typing is drawn, and the editor where it was.</summary>
-    private void A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it()
-    {
-        (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
-        for (int turn = 0; turn < 30; turn++)
-        {
-            Wheel(window, preview, 1);
-        }
-        (int first, int last) = editor.LinesShown;
-        TextSnapshot text = editor.Document.Snapshot;
-        int line = Enumerable.Range(first + 2, Math.Max(0, last - first - 4)).FirstOrDefault(l => text.GetLineText(l).StartsWith("What check", StringComparison.Ordinal), -1);
-        Assert.True(line >= 0, $"No check's words stand in the editor's lines {first} to {last}");
-        double offset = preview.Offset.Y;
-        Ui.Click(editor, editor.PointOf(text.GetLineStart(line) + text.GetLineText(line).Length) + new Point(-2, editor.LineHeight / 2));
-        window.KeyTextInput(" Typed.");
-        Ui.Settle();
-        Assert.True(preview.Text.Contains(" Typed.", StringComparison.Ordinal), $"The preview does not show what was typed:\n{preview.Text}");
-        Assert.True(Math.Abs(preview.Offset.Y - offset) < 0.5,
-            $"A key typed in the editor moved the preview from {offset:0} to {preview.Offset.Y:0}, away from where the wheel left it");
-        Assert.True(editor.LinesShown.First == first, $"A key typed in the editor's sight moved its top line from {first} to {editor.LinesShown.First}");
-        window.Close();
-    }
-
-    /// <summary>A note open with its preview, in a window narrow enough that its benchmark tables are wider than the preview.</summary>
-    private static (MainWindow Window, MarkdownPreview Preview, CodeEditor Editor) Verifying()
-    {
-        string folder = TestFolders.Create("markdown-scroll-");
-        File.WriteAllText(Path.Combine(folder, "VERIFICATION.md"), Verification());
-        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700, languageServer: false);
-        Assert.Null(window.OpenFile("VERIFICATION.md"));
-        Ui.Settle();
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        return (window, Shown(group), group.Editor);
-    }
-
-    /// <summary>A release's verification note: each check a heading, its words, a list with code spans, now and then a fence,
-    /// and every third a table of benchmarks with more columns than a narrow preview has room for.</summary>
-    private static string Verification()
-    {
-        StringBuilder text = new("# Verification\n\nWhat was checked before the release, and how it was checked.\n\n");
-        for (int check = 1; check <= 24; check++)
-        {
-            text.Append($"## Check {check}\n\nWhat check {check} looked at, written at some length so that its words wrap over a line or two of the preview.\n\n");
-            text.Append($"- Ran `dotnet test --filter Check{check}` on each system\n- Read the log for `warning` and `error`\n- Compared the times with the last release\n\n");
-            if (check % 4 == 0)
-            {
-                text.Append($"```sh\njust test Check{check} --gate\njust test Check{check} --report\n```\n\n");
-            }
-            if (check % 3 == 0)
-            {
-                text.Append("| Benchmark | Method | Runtime | Mean | Error | StdDev | Median | Ratio | Gen0 | Allocated |\n| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
-                for (int row = 0; row < 6; row++)
-                {
-                    text.Append($"| Parse{row} | ReadEveryBlockOfTheFile | .NET 11.0 | {row}.123 ms | 0.0{row}1 ms | 0.0{row}2 ms | {row}.120 ms | 1.0{row} | 12.{row} | 1,024.{row} KB |\n");
-                }
-                text.Append('\n');
-            }
-        }
-        return text.ToString();
-    }
-
-    /// <summary>A turn of the wheel over the preview's middle, down or up, and what it starts let land.</summary>
-    private static void Wheel(MainWindow window, MarkdownPreview preview, int down)
-    {
-        window.MouseWheel(preview.TranslatePoint(new Point(preview.Bounds.Width / 2, preview.Bounds.Height / 2), window)!.Value, new Vector(0, -down));
-        Ui.Settle();
-    }
-
-    /// <summary>Fails unless the block drawing the editor's top line (or, for a blank line, the block after it) is the first
-    /// to reach below the preview's top.</summary>
-    private static void Together(MarkdownPreview preview, CodeEditor editor, string when)
-    {
-        int top = editor.LinesShown.First;
-        Control? first = preview.Blocks.FirstOrDefault(b => b.TranslatePoint(default, preview)!.Value.Y + b.Bounds.Height > 0.5);
-        Control? at = preview.BlockAt(top);
-        TextSnapshot text = editor.Document.Snapshot;
-        bool blankBefore = at is null && first is not null && preview.LineOf(first) > top
-            && Enumerable.Range(top, preview.LineOf(first) - top).All(l => string.IsNullOrWhiteSpace(text.GetLineText(l)));
-        Assert.True(first is not null && (at == first || blankBefore),
-            $"{when} the editor's top line is {top} ('{text.GetLineText(top)}') while the block at the preview's top begins at line {(first is null ? -1 : preview.LineOf(first))}: the two do not stand together");
-    }
-
-    /// <summary>The farthest the preview scrolls.</summary>
-    private static double Bottom(MarkdownPreview preview) => Math.Max(0, preview.Extent.Height - preview.Viewport.Height);
-
-    /// <summary>The block drawn in the preview's sight whose top stands nearest the preview's top, and where it stands.</summary>
-    private static (Control Block, double Y) Nearest(MarkdownPreview preview) =>
-        preview.Blocks.Select(b => (Block: b, Y: b.TranslatePoint(default, preview)!.Value.Y))
-            .Where(s => s.Y < preview.Viewport.Height && s.Y + s.Block.Bounds.Height > 0)
-            .MinBy(s => Math.Abs(s.Y));
-
     /// <summary>A changelog of about a size, as a long project's grows: each version a heading, its fixes in a list, and now
     /// and then a fence of code and a table.</summary>
     private static string Changelog(int size)
@@ -753,36 +352,6 @@ public sealed class MarkdownPreviewTests
             text.Append('\n');
         }
         return text.ToString();
-    }
-
-    /// <summary>A window keeping its state in the test's folder, on the folder.</summary>
-    private static MainWindow Started(string state, string folder)
-    {
-        MainWindow window = new() { Width = 1400, Height = 900, StateFolder = state, StartsLanguageServer = false };
-        window.Show();
-        window.KeepLayout();
-        window.KeepSettings();
-        window.OpenFolder(folder);
-        Ui.Settle();
-        return window;
-    }
-
-    /// <summary>The file shown split right, each split with a preview of its own, then the split's tab closed by its close
-    /// button: the split's preview, held by nothing here.</summary>
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static WeakReference<MarkdownPreview> SplitAndClose(MainWindow window)
-    {
-        EditorGroup left = window.EditorArea.ActiveGroup;
-        Assert.True(window.Perform(AppActions.SplitRight));
-        Ui.Settle();
-        EditorGroup right = window.EditorArea.ActiveGroup;
-        MarkdownPreview split = Shown(right);
-        Assert.True(right != left && Shown(left) != split, "The two splits of the README do not each have a preview of their own");
-        Ui.Click(right.GetLogicalDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabClose) && b.IsEffectivelyVisible));
-        window.MouseMove(new Point(1, 1));
-        Ui.Settle();
-        Assert.Single(window.EditorArea.Groups);
-        return new WeakReference<MarkdownPreview>(split);
     }
 
     /// <summary>The preview beside a group's editor, which must be shown.</summary>

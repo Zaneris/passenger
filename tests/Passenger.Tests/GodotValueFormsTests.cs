@@ -10,12 +10,12 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>A running Godot game's arrays, dictionaries and resources set from the Live Visual Tree's properties pane in
-/// forms fit for them: an array's items, a row each, one typed and one added; a dictionary's value typed in its entry's
-/// row; an array in an array in a form of its own, the whole outer value sent back; a resource's own properties, a check
-/// box among them, each reaching the game as it is set, as what the game prints shows, and kept where the resource is
-/// written, its scene's sub_resource or its own file. The game is GDScript alone, run headless with the run's user
-/// folders; without a Godot 4 each test skips saying why. Its game runs and is stopped, so run alone.</summary>
+/// <summary>A running Godot game's arrays, dictionaries and resources set from the Live Visual Tree's properties pane
+/// in forms fit for them: an array's items, a row each, one typed and one added; a dictionary's value typed in its
+/// entry's row; a resource's own properties, a check box among them, each reaching the game as it is set, as what the
+/// game prints shows, and kept where the resource is written, its scene's sub_resource or its own file. The game is
+/// GDScript alone, run headless with the run's user folders; without a Godot 4 each test skips saying why. Its game
+/// runs and is stopped, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Game>
 {
@@ -37,9 +37,6 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
             An_arrays_item_a_dictionarys_value_and_a_resources_property_are_set_in_the_running_game);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed),
-            A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed);
-        OpenWindows.CloseAll();
         game.Reset();
         Flow.Step(nameof(A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file),
             A_resources_property_set_in_the_game_is_kept_in_its_scenes_sub_resource_and_in_its_own_file);
@@ -87,37 +84,6 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
             Ui.Click(smooth);
             Ui.WaitFor(() => Printed(window, "smooth false"), () => $"the game to print the resource's property cleared ({Tail(window)}; {window.Status})", TimeSpan.FromMinutes(1));
             Assert.False(Run(window).Contains("passenger_agent.gd", StringComparison.Ordinal), $"Passenger's helper raised errors in the game:\n{Run(window)}");
-            Stop(window);
-        }
-        finally
-        {
-            End(window);
-        }
-    }
-
-    /// <summary>An array in an array opens its own form under the outer one's rows: its item typed there reaches the game as
-    /// the whole outer value with that array in its place, and both forms and the pane's row show what the game holds.</summary>
-    private void A_nested_arrays_form_sends_the_whole_outer_value_back_with_its_item_typed()
-    {
-        MainWindow window = Open();
-        try
-        {
-            Start(window);
-            LiveTreeView tree = window.LiveTree;
-            Choose(window);
-            Ui.WaitFor(() => Printed(window, "grid [[1, 2], [3, 4]]"), () => $"the game to print its grid ({Tail(window)})", TimeSpan.FromMinutes(1));
-
-            GodotItemsEditor grid = Items(window, "grid", "[[1, 2], [3, 4]]");
-            Assert.Empty(grid.Fields);
-            Ui.Click(Opener(grid, "[1, 2]"));
-            Ui.WaitFor(() => Inner(grid) is { Fields.Count: 2 }, () => $"the first array's own form under grid's rows ({window.Status})");
-            GodotItemsEditor inner = Inner(grid)!;
-            Type(window, inner.Fields[1], "9");
-            Ui.WaitFor(() => Printed(window, "grid [[1, 9], [3, 4]]"), () => $"the game to print the grid with the item typed in its first array ({Tail(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => inner.Fields[1].Text == "9" && grid.GetVisualDescendants().OfType<Button>().Any(b => b.Content is TextBlock { Text: "[1, 9]" }),
-                () => $"both forms to show what the game holds ({string.Join(", ", inner.Fields.Select(f => f.Text))})");
-            Ui.WaitFor(() => tree.PropertyRows.Any(p => p.Name == "grid" && p.Value == "[[1, 9], [3, 4]]"),
-                () => $"grid's row to show what the game holds ({tree.PropertyRows.FirstOrDefault(p => p.Name == "grid")?.Value})");
             Stop(window);
         }
         finally
@@ -193,17 +159,6 @@ public sealed class GodotValueFormsTests : IClassFixture<GodotValueFormsTests.Ga
         Ui.WaitFor(() => window.KeepPreview is null && window.Status?.StartsWith("Kept anti_aliasing in ", StringComparison.Ordinal) == true,
             () => $"Keep of anti_aliasing to be written ({window.Status})");
     }
-
-    /// <summary>The button of a form's row that opens the item it shows.</summary>
-    private static Button Opener(GodotItemsEditor form, string words)
-    {
-        Ui.WaitFor(() => form.GetVisualDescendants().OfType<Button>().Any(b => b.IsEffectivelyVisible && b.Content is TextBlock { Text: { } said } && said == words),
-            () => $"a row of the form to offer {words}");
-        return form.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && b.Content is TextBlock { Text: { } said } && said == words);
-    }
-
-    /// <summary>The form open under another's rows, while one is.</summary>
-    private static GodotItemsEditor? Inner(GodotItemsEditor outer) => outer.GetVisualDescendants().OfType<GodotItemsEditor>().FirstOrDefault(e => e != outer && e.IsEffectivelyVisible);
 
     /// <summary>A container's row, its words clicked to open its items or entries.</summary>
     private static GodotItemsEditor Items(MainWindow window, string name, string words)

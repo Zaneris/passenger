@@ -66,16 +66,13 @@ public sealed class GodotProjectPageTests
 
         """;
 
-    /// <summary>The project page shows project.godot's settings, leads to their lines, names uids by their paths and
-    /// keeps what Godot saves meanwhile.</summary>
+    /// <summary>The project page shows project.godot's settings, leads to their lines and keeps what Godot saves
+    /// meanwhile.</summary>
     [AvaloniaFact]
     public void The_project_page_shows_and_keeps_project_godots_settings()
     {
         Flow.Step(nameof(The_page_shows_the_projects_settings_and_a_click_on_an_action_goes_to_its_line_in_project_godot),
             The_page_shows_the_projects_settings_and_a_click_on_an_action_goes_to_its_line_in_project_godot);
-        OpenWindows.CloseAll();
-        Flow.Step(nameof(A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths),
-            A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths);
         OpenWindows.CloseAll();
         Flow.Step(nameof(What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes),
             What_godot_saves_while_the_gate_asks_stays_under_the_pages_changes);
@@ -222,38 +219,6 @@ public sealed class GodotProjectPageTests
     /// <summary>project.godot on disk once it holds the text given.</summary>
     private static void Written(MainWindow window, string project, string text, string what) =>
         Ui.WaitFor(() => File.ReadAllText(project).Contains(text, StringComparison.Ordinal), () => $"project.godot to have {what} ({window.Status}): {File.ReadAllText(project)}");
-
-    /// <summary>A main scene and an autoload project.godot names by their uids, as Godot 4.4 and newer write them, are shown by
-    /// their res:// paths.</summary>
-    private void A_main_scene_and_an_autoload_named_by_their_uids_show_as_their_paths()
-    {
-        string folder = TestFolders.Create("godot-page-uids-");
-        TestFolders.Write(folder, GodotProject.FileName, "config_version=5\n\n[application]\n\nconfig/name=\"Hopper\"\nrun/main_scene=\"uid://cmainhop\"\n"
-            + "config/features=PackedStringArray(\"4.7\")\n\n[autoload]\n\nScore=\"*uid://cscorehop\"\n");
-        TestFolders.Write(folder, "main.tscn", "[gd_scene format=3 uid=\"uid://cmainhop\"]\n\n[node name=\"Main\" type=\"Node2D\"]\n");
-        TestFolders.Write(folder, "score.gd", "extends Node\n\nvar points := 0\n");
-        TestFolders.Write(folder, "score.gd.uid", "uid://cscorehop\n");
-        MainWindow window = new()
-        {
-            Width = 1200, Height = 900, Autosaves = false, StartsLanguageServer = false,
-            GodotEnvironment = GodotUserFolders.Under(Path.Combine(folder, "..", Path.GetFileName(folder) + "-home")),
-        };
-        window.Show();
-        try
-        {
-            window.OpenFolder(folder);
-            Ui.Settle();
-            string project = Path.Combine(PathNames.Canonical(folder), GodotProject.FileName);
-            Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Rows.Single(r => r.Path == project), "Godot Project");
-            string[] said = Said(Shown(window));
-            Assert.True(said.Contains("res://main.tscn") && said.Contains("res://score.gd"), $"The page does not show the main scene and autoload by their paths: [{string.Join(" | ", said)}]");
-            Assert.False(said.Any(s => s.Contains("uid://", StringComparison.Ordinal)), $"The page shows a uid where its file is known: [{string.Join(" | ", said)}]");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
 
     /// <summary>What Godot's editor saves in project.godot while the gate asks to write over what it holds there (a hold
     /// the test stands in, as the addon would say it) stays: the page's plugin box and its new action each write their

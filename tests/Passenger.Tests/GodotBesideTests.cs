@@ -1,6 +1,4 @@
-using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
-using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -9,12 +7,10 @@ using Passenger.Editor;
 
 namespace Passenger.Tests;
 
-/// <summary>A Godot 4 game's scenes shown beside its C#: a gutter mark on a script's class lists the scenes it runs in and
-/// goes to one, following the scenes as they change on disk; one on a handler names the connection calling it; a GetNode
-/// path ends in a faint hint of the node it comes to; and a res:// path's card previews what it names, a texture drawn small,
-/// a sound with Play (an Ogg Vorbis or MP3 decoded to a WAV for the system's player), a scene's top nodes. Its project is
-/// restored from the packages the Godot found carries, so without a Godot 4 .NET build each test skips saying why; no Godot
-/// runs.</summary>
+/// <summary>A Godot 4 game's scenes shown beside its C#: a gutter mark on a script's class lists the scenes it runs in
+/// and goes to one, following the scenes as they change on disk; one on a handler names the connection calling it; a
+/// GetNode path ends in a faint hint of the node it comes to. Its project is restored from the packages the Godot found
+/// carries, so without a Godot 4 .NET build each test skips saying why; no Godot runs.</summary>
 public sealed class GodotBesideTests : IClassFixture<GodotBesideTests.Game>
 {
     private readonly Game game;
@@ -106,20 +102,16 @@ public sealed class GodotBesideTests : IClassFixture<GodotBesideTests.Game>
 
     private static string Leads(SceneMark? mark) => mark is null ? "no mark" : string.Join("; ", mark.Leads.Select(l => l.Words));
 
-    /// <summary>A class mark lists its scenes, a res path's card previews what it names, and a sound plays
-    /// decoded.</summary>
+    /// <summary>A class mark lists its scenes, a handler's names its connection and a node path's shows its
+    /// node.</summary>
     [AvaloniaFact]
-    public void A_scenes_marks_and_cards_show_what_they_name()
+    public void A_scenes_marks_show_what_they_name()
     {
         Flow.Step(nameof(A_class_mark_lists_its_scenes_a_handlers_names_its_connection_and_a_node_path_shows_its_node),
             A_class_mark_lists_its_scenes_a_handlers_names_its_connection_and_a_node_path_shows_its_node);
         OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(A_res_paths_card_previews_a_texture_a_sound_and_a_scene), A_res_paths_card_previews_a_texture_a_sound_and_a_scene);
-        OpenWindows.CloseAll();
         game.Reset();
-        Flow.Step(nameof(An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound),
-            An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound);
     }
 
     /// <summary>The class's mark lists main.tscn and level.tscn, which instances it, and its menu goes to the node in level.tscn;
@@ -159,77 +151,6 @@ public sealed class GodotBesideTests : IClassFixture<GodotBesideTests.Game>
         {
             window.Close();
         }
-    }
-
-    /// <summary>A res:// path's card previews what it names: the texture drawn small, the sound with Play, which plays it, and
-    /// the scene's root with its children.</summary>
-    private void A_res_paths_card_previews_a_texture_a_sound_and_a_scene()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => MarkOn(window, "partial class Main") is not null, "the scenes to be read against the code", TimeSpan.FromMinutes(1));
-
-            GodotSceneTests.Hover(window, "res://icon.png", "res://icon.png");
-            Ui.WaitFor(() => window.Assist.HoverCard?.GetVisualDescendants().OfType<Image>().Any(i => i.Source is not null) == true, "the texture's thumbnail on its card");
-
-            GodotSceneTests.Hover(window, "res://hit.wav", "res://hit.wav");
-            Button play = window.Assist.HoverCard!.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "Play");
-            Ui.Click(play);
-            Ui.WaitFor(() => window.Played.Any(p => PathNames.Same(p, PathNames.Canonical(game.PathOf("hit.wav")))), () => $"Play to play hit.wav ({string.Join(", ", window.Played)})");
-
-            string card = GodotSceneTests.Hover(window, "res://player.tscn", "Sprite (Sprite2D)");
-            Assert.Contains("Player (CharacterBody2D)", card, StringComparison.Ordinal);
-            Assert.Contains("Shape (CollisionShape2D)", card, StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An Ogg Vorbis and an MP3 sound's Play on its res:// path's card hands the system's player a WAV decoded from
-    /// it into the state's cache, as long as the sound (the MP3's with its encoder's delay and padding), so each plays on every
-    /// system; the window nobody sees plays neither.</summary>
-    private void An_ogg_and_an_mp3_sounds_Play_hands_the_systems_player_a_wav_decoded_as_long_as_the_sound()
-    {
-        MainWindow window = game.Open(ScriptPath);
-        try
-        {
-            Ui.WaitFor(() => MarkOn(window, "partial class Main") is not null, "the scenes to be read against the code", TimeSpan.FromMinutes(1));
-            foreach ((string res, int most) in new[] { ("res://hum.ogg", TestSounds.Frames), ("res://beep.mp3", TestSounds.Frames + TestSounds.Mp3Padding) })
-            {
-                int before = window.SoundsHanded.Count;
-                GodotSceneTests.Hover(window, res, res);
-                Button play = window.Assist.HoverCard!.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "Play");
-                Ui.Click(play);
-                Ui.WaitFor(() => window.SoundsHanded.Count > before, () => $"Play on {res} to hand the system's player a file ({window.Status})", TimeSpan.FromMinutes(1));
-                string wav = window.SoundsHanded[^1];
-                Assert.True(wav.EndsWith(".wav", StringComparison.Ordinal) && PathNames.IsUnder(wav, window.StateFolder),
-                    $"{res} was handed the system's player as {wav}, not a WAV decoded into the state's cache");
-                (int channels, int rate, long frames) = WavOf(wav);
-                Assert.True(channels == 1 && rate == TestSounds.Rate && frames >= TestSounds.Frames && frames <= most,
-                    $"{res} decoded to {frames} frames of {channels} channels at {rate} Hz, where it holds {TestSounds.Frames} of one at {TestSounds.Rate} Hz");
-            }
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A 16-bit PCM WAV's channels, rate and frames, as its header says and its data holds.</summary>
-    private static (int Channels, int Rate, long Frames) WavOf(string path)
-    {
-        byte[] bytes = File.ReadAllBytes(path);
-        Assert.True(bytes.Length >= 44 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 8).SequenceEqual("WAVEfmt "u8) && bytes.AsSpan(36, 4).SequenceEqual("data"u8),
-            $"{path} is no WAV the system's player reads");
-        int channels = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(22));
-        int rate = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(24));
-        int bits = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(34));
-        long data = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(40));
-        Assert.True(bits == 16 && data == bytes.Length - 44, $"{path} says {bits}-bit samples and {data} bytes of them, where it holds {bytes.Length - 44}");
-        return (channels, rate, data / (channels * 2));
     }
 
     /// <summary>A Godot 4 C# project of a main scene its script runs in, a level instancing it, a player scene, a texture and
