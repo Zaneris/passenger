@@ -110,7 +110,12 @@ public sealed class VimRegisters
     private VimRegister Write(char name, VimRegister text)
     {
         char lower = char.ToLowerInvariant(name);
-        if (char.IsAsciiLetterUpper(name) && held.TryGetValue(lower, out VimRegister? before))
+        if (char.IsAsciiLetterUpper(name) && held.TryGetValue(lower, out VimRegister? before) && before.Blockwise && text.Blockwise)
+        {
+            // A block appended to a block goes on below it.
+            text = new VimRegister([.. before.Parts, .. text.Parts], false) { Blockwise = true, Width = Math.Max(before.Width ?? 0, text.Width ?? 0) };
+        }
+        else if (char.IsAsciiLetterUpper(name) && held.TryGetValue(lower, out before))
         {
             // Appending: whole lines either side make it whole lines, a line break between where only one side is.
             string joined = before.Linewise == text.Linewise ? (before.Linewise ? before.Text + text.Text : before.Text + text.Text)

@@ -10,6 +10,9 @@ public sealed partial class Vim
     /// typed), the register named, the operator if any, and the motion, object or command with the key it takes.</summary>
     private sealed record Command(IReadOnlyList<string> Keys, int Count, char? Register, string? Operator, [property: IdentifierOf(typeof(VimKeys))] string Name, string? Argument);
 
+    /// <summary>The column an operator's j or k aims at, set while the operator runs from a caret whose own j and k aim at it.</summary>
+    private int? operatorAim;
+
     private static readonly HashSet<string> SingleMotions =
         ["h", "l", "j", "k", "0", "^", "$", "|", "w", "W", "b", "B", "e", "E", "G", ";", ",", "%", "{", "}", "(", ")", "H", "M", "L", VimKeys.Backspace, VimKeys.Enter, " ", "+", "-", "_", "n", "N", "*", "#"];
 
@@ -210,7 +213,16 @@ public sealed partial class Vim
         changeExtent = null;
         if (command.Operator is { } op)
         {
-            return Operate(command, op, text, selections, view);
+            // An operator's j or k aims at the column the caret's own j and k aim at.
+            operatorAim = aims is [int aim] && selections.Count == 1 ? aim : null;
+            try
+            {
+                return Operate(command, op, text, selections, view);
+            }
+            finally
+            {
+                operatorAim = null;
+            }
         }
         if (view.Refuses is { } why && (Changing.Contains(command.Name) || command.Name == "." && lastChange is not null))
         {
@@ -294,6 +306,11 @@ public sealed partial class Vim
         {
             int first = text.GetLineFromOffset(selections.Primary.Caret);
             int joined = Math.Max(2, Math.Min(asked, VimMotions.LastLine(text, breakEnds) - first + 1));
+            if (replaying && joined < asked && lastChange is { } again)
+            {
+                // Made again with a count past the text's end, . keeps the lines it joined.
+                lastChange = again with { Count = joined };
+            }
             return Changed(joined < asked ? command with { Count = joined } : command, plan);
         }
         if (asked <= 2)
@@ -409,7 +426,8 @@ public sealed partial class Vim
                 }
                 // j and k keep the caret's column, the others go to the line's first non-blank.
                 return command.Name is "j" or "k"
-                    ? new VimTarget(VimMotions.OffsetAtColumn(text, line, CaretColumn(text, caret, view.Indent.TabWidth), view.Indent.TabWidth), VimMotionKind.Linewise)
+                    ? new VimTarget(VimMotions.OffsetAtColumn(text, line, operating && operatorAim is { } aim ? aim : CaretColumn(text, caret, view.Indent.TabWidth), view.Indent.TabWidth),
+                        VimMotionKind.Linewise)
                     : Line(text, line);
             case "gj" or "gk":
                 int row = view.RowsAway(text, caret, command.Name == "gj" ? n : -n);

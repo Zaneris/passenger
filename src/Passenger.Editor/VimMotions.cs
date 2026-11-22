@@ -494,10 +494,10 @@ public static class VimMotions
         if (forward)
         {
             int end = Settled(text, text.Length, breakEnds);
-            // Past a closing '.', '!' or '?' that ends the text, its end is one more sentence's start.
-            bool endStops = EndsWithSentence(text);
             // An empty last line has no character to take: the motion ends at its start, exclusive.
             bool emptyEnd = LineOf(text, end).Length == 0;
+            // Past a closing '.', '!' or '?' that ends the text's last line, its end is one more sentence's start.
+            bool endStops = EndsWithSentence(text) && !emptyEnd;
             VimMotionKind toEnd = emptyEnd ? VimMotionKind.Exclusive : VimMotionKind.Inclusive;
             for (int i = 0; i < n; i++)
             {

@@ -101,6 +101,14 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>The line an exclusive motion just ended at the start of, which the operator's stretch leaves out; null with none.</summary>
     private int? reachedPast;
 
+    /// <summary>Set while a command writes into a text a delete emptied (<see cref="OnOneEmptyLine"/>), whose one empty line
+    /// a delete or change takes nothing of, as Vim's empty buffer gives its registers nothing.</summary>
+    private bool intoEmptied;
+
+    /// <summary>Whether the insert session under way began on an emptied text's one line, which it leaves emptied where it
+    /// types nothing.</summary>
+    private bool typingIntoEmptied;
+
     public Vim()
         : this(new VimRegisters())
     {
@@ -233,10 +241,25 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>A command that writes into an empty text run on the one empty line Vim's empty buffer holds, given its line
     /// break first, so what it writes keeps the file's final line break as Vim's 'eol' does; one that writes nothing (a put
     /// of an empty register) leaves the text empty.</summary>
-    private VimResult OnOneEmptyLine(Command command, TextSnapshot text, IVimView view)
+    private VimResult OnOneEmptyLine(Command command, TextSnapshot text, IVimView view) =>
+        OnOneEmptyLine((lined, carets) => Run(command, lined, carets, view), text, view);
+
+    /// <summary>What <paramref name="act"/> does on the one empty line an emptied text holds, given its line break first,
+    /// as <see cref="OnOneEmptyLine(Command, TextSnapshot, IVimView)"/> runs a command there.</summary>
+    private VimResult OnOneEmptyLine(Func<TextSnapshot, SelectionSet, VimResult> act, TextSnapshot text, IVimView view)
     {
         EditPlan line = new([new TextEdit(0, 0, view.LineEnding)], SelectionSet.Single(0), EditKind.Joined);
-        VimResult result = Run(command, text.Apply(line.Edits), line.Selections, view);
+        intoEmptied = true;
+        VimResult result;
+        try
+        {
+            result = act(text.Apply(line.Edits), line.Selections);
+        }
+        finally
+        {
+            intoEmptied = false;
+        }
+        typingIntoEmptied = Mode == VimMode.Insert;
         if (result.Edits is { Count: > 0 } made)
         {
             return result with { Edits = [line, .. made.Select(p => p with { Kind = EditKind.Joined })] };
@@ -470,6 +493,14 @@ public sealed partial class Vim(VimRegisters registers)
             (text, selections) = (text.Apply(kept.Edits), kept.Selections);
         }
         blockStart = null;
+        if (typingIntoEmptied && typed is "" && text.Length == view.LineEnding.Length && text.GetText(0, text.Length) == view.LineEnding)
+        {
+            // Typing nothing into an emptied text leaves it emptied.
+            EditPlan emptied = new([new TextEdit(0, text.Length, string.Empty)], SelectionSet.Single(0), EditKind.Joined);
+            plans.Add(emptied);
+            (text, selections) = (text.Apply(emptied.Edits), emptied.Selections);
+        }
+        typingIntoEmptied = false;
         // A line the session indented and left blank loses its indent, as Vim's autoindent takes back.
         bool indents = session is { How: "o" or "O" or "cc" } && typed == string.Empty || typed is not null && BlankAfterBreak(typed);
         int[]? indentAims = null;

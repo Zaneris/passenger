@@ -705,7 +705,9 @@ public sealed partial class Vim
         LineSpan bottom = text.GetLine(put.To);
         string lines = text.GetText(top.Start, bottom.End - top.Start);
         LineSpan under = put.Below >= 0 ? text.GetLine(put.Below) : default;
-        TextEdit added = put.Below < 0 ? new TextEdit(0, 0, lines + eol)
+        // An emptied text is the one empty line its final line break ends.
+        TextEdit added = text.Length == 0 && breakEnds ? new TextEdit(0, 0, eol + eol)
+            : put.Below < 0 ? new TextEdit(0, 0, lines + eol)
             : under.BreakLength > 0 ? new TextEdit(under.EndIncludingBreak, 0, lines + eol)
             : new TextEdit(under.End, 0, eol + lines);
         List<TextEdit> edits = [added];

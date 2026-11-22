@@ -74,10 +74,11 @@ public sealed partial class Vim
             "gq" or "gw" => Wrap(op == "gw", text, selections, stretches, view),
             _ => Case(command, op, text, selections, stretches, view),
         };
+        // An emptied text gives the registers nothing, as Vim's empty buffer gives them nothing.
+        bool emptied = text.Length == 0 || intoEmptied;
         // Nothing taken leaves them, but a change of an empty line's place empties one, and a block's change or lines take pieces.
-        bool empty = !(block && (op == "c" || (lines is { } over && over.Bottom > over.Top)))
-            && ((VimMotions.LastLine(text, breakEnds) == 0 && text.GetLine(0).Length == 0)
-                || stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0)));
+        bool empty = emptied || !(block && (op == "c" || (lines is { } over && over.Bottom > over.Top)))
+            && stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0));
         if (op is "d" or "c" && !empty)
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
@@ -175,7 +176,7 @@ public sealed partial class Vim
                 : null)];
         int longest = found.Max(p => p is null ? 0 : TextNavigation.VisualColumn(TextSnapshot.From(p), p.Length, tab));
         bool toEnd = block.Right == int.MaxValue;
-        int width = toEnd ? longest : block.Right - block.Left + 1;
+        int width = toEnd ? Math.Max(1, longest) : block.Right - block.Left + 1;
         return new VimRegister([.. found.Select(p => p ?? new string(' ', toEnd ? longest + 1 : width))], false) { Blockwise = true, Width = width };
     }
 

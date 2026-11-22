@@ -196,13 +196,9 @@ public sealed partial class VimTests
             + "on a line left blank and the blanks after the caret carried down, where Vim's autoindent copies the line's own and "
             + "drops the rest: in insert mode the editor types",
             (vimCase, _, _) => vimCase.Uses(TypedEnter) || vimCase.Uses(OpensLine)),
-        ($"A text's empty lines and the place after its final line break: a linewise copy, delete or change of a lone empty line "
-            + $"takes nothing, dw and cw on an empty line take its break, and a linewise stretch over the last line takes the place after it; {ToFix}",
-            (_, vim, passenger) => passenger.Seen.Contains(LoneEmptyLine) || Unbroken(vim.Lines) == Unbroken(passenger.Lines) && (Registers.All(name => OnlyBreaksApart(vim.Registers[name].Text,
-                passenger.Registers[name].Text)) || TookAnEmptyLine(vim, passenger))),
         ($"is and as from an empty line ending the text, from blanks before or after its last sentence, and about a paragraph opened "
             + $"by a sentence's end, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
-        ($"( and ) about a paragraph opened by a sentence's end; {ToFix}",
+        ($"( and ) about a line opened by a sentence's end or a closing bracket or quote; {ToFix}",
             (vimCase, _, passenger) => vimCase.Keys.Any(key => key is "(" or ")") && passenger.Seen.Contains(OpenedByAnEnd)),
         ($"A over a visual stretch by characters or lines after another visual operator, which Vim's places by where that "
             + $"operator's stretch began; {ToFix}",
@@ -210,25 +206,11 @@ public sealed partial class VimTests
                 && vimCase.Commands.Take(at).Any(before => before.Keys[0] is "v" or "V" or VimKeys.CtrlV && !before.Uses.Contains(LeftVisual))).Any()),
     ];
 
-    /// <summary>Lines with the empty ones set aside.</summary>
-    private static string Unbroken(IEnumerable<string> lines) => string.Join("\n", lines.Where(line => line.Length > 0));
-
-    private static bool OnlyBreaksApart(string one, string other) =>
-        one.Replace("\n", "", StringComparison.Ordinal) == other.Replace("\n", "", StringComparison.Ordinal);
-
-    /// <summary>Whether Vim's registers are Passenger's with an empty line's delete more: line breaks alone in the unnamed
-    /// register and 1, the numbered ones shifted down once, the rest alike.</summary>
-    private static bool TookAnEmptyLine(VimEnd vim, VimEnd passenger) =>
-        vim.Registers['"'].Text.Length > 0 && vim.Registers['"'].Text.All(c => c == '\n') && vim.Registers['1'].Text == vim.Registers['"'].Text
-            && Enumerable.Range('2', 8).All(name => vim.Registers[(char)name].Text == passenger.Registers[(char)(name - 1)].Text)
-            && "0-abz".All(name => vim.Registers[name].Text == passenger.Registers[name].Text);
-
     private const string VisualInsert = "I or A in visual mode";
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
-    private const string LoneEmptyLine = "a text of one empty line";
     private const string SentenceObject = "is or as";
-    private const string OpenedByAnEnd = "a paragraph opened by a sentence's end";
+    private const string OpenedByAnEnd = "a line opened by a sentence's end or a closer";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -620,13 +602,12 @@ public sealed partial class VimTests
     /// <summary>A key that asked the host for what only a window does.</summary>
     private const string Asked = "asked the host";
 
-    /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a text of one empty line, a paragraph
-    /// opened by a sentence's end.</summary>
+    /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a line opened by a sentence's end or
+    /// a closing bracket or quote.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
-        seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span && (line == 0 || text.GetLine(line - 1).Length == 0)
-            && text[span.Start] is '.' or '!' or '?' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
-        seen.UnionWith(text.Length == 0 || (text.Length == 1 && text[0] == '\n') ? [LoneEmptyLine] : []);
+        seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span
+            && text[span.Start] is '.' or '!' or '?' or ')' or ']' or '"' or '\'' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
     }
 
     /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>

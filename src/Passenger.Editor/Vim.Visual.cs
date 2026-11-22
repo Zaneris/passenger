@@ -88,6 +88,9 @@ public sealed partial class Vim
     /// compares its column with.</summary>
     private int keptBlockLeft;
 
+    /// <summary>Set where words in linewise mode ran out at the text's last character, which keeps the mode linewise.</summary>
+    private bool wordsKeptLines;
+
     public static bool IsVisual(VimMode mode) => mode is VimMode.Visual or VimMode.VisualLine or VimMode.VisualBlock;
 
     /// <summary>Where visual mode's cursors stand while the editor shows its selections, for their block carets; none
@@ -563,11 +566,12 @@ public sealed partial class Vim
             }
             if (moved is not { } reached)
             {
-                // A $ cut short still aims at the line's end; any other stuck motion but j, k and a find aims a block at the cursor.
+                // A $ cut short still aims at the line's end, and a { or } cut short aims a block at the cursor.
                 visualAims[i] = command.Name == "$" && !block ? int.MaxValue : visualAims[i];
-                blockColumns = !block || command.Name is "j" or "k" or "gj" or "gk" or "f" or "F" or "t" or "T" or ";" or "," ? blockColumns
+                blockColumns = !block ? blockColumns
                     : command.Name == "$" ? blockColumns with { ToEnd = true }
-                    : blockColumns with { ToEnd = false, Cursor = TextNavigation.VisualColumn(text, cursor, tab) };
+                    : command.Name is "{" or "}" ? blockColumns with { ToEnd = false, Cursor = TextNavigation.VisualColumn(text, cursor, tab) }
+                    : blockColumns;
                 continue;
             }
             // Past the last line a visual cursor stands at its end, after its last character.
@@ -689,9 +693,10 @@ public sealed partial class Vim
         }
         regions = taken;
         int tab = view.Indent.TabWidth;
-        if (lines)
+        if (lines || wordsKeptLines)
         {
             Mode = VimMode.VisualLine;
+            wordsKeptLines = false;
         }
         else if (keeps && Mode == VimMode.VisualBlock)
         {
@@ -755,6 +760,13 @@ public sealed partial class Vim
         }
         (int to, bool moved, bool whole) = VimTextObjects.WordsCarried(text, r.Cursor, r.Cursor < r.Anchor, n, inner, bigWord, breakEnds,
             lines: Mode == VimMode.VisualLine);
+        int end = LineEndOf(text, VimMotions.LastLine(text, breakEnds));
+        if (Mode == VimMode.VisualLine && !whole && r.Cursor >= r.Anchor && to < end && Settled(text, end, breakEnds) == to)
+        {
+            // In linewise mode words running out at the text's last character take the cursor past it, the mode kept.
+            wordsKeptLines = true;
+            return r with { Cursor = end };
+        }
         // A count running out stops there, but fails from the first step, and in linewise mode at all.
         return !moved || (!whole && Mode == VimMode.VisualLine) ? null : r with { Cursor = to };
     }

@@ -16,7 +16,13 @@ public sealed partial class Vim
         changeExtent = null;
     }
 
-    private VimResult VisualChange(Command command, string op, TextSnapshot text, IVimView view)
+    /// <summary>A visual operator, one that writes into an emptied text writing on the one empty line it holds.</summary>
+    private VimResult VisualChange(Command command, string op, TextSnapshot text, IVimView view) =>
+        text.Length == 0 && breakEnds && view.Refuses is null && op is "p" or "P" or "c" or "s" or "C" or "S" or "R" or "I" or "A"
+            ? OnOneEmptyLine((lined, _) => VisualChangeOn(command, op, lined, view), text, view)
+            : VisualChangeOn(command, op, text, view);
+
+    private VimResult VisualChangeOn(Command command, string op, TextSnapshot text, IVimView view)
     {
         VimMode mode = Mode;
         bool block = mode == VimMode.VisualBlock;
@@ -106,7 +112,7 @@ public sealed partial class Vim
                 {
                     Registers.Yank(command.Register, BlockTaken(text, stretches, (top, bottom, left, right), tab));
                 }
-                else if (block && (basic == "c" || (bottom > top && basic == "d")))
+                else if (block && text.Length > 0 && (basic == "c" || (bottom > top && basic == "d")))
                 {
                     Registers.Delete(command.Register, BlockTaken(text, stretches, (top, bottom, left, right), tab), always: false);
                 }
@@ -533,6 +539,14 @@ public sealed partial class Vim
         VimRegister replaced = TakenBy(text, stretches, block, over, view.Indent.TabWidth);
         string eol = view.LineEnding;
         int times = Math.Clamp(command.Count, 1, Math.Max(1, MostRepeatedText / Math.Max(1, value.Text.Length)));
+        if (block && intoEmptied && value.Linewise)
+        {
+            // Over an emptied text a block takes lines as characters do, below its one line, but empty lines in its place.
+            string all = LineEndings.In(value.Text, eol);
+            return value.Text.All(c => c == '\n') ? new VimResult(true, Edits: [new EditPlan([new TextEdit(0, 0, all[..^eol.Length])], SelectionSet.Single(0), EditKind.Other)])
+                : new VimResult(true, Edits: [new EditPlan([new TextEdit(0, 0, eol + all[..^eol.Length])],
+                    SelectionSet.Single(eol.Length + TextNavigation.IndentEnd(TextSnapshot.From(all), TextSnapshot.From(all).GetLine(0))), EditKind.Other)]);
+        }
         if (block && value.Linewise)
         {
             // P over a block whose top line's part ran to that line's end, past text it leaves, puts the lines below that line.
@@ -547,7 +561,7 @@ public sealed partial class Vim
             int corner = stretches[0].Start;
             TextSnapshot cleared = text.Apply(deletes);
             VimResult put = PutBlock(value, before: true, times, cleared, SelectionSet.Single(TextEditing.MapOffset(corner, deletes, false)), view, cursorAfter: false);
-            if (!keep && replaced.Text.Length > 0)
+            if (!keep && replaced.Text.Length > 0 && !intoEmptied)
             {
                 Registers.Delete(null, replaced, always: false);
             }
@@ -560,7 +574,7 @@ public sealed partial class Vim
             List<TextEdit> pieces = [.. stretches.Select(t => new TextEdit(t.Start, t.End - t.Start, each))];
             TextSnapshot filled = text.Apply(pieces);
             int lastOfFirst = stretches[0].Start + Math.Max(0, each.Length - 1);
-            if (!keep && replaced.Text.Length > 0)
+            if (!keep && replaced.Text.Length > 0 && !intoEmptied)
             {
                 Registers.Delete(null, replaced, always: false);
             }
@@ -595,8 +609,8 @@ public sealed partial class Vim
             }
             else if (value.Linewise)
             {
-                // Lines put over characters go on lines of their own between what stays.
-                put = eol + piece;
+                // Lines put over characters go on lines of their own between what stays, below an emptied text's one line.
+                put = eol + (intoEmptied && piece.EndsWith(eol, StringComparison.Ordinal) ? piece[..^eol.Length] : piece);
                 landing = eol.Length;
             }
             else
@@ -612,7 +626,7 @@ public sealed partial class Vim
         bool lines = value.Linewise || stretches[0].Lines;
         List<Selection> putCarets = [.. landed.Select(p => Selection.At(!lines ? Settled(after, p, breakEnds)
             : VimMotions.FirstNonBlank(after, after.GetLineFromOffset(Math.Min(p, after.Length)), breakEnds)))];
-        if (!keep && replaced.Text.Length > 0)
+        if (!keep && replaced.Text.Length > 0 && !intoEmptied)
         {
             Registers.Delete(null, replaced, always: false);
         }
@@ -641,7 +655,7 @@ public sealed partial class Vim
         }
         TextSnapshot after = text.Apply(edits);
         int first = after.GetLineFromOffset(Math.Min(TextEditing.MapOffset(at, edits, false) + (above || end.BreakLength > 0 ? 0 : eol.Length), after.Length));
-        if (!keep && replaced.Text.Length > 0)
+        if (!keep && replaced.Text.Length > 0 && !intoEmptied)
         {
             Registers.Delete(null, replaced, always: false);
         }
