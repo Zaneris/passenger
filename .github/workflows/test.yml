@@ -87,11 +87,10 @@ jobs:
       # The job's tests' time, whichever lanes they are of.
       TEST_MINUTES: 60
       # Whether this job sets up what the report lane's classes needing a set-up of minutes need (test-shards.py's
-      # SET_UPS): the mobile workloads and devices in the shards mobile_shards names, which run those classes first,
-      # dealt among them, apart from the rest dealt to them (two on macOS, whose simulator classes take about 50
-      # minutes, one on Linux, whose emulator's take 13), and Aspire's own runtime in the second's. Windows sets up
-      # neither: no Android emulator runs on its runner (no nested virtualization), no iOS app builds there, and its
-      # tests of a real AppHost skip by design.
+      # SET_UPS): the mobile workloads and devices in the shards mobile_shards names, which run those classes last,
+      # apart (two on macOS, whose simulator classes take about 50 minutes), and Aspire's runtime in the second's.
+      # Windows sets up neither: no Android emulator runs on its runner, no iOS app builds there, and its real AppHosts
+      # skip by design.
       MOBILE: ${{ matrix.lane == 'report' && contains(format(' {0} ', matrix.mobile_shards), format(' {0} ', matrix.shard)) }}
       ASPIRE: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system != 'Windows' }}
       # Aspire's dashboard and orchestrator, and the run's own aspire CLI, downloaded by the restore and named in the

@@ -100,7 +100,7 @@ TOGETHER = {
 }
 # What only some shards' jobs give the machine (test.yml), by what a class's source names, so every class needing it is
 # dealt to those: .NET's mobile workloads, the debug relays, an Android emulator or Xcode's simulators and MAUI's packages
-# for a mobile platform, the shards --apart-shards names, which run its classes first, apart from the rest dealt to them
+# for a mobile platform, the shards --apart-shards names, which run its classes last, apart from the rest dealt to them
 # (--apart), as their devices' times are their own; Aspire's dashboard and orchestrator, with the run's own aspire CLI,
 # which the build downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too (--second).
 SET_UPS = {
@@ -109,7 +109,7 @@ SET_UPS = {
     "mobile": re.compile(r"\bAndroidDevices\.\w|\bAppleSimulators\.\w|\bSimulatorApp\b|\bMacCatalystApp\b"
                          r"|does not restore here from the package cache alone|lacks a workload of the app's heads"),
 }
-# The classes a deal ran apart from the rest, first in their shard in one test process, each Alone class in a dotnet test
+# The classes a deal ran apart from the rest, last in their shard in one test process, each Alone class in a dotnet test
 # of its own (runs_of), the shards it gave them to, and those it gave the second shard, by name, beside its settings
 # (split, read by cover).
 APART = "apart.json"
@@ -493,7 +493,7 @@ def paced(system, processes):
 
 def empty_hand(processes, pace=1.0):
     """A hand's seconds by kind before any class is dealt to it: its window and Beside classes' by process, which run at
-    the pace given (paced), and those of the classes it runs apart before them (deal_apart)."""
+    the pace given (paced), and those of the classes it runs apart after them (deal_apart)."""
     return {"window": [0.0] * processes, "beside": [0.0] * processes, "alone": 0.0, "unit": 0.0, "pace": pace,
             "apart": 0.0}
 
@@ -514,9 +514,9 @@ def total(part, kind):
 
 
 def hand_time(part):
-    """A shard's seconds from its kinds' seconds: its classes apart first; then in each of its processes, its window
-    classes', or its Beside ones' run at once with them where longer, at its processes' pace, the slowest process's; then
-    its Alone classes', then its unit tests'."""
+    """A shard's seconds from its kinds' seconds: in each of its processes, its window classes', or its Beside ones' run
+    at once with them where longer, at its processes' pace, the slowest process's; then its Alone classes', its classes
+    apart and its unit tests'."""
     first = max(max(window, beside) for window, beside in zip(part["window"], part["beside"]))
     return part["apart"] + first * part["pace"] + part["alone"] + part["unit"]
 
@@ -574,8 +574,8 @@ def deal_shards(weighed, kind, count, starts=None, processes=1, pace=1.0, togeth
 
 def deal_apart(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, apart=(), second=(), apart_hands=(0,)):
     """deal_shards with the classes apart (those needing what only the jobs of apart_hands set up) dealt among those
-    hands, first in each, in one test process with nothing beside them (runs_of), and every other class dealt after them,
-    each such hand beginning its share once its own end; those needing what the second shard's job sets up held to the
+    hands, last in each, in one test process with nothing beside them (runs_of), and every other class dealt as though
+    each such hand began its share once its own end; those needing what the second shard's job sets up held to the
     second; as deal_shards where none is apart or held there, or there is one hand."""
     first = [name for name in weighed if name in apart]
     if count < 2 or not first and not set(second) & set(weighed):
@@ -595,7 +595,7 @@ def deal_apart(weighed, kind, count, starts=None, processes=1, pace=1.0, togethe
 
 def parts_of(seconds, kind, places, processes, pace=1.0, apart=()):
     """A hand's seconds by kind, from its classes' seconds and the process each window or Beside class ran in; those of
-    its classes apart (deal_apart) as one process's before the rest."""
+    its classes apart (deal_apart) as one process's after the rest."""
     part = empty_hand(processes, pace)
     first = empty_hand(1)
     for name, spent in seconds.items():
@@ -609,13 +609,13 @@ def parts_of(seconds, kind, places, processes, pace=1.0, apart=()):
 
 def said_hand(part):
     """A hand's seconds by kind as the deal says them: in a job of several processes, each one's first."""
-    before = f"{part['apart'] / 60:.1f} apart first; " if part["apart"] else ""
+    last = f"; then {part['apart'] / 60:.1f} apart" if part["apart"] else ""
     if len(part["window"]) == 1:
-        return before + ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k))
+        return ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k)) + last
     each = "; ".join(f"process {p + 1}: {part['window'][p] / 60:.1f} window, {part['beside'][p] / 60:.1f} beside"
                      for p in range(len(part["window"])))
     after = ", ".join(f"{part[k] / 60:.1f} {k}" for k in ("alone", "unit") if part[k])
-    return before + f"{each}, each at {part['pace']:g} times a lone process's pace" + (f"; then {after}" if after else "")
+    return f"{each}, each at {part['pace']:g} times a lone process's pace" + (f"; then {after}" if after else "") + last
 
 
 def run_settings(classes, *filters):
@@ -635,7 +635,7 @@ def hand_projects(classes):
 def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=(), seconds_ups=(), lane="all",
           apart_shards=(1,)):
     """A lane's tests, as a listing names them, dealt to count shards of so many test processes each (deal_apart: the
-    classes needing set_ups apart first in apart_shards, those needing seconds_ups in the second), each weighed by its
+    classes needing set_ups apart last in apart_shards, those needing seconds_ups in the second), each weighed by its
     seconds in the lane (weights, by whole: the listing of all by class, none for the lane's own): the tests by class,
     each class's seconds, the classes borrowed and guessed, each class's kind, the hands with their seconds by kind, each
     window or Beside class's process, and the classes held to the first and second shards."""
@@ -656,10 +656,10 @@ def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=
 
 
 def runs_of(number, hand, kind, places, processes, apart=()):
-    """A shard's runs of dotnet test, in steps, each step's runs at once: first its classes apart (deal_apart), their
-    window and Beside classes in one run and each Alone one in a run of its own, so one that hangs takes no other with
-    it; then in a job of one process one of each project (its Alone classes last), or in a job of more, the window and
-    Beside classes of each process's share at once, then the Alone classes in one, then the unit tests. Each run is named
+    """A shard's runs of dotnet test, in steps, each step's runs at once: one of each project (its Alone classes last),
+    or with several processes each one's share of the window and Beside classes at once, then the Alone classes in one;
+    then its classes apart (deal_apart), their window and Beside classes in one run and each Alone one in a run of its
+    own, so one that hangs takes no other and what their devices leave slows none; then the unit tests. Each run is named
     (its .trx and console log), with its project, its settings' file, how many ran at once and its classes."""
     def run(name, project, classes, together, process=0):
         return {"name": name, "project": shown(project), "settings": f"shard-{number}.{name}.runsettings",
@@ -669,9 +669,7 @@ def runs_of(number, hand, kind, places, processes, apart=()):
     tests = [name for name in hand if project_of(name) == PROJECT and name not in apart]
     units = [name for name in hand if project_of(name) == UNIT_PROJECT and name not in apart]
     leaf = os.path.basename(PROJECT)
-    shared = [name for name in held if kind[name] in SHARED_OUT]
-    steps = ([[run(f"{leaf}-apart", PROJECT, shared, 1)]] if shared else []) \
-        + [[run(f"{leaf}-{name}", PROJECT, [name], 1)] for name in sorted(held) if kind[name] not in SHARED_OUT]
+    steps = []
     if processes == 1:
         steps += [[run(leaf, PROJECT, tests, 1)]] if tests else []
     else:
@@ -680,6 +678,9 @@ def runs_of(number, hand, kind, places, processes, apart=()):
         alone_ones = [name for name in tests if kind[name] not in SHARED_OUT]
         steps += ([[run(f"{leaf}-{p + 1}", PROJECT, classes, len(shared), p) for p, classes in shared]] if shared else []) \
             + ([[run(f"{leaf}-alone", PROJECT, alone_ones, 1)]] if alone_ones else [])
+    shared = [name for name in held if kind[name] in SHARED_OUT]
+    steps += ([[run(f"{leaf}-apart", PROJECT, shared, 1)]] if shared else []) \
+        + [[run(f"{leaf}-{name}", PROJECT, [name], 1)] for name in sorted(held) if kind[name] not in SHARED_OUT]
     return steps + ([[run(os.path.basename(UNIT_PROJECT), UNIT_PROJECT, units, 1)]] if units else [])
 
 
@@ -727,7 +728,7 @@ def split(arguments):
              "that shard's tests end" if arguments.after else "")
           + (f"; the classes marked [{SAME}] only on {ONE_SYSTEM}" if arguments.lane == "report" else "")
           + (f"; the classes needing {' or '.join(arguments.apart)}, which only the jobs of shards "
-             f"{', '.join(map(str, arguments.apart_shards))} set up, first in them, apart from the rest"
+             f"{', '.join(map(str, arguments.apart_shards))} set up, last in them, apart from the rest"
              if arguments.apart else "")
           + (f"; those needing {' or '.join(arguments.second)}, which the second shard's job alone sets up, in it"
              if arguments.second else ""))
@@ -740,7 +741,7 @@ def split(arguments):
                  f", its job building the check first (about {start / 60:.1f} minutes)" if start > 0 else "")
               + f": {len(hand)} classes, {sum(counts[c] for c in hand)} tests, about {hand_time(part) / 60:.1f} minutes ("
               + said_hand(part) + ")"
-              + (f", the classes needing {' or '.join(arguments.apart)} apart first"
+              + (f", the classes needing {' or '.join(arguments.apart)} apart last"
                  if number in held["apart_shards"] and held["apart"] else "")
               + (f", the classes needing {' or '.join(arguments.second)} in it" if number == 2 and held["second"] else "")
               + (f", ending about {(start + hand_time(part)) / 60:.1f} minutes into the jobs' tests" if start > 0 else ""))
@@ -1444,7 +1445,7 @@ def main():
     command.add_argument("--second", action="append", choices=sorted(SET_UPS), help="a set-up only the second shard's "
                          "job makes (SET_UPS): every class needing it is dealt to that shard, beside others")
     command.add_argument("--apart", action="append", choices=sorted(SET_UPS), help="a set-up only the jobs of "
-                         "--apart-shards make (SET_UPS): every class needing it is dealt among those shards, run first "
+                         "--apart-shards make (SET_UPS): every class needing it is dealt among those shards, run last "
                          "and apart from the others dealt there")
     command.add_argument("--apart-shards", type=int, nargs="+", default=[1], help="the shards whose jobs make --apart's "
                          "set-up, each a shard of the lane's own jobs and none the second's (default: 1)")
