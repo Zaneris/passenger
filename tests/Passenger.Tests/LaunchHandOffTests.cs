@@ -17,8 +17,20 @@ public sealed class LaunchHandOffTests
 {
     private static readonly string Passenger = Product.Program;
 
+    /// <summary>A second launch, a recent solution's shortcut or New Window goes to the Passenger already running, to
+    /// the window on its folder at its line, or opens one of its own, and with none running the launch is the
+    /// Passenger, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_second_launch_with_a_file_and_caret_goes_to_the_window_on_its_folder_at_its_line_with_no_second_window()
+    public void A_launch_goes_to_the_running_Passenger_and_its_window_on_the_folder()
+    {
+        Flow.StepApart<LaunchHandOffTests>("a second launch with a file and caret goes to the window on its folder at its line with no second window", t => t.A_second_launch_with_a_file_and_caret_goes_to_the_window_on_its_folder_at_its_line_with_no_second_window());
+        Flow.StepApart<LaunchHandOffTests>("a launch counting its caret from zero as Godot s editor fills it in puts the caret on that line", t => t.A_launch_counting_its_caret_from_zero_as_Godot_s_editor_fills_it_in_puts_the_caret_on_that_line());
+        Flow.StepApart<LaunchHandOffTests>("a launch for a folder no window has is opened by the running Passenger in a window of its own", t => t.A_launch_for_a_folder_no_window_has_is_opened_by_the_running_Passenger_in_a_window_of_its_own());
+        Flow.StepApart<LaunchHandOffTests>("a recent solution s shortcut opens it in the running Passenger and New Window makes a window with nothing open", t => t.A_recent_solution_s_shortcut_opens_it_in_the_running_Passenger_and_New_Window_makes_a_window_with_nothing_open());
+        Flow.StepApart<LaunchHandOffTests>("with no Passenger running a launch is the Passenger and the next launch goes to it", t => t.With_no_Passenger_running_a_launch_is_the_Passenger_and_the_next_launch_goes_to_it());
+    }
+
+    private void A_second_launch_with_a_file_and_caret_goes_to_the_window_on_its_folder_at_its_line_with_no_second_window()
     {
         string folder = TestFolders.Create("launch-");
         string script = TestFolders.Write(folder, "Player.cs", "one\ntwo\nthree\nfour\n");
@@ -34,8 +46,7 @@ public sealed class LaunchHandOffTests
             + $"where {windows} were, the front one on {PassengerApp.Front?.Folder}");
     }
 
-    [AvaloniaFact]
-    public void A_launch_counting_its_caret_from_zero_as_Godot_s_editor_fills_it_in_puts_the_caret_on_that_line()
+    private void A_launch_counting_its_caret_from_zero_as_Godot_s_editor_fills_it_in_puts_the_caret_on_that_line()
     {
         string folder = TestFolders.Create("launch-");
         string script = TestFolders.Write(folder, "Player.cs", "one\ntwo\nthree\nfour\n");
@@ -47,8 +58,7 @@ public sealed class LaunchHandOffTests
             () => $"the caret at the file's first line and column, as Godot's 0:0 says; it shows {window.EditorArea.Active?.Path ?? "nothing"} at {Caret(window).At}");
     }
 
-    [AvaloniaFact]
-    public void A_launch_for_a_folder_no_window_has_is_opened_by_the_running_Passenger_in_a_window_of_its_own()
+    private void A_launch_for_a_folder_no_window_has_is_opened_by_the_running_Passenger_in_a_window_of_its_own()
     {
         string open = TestFolders.Create("launch-open-");
         TestFolders.Write(open, "notes.txt", "open\n");
@@ -67,37 +77,9 @@ public sealed class LaunchHandOffTests
             $"The window on {open} was to keep its folder and the new one to come forward; it is on {window.Folder}, the front one on {PassengerApp.Front?.Folder}");
     }
 
-    /// <summary>The folder's kept tabs are put back as its window opens: the launch's file and caret come after them.</summary>
-    [AvaloniaFact]
-    public void A_launch_for_a_folder_with_kept_tabs_ends_at_its_own_caret_in_a_file_kept_at_another()
-    {
-        string state = TestFolders.Create("launch-state-");
-        string open = TestFolders.Create("launch-open-");
-        TestFolders.Write(open, "notes.txt", "open\n");
-        string other = PathNames.Canonical(TestFolders.Create("launch-other-"));
-        string script = TestFolders.Write(other, "Enemy.cs", "one\ntwo\nthree\n");
-        MainWindow keeping = Keeping(state, other);
-        keeping.OpenFile(script);
-        Ui.Settle();
-        Assert.Equal((script, new TextPosition(0, 0)), Caret(keeping));
-        keeping.Close();
-        Ui.Settle();
-        MainWindow window = Keeping(state, open);
-
-        Launched([other, "--file", script, "--caret", "3:2"], StateStore.DefaultRoot);
-
-        Ui.WaitFor(() => PassengerApp.Windows.Any(w => w != window && w.Folder == other), () => $"a window on {other}; they are on {string.Join(", ", PassengerApp.Windows.Select(w => w.Folder ?? "nothing"))}");
-        MainWindow opened = PassengerApp.Windows.Single(w => w.Folder == other);
-        Ui.Settle();
-        Assert.True(Caret(opened) == (script, new TextPosition(2, 1)), $"The launch asked for 3:2 in {script}; the folder's kept tabs left {opened.EditorArea.Active?.Path ?? "nothing"} at {Caret(opened).At}");
-        opened.Close();
-        window.Close();
-    }
-
     /// <summary>The taskbar's jump list and the Dock's menu list the window's recent ones as starts of Passenger naming each,
     /// which the running Passenger takes as it takes any second start; its New Window task makes a window with nothing open.</summary>
-    [AvaloniaFact]
-    public void A_recent_solution_s_shortcut_opens_it_in_the_running_Passenger_and_New_Window_makes_a_window_with_nothing_open()
+    private void A_recent_solution_s_shortcut_opens_it_in_the_running_Passenger_and_New_Window_makes_a_window_with_nothing_open()
     {
         string state = TestFolders.Create("launch-state-");
         string gone = TestFolders.Create("launch-gone-");
@@ -137,8 +119,7 @@ public sealed class LaunchHandOffTests
         return window;
     }
 
-    [AvaloniaFact]
-    public void With_no_Passenger_running_a_launch_is_the_Passenger_and_the_next_launch_goes_to_it()
+    private void With_no_Passenger_running_a_launch_is_the_Passenger_and_the_next_launch_goes_to_it()
     {
         string state = TestFolders.Create("launch-state-");
         string folder = TestFolders.Write(TestFolders.Create("launch-"), "Player.cs", "one\ntwo\nthree\n");

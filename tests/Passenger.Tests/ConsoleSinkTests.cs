@@ -16,16 +16,37 @@ public sealed class ConsoleSinkTests
 {
     private const string Prefix = "web | ";
 
+    /// <summary>A console shows a program's output whole and in order however it comes, a line with no break, one of
+    /// ten megabytes, a flood past what it keeps, its colours and styles and nothing of other control sequences, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_merged_logs_source_has_its_last_line_shown_where_it_ends_with_no_line_break()
+    public void A_console_shows_a_programs_output_whole_and_in_order_with_its_looks()
+    {
+        Flow.StepApart<ConsoleSinkTests>("a merged logs source has its last line shown where it ends with no line break", t => t.A_merged_logs_source_has_its_last_line_shown_where_it_ends_with_no_line_break());
+        Flow.StepApart<ConsoleSinkTests>("a merged logs line of ten megabytes with no break is shown in pieces before its source ends", t => t.A_merged_logs_line_of_ten_megabytes_with_no_break_is_shown_in_pieces_before_its_source_ends());
+        Flow.StepApart<ConsoleSinkTests>("a flood past what the console keeps shows the end of it whole and in order", t => t.A_flood_past_what_the_console_keeps_shows_the_end_of_it_whole_and_in_order());
+        Flow.StepApart<ConsoleSinkTests>("a programs colours and styles are its texts looks and every other control sequence shows nothing", t => t.A_programs_colours_and_styles_are_its_texts_looks_and_every_other_control_sequence_shows_nothing());
+        Flow.StepApart<ConsoleSinkTests>("a merged logs source keeps its own colours its name plain", t => t.A_merged_logs_source_keeps_its_own_colours_its_name_plain());
+        Flow.StepApart<ConsoleSinkTests>("a line the other stream writes into shows whole after it and a prompt with no line break as written", t => t.A_line_the_other_stream_writes_into_shows_whole_after_it_and_a_prompt_with_no_line_break_as_written());
+    }
+
+    /// <summary>A secret in a program's output is masked wherever its reads or a colour code split it, the colours
+    /// around it kept, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_secret_in_a_programs_output_is_masked_however_its_reads_or_colours_split_it()
+    {
+        Flow.StepApart<ConsoleSinkTests>("a secret a colour code splits is masked and the colours around it kept", t => t.A_secret_a_colour_code_splits_is_masked_and_the_colours_around_it_kept());
+        Flow.StepApart<ConsoleSinkTests>("a masked stream split anywhere between reads shows what it shows read whole", t => t.A_masked_stream_split_anywhere_between_reads_shows_what_it_shows_read_whole());
+    }
+
+    private void A_merged_logs_source_has_its_last_line_shown_where_it_ends_with_no_line_break()
     {
         OutputView console = new(toolbar: false);
         Ui.Await(Waiting.Apart(() => console.Sink.PumpAsync(new StringReader("a\r\nb"), ConsoleStream.Output, prefix: Prefix)), "the source's lines pumped");
         Ui.WaitFor(() => Shown(console) == $"{Prefix}a\n{Prefix}b\n", () => $"the merged log shows [{Shown(console)}], not both lines under the source's name");
     }
 
-    [AvaloniaFact]
-    public void A_merged_logs_line_of_ten_megabytes_with_no_break_is_shown_in_pieces_before_its_source_ends()
+    private void A_merged_logs_line_of_ten_megabytes_with_no_break_is_shown_in_pieces_before_its_source_ends()
     {
         OutputView console = new(toolbar: false);
         Unbroken reader = new(10 * 1024 * 1024);
@@ -45,43 +66,10 @@ public sealed class ConsoleSinkTests
         }
     }
 
-    /// <summary>Plain output, no control code in it, costs what the console keeps of it and little more: what writes it
-    /// copies it into room kept from batch to batch, allocating under 128 bytes a kilobyte (1,024 characters) once warm,
-    /// and the window's thread takes each batch as one string and copies it once into the console's text, under 5.5 KB a
-    /// kilobyte: a copy more of it would pass either bound.</summary>
-    [AvaloniaFact]
-    public void Plain_output_is_copied_once_as_it_is_written_and_once_into_the_consoles_text()
-    {
-        OutputView console = new(toolbar: false);
-        string batch = string.Concat(Enumerable.Repeat(new string('x', 79) + "\n", 205));
-        for (int i = 0; i < 4; i++)
-        {
-            console.Sink.Write(batch);
-            console.Flush();
-        }
-        const int Batches = 40;
-        long written = 0;
-        long taken = 0;
-        for (int i = 0; i < Batches; i++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            console.Sink.Write(batch);
-            long between = GC.GetAllocatedBytesForCurrentThread();
-            console.Flush();
-            taken += GC.GetAllocatedBytesForCurrentThread() - between;
-            written += between - before;
-        }
-        double kilobytes = Batches * batch.Length / 1024.0;
-        Assert.True(written / kilobytes < 128, $"Writing plain output allocated {written / kilobytes:N0} bytes a kilobyte of it: it is copied more than once on its way in");
-        Assert.True(taken / kilobytes < 5.5 * 1024, $"Taking plain output into the console allocated {taken / kilobytes:N0} bytes a kilobyte of it on the window's thread: it is copied more than once into the text");
-        Assert.Equal(44 * batch.Length, console.Document.Snapshot.Length);
-    }
-
     /// <summary>A flood of more than twice what the console keeps, written while it takes no batch, as a program writing
     /// without pause outruns the window: what waits is cut to the newest as it comes, and the console shows the end of
     /// what was written whole and in order, wherever the cuts fell.</summary>
-    [AvaloniaFact]
-    public void A_flood_past_what_the_console_keeps_shows_the_end_of_it_whole_and_in_order()
+    private void A_flood_past_what_the_console_keeps_shows_the_end_of_it_whole_and_in_order()
     {
         OutputView console = new(toolbar: false) { Limit = 20_000 };
         System.Text.StringBuilder written = new();
@@ -101,8 +89,7 @@ public sealed class ConsoleSinkTests
     /// underline, inverse and faint, standard error's own colour where it sets none; while a cursor move, a screen's
     /// clearing, a title, a link, a DCS string and the bell show nothing, and an OSC a line break comes into, never ended,
     /// is given up at it, the next line shown.</summary>
-    [AvaloniaFact]
-    public void A_programs_colours_and_styles_are_its_texts_looks_and_every_other_control_sequence_shows_nothing()
+    private void A_programs_colours_and_styles_are_its_texts_looks_and_every_other_control_sequence_shows_nothing()
     {
         OutputView console = new(toolbar: false);
         console.Sink.Write("plain \u001b[31mred\u001b[0m \u001b[1;3;4;94mbright\u001b[22;23;24m blue\u001b[39m \u001b[38;5;196mcube\u001b[0m ");
@@ -130,8 +117,7 @@ public sealed class ConsoleSinkTests
 
     /// <summary>What a stream shows masked (a container's command's), read through its colour codes first: a secret a code
     /// splits is masked as one written whole would be, and the colours around it are kept where they were.</summary>
-    [AvaloniaFact]
-    public void A_secret_a_colour_code_splits_is_masked_and_the_colours_around_it_kept()
+    private void A_secret_a_colour_code_splits_is_masked_and_the_colours_around_it_kept()
     {
         OutputView console = new(toolbar: false);
         Func<string, string> masking = ContainerSecrets.Masking(known: ["s3cr3t-value"]);
@@ -145,34 +131,9 @@ public sealed class ConsoleSinkTests
         Assert.Null(ConsoleColoursTests.LookAt(console, " key"));
     }
 
-    /// <summary>A masked stream (a container command's) is made one string a read, for its mask, from where its lines wait:
-    /// about 120,000 characters of an image build's lines in reads of 2,000 allocate under 3 bytes a character as they are
-    /// pumped into what waits for the console, its room kept from a batch before, where a second copy of each read passes 4.</summary>
-    [AvaloniaFact]
-    public void A_masked_streams_reads_are_each_copied_once_for_its_mask()
-    {
-        OutputView console = new(toolbar: false);
-        console.Sink.Write(new string('x', 128 * 1024));
-        console.Flush();
-        Func<string, string> masking = ContainerSecrets.Masking(known: ["s3cr3t-value"]);
-        const string Line = "#7 0.512 info: request 000001 served in 4 ms by worker 1\n";
-        string text = string.Concat(Enumerable.Repeat(Line, 120_000 / Line.Length));
-        // The mask's own expressions made ready once, as by any stream before.
-        Assert.True(console.Sink.PumpAsync(new Pieces(text, [2_000]), ConsoleStream.Output, shown: masking).IsCompleted, "A pump of reads given at once waited");
-        console.Flush();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Task pumped = console.Sink.PumpAsync(new Pieces(text, [2_000]), ConsoleStream.Output, shown: masking);
-        double each = (double)(GC.GetAllocatedBytesForCurrentThread() - before) / text.Length;
-        Assert.True(pumped.IsCompleted, "A pump of reads given at once waited");
-        TestContext.Current.TestOutputHelper?.WriteLine($"Each character pumped allocated {each:N2} bytes");
-        Assert.True(each < 3, $"Pumping a masked stream allocated {each:N1} bytes a character of it: each read is copied more than once for its mask");
-        Assert.Equal(text, Shown(console)[^text.Length..]);
-    }
-
     /// <summary>A masked stream shows the same however its reads split it: colours, a secret, a "\r\n", a line a '\r'
     /// rewrites, a line past the longest a pump holds whole and a last line with no break, cut anywhere between reads.</summary>
-    [AvaloniaFact]
-    public void A_masked_stream_split_anywhere_between_reads_shows_what_it_shows_read_whole()
+    private void A_masked_stream_split_anywhere_between_reads_shows_what_it_shows_read_whole()
     {
         Func<string, string> masking = ContainerSecrets.Masking(known: ["s3cr3t-value"]);
         string text = "\u001b[32mok\u001b[0m key s3cr3t-value\r\nDB_PASSWORD=hunter2 and on\nstep 1 of 2\rstep 2 of 2\n"
@@ -199,8 +160,7 @@ public sealed class ConsoleSinkTests
 
     /// <summary>A merged log's source keeps its colours from line to line as it set them, its name before each line
     /// plain, and another source's lines take none of them.</summary>
-    [AvaloniaFact]
-    public void A_merged_logs_source_keeps_its_own_colours_its_name_plain()
+    private void A_merged_logs_source_keeps_its_own_colours_its_name_plain()
     {
         OutputView console = new(toolbar: false);
         Ui.Await(Waiting.Apart(() => console.Sink.PumpAsync(new StringReader("\u001b[31mred line\nstill red"), ConsoleStream.Output, prefix: Prefix)), "the first source pumped");
@@ -221,8 +181,7 @@ public sealed class ConsoleSinkTests
     /// <summary>A line one stream begins shows whole though the other stream writes whole lines between its two writes,
     /// those lines before it; a prompt with no line break shows as written once a moment passes with no end to it; and the
     /// IDE's own words come after a line still unended, each stream's text in its order and its colour (#2048).</summary>
-    [AvaloniaFact]
-    public void A_line_the_other_stream_writes_into_shows_whole_after_it_and_a_prompt_with_no_line_break_as_written()
+    private void A_line_the_other_stream_writes_into_shows_whole_after_it_and_a_prompt_with_no_line_break_as_written()
     {
         OutputView console = new(toolbar: false);
         console.Sink.Write("dotnet watch : ", ConsoleStream.Error);

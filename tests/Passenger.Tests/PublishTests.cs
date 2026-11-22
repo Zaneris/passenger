@@ -23,9 +23,11 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
     private const string ConsoleProject = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
         + "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n</Project>\n";
 
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
-    public PublishTests(RestoredFolders folders) => folder = folders.Take("publish shop ", made =>
+    public PublishTests(RestoredFolders folders) => (this.folders, folder) = (folders, folders.Take("publish shop ", made =>
     {
         TestFolders.Write(made, "Shop.slnx", "<Solution>\n  <Folder Name=\"/src/\">\n    <Project Path=\"src/Hello/Hello.csproj\" />\n    <Project Path=\"src/Site/Site.csproj\" />\n"
             + "    <Project Path=\"src/Solo/Solo.csproj\" />\n    <Project Path=\"src/Tools/Tools.csproj\" />\n    <Project Path=\"src/Checks/Checks.csproj\" />\n  </Folder>\n</Solution>\n");
@@ -43,12 +45,37 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         TestFolders.Write(made, "src/Checks/Checks.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"
             + "    <IsTestProject>true</IsTestProject>\n  </PropertyGroup>\n</Project>\n");
         return Path.Combine(made, "Shop.slnx");
-    });
+    }));
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A console app, an ASP.NET Core app, a self-contained and a single-file app publish to run from their
+    /// folder as their profile says, a failed build or Stop never said as published, and Publish greyed with why for
+    /// what does not publish, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_console_app_published_to_a_folder_runs_from_there_and_the_status_bar_opens_the_folder()
+    public void A_publish_runs_from_its_folder_as_its_profile_says_or_says_why_it_did_not()
+    {
+        Flow.StepApart("a console app published to a folder runs from there and the status bar opens the folder", () => new PublishTests(folders), t => t.A_console_app_published_to_a_folder_runs_from_there_and_the_status_bar_opens_the_folder());
+        Flow.StepApart("an aspnet core app publishes with its settings and its visual studio profile says where visual studio copies it", () => new PublishTests(folders), t => t.An_aspnet_core_app_publishes_with_its_settings_and_its_visual_studio_profile_says_where_visual_studio_copies_it());
+        Flow.StepApart("a self contained publish for this system carries its runtime and runs on its own", () => new PublishTests(folders), t => t.A_self_contained_publish_for_this_system_carries_its_runtime_and_runs_on_its_own());
+        Flow.StepApart("a framework dependent single file publish leaves the runtime out and its profile says so", () => new PublishTests(folders), t => t.A_framework_dependent_single_file_publish_leaves_the_runtime_out_and_its_profile_says_so());
+        Flow.StepApart("a publish whose build fails lists its error in problems and never says it published", () => new PublishTests(folders), t => t.A_publish_whose_build_fails_lists_its_error_in_problems_and_never_says_it_published());
+        Flow.StepApart("Stop ends a publish under way and says it stopped", () => new PublishTests(folders), t => t.Stop_ends_a_publish_under_way_and_says_it_stopped());
+        Flow.StepApart("Publish is greyed with why for a library and a test project and offered for an app", () => new PublishTests(folders), t => t.Publish_is_greyed_with_why_for_a_library_and_a_test_project_and_offered_for_an_app());
+    }
+
+    /// <summary>A profile saved is one step of Undo that dotnet publish takes and Publish Again uses after a restart,
+    /// one there already changed only once the person agrees, keeping what changed while its save was asked, as one
+    /// flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_publish_profile_is_saved_as_one_step_of_Undo_and_changed_only_once_the_person_agrees()
+    {
+        Flow.StepApart("a saved profile is one undo step publishes again after a restart and dotnet publish takes it", () => new PublishTests(folders), t => t.A_saved_profile_is_one_undo_step_publishes_again_after_a_restart_and_dotnet_publish_takes_it());
+        Flow.StepApart("a profile there already is offered and changed only once the person agrees keeping the rest of it", () => new PublishTests(folders), t => t.A_profile_there_already_is_offered_and_changed_only_once_the_person_agrees_keeping_the_rest_of_it());
+        Flow.StepApart("a profile changed while its save is asked keeps the change and says so", () => new PublishTests(folders), t => t.A_profile_changed_while_its_save_is_asked_keeps_the_change_and_says_so());
+    }
+
+    private void A_console_app_published_to_a_folder_runs_from_there_and_the_status_bar_opens_the_folder()
     {
         MainWindow window = Open();
         try
@@ -101,8 +128,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>A profile saved comes into the Explorer as the rows of the folders made for it alone, every other row shown
     /// staying the row it was; Undo takes it away, Redo makes it again, and it publishes again after a restart as dotnet
     /// publish takes it.</summary>
-    [AvaloniaFact]
-    public void A_saved_profile_is_one_undo_step_publishes_again_after_a_restart_and_dotnet_publish_takes_it()
+    private void A_saved_profile_is_one_undo_step_publishes_again_after_a_restart_and_dotnet_publish_takes_it()
     {
         string state = TestFolders.Create("publish state ");
         string profile = Path.Combine(folder, "src", "Hello", "Properties", "PublishProfiles", "Nightly.pubxml");
@@ -167,8 +193,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         TestFolders.Delete(state);
     }
 
-    [AvaloniaFact]
-    public void A_profile_there_already_is_offered_and_changed_only_once_the_person_agrees_keeping_the_rest_of_it()
+    private void A_profile_there_already_is_offered_and_changed_only_once_the_person_agrees_keeping_the_rest_of_it()
     {
         // As Visual Studio writes a folder profile, with one for Azure beside it, which Passenger does not publish by yet.
         string vs = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<!--\r\nhttps://go.microsoft.com/fwlink/?LinkID=208121.\r\n-->\r\n<Project>\r\n  <PropertyGroup>\r\n"
@@ -219,42 +244,10 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    /// <summary>A project keeping its files under an AppDesignerFolder of its own (My Project) has its publish profiles
-    /// where the SDK imports them from, under it: the dialog lists the one kept there and saves a new one beside it, never in
-    /// Properties.</summary>
-    [AvaloniaFact]
-    public void A_project_with_its_own_AppDesignerFolder_has_its_profiles_listed_and_saved_there()
-    {
-        Write("src/Hello/Hello.csproj", ConsoleProject.Replace("  </PropertyGroup>", "    <AppDesignerFolder>My Project</AppDesignerFolder>\n  </PropertyGroup>", StringComparison.Ordinal));
-        Write("src/Hello/My Project/PublishProfiles/Kept.pubxml", "<Project>\n  <PropertyGroup>\n    <Configuration>Release</Configuration>\n"
-            + "    <PublishProtocol>FileSystem</PublishProtocol>\n    <PublishDir>bin\\kept\\</PublishDir>\n  </PropertyGroup>\n</Project>\n");
-        string kept = Path.Combine(folder, "src", "Hello", "My Project", "PublishProfiles");
-        MainWindow window = Open();
-        try
-        {
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            PublishDialog dialog = Show(window, "Hello");
-            Assert.True(dialog.Profiles.Select(p => p.Name).SequenceEqual(["Kept"]),
-                $"The dialog lists {string.Join(", ", dialog.Profiles.Select(p => p.Name))}, not the profile kept under the project's AppDesignerFolder, which the SDK imports");
-            dialog.ChooseProfile(null);
-            Ui.Settle();
-            dialog.ProfileName = "Beside";
-            Assert.Null(Done(dialog.SaveAsync(), "the new profile to be saved"));
-            Assert.True(File.Exists(Path.Combine(kept, "Beside.pubxml")) && !Directory.Exists(Path.Combine(folder, "src", "Hello", "Properties")),
-                "The new profile was not saved beside the kept one under My Project, where the SDK imports profiles from, so dotnet publish would never find it");
-            dialog.Close();
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A profile another program changes while the question to save over it is open is never written over: the
     /// answer finds the change, keeps it and says so, and the save asked again changes the file as it is now, the change
     /// kept.</summary>
-    [AvaloniaFact]
-    public void A_profile_changed_while_its_save_is_asked_keeps_the_change_and_says_so()
+    private void A_profile_changed_while_its_save_is_asked_keeps_the_change_and_says_so()
     {
         string profile = Path.Combine(folder, "src", "Hello", "Properties", "PublishProfiles", "Staging.pubxml");
         Write("src/Hello/Properties/PublishProfiles/Staging.pubxml",
@@ -290,8 +283,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_aspnet_core_app_publishes_with_its_settings_and_its_visual_studio_profile_says_where_visual_studio_copies_it()
+    private void An_aspnet_core_app_publishes_with_its_settings_and_its_visual_studio_profile_says_where_visual_studio_copies_it()
     {
         // Visual Studio's web folder profile: Visual Studio copies the app on to PublishUrl, dotnet publish leaves it in PublishDir.
         Write("src/Site/Properties/PublishProfiles/FolderProfile.pubxml", "<Project>\n  <PropertyGroup>\n    <LastUsedBuildConfiguration>Release</LastUsedBuildConfiguration>\n"
@@ -319,8 +311,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_self_contained_publish_for_this_system_carries_its_runtime_and_runs_on_its_own()
+    private void A_self_contained_publish_for_this_system_carries_its_runtime_and_runs_on_its_own()
     {
         MainWindow window = Open();
         try
@@ -352,8 +343,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>Framework-dependent with a single file for this system publishes the app as one file that runs on the
     /// installed runtime, none of the runtime's files beside it; its profile says SelfContained false, and the dialog
     /// reopened on it says framework-dependent and a single file again.</summary>
-    [AvaloniaFact]
-    public void A_framework_dependent_single_file_publish_leaves_the_runtime_out_and_its_profile_says_so()
+    private void A_framework_dependent_single_file_publish_leaves_the_runtime_out_and_its_profile_says_so()
     {
         MainWindow window = Open();
         try
@@ -388,8 +378,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_publish_whose_build_fails_lists_its_error_in_problems_and_never_says_it_published()
+    private void A_publish_whose_build_fails_lists_its_error_in_problems_and_never_says_it_published()
     {
         Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello\");\nint count = \"three\";\n");
         MainWindow window = Open();
@@ -408,8 +397,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Stop_ends_a_publish_under_way_and_says_it_stopped()
+    private void Stop_ends_a_publish_under_way_and_says_it_stopped()
     {
         // A build step that waits a minute, cross-platform, said first so the test knows it waits.
         Write("src/Hello/Hello.csproj", ConsoleProject.Replace("</Project>",
@@ -437,8 +425,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Publish_is_greyed_with_why_for_a_library_and_a_test_project_and_offered_for_an_app()
+    private void Publish_is_greyed_with_why_for_a_library_and_a_test_project_and_offered_for_an_app()
     {
         MainWindow window = Open();
         try

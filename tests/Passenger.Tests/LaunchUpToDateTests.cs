@@ -21,6 +21,30 @@ public sealed class LaunchUpToDateTests
     /// <summary>The longest a build and a run of the app take on a developer's machine, scaled by the run.</summary>
     internal static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
+    /// <summary>The gate's two checks that a run builds only where what its build reads changed and waits for a build
+    /// at work, as one flow, to take their place once it has its record on CI.</summary>
+    [AvaloniaFact]
+    public void The_gates_up_to_date_runs_hold_as_one_flow()
+    {
+        Flow.StepApart<LaunchUpToDateTests>("a run with nothing its build reads changed starts no build and each change builds first", t => t.A_run_with_nothing_its_build_reads_changed_starts_no_build_and_each_change_builds_first());
+        Flow.StepApart<LaunchUpToDateTests>("a run begun while a build works waits for it to end and then runs", t => t.A_run_begun_while_a_build_works_waits_for_it_to_end_and_then_runs());
+    }
+
+    /// <summary>A run right after Build Solution, under a configuration's mapping, of a multi-targeted app or after its
+    /// frameworks were reordered starts no build, and one after a scoped stylesheet changed or a failed build builds
+    /// first, as one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_run_builds_first_only_where_what_its_build_reads_changed()
+    {
+        Flow.StepApart<LaunchUpToDateTests>("a run after a components scoped CSS changed builds first and after another CSS file changed builds nothing", t => t.A_run_after_a_components_scoped_CSS_changed_builds_first_and_after_another_CSS_file_changed_builds_nothing());
+        Flow.StepApart<LaunchUpToDateTests>("a run right after build solution starts no build and one after a change typed since builds first", t => t.A_run_right_after_build_solution_starts_no_build_and_one_after_a_change_typed_since_builds_first());
+        Flow.StepApart<LaunchUpToDateTests>("a run right after build solution under a configuration mapping its projects starts no build and builds them as mapped after a change", t => t.A_run_right_after_build_solution_under_a_configuration_mapping_its_projects_starts_no_build_and_builds_them_as_mapped_after_a_change());
+        Flow.StepApart<LaunchUpToDateTests>("a run of a multi targeted app right after build solution starts no build and the build raises no IDE error", t => t.A_run_of_a_multi_targeted_app_right_after_build_solution_starts_no_build_and_the_build_raises_no_IDE_error());
+        Flow.StepApart<LaunchUpToDateTests>("a run right after its projects frameworks were typed in another order runs the one now first", t => t.A_run_right_after_its_projects_frameworks_were_typed_in_another_order_runs_the_one_now_first());
+        Flow.StepApart<LaunchUpToDateTests>("a run after a build that failed builds first", t => t.A_run_after_a_build_that_failed_builds_first());
+        Flow.StepApart<LaunchUpToDateTests>("a run takes the SDKs version as dotnet names it never waiting for what dotnet does after", t => t.A_run_takes_the_SDKs_version_as_dotnet_names_it_never_waiting_for_what_dotnet_does_after());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_run_with_nothing_its_build_reads_changed_starts_no_build_and_each_change_builds_first()
@@ -66,8 +90,7 @@ public sealed class LaunchUpToDateTests
 
     /// <summary>Run of a web app after a component's scoped CSS changed builds first, the app then reading the styles its
     /// build bundled from the change; after a change to a CSS file outside wwwroot, which no build reads, it builds nothing.</summary>
-    [AvaloniaFact]
-    public void A_run_after_a_components_scoped_CSS_changed_builds_first_and_after_another_CSS_file_changed_builds_nothing()
+    private void A_run_after_a_components_scoped_CSS_changed_builds_first_and_after_another_CSS_file_changed_builds_nothing()
     {
         string folder = TestFolders.Create("scopedcss-");
         TestFolders.Write(folder, "App/App.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
@@ -157,8 +180,7 @@ public sealed class LaunchUpToDateTests
 
     /// <summary>Run right after Build Solution starts no dotnet build of App, the Build window saying it is up to date, and
     /// runs what the Build built; C# typed after the Build, not saved, has the next Run build first and run what was typed.</summary>
-    [AvaloniaFact]
-    public void A_run_right_after_build_solution_starts_no_build_and_one_after_a_change_typed_since_builds_first()
+    private void A_run_right_after_build_solution_starts_no_build_and_one_after_a_change_typed_since_builds_first()
     {
         string folder = WriteSolution();
         List<string> builds = [];
@@ -188,8 +210,7 @@ public sealed class LaunchUpToDateTests
     /// <summary>Under a solution whose default, Debug, maps App to Release, and whose Staging maps the library App references
     /// to Release: Run right after Build Solution starts no dotnet build of App and runs what the Build built, under each;
     /// one after the library changed builds first, building the library as Staging maps it, and one after that builds nothing.</summary>
-    [AvaloniaFact]
-    public void A_run_right_after_build_solution_under_a_configuration_mapping_its_projects_starts_no_build_and_builds_them_as_mapped_after_a_change()
+    private void A_run_right_after_build_solution_under_a_configuration_mapping_its_projects_starts_no_build_and_builds_them_as_mapped_after_a_change()
     {
         string folder = WriteSolution(mapped: true);
         List<string> builds = [];
@@ -223,8 +244,7 @@ public sealed class LaunchUpToDateTests
 
     /// <summary>Build Solution of a solution whose app targets two frameworks raises no IDE error, and Run right after it
     /// starts no dotnet build of the app, the Build window saying it is up to date, and runs its first framework's build.</summary>
-    [AvaloniaFact]
-    public void A_run_of_a_multi_targeted_app_right_after_build_solution_starts_no_build_and_the_build_raises_no_IDE_error()
+    private void A_run_of_a_multi_targeted_app_right_after_build_solution_starts_no_build_and_the_build_raises_no_IDE_error()
     {
         string folder = WriteSolution(appFrameworks: $"{TestProjects.Framework};net11.0");
         List<string> builds = [];
@@ -255,8 +275,7 @@ public sealed class LaunchUpToDateTests
     /// <summary>Run right after the app's frameworks were typed in another order in its project file, not saved, builds and
     /// runs the one now first: Run saves the file and reads the project as saved, where it ran the framework first before,
     /// the folder's watcher not having heard of the save yet.</summary>
-    [AvaloniaFact]
-    public void A_run_right_after_its_projects_frameworks_were_typed_in_another_order_runs_the_one_now_first()
+    private void A_run_right_after_its_projects_frameworks_were_typed_in_another_order_runs_the_one_now_first()
     {
         const string Newer = "net11.0";
         string older = TestProjects.Framework;
@@ -286,43 +305,9 @@ public sealed class LaunchUpToDateTests
         }
     }
 
-    /// <summary>Build right after a framework was typed into the app's frameworks, not saved, builds the app for each of them
-    /// and keeps each as a launch builds it: Run right after starts no build, the Build window saying the app is up to date,
-    /// and runs the framework typed, where Build read the project as it stood before its save and Run built it again.</summary>
-    [AvaloniaFact]
-    public void A_build_right_after_a_framework_was_typed_into_its_projects_frameworks_leaves_the_framework_typed_up_to_date()
-    {
-        const string Newer = "net11.0";
-        string older = TestProjects.Framework;
-        string folder = WriteSolution(appFrameworks: older);
-        TestFolders.Write(folder, "App/Program.cs",
-            $"#if NET11_0_OR_GREATER\nSystem.Console.WriteLine(\"said: {Newer}\");\n#else\nSystem.Console.WriteLine(\"said: {older}\");\n#endif\n");
-        List<string> builds = [];
-        EventHandler<ChildStart> started = Counting(builds);
-        ChildProcesses.Started += started;
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "App"), "App's run configuration");
-            Assert.True(window.SelectConfiguration("App"));
-            window.OpenFile(Path.Combine(folder, "App", "App.csproj"));
-            Ui.Settle();
-            string text = window.EditorArea.Active!.Text.Snapshot.ToString();
-            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(text.IndexOf($"<TargetFrameworks>{older}", StringComparison.Ordinal) + "<TargetFrameworks>".Length, 0, $"{Newer};")]);
-            Built(window, AppActions.Build, succeeds: true, $"Build Solution right after {Newer} was typed into App's frameworks");
-            Ran(window, builds, built: false, Newer, $"a run right after Build Solution built {Newer} too");
-        }
-        finally
-        {
-            ChildProcesses.Started -= started;
-            window.Close();
-        }
-    }
-
     /// <summary>A Build that fails leaves no project it built up to date: Run right after Build Selected Projects of App
     /// starts no build, but after Build Solution fails in Tool, which App does not reference, Run builds App first.</summary>
-    [AvaloniaFact]
-    public void A_run_after_a_build_that_failed_builds_first()
+    private void A_run_after_a_build_that_failed_builds_first()
     {
         string folder = WriteSolution();
         List<string> builds = [];
@@ -408,8 +393,7 @@ public sealed class LaunchUpToDateTests
     /// telemetry before it exits): here dotnet --version's stand-in names it, then leaves a child holding its output and
     /// goes on itself until the test lets both go, and a second Run with nothing changed still finds the first one's
     /// build standing, its check having had its answer.</summary>
-    [AvaloniaFact]
-    public void A_run_takes_the_SDKs_version_as_dotnet_names_it_never_waiting_for_what_dotnet_does_after()
+    private void A_run_takes_the_SDKs_version_as_dotnet_names_it_never_waiting_for_what_dotnet_does_after()
     {
         string folder = TestFolders.Create("uptodate-sdk-");
         TestFolders.Write(folder, "App/App.csproj", TestProjects.Console());

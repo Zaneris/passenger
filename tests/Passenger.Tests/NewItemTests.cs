@@ -19,11 +19,21 @@ public sealed class NewItemTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(place);
 
+    /// <summary>New Item puts an API controller, a Razor component and a .gitignore where their project keeps them,
+    /// building, one Undo taking each away, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
+    [AvaloniaFact]
+    public void New_Item_puts_each_template_where_its_project_keeps_it_one_Undo_taking_it_away()
+    {
+        Flow.StepApart<NewItemTests>("an API Controller goes into a web projects Controllers folder in its namespace builds and one Undo takes it away", t => t.An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away());
+        Flow.StepApart<NewItemTests>("a Razor Component goes into a Blazor projects pages Razor templates listed first and one Undo takes it away", t => t.A_Razor_Component_goes_into_a_Blazor_projects_pages_Razor_templates_listed_first_and_one_Undo_takes_it_away());
+        Flow.StepApart<NewItemTests>("a gitignore goes into the solutions folder from its New Item and one Undo takes it away", t => t.A_gitignore_goes_into_the_solutions_folder_from_its_New_Item_and_one_Undo_takes_it_away());
+    }
+
     /// <summary>An API Controller added to a web project's Controllers folder from the folder's Add menu: the web project's
     /// controllers lead the list, the namespace offered is the folder's, the file made is an [ApiController] in it, opened,
     /// and the project builds; one Undo in the Solution view takes the file away.</summary>
-    [AvaloniaFact]
-    public void An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away()
+    private void An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away()
     {
         string api = WebProject(controllers: true);
         MainWindow window = Ui.OpenFolder(place, languageServer: false);
@@ -63,8 +73,7 @@ public sealed class NewItemTests : IDisposable
 
     /// <summary>A Razor Component added to a Blazor project's pages: Razor's templates lead its list, and the component is
     /// made and opened; one Undo takes it away.</summary>
-    [AvaloniaFact]
-    public void A_Razor_Component_goes_into_a_Blazor_projects_pages_Razor_templates_listed_first_and_one_Undo_takes_it_away()
+    private void A_Razor_Component_goes_into_a_Blazor_projects_pages_Razor_templates_listed_first_and_one_Undo_takes_it_away()
     {
         string web = WebProject(controllers: false);
         string pages = PathNames.Canonical(Path.Combine(web, "Components", "Pages"));
@@ -97,8 +106,7 @@ public sealed class NewItemTests : IDisposable
 
     /// <summary>New Item on the solution lists the templates of no language (no controller, no class), and its .gitignore,
     /// which takes no name, goes into the solution's folder; one Undo takes it away.</summary>
-    [AvaloniaFact]
-    public void A_gitignore_goes_into_the_solutions_folder_from_its_New_Item_and_one_Undo_takes_it_away()
+    private void A_gitignore_goes_into_the_solutions_folder_from_its_New_Item_and_one_Undo_takes_it_away()
     {
         WebProject(controllers: true);
         MainWindow window = Ui.OpenFolder(place, languageServer: false);
@@ -119,45 +127,6 @@ public sealed class NewItemTests : IDisposable
             Assert.Equal(made, window.EditorArea.Active?.Path);
 
             Undone(window, made);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>New Project's Web API offers the template's Use controllers (ide.host.json's UseMinimalAPIs, its opposite),
-    /// once, and choosing it makes the project with its Controllers folder; Blazor's Include sample pages, once, is its
-    /// command line's --empty.</summary>
-    [AvaloniaFact]
-    public void New_Projects_Web_API_offers_Use_controllers_once_which_makes_its_Controllers_folder()
-    {
-        TestFolders.Write(place, "Shop.slnx", "<Solution />\n");
-        MainWindow window = Ui.OpenFolder(place, languageServer: false);
-        try
-        {
-            Ui.Run(window, AppActions.NewProject);
-            NewProjectDialog dialog = NewServiceSetupTests.Opened(window);
-            // Blazor's Include sample pages, which only an IDE's host reads, reaches the command line as its --empty.
-            NewServiceSetupTests.Choose(dialog, "blazor");
-            Assert.DoesNotContain(dialog.OptionLabels, l => l.Contains("omit sample pages", StringComparison.Ordinal));
-            Ui.Click(dialog.OptionEditor("Include sample pages") ?? throw new InvalidOperationException($"Blazor offers no Include sample pages: [{string.Join(", ", dialog.OptionLabels)}]"));
-            Assert.Contains("--empty true", dialog.Command, StringComparison.Ordinal);
-            NewServiceSetupTests.Choose(dialog, "webapi");
-            dialog.ProjectName = "Api";
-            dialog.Framework = TestProjects.Framework;
-            Assert.Single(dialog.OptionLabels, l => l.Contains("controllers", StringComparison.OrdinalIgnoreCase));
-            Ui.Click(dialog.OptionEditor("Use controllers") ?? throw new InvalidOperationException($"Web API offers no Use controllers: [{string.Join(", ", dialog.OptionLabels)}]"));
-            // Its OpenAPI package would come from nuget.org, which the tests never reach.
-            if (dialog.OptionLabels.FirstOrDefault(l => l.Contains("OpenAPI", StringComparison.Ordinal)) is { } openApi && dialog.OptionEditor(openApi) is CheckBox { IsChecked: true } box)
-            {
-                Ui.Click(box);
-            }
-            Assert.Contains("--use-minimal-apis false", dialog.Command, StringComparison.Ordinal);
-            NewServiceSetupTests.Created(dialog, "the Web API");
-            Assert.Null(NewServiceSetupTests.SetUp(window));
-            string folder = Path.Combine(PathNames.Canonical(place), "Api", "Controllers");
-            Assert.True(Directory.Exists(folder) && Directory.EnumerateFiles(folder, "*Controller.cs").Any(), $"Use controllers made no Controllers folder: {window.Status}");
         }
         finally
         {

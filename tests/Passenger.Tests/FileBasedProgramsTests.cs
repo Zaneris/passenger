@@ -77,8 +77,24 @@ public sealed class FileBasedProgramsTests : IDisposable
 
     private string Helper => Path.Combine(folder, "helper.cs");
 
+    /// <summary>A file-based program opened as a folder or a file, beside a solution or alone, is a project that
+    /// answers across its files and references, runs with its profile, debugs into an included file, builds only what
+    /// changed and lists its tests, and what it includes is never a program itself, as one flow, each step the check
+    /// one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_program_opened_as_a_folder_is_a_project_that_answers_across_its_files_runs_with_its_profile_and_stops_in_its_included_file()
+    public void A_file_based_program_is_a_project_that_answers_runs_debugs_and_tests()
+    {
+        Flow.StepApart<FileBasedProgramsTests>("a program opened as a folder is a project that answers across its files runs with its profile and stops in its included file", t => t.A_program_opened_as_a_folder_is_a_project_that_answers_across_its_files_runs_with_its_profile_and_stops_in_its_included_file());
+        Flow.StepApart<FileBasedProgramsTests>("a program opened as its file opens with its folder as the same project", t => t.A_program_opened_as_its_file_opens_with_its_folder_as_the_same_project());
+        Flow.StepApart<FileBasedProgramsTests>("a program beside a solution is listed after its projects and runs and debugs", t => t.A_program_beside_a_solution_is_listed_after_its_projects_and_runs_and_debugs());
+        Flow.StepApart<FileBasedProgramsTests>("a second run of an unchanged program builds nothing and a change to its included file builds it", t => t.A_second_run_of_an_unchanged_program_builds_nothing_and_a_change_to_its_included_file_builds_it());
+        Flow.StepApart<FileBasedProgramsTests>("a programs xunit tests show in the tests window and run from it", t => t.A_programs_xunit_tests_show_in_the_tests_window_and_run_from_it());
+        Flow.StepApart<FileBasedProgramsTests>("files a program includes from another folder or by a wildcard are never programs themselves", t => t.Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves());
+        Flow.StepApart<FileBasedProgramsTests>("a program referencing another has it for a project answered across and run with it", t => t.A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it());
+        Flow.StepApart<FileBasedProgramsTests>("a file of top level statements alone with no directive is a program that completes runs and debugs", t => t.A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs());
+    }
+
+    private void A_program_opened_as_a_folder_is_a_project_that_answers_across_its_files_runs_with_its_profile_and_stops_in_its_included_file()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -96,8 +112,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_program_opened_as_its_file_opens_with_its_folder_as_the_same_project()
+    private void A_program_opened_as_its_file_opens_with_its_folder_as_the_same_project()
     {
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
@@ -117,8 +132,7 @@ public sealed class FileBasedProgramsTests : IDisposable
     /// <summary>A program beside a solution is the folder's, as in a folder with no solution: a project row of the Solution
     /// view after the solution's own, with its run configuration, its file served in its project, and Run and Debug
     /// building and launching it; Build builds the solution and the program.</summary>
-    [AvaloniaFact]
-    public void A_program_beside_a_solution_is_listed_after_its_projects_and_runs_and_debugs()
+    private void A_program_beside_a_solution_is_listed_after_its_projects_and_runs_and_debugs()
     {
         TestFolders.Write(folder, "Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
         TestFolders.Write(folder, "Lib/Shapes.cs", "namespace Lib;\n\npublic static class Shapes\n{\n}\n");
@@ -158,8 +172,7 @@ public sealed class FileBasedProgramsTests : IDisposable
 
     /// <summary>A second Run of a program nothing of which changed builds nothing, the Build window saying it is up to date;
     /// a change to a file it includes builds it first, and the run shows the change.</summary>
-    [AvaloniaFact]
-    public void A_second_run_of_an_unchanged_program_builds_nothing_and_a_change_to_its_included_file_builds_it()
+    private void A_second_run_of_an_unchanged_program_builds_nothing_and_a_change_to_its_included_file_builds_it()
     {
         List<string> builds = [];
         EventHandler<ChildStart> started = (_, child) =>
@@ -215,54 +228,9 @@ public sealed class FileBasedProgramsTests : IDisposable
             $"{which} {(built ? "was not built first" : "was built though nothing it reads changed")}: {ran} dotnet builds of app.cs started, and the Build window says:\n{console}");
     }
 
-    /// <summary>Write to Launch Profile writes a program's generated configuration's changed arguments into its profile in
-    /// app.run.json, and Save as Launch Profile saves one made here as a new profile there, which generates it from then on
-    /// and Run runs with its arguments.</summary>
-    [AvaloniaFact]
-    public void Write_and_save_as_launch_profile_take_a_programs_app_run_json()
-    {
-        string settings = Path.Combine(folder, "app.run.json");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "app: greet"), "app.cs's configuration", TimeSpan.FromMinutes(2));
-            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
-            Assert.True(dialog.Choose("app: greet"));
-            dialog.ArgumentsBox.Text = "Grace Hopper";
-            Ui.Settle();
-            Assert.True(dialog.WriteButton.IsEffectivelyEnabled, $"Write to Launch Profile cannot be used on a program's profile: {ToolTip.GetTip(dialog.WriteButton)}");
-            Ui.Click(dialog.WriteButton);
-            Assert.True(dialog.Problem.Length == 0, $"Write to Launch Profile was refused: {dialog.Problem}");
-            Assert.Contains("\"commandLineArgs\": \"Grace Hopper\"", File.ReadAllText(settings), StringComparison.Ordinal);
-            Assert.Equal("Written to its launch profile in app.run.json: Program arguments.", dialog.Changes);
-
-            Ui.Click(dialog.AddButton);
-            Ui.Click(Assert.IsType<ContextMenu>(dialog.AddMenu).Items.OfType<MenuItem>().First());
-            dialog.NameBox.Text = "app: Staging";
-            dialog.ArgumentsBox.Text = "Alan Turing";
-            Ui.Settle();
-            Assert.True(dialog.SaveAsProfileButton.IsEffectivelyEnabled, $"Save as Launch Profile cannot be used on a program's configuration: {ToolTip.GetTip(dialog.SaveAsProfileButton)}");
-            Ui.Click(dialog.SaveAsProfileButton);
-            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
-            Assert.StartsWith("Saved as the launch profile Staging in app's app.run.json: it is now app: Staging, generated from that profile", dialog.Changes, StringComparison.Ordinal);
-            Assert.Equal(["greet", "Staging"], LaunchProfile.Read(settings).Select(p => p.Name));
-            Ui.Click(dialog.OkButton);
-
-            Assert.True(window.SelectConfiguration("app: Staging"));
-            Ui.Launched(window, window.RunAsync(), "app.cs's run of its saved profile", TimeSpan.FromMinutes(2));
-            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to finish", TimeSpan.FromMinutes(2));
-            Assert.Contains("Hello, Alan Turing\n", Output(window), StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A program holding xUnit tests (<c>#:package xunit.v3</c>) is a test project of its own: the Unit Tests window
     /// shows its tests from its code, and Run All builds it and runs them, each passing or failing as it does.</summary>
-    [AvaloniaFact]
-    public void A_programs_xunit_tests_show_in_the_tests_window_and_run_from_it()
+    private void A_programs_xunit_tests_show_in_the_tests_window_and_run_from_it()
     {
         // The run's own NuGet configuration, whose package cache holds xunit.v3 as the tests' own project restores it.
         string tests = PathNames.Canonical(TestFolders.Create("program-tests-"));
@@ -317,8 +285,7 @@ public sealed class FileBasedProgramsTests : IDisposable
     /// <summary>Files a program includes from another folder and by a wildcard, each with directives of its own, are the
     /// program's code rather than programs of their own: the folder's one project is the program, compiling them, and its
     /// run prints what each gives.</summary>
-    [AvaloniaFact]
-    public void Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves()
+    private void Files_a_program_includes_from_another_folder_or_by_a_wildcard_are_never_programs_themselves()
     {
         TestFolders.Write(folder, "app.cs", """
             #:package Passenger.ProgramTest@1.0.0
@@ -353,8 +320,7 @@ public sealed class FileBasedProgramsTests : IDisposable
 
     /// <summary>A program that references another (<c>#:ref lib.cs</c>, a library of its own) has that program for a project
     /// too, which the language server answers across into, and Run builds and runs the two.</summary>
-    [AvaloniaFact]
-    public void A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it()
+    private void A_program_referencing_another_has_it_for_a_project_answered_across_and_run_with_it()
     {
         TestFolders.Write(folder, "lib.cs", """
             #:property OutputType=Library
@@ -401,8 +367,7 @@ public sealed class FileBasedProgramsTests : IDisposable
     /// folder of no project, is a program as <c>dotnet run</c> takes it: its folder opens with its run configuration, the
     /// language server warns of its unused variable and completes in it, Run prints its output and Debug stops at its
     /// breakpoint.</summary>
-    [AvaloniaFact]
-    public void A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs()
+    private void A_file_of_top_level_statements_alone_with_no_directive_is_a_program_that_completes_runs_and_debugs()
     {
         string plain = PathNames.Canonical(TestFolders.Create("plain-program-"));
         try

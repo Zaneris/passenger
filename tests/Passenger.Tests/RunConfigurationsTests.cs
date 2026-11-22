@@ -56,6 +56,49 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         TestFolders.Delete(settings);
     }
 
+    /// <summary>The gate's seventeen checks of run configurations, as one flow, to take their place once it has its
+    /// record on CI: what runs and is kept, added, copied, changed, removed or refused in the dialog, written to and
+    /// reset from a launch profile with its Undo, an older file and a file-based program's, a compose configuration,
+    /// and what the toolbar shows.</summary>
+    [AvaloniaFact]
+    public void The_gates_run_configurations_hold_as_one_flow()
+    {
+        Flow.StepApart("a generated Aspire override keeps linked AppHost paths relative in storage", () => new RunConfigurationsTests(folders), t => t.A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage());
+        Flow.StepApart("a configuration says it is running in the toolbar its chooser and Edit Configurations while a run of it is up", () => new RunConfigurationsTests(folders), t => t.A_configuration_says_it_is_running_in_the_toolbar_its_chooser_and_Edit_Configurations_while_a_run_of_it_is_up());
+        Flow.StepApart("a configuration added in the dialog runs with what was typed and is there when the folder opens again", () => new RunConfigurationsTests(folders), t => t.A_configuration_added_in_the_dialog_runs_with_what_was_typed_and_is_there_when_the_folder_opens_again());
+        Flow.StepApart("a generated configuration copied is the persons own and the generated one stays as its launch profile makes it", () => new RunConfigurationsTests(folders), t => t.A_generated_configuration_copied_is_the_persons_own_and_the_generated_one_stays_as_its_launch_profile_makes_it());
+        Flow.StepApart("a generated configurations arguments changed in place are run kept with the folder and stay over its launch profile as it changes", () => new RunConfigurationsTests(folders), t => t.A_generated_configurations_arguments_changed_in_place_are_run_kept_with_the_folder_and_stay_over_its_launch_profile_as_it_changes());
+        Flow.StepApart("write to launch profile puts the changes into launchSettings json the rest as it was and Undo takes it back", () => new RunConfigurationsTests(folders), t => t.Write_to_launch_profile_puts_the_changes_into_launchSettings_json_the_rest_as_it_was_and_Undo_takes_it_back());
+        Flow.StepApart("save as launch profile adds a configuration made here to launchSettings json which dotnet run runs and Undo takes it back", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back());
+        Flow.StepApart("save as launch profile in a project with no launchSettings json makes it as dotnet new does and Undo takes it away", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_in_a_project_with_no_launchSettings_json_makes_it_as_dotnet_new_does_and_Undo_takes_it_away());
+        Flow.StepApart("a file based programs run json changed on disk reaches its run configuration", () => new RunConfigurationsTests(folders), t => t.A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration());
+        Flow.StepApart("reset to launch profile puts a changed configuration back as its profile makes it for good", () => new RunConfigurationsTests(folders), t => t.Reset_to_launch_profile_puts_a_changed_configuration_back_as_its_profile_makes_it_for_good());
+        Flow.StepApart("an older runConfigurations json opens as it was and keeps the persons copies as they stand", () => new RunConfigurationsTests(folders), t => t.An_older_runConfigurations_json_opens_as_it_was_and_keeps_the_persons_copies_as_they_stand());
+        Flow.StepApart("use external console chosen in the dialog runs the program in the terminal and is kept with the configuration", () => new RunConfigurationsTests(folders), t => t.Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration());
+        Flow.StepApart("a launch profiles browser shows under open browser and a copy with it turned off opens none", () => new RunConfigurationsTests(folders), t => t.A_launch_profiles_browser_shows_under_open_browser_and_a_copy_with_it_turned_off_opens_none());
+        Flow.StepApart("a configuration removed in the dialog is gone from the toolbar and the folder", () => new RunConfigurationsTests(folders), t => t.A_configuration_removed_in_the_dialog_is_gone_from_the_toolbar_and_the_folder());
+        Flow.StepApart("a compose configuration added in the dialog shows its kinds page and is kept with its files and choices", () => new RunConfigurationsTests(folders), t => t.A_compose_configuration_added_in_the_dialog_shows_its_kinds_page_and_is_kept_with_its_files_and_choices());
+        Flow.StepApart("a name taken or missing is refused with why and nothing changes", () => new RunConfigurationsTests(folders), t => t.A_name_taken_or_missing_is_refused_with_why_and_nothing_changes());
+        Flow.StepApart("a configuration named longer than the list is wide ends in an ellipsis inside its row", () => new RunConfigurationsTests(folders), t => t.A_configuration_named_longer_than_the_list_is_wide_ends_in_an_ellipsis_inside_its_row());
+    }
+
+    /// <summary>An AppHost's configuration first, a launch profile run in its working directory, an agent's logs kept,
+    /// a launch profile made without the watcher, a terminal program generated to run there, a web page opened in the
+    /// browser named, a plain project beside a Godot game, and several projects' profile written as Visual Studio
+    /// writes it, as one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Run_configurations_are_chosen_and_run_as_their_projects_and_launch_profiles_make_them()
+    {
+        Flow.StepApart("in a solution with an AppHost Runs first choice is the AppHosts configuration", () => new RunConfigurationsTests(folders), t => t.In_a_solution_with_an_AppHost_Runs_first_choice_is_the_AppHosts_configuration());
+        Flow.StepApart("a launch profile runs in the projects RunWorkingDirectory told its name and given RunArguments when it names none", () => new RunConfigurationsTests(folders), t => t.A_launch_profile_runs_in_the_projects_RunWorkingDirectory_told_its_name_and_given_RunArguments_when_it_names_none());
+        Flow.StepApart("a generated configurations logs and traces turned on for an agent are kept with the folder", () => new RunConfigurationsTests(folders), t => t.A_generated_configurations_logs_and_traces_turned_on_for_an_agent_are_kept_with_the_folder());
+        Flow.StepApart("save as launch profile making launchSettings json follows it without the folders watcher", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_making_launchSettings_json_follows_it_without_the_folders_watcher());
+        Flow.StepApart("a program drawing with a terminal package is generated running in the terminal and the person may turn it off", () => new RunConfigurationsTests(folders), t => t.A_program_drawing_with_a_terminal_package_is_generated_running_in_the_terminal_and_the_person_may_turn_it_off());
+        Flow.StepApart("a web apps page opens in the browser Settings names with its arguments and in its run configurations own over it", () => new RunConfigurationsTests(folders), t => t.A_web_apps_page_opens_in_the_browser_Settings_names_with_its_arguments_and_in_its_run_configurations_own_over_it());
+        Flow.StepApart("a plain dotnet project naming its godot games folder runs as itself and its configurations are dotnet ones", () => new RunConfigurationsTests(folders), t => t.A_plain_dotnet_project_naming_its_godot_games_folder_runs_as_itself_and_its_configurations_are_dotnet_ones());
+        Flow.StepApart("a launch profile of several projects is changed made and removed in the dialog and written as Visual Studio writes it", () => new RunConfigurationsTests(folders), t => t.A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it());
+    }
+
     [Gate]
     [Fact]
     public void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()
@@ -69,43 +112,9 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Assert.Equal(new[] { linked }, ConfigurationEdit.Over(source, loaded).LinkedAppHosts);
     }
 
-    /// <summary>Tab goes through Edit Configurations as it reads, as Settings' does: from the configurations list on the
-    /// left into the chosen one's form, its first field that takes the keys, then on down the form, Shift+Tab going back
-    /// the same way to the list.</summary>
-    [AvaloniaFact]
-    public void Tab_from_the_configurations_list_goes_into_the_form_and_Shift_Tab_comes_back()
-    {
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
-            Ui.Settle();
-            ListBox list = dialog.GetVisualDescendants().OfType<ListBox>().First(l => l.ItemsSource is not null && l.Items.Count > 0 && l.SelectedItem is not null);
-            Assert.True(list.IsKeyboardFocusWithin, $"Edit Configurations opened with the keys in {Focused(dialog)}, not its list");
-            Assert.False(dialog.NameBox.IsEnabled || dialog.ProjectBox.IsEnabled, "The generated configuration's name and project can be changed");
-            Ui.Press(dialog, "TAB");
-            Assert.True(dialog.FrameworkBox.IsKeyboardFocusWithin, $"Tab from the configurations list took the keys to {Focused(dialog)}, not the form's first field, Target framework");
-            Ui.Press(dialog, "TAB");
-            Assert.True(dialog.BuildConfigurationBox.IsKeyboardFocusWithin, $"Tab from Target framework took the keys to {Focused(dialog)}, not Build configuration");
-            Ui.Press(dialog, "shift TAB");
-            Ui.Press(dialog, "shift TAB");
-            Assert.True(list.IsKeyboardFocusWithin, $"Shift+Tab from the form's first field took the keys to {Focused(dialog)}, not the configurations list");
-            dialog.Close();
-            Ui.Settle();
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static string Focused(Avalonia.Controls.Window dialog) => dialog.FocusManager?.GetFocusedElement() is Control control
-            ? $"{control.GetType().Name} {control.Name} {(control as ContentControl)?.Content}" : "nothing";
-    }
-
     /// <summary>In a solution with an AppHost, Run's first choice, none picked yet, is the AppHost's configuration, though
     /// the solution lists one of its services first: Run brings the app up as the person means, never one service alone.</summary>
-    [AvaloniaFact]
-    public void In_a_solution_with_an_AppHost_Runs_first_choice_is_the_AppHosts_configuration()
+    private void In_a_solution_with_an_AppHost_Runs_first_choice_is_the_AppHosts_configuration()
     {
         Write("Host/Host.csproj", TestProjects.Console("<IsAspireHost>true</IsAspireHost>", $"<AspireHostingSDKVersion>{AspireApp.TemplatesVersion}</AspireHostingSDKVersion>"));
         Write("Host/Program.cs", "System.Console.WriteLine(\"host\");\n");
@@ -303,8 +312,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// RunWorkingDirectory, and its program is told the profile's name in DOTNET_LAUNCH_PROFILE, as dotnet run tells it; one
     /// that names no arguments gives the program the project's RunArguments, which dotnet watch gives it under Hot Reload,
     /// once. So a program that reads a file of its working folder finds it however it is run.</summary>
-    [AvaloniaFact]
-    public void A_launch_profile_runs_in_the_projects_RunWorkingDirectory_told_its_name_and_given_RunArguments_when_it_names_none()
+    private void A_launch_profile_runs_in_the_projects_RunWorkingDirectory_told_its_name_and_given_RunArguments_when_it_names_none()
     {
         Restored();
         Write("Hello/Hello.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>",
@@ -429,8 +437,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>A generated configuration no one has changed, its logs and traces turned on as an agent's run turns them on
     /// (<see cref="RunConfigurations.Collect"/>), collects them from then on, kept with the folder over its launch profile.</summary>
-    [AvaloniaFact]
-    public void A_generated_configurations_logs_and_traces_turned_on_for_an_agent_are_kept_with_the_folder()
+    private void A_generated_configurations_logs_and_traces_turned_on_for_an_agent_are_kept_with_the_folder()
     {
         Restored();
         Write("Hello/Properties/launchSettings.json", Greet("Hi"));
@@ -734,8 +741,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
 
     /// <summary>Save as Launch Profile in a project with no launchSettings.json follows the file and folder it makes as it
     /// makes them, not when the folder's watcher hears of them: with the watcher stopped, Go to File finds the file.</summary>
-    [AvaloniaFact]
-    public void Save_as_launch_profile_making_launchSettings_json_follows_it_without_the_folders_watcher()
+    private void Save_as_launch_profile_making_launchSettings_json_follows_it_without_the_folders_watcher()
     {
         Restored();
         string settingsFile = Path.Combine("Hello", "Properties", "launchSettings.json");
@@ -784,93 +790,6 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         finally
         {
             window.Close();
-        }
-    }
-
-    /// <summary>In a solution of many projects, every one shown open: Undo of Save as Launch Profile in a project with no
-    /// Properties folder takes that folder's row out and Go to File's launchSettings.json with it, and Redo puts them back,
-    /// every other row the row it was; Undo and Redo of one saved into that launchSettings.json, a command of its text alone,
-    /// leave every row as it was, with no project checked again and the folder never walked.</summary>
-    [AvaloniaFact]
-    public void Undo_and_Redo_of_Save_as_launch_profile_in_a_solution_of_many_projects_make_again_only_the_rows_of_what_they_change()
-    {
-        const int Libraries = 40;
-        for (int i = 0; i < Libraries; i++)
-        {
-            Write($"Lib{i:00}/Lib{i:00}.csproj", TestProjects.Library());
-            Write($"Lib{i:00}/Part{i}.cs", $"public class Part{i} {{ }}\n");
-        }
-        Write("Shop.slnx", $"<Solution>\n{string.Concat(Enumerable.Range(0, Libraries).Select(i => $"  <Project Path=\"Lib{i:00}/Lib{i:00}.csproj\" />\n"))}  <Project Path=\"Hello/Hello.csproj\" />\n</Solution>\n");
-        string properties = Path.Combine(project, "Properties");
-        string settingsFile = Path.Combine(properties, "launchSettings.json");
-        MainWindow window = Keeping();
-        try
-        {
-            ExplorerTree tree = window.ExplorerView.Tree;
-            Ui.WaitFor(() => window.Projects.Count == Libraries + 1 && window.Projects.All(p => p.IsEvaluated), "every project evaluated");
-            foreach (ExplorerNode row in tree.Rows.Where(r => r.Kind == NodeKind.Project).ToList())
-            {
-                tree.Expand(row);
-            }
-            Ui.Settle();
-            int walks = 0;
-            window.FileIndex.Walked += (_, _) => walks++;
-            List<string> asked = [];
-            window.Confirm = (_, question, _) =>
-            {
-                asked.Add(question);
-                return Task.FromResult(true);
-            };
-            Heard(window, settingsFile, () => Save("Greeting"));
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Path == PathNames.Canonical(properties)), "the Properties folder made for launchSettings.json to show");
-
-            List<ExplorerNode> before = [.. tree.Rows];
-            ExplorerNode made = tree.Rows.Single(r => r.Path == PathNames.Canonical(properties));
-            Ui.ClickRow(window, tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Hello"));
-            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
-            Assert.False(Directory.Exists(properties), $"Undo left the Properties folder it made: {window.Status} ({string.Join(" | ", asked)})");
-            Ui.WaitFor(() => !tree.Rows.Contains(made), "the Properties folder's row to go");
-            Assert.True(tree.Rows.SequenceEqual(before.Where(r => r != made), ReferenceEqualityComparer.Instance),
-                $"Undo made rows other than the Properties folder's again: [{string.Join(", ", tree.Rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
-            Assert.DoesNotContain(window.FileIndex.Files, f => f.EndsWith("launchSettings.json", StringComparison.Ordinal));
-
-            Ui.Run(window, Passenger.Editor.EditorActions.Redo);
-            Assert.True(File.Exists(settingsFile), $"Redo did not make launchSettings.json again: {window.Status}");
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Path == PathNames.Canonical(properties)), "the Properties folder's row to come back");
-            Ui.Settle();
-            Assert.True(tree.Rows.Where(r => r.Path != PathNames.Canonical(properties)).SequenceEqual(before.Where(r => r != made), ReferenceEqualityComparer.Instance),
-                "Redo made rows other than the Properties folder's again");
-            Assert.Contains(window.FileIndex.Files, f => f.EndsWith("launchSettings.json", StringComparison.Ordinal));
-
-            Heard(window, settingsFile, () => Save("Staging"));
-            before = [.. tree.Rows];
-            int rounds = window.Session.Models.Rounds;
-            string saved = File.ReadAllText(settingsFile);
-            Ui.ClickRow(window, tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Hello"));
-            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
-            Assert.DoesNotContain("Staging", File.ReadAllText(settingsFile), StringComparison.Ordinal);
-            Heard(window, settingsFile, () => Ui.Run(window, Passenger.Editor.EditorActions.Redo));
-            Assert.Equal(saved, File.ReadAllText(settingsFile));
-            Assert.True(tree.Rows.SequenceEqual(before, ReferenceEqualityComparer.Instance),
-                $"Undo and Redo of launchSettings.json's text made rows again: [{string.Join(", ", tree.Rows.Where(r => !before.Contains(r, ReferenceEqualityComparer.Instance)).Select(r => r.Name))}] are new");
-            Assert.True(window.Session.Models.Rounds == rounds,
-                $"Undo and Redo of launchSettings.json's text had the {Libraries + 1} projects checked again {window.Session.Models.Rounds - rounds} times");
-            Assert.True(walks == 0, $"Undo and Redo walked the folder for Go to File {walks} times");
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        // A configuration made in Edit Configurations and saved as a launch profile of Hello.
-        void Save(string name)
-        {
-            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
-            Add(dialog);
-            Type(dialog.NameBox, name);
-            Ui.Click(dialog.SaveAsProfileButton);
-            Assert.True(dialog.Problem.Length == 0, $"Save as Launch Profile was refused: {dialog.Problem}");
-            Ui.Click(dialog.OkButton);
         }
     }
 
@@ -1033,8 +952,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// the terminal, Edit Configurations saying why, since through the Run window's pipe its colours, live output and
     /// prompts show as plain text or refuse; one of its launch profiles does too, Hello beside it keeps the Run window, and
     /// Use external console turned off is kept with the folder over the default.</summary>
-    [AvaloniaFact]
-    public void A_program_drawing_with_a_terminal_package_is_generated_running_in_the_terminal_and_the_person_may_turn_it_off()
+    private void A_program_drawing_with_a_terminal_package_is_generated_running_in_the_terminal_and_the_person_may_turn_it_off()
     {
         Write("Shop/Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"Spectre.Console\" Version=\"0.57.2\" />\n  </ItemGroup>\n"));
         Write("Shop/Program.cs", "System.Console.WriteLine(\"shop\");\n");
@@ -1140,8 +1058,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>Browser: a web app's page opens once its program listens in the system's default browser, starting no
     /// program; in the browser program Settings › Run › Browser names, with that line's arguments before the page's address;
     /// and in the one its run configuration names in Edit Configurations, over Settings'.</summary>
-    [AvaloniaFact]
-    public void A_web_apps_page_opens_in_the_browser_Settings_names_with_its_arguments_and_in_its_run_configurations_own_over_it()
+    private void A_web_apps_page_opens_in_the_browser_Settings_names_with_its_arguments_and_in_its_run_configurations_own_over_it()
     {
         Restored();
         using HeldPort held = new();
@@ -1302,8 +1219,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// as a library of its own does (Microsoft.NET.Sdk, GodotProjectDir "..", a reference to the game's Godot.NET.Sdk project):
     /// its configuration, and one added in the dialog as a .NET Project, are .NET ones with no Godot Editor beside them, and
     /// Run runs the program it builds where Settings names a Godot that isn't there, the game's own staying Godot's.</summary>
-    [AvaloniaFact]
-    public void A_plain_dotnet_project_naming_its_godot_games_folder_runs_as_itself_and_its_configurations_are_dotnet_ones()
+    private void A_plain_dotnet_project_naming_its_godot_games_folder_runs_as_itself_and_its_configurations_are_dotnet_ones()
     {
         TestFolders.Delete(folder);
         folder = TestFolders.Create("godot-host-");
@@ -1411,8 +1327,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// in Edit Configurations: its projects' actions and launch profiles in a table, renamed; one made there kept in the
     /// person's own file; one removed. OK writes them in Visual Studio's format, every character it did not change and a
     /// member Passenger does not model kept, and Undo takes the change back whole.</summary>
-    [AvaloniaFact]
-    public void A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it()
+    private void A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it()
     {
         Write("Tool/Tool.csproj", TestProjects.Console());
         Write("Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");

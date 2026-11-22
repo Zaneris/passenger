@@ -64,10 +64,23 @@ public sealed class SolutionFoldersTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    [AvaloniaTheory]
-    [InlineData("sln")]
-    [InlineData("slnx")]
-    public void A_solution_folder_has_its_own_icon_lists_its_files_and_sorts_before_the_projects_by_name(string format)
+    /// <summary>A solution folder is listed with its own icon and files, and a folder or project added, renamed or
+    /// removed changes only its own lines of an .sln or .slnx, every other byte kept, its references following and Undo
+    /// taking it all, as one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Solution_folders_and_projects_change_only_their_own_lines_of_the_solution()
+    {
+        Flow.StepApart<SolutionFoldersTests>("a solution folder has its own icon lists its files and sorts before the projects by name (\"slnx\")", t => t.A_solution_folder_has_its_own_icon_lists_its_files_and_sorts_before_the_projects_by_name("slnx"));
+        Flow.StepApart<SolutionFoldersTests>("a project renamed takes its solution entry and the references to it along so the solution builds and undo and redo take it all (\"sln\")", t => t.A_project_renamed_takes_its_solution_entry_and_the_references_to_it_along_so_the_solution_builds_and_undo_and_redo_take_it_all("sln"));
+        Flow.StepApart<SolutionFoldersTests>("a solution folder added to a Windows 1252 sln keeps every other byte and Local History keeps the sln as it was", t => t.A_solution_folder_added_to_a_Windows_1252_sln_keeps_every_other_byte_and_Local_History_keeps_the_sln_as_it_was());
+        Flow.StepApart<SolutionFoldersTests>("a project added to a slnx and removed again changes only its own line every quote and short tag kept", t => t.A_project_added_to_a_slnx_and_removed_again_changes_only_its_own_line_every_quote_and_short_tag_kept());
+        Flow.StepApart<SolutionFoldersTests>("removing a solution folder names the projects folders and files that go with it", t => t.Removing_a_solution_folder_names_the_projects_folders_and_files_that_go_with_it());
+        Flow.StepApart<SolutionFoldersTests>("Build selected projects on a solution folder builds the projects under it and no other", t => t.Build_selected_projects_on_a_solution_folder_builds_the_projects_under_it_and_no_other());
+        Flow.StepApart<SolutionFoldersTests>("a solution folder added renamed given a project and a file and removed changes only its own lines (\"sln\")", t => t.A_solution_folder_added_renamed_given_a_project_and_a_file_and_removed_changes_only_its_own_lines("sln"));
+        Flow.StepApart<SolutionFoldersTests>("a solution folder added renamed given a project and a file and removed changes only its own lines (\"slnx\")", t => t.A_solution_folder_added_renamed_given_a_project_and_a_file_and_removed_changes_only_its_own_lines("slnx"));
+    }
+
+    private void A_solution_folder_has_its_own_icon_lists_its_files_and_sorts_before_the_projects_by_name(string format)
     {
         string solution = WriteSolution(format);
         MainWindow window = Open();
@@ -105,10 +118,7 @@ public sealed class SolutionFoldersTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData("sln")]
-    [InlineData("slnx")]
-    public void A_solution_folder_added_renamed_given_a_project_and_a_file_and_removed_changes_only_its_own_lines(string format)
+    private void A_solution_folder_added_renamed_given_a_project_and_a_file_and_removed_changes_only_its_own_lines(string format)
     {
         bool slnx = format == "slnx";
         string solution = WriteSolution(format);
@@ -211,10 +221,7 @@ public sealed class SolutionFoldersTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData("sln")]
-    [InlineData("slnx")]
-    public void A_project_renamed_takes_its_solution_entry_and_the_references_to_it_along_so_the_solution_builds_and_undo_and_redo_take_it_all(string format)
+    private void A_project_renamed_takes_its_solution_entry_and_the_references_to_it_along_so_the_solution_builds_and_undo_and_redo_take_it_all(string format)
     {
         // Shop.Web uses Shop.Core's Order through a reference.
         string web = Path.Combine(folder, "src", "Shop.Web", "Shop.Web.csproj");
@@ -278,8 +285,7 @@ public sealed class SolutionFoldersTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_solution_folder_added_to_a_Windows_1252_sln_keeps_every_other_byte_and_Local_History_keeps_the_sln_as_it_was()
+    private void A_solution_folder_added_to_a_Windows_1252_sln_keeps_every_other_byte_and_Local_History_keeps_the_sln_as_it_was()
     {
         // A .sln an older Visual Studio wrote with no byte order mark, a comment in the system's code page, Windows-1252.
         string solution = Path.Combine(folder, "Shop.sln");
@@ -307,8 +313,7 @@ public sealed class SolutionFoldersTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_project_added_to_a_slnx_and_removed_again_changes_only_its_own_line_every_quote_and_short_tag_kept()
+    private void A_project_added_to_a_slnx_and_removed_again_changes_only_its_own_line_every_quote_and_short_tag_kept()
     {
         const string Written = "<?xml version='1.0' encoding='utf-8'?>\n<!-- The shop, as a person wrote it. -->\n<Solution>\n"
             + "\t<Project Path='src/Shop.Web/Shop.Web.csproj'/>\n"
@@ -343,8 +348,7 @@ public sealed class SolutionFoldersTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Removing_a_solution_folder_names_the_projects_folders_and_files_that_go_with_it()
+    private void Removing_a_solution_folder_names_the_projects_folders_and_files_that_go_with_it()
     {
         string solution = WriteSolution("slnx");
         File.WriteAllText(solution, Slnx.Replace("  <Folder Name=\"/src/\">", "  <Folder Name=\"/src/tools/\">\n    <File Path=\"docs/notes.md\" />\n  </Folder>\n  <Folder Name=\"/src/\">", StringComparison.Ordinal));
@@ -363,8 +367,7 @@ public sealed class SolutionFoldersTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Build_selected_projects_on_a_solution_folder_builds_the_projects_under_it_and_no_other()
+    private void Build_selected_projects_on_a_solution_folder_builds_the_projects_under_it_and_no_other()
     {
         WriteSolution("sln");
         MainWindow window = Open();

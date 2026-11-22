@@ -40,12 +40,37 @@ public sealed class NewServiceSetupTests : IDisposable
         Assert.SkipWhen(why is not null, why ?? string.Empty);
     }
 
+    /// <summary>New Project offers a service's set-ups where it has some, and one Undo takes its creation back without
+    /// its bytes, a global.json its template wrote too, or refuses where a file changed or its folder cannot be set
+    /// aside, as one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Undo_of_New_Project_takes_its_creation_back_whole_or_refuses_saying_why()
+    {
+        Flow.StepApart<NewServiceSetupTests>("New Project offers a service defaults library no set up and a web API its set ups", t => t.New_Project_offers_a_service_defaults_library_no_set_up_and_a_web_API_its_set_ups());
+        Flow.StepApart<NewServiceSetupTests>("New Project of an MVC app keeps its folder for Undo without its bytes", t => t.New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes());
+        Flow.StepApart<NewServiceSetupTests>("New Project of MSTest names the global json its template writes and Undo or a stopped Create takes it away", t => t.New_Project_of_MSTest_names_the_global_json_its_template_writes_and_Undo_or_a_stopped_Create_takes_it_away());
+        Flow.StepApart<NewServiceSetupTests>("Undo of New Project refuses once a file in its folder has changed naming it", t => t.Undo_of_New_Project_refuses_once_a_file_in_its_folder_has_changed_naming_it());
+        Flow.StepApart<NewServiceSetupTests>("Undo of New Project whose folder cannot be set aside says so leaves the folder whole and can be asked again", t => t.Undo_of_New_Project_whose_folder_cannot_be_set_aside_says_so_leaves_the_folder_whole_and_can_be_asked_again());
+    }
+
+    /// <summary>New Project with a Dockerfile or Docker Compose is chosen to run in its container or with Compose,
+    /// joins the solution's compose file, and keeps what the person types or renames meanwhile out of its Undo, as one
+    /// flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void New_Project_sets_a_service_up_to_run_in_its_container_or_with_Compose_the_persons_edits_out_of_its_Undo()
+    {
+        Flow.StepApart<NewServiceSetupTests>("New Project with a Dockerfile is chosen to run in its container and one Undo takes the whole creation back", t => t.New_Project_with_a_Dockerfile_is_chosen_to_run_in_its_container_and_one_Undo_takes_the_whole_creation_back());
+        Flow.StepApart<NewServiceSetupTests>("typing in another file while New Project sets its service up stays out of its Undo", t => t.Typing_in_another_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo());
+        Flow.StepApart<NewServiceSetupTests>("renaming a file while New Project sets its service up stays out of its Undo", t => t.Renaming_a_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo());
+        Flow.StepApart<NewServiceSetupTests>("New Project with Docker Compose joins the solutions compose file beside its services", t => t.New_Project_with_Docker_Compose_joins_the_solutions_compose_file_beside_its_services());
+        Flow.StepApart<NewServiceSetupTests>("New Solution of a web API with Docker Compose is chosen to run with Compose and the first Run brings it up", t => t.New_Solution_of_a_web_API_with_Docker_Compose_is_chosen_to_run_with_Compose_and_the_first_Run_brings_it_up());
+    }
+
     /// <summary>New Project into a solution, with a Dockerfile: the project, its Dockerfile and a Docker launch profile beside
     /// the template's own are made, its container configuration chosen; a class library is offered no set-up, saying why,
     /// and the choice comes back with the next service; one Undo in the Solution view takes the project, its files and its
     /// line in the solution back, and Redo makes them again.</summary>
-    [AvaloniaFact]
-    public void New_Project_with_a_Dockerfile_is_chosen_to_run_in_its_container_and_one_Undo_takes_the_whole_creation_back()
+    private void New_Project_with_a_Dockerfile_is_chosen_to_run_in_its_container_and_one_Undo_takes_the_whole_creation_back()
     {
         SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
@@ -112,8 +137,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Project of Aspire's or MAUI's service defaults, class libraries both though tagged Web API and Service
     /// (stand-ins with their templates' tags and project files, in a template home of the test's own, and MAUI's own where
     /// its workload brings it), offers no set-up, saying why; a web API, chosen next, is offered its set-ups.</summary>
-    [AvaloniaFact]
-    public void New_Project_offers_a_service_defaults_library_no_set_up_and_a_web_API_its_set_ups()
+    private void New_Project_offers_a_service_defaults_library_no_set_up_and_a_web_API_its_set_ups()
     {
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Shop.slnx", "<Solution>\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
@@ -194,8 +218,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Project with a Dockerfile while the person types in another open file as its set-up waits for the new
     /// project's evaluation: Undo in that file takes back only the typing, the new project staying, and New Project's own
     /// Undo names no such file, the typing kept.</summary>
-    [AvaloniaFact]
-    public void Typing_in_another_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
+    private void Typing_in_another_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
     {
         SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
@@ -267,8 +290,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Project with a Dockerfile while the person renames a file of their own as its set-up waits for the new
     /// project's evaluation: New Project's Undo neither names nor moves that file, and the rename's own Undo then names it
     /// back, where New Project's took the rename as its own and moved the file back, its own Undo then refused.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
+    private void Renaming_a_file_while_New_Project_sets_its_service_up_stays_out_of_its_Undo()
     {
         SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
@@ -334,8 +356,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Project of an MVC app, a folder of megabytes (its scripts and styles): its Undo keeps the folder as each
     /// file's length and time, not its bytes, so its command holds a small part of the folder; Undo takes the folder away
     /// and Redo puts every file back as it was.</summary>
-    [AvaloniaFact]
-    public void New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes()
+    private void New_Project_of_an_MVC_app_keeps_its_folder_for_Undo_without_its_bytes()
     {
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
@@ -386,8 +407,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Project of an MSTest project on the Testing Platform, whose template writes its runner into a global.json
     /// at the solution's folder: a Create stopped once dotnet new has made it takes global.json away with the project; one
     /// that ends names global.json, and one Undo takes it away with the project, the solution's folder left as it was.</summary>
-    [AvaloniaFact]
-    public void New_Project_of_MSTest_names_the_global_json_its_template_writes_and_Undo_or_a_stopped_Create_takes_it_away()
+    private void New_Project_of_MSTest_names_the_global_json_its_template_writes_and_Undo_or_a_stopped_Create_takes_it_away()
     {
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
@@ -458,8 +478,7 @@ public sealed class NewServiceSetupTests : IDisposable
     }
 
     /// <summary>Undo of New Project refused once a file of the folder it made has changed, naming that file, the folder kept.</summary>
-    [AvaloniaFact]
-    public void Undo_of_New_Project_refuses_once_a_file_in_its_folder_has_changed_naming_it()
+    private void Undo_of_New_Project_refuses_once_a_file_in_its_folder_has_changed_naming_it()
     {
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
@@ -493,8 +512,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>Undo of New Project whose folder the disk will not let it set aside (a file in it held open on Windows, the
     /// folder read-only elsewhere) says it could not, leaves the folder whole and the solution as New Project left it, and
     /// keeps the command for Undo: asked again once the folder can move, it takes the project away.</summary>
-    [AvaloniaFact]
-    public void Undo_of_New_Project_whose_folder_cannot_be_set_aside_says_so_leaves_the_folder_whole_and_can_be_asked_again()
+    private void Undo_of_New_Project_whose_folder_cannot_be_set_aside_says_so_leaves_the_folder_whole_and_can_be_asked_again()
     {
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());
         TestFolders.Write(place, "Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
@@ -648,8 +666,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Solution of a web API with Docker Compose: the solution's compose.yaml has it as a service built from its
     /// Dockerfile, the Compose configuration is chosen, and the first Run brings it up in its container (where a Linux
     /// container engine runs).</summary>
-    [AvaloniaFact]
-    public void New_Solution_of_a_web_API_with_Docker_Compose_is_chosen_to_run_with_Compose_and_the_first_Run_brings_it_up()
+    private void New_Solution_of_a_web_API_with_Docker_Compose_is_chosen_to_run_with_Compose_and_the_first_Run_brings_it_up()
     {
         SkipWithoutDockerCommand();
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
@@ -701,8 +718,7 @@ public sealed class NewServiceSetupTests : IDisposable
     /// <summary>New Project with Docker Compose into a solution whose compose.yaml has services already: the new project
     /// joins it after them, indented as they are, every line of theirs kept, with a Dockerfile of its own, and the Compose
     /// configuration is chosen.</summary>
-    [AvaloniaFact]
-    public void New_Project_with_Docker_Compose_joins_the_solutions_compose_file_beside_its_services()
+    private void New_Project_with_Docker_Compose_joins_the_solutions_compose_file_beside_its_services()
     {
         SkipWithoutDockerCommand();
         TestFolders.Write(place, "Tool/Tool.csproj", TestProjects.Console());

@@ -69,6 +69,32 @@ public sealed class ProjectLoadTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    /// <summary>The gate's four checks of what a project's load says, as one flow, to take their place once it has its
+    /// record on CI: a vulnerable package warned of with its advisory and fixed, and a missing SDK named.</summary>
+    [AvaloniaFact]
+    public void The_gates_project_loads_hold_as_one_flow()
+    {
+        Flow.StepApart<ProjectLoadTests>("a package with a known vulnerability is a warning in the status bar and problems with its advisory and nuget offers its fix", t => t.A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix());
+        Flow.StepApart<ProjectLoadTests>("an advisory whose address is no web page is shown in the nuget window as words not a link", t => t.An_advisory_whose_address_is_no_web_page_is_shown_in_the_nuget_window_as_words_not_a_link());
+        Flow.StepApart<ProjectLoadTests>("updating a vulnerable package to the version that fixes it takes its warning away", t => t.Updating_a_vulnerable_package_to_the_version_that_fixes_it_takes_its_warning_away());
+        Flow.StepApart<ProjectLoadTests>("a project whose sdk cannot be found is an error naming why in the status bar and under it in problems", t => t.A_project_whose_sdk_cannot_be_found_is_an_error_naming_why_in_the_status_bar_and_under_it_in_problems());
+    }
+
+    /// <summary>A solution that does not read, a nuget.config that does not, a load failing as it builds, a read-only
+    /// folder and a local source not there each say why where the person looks, the folder's projects still open, as
+    /// one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_load_that_fails_says_why_and_leaves_the_folder_open()
+    {
+        Flow.StepApart<ProjectLoadTests>("a solution that does not read is an error in the status bar its folders projects open and its file marked until it reads", t => t.A_solution_that_does_not_read_is_an_error_in_the_status_bar_its_folders_projects_open_and_its_file_marked_until_it_reads());
+        Flow.StepApart<ProjectLoadTests>("a project under a nuget config that does not read says its restores error until a restore succeeds", t => t.A_project_under_a_nuget_config_that_does_not_read_says_its_restores_error_until_a_restore_succeeds());
+        Flow.StepApart<ProjectLoadTests>("a project whose load fails as it builds says why and no question of its code waits for its restore", t => t.A_project_whose_load_fails_as_it_builds_says_why_and_no_question_of_its_code_waits_for_its_restore());
+        Flow.StepApart<ProjectLoadTests>("a link in problems pressed as the load is reported again opens its advisory once let go", t => t.A_link_in_problems_pressed_as_the_load_is_reported_again_opens_its_advisory_once_let_go());
+        Flow.Step("a read-only folder and a missing local source are each said as they are", () => Cases.All(
+            ("a project in a read only folder is said to be read only where msbuild cannot write", () => Flow.StepApart("a project in a read only folder is said to be read only where msbuild cannot write", () => new ProjectLoadTests(), t => t.A_project_in_a_read_only_folder_is_said_to_be_read_only_where_msbuild_cannot_write())),
+            ("a local source not there under a system folder is said in nugets words not as that folder being read only", () => Flow.StepApart("a local source not there under a system folder is said in nugets words not as that folder being read only", () => new ProjectLoadTests(), t => t.A_local_source_not_there_under_a_system_folder_is_said_in_nugets_words_not_as_that_folder_being_read_only()))));
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_package_with_a_known_vulnerability_is_a_warning_in_the_status_bar_and_problems_with_its_advisory_and_nuget_offers_its_fix()
@@ -119,8 +145,7 @@ public sealed class ProjectLoadTests : IDisposable
     /// <summary>A link in Problems pressed as the projects' load is reported again opens once let go, whether the report
     /// says the same, adds another project's warning below or another of the project's own: the rows the report makes
     /// alike stay the rows the list shows, so the pressed link's row is still the row under the pointer.</summary>
-    [AvaloniaFact]
-    public void A_link_in_problems_pressed_as_the_load_is_reported_again_opens_its_advisory_once_let_go()
+    private void A_link_in_problems_pressed_as_the_load_is_reported_again_opens_its_advisory_once_let_go()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -246,8 +271,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_solution_that_does_not_read_is_an_error_in_the_status_bar_its_folders_projects_open_and_its_file_marked_until_it_reads()
+    private void A_solution_that_does_not_read_is_an_error_in_the_status_bar_its_folders_projects_open_and_its_file_marked_until_it_reads()
     {
         string solution = Path.Combine(folder, "Shop.slnx");
         // A merge left half done: its conflict's markers stand among the solution's projects.
@@ -286,8 +310,7 @@ public sealed class ProjectLoadTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_project_under_a_nuget_config_that_does_not_read_says_its_restores_error_until_a_restore_succeeds()
+    private void A_project_under_a_nuget_config_that_does_not_read_says_its_restores_error_until_a_restore_succeeds()
     {
         string config = Path.Combine(folder, "nuget.config");
         string reads = File.ReadAllText(config);
@@ -321,8 +344,7 @@ public sealed class ProjectLoadTests : IDisposable
     /// <summary>A project MSBuild evaluates whose load fails as it is built at design time is listed under it in Problems
     /// with its build's error, and no question of its code waits for a restore of it, which the language server runs only
     /// for a project it took in.</summary>
-    [AvaloniaFact]
-    public void A_project_whose_load_fails_as_it_builds_says_why_and_no_question_of_its_code_waits_for_its_restore()
+    private void A_project_whose_load_fails_as_it_builds_says_why_and_no_question_of_its_code_waits_for_its_restore()
     {
         TestFolders.Write(folder, "Bad/Bad.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n  </PropertyGroup>\n"
             + "  <Target Name=\"Refuse\" BeforeTargets=\"CoreCompile\">\n    <Error Text=\"Bad refuses to compile\" />\n  </Target>\n</Project>\n");
@@ -338,8 +360,7 @@ public sealed class ProjectLoadTests : IDisposable
 
     /// <summary>A project in a folder its user cannot write loads with an error saying the folder is read-only, so MSBuild
     /// cannot write what the project loads with, and the way on, in the status bar and under the project in Problems.</summary>
-    [AvaloniaFact]
-    public void A_project_in_a_read_only_folder_is_said_to_be_read_only_where_msbuild_cannot_write()
+    private void A_project_in_a_read_only_folder_is_said_to_be_read_only_where_msbuild_cannot_write()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -391,8 +412,7 @@ public sealed class ProjectLoadTests : IDisposable
     /// <summary>A nuget.config naming a local source only a teammate has, under a folder the system owns: the restore's
     /// failure is said in NuGet's words alone, in the status bar and under the project in Problems, never as that folder
     /// being read-only.</summary>
-    [AvaloniaFact]
-    public void A_local_source_not_there_under_a_system_folder_is_said_in_nugets_words_not_as_that_folder_being_read_only()
+    private void A_local_source_not_there_under_a_system_folder_is_said_in_nugets_words_not_as_that_folder_being_read_only()
     {
         string missing = Path.Combine(Path.GetPathRoot(folder)!, "Users", "passenger-teammate", "feeds");
         Assert.SkipWhen(Directory.Exists(missing), $"{missing}, the teammate's source this test names, is here");

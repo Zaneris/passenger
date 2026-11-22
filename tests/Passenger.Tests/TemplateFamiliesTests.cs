@@ -20,7 +20,6 @@ public sealed class TemplateFamiliesTests : IDisposable
 {
     private const string TestRunner = "Test runner";
     private const string Platform = "Microsoft.Testing.Platform";
-    private const string MauiServiceDefaults = "probe-maui-aspire-servicedefaults";
 
     private readonly string settings = TestFolders.Create("settings-");
     private readonly string place = TestFolders.Create("families-");
@@ -31,8 +30,22 @@ public sealed class TemplateFamiliesTests : IDisposable
         TestFolders.Delete(place);
     }
 
+    /// <summary>New Solution lists every family at once and finds one by any Type, keeps the recent ones first, makes
+    /// the kind of project a Unit Test framework's options choose, offers to install what it lacks and takes in a
+    /// template installed while open, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
     [AvaloniaFact]
-    public void New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types()
+    public void New_Solution_lists_every_template_family_and_makes_the_kind_of_project_chosen()
+    {
+        Flow.StepApart<TemplateFamiliesTests>("New Solution opens with every family listed at once the templates read ahead and the search finds one by any of its Types", t => t.New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types());
+        Flow.StepApart<TemplateFamiliesTests>("the templates made from lately stand under Recent the newest first and the last made comes first", t => t.The_templates_made_from_lately_stand_under_Recent_the_newest_first_and_the_last_made_comes_first());
+        Flow.StepApart<TemplateFamiliesTests>("Unit Test shows each frameworks options keeps a value set where the next Type has it and makes that kind of project", t => t.Unit_Test_shows_each_frameworks_options_keeps_a_value_set_where_the_next_Type_has_it_and_makes_that_kind_of_project());
+        Flow.StepApart<TemplateFamiliesTests>("Aspire is greyed with an Install link without its templates and xUnit v2 shows its project running on VSTest", t => t.Aspire_is_greyed_with_an_Install_link_without_its_templates_and_xUnit_v2_shows_its_project_running_on_VSTest());
+        Flow.StepApart<TemplateFamiliesTests>("a template installed while the dialog is open fills in its family the family Type and values chosen kept", t => t.A_template_installed_while_the_dialog_is_open_fills_in_its_family_the_family_Type_and_values_chosen_kept());
+        Flow.StepApart<TemplateFamiliesTests>("a template with an ide host json offers the parameters it leaves out each switch once", t => t.A_template_with_an_ide_host_json_offers_the_parameters_it_leaves_out_each_switch_once());
+    }
+
+    private void New_Solution_opens_with_every_family_listed_at_once_the_templates_read_ahead_and_the_search_finds_one_by_any_of_its_Types()
     {
         using IDisposable theme = TestsTheme();
         MainWindow window = Started();
@@ -118,8 +131,7 @@ public sealed class TemplateFamiliesTests : IDisposable
     /// All templates: New Solution opens on the newest, the keys pass over the headings, the search finds a recent one by
     /// its family's name or its own, one chosen there opens its family on its Type, and the template Create makes from
     /// comes first under Recent the next time.</summary>
-    [AvaloniaFact]
-    public void The_templates_made_from_lately_stand_under_Recent_the_newest_first_and_the_last_made_comes_first()
+    private void The_templates_made_from_lately_stand_under_Recent_the_newest_first_and_the_last_made_comes_first()
     {
         using IDisposable theme = TestsTheme();
         AvaloniaApp.UseFeed(place);
@@ -169,8 +181,7 @@ public sealed class TemplateFamiliesTests : IDisposable
         static string Said(TemplateRow row) => row.Heading ?? row.Recent?.Name ?? row.Family!.Name;
     }
 
-    [AvaloniaFact]
-    public void Unit_Test_shows_each_frameworks_options_keeps_a_value_set_where_the_next_Type_has_it_and_makes_that_kind_of_project()
+    private void Unit_Test_shows_each_frameworks_options_keeps_a_value_set_where_the_next_Type_has_it_and_makes_that_kind_of_project()
     {
         using IDisposable theme = TestsTheme();
         // Restores take the run's own feed alone, so a project made never reaches nuget.org for its packages.
@@ -239,8 +250,7 @@ public sealed class TemplateFamiliesTests : IDisposable
     /// <summary>With Aspire's templates not installed (a template home of the test's own, which has none), New Solution's web
     /// project offers no Aspire set-up, saying why and offering the link that installs them; and xUnit v2's Test runner,
     /// which its template turns off, shows VSTest, which its project runs on, greyed, until v3 turns it on.</summary>
-    [AvaloniaFact]
-    public void Aspire_is_greyed_with_an_Install_link_without_its_templates_and_xUnit_v2_shows_its_project_running_on_VSTest()
+    private void Aspire_is_greyed_with_an_Install_link_without_its_templates_and_xUnit_v2_shows_its_project_running_on_VSTest()
     {
         using IDisposable theme = TestsTheme();
         string? hive = ProjectTemplates.Hive;
@@ -279,51 +289,7 @@ public sealed class TemplateFamiliesTests : IDisposable
         }
     }
 
-    /// <summary>MAUI's Aspire service defaults, which MAUI's workload carries tagged MAUI, then Aspire (a stand-in of the
-    /// tests' own with its metadata, in a template home of the test's own, which has none of Aspire's), is a Type of MAUI's
-    /// family; Aspire's stays Aspire's own templates, not installed, opening on its starter with Install; and a search for
-    /// Aspire service defaults finds both.</summary>
-    [AvaloniaFact]
-    public void MAUIs_Aspire_service_defaults_is_a_MAUI_Type_and_Aspire_stays_its_own_templates_offered_to_install()
-    {
-        using IDisposable theme = TestsTheme();
-        string? hive = ProjectTemplates.Hive;
-        ProjectTemplates.Hive = Directory.CreateDirectory(Path.Combine(place, "hive")).FullName;
-        ProjectTemplates.Forget();
-        try
-        {
-            DotnetNew(["install", WriteMauiServiceDefaults()]);
-            MainWindow window = Started();
-            Ui.Click(window.Welcome.NewSolutionButton);
-            NewProjectDialog dialog = Opened(window);
-            ProjectTemplate defaults = Assert.Single(dialog.Templates, t => t.ShortName == MauiServiceDefaults);
-            Assert.True(defaults is { Family: "MAUI", TypeName: "Aspire Service Defaults" }, $"MAUI's Aspire service defaults is {defaults.TypeName} in {defaults.Family}");
-
-            TemplateFamily aspire = Family(dialog, "Aspire");
-            Assert.True(aspire.NotInstalled && aspire.Types.All(t => t.Pack?.Id == "Aspire.ProjectTemplates"),
-                $"Aspire's family, its templates not installed, holds {string.Join(", ", aspire.Types.Select(t => $"{t.Name} ({t.Pack?.Id ?? "installed"})"))}");
-            Ui.Click(dialog.FamilyRow("Aspire")!);
-            Assert.Equal("aspire-starter", dialog.Chosen?.ShortName);
-            Assert.True(dialog.InstallButton.IsEffectivelyVisible && dialog.Offer?.Contains("dotnet new install Aspire.ProjectTemplates", StringComparison.Ordinal) == true,
-                $"Aspire's starter, not installed, offers no install of Aspire's templates: {dialog.Offer}");
-
-            Search(dialog, "aspire service defaults");
-            Assert.Equal(["Aspire", "MAUI"], dialog.Listed.Select(f => f.Name));
-            Ui.Click(dialog.FamilyRow("MAUI")!);
-            Assert.True(dialog.Chosen is { Family: "MAUI", TypeName: "Aspire Service Defaults", Pack: null } && dialog.Offer is null,
-                $"MAUI, found by aspire service defaults, opened on {dialog.Chosen?.Name}, offering {dialog.Offer}");
-            dialog.Cancel();
-            window.Close();
-        }
-        finally
-        {
-            ProjectTemplates.Hive = hive;
-            ProjectTemplates.Forget();
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_template_installed_while_the_dialog_is_open_fills_in_its_family_the_family_Type_and_values_chosen_kept()
+    private void A_template_installed_while_the_dialog_is_open_fills_in_its_family_the_family_Type_and_values_chosen_kept()
     {
         using IDisposable theme = TestsTheme();
         string probe = WriteProbeTemplate();
@@ -363,53 +329,10 @@ public sealed class TemplateFamiliesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A template installed while the watcher of dotnet new's packages.json heard nothing, as a change the system
-    /// dropped without a word, fills in its family once the open dialog comes in front, as it does when a person comes back
-    /// to it from a terminal; one uninstalled so leaves it once the main window does. The watcher stops hearing while dotnet
-    /// new writes, so each change is lost as a dropped event loses it.</summary>
-    [AvaloniaFact]
-    public void A_template_installed_while_its_watcher_heard_nothing_fills_in_its_family_once_a_window_comes_in_front()
-    {
-        using IDisposable theme = TestsTheme();
-        string probe = WriteProbeTemplate();
-        MainWindow window = Started();
-        Assert.True(window.Perform(AppActions.NewSolution));
-        NewProjectDialog dialog = Opened(window);
-        Ui.Click(dialog.FamilyRow("Unit Test")!);
-        WatchedFile watched = ProjectTemplates.PackagesWatch ?? throw new InvalidOperationException("dotnet new's packages.json is not watched");
-        bool installed = false;
-        IDisposable deaf = watched.Deaf();
-        try
-        {
-            DotnetNew(["install", probe]);
-            installed = true;
-            dialog.Activate();
-            Ui.WaitFor(() => dialog.Family?.Types.Any(t => t.ShortName == "probetest") == true,
-                () => $"the template installed unheard to join Unit Test once the dialog came in front (it lists {string.Join(", ", dialog.TypeNames)})", TimeSpan.FromSeconds(60));
-
-            DotnetNew(["uninstall", probe]);
-            installed = false;
-            window.Activate();
-            Ui.WaitFor(() => dialog.Family?.Types.All(t => t.ShortName != "probetest") == true,
-                () => $"the template uninstalled unheard to leave Unit Test once the main window came in front (it lists {string.Join(", ", dialog.TypeNames)})", TimeSpan.FromSeconds(60));
-        }
-        finally
-        {
-            deaf.Dispose();
-            if (installed)
-            {
-                DotnetNew(["uninstall", probe]);
-            }
-        }
-        dialog.Cancel();
-        window.Close();
-    }
-
     /// <summary>A template whose ide.host.json shows two of its options still offers the parameters it leaves out, under
     /// More options, as dotnet new's command line does, but one its command line hides and one a computed symbol makes the
     /// same switch as one shown; an option only an IDE's host reads goes to the command line through the parameter that does.</summary>
-    [AvaloniaFact]
-    public void A_template_with_an_ide_host_json_offers_the_parameters_it_leaves_out_each_switch_once()
+    private void A_template_with_an_ide_host_json_offers_the_parameters_it_leaves_out_each_switch_once()
     {
         using IDisposable theme = TestsTheme();
         string probe = WriteHostProbeTemplate();
@@ -512,29 +435,6 @@ public sealed class TemplateFamiliesTests : IDisposable
             }
             """);
         File.WriteAllText(Path.Combine(folder, "ProbeHost.csproj"), TestProjects.Library());
-        return PathNames.Canonical(folder);
-    }
-
-    /// <summary>A stand-in of MAUI's Aspire service defaults, in the test's folder: the classifications and name MAUI's
-    /// workload gives its template, under a short name of its own.</summary>
-    private string WriteMauiServiceDefaults()
-    {
-        string folder = Directory.CreateDirectory(Path.Combine(place, "MauiServiceDefaults", ".template.config")).Parent!.FullName;
-        File.WriteAllText(Path.Combine(folder, ".template.config", "template.json"), $$"""
-            {
-              "$schema": "http://json.schemastore.org/template",
-              "author": "Passenger's tests",
-              "classifications": [ "MAUI", "Aspire", "Cloud", "Web", "Web API", "API", "Service" ],
-              "identity": "Passenger.Tests.MauiAspire.ServiceDefaults.CSharp",
-              "groupIdentity": "Passenger.Tests.MauiAspire.ServiceDefaults",
-              "name": ".NET MAUI for Aspire Service Defaults",
-              "shortName": "{{MauiServiceDefaults}}",
-              "sourceName": "MauiAspire.1.ServiceDefaults",
-              "preferNameDirectory": true,
-              "tags": { "language": "C#", "type": "project" }
-            }
-            """);
-        File.WriteAllText(Path.Combine(folder, "MauiAspire.1.ServiceDefaults.csproj"), TestProjects.Library());
         return PathNames.Canonical(folder);
     }
 

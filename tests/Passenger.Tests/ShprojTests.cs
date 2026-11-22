@@ -92,8 +92,34 @@ public sealed class ShprojTests : IDisposable
 
     private string ItemsFile => Path.Combine(Shared, "Shop.Shared.projitems");
 
+    /// <summary>A file made, renamed, copied, moved, deleted, included or excluded in a shared project is written into
+    /// its items file as MSBuild reads it, and a project takes or drops its import, each one step of Undo, as one flow,
+    /// each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_shared_project_shows_its_files_in_their_folders_and_each_project_importing_it_names_it_under_its_dependencies()
+    public void A_shared_projects_files_are_written_into_its_items_file_each_change_one_step_of_Undo()
+    {
+        Flow.StepApart<ShprojTests>("a file made renamed and deleted in a shared project writes its items file and each is undone in one step", t => t.A_file_made_renamed_and_deleted_in_a_shared_project_writes_its_items_file_and_each_is_undone_in_one_step());
+        Flow.StepApart<ShprojTests>("a file copied into a shared projects folder is written into its items file in the copys command which one undo takes back", t => t.A_file_copied_into_a_shared_projects_folder_is_written_into_its_items_file_in_the_copys_command_which_one_undo_takes_back());
+        Flow.StepApart<ShprojTests>("a folder deleted from a shared project comes back with Undo as it was and its command holds none of its bytes", t => t.A_folder_deleted_from_a_shared_project_comes_back_with_Undo_as_it_was_and_its_command_holds_none_of_its_bytes());
+        Flow.StepApart<ShprojTests>("a file its items file leaves out shows dimmed and include and exclude write the items file each undone in one step", t => t.A_file_its_items_file_leaves_out_shows_dimmed_and_include_and_exclude_write_the_items_file_each_undone_in_one_step());
+        Flow.StepApart<ShprojTests>("a wildcard takes a class made under it alone exclude writes a remove after it and a file deleted from a two file item leaves the other building", t => t.A_wildcard_takes_a_class_made_under_it_alone_exclude_writes_a_remove_after_it_and_a_file_deleted_from_a_two_file_item_leaves_the_other_building());
+        Flow.StepApart<ShprojTests>("a file a two file item names moved is named where it went or left to a wildcard taking it there and the solution builds", t => t.A_file_a_two_file_item_names_moved_is_named_where_it_went_or_left_to_a_wildcard_taking_it_there_and_the_solution_builds());
+        Flow.StepApart<ShprojTests>("a project takes and drops a shared projects import through add reference and its dependencies each undone in one step", t => t.A_project_takes_and_drops_a_shared_projects_import_through_add_reference_and_its_dependencies_each_undone_in_one_step());
+    }
+
+    /// <summary>A shared project shows its files and each importer names it, a shared file opens with an importer's
+    /// completion and checks, Add Existing Project adds one, and a test in a shared file is found, as one flow, each
+    /// step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_shared_project_is_shown_helped_and_tested_as_the_projects_importing_it()
+    {
+        Flow.StepApart<ShprojTests>("a shared project shows its files in their folders and each project importing it names it under its dependencies", t => t.A_shared_project_shows_its_files_in_their_folders_and_each_project_importing_it_names_it_under_its_dependencies());
+        Flow.StepApart<ShprojTests>("a shared file opens with the completion and diagnostics of a project importing it", t => t.A_shared_file_opens_with_the_completion_and_diagnostics_of_a_project_importing_it());
+        Flow.StepApart<ShprojTests>("Add existing project adds a shared project to the solution shown as one", t => t.Add_existing_project_adds_a_shared_project_to_the_solution_shown_as_one());
+        Flow.StepApart<ShprojTests>("a test in a shared file is found from code in the test project importing it and one written there comes too", t => t.A_test_in_a_shared_file_is_found_from_code_in_the_test_project_importing_it_and_one_written_there_comes_too());
+    }
+
+    private void A_shared_project_shows_its_files_in_their_folders_and_each_project_importing_it_names_it_under_its_dependencies()
     {
         MainWindow window = Open();
         try
@@ -133,8 +159,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_made_renamed_and_deleted_in_a_shared_project_writes_its_items_file_and_each_is_undone_in_one_step()
+    private void A_file_made_renamed_and_deleted_in_a_shared_project_writes_its_items_file_and_each_is_undone_in_one_step()
     {
         MainWindow window = Open();
         List<string> asked = [];
@@ -184,8 +209,7 @@ public sealed class ShprojTests : IDisposable
 
     /// <summary>A file copied into a shared project's folder is written into its items file in the copy's own command: one
     /// Undo moves the copy to the Trash and writes the items file back, and Redo brings back both.</summary>
-    [AvaloniaFact]
-    public void A_file_copied_into_a_shared_projects_folder_is_written_into_its_items_file_in_the_copys_command_which_one_undo_takes_back()
+    private void A_file_copied_into_a_shared_projects_folder_is_written_into_its_items_file_in_the_copys_command_which_one_undo_takes_back()
     {
         MainWindow window = Open();
         List<string> asked = Answered(window);
@@ -215,8 +239,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_folder_deleted_from_a_shared_project_comes_back_with_Undo_as_it_was_and_its_command_holds_none_of_its_bytes()
+    private void A_folder_deleted_from_a_shared_project_comes_back_with_Undo_as_it_was_and_its_command_holds_none_of_its_bytes()
     {
         string tools = Path.Combine(Shared, "Tools");
         string script = TestFolders.Write(folder, "Shop.Shared/Tools/run.sh", "#!/bin/sh\necho run\n");
@@ -286,8 +309,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_shared_file_opens_with_the_completion_and_diagnostics_of_a_project_importing_it()
+    private void A_shared_file_opens_with_the_completion_and_diagnostics_of_a_project_importing_it()
     {
         string greeting = TestFolders.Write(folder, "Shop.Shared/Greeting.cs",
             "namespace Shop.Shared;\n\npublic static class Greeting\n{\n    public static string Upper(string name) => name;\n\n    public static int Wrong => \"x\";\n}\n");
@@ -316,8 +338,7 @@ public sealed class ShprojTests : IDisposable
             string.Join("; ", window.CSharpService?.For(document)?.Diagnostics.Where(d => d.Severity == Passenger.Lsp.DiagnosticSeverity.Error).Select(d => d.Code) ?? ["nothing"]);
     }
 
-    [AvaloniaFact]
-    public void A_file_its_items_file_leaves_out_shows_dimmed_and_include_and_exclude_write_the_items_file_each_undone_in_one_step()
+    private void A_file_its_items_file_leaves_out_shows_dimmed_and_include_and_exclude_write_the_items_file_each_undone_in_one_step()
     {
         string notes = TestFolders.Write(folder, "Shop.Shared/Notes.md", "# Notes\n");
         string helper = TestFolders.Write(folder, "Shop.Shared/Extra/Helper.cs", "namespace Shop.Shared.Extra;\n\npublic static class Helper\n{\n}\n");
@@ -357,8 +378,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_wildcard_takes_a_class_made_under_it_alone_exclude_writes_a_remove_after_it_and_a_file_deleted_from_a_two_file_item_leaves_the_other_building()
+    private void A_wildcard_takes_a_class_made_under_it_alone_exclude_writes_a_remove_after_it_and_a_file_deleted_from_a_two_file_item_leaves_the_other_building()
     {
         string extra = TestFolders.Write(folder, "Shop.Shared/Extra.cs", "namespace Shop.Shared;\n\npublic static class Extra\n{\n}\n");
         string globbed = Items.Replace("<Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Models\\Order.cs\" />",
@@ -401,8 +421,7 @@ public sealed class ShprojTests : IDisposable
     /// <summary>A file a list names (A.cs;B.cs), in a shared project's items file and in a project's own file, follows its
     /// move: named where it went as written beside the others, or named no more where a wildcard of its type takes it
     /// there, so both build.</summary>
-    [AvaloniaFact]
-    public void A_file_a_two_file_item_names_moved_is_named_where_it_went_or_left_to_a_wildcard_taking_it_there_and_the_solution_builds()
+    private void A_file_a_two_file_item_names_moved_is_named_where_it_went_or_left_to_a_wildcard_taking_it_there_and_the_solution_builds()
     {
         TestFolders.Write(folder, "Shop.Shared/Extra.cs", "namespace Shop.Shared;\n\npublic static class Extra\n{\n}\n");
         TestFolders.Write(folder, "Shop.Shared/Third.cs", "namespace Shop.Shared;\n\npublic static class Third\n{\n}\n");
@@ -443,8 +462,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_project_takes_and_drops_a_shared_projects_import_through_add_reference_and_its_dependencies_each_undone_in_one_step()
+    private void A_project_takes_and_drops_a_shared_projects_import_through_add_reference_and_its_dependencies_each_undone_in_one_step()
     {
         string api = Path.Combine(folder, "Shop.Api", "Shop.Api.csproj");
         string web = Path.Combine(folder, "Shop.Web", "Shop.Web.csproj");
@@ -490,8 +508,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Add_existing_project_adds_a_shared_project_to_the_solution_shown_as_one()
+    private void Add_existing_project_adds_a_shared_project_to_the_solution_shown_as_one()
     {
         string solution = Path.Combine(folder, "Shop.slnx");
         string listed = File.ReadAllText(solution);
@@ -515,8 +532,7 @@ public sealed class ShprojTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_test_in_a_shared_file_is_found_from_code_in_the_test_project_importing_it_and_one_written_there_comes_too()
+    private void A_test_in_a_shared_file_is_found_from_code_in_the_test_project_importing_it_and_one_written_there_comes_too()
     {
         TestFolders.Write(folder, "Shop.Tests/Shop.Tests.csproj", TestProjects.Library().With(
             $"  <ItemGroup>\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n  </ItemGroup>\n"

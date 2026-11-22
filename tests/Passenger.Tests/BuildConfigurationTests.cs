@@ -19,11 +19,37 @@ public sealed class BuildConfigurationTests
     private const string Program = "class Program\n{\n    static void Main()\n    {\n#if DEBUG\n        System.Console.WriteLine(\"debug\");\n#else\n"
         + "        System.Console.WriteLine(\"optimized\");\n#endif\n    }\n}\n";
 
+    /// <summary>The configuration chosen greys code it leaves out, and Build, Run, a launch profile and a test run
+    /// build and start each project as the solution maps it, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
+    [AvaloniaFact]
+    public void The_configuration_chosen_builds_and_runs_each_project_as_its_solution_maps_it()
+    {
+        Flow.StepApart<BuildConfigurationTests>("release chosen in the widget greys debug code and the next build builds into bin release", t => t.Release_chosen_in_the_widget_greys_debug_code_and_the_next_build_builds_into_bin_release());
+        Flow.StepApart<BuildConfigurationTests>("Run under release starts the program its release build made", t => t.Run_under_release_starts_the_program_its_release_build_made());
+        Flow.StepApart<BuildConfigurationTests>("a solutions configuration is offered and builds each project as it maps it (\"All.slnx\")", t => t.A_solutions_configuration_is_offered_and_builds_each_project_as_it_maps_it("All.slnx"));
+        Flow.StepApart<BuildConfigurationTests>("Run under the solutions default builds and starts the app as the default maps it", t => t.Run_under_the_solutions_default_builds_and_starts_the_app_as_the_default_maps_it());
+        Flow.StepApart<BuildConfigurationTests>("Run under staging builds the library the app references as the solution maps it", t => t.Run_under_staging_builds_the_library_the_app_references_as_the_solution_maps_it());
+        Flow.StepApart<BuildConfigurationTests>("Run of a launch profile under staging builds its projects together each as the solution maps it", t => t.Run_of_a_launch_profile_under_staging_builds_its_projects_together_each_as_the_solution_maps_it());
+        Flow.StepApart<BuildConfigurationTests>("a test run under release runs the tests release build", t => t.A_test_run_under_release_runs_the_tests_release_build());
+    }
+
+    /// <summary>The configuration chosen is kept with the folder through its projects' evaluation afresh, Godot's own
+    /// offered and never Release, and the language server answers as it compiles the file, as one flow, each step in an
+    /// instance of its own.</summary>
+    [AvaloniaFact]
+    public void The_configuration_chosen_is_kept_with_the_folder_and_answers_the_language_server()
+    {
+        Flow.StepApart<BuildConfigurationTests>("the configuration chosen is kept with the folder and a window opening it again builds as it", t => t.The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it());
+        Flow.StepApart<BuildConfigurationTests>("the configuration kept stands while the folder opened again finds and evaluates its projects afresh", t => t.The_configuration_kept_stands_while_the_folder_opened_again_finds_and_evaluates_its_projects_afresh());
+        Flow.StepApart<BuildConfigurationTests>("a project declaring godots configurations offers them and never release", t => t.A_project_declaring_godots_configurations_offers_them_and_never_release());
+        Flow.StepApart<BuildConfigurationTests>("the language server answers as the configuration chosen compiles the file", t => t.The_language_server_answers_as_the_configuration_chosen_compiles_the_file());
+    }
+
     /// <summary>A console project with no solution offers Debug and Release, Debug chosen; Release chosen in the widget's
     /// menu greys the code under #if DEBUG and draws the #else as code once the project is evaluated again, and Build then
     /// builds into bin/Release, never bin/Debug.</summary>
-    [AvaloniaFact]
-    public void Release_chosen_in_the_widget_greys_debug_code_and_the_next_build_builds_into_bin_release()
+    private void Release_chosen_in_the_widget_greys_debug_code_and_the_next_build_builds_into_bin_release()
     {
         string folder = PathNames.Canonical(TestFolders.Create("configuration-release-"));
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console());
@@ -59,8 +85,7 @@ public sealed class BuildConfigurationTests
     }
 
     /// <summary>Release chosen, Run builds the program and starts the one its Release build made, which runs its #else.</summary>
-    [AvaloniaFact]
-    public void Run_under_release_starts_the_program_its_release_build_made()
+    private void Run_under_release_starts_the_program_its_release_build_made()
     {
         string folder = PathNames.Canonical(TestFolders.Create("configuration-run-"));
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console());
@@ -88,10 +113,7 @@ public sealed class BuildConfigurationTests
     /// <summary>A .sln and a .slnx declaring Staging beside Debug and Release offer the three; Staging chosen, Build builds
     /// the solution as its Staging maps each project: the app in Staging, the library it references in Release, and the tool
     /// it leaves out of the build not at all.</summary>
-    [AvaloniaTheory]
-    [InlineData("All.slnx")]
-    [InlineData("All.sln")]
-    public void A_solutions_configuration_is_offered_and_builds_each_project_as_it_maps_it(string solution)
+    private void A_solutions_configuration_is_offered_and_builds_each_project_as_it_maps_it(string solution)
     {
         string folder = PathNames.Canonical(TestFolders.Create("configuration-solution-"));
         TestFolders.Write(folder, "App/App.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>")
@@ -125,8 +147,7 @@ public sealed class BuildConfigurationTests
 
     /// <summary>A solution whose default, Debug, maps its app to Release: Run builds and starts the app's Release build, as
     /// the solution's Build builds it, the library it references built as Debug.</summary>
-    [AvaloniaFact]
-    public void Run_under_the_solutions_default_builds_and_starts_the_app_as_the_default_maps_it()
+    private void Run_under_the_solutions_default_builds_and_starts_the_app_as_the_default_maps_it()
     {
         string folder = Mapping("configuration-default-mapped-");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -148,8 +169,7 @@ public sealed class BuildConfigurationTests
 
     /// <summary>Staging chosen, which maps the app to Staging and the library it references to Release: Run builds the app as
     /// Staging and the library as Release, and the program runs both so, never a Staging build of the library.</summary>
-    [AvaloniaFact]
-    public void Run_under_staging_builds_the_library_the_app_references_as_the_solution_maps_it()
+    private void Run_under_staging_builds_the_library_the_app_references_as_the_solution_maps_it()
     {
         string folder = Mapping("configuration-references-mapped-");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -171,8 +191,7 @@ public sealed class BuildConfigurationTests
 
     /// <summary>Staging chosen and a launch profile starting the app and a second one, which Staging maps to Release: Run
     /// builds the two in one build, each as Staging maps it, and the library both reference as Release, never as Staging.</summary>
-    [AvaloniaFact]
-    public void Run_of_a_launch_profile_under_staging_builds_its_projects_together_each_as_the_solution_maps_it()
+    private void Run_of_a_launch_profile_under_staging_builds_its_projects_together_each_as_the_solution_maps_it()
     {
         string folder = Mapping("configuration-together-mapped-", second: true);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -253,14 +272,12 @@ public sealed class BuildConfigurationTests
 
     /// <summary>The configuration chosen is the folder's: a window keeping state opens it again building as Staging, its
     /// widget naming it and its projects evaluated under it from the start.</summary>
-    [AvaloniaFact]
-    public void The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it() =>
+    private void The_configuration_chosen_is_kept_with_the_folder_and_a_window_opening_it_again_builds_as_it() =>
         OpenedAgainUnderStaging("configuration-kept-", (_, _) => { });
 
     /// <summary>The configuration kept stands while the folder opened again finds its projects and evaluates them afresh, its
     /// evaluations not kept: until a project's evaluation is in, nothing says it no longer declares Staging.</summary>
-    [AvaloniaFact]
-    public void The_configuration_kept_stands_while_the_folder_opened_again_finds_and_evaluates_its_projects_afresh() =>
+    private void The_configuration_kept_stands_while_the_folder_opened_again_finds_and_evaluates_its_projects_afresh() =>
         OpenedAgainUnderStaging("configuration-afresh-", (settings, folder) => File.Delete(Path.Combine(ProjectState.FolderOf(settings, folder), "projectModels.json")));
 
     /// <summary>Staging chosen in a window keeping state, then <paramref name="between"/> (given the state folder and the
@@ -332,8 +349,7 @@ public sealed class BuildConfigurationTests
 
     /// <summary>A project declaring Godot.NET.Sdk's configurations, with no solution, offers Debug, ExportDebug and
     /// ExportRelease, never Release.</summary>
-    [AvaloniaFact]
-    public void A_project_declaring_godots_configurations_offers_them_and_never_release()
+    private void A_project_declaring_godots_configurations_offers_them_and_never_release()
     {
         string folder = PathNames.Canonical(TestFolders.Create("configuration-godot-"));
         TestFolders.Write(folder, "Game/Game.csproj", TestProjects.Library("<Configurations>Debug;ExportDebug;ExportRelease</Configurations>"));
@@ -406,8 +422,7 @@ public sealed class BuildConfigurationTests
 
     /// <summary>The C# language server follows the choice: under Debug it says the error in the code under #if DEBUG and
     /// nothing of the #else's, and once Release is chosen the other way round, as Release compiles the file.</summary>
-    [AvaloniaFact]
-    public void The_language_server_answers_as_the_configuration_chosen_compiles_the_file()
+    private void The_language_server_answers_as_the_configuration_chosen_compiles_the_file()
     {
         string folder = PathNames.Canonical(TestFolders.Create("configuration-server-"));
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console());
@@ -438,45 +453,9 @@ public sealed class BuildConfigurationTests
             string.Join("; ", window.CSharpService?.For(document)?.Diagnostics.Select(d => $"{d.Code} {d.Message}") ?? ["nothing"]);
     }
 
-    /// <summary>A project's Configuration completes to the configurations it declares, Staging among them, never the SDK's
-    /// Debug and Release alone.</summary>
-    [AvaloniaFact]
-    public void A_project_files_configuration_completes_to_the_configurations_the_project_declares()
-    {
-        string folder = PathNames.Canonical(TestFolders.Create("configuration-completion-"));
-        string project = TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Configurations>Debug;Release;Staging</Configurations>"));
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Ui.WaitFor(() => Offered(window) == "Debug, Release, Staging", () => $"Debug, Release and Staging offered, where the widget offers {Offered(window)}");
-            window.OpenFile(project);
-            Ui.Settle();
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "<Configurations>Debug;Release;Staging</Configurations>");
-            Ui.Press(window, "ENTER");
-            window.KeyTextInput("<");
-            Ui.WaitFor(() => window.Assist.CompletionLabels.Count > 0, "the properties a PropertyGroup takes after a tag's '<'");
-            window.KeyTextInput("Configuration");
-            Ui.Settle();
-            Assert.True(window.Assist.CompletionLabels.FirstOrDefault() == "Configuration",
-                $"Configuration typed after '<' is not the property offered first: [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}]");
-            Ui.Press(window, "ENTER");
-            Assert.EndsWith("<Configuration>|</Configuration>", XamlTests.CaretLine(editor), StringComparison.Ordinal);
-            Ui.WaitFor(() => window.Assist.CompletionLabels.Count > 0, "Configuration's values offered between its tags");
-            Assert.True(window.Assist.CompletionLabels.SequenceEqual(["Debug", "Release", "Staging"]),
-                $"Configuration completes to [{string.Join(", ", window.Assist.CompletionLabels)}], not the Debug, Release and Staging the project declares");
-            Ui.Press(window, "ESCAPE");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Release chosen, Run All builds the test project as Release and runs its Release build, whose test passes
     /// only there, building nothing as Debug.</summary>
-    [AvaloniaFact]
-    public void A_test_run_under_release_runs_the_tests_release_build()
+    private void A_test_run_under_release_runs_the_tests_release_build()
     {
         string folder = PathNames.Canonical(TestFolders.Create("configuration-tests-"));
         TestFolders.Write(folder, "Built.Tests/Built.Tests.csproj", TestProjects.Library("<ImplicitUsings>enable</ImplicitUsings>").With(

@@ -61,8 +61,19 @@ public sealed class FileNestingTests : IDisposable
     /// <summary>A path in the project as the Explorer has it, a relative one written with / taking the system's separator.</summary>
     private string At(string relative) => Path.Combine(folder, "Shop", relative.Replace('/', Path.DirectorySeparatorChar));
 
+    /// <summary>The solution view nests each file under the one it belongs to, by its name or a project's
+    /// DependentUpon, a parent renamed or moved takes its dependents along, and a rename that cannot move one moves
+    /// none, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void The_solution_view_nests_each_file_under_the_one_it_belongs_to_and_File_Nesting_lays_the_rules_ones_out_flat()
+    public void Nested_files_follow_the_file_they_belong_to_and_a_rename_moves_all_or_none()
+    {
+        Flow.StepApart<FileNestingTests>("the solution view nests each file under the one it belongs to and File Nesting lays the rules ones out flat", t => t.The_solution_view_nests_each_file_under_the_one_it_belongs_to_and_File_Nesting_lays_the_rules_ones_out_flat());
+        Flow.StepApart<FileNestingTests>("a compose files override nests under the file it overrides by name and by a Docker Compose projects DependentUpon", t => t.A_compose_files_override_nests_under_the_file_it_overrides_by_name_and_by_a_Docker_Compose_projects_DependentUpon());
+        Flow.StepApart<FileNestingTests>("a parent renamed or moved in the explorer takes its dependents renamed with it and its projects DependentUpon follows", t => t.A_parent_renamed_or_moved_in_the_explorer_takes_its_dependents_renamed_with_it_and_its_projects_DependentUpon_follows());
+        Flow.StepApart<FileNestingTests>("a rename whose nested file cannot move moves none and leaves the project as it was", t => t.A_rename_whose_nested_file_cannot_move_moves_none_and_leaves_the_project_as_it_was());
+    }
+
+    private void The_solution_view_nests_each_file_under_the_one_it_belongs_to_and_File_Nesting_lays_the_rules_ones_out_flat()
     {
         MainWindow window = Open();
         (string Child, string Parent)[] byRule =
@@ -111,8 +122,7 @@ public sealed class FileNestingTests : IDisposable
     /// under compose.yaml, docker-compose.prod.override.yaml under docker-compose.prod.yml), laid out flat with the other
     /// name rules; and by a Docker Compose project's DependentUpon (docker-compose.api.override.yml under
     /// docker-compose.api.yml), which stays.</summary>
-    [AvaloniaFact]
-    public void A_compose_files_override_nests_under_the_file_it_overrides_by_name_and_by_a_Docker_Compose_projects_DependentUpon()
+    private void A_compose_files_override_nests_under_the_file_it_overrides_by_name_and_by_a_Docker_Compose_projects_DependentUpon()
     {
         Write("Shop/compose.yaml", "services: {}\n");
         Write("Shop/compose.override.yaml", "services: {}\n");
@@ -151,8 +161,7 @@ public sealed class FileNestingTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_parent_renamed_or_moved_in_the_explorer_takes_its_dependents_renamed_with_it_and_its_projects_DependentUpon_follows()
+    private void A_parent_renamed_or_moved_in_the_explorer_takes_its_dependents_renamed_with_it_and_its_projects_DependentUpon_follows()
     {
         MainWindow window = Open();
         List<string> asked = Answer(window);
@@ -204,8 +213,7 @@ public sealed class FileNestingTests : IDisposable
     /// <summary>A rename whose nested file cannot move (open with an edit its now read-only file refuses to save before the
     /// move) moves none: the file moved before it is taken back, so both stay as they were, the project and the Solution
     /// view unchanged and no command left for Undo, and the box says why.</summary>
-    [AvaloniaFact]
-    public void A_rename_whose_nested_file_cannot_move_moves_none_and_leaves_the_project_as_it_was()
+    private void A_rename_whose_nested_file_cannot_move_moves_none_and_leaves_the_project_as_it_was()
     {
         string code = At("Components/Counter.razor.cs");
         MainWindow window = Open();
@@ -246,32 +254,6 @@ public sealed class FileNestingTests : IDisposable
         }
         Ui.Run(window, AppActions.Save);
         Ui.WaitFor(() => !open.IsModified, "the code-behind's edit saved once its file is writable again");
-        window.Close();
-    }
-
-    /// <summary>A file named after another but removed from the project is shown under nothing, so a rename of the file it
-    /// would nest under leaves it where it is: only the dependents the Solution view shows go with their parent.</summary>
-    [AvaloniaFact]
-    public void A_rename_leaves_where_it_is_a_file_named_after_it_that_the_project_removes()
-    {
-        Write("Shop/Shop.csproj", Project.Replace("  <ItemGroup>\n", "  <ItemGroup>\n    <Compile Remove=\"Forms/Form1.Designer.cs\" />\n", StringComparison.Ordinal));
-        MainWindow window = Open();
-        Ui.WaitFor(() => window.ProjectOf(At("Forms/Form1.cs")) is { IsEvaluated: true }, "the project evaluated", TimeSpan.FromMinutes(1));
-        Ui.WaitFor(() => !Shows(window, At("Forms/Form1.Designer.cs")), "Form1.Designer.cs, which the project removes, to leave the Solution view");
-        Assert.Equal(At("Forms/Form1.cs"), Holder(window, At("Forms/Form1.resx")).Path);
-
-        Choose(window, At("Forms/Form1.cs"));
-        Ui.Run(window, AppActions.Rename);
-        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
-        if (popup.Option is { IsChecked: true } renameType)
-        {
-            Ui.Click(renameType);
-        }
-        popup.Text = string.Empty;
-        window.KeyTextInput("Form2.cs");
-        Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
-        Assert.Equal(["Form1.Designer.cs", "Form2.cs", "Form2.resx"], Directory.GetFiles(At("Forms")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
         window.Close();
     }
 

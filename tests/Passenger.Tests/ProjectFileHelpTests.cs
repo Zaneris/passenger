@@ -71,6 +71,34 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         folder = PathNames.Canonical(shop.Folder);
     }
 
+    /// <summary>The gate's eight checks of a project file's completion, cards, marks and saves, as one flow, to take
+    /// their place once it has its record on CI.</summary>
+    [AvaloniaFact]
+    public void The_gates_project_file_help_holds_as_one_flow()
+    {
+        Flow.StepApart("a project file completes its properties their values paths and the names its evaluation knows", () => new ProjectFileHelpTests(shop), t => t.A_project_file_completes_its_properties_their_values_paths_and_the_names_its_evaluation_knows());
+        Flow.StepApart("a package reference completes ids and versions from the folders feed and a vulnerable version is marked", () => new ProjectFileHelpTests(shop), t => t.A_package_reference_completes_ids_and_versions_from_the_folders_feed_and_a_vulnerable_version_is_marked());
+        Flow.StepApart("the card over a name says its evaluated value and where it was set and go to declaration goes there", () => new ProjectFileHelpTests(shop), t => t.The_card_over_a_name_says_its_evaluated_value_and_where_it_was_set_and_go_to_declaration_goes_there());
+        Flow.StepApart("an item elements card counts the files come into and gone from the folders its wildcards walk with nothing typed", () => new ProjectFileHelpTests(shop), t => t.An_item_elements_card_counts_the_files_come_into_and_gone_from_the_folders_its_wildcards_walk_with_nothing_typed());
+        Flow.StepApart("the evaluations errors are marked on their lines as typed and listed in problems", () => new ProjectFileHelpTests(shop), t => t.The_evaluations_errors_are_marked_on_their_lines_as_typed_and_listed_in_problems());
+        Flow.StepApart("directory packages props completes versions marks a vulnerable one and takes a new references version", () => new ProjectFileHelpTests(shop), t => t.Directory_packages_props_completes_versions_marks_a_vulnerable_one_and_takes_a_new_references_version());
+        Flow.StepApart("a new references version goes beside the others in a directory packages props holding line breaks only roslyn counts", () => new ProjectFileHelpTests(shop), t => t.A_new_references_version_goes_beside_the_others_in_a_directory_packages_props_holding_line_breaks_only_roslyn_counts());
+        Flow.StepApart("a project file saved has the solution view and the language server take what it says now", () => new ProjectFileHelpTests(shop), t => t.A_project_file_saved_has_the_solution_view_and_the_language_server_take_what_it_says_now());
+    }
+
+    /// <summary>A deprecated package version is marked with why and in completion, Go to Declaration lands below a lone
+    /// carriage return, a save the watcher never hears is taken all the same, and a pause in thousands of items costs
+    /// what one of forty does, as one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_project_file_marks_deprecated_versions_and_follows_what_it_says_now()
+    {
+        Flow.StepApart("a package reference to a deprecated version is marked with why and what to use instead", () => new ProjectFileHelpTests(shop), t => t.A_package_reference_to_a_deprecated_version_is_marked_with_why_and_what_to_use_instead());
+        Flow.StepApart("completing a package version marks those its owner deprecated", () => new ProjectFileHelpTests(shop), t => t.Completing_a_package_version_marks_those_its_owner_deprecated());
+        Flow.StepApart("Go to declaration lands on a target defined below a lone carriage return", () => new ProjectFileHelpTests(shop), t => t.Go_to_declaration_lands_on_a_target_defined_below_a_lone_carriage_return());
+        Flow.StepApart("a project file saved while the systems watcher hears nothing has the solution view take what it says now", () => new ProjectFileHelpTests(shop), t => t.A_project_file_saved_while_the_systems_watcher_hears_nothing_has_the_solution_view_take_what_it_says_now());
+        Flow.StepApart("a typing pause in a project file of thousands of items costs the window what one of forty does", () => new ProjectFileHelpTests(shop), t => t.A_typing_pause_in_a_project_file_of_thousands_of_items_costs_the_window_what_one_of_forty_does());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_project_file_completes_its_properties_their_values_paths_and_the_names_its_evaluation_knows()
@@ -163,8 +191,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
     /// <summary>A reference to a version its owner deprecated, as the folder's feed's registration says, is marked as a
     /// vulnerable one is, saying why and the package to use instead, and listed in Problems; the card over it says so with
     /// the owner's own words. A version not deprecated is not marked so.</summary>
-    [AvaloniaFact]
-    public void A_package_reference_to_a_deprecated_version_is_marked_with_why_and_what_to_use_instead()
+    private void A_package_reference_to_a_deprecated_version_is_marked_with_why_and_what_to_use_instead()
     {
         Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />",
             "<PackageReference Include=\"Passenger.Other\" Version=\"2.5.0\" />\n    <ProjectReference Include=\"../\" />", StringComparison.Ordinal));
@@ -188,8 +215,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
     /// <summary>Completing a package reference's version marks each version its owner deprecated, as the folder's feed's
     /// registration says, read as the list is asked for (the file's marks asked only of the reference's own 3.0.0), one
     /// also vulnerable marked as both.</summary>
-    [AvaloniaFact]
-    public void Completing_a_package_version_marks_those_its_owner_deprecated()
+    private void Completing_a_package_version_marks_those_its_owner_deprecated()
     {
         Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />",
             "<PackageReference Include=\"Passenger.Other\" Version=\"3.0.0\" />\n    <ProjectReference Include=\"../\" />", StringComparison.Ordinal));
@@ -201,108 +227,6 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
         Assert.Equal([("3.0.0", ""), ("2.5.0", "Deprecated"), ("2.0.0", "High vulnerability, deprecated")], window.Assist.CompletionDetails);
         Ui.Press(window, "ESCAPE");
         window.Close();
-    }
-
-    /// <summary>In a window at its smallest, completing a version on a reference's line reaching the editor's right edge
-    /// shows a vulnerable and deprecated version's card whole on the list's side with more room, narrowed to it, saying the
-    /// advisory, why it was deprecated and its owner's words in full; with the Explorer open beside it, the editor too
-    /// narrow for a card beside the list, the card goes over the list and its line, whole, hiding neither.</summary>
-    [AvaloniaFact]
-    public void A_version_s_card_near_the_editor_s_edge_shows_whole_on_the_wider_side_saying_its_advisory_and_deprecation_in_full()
-    {
-        Write("App/App.csproj", Project.Replace("<ProjectReference Include=\"../\" />",
-            "<PackageReference Include=\"Passenger.Other\" Version=\"3.0.0\" />\n    <ProjectReference Include=\"../\" />", StringComparison.Ordinal));
-        MainWindow window = Open("App/App.csproj", width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.Run(window, AppActions.HideAllToolWindows);
-
-        (Rect list, Rect card, Rect layer) = VersionCard(window, editor);
-
-        Assert.True(card.X >= layer.X && card.Y >= layer.Y && card.Right <= layer.Right && card.Bottom <= layer.Bottom,
-            $"The card runs past the editor's edge, its words cut: it lies at {card} beside the list at {list} in the editor at {layer}");
-        bool rightWider = layer.Right - list.Right >= list.X - layer.X;
-        Assert.True(rightWider ? card.X >= list.Right : card.Right <= list.X,
-            $"The card was to go to the list's {(rightWider ? "right" : "left")}, the side with more room in the editor at {layer}; it lies at {card} beside the list at {list}");
-        Ui.Press(window, "ESCAPE");
-
-        Ui.Run(window, AppActions.HideAllToolWindows);
-        Ui.Settle();
-        (list, card, layer) = VersionCard(window, editor);
-
-        // The list opens under the version's line, which it was placed at.
-        Rect line = new(layer.X, list.Y - editor.LineHeight - 2, layer.Width, editor.LineHeight);
-        Assert.True(card.X >= layer.X && card.Y >= layer.Y && card.Right <= layer.Right && card.Bottom <= layer.Bottom && !card.Intersects(list) && !card.Intersects(line),
-            $"With the Explorer open the card was to lie whole in the editor at {layer}, over or under the list at {list} and its line, hiding neither; it lies at {card}");
-        Ui.Press(window, "ESCAPE");
-        window.Close();
-    }
-
-    /// <summary>In a window at its smallest with the default layout, the Explorer open leaving the editor narrower than the
-    /// completion list's least width, a project file's list of properties opens whole in the editor, its first item's card
-    /// beside it, narrowed to it: every row's name and detail inside the list, a name shown whole before its detail, a
-    /// longer one ending in an ellipsis, never cut at the editor's edge.</summary>
-    [AvaloniaFact]
-    public void A_completion_list_in_an_editor_narrower_than_its_least_width_shows_whole_each_name_before_its_detail()
-    {
-        MainWindow window = Open("App/App.csproj", width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "<OutputType>Exe</OutputType>");
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("<");
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("TargetFramework"), "the properties a PropertyGroup takes after a tag's '<'");
-        (string first, string described) = Ui.FirstItemsCard(window);
-        Assert.True(first == "TargetFramework" && described.StartsWith("Framework that this project targets", StringComparison.Ordinal),
-            $"TargetFramework's card was to show as the list opened; {first} is first and its card says {described}");
-
-        Avalonia.Controls.Canvas assist = window.EditorArea.AssistLayer;
-        Rect layer = new(assist.TranslatePoint(default, window) ?? default, assist.Bounds.Size);
-        Rect list = window.Assist.CompletionPlace ?? throw new InvalidOperationException("The completion list shows, yet has no place");
-        Assert.True(layer.Width < 280, $"The default layout at the window's smallest width was to leave the editor narrower than the list's least width, 280; it is {layer.Width} wide");
-        Assert.True(list.X >= layer.X && list.Y >= layer.Y && list.Right <= layer.Right && list.Bottom <= layer.Bottom,
-            $"The completion list runs past the editor's edge, cut there: it lies at {list} in the editor at {layer}");
-        Avalonia.Controls.TextBlock? name = null;
-        Avalonia.Controls.TextBlock? detail = null;
-        foreach (Avalonia.Controls.Panel row in window.Assist.CompletionRowControls.OfType<Avalonia.Controls.Panel>())
-        {
-            Avalonia.Controls.TextBlock[] words = [.. row.Children.OfType<Avalonia.Controls.TextBlock>()];
-            foreach (Avalonia.Controls.TextBlock said in words)
-            {
-                Rect at = new(said.TranslatePoint(default, window) ?? default, said.Bounds.Size);
-                Assert.True(said.Bounds.Width == 0 || (at.X >= list.X && at.Right <= list.Right),
-                    $"'{said.Text}' runs past the list at {list}: it lies at {at}");
-            }
-            if (words is [{ Text: "TargetFramework" } label, var beside])
-            {
-                (name, detail) = (label, beside);
-            }
-        }
-        Assert.True(name is not null && detail is not null, "TargetFramework's row, its name and its detail, is not among those the list shows");
-        Avalonia.Controls.TextBlock whole = new() { Text = name.Text, FontFamily = name.FontFamily, FontSize = name.FontSize, FontFeatures = name.FontFeatures };
-        whole.Measure(Size.Infinity);
-        Assert.True(name.Bounds.Width >= whole.DesiredSize.Width - 0.5 && detail.Bounds.X >= name.Bounds.Right,
-            $"TargetFramework's name was to show whole ({whole.DesiredSize.Width} wide) before its detail '{detail.Text}'; it has {name.Bounds.Width}, the detail at {detail.Bounds.X}");
-        Ui.Press(window, "ESCAPE");
-        window.Close();
-    }
-
-    /// <summary>Completes Passenger.Other's version, chooses 2.0.0 and waits for its card, checking it says the advisory and
-    /// the deprecation in full: where the list, the card and the editor's layer lie in the window.</summary>
-    private static (Rect List, Rect Card, Rect Layer) VersionCard(MainWindow window, CodeEditor editor)
-    {
-        Ui.PlaceAfter(editor, "Include=\"Passenger.Other\" Version=\"");
-        Ui.Run(window, AppActions.Complete);
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Count == 3, "Passenger.Other's three versions");
-        Ui.Press(window, "DOWN");
-        Ui.Press(window, "DOWN");
-        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("2.0.0", StringComparison.Ordinal) == true, () => $"2.0.0's card; it says {window.Assist.ItemDocumentation ?? "nothing"}");
-        string said = window.Assist.ItemDocumentation!;
-        Assert.True(said.StartsWith("Package 'Passenger.Other' 2.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-pass-0001-test\n", StringComparison.Ordinal)
-            && said.Contains("\nPackage 'Passenger.Other' 2.0.0 is deprecated: ", StringComparison.Ordinal) && said.EndsWith("\nBroken past repair.", StringComparison.Ordinal),
-            $"The card was to say the advisory, the deprecation and its owner's words in full; it says:\n{said}");
-        (Rect list, Rect card) = window.Assist.ItemCardPlace ?? throw new InvalidOperationException("The card shows, yet has no place beside the list");
-        Avalonia.Controls.Canvas assist = window.EditorArea.AssistLayer;
-        Rect layer = new(assist.TranslatePoint(default, window) ?? default, assist.Bounds.Size);
-        return (list, card, layer);
     }
 
     [Gate]
@@ -361,8 +285,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
 
     /// <summary>MSBuild's places are an XML reader's, which ends a line at a lone '\r' where the editor does not: Go to
     /// Declaration of a target defined below such a break lands on the target's own line, where it landed two lines on.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_lands_on_a_target_defined_below_a_lone_carriage_return()
+    private void Go_to_declaration_lands_on_a_target_defined_below_a_lone_carriage_return()
     {
         Write("App/Shared.targets", "<Project>\n  <!-- Pasted:\ra\rb -->\n  <Target Name=\"Greet\" BeforeTargets=\"Build\" />\n</Project>\n");
         Write("App/App.csproj", Project.Replace("DependsOnTargets=\"Build\"", "DependsOnTargets=\"Greet\"", StringComparison.Ordinal));
@@ -583,8 +506,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
     /// <summary>A project file saved while the system's watcher hears nothing, as macOS's falls minutes behind under a load
     /// of changes, has the Solution view show what it says now: the folder's watcher takes the IDE's own save in as it
     /// lands rather than as the system says so.</summary>
-    [AvaloniaFact]
-    public void A_project_file_saved_while_the_systems_watcher_hears_nothing_has_the_solution_view_take_what_it_says_now()
+    private void A_project_file_saved_while_the_systems_watcher_hears_nothing_has_the_solution_view_take_what_it_says_now()
     {
         MainWindow window = Open("App/App.csproj");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -611,8 +533,7 @@ public sealed class ProjectFileHelpTests : IClassFixture<ProjectFileHelpTests.Sh
     /// <summary>A typing pause in a project file of 4,000 items costs the window's thread about what one in a file of 40
     /// does: the project is evaluated again with the text as typed, which the evaluation's worker makes into text, and the
     /// file's markup its markers are placed by is read on a worker too, never on the window's thread.</summary>
-    [AvaloniaFact]
-    public void A_typing_pause_in_a_project_file_of_thousands_of_items_costs_the_window_what_one_of_forty_does()
+    private void A_typing_pause_in_a_project_file_of_thousands_of_items_costs_the_window_what_one_of_forty_does()
     {
         string own = TestFolders.Create("project-pause-");
         string small = Path.Combine(own, "Small", "Small.csproj");
