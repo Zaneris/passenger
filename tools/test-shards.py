@@ -264,9 +264,10 @@ def held_to_most(count):
     """Whether the suite's count of tests is within MOST_TESTS and its ALLOWANCE, said when it is not."""
     if count <= MOST_TESTS + ALLOWANCE:
         return 0
-    say("error", "Too many tests", f"The suite lists {count:,} tests, more than the {MOST_TESTS:,} it may (#2095) with "
-        f"the {ALLOWANCE:,} more allowed while its batches cut it down: join each new check to a flow's step or a "
-        f"table's row where one fits (tests/Shared), or cut what no longer guards anything another test does not")
+    allowed = f" with the {ALLOWANCE:,} more allowed while its batches cut it down" if ALLOWANCE > 0 else ""
+    say("error", "Too many tests", f"The suite lists {count:,} tests, more than the {MOST_TESTS:,} it may (#2095){allowed}: "
+        f"join each new check to a flow's step or a table's row where one fits (tests/Shared), or cut what no longer "
+        f"guards anything another test does not")
     return 1
 
 
