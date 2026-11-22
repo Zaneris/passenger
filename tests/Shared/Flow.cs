@@ -125,6 +125,24 @@ public static class Flow
         }
     }
 
+    /// <summary><see cref="StepApartAsync{TTest}(string, Func{TTest}, Func{TTest, Task})"/> for a class whose instance
+    /// is set up and put back around each test (<see cref="IAsyncLifetime"/>): the step's instance is set up before it
+    /// and put back after it, as xunit did for each test of its own.</summary>
+    public static Task StepApartLivedAsync<TTest>(string name, Func<TTest> make, Func<TTest, Task> step) where TTest : IAsyncLifetime =>
+        StepAsync(name, async () =>
+        {
+            TTest apart = make();
+            await apart.InitializeAsync();
+            try
+            {
+                await step(apart);
+            }
+            finally
+            {
+                await apart.DisposeAsync();
+            }
+        });
+
     /// <summary>A step run in a copy of the caller's execution context, so nothing ambient it sets (an AsyncLocal) reaches
     /// the steps after it, as when each was a test of its own; what it makes is handed on as ever.</summary>
     internal static T InOwnContext<T>(Func<T> step)

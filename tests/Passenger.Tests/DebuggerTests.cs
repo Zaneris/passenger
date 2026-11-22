@@ -70,10 +70,399 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         return made;
     });
 
+    /// <summary>A breakpoint set with F9 stops the program with its locals, keeps to its code as lines are added and
+    /// removed above it (while paused too, and below line breaks only the compiler counts), says in its hover and in
+    /// Problems whether it is bound, and on a line holding a lambda acts on the statement or inside the lambda as it
+    /// is set; a key near the top of a long debugged file costs what it does in a short one.</summary>
+    [AvaloniaFact]
+    public async Task A_breakpoint_stops_at_its_statement_as_lines_come_and_go_above_it_and_in_a_lambda_where_it_is_set()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint set with F9 stops the program there with its locals and the variables and frames menus copy them", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_breakpoint_set_with_F9_stops_the_program_there_with_its_locals_and_the_variables_and_frames_menus_copy_them();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint keeps to its code as lines are added and removed above it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_breakpoint_keeps_to_its_code_as_lines_are_added_and_removed_above_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint's hover says it is bound moved or not bound and why and problems lists those that will not stop", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_breakpoints_hover_says_it_is_bound_moved_or_not_bound_and_why_and_problems_lists_those_that_will_not_stop();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a line typed above a bound breakpoint while paused leaves it stopping at its statement", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_line_typed_above_a_bound_breakpoint_while_paused_leaves_it_stopping_at_its_statement();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a key near the top of a long debugged file costs what it does in a short one and its breakpoint and stop go with their code", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_key_near_the_top_of_a_long_debugged_file_costs_what_it_does_in_a_short_one_and_its_breakpoint_and_stop_go_with_their_code();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("below line breaks only the compiler counts a breakpoint its stop run to cursor and set next statement keep to the editor's lines", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Below_line_breaks_only_the_compiler_counts_a_breakpoint_its_stop_run_to_cursor_and_set_next_statement_keep_to_the_editors_lines();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint run to cursor and set next statement on a line holding a lambda act on its statement", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_breakpoint_run_to_cursor_and_set_next_statement_on_a_line_holding_a_lambda_act_on_its_statement();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint set in a lambda on its statement's line stops inside it and the gutter's mark on that line at the statement", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_breakpoint_set_in_a_lambda_on_its_statements_line_stops_inside_it_and_the_gutters_on_that_line_at_the_statement();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("edit breakpoint in a lambda sets its own and the lambda edited away leaves the line's, which stops at the statement", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Edit_breakpoint_in_a_lambda_sets_its_own_and_the_lambda_edited_away_leaves_the_lines_which_stops_at_the_statement();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a breakpoint set while debugging starts reaches the program and stops it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_breakpoint_set_while_debugging_starts_reaches_the_program_and_stops_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Conditions typed into a breakpoint's popup, a tracepoint logging and running on, Run to Cursor past a
+    /// false condition or a tracepoint, the Breakpoints window listing, turning off, adding and keeping exception
+    /// breakpoints, an exception breakpoint stopping by its type, its condition and its handler options, and Mute
+    /// letting a run pass every breakpoint until unmuted.</summary>
+    [AvaloniaFact]
+    public async Task A_breakpoints_condition_tracepoint_exception_type_and_mute_decide_where_a_run_stops()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("a condition typed into a breakpoint's popup decides where it stops", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_condition_typed_into_a_breakpoints_popup_decides_where_it_stops();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a tracepoint set with shift click logs its message and the program runs on", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_tracepoint_set_with_shift_click_logs_its_message_and_the_program_runs_on();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("run to cursor stops at a line holding a false condition or a tracepoint each as it was after", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Run_to_cursor_stops_at_a_line_holding_a_false_condition_or_a_tracepoint_each_as_it_was_after();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("the Breakpoints window lists every breakpoint and turns one off", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.The_breakpoints_window_lists_every_breakpoint_and_turns_one_off();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("an exception breakpoint added by its type stops where that type is thrown as its condition allows and at no other type", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.An_exception_breakpoint_added_by_its_type_stops_where_that_type_is_thrown_as_its_condition_allows_and_at_no_other_type();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("an exception breakpoint's condition that cannot be told stops at the throw and says why on the breakpoint", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.An_exception_breakpoints_condition_that_cannot_be_told_stops_at_the_throw_and_says_why_on_the_breakpoint();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("an exception breakpoint's handler options stop it where the user's code leaves the exception or where it handles it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.An_exception_breakpoints_handler_options_stop_it_where_the_users_code_leaves_the_exception_or_where_it_handles_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("mute Breakpoints lets a run pass a line breakpoint and an exception breakpoint and unmuting stops it again", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Mute_breakpoints_lets_a_run_pass_a_line_breakpoint_and_an_exception_breakpoint_and_unmuting_stops_it_again();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("the Breakpoints window adds and removes exception breakpoints and the folder keeps them", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.The_breakpoints_window_adds_and_removes_exception_breakpoints_and_the_folder_keeps_them();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Step Over from a floated Debug window, dragging the execution arrow past a loop, Smart Step Into
+    /// offering a line's calls (under its framework's symbols, and in a file nested past what the parser reads), a
+    /// step over a call listing what it returned and an exception stop naming the exception at its line.</summary>
+    [AvaloniaFact]
+    public async Task Stepping_goes_where_it_is_asked_over_a_call_into_the_call_chosen_and_past_a_loop()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("step Over pressed in the Debug window floated off steps the program and its evaluate box keeps its keys", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Step_Over_pressed_in_the_Debug_window_floated_off_steps_the_program_and_its_evaluate_box_keeps_its_keys();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("dragging the execution arrow past the loop goes on from there and skips it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Dragging_the_execution_arrow_past_the_loop_goes_on_from_there_and_skips_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("smart step into offers the calls of a line under its framework's symbols", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Smart_step_into_offers_the_calls_of_a_line_under_its_frameworks_symbols();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("smart step into in a file nested past what the parser reads steps into the first call and a watch as deep is refused", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Smart_step_into_in_a_file_nested_past_what_the_parser_reads_steps_into_the_first_call_and_a_watch_as_deep_is_refused();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a step over a call lists what it returned smart step into steps into the call chosen and an exception stop names the exception at its line", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_step_over_a_call_lists_what_it_returned_smart_step_into_steps_into_the_call_chosen_and_an_exception_stop_names_the_exception_at_its_line();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>An expression evaluated at a stop runs once; a value set in Variables, under a range, on a hidden base
+    /// field, a struct held through an interface, a nullable struct's member or what a pointer points at is the one the
+    /// program goes on with; a hash set's element greyed; watches evaluate; a string of megabytes never holds the
+    /// window; a value from the stop before a step opens to an error, never another value's members.</summary>
+    [AvaloniaFact]
+    public async Task A_value_set_or_evaluated_at_a_stop_is_the_one_the_program_goes_on_with()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("an expression evaluated at a stop runs once with the stop and a value set in variables is the one the program goes on with", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.An_expression_evaluated_at_a_stop_runs_once_with_the_stop_and_a_value_set_in_variables_is_the_one_the_program_goes_on_with();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a value set on an element listed under a range is the one the program goes on with", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_value_set_on_an_element_listed_under_a_range_is_the_one_the_program_goes_on_with();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a value set on a hidden base field changes that field and not the one hiding it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_value_set_on_a_hidden_base_field_changes_that_field_and_not_the_one_hiding_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a value set on an interface property of a struct held through the interface changes the held struct", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_value_set_on_an_interface_property_of_a_struct_held_through_the_interface_changes_the_held_struct();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a hashset element a dictionary entry's value and an explicit interface member added to watches evaluate", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_hashset_element_a_dictionary_entrys_value_and_an_explicit_interface_member_added_to_watches_evaluate();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a hashset element's set value is greyed saying why and a nullable struct's member is watched and set", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_hashset_elements_set_value_is_greyed_saying_why_and_a_nullable_structs_member_is_watched_and_set();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a value set on what a pointer points at is the one the program goes on with", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a string of megabytes shows its start in variables and a hover without holding the window", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_string_of_megabytes_shows_its_start_in_variables_and_a_hover_without_holding_the_window();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a value from the stop before a step opens to an error never to another value's members", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_value_from_the_stop_before_a_step_opens_to_an_error_never_to_another_values_members();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>A watch waiting on a lock another thread holds runs again with every thread let go; an evaluation that
+    /// could not be stopped leaves the program paused and a step goes on once it returns; Continue pressed while a
+    /// stop's values are read shows the program running at once; a program stopped at once finds the hook's thread
+    /// waiting in its read.</summary>
+    [AvaloniaFact]
+    public async Task An_evaluation_that_waits_or_cannot_be_stopped_never_holds_the_window_or_loses_the_program()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("a watch waiting on a lock another thread holds runs again with every thread let go from its link", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_watch_waiting_on_a_lock_another_thread_holds_runs_again_with_every_thread_let_go_from_its_link();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("an evaluation that could not be stopped leaves the program paused and a step goes on once it returns", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.An_evaluation_that_could_not_be_stopped_leaves_the_program_paused_and_a_step_goes_on_once_it_returns();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("continue pressed while a stop's values are read shows the program running at once and sets it going", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Continue_pressed_while_a_stops_values_are_read_shows_the_program_running_at_once_and_sets_it_going();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a program stopped at once finds the hook's thread waiting in its read with no thread of its beside it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_program_stopped_at_once_finds_the_hooks_thread_waiting_in_its_read_with_no_thread_of_its_beside_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>What is typed into the Debug console is the program's input and Pause stops it in its loop; 100,000
+    /// coloured lines show in their colours within the console's limit; debugged in the terminal a program stops on
+    /// Main's first line, reads what is typed there and Stop ends it and what it started; a program needing a terminal
+    /// is offered one at its exception's stop.</summary>
+    [AvaloniaFact]
+    public async Task A_debugged_programs_console_takes_its_input_and_shows_its_output_and_a_terminal_is_offered_where_it_needs_one()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("what is typed into the debug console is the program's input and pause stops it where it is in its loop", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.What_is_typed_into_the_debug_console_is_the_programs_input_and_pause_stops_it_where_it_is_in_its_loop();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("debugging a program that prints 100000 coloured lines shows them in their colours free of colour codes within its limit", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Debugging_a_program_that_prints_100000_coloured_lines_shows_them_in_their_colours_free_of_colour_codes_within_its_limit();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("debugged in the terminal a program stops on Main's first line reads what is typed there and stop ends it and what it started", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Debugged_in_the_terminal_a_program_stops_on_Mains_first_line_reads_what_is_typed_there_and_stop_ends_it_and_what_it_started();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a program debugged needing a terminal is offered one at its stop on the exception and reads a key there", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_program_debugged_needing_a_terminal_is_offered_one_at_its_stop_on_the_exception_and_reads_a_key_there();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>A debugger dying with an exception leaves the window up with its words; one killed while its program
+    /// is paused takes the program with it; closing the window while debugging leaves no program, debugger or language
+    /// server; Debug Tests whose host the debugger cannot attach to ends saying why; Stop ends a session whose program
+    /// is still starting.</summary>
+    [AvaloniaFact]
+    public async Task A_debug_session_ends_whole_however_it_ends_leaving_nothing_running()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("a debugger that dies with an exception leaves the window up with its words in the console and the log", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_debugger_that_dies_with_an_exception_leaves_the_window_up_with_its_words_in_the_console_and_the_log();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("a debugger killed while its program is paused takes the program with it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_debugger_killed_while_its_program_is_paused_takes_the_program_with_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("closing the window while debugging leaves no program debugger or language server running", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Closing_the_window_while_debugging_leaves_no_program_debugger_or_language_server_running();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("debug tests with a test host the debugger cannot attach to ends the session saying why", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Debug_tests_with_a_test_host_the_debugger_cannot_attach_to_ends_the_session_saying_why();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("stop ends a debug session whose program is still starting and the program with it", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Stop_ends_a_debug_session_whose_program_is_still_starting_and_the_program_with_it();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>Attach to Process lists .NET programs alone, stops one started outside Passenger at a breakpoint it
+    /// then reaches and Detach leaves it running to its end; closing the window while attached lets go of the program,
+    /// which runs on.</summary>
+    [AvaloniaFact]
+    public async Task Attach_to_Process_stops_a_program_started_elsewhere_and_lets_it_go_running()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("attach to process lists dotnet programs alone", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Attach_to_process_lists_dotnet_programs_alone();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("attach to process stops a program started outside passenger at a breakpoint it then reaches and detach leaves it running to its end", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Attach_to_process_stops_a_program_started_outside_passenger_at_a_breakpoint_it_then_reaches_and_detach_leaves_it_running_to_its_end();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("closing the window while attached lets go of the program which runs on", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Closing_the_window_while_attached_lets_go_of_the_program_which_runs_on();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
+    /// <summary>A configuration is run, debugged and profiled with the same arguments, variable and working folder;
+    /// Run of a debugged configuration and Debug of a run one end the other first, as does either pressed while the
+    /// other's start is under way, leaving one copy.</summary>
+    [AvaloniaFact]
+    public async Task Run_and_Debug_of_one_configuration_take_the_same_arguments_and_leave_one_copy_running()
+    {
+        await Flow.StepApartLivedAsync<DebuggerTests>("a configuration is run debugged and profiled with the same arguments variable and working folder", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.A_configuration_is_run_debugged_and_profiled_with_the_same_arguments_variable_and_working_folder();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("run of a debugged configuration and Debug of a run one each end it first leaving one copy", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Run_of_a_debugged_configuration_and_Debug_of_a_run_one_each_end_it_first_leaving_one_copy();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+        await Flow.StepApartLivedAsync<DebuggerTests>("run or Debug pressed as the other's start of a configuration is under way stops that start leaving one copy", () => new DebuggerTests(sum, sleeper, folders), t =>
+        {
+            t.Run_or_Debug_pressed_as_the_others_start_of_a_configuration_is_under_way_stops_that_start_leaving_one_copy();
+            OpenWindows.CloseAll();
+            return Task.CompletedTask;
+        });
+    }
+
     /// <summary>F9 and Debug stop the program at the line with its locals, in a Debug window that shares a side pane, its
     /// next hit on Resume and the step after it; the menus of Variables and Frames copy a value, watch it and copy the stack.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_set_with_F9_stops_the_program_there_with_its_locals_and_the_variables_and_frames_menus_copy_them()
+    private void A_breakpoint_set_with_F9_stops_the_program_there_with_its_locals_and_the_variables_and_frames_menus_copy_them()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -146,8 +535,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>The Debug window floated off into a window of its own still answers the IDE's keys pressed there: Step
     /// Over with its Variables clicked steps the program, Find Action opens over it, its evaluate box keeps what is
     /// typed and deleted there, Enter evaluating it, and Stop ends the session.</summary>
-    [AvaloniaFact]
-    public void Step_Over_pressed_in_the_Debug_window_floated_off_steps_the_program_and_its_evaluate_box_keeps_its_keys()
+    private void Step_Over_pressed_in_the_Debug_window_floated_off_steps_the_program_and_its_evaluate_box_keeps_its_keys()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -195,8 +583,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Dragging_the_execution_arrow_past_the_loop_goes_on_from_there_and_skips_it()
+    private void Dragging_the_execution_arrow_past_the_loop_goes_on_from_there_and_skips_it()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -220,8 +607,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_breakpoint_keeps_to_its_code_as_lines_are_added_and_removed_above_it()
+    private void A_breakpoint_keeps_to_its_code_as_lines_are_added_and_removed_above_it()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -249,8 +635,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// the debugger moved to the nearest line with code, one on a line with no code and one on a line written after the build,
     /// the last two with why and how to put it right; Problems' Breakpoints lists those two at their lines, and the hover
     /// says what a breakpoint carries.</summary>
-    [AvaloniaFact]
-    public void A_breakpoints_hover_says_it_is_bound_moved_or_not_bound_and_why_and_problems_lists_those_that_will_not_stop()
+    private void A_breakpoints_hover_says_it_is_bound_moved_or_not_bound_and_why_and_problems_lists_those_that_will_not_stop()
     {
         Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\n\nConsole.WriteLine($\"total {total}\");\n\n"
             + "static class Notes\n{\n    // Nothing runs here.\n}\n");
@@ -308,8 +693,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         return window.Assist.HoverText!;
     }
 
-    [AvaloniaFact]
-    public void A_line_typed_above_a_bound_breakpoint_while_paused_leaves_it_stopping_at_its_statement()
+    private void A_line_typed_above_a_bound_breakpoint_while_paused_leaves_it_stopping_at_its_statement()
     {
         MainWindow window = Open(hotReload: true);
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -347,8 +731,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// an Enter near the top of a file of 20,000 lines allocates on the UI thread about what one in a short file does,
     /// each with a breakpoint below; the breakpoint goes down with its code, and the program, let go, stops there,
     /// shown at its line now.</summary>
-    [AvaloniaFact]
-    public void A_key_near_the_top_of_a_long_debugged_file_costs_what_it_does_in_a_short_one_and_its_breakpoint_and_stop_go_with_their_code()
+    private void A_key_near_the_top_of_a_long_debugged_file_costs_what_it_does_in_a_short_one_and_its_breakpoint_and_stop_go_with_their_code()
     {
         Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine($\"total {total} {Long.Last()} {Short.Last()}\");\n");
         Write("Long.cs", "static class Long\n{\n" + string.Concat(Enumerable.Range(0, 20_000).Select(i => $"    public const int Value{i} = {i};\n"))
@@ -425,8 +808,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// ahead of the editor's below it: a breakpoint stops at its own line, the arrow, the frame's row and an agent's place say
     /// it, a line typed above while paused moves them with their code, and Run to Cursor and Set Next Statement go to the
     /// lines asked.</summary>
-    [AvaloniaFact]
-    public void Below_line_breaks_only_the_compiler_counts_a_breakpoint_its_stop_run_to_cursor_and_set_next_statement_keep_to_the_editors_lines()
+    private void Below_line_breaks_only_the_compiler_counts_a_breakpoint_its_stop_run_to_cursor_and_set_next_statement_keep_to_the_editors_lines()
     {
         Write("Program.cs", $"int total = 0;\n/* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\nfor (int i = 1; i <= 3; i++)\n{{\n    total += i;\n}}\n"
             + "total *= 2;\nConsole.WriteLine($\"total {total}\");\n");
@@ -480,8 +862,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A line holding a lambda after its statement begins is the statement's: a breakpoint on a query never read
     /// stops there, Run to Cursor onto a count with a lambda stops at the count rather than in the lambda, and Set Next
     /// Statement goes back to one, the program then counting again and stopping at the breakpoint again.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_run_to_cursor_and_set_next_statement_on_a_line_holding_a_lambda_act_on_its_statement()
+    private void A_breakpoint_run_to_cursor_and_set_next_statement_on_a_line_holding_a_lambda_act_on_its_statement()
     {
         Write("Program.cs", "int[] items = [1, 2, 3, 4, 5];\nint count = items.Count(i => i > 2);\nIEnumerable<int> big = items.Where(i => i > 3);\n"
             + "Console.WriteLine($\"count {count}\");\ncount = items.Count(i => i > 4);\nConsole.WriteLine($\"then {count}\");\n");
@@ -517,8 +898,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// gutter's for the line, the lambda tinted, both carried down by a line typed above and named in the Breakpoints window,
     /// the lambda's by its column; the gutter's menu offers the line and the lambda and takes either away or sets it again.
     /// The gutter's stops once at the statement, and the lambda's inside the lambda each time it runs.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_set_in_a_lambda_on_its_statements_line_stops_inside_it_and_the_gutters_on_that_line_at_the_statement()
+    private void A_breakpoint_set_in_a_lambda_on_its_statements_line_stops_inside_it_and_the_gutters_on_that_line_at_the_statement()
     {
         const string Counting = "int count = items.Count(i => i > 1);";
         int body = Counting.IndexOf("i > 1", StringComparison.Ordinal);
@@ -576,8 +956,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>Edit Breakpoint with the caret in a lambda without a breakpoint of its own sets the lambda's to edit, beside
     /// the line's. A comment left open above as it is typed leaves it the lambda's, and the lambda edited away makes it the
     /// line's, listed by its line, which stops once at the statement.</summary>
-    [AvaloniaFact]
-    public void Edit_breakpoint_in_a_lambda_sets_its_own_and_the_lambda_edited_away_leaves_the_lines_which_stops_at_the_statement()
+    private void Edit_breakpoint_in_a_lambda_sets_its_own_and_the_lambda_edited_away_leaves_the_lines_which_stops_at_the_statement()
     {
         const string Counting = "int count = items.Count(i => i > 1);";
         int body = Counting.IndexOf("i > 1", StringComparison.Ordinal);
@@ -644,8 +1023,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Run to Cursor stops at its line whatever breakpoint stands there, one whose condition is false and a
     /// tracepoint alike, each as it was once the stop is made: the condition passed by on the loop's later turns.</summary>
-    [AvaloniaFact]
-    public void Run_to_cursor_stops_at_a_line_holding_a_false_condition_or_a_tracepoint_each_as_it_was_after()
+    private void Run_to_cursor_stops_at_a_line_holding_a_false_condition_or_a_tracepoint_each_as_it_was_after()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -684,37 +1062,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_hit_count_the_debugger_cannot_read_is_said_as_it_is_typed_and_the_breakpoint_refused()
-    {
-        MainWindow window = Open();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(5, 0));
-        Ui.Run(window, AppActions.ToggleBreakpoint);
-        editor.GoTo(new TextPosition(3, 4));
-        Ui.Run(window, AppActions.EditBreakpoint);
-        BreakpointPopup popup = Assert.IsType<BreakpointPopup>(window.Popup);
-        Ui.Settle();
-        Ui.Press(window, "Tab");
-        window.KeyTextInput("3 times");
-        Ui.Settle();
-        const string said = "The hit count \"3 times\" is not one the debugger can read";
-        Assert.Contains(popup.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text?.StartsWith(said, StringComparison.Ordinal) == true);
-        Ui.Press(window, "Enter");
-        LineBreakpoint breakpoint = window.Debugger.Breakpoints.In(Program)[0];
-        Assert.Equal("3 times", breakpoint.HitCondition);
-
-        StartDebugging(window);
-        WaitDebugging(window, () => Value(window, "total") == "6", "the stop after the loop");
-        Assert.Contains(new LineMark(3, LineMarkKind.BreakpointInvalid, Conditional: true), editor.LineMarks);
-        Assert.StartsWith(said, breakpoint.Message, StringComparison.Ordinal);
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_configuration_is_run_debugged_and_profiled_with_the_same_arguments_variable_and_working_folder()
+    private void A_configuration_is_run_debugged_and_profiled_with_the_same_arguments_variable_and_working_folder()
     {
         Write("Program.cs", "Console.WriteLine($\"seen [{string.Join(\"|\", args)}] {Environment.GetEnvironmentVariable(\"PASSENGER_SEEN\")} in {Environment.CurrentDirectory}\");\n");
         Write("Properties/launchSettings.json", """
@@ -756,8 +1104,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>Smart Step Into reads the line it stopped at as the project compiles it: a line of calls under
     /// #if NET8_0_OR_GREATER offers its calls in the order they run, and Enter steps into the one chosen.</summary>
-    [AvaloniaFact]
-    public void Smart_step_into_offers_the_calls_of_a_line_under_its_frameworks_symbols()
+    private void Smart_step_into_offers_the_calls_of_a_line_under_its_frameworks_symbols()
     {
         Write("Program.cs", "int nested = 0;\n#if NET8_0_OR_GREATER\nnested = Outer(Inner());\n#endif\nConsole.WriteLine(nested);\n\n"
             + "static int Inner() => 20;\nstatic int Outer(int value)\n{\n    return value + 1;\n}\n");
@@ -785,8 +1132,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>Smart Step Into in a file whose text, written since its build, nests past what the parser reads (interpolations
     /// within interpolations, where reading it ended the adapter) has no calls placed to choose between, so it steps into the
     /// first, Inner, as Step Into does; a watch nested as deep is refused saying so, and the program stays paused.</summary>
-    [AvaloniaFact]
-    public void Smart_step_into_in_a_file_nested_past_what_the_parser_reads_steps_into_the_first_call_and_a_watch_as_deep_is_refused()
+    private void Smart_step_into_in_a_file_nested_past_what_the_parser_reads_steps_into_the_first_call_and_a_watch_as_deep_is_refused()
     {
         const string Calls = "int nested = Outer(Inner());\nConsole.WriteLine(nested);\n\nstatic int Inner() => 20;\nstatic int Outer(int value)\n{\n    return value + 1;\n}\n";
         string deep = string.Concat(Enumerable.Repeat("$\"{", 5_000)) + "0" + string.Concat(Enumerable.Repeat("}\"", 5_000));
@@ -824,8 +1170,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// run, and Enter steps into the one chosen. Resumed, the program ends in an exception the runtime throws, which stops it
     /// at the line that threw it, named there and in the status bar, and is listed in Variables as $exception, which opens
     /// to its members and a watch reads.</summary>
-    [AvaloniaFact]
-    public void A_step_over_a_call_lists_what_it_returned_smart_step_into_steps_into_the_call_chosen_and_an_exception_stop_names_the_exception_at_its_line()
+    private void A_step_over_a_call_lists_what_it_returned_smart_step_into_steps_into_the_call_chosen_and_an_exception_stop_names_the_exception_at_its_line()
     {
         Write("Program.cs", "int total = Add(2, 3);\nConsole.WriteLine(Describe(total));\nint nested = Outer(Inner());\nConsole.WriteLine(nested);\nConsole.WriteLine(\"done\");\n"
             + "int[] values = [1, 2];\nint index = 5;\nConsole.WriteLine(values[index]);\n\n"
@@ -909,8 +1254,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A watch of a property read under a lock another thread holds never ends while that thread is held, and says
     /// it probably needs another thread to run, as it does again when the values are shown again, nothing having run that
     /// thread; its link runs it again with every thread let go, giving its value, after which a watch on that thread works.</summary>
-    [AvaloniaFact]
-    public void A_watch_waiting_on_a_lock_another_thread_holds_runs_again_with_every_thread_let_go_from_its_link()
+    private void A_watch_waiting_on_a_lock_another_thread_holds_runs_again_with_every_thread_let_go_from_its_link()
     {
         Write("Program.cs", "Locked locked = new();\nLocked.Hold();\nConsole.WriteLine(\"locked\");\nConsole.WriteLine(locked.Value);\n\n"
             + "sealed class Locked\n{\n    private static readonly object Gate = new();\n    public static bool LetGo;\n\n"
@@ -954,70 +1298,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         static VariableNode? Watch(Passenger.App.ToolWindows.DebugModel view) => view.Tree.Rows.FirstOrDefault(r => r.Role == VariableRole.Watch && r.Name == "locked.Value");
     }
 
-    /// <summary>Stopped in the lock debuggee (LoopingConsoleApp locked) while its Holder thread sleeps holding the lock, as
-    /// Holder's frame in Call Stack shows: once a watch waiting on the lock has run with every thread let go, Threads lists
-    /// the thread Holder started meanwhile, the stopped thread's frame staying chosen, and Variables says its values were
-    /// read before every thread ran, implicit evaluation staying off; Read Again reads them anew, the words gone, and
-    /// Holder's frame in Call Stack has moved past the lock.</summary>
-    [AvaloniaFact]
-    public void After_a_watch_runs_with_every_thread_let_go_threads_and_call_stack_show_where_the_threads_are_now()
-    {
-        const string Looping = "LoopingConsoleApp";
-        // A folder of its own, never the class's restored ones, which are all Sum.
-        fresh = PathNames.Canonical(TestFolders.Create("locked-"));
-        Restore.Run(Debugging.Helpers.Debuggees.CopyTo(Looping, fresh));
-        MainWindow window = Ui.OpenFolder(fresh, languageServer: false);
-        window.OpenFile(Program);
-        Ui.Settle();
-        window.SetConfigurations([new Passenger.App.Run.RunConfiguration { Name = "Locked", Project = Path.Combine(PathNames.Canonical(fresh), $"{Looping}.csproj"), Arguments = "locked" }], "Locked");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held") - 1, 4));
-        Ui.Run(window, AppActions.ToggleBreakpoint);
-        StartDebugging(window);
-        Passenger.App.ToolWindows.DebugModel view = window.BottomPanel.Debug;
-        WaitDebugging(window, () => window.Debugger.Stop is not null && view.Threads.Any(t => t.Name == "Holder"), "the stop while Holder holds the lock");
-        int sleeps = Debugging.Helpers.Debuggees.Line(Looping, "the holder sleeps holding the lock");
-        int waits = Debugging.Helpers.Debuggees.Line(Looping, "the holder waits once it has let go");
-        ComboBox threads = window.DebugWindow.GetVisualDescendants().OfType<ComboBox>().First(c => ReferenceEquals(c.ItemsSource, view.Threads));
-        DapThread stopped = view.Threads.First(t => t.Id == window.Debugger.Session!.StoppedThread);
-
-        threads.SelectedItem = view.Threads.First(t => t.Name == "Holder");
-        Ui.WaitFor(() => view.Frames.Any(f => f.Line == sleeps), () => $"Holder's frame in the lock in Call Stack: {Frames(view)}");
-        threads.SelectedItem = view.Threads.First(t => t.Id == stopped.Id);
-        Ui.WaitFor(() => view.SelectedFrame?.Line == Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held"), () => $"the stopped thread's frame chosen again: {Frames(view)}");
-        Ui.Run(window, AppActions.Evaluate);
-        window.KeyTextInput("locked.Value");
-        Ui.Press(window, OperatingSystem.IsMacOS() ? "meta shift Enter" : "control shift Enter");
-        Ui.WaitFor(() => Watch(view) is { NeedsThreads: true }, () => $"the watch to say it needs another thread to run: {Watch(view)?.Value}", TimeSpan.FromSeconds(30));
-        Assert.Null(view.Moved);
-        Assert.DoesNotContain(view.Threads, t => t.Name == "Let go");
-
-        Control row = Ui.Row(window.DebugWindow.VariablesList, Watch(view)!);
-        Ui.Click(row.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, VariablesList.RunWithThreads)));
-        Ui.WaitFor(() => Watch(view)?.Value == "\"read under the lock\"" && view.Moved is not null, () => $"the watch run with every thread let go, and Variables' words of it: {Watch(view)?.Value}, {view.Moved}", TimeSpan.FromSeconds(30));
-        Assert.True(view.Threads.Any(t => t.Name == "Let go"), $"Threads lists only {string.Join(", ", view.Threads.Select(t => t.Name))}, not the thread Holder started while every thread ran");
-        Assert.Equal(stopped.Id, (threads.SelectedItem as DapThread)?.Id);
-        Assert.Equal(Debugging.Helpers.Debuggees.Line(Looping, "stop while the lock is held"), view.SelectedFrame?.Line);
-        Assert.Equal("Every thread ran while locked.Value was evaluated, so the values read before it may have moved, and implicit evaluation stays off until the program runs on", view.Moved);
-        Banner said = window.DebugWindow.GetVisualDescendants().OfType<Banner>().Single(b => b.IsEffectivelyVisible);
-        Assert.Equal(view.Moved, said.Said);
-
-        Ui.Click(said.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, Passenger.App.ToolWindows.DebugView.ReadAgain)));
-        Ui.WaitFor(() => view.Moved is null && said.Said is null, () => $"Read Again to read the values anew, the words over them gone: {view.Moved}");
-        Watched(view, "locked.Value", "\"read under the lock\"", "the watch read anew with the other threads held, Holder having let go of the lock");
-        threads.SelectedItem = view.Threads.First(t => t.Name == "Holder");
-        Ui.WaitFor(() => view.Frames.Any(f => f.Line == waits), () => $"Holder's frame past the lock in Call Stack: {Frames(view)}");
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-        window.Close();
-
-        static VariableNode? Watch(Passenger.App.ToolWindows.DebugModel view) => view.Tree.Rows.FirstOrDefault(r => r.Role == VariableRole.Watch && r.Name == "locked.Value");
-
-        static string Frames(Passenger.App.ToolWindows.DebugModel view) => string.Join("; ", view.Frames.Select(f => $"{f.Name}:{f.Line}"));
-    }
-
-    [AvaloniaFact]
-    public void A_condition_typed_into_a_breakpoints_popup_decides_where_it_stops()
+    private void A_condition_typed_into_a_breakpoints_popup_decides_where_it_stops()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1040,8 +1321,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_tracepoint_set_with_shift_click_logs_its_message_and_the_program_runs_on()
+    private void A_tracepoint_set_with_shift_click_logs_its_message_and_the_program_runs_on()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1070,8 +1350,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_breakpoints_window_lists_every_breakpoint_and_turns_one_off()
+    private void The_breakpoints_window_lists_every_breakpoint_and_turns_one_off()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1092,8 +1371,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_exception_breakpoint_added_by_its_type_stops_where_that_type_is_thrown_as_its_condition_allows_and_at_no_other_type()
+    private void An_exception_breakpoint_added_by_its_type_stops_where_that_type_is_thrown_as_its_condition_allows_and_at_no_other_type()
     {
         Write("Program.cs", "for (int turn = 1; turn <= 3; turn++)\n{\n    try\n    {\n        throw new ArgumentException($\"argument {turn}\");\n    }\n"
             + "    catch (ArgumentException)\n    {\n    }\n    try\n    {\n        throw new InvalidOperationException($\"operation {turn}\");\n    }\n"
@@ -1125,8 +1403,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>An exception breakpoint whose condition cannot be told stops where its type is thrown, and the breakpoint
     /// says why, as a line breakpoint does.</summary>
-    [AvaloniaFact]
-    public void An_exception_breakpoints_condition_that_cannot_be_told_stops_at_the_throw_and_says_why_on_the_breakpoint()
+    private void An_exception_breakpoints_condition_that_cannot_be_told_stops_at_the_throw_and_says_why_on_the_breakpoint()
     {
         Write("Program.cs", "for (int turn = 1; turn <= 2; turn++)\n{\n    try\n    {\n        throw new InvalidOperationException($\"operation {turn}\");\n    }\n"
             + "    catch (InvalidOperationException)\n    {\n    }\n}\nConsole.WriteLine(\"done\");\n");
@@ -1150,8 +1427,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_exception_breakpoints_handler_options_stop_it_where_the_users_code_leaves_the_exception_or_where_it_handles_it()
+    private void An_exception_breakpoints_handler_options_stop_it_where_the_users_code_leaves_the_exception_or_where_it_handles_it()
     {
         // The first is handled where it is thrown; List.Sort catches the comparer's and throws its own, which the program handles.
         Write("Program.cs", "try\n{\n    throw new InvalidOperationException(\"caught by the program\");\n}\ncatch (InvalidOperationException)\n{\n}\n"
@@ -1203,8 +1479,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Mute_breakpoints_lets_a_run_pass_a_line_breakpoint_and_an_exception_breakpoint_and_unmuting_stops_it_again()
+    private void Mute_breakpoints_lets_a_run_pass_a_line_breakpoint_and_an_exception_breakpoint_and_unmuting_stops_it_again()
     {
         Write("Program.cs", "for (int turn = 1; turn <= 2; turn++)\n{\n    Console.WriteLine($\"turn {turn}\");\n    try\n    {\n"
             + "        throw new InvalidOperationException($\"turn {turn}\");\n    }\n    catch (InvalidOperationException)\n    {\n    }\n"
@@ -1248,8 +1523,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_breakpoints_window_adds_and_removes_exception_breakpoints_and_the_folder_keeps_them()
+    private void The_breakpoints_window_adds_and_removes_exception_breakpoints_and_the_folder_keeps_them()
     {
         string settings = TestFolders.Create("settings-");
         try
@@ -1390,8 +1664,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>A stop where a local holds a string of megabytes shows the start of it in its row and in a hover, and
     /// Copy Value still has all of it.</summary>
-    [AvaloniaFact]
-    public void A_string_of_megabytes_shows_its_start_in_variables_and_a_hover_without_holding_the_window()
+    private void A_string_of_megabytes_shows_its_start_in_variables_and_a_hover_without_holding_the_window()
     {
         Write("Program.cs", "string big = new string('x', 4_000_000);\nint n = big.Length;\nConsole.WriteLine(n);\n");
         MainWindow window = Open();
@@ -1426,8 +1699,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>An expression evaluated at a stop runs once, when it is asked: its result is that stop's, gone once the
     /// program goes on, never evaluated again at a later stop. At the next stop, a value set in Variables is the one
     /// the program goes on with.</summary>
-    [AvaloniaFact]
-    public void An_expression_evaluated_at_a_stop_runs_once_with_the_stop_and_a_value_set_in_variables_is_the_one_the_program_goes_on_with()
+    private void An_expression_evaluated_at_a_stop_runs_once_with_the_stop_and_a_value_set_in_variables_is_the_one_the_program_goes_on_with()
     {
         MainWindow window = Open();
         window.EditorArea.CodeEditor.GoTo(new TextPosition(3, 4));
@@ -1475,8 +1747,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>An element listed under a range (an array longer than a hundred, a row of a two-dimensional one) takes a
     /// value set in its row as any element does: the range's row is no step of the expression that reaches it.</summary>
-    [AvaloniaFact]
-    public void A_value_set_on_an_element_listed_under_a_range_is_the_one_the_program_goes_on_with()
+    private void A_value_set_on_an_element_listed_under_a_range_is_the_one_the_program_goes_on_with()
     {
         Write("Program.cs", "int[] numbers = new int[250];\nint[,] grid = new int[2, 2];\nConsole.WriteLine($\"set {numbers[150]} {grid[1, 0]}\");\n");
         MainWindow window = Open();
@@ -1520,8 +1791,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>A base class's field that a derived class hides by its name takes a value set in its own row: the base's
     /// field changes, the derived one's stays as it was.</summary>
-    [AvaloniaFact]
-    public void A_value_set_on_a_hidden_base_field_changes_that_field_and_not_the_one_hiding_it()
+    private void A_value_set_on_a_hidden_base_field_changes_that_field_and_not_the_one_hiding_it()
     {
         Write("Program.cs", "Derived item = new();\nConsole.WriteLine($\"counts {((Base)item).count} {item.count}\");\n\n"
             + "class Base\n{\n    public int count = 1;\n}\n\nclass Derived : Base\n{\n    public new int count = 2;\n}\n");
@@ -1547,41 +1817,9 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.Close();
     }
 
-    /// <summary>Under a Base local holding a Derived, a member only Derived declares, a Derived field hiding a base one and
-    /// the base's field each take a value set in their own rows, which reach the first two through a cast to Derived.</summary>
-    [AvaloniaFact]
-    public void Values_set_on_a_derived_objects_own_members_under_a_base_variable_change_those_members()
-    {
-        Write("Program.cs", "Base item = new Derived();\nConsole.WriteLine($\"members {((Derived)item).extra} {((Derived)item).count} {item.count}\");\n\n"
-            + "class Base\n{\n    public int count = 1;\n}\n\nclass Derived : Base\n{\n    public int extra = 3;\n    public new int count = 2;\n}\n");
-        MainWindow window = Open();
-        window.EditorArea.CodeEditor.GoTo(new TextPosition(1, 0));
-        Ui.Run(window, AppActions.ToggleBreakpoint);
-        StartDebugging(window);
-        WaitDebugging(window, () => Row(window, "item") is not null, "the stop before the line that writes the members");
-
-        (string Name, int Index, string Expression, string Value)[] rows =
-            [("extra", 0, "((Derived)item).extra", "7"), ("count", 0, "((Derived)item).count", "5"), ("count", 1, "item.count", "9")];
-        foreach ((string name, int index, string expression, string value) in rows)
-        {
-            VariableNode member = Member(window, name, index);
-            Assert.True(member.Expression == expression, $"{name}'s row reaches it as {member.Expression}, where a Base variable reaches it as {expression}");
-            SetInRow(window, member, value);
-            Assert.True(window.Status?.StartsWith("Could not set", StringComparison.Ordinal) != true, $"Set Value on {member.Expression} was refused: {window.Status}");
-        }
-        Ui.Run(window, AppActions.Resume);
-        WaitDebugging(window, () => window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("members ", StringComparison.Ordinal),
-            "the program to write the members");
-        Assert.True(window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("members 7 5 9", StringComparison.Ordinal),
-            $"The program wrote {window.BottomPanel.Debug.Console.Document.Snapshot}, where extra set to 7, Derived's count to 5 and the base's to 9 write 7 5 9");
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-        window.Close();
-    }
-
     /// <summary>Under an interface local holding a struct, the property the interface declares takes a value set in its row,
     /// which reaches it through the interface, with no cast: the struct the local holds boxed is the one changed.</summary>
-    [AvaloniaFact]
-    public void A_value_set_on_an_interface_property_of_a_struct_held_through_the_interface_changes_the_held_struct()
+    private void A_value_set_on_an_interface_property_of_a_struct_held_through_the_interface_changes_the_held_struct()
     {
         Write("Program.cs", "IShape item = new Square();\nConsole.WriteLine($\"side {item.Side}\");\n\n"
             + "interface IShape\n{\n    int Side { get; set; }\n}\n\nstruct Square : IShape\n{\n    public int Side { get; set; }\n}\n");
@@ -1607,8 +1845,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A HashSet's element, a dictionary entry's Value and a list's explicit interface implementation, each added to
     /// Watches from its row, evaluate there to the row's value; Raw View, a row the debugger adds, has Set Value, Add to
     /// Watches and Inspect greyed, each saying why.</summary>
-    [AvaloniaFact]
-    public void A_hashset_element_a_dictionary_entrys_value_and_an_explicit_interface_member_added_to_watches_evaluate()
+    private void A_hashset_element_a_dictionary_entrys_value_and_an_explicit_interface_member_added_to_watches_evaluate()
     {
         Write("Program.cs", "HashSet<int> set = [7, 9];\nDictionary<string, int> ages = new() { [\"Ada\"] = 36 };\nList<string> names = [\"Ada\", \"Grace\"];\n"
             + "Console.WriteLine($\"rows {set.Count} {ages.Count} {names.Count}\");\n");
@@ -1650,8 +1887,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A HashSet's element, shown through the debugger's copy, has Set Value greyed saying why, F2 opening nothing,
     /// while Add to Watches and Inspect stay offered; a nullable struct's member under its Value, added to Watches from its
     /// row, evaluates there and takes a value set in its row, which the program goes on with.</summary>
-    [AvaloniaFact]
-    public void A_hashset_elements_set_value_is_greyed_saying_why_and_a_nullable_structs_member_is_watched_and_set()
+    private void A_hashset_elements_set_value_is_greyed_saying_why_and_a_nullable_structs_member_is_watched_and_set()
     {
         Write("Program.cs", "HashSet<int> set = [7, 9];\nSpot? place = new Spot(3, 4);\nConsole.WriteLine($\"place {set.Count} {place?.X}\");\n\n"
             + "record struct Spot(int X, int Y);\n");
@@ -1718,8 +1954,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     }
 
     /// <summary>The value under a pointer's row, what it points at, takes a value set in that row.</summary>
-    [AvaloniaFact]
-    public void A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with()
+    private void A_value_set_on_what_a_pointer_points_at_is_the_one_the_program_goes_on_with()
     {
         Write("Sum.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>", "<AllowUnsafeBlocks>true</AllowUnsafeBlocks>"));
         Write("Program.cs", "Pointing.Run();\n\nstatic class Pointing\n{\n    public static unsafe void Run()\n    {\n        int number = 42;\n"
@@ -1757,8 +1992,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.WaitFor(() => window.BottomPanel.Debug.Tree.Rows.FirstOrDefault(r => r.Depth == 0) is { } again && again != top, "the variables shown again once the value was set");
     }
 
-    [AvaloniaFact]
-    public void An_evaluation_that_could_not_be_stopped_leaves_the_program_paused_and_a_step_goes_on_once_it_returns()
+    private void An_evaluation_that_could_not_be_stopped_leaves_the_program_paused_and_a_step_goes_on_once_it_returns()
     {
         // A getter that reads input the program has not been given: an evaluation of it cannot be stopped, and runs on.
         Write("Program.cs", "Counted counted = new();\nint total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += i;\n}\nConsole.WriteLine($\"total {total} {counted.Count}\");\n\n"
@@ -1822,8 +2056,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// run 1.5 s in the program) shows the program running at once and sets it going before the evaluation under way
     /// ends: its other thread, which an evaluation at a stop holds, ticks while that evaluation still spins, and the
     /// evaluation ends in the program, which goes on from it to the next stop.</summary>
-    [AvaloniaFact]
-    public void Continue_pressed_while_a_stops_values_are_read_shows_the_program_running_at_once_and_sets_it_going()
+    private void Continue_pressed_while_a_stops_values_are_read_shows_the_program_running_at_once_and_sets_it_going()
     {
         string engineLog = Path.Combine(Fresh(), "engine.log");
         string? kept = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable);
@@ -1900,8 +2133,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A program debugged with Hot Reload and stopped at once finds the thread of Passenger's hook in it in its call
     /// of the system's receive, partway through nothing an evaluation there could need, and on macOS and Linux, where .NET's
     /// sockets have a thread of their own, no such thread in a program that made no socket.</summary>
-    [AvaloniaFact]
-    public void A_program_stopped_at_once_finds_the_hooks_thread_waiting_in_its_read_with_no_thread_of_its_beside_it()
+    private void A_program_stopped_at_once_finds_the_hooks_thread_waiting_in_its_read_with_no_thread_of_its_beside_it()
     {
         string hook = Passenger.UpdateHandlers.Wire.ThreadName;
         Write("Program.cs", "Probe probe = new();\nConsole.WriteLine(probe);\nThread.Sleep(500);\nConsole.WriteLine(\"slept\");\n\n"
@@ -1937,29 +2169,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         string Frames() => string.Join("; ", view.Frames.Select(f => f.Name));
     }
 
-    /// <summary>An exception whose own Message outlasts the debugger's wait for code it runs is still named where the
-    /// program stopped, by its type and the message it was made with, beside the stop's frames and locals.</summary>
-    [AvaloniaFact]
-    public void An_exception_whose_Message_outlasts_the_debuggers_wait_is_still_named_where_the_program_stopped()
-    {
-        Write("Program.cs", "int index = 5;\nthrow new Slow(\"made slow\");\n\nsealed class Slow(string message) : Exception(message)\n{\n"
-            + "    public override string Message { get { Thread.Sleep(8000); return \"late\"; } }\n}\n");
-        MainWindow window = Open();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        StartDebugging(window);
-        WaitDebugging(window, () => window.BottomPanel.Debug.Frames.Count > 0, "the stop's frames");
-        Assert.Equal(2, window.BottomPanel.Debug.Frames[0].Line);
-        Assert.Contains(new LineMark(1, LineMarkKind.ExecutionPoint), editor.LineMarks);
-        Ui.WaitFor(() => Value(window, "index") == "5", "the stop's locals");
-        Ui.WaitFor(() => Thrown(editor) == (1, "Slow: made slow"), () => $"the exception named at its line by what it was made with, where the line says {Thrown(editor)}");
-        Assert.Contains("paused on Slow: made slow", window.Status, StringComparison.Ordinal);
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_value_from_the_stop_before_a_step_opens_to_an_error_never_to_another_values_members()
+    private void A_value_from_the_stop_before_a_step_opens_to_an_error_never_to_another_values_members()
     {
         Write("Program.cs", "static class Program\n{\n    static void Main()\n    {\n        Inner inner = new();\n        Visited visited = new();\n"
             + "        Visit(visited);\n        Console.WriteLine(Console.ReadLine());\n    }\n\n    static void Visit(Visited visited)\n    {\n"
@@ -2013,8 +2223,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>What is typed into the Debug console is the program's input; and Pause stops the program where it runs on in
     /// its loop, shown there.</summary>
-    [AvaloniaFact]
-    public void What_is_typed_into_the_debug_console_is_the_programs_input_and_pause_stops_it_where_it_is_in_its_loop()
+    private void What_is_typed_into_the_debug_console_is_the_programs_input_and_pause_stops_it_where_it_is_in_its_loop()
     {
         // Said by another thread once the loop has turned: said before it, a pause could find the program in its write.
         Write("Program.cs", "Console.Write(\"Name? \");\nstring? name = Console.ReadLine();\nConsole.WriteLine($\"read: {name}\");\n"
@@ -2046,8 +2255,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A program debugged prints 100,000 lines each in a colour of its own, then a line in .NET's console colour
     /// (with TERM set, as an IDE started from a terminal passes on): the Debug console keeps the end of them within its
     /// limit, free of colour codes, each line in its colour, .NET's too where it writes colours into a pipe once told.</summary>
-    [AvaloniaFact]
-    public void Debugging_a_program_that_prints_100000_coloured_lines_shows_them_in_their_colours_free_of_colour_codes_within_its_limit()
+    private void Debugging_a_program_that_prints_100000_coloured_lines_shows_them_in_their_colours_free_of_colour_codes_within_its_limit()
     {
         Write("Program.cs", "Environment.SetEnvironmentVariable(\"TERM\", \"xterm-256color\");\n"
             + "for (int i = 0; i < 100_000; i++)\n{\n    Console.WriteLine($\"\\u001b[3{i % 7 + 1}mline {i}\\u001b[0m\");\n}\n"
@@ -2082,8 +2290,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
-    [AvaloniaFact]
-    public void A_debugger_that_dies_with_an_exception_leaves_the_window_up_with_its_words_in_the_console_and_the_log()
+    private void A_debugger_that_dies_with_an_exception_leaves_the_window_up_with_its_words_in_the_console_and_the_log()
     {
         // A folder in the engine log's place kills the adapter as it starts, its stack trace on standard error.
         string folderForLog = TestFolders.Create("engine-log-");
@@ -2121,8 +2328,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
-    [AvaloniaFact]
-    public void A_debugger_killed_while_its_program_is_paused_takes_the_program_with_it()
+    private void A_debugger_killed_while_its_program_is_paused_takes_the_program_with_it()
     {
         string started = Path.Combine(TestFolders.Create("debuggee-"), "program.pid");
         MainWindow window = OpenSleeper(started, languageServer: false);
@@ -2154,8 +2360,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A configuration started again ends what runs of it first, whichever of Run and Debug started it: Run of the
     /// one debugged ends the debugged program and its session, Debug of the one Run runs ends that run, one copy running
     /// after each.</summary>
-    [AvaloniaFact]
-    public void Run_of_a_debugged_configuration_and_Debug_of_a_run_one_each_end_it_first_leaving_one_copy()
+    private void Run_of_a_debugged_configuration_and_Debug_of_a_run_one_each_end_it_first_leaving_one_copy()
     {
         string started = Path.Combine(TestFolders.Create("debuggee-"), "program.pid");
         MainWindow window = OpenSleeper(started, languageServer: false);
@@ -2191,8 +2396,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>Run or Debug pressed as the other's start of the same configuration is under way, its program not started
     /// yet, stops that start first, as it ends one that runs: Run as Debug's start begins leaves Run's program running alone
     /// and no session open, and Debug as Run's start begins leaves the debugged program alone and the Run console free.</summary>
-    [AvaloniaFact]
-    public void Run_or_Debug_pressed_as_the_others_start_of_a_configuration_is_under_way_stops_that_start_leaving_one_copy()
+    private void Run_or_Debug_pressed_as_the_others_start_of_a_configuration_is_under_way_stops_that_start_leaving_one_copy()
     {
         string started = Path.Combine(TestFolders.Create("debuggee-"), "program.pid");
         MainWindow window = OpenSleeper(started, languageServer: false);
@@ -2239,8 +2443,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         static string Listed(int[]? ids) => ids is null ? "unknown" : string.Join(", ", ids.Select(Processes.Describe));
     }
 
-    [AvaloniaFact]
-    public void Closing_the_window_while_debugging_leaves_no_program_debugger_or_language_server_running()
+    private void Closing_the_window_while_debugging_leaves_no_program_debugger_or_language_server_running()
     {
         string started = Path.Combine(TestFolders.Create("debuggee-"), "program.pid");
         // A server of the window's own, which its close is to end, not one it would leave for the next window.
@@ -2349,8 +2552,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         }
     }
 
-    [AvaloniaFact]
-    public void Debug_tests_with_a_test_host_the_debugger_cannot_attach_to_ends_the_session_saying_why()
+    private void Debug_tests_with_a_test_host_the_debugger_cannot_attach_to_ends_the_session_saying_why()
     {
         // What VSTest hands the IDE to attach to, here a host with no .NET in it.
         using Process host = Debugging.Helpers.Debuggees.NotDotnet();
@@ -2375,8 +2577,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// command line has it inside), its row chosen and Enter attaches; Detach lets it go still waiting, and Reattach to
     /// Process takes hold of it again; then the line it reads brings it to the breakpoint, and Detach leaves it running
     /// on past the breakpoint to its end, reading and writing as it would have undebugged.</summary>
-    [AvaloniaFact]
-    public void Attach_to_process_stops_a_program_started_outside_passenger_at_a_breakpoint_it_then_reaches_and_detach_leaves_it_running_to_its_end()
+    private void Attach_to_process_stops_a_program_started_outside_passenger_at_a_breakpoint_it_then_reaches_and_detach_leaves_it_running_to_its_end()
     {
         string source = PathNames.Canonical(Debugging.Helpers.Debuggees.Source("ReadsInputConsoleApp", "Program.cs"));
         int line = Debugging.Helpers.Debuggees.Line("ReadsInputConsoleApp", "Console.WriteLine") - 1;
@@ -2445,8 +2646,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>Attach to Process lists the .NET programs running and nothing else: not a program with no .NET in it, not
     /// Passenger itself, and not a process that took the number of a .NET program which crashed and left its debugger
     /// pipes behind; a program's command line shows with its secrets masked, and what the search finds of none says so.</summary>
-    [AvaloniaFact]
-    public void Attach_to_process_lists_dotnet_programs_alone()
+    private void Attach_to_process_lists_dotnet_programs_alone()
     {
         using Process other = Debugging.Helpers.Debuggees.NotDotnet();
         ProcessStartInfo start = ChildProcesses.Command(Debugging.Helpers.Debuggees.Apphost("LoopingConsoleApp"), ["sleep", "--Password=hunter2-in-a-row", "--ApiKey=sk-live-123456"]);
@@ -2506,8 +2706,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
     /// <summary>A program attached to ran before Passenger did: closing the window lets go of it, as Detach does, and it
     /// runs on, where a program the debugger started ends with the window.</summary>
-    [AvaloniaFact]
-    public void Closing_the_window_while_attached_lets_go_of_the_program_which_runs_on()
+    private void Closing_the_window_while_attached_lets_go_of_the_program_which_runs_on()
     {
         ProcessStartInfo start = ChildProcesses.Command(Debugging.Helpers.Debuggees.Apphost("LoopingConsoleApp"), ["sleep"]);
         start.RedirectStandardOutput = true;
@@ -2596,8 +2795,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// runs; let go, it reads the key and the line typed into its tab, and its end is told there and in the status bar
     /// with its exit code. Debugged again, starting a child, Stop ends it with what it started, and its tab says it was
     /// ended.</summary>
-    [AvaloniaFact]
-    public void Debugged_in_the_terminal_a_program_stops_on_Mains_first_line_reads_what_is_typed_there_and_stop_ends_it_and_what_it_started()
+    private void Debugged_in_the_terminal_a_program_stops_on_Mains_first_line_reads_what_is_typed_there_and_stop_ends_it_and_what_it_started()
     {
         Write("Program.cs", File.ReadAllText(Debugging.Helpers.Debuggees.Source("TerminalConsoleApp", "Program.cs")));
         MainWindow window = InTerminal(string.Empty);
@@ -2664,8 +2862,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// console's pipe) is offered one at the debugger's stop on the exception, read from the exception the debugger has
     /// before the runtime writes it: the Debugger tab and the console say so, and Debug in the Terminal debugs it again in a
     /// tab of the Terminal window, where it reads a key typed there, the configuration using the terminal from then on.</summary>
-    [AvaloniaFact]
-    public void A_program_debugged_needing_a_terminal_is_offered_one_at_its_stop_on_the_exception_and_reads_a_key_there()
+    private void A_program_debugged_needing_a_terminal_is_offered_one_at_its_stop_on_the_exception_and_reads_a_key_there()
     {
         Write("Program.cs", "Console.WriteLine(\"key?\");\nConsoleKeyInfo key = Console.ReadKey(intercept: true);\nConsole.WriteLine($\"key {key.KeyChar}\");\n");
         MainWindow window = Open();
@@ -2707,8 +2904,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>A breakpoint set while the debugger still waits for the program's runtime (here held at its start, a
     /// diagnostic port of the test's own), the first in a file of its own, reaches the program once it runs and stops
     /// it.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_set_while_debugging_starts_reaches_the_program_and_stops_it()
+    private void A_breakpoint_set_while_debugging_starts_reaches_the_program_and_stops_it()
     {
         Write("Program.cs", "Console.ReadLine();\nOther.Run();\n");
         string other = Write("Other.cs", "static class Other\n{\n    public static void Run()\n    {\n        Console.WriteLine(\"other ran\");\n    }\n}\n");
@@ -2758,8 +2954,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// held at its start, a diagnostic port of the test's own) shows Stop on the toolbar and in the Debug window while
     /// the debugger waits, and Stop ends it at once, the program and the debugger with it, the Debug window and the
     /// status bar saying it was stopped.</summary>
-    [AvaloniaFact]
-    public void Stop_ends_a_debug_session_whose_program_is_still_starting_and_the_program_with_it()
+    private void Stop_ends_a_debug_session_whose_program_is_still_starting_and_the_program_with_it()
     {
         using Debugging.Helpers.StartHold hold = new();
         MainWindow window = Open();
@@ -2807,63 +3002,6 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             program.Kill();
             adapter.Kill();
         }
-    }
-
-    /// <summary>The Run window's Rerun ends only what Run started: a program debugged meanwhile, paused at a breakpoint, stays
-    /// paused in its session while Run's program is stopped and run again.</summary>
-    [AvaloniaFact]
-    public void The_run_windows_rerun_runs_runs_program_again_and_leaves_a_debugged_program_paused()
-    {
-        string runs = Path.Combine(PathNames.Canonical(Fresh()), "runs.pids");
-        Write("Program.cs", "if (Environment.GetEnvironmentVariable(\"PASSENGER_PIDS\") is { } file)\n{\n" +
-            "    File.AppendAllText(file, $\"{Environment.ProcessId}\\n\");\n    Thread.Sleep(Timeout.Infinite);\n}\nConsole.WriteLine(\"debugged\");\n");
-        MainWindow window = Open();
-        string project = Path.Combine(PathNames.Canonical(Folder), "Sum.csproj");
-        List<Passenger.App.Run.RunConfiguration> configurations =
-        [
-            new() { Name = "Debugged", Project = project },
-            new() { Name = "Ran", Project = project, Environment = new Dictionary<string, string> { ["PASSENGER_PIDS"] = runs } },
-        ];
-        window.SetConfigurations(configurations, "Debugged");
-        window.EditorArea.CodeEditor.GoTo(new TextPosition(5, 0));
-        Ui.Run(window, AppActions.ToggleBreakpoint);
-        StartDebugging(window);
-        WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Paused, "the debugged program to stop at the breakpoint");
-        DebugSession debugged = window.Debugger.Session!;
-        int program = Ui.Await(debugged.ProcessStarted, "the adapter to say which process it started");
-        // Each as it is first read, while it runs: by the end the first has gone, and its id may be another program's.
-        List<OwnProcess> own = [OwnProcess.Of(program)];
-        try
-        {
-            window.SetConfigurations(configurations, "Ran");
-            Assert.True(window.Perform(AppActions.RunProgram), $"Run did not start: {Ui.Said(window)}");
-            Ui.WaitFor(() => Runs().Length == 1, "Run's program to start", TimeSpan.FromMinutes(2));
-            int first = Runs()[0];
-            own.Add(OwnProcess.Of(first));
-
-            Button rerun = window.BottomPanel.Run.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Rerun", StringComparison.Ordinal));
-            Ui.Click(rerun);
-            Ui.WaitFor(() => Runs().Length == 2, "Run's program to run again", TimeSpan.FromMinutes(2));
-            own.Add(OwnProcess.Of(Runs()[1]));
-            Assert.True(Processes.Gone(first), $"Rerun left Run's first program going: {Processes.Describe(first)}");
-            Assert.True(window.IsRunning, "The program Rerun started again is not running");
-            Assert.True(window.Debugger.Session == debugged && debugged.State == DebugState.Paused,
-                $"Rerun of Run's program ended the debug session beside it: {Debugged(window)}");
-            Assert.True(Processes.IsRunning(program), $"Rerun of Run's program ended the program being debugged ({program})");
-
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, "Stop to end the debugged program and Run's");
-        }
-        finally
-        {
-            foreach (OwnProcess left in own)
-            {
-                left.Kill();
-            }
-        }
-        window.Close();
-
-        int[] Runs() => File.Exists(runs) ? [.. Ui.Shared(runs).Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)] : [];
     }
 
     /// <summary>The window over the folder, its configuration "Sum in the terminal" debugging Sum in the terminal with these
