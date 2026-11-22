@@ -305,7 +305,7 @@ public sealed class ProfilingSession : IAsyncDisposable
         {
             if (!resume)
             {
-                session = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(Providers, requestRundown: true, circularBufferMB: 512, cancellation);
+                session = await (await DiagnosticPorts.ClientAsync(processId)).StartEventPipeSessionAsync(Providers, requestRundown: true, circularBufferMB: 512, cancellation);
             }
             else
             {

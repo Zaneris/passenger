@@ -33,7 +33,7 @@ internal static class GcHeapDump
     public static async Task<(HeapGraph Graph, int Collection, TimeSpan Took)> ReadAsync(int processId, CancellationToken cancel)
     {
         long began = System.Diagnostics.Stopwatch.GetTimestamp();
-        EventPipeSession session = await StartAsync(new DiagnosticsClient(processId), cancel);
+        EventPipeSession session = await StartAsync(await DiagnosticPorts.ClientAsync(processId), cancel);
         Heard heard = new();
         using EventPipeEventSource source = new(session.EventStream);
         heard.Follow(source);

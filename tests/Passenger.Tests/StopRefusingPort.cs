@@ -4,8 +4,9 @@ using System.Net.Sockets;
 
 namespace Passenger.Tests;
 
-/// <summary>A stand-in in front of a program's diagnostic port, at the address the diagnostics library takes first for its
-/// process (a router's: a socket in the temporary folder, a named pipe on Windows). Each connection made to it is passed
+/// <summary>A stand-in in front of a program's diagnostic port, at the address Passenger's client takes first for its
+/// process (a router's: a socket beside the program's own, <see cref="Passenger.Core.DiagnosticPorts.RouterOf"/>, a named
+/// pipe on Windows). Each connection made to it is passed
 /// through to the program's own port, but an EventPipe session's stop, though passed on, so the program ends the session
 /// and closes its stream, is answered with an error, as a runtime that refuses the stop answers. Disposed, it stops
 /// listening and ends what it passes through: on the UI thread with the window's loop running.</summary>
@@ -41,8 +42,7 @@ public sealed class StopRefusingPort : IDisposable
             accepting = Waiting.Apart(() => AcceptPipesAsync());
             return;
         }
-        // Newer than the program's own socket, as the library takes a router's only then.
-        address = Path.Combine(SocketFolder(processId), $"dotnet-diagnostic-dsrouter-{processId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-socket");
+        address = Passenger.Core.DiagnosticPorts.RouterOf(processId) ?? throw new InvalidOperationException($"Process {processId} could not be read");
         listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(new UnixDomainSocketEndPoint(address));
         listener.Listen();
@@ -189,22 +189,10 @@ public sealed class StopRefusingPort : IDisposable
             await pipe.ConnectAsync(TimeSpan.FromSeconds(10), end.Token);
             return pipe;
         }
-        string own = Directory.GetFiles(SocketFolder(processId), $"dotnet-diagnostic-{processId}-*-socket").OrderByDescending(f => File.GetLastWriteTimeUtc(f)).First();
+        string own = Passenger.Core.RuntimeFiles.Of(processId)?.Socket ?? throw new InvalidOperationException($"Process {processId} has gone");
         Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await socket.ConnectAsync(new UnixDomainSocketEndPoint(own), end.Token);
         return new NetworkStream(socket, ownsSocket: true);
-    }
-
-    /// <summary>The folder the program's runtime keeps its socket in, where the library looks for it: on Linux the program's
-    /// own TMPDIR, read from its environment, else this process's temporary folder.</summary>
-    internal static string SocketFolder(int processId)
-    {
-        if (OperatingSystem.IsLinux()
-            && File.ReadAllText($"/proc/{processId}/environ").Split('\0').FirstOrDefault(v => v.StartsWith("TMPDIR=", StringComparison.Ordinal)) is { } set)
-        {
-            return set["TMPDIR=".Length..];
-        }
-        return Path.GetTempPath();
     }
 
     /// <summary>An error answered for the command: the server's Error, its payload the HRESULT.</summary>

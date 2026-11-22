@@ -10,13 +10,12 @@ using Passenger.Core;
 
 namespace Passenger.Tests;
 
-/// <summary>A stand-in in front of a program's diagnostic port, at the address the diagnostics library takes first for its
+/// <summary>A stand-in in front of a program's diagnostic port, at the address Passenger's client takes first for its
 /// process (a router's, as <see cref="StopRefusingPort"/> takes it), that takes every connection and answers none, as a
 /// runtime whose diagnostics are held up does. Any process of the machine may reach it, as a pipe's name on Windows and the
 /// temporary folder elsewhere are shared, so it keeps each connection's time, the process that made it and the request it
-/// sent (<see cref="Account"/>). On macOS and Linux it is taken only over a port of the program's own made before it.
-/// While it stands, a session's start in this process gives up after 4 s, as much longer as the run's scale, and the
-/// programs the process starts keep the IDE's own limit (<see cref="Passenger.Profiler.SessionStarts.HoldLimit"/>).
+/// sent (<see cref="Account"/>). While it stands, a session's start in this process gives up after 4 s, as much longer as
+/// the run's scale, and the programs the process starts keep the IDE's own limit (<see cref="Passenger.Profiler.SessionStarts.HoldLimit"/>).
 /// Disposed, it stops listening and lets each connection go: on the UI thread with the window's loop running.</summary>
 public sealed partial class SilentPort : IDisposable
 {
@@ -48,7 +47,7 @@ public sealed partial class SilentPort : IDisposable
             accepting = Waiting.Apart(() => AcceptPipesAsync(first));
             return;
         }
-        address = Path.Combine(StopRefusingPort.SocketFolder(processId), $"dotnet-diagnostic-dsrouter-{processId}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}-socket");
+        address = DiagnosticPorts.RouterOf(processId) ?? throw new InvalidOperationException($"Process {processId} could not be read");
         listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         listener.Bind(new UnixDomainSocketEndPoint(address));
         listener.Listen();

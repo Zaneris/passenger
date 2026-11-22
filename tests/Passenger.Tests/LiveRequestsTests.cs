@@ -348,8 +348,7 @@ public sealed class LiveRequestsTests
         return folder;
     }
 
-    /// <summary>Runs the quiet program, giving its process once it is up and its own diagnostic port is open: a router's port
-    /// is taken over it only when made after it.</summary>
+    /// <summary>Runs the quiet program, giving its process once it is up and its own diagnostic port is open.</summary>
     private static int RunQuiet(MainWindow window)
     {
         Assert.True(window.SelectConfiguration("Quiet: quiet"), $"No configuration Quiet: quiet among {string.Join(", ", window.Configurations.Select(c => c.Name))}");

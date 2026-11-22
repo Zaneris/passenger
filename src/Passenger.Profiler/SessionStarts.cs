@@ -56,7 +56,7 @@ public static class SessionStarts
         answered.CancelAfter(Limit);
         try
         {
-            DiagnosticsClient client = new(processId);
+            DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
             EventPipeSession started = await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, answered.Token);
             return await TurnedOnAsync(client, started, cancel);
         }

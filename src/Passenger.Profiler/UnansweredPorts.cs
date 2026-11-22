@@ -41,7 +41,7 @@ internal static class UnansweredPorts
         answered.CancelAfter(AnswerLimit);
         try
         {
-            await SessionStarts.NoProviderAsync(new DiagnosticsClient(processId), AnswerLimit, answered.Token).ConfigureAwait(false);
+            await SessionStarts.NoProviderAsync(await DiagnosticPorts.ClientAsync(processId).ConfigureAwait(false), AnswerLimit, answered.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {

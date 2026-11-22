@@ -158,7 +158,7 @@ public static class HeldStart
             {
                 try
                 {
-                    await ask(new DiagnosticsClient(process.Id)).ConfigureAwait(false);
+                    await ask(await DiagnosticPorts.ClientAsync(process.Id).ConfigureAwait(false)).ConfigureAwait(false);
                     return PortWait.Reached;
                 }
                 catch (ServerNotAvailableException)

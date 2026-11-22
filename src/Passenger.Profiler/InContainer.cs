@@ -41,7 +41,7 @@ public static class InContainer
                 {
                     await Task.Delay(due).ConfigureAwait(false);
                 }
-                session = await StartAsync(new DiagnosticsClient(processId)).ConfigureAwait(false);
+                session = await StartAsync(await DiagnosticPorts.ClientAsync(processId).ConfigureAwait(false)).ConfigureAwait(false);
             }
             else
             {

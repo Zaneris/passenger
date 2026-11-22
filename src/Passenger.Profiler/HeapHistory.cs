@@ -161,7 +161,7 @@ internal sealed class HeapHistory : IAsyncDisposable
     /// writes on.</summary>
     private async Task<Dumped> DumpAsync(string dump, Action<Task> started, CancellationToken cancel)
     {
-        DiagnosticsClient client = new(processId);
+        DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
         List<DateTime> samples = [];
         EventPipeSession sampling = await SessionStarts.OnAsync(client, [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)],
             circularBufferMB: 64, cancel);
@@ -307,7 +307,7 @@ internal sealed class HeapHistory : IAsyncDisposable
         {
             return;
         }
-        session = await SessionStarts.OnAsync(new DiagnosticsClient(processId),
+        session = await SessionStarts.OnAsync(await DiagnosticPorts.ClientAsync(processId),
             [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | MovementKeyword)], circularBufferMB: 256, cancel);
         source = new EventPipeEventSource(session.EventStream);
         source.Clr.GCStart += OnStart;
@@ -446,7 +446,7 @@ internal sealed class HeapHistory : IAsyncDisposable
         EventPipeSession started;
         try
         {
-            started = await new DiagnosticsClient(processId).StartEventPipeSessionAsync(
+            started = await (await DiagnosticPorts.ClientAsync(processId)).StartEventPipeSessionAsync(
                 [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, cancel);
         }
         catch (Exception error) when (DiagnosticsFailures.Of(error))

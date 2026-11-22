@@ -23,6 +23,9 @@ public sealed record RuntimeFiles(int Id, long Started, IReadOnlyList<string> Pa
         return new RuntimeFiles(id, started, [Named("dotnet-diagnostic", "socket"), Named("clr-debug-pipe", "in"), Named("clr-debug-pipe", "out")]);
     }
 
+    /// <summary>The diagnostic port's socket, where its runtime makes it (<see cref="DiagnosticPorts"/>).</summary>
+    public string Socket => Paths[0];
+
     /// <summary>Removes those still there once their process has gone: whether it has (its id and start no longer one
     /// running process's), so they are taken now; false while it runs, nothing taken.</summary>
     public bool Remove()
