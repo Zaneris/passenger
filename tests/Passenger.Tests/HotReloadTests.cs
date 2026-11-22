@@ -43,8 +43,39 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
 
     private string GreeterPath => Path.Combine(PathNames.Canonical(project.Folder), "Greeter.cs");
 
+    /// <summary>An edit reaches a running program's update handlers, applies once the program runs whether made as the
+    /// debugger starts it or between its build and launch, on save with a breakpoint on a line it added, to a module
+    /// loaded after, and while an apply works; a rude edit restarts it or asks, and an edit to a file saved since the
+    /// build applies nothing saying why, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
     [AvaloniaFact]
-    public void Commenting_out_a_statement_passes_Program_to_both_update_handlers()
+    public void Hot_Reload_applies_an_edit_to_a_running_program_however_and_whenever_it_comes()
+    {
+        Flow.StepApart("commenting out a statement passes Program to both update handlers", () => new HotReloadTests(project, plugins, spins), t => t.Commenting_out_a_statement_passes_Program_to_both_update_handlers());
+        Flow.StepApart("an edit made while the debugger starts the program is applied once it runs", () => new HotReloadTests(project, plugins, spins), t => t.An_edit_made_while_the_debugger_starts_the_program_is_applied_once_it_runs());
+        Flow.StepApart("an edit made between the build and the launch is applied once the program runs", () => new HotReloadTests(project, plugins, spins), t => t.An_edit_made_between_the_build_and_the_launch_is_applied_once_the_program_runs());
+        Flow.StepApart("with apply on save a saved edit reaches the program and a breakpoint on a line it added stops there", () => new HotReloadTests(project, plugins, spins), t => t.With_apply_on_save_a_saved_edit_reaches_the_program_and_a_breakpoint_on_a_line_it_added_stops_there());
+        Flow.StepApart("a module loaded after an update takes the edits to its project from then on", () => new HotReloadTests(project, plugins, spins), t => t.A_module_loaded_after_an_update_takes_the_edits_to_its_project_from_then_on());
+        Flow.StepApart("an edit typed while an apply works is applied by the next continue and a breakpoint below it binds to its line", () => new HotReloadTests(project, plugins, spins), t => t.An_edit_typed_while_an_apply_works_is_applied_by_the_next_continue_and_a_breakpoint_below_it_binds_to_its_line());
+        Flow.StepApart("a rude edit is named at its line and restarts the program with it and with always restart off asks until never", () => new HotReloadTests(project, plugins, spins), t => t.A_rude_edit_is_named_at_its_line_and_restarts_the_program_with_it_and_with_always_restart_off_asks_until_never());
+        Flow.StepApart("an edit to a file saved since the build the program runs applies nothing and says why in Roslyns words", () => new HotReloadTests(project, plugins, spins), t => t.An_edit_to_a_file_saved_since_the_build_the_program_runs_applies_nothing_and_says_why_in_Roslyns_words());
+    }
+
+    /// <summary>An edit applied while paused runs from the next call and a step goes through it, a step whose stepper
+    /// cannot be made again stops where its thread stands saying why, a running program goes on in the new code from
+    /// the next iteration, Set Next Statement goes to a moved line, and an edit applied again and again reaches a
+    /// spinning loop, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Hot_Reload_while_paused_or_stepping_goes_on_in_the_new_code()
+    {
+        Flow.StepApart("an edit applied while paused runs from the next call and a step after an edit goes through the edited code", () => new HotReloadTests(project, plugins, spins), t => t.An_edit_applied_while_paused_runs_from_the_next_call_and_a_step_after_an_edit_goes_through_the_edited_code());
+        Flow.StepApart("a step whose stepper cannot be made again in the new code stops where its thread stands saying why", () => new HotReloadTests(project, plugins, spins), t => t.A_step_whose_stepper_cannot_be_made_again_in_the_new_code_stops_where_its_thread_stands_saying_why());
+        Flow.StepApart("after a step an edit applied as the program runs goes on in the new code from the next iteration", () => new HotReloadTests(project, plugins, spins), t => t.After_a_step_an_edit_applied_as_the_program_runs_goes_on_in_the_new_code_from_the_next_iteration());
+        Flow.StepApart("after lines applied above while paused set next statement goes to a moved line which runs whole", () => new HotReloadTests(project, plugins, spins), t => t.After_lines_applied_above_while_paused_set_next_statement_goes_to_a_moved_line_which_runs_whole());
+        Flow.StepApart("an edit applied again and again while its method spins in a loop reaches the loop and never leaves it crawling", () => new HotReloadTests(project, plugins, spins), t => t.An_edit_applied_again_and_again_while_its_method_spins_in_a_loop_reaches_the_loop_and_never_leaves_it_crawling());
+    }
+
+    private void Commenting_out_a_statement_passes_Program_to_both_update_handlers()
     {
         File.WriteAllText(ProgramPath, """
             [assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(Program))]
@@ -93,8 +124,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>An edit applied while paused before a call is what that call runs; then, paused in the edited method, a step
     /// after another edit to it applies that one with no Apply, runs the paused statement in the new code and stops at the
     /// statement the edit added.</summary>
-    [AvaloniaFact]
-    public void An_edit_applied_while_paused_runs_from_the_next_call_and_a_step_after_an_edit_goes_through_the_edited_code()
+    private void An_edit_applied_while_paused_runs_from_the_next_call_and_a_step_after_an_edit_goes_through_the_edited_code()
     {
         MainWindow window = Open();
         try
@@ -148,8 +178,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>A step after an edit whose frame is remapped into the new code, the stepper it makes there failing to be
     /// set: the step stops where its thread stands, at the remapped statement not yet run, saying why in the Debug window's
     /// console, never letting the program run on unseen; a step from there goes on through the new code (#2029).</summary>
-    [AvaloniaFact]
-    public void A_step_whose_stepper_cannot_be_made_again_in_the_new_code_stops_where_its_thread_stands_saying_why()
+    private void A_step_whose_stepper_cannot_be_made_again_in_the_new_code_stops_where_its_thread_stands_saying_why()
     {
         string? was = Environment.GetEnvironmentVariable(global::Passenger.Dap.AdapterEnvironment.FailHandlingVariable);
         Environment.SetEnvironmentVariable(global::Passenger.Dap.AdapterEnvironment.FailHandlingVariable, "FunctionRemapComplete");
@@ -185,8 +214,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
 
     /// <summary>An edit typed while the debugger starts the program, its runtime held at its start, is one Apply Hot Reload
     /// Changes applies once the program runs: the program then greets as the edited code does.</summary>
-    [AvaloniaFact]
-    public void An_edit_made_while_the_debugger_starts_the_program_is_applied_once_it_runs()
+    private void An_edit_made_while_the_debugger_starts_the_program_is_applied_once_it_runs()
     {
         using Debugging.Helpers.StartHold hold = new();
         MainWindow window = Open();
@@ -230,8 +258,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
 
     /// <summary>An edit typed after Debug's build has saved the files, its launch held from beginning meanwhile, is one Apply
     /// Hot Reload Changes applies once the program runs: the program then greets as the edited code does.</summary>
-    [AvaloniaFact]
-    public void An_edit_made_between_the_build_and_the_launch_is_applied_once_the_program_runs()
+    private void An_edit_made_between_the_build_and_the_launch_is_applied_once_the_program_runs()
     {
         MainWindow window = Open();
         TaskCompletionSource edited = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -266,8 +293,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>With Hot Reload on save, a saved edit reaches the debugged program with no Apply; a breakpoint on the line the
     /// edit added then stops it there, its new local in Variables and the evaluator compiling against the method as the update
     /// made it.</summary>
-    [AvaloniaFact]
-    public void With_apply_on_save_a_saved_edit_reaches_the_program_and_a_breakpoint_on_a_line_it_added_stops_there()
+    private void With_apply_on_save_a_saved_edit_reaches_the_program_and_a_breakpoint_on_a_line_it_added_stops_there()
     {
         MainWindow window = Open();
         window.ApplySettings(window.Settings with { HotReloadOnSave = true });
@@ -304,8 +330,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>The comment above the field holds breaks Roslyn counts and the editor does not: the edit is named at
     /// the editor's line 4, not the compiler's 8, which only the console's message in a compiler's shape names, as a
     /// compiler would. Then, with always restart off, the next rude edit asks, and Never stops the asking.</summary>
-    [AvaloniaFact]
-    public void A_rude_edit_is_named_at_its_line_and_restarts_the_program_with_it_and_with_always_restart_off_asks_until_never()
+    private void A_rude_edit_is_named_at_its_line_and_restarts_the_program_with_it_and_with_always_restart_off_asks_until_never()
     {
         project.Write("Greeter.cs", $"static class Greeter\n{{\n    /* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\n    static int count;\n\n"
             + "    public static void Greet(int i)\n    {\n        count++;\n        Console.WriteLine($\"Hello {i} ({count})\");\n    }\n}\n");
@@ -381,8 +406,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>A file saved since the build the program runs, its time left before that build's so the build before Debug
     /// takes the build as up to date: an edit to it reaches nothing, and Hot Reload says why in Roslyn's words after "No
     /// managed code changes to apply", in the status bar, a link to Problems' Hot Reload tab, and in the Debug console.</summary>
-    [AvaloniaFact]
-    public void An_edit_to_a_file_saved_since_the_build_the_program_runs_applies_nothing_and_says_why_in_Roslyns_words()
+    private void An_edit_to_a_file_saved_since_the_build_the_program_runs_applies_nothing_and_says_why_in_Roslyns_words()
     {
         MainWindow window = Open();
         try
@@ -423,8 +447,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>A module the program loads after an update has been applied (a plugin's, which nothing it was built with
     /// references) takes the edits made to its project from then on: Hot Reload applies them and the program prints what the
     /// edited plugin prints.</summary>
-    [AvaloniaFact]
-    public void A_module_loaded_after_an_update_takes_the_edits_to_its_project_from_then_on()
+    private void A_module_loaded_after_an_update_takes_the_edits_to_its_project_from_then_on()
     {
         MainWindow window = plugins.Open(null);
         try
@@ -460,8 +483,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// the loop is under way, now while the program sleeps between spins: every update reaches the program, the next call
     /// running the new code and a spin under way going on in it at full speed to its end, and the runtime offers that
     /// spin's frame the new code a few times at most, never at every statement it runs.</summary>
-    [AvaloniaFact]
-    public void An_edit_applied_again_and_again_while_its_method_spins_in_a_loop_reaches_the_loop_and_never_leaves_it_crawling()
+    private void An_edit_applied_again_and_again_while_its_method_spins_in_a_loop_reaches_the_loop_and_never_leaves_it_crawling()
     {
         const int Applies = 8;
         string engineLog = Path.Combine(TestFolders.Create("hotreload-engine-"), "engine.log");
@@ -511,8 +533,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// the new code at the first statement the update left as it was: the next greeting is the edited one, its number
     /// following on, and the runtime offers the new code a few times, never at every statement of another pass through the
     /// old code.</summary>
-    [AvaloniaFact]
-    public void After_a_step_an_edit_applied_as_the_program_runs_goes_on_in_the_new_code_from_the_next_iteration()
+    private void After_a_step_an_edit_applied_as_the_program_runs_goes_on_in_the_new_code_from_the_next_iteration()
     {
         string engineLog = Path.Combine(TestFolders.Create("hotreload-engine-"), "engine.log");
         string? kept = Environment.GetEnvironmentVariable(Passenger.Dap.AdapterEnvironment.EngineLogVariable);
@@ -561,8 +582,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>Paused at the sleep, two lines typed above the greeting and applied leave the loop's frame in its code from
     /// before: Set Next Statement onto a line the edit added is refused, saying why, and onto the greeting, two lines down
     /// now, stops there, the program then greeting again, whole, before going on in the new code.</summary>
-    [AvaloniaFact]
-    public void After_lines_applied_above_while_paused_set_next_statement_goes_to_a_moved_line_which_runs_whole()
+    private void After_lines_applied_above_while_paused_set_next_statement_goes_to_a_moved_line_which_runs_whole()
     {
         MainWindow window = Open();
         try
@@ -607,8 +627,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
     /// <summary>Two lines typed above the greeting while an apply's update of another edit is being made, after Roslyn
     /// compiled that edit, are not the program's yet: a breakpoint on the greeting, two lines down, binds to the greeting's
     /// code, and Continue applies the two lines before the program goes on, which prints them and stops at the greeting.</summary>
-    [AvaloniaFact]
-    public void An_edit_typed_while_an_apply_works_is_applied_by_the_next_continue_and_a_breakpoint_below_it_binds_to_its_line()
+    private void An_edit_typed_while_an_apply_works_is_applied_by_the_next_continue_and_a_breakpoint_below_it_binds_to_its_line()
     {
         MainWindow window = Open();
         try
