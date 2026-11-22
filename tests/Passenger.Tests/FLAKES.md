@@ -30,6 +30,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `UnitTestsDebuggingTests`' `Debug_tests_stops_at_a_breakpoint_…` and `Stop_unit_tests_ends_a_debugged_run_…`, CI
+  44968934038 to 44995132904 (macOS and Linux), `DebuggerTests`'
+  `Debugged_in_the_terminal_a_program_stops_on_Mains_first_line_…`, CI 44968934038, 44970786971 and 44984656678 (macOS
+  gate, Linux report), and `HotReloadTests`' `An_edit_applied_while_paused_runs_from_the_next_call_…`, CI 44989932645
+  (macOS report shard 2): "left programs' runtime files … dotnet-diagnostic-…-socket". **The IDE**: Stop of a program
+  the debugger attached to (a test host VSTest started, a program in the terminal, an app attached to quietly for Hot
+  Reload) ends it through ICorDebug's Terminate, a kill, and the debugger took the runtime files only of a program it had
+  launched. It takes them of any program it ends but one on a device (be547a6a4, #2097). The tests, and #2095's flows of
+  them since (UnitTestsDebuggingTests', DebuggerTests' session-end and console flows, MemorySnapshotsTests' second flow,
+  which left a `clr-debug-pipe-…-out` on the Linux VM), pass on the Mac and the Linux VM; HotReloadTests' run is taken
+  for the same, its test not rerun.
 - `MauiCatalystTests`' `A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start`,
   CI 44984656678 to 45000646248 (macOS report shard 1), since 72ce5fd4f the Catalyst flow's last step: "Process … or …
   does not run …/MauiApp1". **The test was written before what it reads changed**: it debugged the app and then ran the
