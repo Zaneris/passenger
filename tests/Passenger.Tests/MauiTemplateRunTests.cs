@@ -20,7 +20,7 @@ namespace Passenger.Tests;
 /// them, so it is never one of the gate's.</summary>
 public sealed class MauiTemplateRunTests
 {
-    private static readonly TimeSpan Slow = TimeSpan.FromMinutes(15);
+    private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(15));
 
     /// <summary>How long a step after the build waits at most (the app's page up, the Debug build kept whole): each fails
     /// with its own words well before the test runner takes a test that has done nothing for 10 minutes as hung.</summary>
@@ -34,6 +34,7 @@ public sealed class MauiTemplateRunTests
     [AvaloniaFact]
     public void The_maui_templates_app_is_listed_with_this_machines_head_and_android_and_builds_each_head_to_what_this_machine_makes()
     {
+        using IDisposable hang = Limits.BeginHang();
         string folder = Made();
         try
         {
@@ -55,6 +56,7 @@ public sealed class MauiTemplateRunTests
         {
             Assert.Skip("A .NET MAUI app's Windows head runs only on Windows");
         }
+        using IDisposable hang = Limits.BeginHang();
         string folder = Made();
         try
         {

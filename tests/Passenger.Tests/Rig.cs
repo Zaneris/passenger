@@ -437,6 +437,38 @@ public sealed class TestRun : IAsyncDisposable
 public static class Limits
 {
     public static TimeSpan Scaled(this TimeSpan limit) => limit == Timeout.InfiniteTimeSpan ? limit : limit * TestRun.TimeScale;
+
+    /// <summary>The run's limit on one test, which no time scale lengthens: test-shards.py's HANG, CI's and just test's
+    /// <c>--blame-hang-timeout</c>, past which the test host is ended with nothing said of where the test stood.</summary>
+    public static readonly TimeSpan Hang = TimeSpan.FromMinutes(10);
+
+    /// <summary>When the running test's waits held to <see cref="WithinHang"/> give up, from <see cref="BeginHang"/>.</summary>
+    private static readonly AsyncLocal<Deadline?> HangEnd = new();
+
+    /// <summary>Starts the running test's time within <see cref="Hang"/>, less half a minute to tell a failure in, until the
+    /// scope ends: a test of minutes begins with it, so a wait that stalls fails naming itself before the run ends the test.</summary>
+    public static IDisposable BeginHang()
+    {
+        HangEnd.Value = Deadline.In(Hang - TimeSpan.FromSeconds(30));
+        return new HangScope();
+    }
+
+    /// <summary>A wait's limit as Ui's waits take one, before their scaling: <paramref name="limit"/>, or what is left of
+    /// the running test's time within <see cref="Hang"/> where that is less; <paramref name="limit"/> outside such a time.</summary>
+    public static TimeSpan WithinHang(TimeSpan limit)
+    {
+        if (HangEnd.Value is not { } end)
+        {
+            return limit;
+        }
+        TimeSpan left = end.Left / TestRun.TimeScale;
+        return left < limit ? left : limit;
+    }
+
+    private sealed class HangScope : IDisposable
+    {
+        public void Dispose() => HangEnd.Value = null;
+    }
 }
 
 /// <summary>A while as the IDE says one (<see cref="Durations.Said"/>), as a regular expression: its number to a tenth and its
