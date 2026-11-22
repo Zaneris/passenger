@@ -434,13 +434,13 @@ public sealed class TestRun : IAsyncDisposable
 /// <summary>A test's wall-clock limits, each written as the time on a developer's machine and given as that times the run's
 /// <see cref="TestRun.TimeScale"/>: Ui's waits scale what they are given, and every other limit a test sets goes through
 /// <see cref="Scaled"/>.</summary>
-public static class Limits
+public static partial class Limits
 {
     public static TimeSpan Scaled(this TimeSpan limit) => limit == Timeout.InfiniteTimeSpan ? limit : limit * TestRun.TimeScale;
 
-    /// <summary>The run's limit on one test, which no time scale lengthens: test-shards.py's HANG, CI's and just test's
-    /// <c>--blame-hang-timeout</c>, past which the test host is ended with nothing said of where the test stood.</summary>
-    public static readonly TimeSpan Hang = TimeSpan.FromMinutes(10);
+    /// <summary>The run's limit on one test, which no time scale lengthens, read from test-shards.py's HANG: CI's and just
+    /// test's <c>--blame-hang-timeout</c>, past which the test host is ended with nothing said of where the test stood.</summary>
+    public static readonly TimeSpan Hang = HangOfTheRun();
 
     /// <summary>When the running test's waits held to <see cref="WithinHang"/> give up, from <see cref="BeginHang"/>.</summary>
     private static readonly AsyncLocal<Deadline?> HangEnd = new();
@@ -469,6 +469,19 @@ public static class Limits
     {
         public void Dispose() => HangEnd.Value = null;
     }
+
+    /// <summary>tools/test-shards.py's HANG, which it writes in minutes; written otherwise, the tests fail, rather than hold
+    /// their waits to another limit than the run's.</summary>
+    private static TimeSpan HangOfTheRun()
+    {
+        string script = Path.Combine(Debugging.Helpers.Debuggees.Root, "tools", "test-shards.py");
+        System.Text.RegularExpressions.Match hang = HangWritten().Match(File.ReadAllText(script));
+        return hang.Success ? TimeSpan.FromMinutes(int.Parse(hang.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))
+            : throw new InvalidOperationException($"{script} gives no HANG in minutes (HANG = \"<minutes>m\"), the run's limit on a test, which the tests' long waits end within");
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^HANG = ""(\d+)m""$", System.Text.RegularExpressions.RegexOptions.Multiline)]
+    private static partial System.Text.RegularExpressions.Regex HangWritten();
 }
 
 /// <summary>A while as the IDE says one (<see cref="Durations.Said"/>), as a regular expression: its number to a tenth and its

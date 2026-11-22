@@ -64,7 +64,8 @@ TRIES = 3
 MOST_TESTS = 2000
 # How many more it may list for now, while #2095's batches bring it down, lowered as each lands until it is 0.
 ALLOWANCE = 0
-# A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit.
+# A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit;
+# in minutes, as the tests read it for their long waits to end within (Limits.Hang).
 HANG = "10m"
 # What a shard's dotnet test of a project wrote to its console, kept beside its results as it came (`test`), so a shard
 # stopped partway leaves what it ran.
