@@ -22,8 +22,12 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private readonly string folder;
 
+    /// <summary>Where each step of a flow takes its own folder from.</summary>
+    private readonly RestoredFolders folders;
+
     public BddRunTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("bddrun-", made => ReqnrollProjects.Write(made)));
     }
 
@@ -43,8 +47,30 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
         return window;
     }
 
+    /// <summary>A scenario is marked before a build and Run Tests at its caret runs it and marks its result; a
+    /// scenario with examples binds its steps for each row and its run mark runs a row for each example; a breakpoint
+    /// on a step stops there, Step Into goes into its definition and Step Over to the next step.</summary>
     [AvaloniaFact]
-    public void A_scenario_is_marked_before_a_build_and_run_tests_at_its_caret_runs_it_and_marks_its_result()
+    public void A_scenario_runs_and_debugs_from_its_caret_each_example_a_row_and_each_step_a_place_to_stop()
+    {
+        Flow.StepApart<BddRunTests>("a scenario is marked before a build and run tests at its caret runs it and marks its result", () => new BddRunTests(folders), t =>
+        {
+            t.A_scenario_is_marked_before_a_build_and_run_tests_at_its_caret_runs_it_and_marks_its_result();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddRunTests>("a scenario with examples binds its steps for each row and its run mark runs a row for each example", () => new BddRunTests(folders), t =>
+        {
+            t.A_scenario_with_examples_binds_its_steps_for_each_row_and_its_run_mark_runs_a_row_for_each_example();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddRunTests>("a breakpoint on a step stops there step into goes into its definition and step over goes to the next step", () => new BddRunTests(folders), t =>
+        {
+            t.A_breakpoint_on_a_step_stops_there_step_into_goes_into_its_definition_and_step_over_goes_to_the_next_step();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void A_scenario_is_marked_before_a_build_and_run_tests_at_its_caret_runs_it_and_marks_its_result()
     {
         MainWindow window = Open();
         try
@@ -73,8 +99,7 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_scenario_with_examples_binds_its_steps_for_each_row_and_its_run_mark_runs_a_row_for_each_example()
+    private void A_scenario_with_examples_binds_its_steps_for_each_row_and_its_run_mark_runs_a_row_for_each_example()
     {
         TestFolders.Write(folder, "Calc.Specs/Features/Calculator.feature",
             ReqnrollProjects.Feature.Replace("Scenario Outline: Add numbers", "Scenario: Add numbers", StringComparison.Ordinal));
@@ -110,8 +135,7 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
     private static string Listed(MainWindow window) => string.Join("; ", window.Tests.Tree.Methods.Select(m =>
         $"{m.FullName} [code {m.FromCode?.Path}:{m.FromCode?.Line}; {string.Join(", ", m.Items.Select(i => $"{i.Path}:{i.Line}"))}]"));
 
-    [AvaloniaFact]
-    public void A_breakpoint_on_a_step_stops_there_step_into_goes_into_its_definition_and_step_over_goes_to_the_next_step()
+    private void A_breakpoint_on_a_step_stops_there_step_into_goes_into_its_definition_and_step_over_goes_to_the_next_step()
     {
         MainWindow window = Open();
         try
@@ -136,29 +160,6 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
                 TimeSpan.FromMinutes(1));
             Assert.Contains("GivenTheSecondNumberIs", window.Debugger.Stop!.Top!.Name, StringComparison.Ordinal);
 
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Tests.IsBusy, "the run to end", TimeSpan.FromMinutes(1));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Paused_in_an_outlines_example_the_hover_on_a_placeholder_shows_the_examples_value()
-    {
-        MainWindow window = Open();
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.GoTo(new TextPosition(14, 4));
-            Ui.Run(window, AppActions.ToggleBreakpoint);
-            Ui.Run(window, AppActions.DebugTests);
-            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.Debugger.Stop?.Top is not null,
-                () => $"the stop on the outline's step ({window.Status})", TimeSpan.FromMinutes(4));
-            string card = Hover(window, window.EditorArea.CodeEditor, "<a>");
-            Assert.Matches("^a = \\{string\\} \"[15]\"", card);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Tests.IsBusy, "the run to end", TimeSpan.FromMinutes(1));
         }

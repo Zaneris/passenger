@@ -204,13 +204,30 @@ public sealed class TestingPlatformSettingsTests : TestingPlatformFolders, IClas
 [Collection(Alone.Name)]
 public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, IClassFixture<RestoredFolders>
 {
+    /// <summary>Where each step of a flow takes its own projects from.</summary>
+    private readonly RestoredFolders restored;
+
     public TestingPlatformDebuggingTests(RestoredFolders restored)
-        : base(restored)
+        : base(restored) => this.restored = restored;
+
+    /// <summary>Debug Tests at the caret stops at a breakpoint inside a test on the Testing Platform, and Stop as a
+    /// debugged run's test host starts leaves no test running and says why.</summary>
+    [AvaloniaFact]
+    public void Debug_Tests_on_the_Testing_Platform_stops_inside_a_test_and_Stop_as_its_host_starts_leaves_none_running()
     {
+        Flow.StepApart<TestingPlatformDebuggingTests>("debug tests at the caret stops at a breakpoint inside a test on the platform", () => new TestingPlatformDebuggingTests(restored), t =>
+        {
+            t.Debug_tests_at_the_caret_stops_at_a_breakpoint_inside_a_test_on_the_platform();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<TestingPlatformDebuggingTests>("stop as a debugged run's test host starts leaves no test running and says why", () => new TestingPlatformDebuggingTests(restored), t =>
+        {
+            t.Stop_as_a_debugged_runs_test_host_starts_leaves_no_test_running_and_says_why();
+            OpenWindows.CloseAll();
+        });
     }
 
-    [AvaloniaFact]
-    public void Debug_tests_at_the_caret_stops_at_a_breakpoint_inside_a_test_on_the_platform()
+    private void Debug_tests_at_the_caret_stops_at_a_breakpoint_inside_a_test_on_the_platform()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -233,8 +250,7 @@ public sealed class TestingPlatformDebuggingTests : TestingPlatformFolders, ICla
     /// <summary>A debugged run ends when Stop ends its test host's start under the debugger (held at its start here, by a
     /// diagnostic port of the test's own that the project's launch profile names): no test, group or run icon is left
     /// running, and the Unit Tests window and the status bar say why the run ended.</summary>
-    [AvaloniaFact]
-    public void Stop_as_a_debugged_runs_test_host_starts_leaves_no_test_running_and_says_why()
+    private void Stop_as_a_debugged_runs_test_host_starts_leaves_no_test_running_and_says_why()
     {
         using Debugging.Helpers.StartHold hold = new();
         Write(folder, "Properties/launchSettings.json",
@@ -441,11 +457,19 @@ public sealed class TestHostLastWordsTests
 {
     private const string LastWords = "the test host's last words";
 
+    /// <summary>A test host that writes a last line and exits at once has that line in its failure every time, and one
+    /// whose connection comes after its end is heard is said to have connected.</summary>
+    [Fact]
+    public async Task A_test_hosts_last_line_and_late_connection_are_heard_however_it_ends()
+    {
+        await Flow.StepApartAsync<TestHostLastWordsTests>("a test host that writes a last line and exits at once has that line in its failure every time", () => new TestHostLastWordsTests(), t => t.A_test_host_that_writes_a_last_line_and_exits_at_once_has_that_line_in_its_failure_every_time());
+        await Flow.StepApartAsync<TestHostLastWordsTests>("a test host whose connection comes after its end is heard is said to have connected", () => new TestHostLastWordsTests(), t => t.A_test_host_whose_connection_comes_after_its_end_is_heard_is_said_to_have_connected());
+    }
+
     /// <summary>A test host that connects, writes more than a pipe holds and then one last line, and exits at once, before
     /// it answers the runner, has that last line in the failure the runner says, every one of twenty times beside two busy
     /// processes: what it wrote is read to its end before it is quoted, never stopping at an earlier line.</summary>
-    [Fact]
-    public async Task A_test_host_that_writes_a_last_line_and_exits_at_once_has_that_line_in_its_failure_every_time()
+    private async Task A_test_host_that_writes_a_last_line_and_exits_at_once_has_that_line_in_its_failure_every_time()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         string program = Passenger.Tests.Debugging.Helpers.Debuggees.Program("PassengerCases");
@@ -482,8 +506,7 @@ public sealed class TestHostLastWordsTests
     /// <summary>A test host that connects, writes and ends at once, whose connection the runner is handed only after it has
     /// heard the host end, as a loaded machine may hand the two over, is said to have ended after it connected, with its
     /// last line: whether it connected is its connection's to say, never the order the runner heard the two in.</summary>
-    [Fact]
-    public async Task A_test_host_whose_connection_comes_after_its_end_is_heard_is_said_to_have_connected()
+    private async Task A_test_host_whose_connection_comes_after_its_end_is_heard_is_said_to_have_connected()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         string program = Passenger.Tests.Debugging.Helpers.Debuggees.Program("PassengerCases");

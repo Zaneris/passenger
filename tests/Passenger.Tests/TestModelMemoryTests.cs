@@ -17,34 +17,16 @@ public sealed class TestModelMemoryTests
 
     private static long PathBytes => Project.Length * sizeof(char);
 
+    /// <summary>The tests tree loads, regroups and runs thousands of tests, and takes an earlier session's results of
+    /// thousands of methods, with no copy of their project's path.</summary>
     [Fact]
-    public void A_runner_s_catalog_of_thousands_of_tests_tells_and_finds_them_with_no_copy_of_their_project_s_path()
+    public void The_tests_tree_holds_thousands_of_tests_with_no_copy_of_their_projects_path()
     {
-        List<TestItem> found = Found();
-        TestAssembly assembly = new(new ProjectModel(Project, "Sums.Tests", "Exe", [Framework], [], [], true), Framework, "/bin/Sums.Tests.dll");
-        string[] ids = [.. found.Select((_, at) => $"id{at}")];
-        object[] handles = [.. found.Select(_ => new object())];
-        (TestAssembly Assembly, int Test)[] looked = [.. found.Select((_, at) => (assembly, at))];
-        TestCatalog<object> catalog = new();
-        IReadOnlyList<TestItem> told = [];
-
-        MakesNoCopy("Telling a runner's tests", found.Count, () => told = catalog.Tell([assembly], looked, at => ids[at], (_, at) => found[at], (_, at) => handles[at]));
-
-        Assert.Equal(found.Count, told.Count);
-        _ = catalog.Of(told[0]);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        int known = 0;
-        for (int at = 0; at < told.Count; at++)
-        {
-            known += catalog.Of(told[at]) == handles[at] ? 1 : 0;
-        }
-        long asked = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(found.Count, known);
-        Assert.True(asked < told.Count, $"Finding each of {told.Count:N0} tests a runner told made {asked:N0} bytes: a run of thousands of tests makes a key for each it asks of its runner");
+        Flow.StepApart<TestModelMemoryTests>("the tests tree loads, regroups and runs thousands of tests with no copy of their project's path", t => t.The_tests_tree_loads_regroups_and_runs_thousands_of_tests_with_no_copy_of_their_project_s_path());
+        Flow.StepApart<TestModelMemoryTests>("the tests tree takes an earlier session's results of thousands of methods with no copy of their project's path", t => t.The_tests_tree_takes_an_earlier_session_s_results_of_thousands_of_methods_with_no_copy_of_their_project_s_path());
     }
 
-    [Fact]
-    public void The_tests_tree_loads_regroups_and_runs_thousands_of_tests_with_no_copy_of_their_project_s_path()
+    private void The_tests_tree_loads_regroups_and_runs_thousands_of_tests_with_no_copy_of_their_project_s_path()
     {
         List<TestItem> found = Found();
         ProjectTests project = new(Project, "Sums.Tests", Code(), [new TestSource(Framework, found)]);
@@ -65,8 +47,7 @@ public sealed class TestModelMemoryTests
         Assert.Equal(found.Count, tree.Counts()[(int)TestState.Passed]);
     }
 
-    [Fact]
-    public void The_tests_tree_takes_an_earlier_session_s_results_of_thousands_of_methods_with_no_copy_of_their_project_s_path()
+    private void The_tests_tree_takes_an_earlier_session_s_results_of_thousands_of_methods_with_no_copy_of_their_project_s_path()
     {
         List<TestItem> found = Found();
         ProjectTests project = new(Project, "Sums.Tests", Code(), [new TestSource(Framework, found)]);

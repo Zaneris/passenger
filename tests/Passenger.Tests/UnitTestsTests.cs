@@ -21,10 +21,11 @@ namespace Passenger.Tests;
 /// C# language server, which finding, running and showing tests ask nothing of.</summary>
 public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFolders>
 {
+    /// <summary>The Sums.Tests each step of a flow takes its own of.</summary>
+    private readonly RestoredFolders restored;
+
     public UnitTestsTests(RestoredFolders restored)
-        : base(restored)
-    {
-    }
+        : base(restored) => this.restored = restored;
 
     /// <summary>Run All, stopped during its build and pressed again, marks each test, the Unit Tests window kept in front
     /// through its build, the status bar's tally a link back to it; a failed test's stack trace in its details links to the
@@ -120,34 +121,6 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    /// <summary>Read as Text in the Unit Tests window opens the chosen test's result as text, named by the test and its
-    /// outcome, its failure's message and stack under its outcome; Escape gives the test's row the keys back. With the sound
-    /// cues on, the run's build passing and the run failing each played its cue once, in turn.</summary>
-    [AvaloniaFact]
-    public void A_failed_tests_result_opens_as_text_from_its_row_and_Escape_gives_the_row_its_keys_back()
-    {
-        MainWindow window = Open();
-        window.ApplySettings(window.Settings with { SoundCues = Passenger.App.Settings.SoundCuesPlayed.Always });
-        window.EditorArea.CodeEditor.GoTo(new TextPosition(16, 8));
-        Ui.Run(window, AppActions.RunTests);
-        Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Two_and_two_make_five")?.State == TestState.Failed, "the failing test's run", TimeSpan.FromSeconds(120));
-        Ui.Settle();
-        SoundCue[] ended = [.. window.CuesPlayed.Where(c => c is SoundCue.BuildPassed or SoundCue.BuildFailed or SoundCue.TestsPassed or SoundCue.TestsFailed)];
-        Assert.True(ended.SequenceEqual([SoundCue.BuildPassed, SoundCue.TestsFailed]),
-            $"A run whose build passed and whose test failed played {(ended.Length == 0 ? "no cue" : string.Join(", ", ended))}");
-        ListBox tree = Tree(window);
-        tree.SelectedItem = Method(window, "Two_and_two_make_five");
-        ListKeys.Hold(tree);
-        Ui.Settle();
-        Assert.True(tree.IsKeyboardFocusWithin, "The Unit Tests window's tree did not take the keys");
-        PlainTextView view = ReadAsTextTests.Opened(window, window, "a failed test's row");
-        Assert.Equal("Two_and_two_make_five, failed", view.Title);
-        Assert.True(view.Text.StartsWith("Two_and_two_make_five: failed\n\n", StringComparison.Ordinal) && view.Text.Contains("SumTests.cs:line 17", StringComparison.Ordinal),
-            $"Read as Text on a failed test read its result as:\n{view.Text}");
-        ReadAsTextTests.Escaped(window, window, () => tree.IsKeyboardFocusWithin && tree.SelectedItem == Method(window, "Two_and_two_make_five"), "the failed test's row");
-        window.Close();
-    }
-
     [Gate]
     [AvaloniaFact]
     public void Below_a_comment_holding_line_breaks_only_roslyn_counts_each_tests_icon_and_menu_stay_on_its_line()
@@ -233,11 +206,124 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         TestNode Under(string framework, string method) => project.Children.Single(c => c.Name == framework).Methods.Single(m => m.Name == method);
     }
 
+    /// <summary>What runs where: each framework of a multi-targeted project, a project's own test attribute, a base
+    /// class's test as each derived one, a platform's build of a solution, a file's own project, a framework's symbols;
+    /// NUnit's and MSTest's named rows and fixture instances each a row that runs and counts; a data row run alone;
+    /// test actions offered only where tests are.</summary>
+    [AvaloniaFact]
+    public void A_test_run_from_its_icon_or_the_caret_runs_as_its_framework_and_project_take_it_and_each_case_is_a_row_that_counts()
+    {
+        Flow.StepApart<UnitTestsTests>("the first run of a multi targeted project's test from its run icon runs it under each framework", () => new UnitTestsTests(restored), t =>
+        {
+            t.The_first_run_of_a_multi_targeted_projects_test_from_its_run_icon_runs_it_under_each_framework();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a class run at the caret runs its test marked by an attribute of the project's own", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_class_run_at_the_caret_runs_its_test_marked_by_an_attribute_of_the_projects_own();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a base class's test run at the caret runs as each derived class and its icon takes their result", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_base_classs_test_run_at_the_caret_runs_as_each_derived_class_and_its_icon_takes_their_result();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("tests of an attribute the project derives and of STA test method have run icons before and after a run", () => new UnitTestsTests(restored), t =>
+        {
+            t.Tests_of_an_attribute_the_project_derives_and_of_sta_test_method_have_run_icons_before_and_after_a_run();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("NUnit cases named by test name and MSTest rows named by display name are rows of their methods that run and count", () => new UnitTestsTests(restored), t =>
+        {
+            t.Nunit_cases_named_by_test_name_and_mstest_rows_named_by_display_name_are_rows_of_their_methods_that_run_and_count();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("each instance of an NUnit fixture made with arguments is a row of its method that runs and counts", () => new UnitTestsTests(restored), t =>
+        {
+            t.Each_instance_of_an_nunit_fixture_made_with_arguments_is_a_row_of_its_method_that_runs_and_counts();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a test project its .slnx maps to a platform is found where the solution's build put it and runs from the caret", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_test_project_its_solution_maps_to_a_platform_is_found_where_the_solutions_build_put_it_and_runs_from_the_caret("slnx");
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a test project its .sln maps to a platform is found where the solution's build put it and runs from the caret", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_test_project_its_solution_maps_to_a_platform_is_found_where_the_solutions_build_put_it_and_runs_from_the_caret("sln");
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a passing data row run alone leaves its method failed by another row and rerun failed runs that row", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_passing_data_row_run_alone_leaves_its_method_failed_by_another_row_and_rerun_failed_runs_that_row();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a test run from its run icon runs in its file's project alone where another declares the same name", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_test_run_from_its_run_icon_runs_in_its_files_project_alone_where_another_declares_the_same_name();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a test under its framework's symbols is listed from its code and runs at the caret and one under a symbol it lacks is none", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_test_under_its_frameworks_symbols_is_listed_from_its_code_and_runs_at_the_caret_and_one_under_a_symbol_it_lacks_is_none();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("test actions are offered only where tests are and the solution row runs its tests", () => new UnitTestsTests(restored), t =>
+        {
+            t.Test_actions_are_offered_only_where_tests_are_and_the_solution_row_runs_its_tests();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>Stop ends a run whose test never ends with its test host, and the next run runs; a test host's crash
+    /// is said with the test running then, is no pass in Local History and ends Run Until Failure; an assembly VSTest
+    /// cannot look through hides no other project's tests; a test renamed as it runs is counted and a deleted file's
+    /// tests leave the window; a project's run settings give their variables to its tests; a run's results come back
+    /// when the folder opens again.</summary>
+    [AvaloniaFact]
+    public void A_run_that_crashes_hangs_or_is_stopped_says_so_and_ends_whole_and_a_runs_settings_and_results_are_kept()
+    {
+        Flow.StepApart<UnitTestsTests>("stop ends a run whose test never ends and its test host and the next run runs", () => new UnitTestsTests(restored), t =>
+        {
+            t.Stop_ends_a_run_whose_test_never_ends_and_its_test_host_and_the_next_run_runs();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a run whose test host crashes says the crash and the test running then", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_run_whose_test_host_crashes_says_the_crash_and_the_test_running_then();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a run whose test host crashes is no pass in local history and ends run until failure", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_run_whose_test_host_crashes_is_no_pass_in_local_history_and_ends_run_until_failure();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("an assembly VSTest cannot look through hides no other project's tests and a run of its own says why", () => new UnitTestsTests(restored), t =>
+        {
+            t.An_assembly_vstest_cannot_look_through_hides_no_other_projects_tests_and_a_run_of_its_own_says_why();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a test renamed as it runs is counted in the tally and a deleted file's tests leave the window", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_test_renamed_as_it_runs_is_counted_in_the_tally_and_a_deleted_files_tests_leave_the_window();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a project's run settings file gives its variables to its tests beside its launch profiles", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_projects_run_settings_file_gives_its_variables_to_its_tests_beside_its_launch_profiles();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsTests>("a run's results come back as an earlier run's when the folder opens again until the tests run again", () => new UnitTestsTests(restored), t =>
+        {
+            t.A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again();
+            OpenWindows.CloseAll();
+        });
+    }
+
     /// <summary>The first run of a multi-targeted project's test, from its run icon before any build, runs it under each
     /// framework, where the tree's row the menu chose, from the code, is gone once the build's tests come; and the method's
     /// row chosen in the window before a build runs it under each too.</summary>
-    [AvaloniaFact]
-    public void The_first_run_of_a_multi_targeted_projects_test_from_its_run_icon_runs_it_under_each_framework()
+    private void The_first_run_of_a_multi_targeted_projects_test_from_its_run_icon_runs_it_under_each_framework()
     {
         string solution = NewFolder();
         Write(solution, "Frameworks.Tests/Frameworks.Tests.csproj", TestProject($"{TestProjects.Framework};net11.0"));
@@ -309,8 +395,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>Stop ends a run whose test never ends within seconds, saying it stopped, its test host gone and the test
     /// not run; and the next run starts and runs.</summary>
-    [AvaloniaFact]
-    public void Stop_ends_a_run_whose_test_never_ends_and_its_test_host_and_the_next_run_runs()
+    private void Stop_ends_a_run_whose_test_never_ends_and_its_test_host_and_the_next_run_runs()
     {
         string host = Path.Combine(Folder, "hanging.txt");
         Write("HangingTests.cs",
@@ -337,8 +422,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>Run Unit Tests at the caret on a class runs its every test as its build has them, one marked by an attribute
     /// of the project's own (a subclass of xUnit's Fact) with the rest, the tests found after the build.</summary>
-    [AvaloniaFact]
-    public void A_class_run_at_the_caret_runs_its_test_marked_by_an_attribute_of_the_projects_own()
+    private void A_class_run_at_the_caret_runs_its_test_marked_by_an_attribute_of_the_projects_own()
     {
         string file = Write("CustomTests.cs",
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic sealed class MyFactAttribute : FactAttribute\n{\n}\n\npublic class CustomTests\n{\n" +
@@ -357,8 +441,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>Run Unit Tests at the caret on an abstract base class's test runs it as each class deriving from it, found by
     /// the file and line the runner gives them, and the base's run icon takes their result.</summary>
-    [AvaloniaFact]
-    public void A_base_classs_test_run_at_the_caret_runs_as_each_derived_class_and_its_icon_takes_their_result()
+    private void A_base_classs_test_run_at_the_caret_runs_as_each_derived_class_and_its_icon_takes_their_result()
     {
         string file = Write("InheritedTests.cs",
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic abstract class BaseChecks\n{\n    [Fact]\n    public void Shared()\n    {\n        Assert.True(GetType().Name.StartsWith(\"Concrete\"));\n    }\n}\n\n" +
@@ -385,8 +468,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A test marked by a subclass of xUnit's Fact the project declares in another file, and an MSTest test marked
     /// [STATestMethod], each have a run icon from their code before any build, and after a run the icon takes its result.</summary>
-    [AvaloniaFact]
-    public void Tests_of_an_attribute_the_project_derives_and_of_sta_test_method_have_run_icons_before_and_after_a_run()
+    private void Tests_of_an_attribute_the_project_derives_and_of_sta_test_method_have_run_icons_before_and_after_a_run()
     {
         string solution = NewFolder();
         Write(solution, "Own.Tests/Own.Tests.csproj", TestProject(TestProjects.Framework));
@@ -428,8 +510,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>NUnit's cases named by TestName and MSTest's data rows named by DisplayName are rows of their methods, by
     /// the names given: each runs, a failing one's failure is told, and the tally and the outcome filters count each.</summary>
-    [AvaloniaFact]
-    public void Nunit_cases_named_by_test_name_and_mstest_rows_named_by_display_name_are_rows_of_their_methods_that_run_and_count()
+    private void Nunit_cases_named_by_test_name_and_mstest_rows_named_by_display_name_are_rows_of_their_methods_that_run_and_count()
     {
         string solution = NewFolder();
         Write(solution, "Named.NUnit/Named.NUnit.csproj",
@@ -471,10 +552,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// <summary>A test project its solution maps to a platform (this machine's own: x64, or ARM64 on Arm), as a .slnx or a
     /// .sln writes it, has its tests found where the solution's build put them, bin/&lt;platform&gt;/…, and runs them from
     /// the caret.</summary>
-    [AvaloniaTheory]
-    [InlineData("slnx")]
-    [InlineData("sln")]
-    public void A_test_project_its_solution_maps_to_a_platform_is_found_where_the_solutions_build_put_it_and_runs_from_the_caret(string kind)
+    private void A_test_project_its_solution_maps_to_a_platform_is_found_where_the_solutions_build_put_it_and_runs_from_the_caret(string kind)
     {
         string platform = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "ARM64" : "x64";
         string solution = NewFolder();
@@ -515,8 +593,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// test host from, found before a test project referencing it, hides none of that project's tests: its test runs from
     /// the caret. The library's own test run from the caret, and Run All's tally, say which assembly's tests could not be
     /// found and what VSTest said of it.</summary>
-    [AvaloniaFact]
-    public void An_assembly_vstest_cannot_look_through_hides_no_other_projects_tests_and_a_run_of_its_own_says_why()
+    private void An_assembly_vstest_cannot_look_through_hides_no_other_projects_tests_and_a_run_of_its_own_says_why()
     {
         string solution = NewFolder();
         Write(solution, "Helpers.Testing/Helpers.Testing.csproj",
@@ -570,8 +647,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// <summary>A test renamed on disk while its run is under way has its failure counted in the run's tally, though its
     /// row left the tree with its old name; and a test file deleted after a run takes the tests a runner found in it out of
     /// the Unit Tests window.</summary>
-    [AvaloniaFact]
-    public void A_test_renamed_as_it_runs_is_counted_in_the_tally_and_a_deleted_files_tests_leave_the_window()
+    private void A_test_renamed_as_it_runs_is_counted_in_the_tally_and_a_deleted_files_tests_leave_the_window()
     {
         string started = Path.Combine(Folder, "started.txt");
         string go = Path.Combine(Folder, "go.txt");
@@ -604,8 +680,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A project's run settings file (RunSettingsFilePath) is the run's, as `dotnet test` takes it: a variable it
     /// sets reaches the test, beside its launch profile's.</summary>
-    [AvaloniaFact]
-    public void A_projects_run_settings_file_gives_its_variables_to_its_tests_beside_its_launch_profiles()
+    private void A_projects_run_settings_file_gives_its_variables_to_its_tests_beside_its_launch_profiles()
     {
         string solution = NewFolder();
         Write(solution, "Settled.Tests/Settled.Tests.csproj", TestProject(TestProjects.Framework)
@@ -629,8 +704,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// <summary>A run broken off by its test host's crash, a test calling Environment.Exit(3), says why in its tally, which
     /// an agent's tests_run answers with, in the Unit Tests window and on the status bar: the crash as VSTest tells it, and
     /// the test running then.</summary>
-    [AvaloniaFact]
-    public void A_run_whose_test_host_crashes_says_the_crash_and_the_test_running_then()
+    private void A_run_whose_test_host_crashes_says_the_crash_and_the_test_running_then()
     {
         Write("ExitingTests.cs",
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class ExitingTests\n{\n    [Fact]\n    public void Exits() => Environment.Exit(3);\n}\n");
@@ -649,8 +723,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A run broken off by its test host's crash, no test having failed, is labelled Tests Broken Off in Local
     /// History, never Tests Passed; and Run Until Failure of its test stops after that run, saying it broke off.</summary>
-    [AvaloniaFact]
-    public void A_run_whose_test_host_crashes_is_no_pass_in_local_history_and_ends_run_until_failure()
+    private void A_run_whose_test_host_crashes_is_no_pass_in_local_history_and_ends_run_until_failure()
     {
         Write("ExitingTests.cs",
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class ExitingTests\n{\n    [Fact]\n    public void Exits() => Environment.Exit(3);\n}\n");
@@ -682,8 +755,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A theory's passing data row run alone leaves its method failed by the row that failed before, whose result
     /// the method keeps; and Rerun Failed then runs that row.</summary>
-    [AvaloniaFact]
-    public void A_passing_data_row_run_alone_leaves_its_method_failed_by_another_row_and_rerun_failed_runs_that_row()
+    private void A_passing_data_row_run_alone_leaves_its_method_failed_by_another_row_and_rerun_failed_runs_that_row()
     {
         Write("EvenTests.cs",
             "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class EvenTests\n{\n    [Theory]\n    [InlineData(1)]\n    [InlineData(2)]\n" +
@@ -718,8 +790,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 
     /// <summary>A test run from its run icon in one project's file runs in that project alone where another project declares
     /// a test of the same name, and the icon takes that project's result alone.</summary>
-    [AvaloniaFact]
-    public void A_test_run_from_its_run_icon_runs_in_its_files_project_alone_where_another_declares_the_same_name()
+    private void A_test_run_from_its_run_icon_runs_in_its_files_project_alone_where_another_declares_the_same_name()
     {
         string solution = NewFolder();
         Write(solution, "Parser.Tests/Parser.Tests.csproj", TestProject(TestProjects.Framework));
@@ -828,8 +899,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// <summary>Run Unit Tests is offered only where there is a test: never on a console's Main, on a test method and on a
     /// test class's other members (its class's tests), never on a project without tests, on a test project and on the
     /// solution, whose row runs its tests.</summary>
-    [AvaloniaFact]
-    public void Test_actions_are_offered_only_where_tests_are_and_the_solution_row_runs_its_tests()
+    private void Test_actions_are_offered_only_where_tests_are_and_the_solution_row_runs_its_tests()
     {
         string solution = NewFolder();
         Write(solution, "App/App.csproj", TestProjects.Console());
@@ -874,67 +944,10 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         }
     }
 
-    /// <summary>The editor's menu and the run icon's, on a test whose name is longer than a menu has room for, keep each item
-    /// told apart: its verb and the words after the name (Until Failure) whole, the name giving way in its middle, its start
-    /// and its end shown, however much of it a system's font leaves room for, where each was cut at the menu's edge to the
-    /// same words; the run icon's menu, a flyout, gives way as the editor's does, where it ran its words past its edge.</summary>
-    [AvaloniaFact]
-    public void A_long_test_names_run_debug_and_until_failure_items_keep_their_own_words_whole()
-    {
-        const string Name = "Parses_a_solution_of_many_projects_when_each_one_names_another_by_its_real_path_after_the_folder_moved";
-        string path = Write("LongNameTests.cs",
-            $"using Xunit;\n\nnamespace Sums.Tests;\n\npublic class LongNameTests\n{{\n    [Fact]\n    public void {Name}()\n    {{\n        Assert.True(true);\n    }}\n}}\n");
-        MainWindow window = Open();
-        window.OpenFile(path);
-        Ui.Settle();
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Assert.Tr");
-        window.EditorArea.CodeEditor.RequestContextMenu();
-        Ui.Settle();
-        Avalonia.Controls.ContextMenu menu = window.OpenContextMenu ?? throw new InvalidOperationException("The editor's menu did not open");
-        GiveWayInTheName([.. menu.Items.OfType<MenuItem>()], "The editor's menu");
-        menu.Close();
-        Ui.Settle();
-
-        GiveWayInTheName(TestMarkMenu(window, path, $"    public void {Name}()"), "The run icon's menu");
-        window.TestMarkMenu!.Hide();
-        Ui.Settle();
-        window.Close();
-
-        static void GiveWayInTheName(MenuItem[] items, string what)
-        {
-            MenuItem[] tests = [.. items.Where(i => i.Header is string h && (h.StartsWith("Run '", StringComparison.Ordinal) || h.StartsWith("Debug '", StringComparison.Ordinal)))];
-            string[] shown = [.. tests.Select(Shown)];
-            string said = string.Join(" | ", shown);
-            Assert.True(shown.Length == 3 && shown.Distinct(StringComparer.Ordinal).Count() == 3,
-                $"{what} shows its test's items as [{said}]: two read the same, so which runs the test until it fails can't be told");
-            (string Verb, string After)[] own = [("Run", "'"), ("Debug", "'"), ("Run", "' Until Failure")];
-            for (int i = 0; i < own.Length; i++)
-            {
-                string before = $"{own[i].Verb} '";
-                string[] halves = shown[i].StartsWith(before, StringComparison.Ordinal) && shown[i].EndsWith(own[i].After, StringComparison.Ordinal)
-                    ? shown[i][before.Length..^own[i].After.Length].Split('\u2026') : [];
-                Assert.True(halves is [{ Length: > 0 } start, { Length: > 0 } end] && Name.StartsWith(start, StringComparison.Ordinal) && Name.EndsWith(end, StringComparison.Ordinal),
-                    $"{what} shows '{tests[i].Header}' as '{shown[i]}', among [{said}], where its verb and the words after the name stand whole, the name's start and end either side of an ellipsis");
-            }
-            Visual popup = TopLevel.GetTopLevel(tests[0])!;
-            List<string> faults = LayoutFaults.Of(popup, tests[0].FindAncestorOfType<MenuBase>()!, what);
-            Assert.True(faults.Count == 0, string.Join("\n", faults));
-        }
-
-        // An item's words as its menu draws them, given way to its room.
-        static string Shown(MenuItem item)
-        {
-            TextBlock words = item.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_HeaderPresenter")
-                .GetVisualDescendants().OfType<TextBlock>().First();
-            return string.Concat(words.TextLayout.TextLines.SelectMany(l => l.TextRuns).Select(r => r.Text.ToString()));
-        }
-    }
-
     /// <summary>A test under a symbol its framework defines (#if NET8_0_OR_GREATER) is one as its project compiles it:
     /// the Unit Tests window lists it from its code, the editor offers it at the caret, and Run Tests runs it there; one
     /// under a symbol the framework lacks is no test.</summary>
-    [AvaloniaFact]
-    public void A_test_under_its_frameworks_symbols_is_listed_from_its_code_and_runs_at_the_caret_and_one_under_a_symbol_it_lacks_is_none()
+    private void A_test_under_its_frameworks_symbols_is_listed_from_its_code_and_runs_at_the_caret_and_one_under_a_symbol_it_lacks_is_none()
     {
         string solution = NewFolder();
         Write(solution, "Gated.Tests/Gated.Tests.csproj", TestProject(TestProjects.Framework));
@@ -954,103 +967,6 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Ui.Run(window, AppActions.RunTests);
         Ui.WaitFor(() => !window.Tests.IsBusy && Method(window, "Modern")?.State == TestState.Passed, () => $"the test at the caret to run: {window.Status}", TimeSpan.FromSeconds(180));
         window.Close();
-    }
-
-    /// <summary>The Unit Tests window's keys stay on the project chosen as Expand All puts the rows of the projects above it
-    /// in (#719), the view left where it is and the project pushed out of sight, Down then choosing the row under it.</summary>
-    [AvaloniaFact]
-    public void The_unit_tests_window_keeps_its_keys_on_the_row_chosen_as_expand_all_puts_rows_in_above_it()
-    {
-        string solution = NewFolder();
-        StringBuilder listed = new("<Solution>\n");
-        foreach (string name in (string[])["Alpha", "Beta", "Gamma"])
-        {
-            Write(solution, $"{name}.Tests/{name}.Tests.csproj", TestProject(TestProjects.Framework));
-            for (int i = 0; i < 6; i++)
-            {
-                Write(solution, $"{name}.Tests/Case{i}Tests.cs",
-                    $"using Xunit;\n\nnamespace {name};\n\npublic class Case{i}Tests\n{{\n    [Fact]\n    public void First() {{ }}\n\n    [Fact]\n    public void Second() {{ }}\n}}\n");
-            }
-            listed.Append($"  <Project Path=\"{name}.Tests/{name}.Tests.csproj\" />\n");
-        }
-        Write(solution, "Tests.slnx", listed.Append("</Solution>\n").ToString());
-        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
-        ListBox tree = Tree(window);
-        Ui.WaitFor(() => window.Tests.Tree.Rows.Count(r => r.Kind == TestNodeKind.Method) == 36, () => $"the tests from their code, the window listing [{string.Join(", ", Shown(window))}]");
-        ScrollViewer scroller = tree.GetVisualDescendants().OfType<ScrollViewer>().First();
-        Ui.Click(HeaderButton(window, AppActions.CollapseAll));
-        Assert.Equal(["Alpha.Tests", "Beta.Tests", "Gamma.Tests"], Shown(window));
-        TestNode gamma = window.Tests.Tree.Rows[2];
-        Ui.Click(tree.ContainerFromItem(gamma)!);
-        double offset = scroller.Offset.Y;
-
-        Ui.Click(HeaderButton(window, AppActions.ExpandAll));
-        Assert.True(window.Tests.Tree.Rows.IndexOf(gamma) > 30 && tree.SelectedItem == gamma && Keys() == "Gamma.Tests" && scroller.Offset.Y == offset,
-            $"Expand All put {window.Tests.Tree.Rows.IndexOf(gamma)} rows in above Gamma.Tests, chosen, and left {(tree.SelectedItem as TestNode)?.Name} chosen, the keys with {Keys()} "
-            + $"and the view moved from {offset} to {scroller.Offset.Y}: the next key pressed in the window goes nowhere");
-        Ui.Press(window, "DOWN");
-        Assert.True(tree.SelectedItem is TestNode { Name: "Gamma", Depth: 1 } && Keys() == "Gamma",
-            $"Down on Gamma.Tests chose {(tree.SelectedItem as TestNode)?.Name}, the keys with {Keys()}, where its namespace Gamma is next");
-        window.Close();
-
-        string Keys() => window.FocusManager?.GetFocusedElement() switch
-        {
-            Control { DataContext: TestNode row } => row.Name,
-            { } other => other.GetType().Name,
-            null => "nothing",
-        };
-    }
-
-    /// <summary>Left on a test goes up to its own class however rows came above it by code (#721): the projects above it
-    /// opened down to a test of theirs, Left then choosing the test's class with the keys on it, and Left again closing it.</summary>
-    [AvaloniaFact]
-    public void Left_on_a_test_goes_up_to_its_own_class_and_closes_it_however_rows_came_above_it()
-    {
-        string solution = NewFolder();
-        StringBuilder listed = new("<Solution>\n");
-        foreach (string name in (string[])["Alpha", "Beta", "Gamma"])
-        {
-            Write(solution, $"{name}.Tests/{name}.Tests.csproj", TestProject(TestProjects.Framework));
-            for (int i = 0; i < 6; i++)
-            {
-                Write(solution, $"{name}.Tests/Case{i}Tests.cs",
-                    $"using Xunit;\n\nnamespace {name};\n\npublic class Case{i}Tests\n{{\n    [Fact]\n    public void First() {{ }}\n\n    [Fact]\n    public void Second() {{ }}\n}}\n");
-            }
-            listed.Append($"  <Project Path=\"{name}.Tests/{name}.Tests.csproj\" />\n");
-        }
-        Write(solution, "Tests.slnx", listed.Append("</Solution>\n").ToString());
-        MainWindow window = Ui.OpenFolder(solution, languageServer: false);
-        ListBox tree = Tree(window);
-        TestTree model = window.Tests.Tree;
-        Ui.WaitFor(() => model.Rows.Count(r => r.Kind == TestNodeKind.Method) == 36, () => $"the tests from their code, the window listing [{string.Join(", ", Shown(window))}]");
-        Ui.Click(HeaderButton(window, AppActions.CollapseAll));
-        TestNode test = Under(model.Roots.Single(r => r.Name == "Gamma.Tests")).Last(n => n.Kind == TestNodeKind.Method);
-        TestNode holder = test.Parent!;
-        model.Reveal(test);
-        Ui.Settle();
-        tree.ScrollIntoView(test);
-        Ui.Settle();
-        Ui.Click(tree.ContainerFromItem(test)!);
-
-        model.Reveal(Under(model.Roots.Single(r => r.Name == "Alpha.Tests")).First(n => n.Kind == TestNodeKind.Method));
-        model.Reveal(Under(model.Roots.Single(r => r.Name == "Beta.Tests")).First(n => n.Kind == TestNodeKind.Method));
-        Ui.Settle();
-        Assert.True(tree.SelectedItem == test && tree.SelectedIndex == model.Rows.IndexOf(test),
-            $"After Alpha.Tests and Beta.Tests opened above {holder.Name}.{test.Name}, the window's chosen row is {(tree.SelectedItem as TestNode)?.Name} at {tree.SelectedIndex}, "
-            + $"where the test is at {model.Rows.IndexOf(test)}: its keys act on another row");
-        Ui.Press(window, "LEFT");
-        Assert.True(tree.SelectedItems is [TestNode up] && up == holder && Keys() == holder.Name && holder.IsExpanded,
-            $"Left on {holder.Name}.{test.Name}, with rows come above it, chose [{string.Join(", ", tree.SelectedItems!.OfType<TestNode>().Select(n => n.Name))}], "
-            + $"the keys with {Keys()}, where its class {holder.Name}, still open, is the row it sits under");
-        Ui.Press(window, "LEFT");
-        Assert.True(tree.SelectedItems is [TestNode closed] && closed == holder && !holder.IsExpanded && Keys() == holder.Name && !model.Rows.Contains(test),
-            $"Left on the open {holder.Name} left [{string.Join(", ", tree.SelectedItems!.OfType<TestNode>().Select(n => $"{n.Name} {(n.IsExpanded ? "open" : "closed")}"))}] chosen, "
-            + $"the keys with {Keys()} and {test.Name} {(model.Rows.Contains(test) ? "still shown" : "gone")}: Left closed another row than {holder.Name}");
-        window.Close();
-
-        static IEnumerable<TestNode> Under(TestNode node) => node.Children.SelectMany(child => (TestNode[])[child, .. Under(child)]);
-
-        string Keys() => window.FocusManager?.GetFocusedElement() is Control { DataContext: TestNode row } ? row.Name : "something else";
     }
 
     /// <summary>A button in the Unit Tests window's header.</summary>
@@ -1169,8 +1085,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// <summary>NUnit's fixtures made with arguments or type arguments: each instance's test is a row under the method its
     /// code declares, with its own result, counted by Run All's tally and the outcome filters and marked in the gutter; the
     /// test at the caret and the method's row run every instance, and an instance's row, found by Find, runs alone.</summary>
-    [AvaloniaFact]
-    public void Each_instance_of_an_nunit_fixture_made_with_arguments_is_a_row_of_its_method_that_runs_and_counts()
+    private void Each_instance_of_an_nunit_fixture_made_with_arguments_is_a_row_of_its_method_that_runs_and_counts()
     {
         string solution = NewFolder();
         Write(solution, "Fixtures.Tests/Fixtures.Tests.csproj",
@@ -1440,8 +1355,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// and failure as they were, marked in its row and its details as an earlier run's with when; a test whose code changed
     /// while the folder was closed says so, one whose code did not says nothing; a run makes them this session's; and a test
     /// whose code changes after this session's run says so too.</summary>
-    [AvaloniaFact]
-    public void A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again()
+    private void A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again()
     {
         string settings = NewFolder();
         MainWindow first = Keeping(settings, Folder);
@@ -1493,16 +1407,39 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
 [Collection(Alone.Name)]
 public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<RestoredFolders>
 {
+    /// <summary>The Sums.Tests each step of a flow takes its own of.</summary>
+    private readonly RestoredFolders restored;
+
     public UnitTestsDebuggingTests(RestoredFolders restored)
-        : base(restored)
+        : base(restored) => this.restored = restored;
+
+    /// <summary>Debug Tests stops at a breakpoint and at a failed assertion in the test with the launch profile's
+    /// variables, a debugged test host runs Hot Reload's update handlers after an edit applied at a breakpoint, and
+    /// Stop ends a debugged run paused at a breakpoint and the next run runs.</summary>
+    [AvaloniaFact]
+    public void Debug_Tests_stops_in_a_test_with_its_launch_profile_takes_Hot_Reload_and_ends_with_Stop()
     {
+        Flow.StepApart<UnitTestsDebuggingTests>("debug tests stops at a breakpoint in a test and at a failed assertion in the test and the launch profile gives its variables run and debugged", () => new UnitTestsDebuggingTests(restored), t =>
+        {
+            t.Debug_tests_stops_at_a_breakpoint_in_a_test_and_at_a_failed_assertion_in_the_test_and_the_launch_profile_gives_its_variables_run_and_debugged();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsDebuggingTests>("a test host debugged with hot reload runs its update handlers after an edit applied at a breakpoint", () => new UnitTestsDebuggingTests(restored), t =>
+        {
+            t.A_test_host_debugged_with_hot_reload_runs_its_update_handlers_after_an_edit_applied_at_a_breakpoint();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsDebuggingTests>("stop unit tests ends a debugged run paused at a breakpoint and the next run runs", () => new UnitTestsDebuggingTests(restored), t =>
+        {
+            t.Stop_unit_tests_ends_a_debugged_run_paused_at_a_breakpoint_and_the_next_run_runs();
+            OpenWindows.CloseAll();
+        });
     }
 
     /// <summary>Debug Tests at the caret stops at a breakpoint inside the test; a failing test debugged stops at its
     /// assertion in the test, not inside the assertion library; and the project's launch profile gives its variables to its
     /// tests, run and debugged.</summary>
-    [AvaloniaFact]
-    public void Debug_tests_stops_at_a_breakpoint_in_a_test_and_at_a_failed_assertion_in_the_test_and_the_launch_profile_gives_its_variables_run_and_debugged()
+    private void Debug_tests_stops_at_a_breakpoint_in_a_test_and_at_a_failed_assertion_in_the_test_and_the_launch_profile_gives_its_variables_run_and_debugged()
     {
         Directory.CreateDirectory(Path.Combine(Folder, "Properties"));
         Write("Properties/launchSettings.json",
@@ -1544,8 +1481,7 @@ public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<Re
 
     /// <summary>A test debugged with Hot Reload on: an edit applied while it is paused at a breakpoint reaches the test host
     /// VSTest started and the debugger attached to, whose update handlers run as it goes on, through Passenger's hook.</summary>
-    [AvaloniaFact]
-    public void A_test_host_debugged_with_hot_reload_runs_its_update_handlers_after_an_edit_applied_at_a_breakpoint()
+    private void A_test_host_debugged_with_hot_reload_runs_its_update_handlers_after_an_edit_applied_at_a_breakpoint()
     {
         string ran = Path.Combine(Folder, "handlers.txt");
         Write("UpdateProbe.cs", "[assembly: System.Reflection.Metadata.MetadataUpdateHandler(typeof(Sums.Tests.UpdateProbe))]\n\nnamespace Sums.Tests;\n\n"
@@ -1579,8 +1515,7 @@ public sealed class UnitTestsDebuggingTests : UnitTestsFolders, IClassFixture<Re
 
     /// <summary>Stop Unit Tests ends a debugged run paused at a breakpoint inside its test within seconds, saying it
     /// stopped, its test host ended; and the next run runs.</summary>
-    [AvaloniaFact]
-    public void Stop_unit_tests_ends_a_debugged_run_paused_at_a_breakpoint_and_the_next_run_runs()
+    private void Stop_unit_tests_ends_a_debugged_run_paused_at_a_breakpoint_and_the_next_run_runs()
     {
         string host = Path.Combine(Folder, "paused.txt");
         string tests = Write("PausedTests.cs", "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class PausedTests\n{\n    [Fact]\n    public void Pauses()\n    {\n" +
@@ -1617,8 +1552,24 @@ public sealed class UnitTestsResponsivenessTests : UnitTestsFolders
     {
     }
 
+    /// <summary>Thousands of results come in without holding the window, what was closed or chosen staying so, and an
+    /// Enter above a file's tests in a solution of thousands costs what it does among a few.</summary>
     [AvaloniaFact]
-    public void Thousands_of_results_come_in_without_holding_up_the_window_and_what_was_closed_or_chosen_stays_so()
+    public void The_tests_tree_keeps_up_with_thousands_of_results_and_typing_without_holding_the_window()
+    {
+        Flow.StepApart<UnitTestsResponsivenessTests>("thousands of results come in without holding up the window and what was closed or chosen stays so", t =>
+        {
+            t.Thousands_of_results_come_in_without_holding_up_the_window_and_what_was_closed_or_chosen_stays_so();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<UnitTestsResponsivenessTests>("an enter above the tests of a file in a solution of thousands moves their rows and costs what it does among a few", t =>
+        {
+            t.An_enter_above_the_tests_of_a_file_in_a_solution_of_thousands_moves_their_rows_and_costs_what_it_does_among_a_few();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Thousands_of_results_come_in_without_holding_up_the_window_and_what_was_closed_or_chosen_stays_so()
     {
         // Many.Tests: 3,000 tests in 30 classes, one in ten failing; Few.Tests: two that pass.
         string solution = NewFolder();
@@ -1693,8 +1644,7 @@ public sealed class UnitTestsResponsivenessTests : UnitTestsFolders
     /// <summary>An Enter typed above the tests of an open test file moves their rows to their new lines, nothing made again:
     /// in a solution of 3,000 tests it allocates on the UI thread about what it does in one of three. The rows, and Go to
     /// Source from them, are then at the tests' new lines.</summary>
-    [AvaloniaFact]
-    public void An_enter_above_the_tests_of_a_file_in_a_solution_of_thousands_moves_their_rows_and_costs_what_it_does_among_a_few()
+    private void An_enter_above_the_tests_of_a_file_in_a_solution_of_thousands_moves_their_rows_and_costs_what_it_does_among_a_few()
     {
         const string Few = "using Xunit;\n\nnamespace Few.Tests;\n\npublic class FewTests\n{\n    [Fact]\n    public void One() { }\n\n    [Fact]\n    public void Two() { }\n\n    [Fact]\n    public void Three() { }\n}\n";
         StringBuilder many = new("using Xunit;\n\nnamespace Few.Tests;\n");

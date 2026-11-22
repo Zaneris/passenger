@@ -40,8 +40,12 @@ public sealed class StepLibraryTests : IClassFixture<RestoredFolders>, IDisposab
 
     private readonly string folder;
 
+    /// <summary>Where each step of a flow takes its own folder from.</summary>
+    private readonly RestoredFolders folders;
+
     public StepLibraryTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("steplib-", made =>
         {
             string solution = ReqnrollProjects.Write(made);
@@ -68,8 +72,30 @@ public sealed class StepLibraryTests : IClassFixture<RestoredFolders>, IDisposab
         return library;
     }
 
+    /// <summary>Every definition is listed under its kind with its uses and tags, and the filter narrows them by words
+    /// and tags; a chosen definition's phrase is written at the caret with its first slot chosen to type over; a
+    /// definition written meanwhile is listed unused and counted as a feature's step is typed.</summary>
     [AvaloniaFact]
-    public void Every_definition_is_listed_under_its_kind_with_its_uses_and_tags_and_the_filter_narrows_them_by_words_and_tags()
+    public void The_Step_Library_lists_each_definition_with_its_uses_and_writes_a_chosen_phrase_into_the_feature()
+    {
+        Flow.StepApart<StepLibraryTests>("every definition is listed under its kind with its uses and tags and the filter narrows them by words and tags", () => new StepLibraryTests(folders), t =>
+        {
+            t.Every_definition_is_listed_under_its_kind_with_its_uses_and_tags_and_the_filter_narrows_them_by_words_and_tags();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<StepLibraryTests>("a chosen definition's phrase is written into the feature at the caret with its first slot chosen to type over", () => new StepLibraryTests(folders), t =>
+        {
+            t.A_chosen_definitions_phrase_is_written_into_the_feature_at_the_caret_with_its_first_slot_chosen_to_type_over();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<StepLibraryTests>("a definition written meanwhile is listed unused and counted as a feature's step is typed", () => new StepLibraryTests(folders), t =>
+        {
+            t.A_definition_written_meanwhile_is_listed_unused_and_counted_as_a_features_step_is_typed();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Every_definition_is_listed_under_its_kind_with_its_uses_and_tags_and_the_filter_narrows_them_by_words_and_tags()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -126,8 +152,7 @@ public sealed class StepLibraryTests : IClassFixture<RestoredFolders>, IDisposab
         }
     }
 
-    [AvaloniaFact]
-    public void A_chosen_definitions_phrase_is_written_into_the_feature_at_the_caret_with_its_first_slot_chosen_to_type_over()
+    private void A_chosen_definitions_phrase_is_written_into_the_feature_at_the_caret_with_its_first_slot_chosen_to_type_over()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -164,8 +189,7 @@ public sealed class StepLibraryTests : IClassFixture<RestoredFolders>, IDisposab
         }
     }
 
-    [AvaloniaFact]
-    public void A_definition_written_meanwhile_is_listed_unused_and_counted_as_a_features_step_is_typed()
+    private void A_definition_written_meanwhile_is_listed_unused_and_counted_as_a_features_step_is_typed()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try

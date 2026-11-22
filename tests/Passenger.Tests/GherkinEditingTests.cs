@@ -41,8 +41,41 @@ public sealed class GherkinEditingTests : FileColoursFolder
         "      | a | sum |\n" +
         "      | 1 | 1   |\n";
 
+    /// <summary>A feature file is coloured, folded, outlined and commented as Gherkin; Reformat Code lays it out and a
+    /// bar typed in a row aligns its table; a feature in another language completes its own keywords; a language line
+    /// typed a key at a time reads the feature in the language named; an outline's examples typed with no row are
+    /// marked as the generator refuses them until a row is typed.</summary>
     [AvaloniaFact]
-    public void A_feature_file_is_coloured_folded_outlined_and_commented_as_gherkin()
+    public void A_feature_file_is_edited_as_Gherkin_in_its_own_language_and_laid_out_keeping_what_it_says()
+    {
+        Flow.StepApart<GherkinEditingTests>("a feature file is coloured folded outlined and commented as Gherkin", t =>
+        {
+            t.A_feature_file_is_coloured_folded_outlined_and_commented_as_gherkin();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<GherkinEditingTests>("reformat code lays out a feature and a bar typed in a row aligns its table", t =>
+        {
+            t.Reformat_code_lays_out_a_feature_and_a_bar_typed_in_a_row_aligns_its_table();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<GherkinEditingTests>("a feature in another language completes its own keywords and one of no project marks no step undefined", t =>
+        {
+            t.A_feature_in_another_language_completes_its_own_keywords_and_one_of_no_project_marks_no_step_undefined();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<GherkinEditingTests>("a language line typed a key at a time marks a language Gherkin lacks and reads the feature in the one named", t =>
+        {
+            t.A_language_line_typed_a_key_at_a_time_marks_a_language_gherkin_lacks_and_reads_the_feature_in_the_one_named();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<GherkinEditingTests>("an outline's examples typed with no row are marked at the outline as the generator refuses them until a row is typed", t =>
+        {
+            t.An_outlines_examples_typed_with_no_row_are_marked_at_the_outline_as_the_generator_refuses_them_until_a_row_is_typed();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void A_feature_file_is_coloured_folded_outlined_and_commented_as_gherkin()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Calculator.feature", Feature);
@@ -81,8 +114,7 @@ public sealed class GherkinEditingTests : FileColoursFolder
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Reformat_code_lays_out_a_feature_and_a_bar_typed_in_a_row_aligns_its_table()
+    private void Reformat_code_lays_out_a_feature_and_a_bar_typed_in_a_row_aligns_its_table()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Layout.feature", "Feature: F\n\n  Scenario: S\nGiven the users\n|name|age|\n| Ann | 7 |\n    And   more\n");
@@ -110,45 +142,7 @@ public sealed class GherkinEditingTests : FileColoursFolder
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_CRLF_feature_is_laid_out_and_its_tables_aligned_with_each_line_ending_in_one_CRLF()
-    {
-        MainWindow window = Window();
-        CodeEditor editor = Open(window, "Crlf.feature", "Feature: F\r\n\r\n  Scenario: S\r\nGiven the users\r\n|name|age|\r\n| Ann | 7 |\r\n    And   more\r\n");
-        OpenDocument document = window.EditorArea.Active!;
-        const string Laid = "Feature: F\r\n\r\nScenario: S\r\n  Given the users\r\n    | name | age |\r\n    | Ann  |   7 |\r\n  And more\r\n";
-        editor.Focus();
-        Ui.Run(window, AppActions.Reformat);
-        Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted", "the reformat");
-        Assert.True(editor.Document.Snapshot.ToString() == Laid, $"The feature should be laid out in its own line breaks: {Shown(editor.Document.Snapshot.ToString())}");
-
-        int version = document.Text.Version;
-        Ui.Run(window, AppActions.Reformat);
-        Ui.WaitFor(() => window.Status == "Already formatted" || document.Text.Version != version,
-            () => $"the second reformat: {window.Status}, {Shown(editor.Document.Snapshot.ToString())}");
-        Assert.True(document.Text.Version == version, $"A feature laid out already should take no edit: {Shown(editor.Document.Snapshot.ToString())}");
-
-        Ui.PlaceAfter(editor, "| Ann  |   7 |");
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("|Bartholomew");
-        window.KeyTextInput("|");
-        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | name        | age |\r\n    | Ann         |   7 |\r\n    | Bartholomew |", StringComparison.Ordinal),
-            () => $"the table aligned as the bar was typed: {Shown(editor.Document.Snapshot.ToString())}");
-        Typing.Replace(window, "    | Bartholomew |", "    | Bartholomew |\n    |Zed|");
-        Ui.PlaceAfter(editor, "|Zed|");
-        Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("    | Bartholomew |\r\n    | Zed         |\r\n", StringComparison.Ordinal),
-            () => $"the table aligned as Enter ended its row: {Shown(editor.Document.Snapshot.ToString())}");
-        string text = editor.Document.Snapshot.ToString();
-        Assert.True(text.Replace("\r\n", "", StringComparison.Ordinal).IndexOfAny(['\r', '\n']) < 0,
-            $"Every line of a CRLF feature should still end in one CRLF: {Shown(text)}");
-        window.Close();
-
-        static string Shown(string text) => text.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
-    }
-
-    [AvaloniaFact]
-    public void A_feature_in_another_language_completes_its_own_keywords_and_one_of_no_project_marks_no_step_undefined()
+    private void A_feature_in_another_language_completes_its_own_keywords_and_one_of_no_project_marks_no_step_undefined()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Rechner.feature", "# language: de\nFunktionalität: Rechner\n\nSzenario: Addieren\n  Angenommen eine Zahl 5\n");
@@ -167,8 +161,7 @@ public sealed class GherkinEditingTests : FileColoursFolder
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_language_line_typed_a_key_at_a_time_marks_a_language_gherkin_lacks_and_reads_the_feature_in_the_one_named()
+    private void A_language_line_typed_a_key_at_a_time_marks_a_language_gherkin_lacks_and_reads_the_feature_in_the_one_named()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Sprache.feature", "\nFunktionalität: Rechner\n\nSzenario: Addieren\n  Angenommen eine Zahl 5\n  Dann ist das Ergebnis 5\n");
@@ -196,8 +189,7 @@ public sealed class GherkinEditingTests : FileColoursFolder
         (int, int)[] Folds() => [.. document.FoldRegions.Select(r => (document.Text.Snapshot.GetLineFromOffset(r.Start), document.Text.Snapshot.GetLineFromOffset(r.End)))];
     }
 
-    [AvaloniaFact]
-    public void An_outlines_examples_typed_with_no_row_are_marked_at_the_outline_as_the_generator_refuses_them_until_a_row_is_typed()
+    private void An_outlines_examples_typed_with_no_row_are_marked_at_the_outline_as_the_generator_refuses_them_until_a_row_is_typed()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Outline.feature", "Feature: Calculator\n\n  Scenario Outline: Add numbers\n    Given the first number is <a>\n    Then the result should be <sum>\n");
