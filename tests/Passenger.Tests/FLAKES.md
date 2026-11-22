@@ -92,11 +92,11 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 - `McpAspireTests`' `An_AppHosts_session_container_a_crashed_Passenger_left_is_removed_as_the_next_one_starts_and_a_persistent_one_stays`,
   CI 44989932645 (Linux, report shard 2): "left programs' runtime files … clr-debug-pipe-…". **The test's own doing**: the
   crash it makes kills Passenger, its watchdog and the orchestrator alone, which leaves their runtimes' files with nobody
-  to take them; the test now reads them before the kill and takes them once gone (4b39672c7, #2103).
+  to take them; the test now reads them before the kill and takes them once gone (47f44728e, #2103).
 - `AspireExternalDataTests`' `An_external_AppHost_is_found_and_its_environment_values_are_masked_in_the_window`, CI
   44989932645 (macOS and Linux, report shard 2): "left programs' runtime files … clr-debug-pipe-…". **Another program's
   doing**: the external AppHost's orchestrator ends the services it started as the AppHost goes, leaving their debugger
-  pipes; the test reads each program's files while it runs and takes them once it has gone (4b39672c7, #2103).
+  pipes; the test reads each program's files while it runs and takes them once it has gone (47f44728e, #2103).
 
 ## 2026-11-21
 
@@ -108,9 +108,9 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   catch that took only the test's own stop, so web was sent nothing more while the agent read it, and a reading hears
   only requests ended while it listens. It sends the next request past a slow one, and its stand-in for DCP reads the
   notifications it subscribes to, which unread filled their socket once web logged every request, the IDE then ending
-  the AppHost's sessions (web killed 33.5 s in on the Windows VM) (ac125bd68). The run before's "took no session in
+  the AppHost's sessions (web killed 33.5 s in on the Windows VM) (fd7df2b22). The run before's "took no session in
   10 s (… answered another request at once)" (CI 44953680429, below) is now asked once more by the IDE wherever the port
-  answers at once after, saying so (a2f61982f, #2094).
+  answers at once after, saying so (3bf5103cf, #2094).
 - `MauiAndroidTests`' `A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree`,
   CI 44970786971 (Linux, report shard 1, the shard #2095 sets up Android's emulator for): it skipped, "No Android device
   is connected and no emulator is made", and failed for "left programs' runtime files … dotnet-diagnostic-…-socket".
