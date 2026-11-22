@@ -104,11 +104,11 @@ public sealed class GodotPinsTests : IClassFixture<GodotPinsTests.Game>
                 $"The filter shows {run.Filtered?.Snapshot}");
             Ui.Click(run.FoldFilter);
 
-            // The badge's press lists each time, newest first, with its stack.
+            // The badge's press lists each time, newest first, with its stack: the newest a pin keeps, as fast a game may run.
             Ui.Click(editor, editor.GutterColumnPoint(editor.Gutter!.Pins, every - 1));
             Ui.WaitFor(() => window.PinPopup is not null, "the every-frame pin's occurrences");
             GodotPinPopup popup = window.PinPopup!;
-            Assert.Equal(pinned.Count, popup.Listed.Count);
+            Assert.Equal(Math.Min(pinned.Count, GodotErrorPins.Kept), popup.Listed.Count);
             Assert.Contains(popup.Frames, f => f.Contains($"Main.cs:{every}", StringComparison.Ordinal));
             Ui.Press(window, "ESCAPE");
             Ui.WaitFor(() => window.PinPopup is null, "the pin's popup to close");
