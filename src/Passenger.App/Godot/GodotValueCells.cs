@@ -556,6 +556,8 @@ internal sealed class GodotValueCell : LiveValueCell
 
     private async Task SendingAsync()
     {
+        // Held from the first value to the details' read it settles into, which then holds itself.
+        using IDisposable held = BackgroundWork.Scope();
         sending = true;
         long last = element;
         try

@@ -91,7 +91,8 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
     }
 
     /// <summary>Dragging Speed's slider and the colour picker's square each reach the game as the pointer moves, before
-    /// either is let go of, and what it prints follows; each row then says what its value was, with Keep.</summary>
+    /// either is let go of, and what it prints follows; each row then says what its value was, with Keep. A press on Tint's
+    /// swatch outlasts its node read again.</summary>
     private void A_colour_picked_and_a_ranged_value_slid_reach_the_game_as_the_pointer_moves_each_marked_with_what_it_was()
     {
         MainWindow window = Started();
@@ -106,8 +107,16 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
 
             Control tint = Shown(window, "Tint");
             Button swatch = tint.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "#FFFFFF"));
-            Ui.Click(swatch);
-            Ui.WaitFor(() => Picker(window) is not null, "the colour picker over Tint's swatch");
+            // The node read again as the swatch is pressed, another of its values changed, keeps the swatch under the press.
+            string slid = tree.Details!.Properties.First(p => p.Name == "Speed").Value;
+            Ui.ClickAcross(swatch, () =>
+            {
+                Ui.Await(window.Session.Game!.SetValueAsync(tree.Details!.Id, "Speed", 9.0), "Speed set again as the swatch is pressed");
+                Assert.Null(window.Actions.Run(AppActions.LiveTreeRefresh));
+                Ui.WaitFor(() => tree.Details?.Properties.First(p => p.Name == "Speed").Value != slid,
+                    () => $"Main read again with Speed's new value ({tree.Details?.Properties.First(p => p.Name == "Speed").Value})");
+            });
+            Ui.WaitFor(() => Picker(window) is not null, "the colour picker over Tint's swatch, pressed as Main was read again");
             ColourPicker picker = Picker(window)!;
             Control shades = picker.Shades;
             // White's hue is red's: past its square's top right corner, held there, is red, reached through its saturations.

@@ -828,21 +828,30 @@ public sealed class LiveTreeView : DockPanel
         }
     }
 
+    /// <summary>The chosen element's properties as the filter and Defaults choose them. The same properties in the same order
+    /// keep their rows, only a changed value's row handed its new one, so a read again or a filter heard late never takes an
+    /// editor from under a press, which would lose the click.</summary>
     private void ShowProperties()
     {
-        PropertyRows.Clear();
-        if (Details is null)
-        {
-            return;
-        }
         string typed = filter.Text?.Trim() ?? string.Empty;
         bool all = defaults.IsChecked == true;
-        foreach (PropertyValue value in Details.Properties)
+        List<PropertyValue> shown = Details is null ? []
+            : [.. Details.Properties.Where(value => (all || value.Source != ValueSources.Default) && (typed.Length == 0 || value.Name.Contains(typed, StringComparison.OrdinalIgnoreCase)))];
+        if (shown.Count == PropertyRows.Count && shown.Zip(PropertyRows).All(p => p.First.Name == p.Second.Name && p.First.Owner == p.Second.Owner && p.First.Attached == p.Second.Attached))
         {
-            if ((all || value.Source != ValueSources.Default) && (typed.Length == 0 || value.Name.Contains(typed, StringComparison.OrdinalIgnoreCase)))
+            for (int i = 0; i < shown.Count; i++)
             {
-                PropertyRows.Add(value);
+                if (shown[i] != PropertyRows[i])
+                {
+                    PropertyRows[i] = shown[i];
+                }
             }
+            return;
+        }
+        PropertyRows.Clear();
+        foreach (PropertyValue value in shown)
+        {
+            PropertyRows.Add(value);
         }
     }
 
