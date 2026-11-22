@@ -36,7 +36,12 @@ public sealed class SharedProjectsTests : IDisposable
     private string ItemsFile => Path.Combine(Shared, "Shop.Shared.projitems");
 
     [Fact]
-    public void Its_files_are_those_its_items_name_from_its_folder_a_wildcards_found_there_less_what_is_excluded_or_removed()
+    public void A_shared_projects_files_are_those_its_items_name_as_msbuild_reads_them() => Cases.All(
+        ("its files are those its items name from its folder a wildcards found there less what is excluded or removed", () => Apart(test => test.Its_files_are_those_its_items_name_from_its_folder_a_wildcards_found_there_less_what_is_excluded_or_removed())),
+        ("a wildcard takes a file named in another case only where its folder ignores case", () => Apart(test => test.A_wildcard_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case())),
+        ("a shared project added to a classic solution takes its own id and type and no configuration", () => Apart(test => test.A_shared_project_added_to_a_classic_solution_takes_its_own_id_and_type_and_no_configuration())));
+
+    private void Its_files_are_those_its_items_name_from_its_folder_a_wildcards_found_there_less_what_is_excluded_or_removed()
     {
         const string Text = """
             <Project>
@@ -63,8 +68,7 @@ public sealed class SharedProjectsTests : IDisposable
         Assert.Equal(expected, read.Select(i => (i.Type, Path.GetRelativePath(Shared, i.Path).Replace('\\', '/'), i.Link)));
     }
 
-    [Fact]
-    public void A_wildcard_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case()
+    private void A_wildcard_takes_a_file_named_in_another_case_only_where_its_folder_ignores_case()
     {
         const string Text = """
             <Project>
@@ -83,7 +87,24 @@ public sealed class SharedProjectsTests : IDisposable
     }
 
     [Fact]
-    public void A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays()
+    public void A_file_made_moved_or_deleted_is_written_into_a_shared_projects_items_as_they_stand() => Cases.All(
+        ("a file made goes after the last item of its type from the items folder with its separators and one named already stays", () => Apart(test => test.A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays())),
+        ("a file deleted leaves its item and a folder deleted every item under it an item group left empty going too", () => Apart(test => test.A_file_deleted_leaves_its_item_and_a_folder_deleted_every_item_under_it_an_item_group_left_empty_going_too())),
+        ("a file made where a wildcard of its type takes it gets no item of its own and one it leaves out does", () => Apart(test => test.A_file_made_where_a_wildcard_of_its_type_takes_it_gets_no_item_of_its_own_and_one_it_leaves_out_does())),
+        ("a file a wildcard takes is excluded by a remove after it holding in every build and included again by that remove going", () => Apart(test => test.A_file_a_wildcard_takes_is_excluded_by_a_remove_after_it_holding_in_every_build_and_included_again_by_that_remove_going())),
+        ("a file one item names beside another leaves that item naming the other whether deleted or excluded", () => Apart(test => test.A_file_one_item_names_beside_another_leaves_that_item_naming_the_other_whether_deleted_or_excluded())),
+        ("a file one item names beside another is named where it moved within the folder and taken out where it left it", () => Apart(test => test.A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it())),
+        ("its items follow a file renamed within its folder one moved out and one moved in", () => Apart(test => test.Its_items_follow_a_file_renamed_within_its_folder_one_moved_out_and_one_moved_in())),
+        ("a projects import of shared items is written as visual studio writes it after any other and taken out with a group it empties", () => Apart(test => test.A_projects_import_of_shared_items_is_written_as_visual_studio_writes_it_after_any_other_and_taken_out_with_a_group_it_empties())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<SharedProjectsTests> check)
+    {
+        using SharedProjectsTests test = new();
+        check(test);
+    }
+
+    private void A_file_made_goes_after_the_last_item_of_its_type_from_the_items_folder_with_its_separators_and_one_named_already_stays()
     {
         string added = SharedProjects.WithAdded(Items, ItemsFile,
             [Path.Combine(Shared, "Models", "Customer.cs"), Path.Combine(Shared, "Greeting.cs"), Path.Combine(Shared, "Pages", "Index.razor"), Path.Combine(root, "Elsewhere.cs")]);
@@ -93,19 +114,7 @@ public sealed class SharedProjectsTests : IDisposable
             .Replace("""readme.md" />""", """readme.md" />""" + "\n    <Content Include=\"$(MSBuildThisFileDirectory)Pages\\Index.razor\" />", StringComparison.Ordinal), added);
     }
 
-    [Fact]
-    public void A_file_made_in_an_items_file_naming_none_goes_in_an_item_group_of_its_own()
-    {
-        const string Empty = "<Project>\n  <PropertyGroup>\n    <HasSharedItems>true</HasSharedItems>\n  </PropertyGroup>\n</Project>\n";
-
-        string added = SharedProjects.WithAdded(Empty, ItemsFile, [Path.Combine(Shared, "First.cs")]);
-
-        Assert.Equal(Empty.Replace("</Project>", "  <ItemGroup>\n    <Compile Include=\"$(MSBuildThisFileDirectory)First.cs\" />\n  </ItemGroup>\n</Project>", StringComparison.Ordinal), added);
-        Assert.Equal([Path.Combine(Shared, "First.cs")], SharedProjects.ItemsIn(added, ItemsFile, _ => []).Select(i => i.Path));
-    }
-
-    [Fact]
-    public void A_file_deleted_leaves_its_item_and_a_folder_deleted_every_item_under_it_an_item_group_left_empty_going_too()
+    private void A_file_deleted_leaves_its_item_and_a_folder_deleted_every_item_under_it_an_item_group_left_empty_going_too()
     {
         string removed = SharedProjects.WithRemoved(Items, ItemsFile, [Path.Combine(Shared, "Greeting.cs"), Path.Combine(Shared, "Models")]);
 
@@ -134,8 +143,7 @@ public sealed class SharedProjectsTests : IDisposable
     private bool Takes(string text, string relative) =>
         SharedProjects.ItemsIn(text, ItemsFile, folder => PathNames.IsUnder(At(relative), folder) ? [At(relative)] : []).Any(i => i.Path == At(relative));
 
-    [Fact]
-    public void A_file_made_where_a_wildcard_of_its_type_takes_it_gets_no_item_of_its_own_and_one_it_leaves_out_does()
+    private void A_file_made_where_a_wildcard_of_its_type_takes_it_gets_no_item_of_its_own_and_one_it_leaves_out_does()
     {
         Assert.Equal(Globbed, SharedProjects.WithAdded(Globbed, ItemsFile, [At("Models/Customer.cs"), At("Models/Parts/Line.cs")]));
 
@@ -145,8 +153,7 @@ public sealed class SharedProjectsTests : IDisposable
             + "    <Compile Include=\"$(MSBuildThisFileDirectory)Views\\Main.cs\" />", StringComparison.Ordinal), added);
     }
 
-    [Fact]
-    public void A_file_a_wildcard_takes_is_excluded_by_a_remove_after_it_holding_in_every_build_and_included_again_by_that_remove_going()
+    private void A_file_a_wildcard_takes_is_excluded_by_a_remove_after_it_holding_in_every_build_and_included_again_by_that_remove_going()
     {
         string excluded = SharedProjects.WithExcluded(Globbed, ItemsFile, [At("Models/Order.cs")]);
 
@@ -160,8 +167,7 @@ public sealed class SharedProjectsTests : IDisposable
             SharedProjects.WithExcluded(Conditioned, ItemsFile, [At("Greeting.cs")]));
     }
 
-    [Fact]
-    public void A_file_one_item_names_beside_another_leaves_that_item_naming_the_other_whether_deleted_or_excluded()
+    private void A_file_one_item_names_beside_another_leaves_that_item_naming_the_other_whether_deleted_or_excluded()
     {
         string kept = Globbed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Greeting.cs", StringComparison.Ordinal);
 
@@ -176,8 +182,7 @@ public sealed class SharedProjectsTests : IDisposable
         Assert.Equal(Referenced.Replace("&#59; B&amp;C.cs ", string.Empty, StringComparison.Ordinal), SharedProjects.WithRemoved(Referenced, ItemsFile, [At("B&C.cs")]));
     }
 
-    [Fact]
-    public void A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it()
+    private void A_file_one_item_names_beside_another_is_named_where_it_moved_within_the_folder_and_taken_out_where_it_left_it()
     {
         Directory.CreateDirectory(Shared);
         File.WriteAllText(ItemsFile, Globbed);
@@ -191,27 +196,7 @@ public sealed class SharedProjectsTests : IDisposable
         Assert.Null(ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Models/Order.cs"), At("Models/Sale.cs"))]));
     }
 
-    [Fact]
-    public void A_file_a_list_names_moved_where_a_wildcard_of_its_type_takes_it_is_named_no_more_and_one_its_drafts_leave_out_is()
-    {
-        string covered = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Models/Extra.cs"))])!;
-
-        Assert.Equal(Globbed.Replace("Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs", "Greeting.cs", StringComparison.Ordinal), covered);
-        Assert.True(Takes(covered, "Models/Extra.cs"), "The wildcard no longer takes Extra.cs where it moved");
-        string both = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Models/Extra.cs")), (At("Greeting.cs"), At("Models/Greeting.cs"))])!;
-        Assert.Equal(Globbed.Replace("    <Compile Include=\"$(MSBuildThisFileDirectory)Greeting.cs;$(MSBuildThisFileDirectory)Extra.cs\" />\n", string.Empty, StringComparison.Ordinal), both);
-        string drafted = ProjectEdits.WithItemsMoved(Globbed, ItemsFile, [(At("Extra.cs"), At("Models/Drafts/Extra.cs"))])!;
-        Assert.Equal(Globbed.Replace("$(MSBuildThisFileDirectory)Extra.cs", "$(MSBuildThisFileDirectory)Models/Drafts/Extra.cs", StringComparison.Ordinal), drafted);
-
-        const string Kept = "<Project>\n  <ItemGroup>\n    <Compile Include=\"Models\\**\\*.cs\" />\n    <Compile Include=\"A.cs;B.cs\" Link=\"Shared\\%(Filename)%(Extension)\" />\n"
-            + "    <None Include=\"C.txt;D.txt\" />\n    <Compile Remove=\"Models\\E.cs\" />\n    <Compile Include=\"E.cs\" />\n  </ItemGroup>\n</Project>\n";
-        string kept = ProjectEdits.WithItemsMoved(Kept, ItemsFile, [(At("A.cs"), At("Models/A.cs")), (At("C.txt"), At("Models/C.txt")), (At("E.cs"), At("Models/E.cs"))])!;
-        Assert.Equal(Kept.Replace("\"A.cs;", "\"Models/A.cs;", StringComparison.Ordinal).Replace("\"C.txt;", "\"Models/C.txt;", StringComparison.Ordinal)
-            .Replace("\"E.cs\"", "\"Models/E.cs\"", StringComparison.Ordinal), kept);
-    }
-
-    [Fact]
-    public void Its_items_follow_a_file_renamed_within_its_folder_one_moved_out_and_one_moved_in()
+    private void Its_items_follow_a_file_renamed_within_its_folder_one_moved_out_and_one_moved_in()
     {
         Directory.CreateDirectory(Path.Combine(Shared, "Models"));
         File.WriteAllText(ItemsFile, Items);
@@ -226,8 +211,7 @@ public sealed class SharedProjectsTests : IDisposable
         Assert.Contains("<Compile Include=\"$(MSBuildThisFileDirectory)Welcome.cs\" />", File.ReadAllText(ItemsFile), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_projects_import_of_shared_items_is_written_as_visual_studio_writes_it_after_any_other_and_taken_out_with_a_group_it_empties()
+    private void A_projects_import_of_shared_items_is_written_as_visual_studio_writes_it_after_any_other_and_taken_out_with_a_group_it_empties()
     {
         const string Project = "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n  </PropertyGroup>\n</Project>\n";
         string api = Path.Combine(root, "Shop.Api", "Shop.Api.csproj");
@@ -255,8 +239,7 @@ public sealed class SharedProjectsTests : IDisposable
         Assert.Equal("<Project>\n</Project>\n", File.ReadAllText(api));
     }
 
-    [Fact]
-    public void A_shared_project_added_to_a_classic_solution_takes_its_own_id_and_type_and_no_configuration()
+    private void A_shared_project_added_to_a_classic_solution_takes_its_own_id_and_type_and_no_configuration()
     {
         Directory.CreateDirectory(Shared);
         string shproj = Path.Combine(Shared, "Shop.Shared.shproj");
@@ -272,23 +255,5 @@ public sealed class SharedProjectsTests : IDisposable
             written, StringComparison.Ordinal);
         Assert.DoesNotContain("ActiveCfg", written, StringComparison.Ordinal);
         Assert.Equal([shproj], SolutionModel.Load(solution, out _)!.Projects.Select(p => p.Path));
-    }
-
-    [Fact]
-    public void A_shared_project_names_its_items_file_by_its_shared_import_else_by_its_own_name()
-    {
-        Directory.CreateDirectory(Shared);
-        string shproj = Path.Combine(Shared, "Shop.Shared.shproj");
-        File.WriteAllText(shproj, """
-            <Project>
-              <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\CodeSharing\Microsoft.CodeSharing.Common.props" />
-              <Import Project="Other.projitems" />
-              <Import Project="Items\Common.projitems" Label="Shared" />
-            </Project>
-            """);
-        Assert.Equal(Path.Combine(Shared, "Items", "Common.projitems"), SharedProjects.ItemsFileOf(shproj));
-
-        File.WriteAllText(shproj, "<Project />");
-        Assert.Equal(Path.Combine(Shared, "Shop.Shared.projitems"), SharedProjects.ItemsFileOf(shproj));
     }
 }

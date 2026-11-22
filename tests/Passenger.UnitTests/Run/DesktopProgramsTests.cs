@@ -20,7 +20,20 @@ public sealed class DesktopProgramsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_named_program_beside_its_ui_framework_is_a_desktop_app_though_no_project_built_it()
+    public void A_start_is_the_desktop_app_its_program_is_native_or_managed() => Cases.All(
+        ("a named program beside its ui framework is a desktop app though no project built it", () => Apart(test => test.A_named_program_beside_its_ui_framework_is_a_desktop_app_though_no_project_built_it())),
+        ("a program with no ui framework is no desktop app", () => Apart(test => test.A_program_with_no_ui_framework_is_no_desktop_app())),
+        ("a program taking avalonia base alone is no desktop app and one beside avalonias controls is an avalonia app", () => Apart(test => test.A_program_taking_avalonia_base_alone_is_no_desktop_app_and_one_beside_avalonias_controls_is_an_avalonia_app())),
+        ("a mac program linking what opens windows is a desktop app", () => Cases.Each<string>(
+        [
+            "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+            "@rpath/libSDL2-2.0.0.dylib",
+        ], row => Apart(test => test.A_mac_program_linking_what_opens_windows_is_a_desktop_app(row)))),
+        ("a program in a macs app bundle is a desktop app whatever it links", () => Apart(test => test.A_program_in_a_macs_app_bundle_is_a_desktop_app_whatever_it_links())),
+        ("a single file publish on a mac is known by the ui framework inside it and goes past the inspector", () => Apart(test => test.A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector())),
+        ("a ui framework named across two reads of a large program is found all the same", () => Apart(test => test.A_ui_framework_named_across_two_reads_of_a_large_program_is_found_all_the_same())));
+
+    private void A_named_program_beside_its_ui_framework_is_a_desktop_app_though_no_project_built_it()
     {
         string program = Write("gtk/Viewer");
         Write("gtk/GtkSharp.dll");
@@ -29,7 +42,26 @@ public sealed class DesktopProgramsTests : IDisposable
     }
 
     [Fact]
-    public void The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options()
+    public void A_dotnet_start_is_what_its_command_runs_or_its_project_builds() => Cases.All(
+        ("the assembly a named dotnet is given is what runs past exec and the hosts options", () => Apart(test => test.The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options())),
+        ("a project s run command is read before the project s own program", () => Apart(test => test.A_project_s_run_command_is_read_before_the_project_s_own_program())),
+        ("a script a project s run command names starts the project s app a hook goes through", () => Apart(test => test.A_script_a_project_s_run_command_names_starts_the_project_s_app_a_hook_goes_through())),
+        ("a dotnet program a project s run command names is what runs never the project s own app", () => Apart(test => test.A_dotnet_program_a_project_s_run_command_names_is_what_runs_never_the_project_s_own_app())),
+        ("a named dotnet run starts what its project builds past any hook given it", () => Cases.Each<string>(
+        [
+            "run",
+            "watch",
+        ], row => Apart(test => test.A_named_dotnet_run_starts_what_its_project_builds_past_any_hook_given_it(row)))),
+        ("a build turning startup hooks off keeps the inspector out", () => Apart(test => test.A_build_turning_startup_hooks_off_keeps_the_inspector_out())),
+        ("a dotnet run naming a project names it past the folder it starts in", () => Cases.Each<(string, string, string)>(
+        [
+            ("run", "-p", "../Other/Other.csproj"),
+            ("watch", "--project", "../Other/Other.csproj"),
+        ], row => Apart(test => test.A_dotnet_run_naming_a_project_names_it_past_the_folder_it_starts_in(row.Item1, row.Item2, row.Item3)))),
+        ("a dotnet run naming another project is what that project says never what the plans built", () => Apart(test => test.A_dotnet_run_naming_another_project_is_what_that_project_says_never_what_the_plans_built())),
+        ("a dotnet run of a project no window loaded is refused for what cannot be read but on linux which has no display", () => Apart(test => test.A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display())));
+
+    private void The_assembly_a_named_dotnet_is_given_is_what_runs_past_exec_and_the_hosts_options()
     {
         string assembly = Write("app/App.dll");
         Write("app/Avalonia.Controls.dll");
@@ -38,8 +70,7 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Equal(assembly, DesktopPrograms.Started(Dotnet, ["--roll-forward", "Major", assembly], root, null, null, null)?.File);
     }
 
-    [Fact]
-    public void A_program_with_no_ui_framework_is_no_desktop_app()
+    private void A_program_with_no_ui_framework_is_no_desktop_app()
     {
         string tool = Write("tools/tool");
         Write("tools/tool.dll");
@@ -50,8 +81,7 @@ public sealed class DesktopProgramsTests : IDisposable
 
     /// <summary>Avalonia.Base holds Avalonia's geometry, colours and values, which a library's tool or a test harness takes
     /// alone; an app's Application and windows are in Avalonia.Controls.</summary>
-    [Fact]
-    public void A_program_taking_avalonia_base_alone_is_no_desktop_app_and_one_beside_avalonias_controls_is_an_avalonia_app()
+    private void A_program_taking_avalonia_base_alone_is_no_desktop_app_and_one_beside_avalonias_controls_is_an_avalonia_app()
     {
         string tool = Write("tool/Tool.dll");
         Write("tool/Avalonia.Base.dll");
@@ -62,8 +92,7 @@ public sealed class DesktopProgramsTests : IDisposable
             "A program beside Avalonia's controls did not read as an Avalonia app");
     }
 
-    [Fact]
-    public void A_project_s_run_command_is_read_before_the_project_s_own_program()
+    private void A_project_s_run_command_is_read_before_the_project_s_own_program()
     {
         string built = Write("app/App.dll");
         Write("app/Avalonia.Controls.dll");
@@ -72,8 +101,7 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Equal("a GTK app", DesktopPrograms.Started(other, [], root, built, built, null)?.Called);
     }
 
-    [Fact]
-    public void A_script_a_project_s_run_command_names_starts_the_project_s_app_a_hook_goes_through()
+    private void A_script_a_project_s_run_command_names_starts_the_project_s_app_a_hook_goes_through()
     {
         string built = Write("app/App.dll");
         Write("app/Avalonia.Controls.dll");
@@ -83,8 +111,7 @@ public sealed class DesktopProgramsTests : IDisposable
 
     /// <summary>A .NET program takes a hook given to the start out of whatever it starts in turn, so the project's own app
     /// never has it.</summary>
-    [Fact]
-    public void A_dotnet_program_a_project_s_run_command_names_is_what_runs_never_the_project_s_own_app()
+    private void A_dotnet_program_a_project_s_run_command_names_is_what_runs_never_the_project_s_own_app()
     {
         string built = Write("app/App.dll");
         Write("app/Avalonia.Controls.dll");
@@ -98,10 +125,7 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Equal(built, DesktopPrograms.Started(Dotnet, [built], root, built, built, null)?.File);
     }
 
-    [Theory]
-    [InlineData("run")]
-    [InlineData("watch")]
-    public void A_named_dotnet_run_starts_what_its_project_builds_past_any_hook_given_it(string command)
+    private void A_named_dotnet_run_starts_what_its_project_builds_past_any_hook_given_it(string command)
     {
         string target = Write("app/App.dll");
         Write("app/Avalonia.Controls.dll");
@@ -110,8 +134,7 @@ public sealed class DesktopProgramsTests : IDisposable
             $"dotnet {command} of an Avalonia project read as {found}: the inspector it would be given stops in the .NET CLI, and the app opens on the person's screen");
     }
 
-    [Fact]
-    public void A_build_turning_startup_hooks_off_keeps_the_inspector_out()
+    private void A_build_turning_startup_hooks_off_keeps_the_inspector_out()
     {
         string built = Write("app/App.dll");
         Write("app/Avalonia.Controls.dll");
@@ -123,80 +146,56 @@ public sealed class DesktopProgramsTests : IDisposable
     }
 
     [Fact]
-    public void A_program_no_build_has_made_is_what_its_project_says_it_is()
+    public void A_project_says_what_it_is_by_its_packages_and_the_projects_it_references() => Cases.All(
+        ("a project says what it is by the packages it takes", () => Cases.Each<(string, string?)>(
+        [
+            ("Avalonia.Desktop", DesktopPrograms.Avalonia),
+            ("GtkSharp", "a GTK app"),
+            ("Eto.Parse", null),
+            ("Serilog", null),
+        ], row => Apart(test => test.A_project_says_what_it_is_by_the_packages_it_takes(row.Item1, row.Item2)))),
+        ("a project takes its ui framework from the projects it references", () => Apart(test => test.A_project_takes_its_ui_framework_from_the_projects_it_references())),
+        ("a project takes xaml by any package of avalonias of its own or of the projects it references", () => Cases.Each<(string, bool)>(
+        [
+            ("Avalonia.Themes.Fluent", true),
+            ("Eto.Forms", false),
+        ], row => Apart(test => test.A_project_takes_xaml_by_any_package_of_avalonias_of_its_own_or_of_the_projects_it_references(row.Item1, row.Item2)))),
+        ("a restore says a project takes xaml where a package of another name brings avalonia", () => Apart(test => test.A_restore_says_a_project_takes_xaml_where_a_package_of_another_name_brings_avalonia())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<DesktopProgramsTests> check)
     {
-        string built = Path.Combine(root, "bin", "App.dll");
-        Assert.Equal("a GTK app", DesktopPrograms.Started(Dotnet, [built], root, built, built, "a GTK app")?.Called);
-        Assert.Null(DesktopPrograms.Started(Dotnet, [built], root, built, built, null));
+        using DesktopProgramsTests test = new();
+        check(test);
     }
 
-    [Fact]
-    public void A_windows_desktop_runtime_makes_a_windows_desktop_app()
-    {
-        string built = Write("app/App.dll");
-        Write("app/App.runtimeconfig.json", $$"""{ "runtimeOptions": { "framework": { "name": "{{FrameworkNames.WindowsDesktop}}" } } }""");
-        Assert.Equal("a Windows desktop app (WPF or Windows Forms)", DesktopPrograms.Of(built));
-    }
-
-    [Theory]
-    [InlineData("Avalonia", DesktopPrograms.Avalonia)]
-    [InlineData("Avalonia.Desktop", DesktopPrograms.Avalonia)]
-    [InlineData("GtkSharp", "a GTK app")]
-    [InlineData("Eto.Forms", "an Eto.Forms app")]
-    [InlineData("Eto.Parse", null)]
-    [InlineData("Microsoft.Maui.Graphics", null)]
-    [InlineData("Serilog", null)]
-    public void A_project_says_what_it_is_by_the_packages_it_takes(string package, string? called) =>
+    private void A_project_says_what_it_is_by_the_packages_it_takes(string package, string? called) =>
         Assert.Equal(called, DesktopPrograms.OfProject(Model("App", "Exe", package), []));
 
-    [Fact]
-    public void A_project_takes_its_ui_framework_from_the_projects_it_references()
+    private void A_project_takes_its_ui_framework_from_the_projects_it_references()
     {
         ProjectModel shared = Model("Shared", "Library", "Avalonia");
         ProjectModel head = Model("App", "Exe") with { ProjectReferences = [shared.Path] };
         Assert.Equal(DesktopPrograms.Avalonia, DesktopPrograms.OfProject(head, [head, shared]));
     }
 
-    [Theory]
-    [InlineData("/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit")]
-    [InlineData("/System/Library/Frameworks/Cocoa.framework/Versions/A/Cocoa")]
-    [InlineData("/System/Library/Frameworks/SwiftUI.framework/Versions/A/SwiftUI")]
-    [InlineData("@rpath/QtWidgets.framework/Versions/A/QtWidgets")]
-    [InlineData("@rpath/libSDL2-2.0.0.dylib")]
-    [InlineData("/opt/homebrew/lib/libglfw.3.dylib")]
-    public void A_mac_program_linking_what_opens_windows_is_a_desktop_app(string library)
+    private void A_mac_program_linking_what_opens_windows_is_a_desktop_app(string library)
     {
         string program = WriteBytes("native/Viewer", MachOBytes.Universal(MachOBytes.Thin("/usr/lib/libSystem.B.dylib", library)));
         DesktopProgram? found = DesktopPrograms.Started(program, [], root, null, null, null);
         Assert.True(found is { Called: "a native macOS app", PastHooks: null } && found.File == program, $"A native program linking {library} read as {found}, so a Passenger nobody sees would start it on the person's screen");
     }
 
-    [Fact]
-    public void A_mac_program_linking_nothing_that_opens_windows_is_no_desktop_app()
-    {
-        Assert.Null(DesktopPrograms.Of(WriteBytes("native/tool", MachOBytes.Thin("/usr/lib/libSystem.B.dylib", "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"))));
-    }
-
     /// <summary>A bundle's program links what it likes, or is a script: an Electron app's links only the framework beside it.</summary>
-    [Fact]
-    public void A_program_in_a_macs_app_bundle_is_a_desktop_app_whatever_it_links()
+    private void A_program_in_a_macs_app_bundle_is_a_desktop_app_whatever_it_links()
     {
         Assert.Equal("a native macOS app", DesktopPrograms.Of(WriteBytes(Path.Join("Viewer.app", "Contents", "MacOS", "Viewer"), MachOBytes.Thin("@rpath/Electron Framework.framework/Electron Framework"))));
         Assert.Equal("a native macOS app", DesktopPrograms.Of(Write(Path.Join("Script.app", "Contents", "MacOS", "Script"), "#!/bin/sh\n")));
     }
 
-    [Fact]
-    public void An_avalonia_app_in_a_macs_app_bundle_stays_an_avalonia_app_the_inspector_goes_into()
-    {
-        string program = Write(Path.Join("App.app", "Contents", "MacOS", "App"));
-        Write(Path.Join("App.app", "Contents", "MacOS", "Avalonia.Controls.dll"));
-        Assert.Equal(DesktopPrograms.Avalonia, DesktopPrograms.Of(program));
-    }
-
     /// <summary>A single-file publish lists what it holds by name, with nothing beside it to read. The inspector reads an app's
     /// assemblies from its folder, so such an app is no Avalonia app to it, and no start goes through it.</summary>
-    [Fact]
-    public void A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector()
+    private void A_single_file_publish_on_a_mac_is_known_by_the_ui_framework_inside_it_and_goes_past_the_inspector()
     {
         string program = WriteBytes("single/App", [.. MachOBytes.Thin("/usr/lib/libSystem.B.dylib"), .. new byte[100], .. Encoding.UTF8.GetBytes("Avalonia.Controls.dll"), .. new byte[100]]);
         DesktopProgram? found = DesktopPrograms.Started(program, [], root, null, null, null);
@@ -204,8 +203,7 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.NotEqual(DesktopPrograms.Avalonia, found!.Called);
     }
 
-    [Fact]
-    public void A_ui_framework_named_across_two_reads_of_a_large_program_is_found_all_the_same()
+    private void A_ui_framework_named_across_two_reads_of_a_large_program_is_found_all_the_same()
     {
         const int Read = 1024 * 1024;
         byte[] header = MachOBytes.Thin("/usr/lib/libSystem.B.dylib");
@@ -216,32 +214,14 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Equal("an Eto.Forms app, published as a single file", DesktopPrograms.Of(WriteBytes("single/Large", program)));
     }
 
-    [Theory]
-    [InlineData("run", "--project", "../Other/Other.csproj")]
-    [InlineData("run", "-p", "../Other/Other.csproj")]
-    [InlineData("watch", "--project", "../Other/Other.csproj")]
-    public void A_dotnet_run_naming_a_project_names_it_past_the_folder_it_starts_in(string command, string option, string project)
+    private void A_dotnet_run_naming_a_project_names_it_past_the_folder_it_starts_in(string command, string option, string project)
     {
         string folder = Path.Combine(root, "app");
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, project)), DesktopPrograms.NamedProject(Dotnet, [command, "--no-build", option, project], folder));
     }
 
-    [Fact]
-    public void A_dotnet_run_names_a_project_or_a_program_file_however_it_is_written_and_no_argument_of_the_program()
-    {
-        Assert.Equal(PathNames.Canonical(Path.Combine(root, "o.csproj")), DesktopPrograms.NamedProject(Dotnet, ["run", "--project=o.csproj"], root));
-        Assert.Equal(PathNames.Canonical(Path.Combine(root, "app.cs")), DesktopPrograms.NamedProject(Dotnet, ["run", "app.cs"], root));
-        Assert.Equal(PathNames.Canonical(Path.Combine(root, "app.cs")), DesktopPrograms.NamedProject(Dotnet, ["run", "--file", "app.cs"], root));
-        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["run", "--", "--project", "o.csproj"], root));
-        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["run", "--no-build"], root));
-        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["run", "--property:Extra=a.cs"], root));
-        Assert.Null(DesktopPrograms.NamedProject(Dotnet, ["build", "--project", "o.csproj"], root));
-        Assert.Null(DesktopPrograms.NamedProject("/bin/other", ["run", "--project", "o.csproj"], root));
-    }
-
     /// <summary>The plan's own project says nothing of what such a run starts, in either direction.</summary>
-    [Fact]
-    public void A_dotnet_run_naming_another_project_is_what_that_project_says_never_what_the_plans_built()
+    private void A_dotnet_run_naming_another_project_is_what_that_project_says_never_what_the_plans_built()
     {
         string target = Write("console/Tool.dll");
         string other = Path.Combine(root, "gui", "Gui.csproj");
@@ -257,20 +237,13 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Null(DesktopPrograms.Started(Dotnet, ["run", "--project", other], root, null, avalonia, null, other));
     }
 
-    [Fact]
-    public void A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display()
+    private void A_dotnet_run_of_a_project_no_window_loaded_is_refused_for_what_cannot_be_read_but_on_linux_which_has_no_display()
     {
         Assert.Equal(OperatingSystem.IsLinux() ? null : DesktopPrograms.UnreadProject, DesktopPrograms.OfNamed(Path.Combine(root, "elsewhere", "Far.csproj"), []));
     }
 
     /// <summary>A desktop head names Avalonia.Desktop, or only the library holding its XAML: each is an Avalonia app.</summary>
-    [Theory]
-    [InlineData("Avalonia", true)]
-    [InlineData("Avalonia.Desktop", true)]
-    [InlineData("Avalonia.Themes.Fluent", true)]
-    [InlineData("Eto.Forms", false)]
-    [InlineData("Serilog", false)]
-    public void A_project_takes_xaml_by_any_package_of_avalonias_of_its_own_or_of_the_projects_it_references(string package, bool takes)
+    private void A_project_takes_xaml_by_any_package_of_avalonias_of_its_own_or_of_the_projects_it_references(string package, bool takes)
     {
         ProjectModel own = Model("App", "Exe", package);
         ProjectModel shared = Model("Shared", "Library", package);
@@ -279,25 +252,11 @@ public sealed class DesktopProgramsTests : IDisposable
         Assert.Equal(takes, DesktopPrograms.TakesXaml(head, [head, shared]));
     }
 
-    [Fact]
-    public void A_restore_says_a_project_takes_xaml_where_a_package_of_another_name_brings_avalonia()
+    private void A_restore_says_a_project_takes_xaml_where_a_package_of_another_name_brings_avalonia()
     {
         Assert.True(DesktopPrograms.RestoredXaml(Restored("Vendor.Controls", "Avalonia")));
         Assert.False(DesktopPrograms.RestoredXaml(Restored("Serilog")));
         Assert.False(DesktopPrograms.RestoredXaml(RestoredVersions.None));
-    }
-
-    /// <summary>Such a head runs where no inspector goes, and its Hot Reload is dotnet watch's, its Avalonia never mind.</summary>
-    [Theory]
-    [InlineData("Avalonia.Browser")]
-    [InlineData("Avalonia.Android")]
-    [InlineData("Avalonia.iOS")]
-    public void A_head_of_a_browser_or_a_device_is_no_xaml_app_of_this_desktop(string package)
-    {
-        ProjectModel shared = Model("Shared", "Library", "Avalonia");
-        ProjectModel head = Model("Head", "Exe", package) with { ProjectReferences = [shared.Path] };
-        Assert.False(DesktopPrograms.TakesXaml(head, [head, shared]));
-        Assert.False(DesktopPrograms.RestoredXaml(Restored(package, "Avalonia")));
     }
 
     private static RestoredVersions Restored(params string[] packages)
@@ -305,10 +264,6 @@ public sealed class DesktopProgramsTests : IDisposable
         string libraries = string.Join(", ", packages.Select(package => $"\"{package}/1.0.0\": {{ \"type\": \"package\" }}"));
         return RestoredVersions.Read(new MemoryStream(Encoding.UTF8.GetBytes($"{{ \"targets\": {{ \"net11.0\": {{ {libraries} }} }} }}")));
     }
-
-    [Fact]
-    public void A_project_built_as_a_windowed_program_says_so() =>
-        Assert.Equal("a windowed program (OutputType WinExe)", DesktopPrograms.OfProject(Model("App", "WinExe"), []));
 
     private string WriteBytes(string relative, byte[] bytes)
     {

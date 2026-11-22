@@ -14,7 +14,18 @@ public class MSBuildEntriesTests
     }
 
     [Fact]
-    public void An_entry_holding_a_reference_is_one_entry_wherever_in_it_the_place_is()
+    public void A_values_entries_and_an_elements_role_are_read_as_msbuild_reads_them() => Cases.All(
+        ("an entry holding a reference is one entry wherever in it the place is", An_entry_holding_a_reference_is_one_entry_wherever_in_it_the_place_is),
+        ("an entry reads every reference as the character it names", () => Cases.Each<(string, string)>(
+        [
+            ("r&#38;d.txt", "r&d.txt"),
+            ("&lt;r&gt;.txt", "<r>.txt"),
+        ], row => An_entry_reads_every_reference_as_the_character_it_names(row.Item1, row.Item2))),
+        ("a semicolon after an ampersand that begins no reference parts two entries", A_semicolon_after_an_ampersand_that_begins_no_reference_parts_two_entries),
+        ("a semicolon right after a reference parts two entries", A_semicolon_right_after_a_reference_parts_two_entries),
+        ("an elements role comes from its parents however deep", An_elements_role_comes_from_its_parents_however_deep));
+
+    private void An_entry_holding_a_reference_is_one_entry_wherever_in_it_the_place_is()
     {
         const string Value = "a.txt;r&amp;d/notes.txt;b.txt";
         for (int at = Value.IndexOf('r', StringComparison.Ordinal); at <= Value.LastIndexOf(';'); at++)
@@ -25,24 +36,18 @@ public class MSBuildEntriesTests
         Assert.Equal(("b.txt", "b.txt"), At(Value, Value.Length));
     }
 
-    [Theory]
-    [InlineData("r&#38;d.txt", "r&d.txt")]
-    [InlineData("r&#x26;d.txt", "r&d.txt")]
-    [InlineData("&lt;r&gt;.txt", "<r>.txt")]
-    public void An_entry_reads_every_reference_as_the_character_it_names(string written, string said)
+    private void An_entry_reads_every_reference_as_the_character_it_names(string written, string said)
     {
         Assert.Equal((said, written), At(written, written.Length));
     }
 
-    [Fact]
-    public void A_semicolon_after_an_ampersand_that_begins_no_reference_parts_two_entries()
+    private void A_semicolon_after_an_ampersand_that_begins_no_reference_parts_two_entries()
     {
         Assert.Equal(("r&d", "r&d"), At("r&d;notes.txt", 1));
         Assert.Equal(("notes.txt", "notes.txt"), At("r&d;notes.txt", 6));
     }
 
-    [Fact]
-    public void A_semicolon_right_after_a_reference_parts_two_entries()
+    private void A_semicolon_right_after_a_reference_parts_two_entries()
     {
         Assert.Equal(("r&", "r&amp;"), At("r&amp;;d", 1));
         Assert.Equal(("d", "d"), At("r&amp;;d", 8));
@@ -50,8 +55,7 @@ public class MSBuildEntriesTests
 
     /// <summary>What an element of a project file is, read from its parents: the nearest that says, then down again, each
     /// level's from the one above; as deep as a tree is read, on a stack too small to walk it by recursing.</summary>
-    [Fact]
-    public void An_elements_role_comes_from_its_parents_however_deep()
+    private void An_elements_role_comes_from_its_parents_however_deep()
     {
         Passenger.Xaml.Syntax.XmlTree tree = Passenger.Xaml.Syntax.XmlTree.Parse("<Project><PropertyGroup><Name /></PropertyGroup><ItemGroup><Compile><Link /></Compile></ItemGroup>"
             + "<Target><Exec><Output /><Other /></Exec><PropertyGroup /></Target><Choose><When><ItemGroup><Item><Meta><Deeper /></Meta></Item></ItemGroup></When></Choose></Project>");

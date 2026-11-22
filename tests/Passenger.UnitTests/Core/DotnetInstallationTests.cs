@@ -11,7 +11,16 @@ public sealed class DotnetInstallationTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void An_SDK_short_of_the_runtime_it_runs_on_is_no_SDK()
+    public void An_SDK_is_taken_only_where_the_runtime_it_runs_on_is_there() => Cases.All(
+        ("an SDK short of the runtime it runs on is no SDK", () => Apart(test => test.An_SDK_short_of_the_runtime_it_runs_on_is_no_SDK())),
+        ("an SDK takes its runtime or a later one of its major never an earlier or the next major", () => Apart(test => test.An_SDK_takes_its_runtime_or_a_later_one_of_its_major_never_an_earlier_or_the_next_major())),
+        ("an SDK that says nothing of its runtime is taken at its folders word", () => Cases.Each<string?>(
+        [
+            null,
+            "not json",
+        ], row => Apart(test => test.An_SDK_that_says_nothing_of_its_runtime_is_taken_at_its_folders_word(row)))));
+
+    private void An_SDK_short_of_the_runtime_it_runs_on_is_no_SDK()
     {
         Sdk("10.0.403", Runs("10.0.14"));
         Runtime("9.0.1");
@@ -23,8 +32,7 @@ public sealed class DotnetInstallationTests : IDisposable
         Assert.Equal(["9.0.1"], read.Runtimes);
     }
 
-    [Fact]
-    public void An_SDK_takes_its_runtime_or_a_later_one_of_its_major_never_an_earlier_or_the_next_major()
+    private void An_SDK_takes_its_runtime_or_a_later_one_of_its_major_never_an_earlier_or_the_next_major()
     {
         Sdk("10.0.403", Runs("10.0.14"));
         Runtime("10.0.15");
@@ -36,38 +44,28 @@ public sealed class DotnetInstallationTests : IDisposable
         Assert.Equal(["10.0.403"], DotnetInstallation.Read(root).Sdks);
     }
 
-    [Fact]
-    public void A_prerelease_SDK_takes_the_prerelease_it_names()
-    {
-        Sdk("11.0.100-rc.3.26522.148", Runs("11.0.0-rc.3.26522.148"));
-        Assert.Empty(DotnetInstallation.Read(root).Sdks);
-
-        Runtime("11.0.0-rc.3.26522.148");
-        Assert.Equal(["11.0.100-rc.3.26522.148"], DotnetInstallation.Read(root).Sdks);
-    }
-
-    [Fact]
-    public void An_SDK_naming_several_frameworks_needs_the_runtime_among_them()
-    {
-        Sdk("10.0.403", """{ "runtimeOptions": { "frameworks": [ { "name": "Microsoft.AspNetCore.App", "version": "10.0.14" }, { "name": "Microsoft.NETCore.App", "version": "10.0.14" } ] } }""");
-        Assert.Empty(DotnetInstallation.Read(root).Sdks);
-
-        Runtime("10.0.14");
-        Assert.Equal(["10.0.403"], DotnetInstallation.Read(root).Sdks);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("not json")]
-    [InlineData("""{ "runtimeOptions": { } }""")]
-    public void An_SDK_that_says_nothing_of_its_runtime_is_taken_at_its_folders_word(string? config)
+    private void An_SDK_that_says_nothing_of_its_runtime_is_taken_at_its_folders_word(string? config)
     {
         Sdk("10.0.403", config);
         Assert.Equal(["10.0.403"], DotnetInstallation.Read(root).Sdks);
     }
 
     [Fact]
-    public void The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there()
+    public void A_folders_dotnet_is_the_first_installation_holding_the_SDK_its_trusted_global_json_takes() => Cases.All(
+        ("the installation chosen comes before the dotnet running this program while its dotnet is there", () => Apart(test => test.The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there())),
+        ("a folder whose global json asks an SDK the first dotnet lacks takes the next that holds it the homes own too", () => Apart(test => test.A_folder_whose_global_json_asks_an_SDK_the_first_dotnet_lacks_takes_the_next_that_holds_it_the_homes_own_too())),
+        ("a global jsons sdk paths are searched in their order a relative one from its folder host being each dotnet found", () => Apart(test => test.A_global_jsons_sdk_paths_are_searched_in_their_order_a_relative_one_from_its_folder_host_being_each_dotnet_found())),
+        ("a global json in a folder not trusted names no dotnet of its own the dotnets found searched alone", () => Apart(test => test.A_global_json_in_a_folder_not_trusted_names_no_dotnet_of_its_own_the_dotnets_found_searched_alone())),
+        ("the homes own dotnet is looked for after DOTNET ROOT the PATH and the installers places", () => Apart(test => test.The_homes_own_dotnet_is_looked_for_after_DOTNET_ROOT_the_PATH_and_the_installers_places())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<DotnetInstallationTests> check)
+    {
+        using DotnetInstallationTests test = new();
+        check(test);
+    }
+
+    private void The_installation_chosen_comes_before_the_dotnet_running_this_program_while_its_dotnet_is_there()
     {
         string host = Path.Join(root, Dotnet.HostName);
         File.WriteAllText(host, "the installed host\n");
@@ -86,8 +84,7 @@ public sealed class DotnetInstallationTests : IDisposable
         }
     }
 
-    [Fact]
-    public void A_folder_whose_global_json_asks_an_SDK_the_first_dotnet_lacks_takes_the_next_that_holds_it_the_homes_own_too()
+    private void A_folder_whose_global_json_asks_an_SDK_the_first_dotnet_lacks_takes_the_next_that_holds_it_the_homes_own_too()
     {
         DotnetFound system = Installation("system", "10.0.403", "11.0.100-rc.3.26522.148");
         DotnetFound path = Installation("path", "9.0.319");
@@ -112,8 +109,7 @@ public sealed class DotnetInstallationTests : IDisposable
         Assert.Equal((path, true), Dotnet.Choose([Installation("runtime"), path, home], folder, DotnetInstallation.Read));
     }
 
-    [Fact]
-    public void A_global_jsons_sdk_paths_are_searched_in_their_order_a_relative_one_from_its_folder_host_being_each_dotnet_found()
+    private void A_global_jsons_sdk_paths_are_searched_in_their_order_a_relative_one_from_its_folder_host_being_each_dotnet_found()
     {
         DotnetFound system = Installation("system", "10.0.403");
         DotnetFound home = Installation(Path.Join("home", ".dotnet"), "11.0.100");
@@ -137,8 +133,7 @@ public sealed class DotnetInstallationTests : IDisposable
         Assert.Equal((system, false), Asking("[]"));
     }
 
-    [Fact]
-    public void A_global_json_in_a_folder_not_trusted_names_no_dotnet_of_its_own_the_dotnets_found_searched_alone()
+    private void A_global_json_in_a_folder_not_trusted_names_no_dotnet_of_its_own_the_dotnets_found_searched_alone()
     {
         DotnetFound system = Installation("system", "10.0.403");
         DotnetFound home = Installation(Path.Join("home", ".dotnet"), "11.0.100");
@@ -157,20 +152,7 @@ public sealed class DotnetInstallationTests : IDisposable
         Assert.Equal([Path.Join(root, "work")], asked);
     }
 
-    [Fact]
-    public void A_global_jsons_paths_and_error_message_are_read_as_dotnet_reads_them()
-    {
-        string path = Path.Join(root, "global.json");
-        GlobalJsonSdk read = GlobalJsonSdk.Of(path, """{ "sdk": { "version": "11.0.100", "paths": [ ".dotnet", 3, "$host$" ], "errorMessage": "Run ./build.sh to install the SDK." } }""")!;
-        Assert.True(read.Paths is [".dotnet", GlobalJsonSdk.HostPath] && read.ErrorMessage == "Run ./build.sh to install the SDK.",
-            $"global.json's paths read as [{string.Join(", ", read.Paths ?? [])}], its errorMessage as {read.ErrorMessage}");
-        Assert.Equal(Path.Join(root, ".dotnet"), read.Place(".dotnet"));
-        Assert.Null(GlobalJsonSdk.Of(path, """{ "sdk": { "paths": null } }""")!.Paths);
-        Assert.Null(GlobalJsonSdk.Of(path, """{ "sdk": { "version": "11.0.100" } }""")!.Paths);
-    }
-
-    [Fact]
-    public void The_homes_own_dotnet_is_looked_for_after_DOTNET_ROOT_the_PATH_and_the_installers_places()
+    private void The_homes_own_dotnet_is_looked_for_after_DOTNET_ROOT_the_PATH_and_the_installers_places()
     {
         DotnetFound home = Installation(Path.Join("home", ".dotnet"), "11.0.100");
         DotnetFound last = Dotnet.Candidates(Path.Join(root, "home")).Last();

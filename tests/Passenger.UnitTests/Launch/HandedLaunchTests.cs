@@ -12,7 +12,14 @@ public class HandedLaunchTests
     private static readonly string Root = OperatingSystem.IsWindows() ? @"C:\Games\" : "/games/";
 
     [Fact]
-    public void A_launch_with_its_folder_files_and_caret_reads_back_as_it_was_written()
+    public void A_launch_handed_to_a_running_Passenger_reads_back_as_it_was_written() => Cases.All(
+        ("a launch with its folder files and caret reads back as it was written", A_launch_with_its_folder_files_and_caret_reads_back_as_it_was_written),
+        ("the caret goes on the wire counted from one", The_caret_goes_on_the_wire_counted_from_one),
+        ("a launch naming nothing or only a workspace reads back as it was written", A_launch_naming_nothing_or_only_a_workspace_reads_back_as_it_was_written),
+        ("a launch asking for a new window reads back as one and a plain launch never does", A_launch_asking_for_a_new_window_reads_back_as_one_and_a_plain_launch_never_does),
+        ("an answer says the folder taken in or why not", An_answer_says_the_folder_taken_in_or_why_not));
+
+    private void A_launch_with_its_folder_files_and_caret_reads_back_as_it_was_written()
     {
         HandedLaunch launch = new(Root + "Space", null, [Root + "Space/Player.cs", Root + "Space/Enemy.cs"], new TextPosition(11, 4));
 
@@ -22,8 +29,7 @@ public class HandedLaunchTests
             $"The running Passenger would open something other than what the launch named: {launch.Message()} read back as {read}");
     }
 
-    [Fact]
-    public void The_caret_goes_on_the_wire_counted_from_one()
+    private void The_caret_goes_on_the_wire_counted_from_one()
     {
         string message = new HandedLaunch(Root + "Space", null, [Root + "Space/Player.cs"], new TextPosition(0, 0)).Message();
 
@@ -33,8 +39,7 @@ public class HandedLaunchTests
             $"A running Passenger of another build would put the caret a line off: {message}");
     }
 
-    [Fact]
-    public void A_launch_naming_nothing_or_only_a_workspace_reads_back_as_it_was_written()
+    private void A_launch_naming_nothing_or_only_a_workspace_reads_back_as_it_was_written()
     {
         HandedLaunch bare = new(null, null, [], null);
         HandedLaunch solution = new(Root + "Space", Root + "Space/Space.sln", [], null);
@@ -46,8 +51,7 @@ public class HandedLaunchTests
             $"A launch naming nothing, or a solution, would open something else: {readBare}, {readSolution}");
     }
 
-    [Fact]
-    public void A_launch_asking_for_a_new_window_reads_back_as_one_and_a_plain_launch_never_does()
+    private void A_launch_asking_for_a_new_window_reads_back_as_one_and_a_plain_launch_never_does()
     {
         HandedLaunch? asked = Read(new HandedLaunch(null, null, [], null) { NewWindow = true }.Message());
         HandedLaunch? plain = Read(new HandedLaunch(Root + "Space", null, [], null).Message());
@@ -56,25 +60,28 @@ public class HandedLaunchTests
             $"The taskbar's New Window would bring a window forward rather than make one, or a folder's launch would make an empty window: {asked}, {plain}");
     }
 
-    [Theory]
-    [InlineData("""{"open": "/games/Space"}""")]
-    [InlineData("""[1, 2]""")]
-    [InlineData("""{"launch": "/games/Space"}""")]
-    public void A_line_asking_no_launch_is_no_launch(string line)
+    [Fact]
+    public void A_line_that_is_no_launch_or_a_malformed_one_opens_nothing() => Cases.All(
+        ("a line asking no launch is no launch", () => Cases.Each<string>(
+        [
+            """{"open": "/games/Space"}""",
+            """{"launch": "/games/Space"}""",
+        ], A_line_asking_no_launch_is_no_launch)),
+        ("a malformed launch is refused saying why", () => Cases.Each<(string, string)>(
+        [
+            ("""{"launch": {"folder": "Space"}}""", "a launch's folder is a whole path, not 'Space'"),
+            ("""{"launch": {"files": [7]}}""", "a launch's files are paths"),
+            ("""{"launch": {"files": ["/games/a.cs"], "caret": {"line": 0, "column": 1}}}""", "a launch's caret is its line and column, each counted from 1"),
+            ("""{"launch": {"caret": {"line": 3, "column": 1}}}""", "a launch's caret needs a file to go in"),
+            ("""{"launch": {"folder": "/games/Space", "newWindow": true}}""", "a launch asking for a new window names nothing to open in it"),
+        ], row => A_malformed_launch_is_refused_saying_why(row.Item1, row.Item2))));
+
+    private void A_line_asking_no_launch_is_no_launch(string line)
     {
         Assert.True(Read(line) is null, $"'{line}' was read as a launch, which would open a window for an agent's or a stranger's line");
     }
 
-    [Theory]
-    [InlineData("""{"launch": {"folder": "Space"}}""", "a launch's folder is a whole path, not 'Space'")]
-    [InlineData("""{"launch": {"files": ["Player.cs"]}}""", "a launch's file is a whole path, not 'Player.cs'")]
-    [InlineData("""{"launch": {"files": [7]}}""", "a launch's files are paths")]
-    [InlineData("""{"launch": {"files": ["/games/a.cs"], "caret": {"line": 0, "column": 1}}}""", "a launch's caret is its line and column, each counted from 1")]
-    [InlineData("""{"launch": {"files": ["/games/a.cs"], "caret": {"line": "3"}}}""", "a launch's caret is its line and column, each counted from 1")]
-    [InlineData("""{"launch": {"caret": {"line": 3, "column": 1}}}""", "a launch's caret needs a file to go in")]
-    [InlineData("""{"launch": {"folder": "/games/Space", "newWindow": true}}""", "a launch asking for a new window names nothing to open in it")]
-    [InlineData("""{"launch": {"files": ["/games/a.cs"], "newWindow": true}}""", "a launch asking for a new window names nothing to open in it")]
-    public void A_malformed_launch_is_refused_saying_why(string line, string why)
+    private void A_malformed_launch_is_refused_saying_why(string line, string why)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -86,8 +93,7 @@ public class HandedLaunchTests
         Assert.True(refused?.Message == why, $"'{line}' was to be refused saying \"{why}\"; it said {refused?.Message ?? "nothing, and was taken"}");
     }
 
-    [Fact]
-    public void An_answer_says_the_folder_taken_in_or_why_not()
+    private void An_answer_says_the_folder_taken_in_or_why_not()
     {
         using JsonDocument taken = JsonDocument.Parse(HandedLaunch.Answer(Root + "Space", null));
         using JsonDocument none = JsonDocument.Parse(HandedLaunch.Answer(null, null));

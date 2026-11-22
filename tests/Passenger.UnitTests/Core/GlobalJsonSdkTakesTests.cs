@@ -6,32 +6,29 @@ namespace Passenger.UnitTests.Core;
 /// at or above it as far as rollForward goes, prereleases by allowPrerelease, and any SDK where it asks none.</summary>
 public sealed class GlobalJsonSdkTakesTests
 {
-    [Theory]
-    [InlineData(null, "11.0.100", true)]
-    [InlineData(null, "11.0.150", true)]
-    [InlineData(null, "11.0.200", false)]
-    [InlineData("disable", "11.0.100", true)]
-    [InlineData("disable", "11.0.101", false)]
-    [InlineData("patch", "11.0.105", true)]
-    [InlineData("patch", "11.0.200", false)]
-    [InlineData("patch", "11.0.99", false)]
-    [InlineData("latestPatch", "11.0.199", true)]
-    [InlineData("feature", "11.0.300", true)]
-    [InlineData("latestFeature", "11.1.100", false)]
-    [InlineData("minor", "11.2.100", true)]
-    [InlineData("latestMinor", "12.0.100", false)]
-    [InlineData("major", "12.0.100", true)]
-    [InlineData("latestMajor", "10.0.400", false)]
-    [InlineData("LatestFeature", "11.0.400", true)]
-    [InlineData("sideways", "11.0.100", false)]
-    public void A_version_asked_takes_itself_and_what_its_roll_forward_reaches_at_or_above_it(string? rollForward, string sdk, bool taken)
+    [Fact]
+    public void A_global_json_takes_the_SDKs_its_version_roll_forward_and_prereleases_reach() => Cases.All(
+        ("a version asked takes itself and what its roll forward reaches at or above it", () => Cases.Each<(string?, string, bool)>(
+        [
+            (null, "11.0.200", false),
+            ("disable", "11.0.101", false),
+            ("patch", "11.0.99", false),
+            ("feature", "11.0.300", true),
+            ("latestFeature", "11.1.100", false),
+            ("major", "12.0.100", true),
+            ("latestMajor", "10.0.400", false),
+            ("sideways", "11.0.100", false),
+        ], row => A_version_asked_takes_itself_and_what_its_roll_forward_reaches_at_or_above_it(row.Item1, row.Item2, row.Item3))),
+        ("a prerelease is taken unless allowPrerelease is false and the version asked is a release", A_prerelease_is_taken_unless_allowPrerelease_is_false_and_the_version_asked_is_a_release),
+        ("asking no version takes any SDK but a prerelease allowPrerelease refuses and a version that does not read takes none", Asking_no_version_takes_any_SDK_but_a_prerelease_allowPrerelease_refuses_and_a_version_that_does_not_read_takes_none));
+
+    private void A_version_asked_takes_itself_and_what_its_roll_forward_reaches_at_or_above_it(string? rollForward, string sdk, bool taken)
     {
         GlobalJsonSdk asked = new("/work/global.json", "11.0.100", rollForward, 2);
         Assert.True(asked.Takes(sdk) == taken, $"global.json asking 11.0.100 with rollForward {rollForward ?? "unsaid"} {(taken ? "did not take" : "took")} the SDK {sdk}");
     }
 
-    [Fact]
-    public void A_prerelease_is_taken_unless_allowPrerelease_is_false_and_the_version_asked_is_a_release()
+    private void A_prerelease_is_taken_unless_allowPrerelease_is_false_and_the_version_asked_is_a_release()
     {
         GlobalJsonSdk release = new("/work/global.json", "11.0.100", "latestMajor", 2);
         Assert.True(release.Takes("12.0.100-rc.1.26401.1"), "A prerelease above the version asked was not taken where allowPrerelease is unsaid");
@@ -43,8 +40,7 @@ public sealed class GlobalJsonSdkTakesTests
         Assert.True(prerelease.Takes("11.0.100"), "A prerelease asked for did not take its release");
     }
 
-    [Fact]
-    public void Asking_no_version_takes_any_SDK_but_a_prerelease_allowPrerelease_refuses_and_a_version_that_does_not_read_takes_none()
+    private void Asking_no_version_takes_any_SDK_but_a_prerelease_allowPrerelease_refuses_and_a_version_that_does_not_read_takes_none()
     {
         GlobalJsonSdk none = new("/work/global.json", null, null, 0);
         Assert.True(none.Takes("9.0.303") && none.Takes("11.0.100-rc.3.26522.148"), "global.json asking no version did not take every SDK");

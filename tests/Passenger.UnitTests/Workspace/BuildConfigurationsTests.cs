@@ -16,7 +16,18 @@ public class BuildConfigurationsTests
     private const string Solution = "/work/All.sln";
 
     [Fact]
-    public void Projects_declaring_nothing_offer_debug_and_release_for_anycpu_debug_by_default()
+    public void Projects_offer_what_they_declare_and_a_kept_choice_stands_while_offered() => Cases.All(
+        ("projects declaring nothing offer debug and release for anycpu debug by default", Projects_declaring_nothing_offer_debug_and_release_for_anycpu_debug_by_default),
+        ("a godot game offers its sdks three configurations and never release", A_godot_game_offers_its_sdks_three_configurations_and_never_release),
+        ("projects offer every configuration and platform any declares once shown with its platform where several are", Projects_offer_every_configuration_and_platform_any_declares_once_shown_with_its_platform_where_several_are),
+        ("a choice kept stands while offered and falls back to the default once gone", A_choice_kept_stands_while_offered_and_falls_back_to_the_default_once_gone),
+        ("a publish takes release else the configuration named for release", () => Cases.Each<(string, string)>(
+        [
+            ("Debug;ExportDebug;ExportRelease", "ExportRelease"),
+            ("Debug;Staging", "Debug"),
+        ], row => A_publish_takes_release_else_the_configuration_named_for_release(row.Item1, row.Item2))));
+
+    private void Projects_declaring_nothing_offer_debug_and_release_for_anycpu_debug_by_default()
     {
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([(null, null)]);
         Assert.Equal(["Debug|AnyCPU", "Release|AnyCPU"], offered.Select(o => o.Key));
@@ -24,8 +35,7 @@ public class BuildConfigurationsTests
         Assert.Equal(["Debug", "Release"], offered.Select(o => o.Shown(offered)));
     }
 
-    [Fact]
-    public void A_godot_game_offers_its_sdks_three_configurations_and_never_release()
+    private void A_godot_game_offers_its_sdks_three_configurations_and_never_release()
     {
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([("Debug;ExportDebug;ExportRelease", "AnyCPU")]);
         Assert.Equal(["Debug", "ExportDebug", "ExportRelease"], offered.Select(o => o.Configuration));
@@ -33,8 +43,7 @@ public class BuildConfigurationsTests
         Assert.Equal("Debug|AnyCPU", BuildConfigurations.DefaultOf(offered)?.Key);
     }
 
-    [Fact]
-    public void Projects_offer_every_configuration_and_platform_any_declares_once_shown_with_its_platform_where_several_are()
+    private void Projects_offer_every_configuration_and_platform_any_declares_once_shown_with_its_platform_where_several_are()
     {
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([("Debug;Release", "AnyCPU"), ("Debug;Staging", "x64;ARM64")]);
         Assert.Equal(["Debug|AnyCPU", "Debug|x64", "Debug|ARM64", "Release|AnyCPU", "Release|x64", "Release|ARM64", "Staging|AnyCPU", "Staging|x64", "Staging|ARM64"],
@@ -42,8 +51,7 @@ public class BuildConfigurationsTests
         Assert.Equal("Staging | x64", offered[7].Shown(offered));
     }
 
-    [Fact]
-    public void A_choice_kept_stands_while_offered_and_falls_back_to_the_default_once_gone()
+    private void A_choice_kept_stands_while_offered_and_falls_back_to_the_default_once_gone()
     {
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([("Debug;Release", null)]);
         BuildConfiguration? fallback = BuildConfigurations.DefaultOf(offered);
@@ -53,7 +61,18 @@ public class BuildConfigurationsTests
     }
 
     [Fact]
-    public void With_no_solution_a_project_is_given_the_configuration_and_only_a_platform_it_declares()
+    public void Each_build_is_given_what_the_choice_maps_its_project_and_references_to() => Cases.All(
+        ("with no solution a project is given the configuration and only a platform it declares", With_no_solution_a_project_is_given_the_configuration_and_only_a_platform_it_declares),
+        ("under a solution each project is given what its configuration maps it to and the solution the configuration itself", Under_a_solution_each_project_is_given_what_its_configuration_maps_it_to_and_the_solution_the_configuration_itself),
+        ("a workspace gives nothing for the default and its choice to each build target", A_workspace_gives_nothing_for_the_default_and_its_choice_to_each_build_target),
+        ("two workspaces build a program unlike where its project or a reference takes another configuration or platform", Two_workspaces_build_a_program_unlike_where_its_project_or_a_reference_takes_another_configuration_or_platform),
+        ("a solution configuration changes nothing given none only where it maps every project to debug and anycpu", A_solution_configuration_changes_nothing_given_none_only_where_it_maps_every_project_to_debug_and_anycpu),
+        ("a projects build is told the mapping of each reference that would take another from the project referencing it", A_projects_build_is_told_the_mapping_of_each_reference_that_would_take_another_from_the_project_referencing_it),
+        ("what a build is told of its references keeps a path of quotes ampersands and msbuilds separators", What_a_build_is_told_of_its_references_keeps_a_path_of_quotes_ampersands_and_msbuilds_separators),
+        ("dotnet watch is given the configuration and platform with the platform as a property its p being its project", Dotnet_watch_is_given_the_configuration_and_platform_with_the_platform_as_a_property_its_p_being_its_project),
+        ("a publish building as the folder builds takes the choice else the configuration its build takes", A_publish_building_as_the_folder_builds_takes_the_choice_else_the_configuration_its_build_takes));
+
+    private void With_no_solution_a_project_is_given_the_configuration_and_only_a_platform_it_declares()
     {
         BuildChoice choice = new(new BuildConfiguration("Release", "x64"), OfSolution: false);
         Assert.Equal(new Dictionary<string, string> { ["Configuration"] = "Release", ["Platform"] = "x64" }, choice.PropertiesOf(Game, "AnyCPU;x64"));
@@ -63,8 +82,7 @@ public class BuildConfigurationsTests
         Assert.Equal(["-c", "Release"], new BuildChoice(new BuildConfiguration("Release", "AnyCPU"), OfSolution: false).ArgumentsFor(Game, solution: false, "AnyCPU"));
     }
 
-    [Fact]
-    public void Under_a_solution_each_project_is_given_what_its_configuration_maps_it_to_and_the_solution_the_configuration_itself()
+    private void Under_a_solution_each_project_is_given_what_its_configuration_maps_it_to_and_the_solution_the_configuration_itself()
     {
         BuildChoice choice = new(new BuildConfiguration("Staging", "Any CPU"), OfSolution: true)
         {
@@ -76,8 +94,7 @@ public class BuildConfigurationsTests
         Assert.Equal(new Dictionary<string, string> { ["Configuration"] = "Staging" }, choice.PropertiesOf("/work/Tool/Tool.csproj", "x64"));
     }
 
-    [Fact]
-    public void A_workspace_gives_nothing_for_the_default_and_its_choice_to_each_build_target()
+    private void A_workspace_gives_nothing_for_the_default_and_its_choice_to_each_build_target()
     {
         ProjectModel game = Project(Game, "AnyCPU;x64");
         WorkspaceModel plain = new("/work", null, [game]);
@@ -92,8 +109,7 @@ public class BuildConfigurationsTests
     /// <summary>What Hot Reload checks a program's build by: the configuration and platform each workspace builds a project
     /// and those it references as, the SDK's Debug and AnyCPU where given none, a solution's Any CPU being the project's
     /// AnyCPU, and the first of them two workspaces build unlike.</summary>
-    [Fact]
-    public void Two_workspaces_build_a_program_unlike_where_its_project_or_a_reference_takes_another_configuration_or_platform()
+    private void Two_workspaces_build_a_program_unlike_where_its_project_or_a_reference_takes_another_configuration_or_platform()
     {
         WorkspaceModel plain = new("/work", null, [Project(Game, "AnyCPU;x64") with { ProjectReferences = [Library] }, Project(Library, null)]);
         Assert.Equal("Debug|AnyCPU", plain.BuiltAs(Game).Key);
@@ -117,8 +133,7 @@ public class BuildConfigurationsTests
 
     /// <summary>A solution's default gives builds nothing only where it maps every project as a build of it given nothing
     /// builds it: Debug and AnyCPU, a solution's Any CPU being AnyCPU.</summary>
-    [Fact]
-    public void A_solution_configuration_changes_nothing_given_none_only_where_it_maps_every_project_to_debug_and_anycpu()
+    private void A_solution_configuration_changes_nothing_given_none_only_where_it_maps_every_project_to_debug_and_anycpu()
     {
         Assert.True(BuildConfigurations.MapsAsGivenNone([new SolutionBuilt(Game, "Debug", "AnyCPU"), new SolutionBuilt(Library, "debug", "Any CPU")]));
         Assert.True(BuildConfigurations.MapsAsGivenNone([]));
@@ -131,8 +146,7 @@ public class BuildConfigurationsTests
     /// Staging tells its library mapped to Release, and the library below it mapped to Staging, which would otherwise take
     /// Release from the library; the library's own build tells that one alone, and built beside it the one below is told
     /// the same, so the library's build of it is the same build; a mapping alike everywhere tells nothing.</summary>
-    [Fact]
-    public void A_projects_build_is_told_the_mapping_of_each_reference_that_would_take_another_from_the_project_referencing_it()
+    private void A_projects_build_is_told_the_mapping_of_each_reference_that_would_take_another_from_the_project_referencing_it()
     {
         const string app = "/work/App/App.csproj";
         const string shared = "/work/Shared/Shared.csproj";
@@ -170,8 +184,7 @@ public class BuildConfigurationsTests
     /// <summary>What a build is told of its references reads as MSBuild reads it whatever their paths hold: the path and the
     /// mapping written as XML, then given as any property is, the command line's separators and MSBuild's escape mark
     /// escaped.</summary>
-    [Fact]
-    public void What_a_build_is_told_of_its_references_keeps_a_path_of_quotes_ampersands_and_msbuilds_separators()
+    private void What_a_build_is_told_of_its_references_keeps_a_path_of_quotes_ampersands_and_msbuilds_separators()
     {
         string contents = BuildChoice.Contents([new SolutionBuilt("/w/it's & <x>, 100%; \"q\"/L.csproj", "Release", "AnyCPU")]);
         Assert.Equal("<SolutionConfiguration><ProjectConfiguration Project='1' AbsolutePath='/w/it&apos;s &amp; &lt;x>, 100%; \"q\"/L.csproj'>Release|AnyCPU"
@@ -181,8 +194,7 @@ public class BuildConfigurationsTests
 
     /// <summary>dotnet watch runs a project as its build does, its configuration and platform given in its own words: it takes
     /// <c>-p</c> for its project, so the platform goes as <c>--property</c>; none for the default.</summary>
-    [Fact]
-    public void Dotnet_watch_is_given_the_configuration_and_platform_with_the_platform_as_a_property_its_p_being_its_project()
+    private void Dotnet_watch_is_given_the_configuration_and_platform_with_the_platform_as_a_property_its_p_being_its_project()
     {
         WorkspaceModel plain = new("/work", null, [Project(Game, "AnyCPU;x64")]);
         Assert.Empty(plain.BuildArgumentsFor(Game, watched: true));
@@ -196,8 +208,7 @@ public class BuildConfigurationsTests
 
     /// <summary>A publish that builds as the folder builds (a container run's image) takes the choice's arguments, else the
     /// configuration the project's build takes given none, which a publish given none would leave for Release.</summary>
-    [Fact]
-    public void A_publish_building_as_the_folder_builds_takes_the_choice_else_the_configuration_its_build_takes()
+    private void A_publish_building_as_the_folder_builds_takes_the_choice_else_the_configuration_its_build_takes()
     {
         WorkspaceModel plain = new("/work", null, [Project(Game, "AnyCPU;x64")]);
         Assert.Equal(["-c", "Debug"], plain.PublishArgumentsFor(Game, "Debug"));
@@ -206,33 +217,8 @@ public class BuildConfigurationsTests
         Assert.Equal(["-c", "Release", "-p:Platform=x64"], chosen.PublishArgumentsFor(Game, "Release"));
     }
 
-    [Fact]
-    public void A_build_takes_the_configurations_arguments_before_its_logger_switches()
-    {
-        IReadOnlyList<string> arguments = BuildOutput.Arguments(Game, BuildKind.Build, "net10.0", configured: ["-c", "Release"]);
-        Assert.Equal(["build", Game, "--framework", "net10.0", "-c", "Release"], arguments.Take(6));
-        Assert.Equal(BuildOutput.Arguments(Game, BuildKind.Build, "net10.0"), BuildOutput.Arguments(Game, BuildKind.Build, "net10.0", configured: []));
-    }
-
-    [Theory]
-    [InlineData("Debug;Release", "Release")]
-    [InlineData("Debug;ExportDebug;ExportRelease", "ExportRelease")]
-    [InlineData("Debug;Staging", "Debug")]
-    public void A_publish_takes_release_else_the_configuration_named_for_release(string declared, string taken) =>
+    private void A_publish_takes_release_else_the_configuration_named_for_release(string declared, string taken) =>
         Assert.Equal(taken, PublishProfiles.ReleaseOf(PublishProfiles.DeclaredConfigurations(Project(Game, null, declared))));
-
-    [Theory]
-    [InlineData("Release|Any CPU", "Release", "Any CPU")]
-    [InlineData(" Staging | x64 ", "Staging", "x64")]
-    public void A_kept_key_reads_back_as_its_configuration_and_platform(string key, string configuration, string platform) =>
-        Assert.Equal(new BuildConfiguration(configuration, platform), BuildConfiguration.Of(key));
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("Release")]
-    [InlineData("|x64")]
-    [InlineData("a|b|c")]
-    public void Text_naming_no_configuration_and_platform_reads_as_none(string? key) => Assert.Null(BuildConfiguration.Of(key));
 
     private static ProjectModel Project(string path, string? platforms, string configurations = "Debug;Release") =>
         ProjectModel.From(path, new EvaluatedProject

@@ -55,14 +55,22 @@ public class ProgramProcessorsTests
     }
 
     [Fact]
-    public void A_thin_mac_programs_processor_is_its_cpu_type()
+    public void A_programs_processors_are_read_from_its_header_on_every_system() => Cases.All(
+        ("a thin mac programs processor is its cpu type", A_thin_mac_programs_processor_is_its_cpu_type),
+        ("a universal mac programs processors are its slices", A_universal_mac_programs_processors_are_its_slices),
+        ("a universal table of more slices than a program has is a java class built for no processor", A_universal_table_of_more_slices_than_a_program_has_is_a_java_class_built_for_no_processor),
+        ("a linux programs processor is its elf machine in the byte order its header names", A_linux_programs_processor_is_its_elf_machine_in_the_byte_order_its_header_names),
+        ("a windows programs processor is its machine", A_windows_programs_processor_is_its_machine),
+        ("a dotnet assembly is built for no processor its machine names and a native x86 program for x86", A_dotnet_assembly_is_built_for_no_processor_its_machine_names_and_a_native_x86_program_for_x86),
+        ("a file that is no program or is cut short has none", A_file_that_is_no_program_or_is_cut_short_has_none));
+
+    private void A_thin_mac_programs_processor_is_its_cpu_type()
     {
         Assert.Equal([Architecture.X64], Of(Thin(0x01000007)));
         Assert.Equal([Architecture.Arm64], Of(Thin(0x0100000C)));
     }
 
-    [Fact]
-    public void A_universal_mac_programs_processors_are_its_slices()
+    private void A_universal_mac_programs_processors_are_its_slices()
     {
         byte[] program = new byte[64];
         BinaryPrimitives.WriteUInt32BigEndian(program, 0xCAFEBABE);
@@ -72,32 +80,8 @@ public class ProgramProcessorsTests
         Assert.Equal([Architecture.X64, Architecture.Arm64], Of(program));
     }
 
-    [Fact]
-    public void A_universal_mac_program_of_64_bit_offsets_is_built_for_each_of_its_slices()
-    {
-        byte[] program = new byte[8 + (2 * 32)];
-        BinaryPrimitives.WriteUInt32BigEndian(program, 0xCAFEBABF);
-        BinaryPrimitives.WriteUInt32BigEndian(program.AsSpan(4), 2);
-        BinaryPrimitives.WriteInt32BigEndian(program.AsSpan(8), 0x01000007);
-        BinaryPrimitives.WriteInt32BigEndian(program.AsSpan(8 + 32), 0x0100000C);
-        IReadOnlyList<Architecture> read = Of(program);
-        Assert.True(read.SequenceEqual([Architecture.X64, Architecture.Arm64]),
-            $"A universal program whose table holds 64-bit offsets reads as built for [{string.Join(", ", read)}]: a dotnet shipped so is passed over by an x64 Passenger under Rosetta as no x64 program");
-    }
-
-    [Fact]
-    public void A_thin_32_bit_mac_programs_processor_is_its_cpu_type()
-    {
-        byte[] program = new byte[28];
-        BinaryPrimitives.WriteUInt32LittleEndian(program, 0xFEEDFACE);
-        BinaryPrimitives.WriteInt32LittleEndian(program.AsSpan(4), 7);
-        IReadOnlyList<Architecture> read = Of(program);
-        Assert.True(read.SequenceEqual([Architecture.X86]), $"A thin 32-bit Intel program reads as built for [{string.Join(", ", read)}], where its linked libraries read as a Mach-O's");
-    }
-
     /// <summary>A Java class file's magic is a universal program's, its version (65 for Java 21) where the count of slices stands.</summary>
-    [Fact]
-    public void A_universal_table_of_more_slices_than_a_program_has_is_a_java_class_built_for_no_processor()
+    private void A_universal_table_of_more_slices_than_a_program_has_is_a_java_class_built_for_no_processor()
     {
         byte[] program = new byte[8 + (65 * 20)];
         BinaryPrimitives.WriteUInt32BigEndian(program, 0xCAFEBABE);
@@ -107,8 +91,7 @@ public class ProgramProcessorsTests
         Assert.True(read.Count == 0, $"A Java class file reads as a program built for [{string.Join(", ", read)}], where what it links reads as no Mach-O's");
     }
 
-    [Fact]
-    public void A_linux_programs_processor_is_its_elf_machine_in_the_byte_order_its_header_names()
+    private void A_linux_programs_processor_is_its_elf_machine_in_the_byte_order_its_header_names()
     {
         Assert.Equal([Architecture.X64], Of(Linux(62)));
         Assert.Equal([Architecture.Arm64], Of(Linux(183)));
@@ -119,8 +102,7 @@ public class ProgramProcessorsTests
         Assert.Empty(Of(Linux(0x1234)));
     }
 
-    [Fact]
-    public void A_windows_programs_processor_is_its_machine()
+    private void A_windows_programs_processor_is_its_machine()
     {
         Assert.Equal([Architecture.X64], Of(Windows(0x8664)));
         Assert.Equal([Architecture.Arm64], Of(Windows(0xAA64)));
@@ -142,8 +124,7 @@ public class ProgramProcessorsTests
         return program;
     }
 
-    [Fact]
-    public void A_dotnet_assembly_is_built_for_no_processor_its_machine_names_and_a_native_x86_program_for_x86()
+    private void A_dotnet_assembly_is_built_for_no_processor_its_machine_names_and_a_native_x86_program_for_x86()
     {
         IReadOnlyList<Architecture> assembly = Of(WindowsWithOptionalHeader(0x014C, managed: true));
         Assert.True(assembly.Count == 0,
@@ -153,8 +134,7 @@ public class ProgramProcessorsTests
         Assert.True(built.Count == 0, $"This AnyCPU test assembly read as built for [{string.Join(", ", built)}]");
     }
 
-    [Fact]
-    public void A_file_that_is_no_program_or_is_cut_short_has_none()
+    private void A_file_that_is_no_program_or_is_cut_short_has_none()
     {
         Assert.Empty(Of("#!/bin/sh\nexec dotnet \"$@\"\n"u8.ToArray()));
         Assert.Empty(Of(Thin(0x01000007)[..6]));

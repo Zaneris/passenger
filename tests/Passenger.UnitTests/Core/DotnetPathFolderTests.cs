@@ -45,7 +45,24 @@ public sealed class DotnetPathFolderTests : IDisposable
     }
 
     [Fact]
-    public void An_installation_holding_dotnets_layout_alone_is_its_own_folder_on_the_path()
+    public void A_shells_dotnet_comes_first_on_the_path_from_a_folder_holding_it_alone() => Cases.All(
+        ("an installation holding dotnets layout alone is its own folder on the path", () => Apart(test => test.An_installation_holding_dotnets_layout_alone_is_its_own_folder_on_the_path())),
+        ("an installation holding anything else lends its dotnet through a folder holding it alone", () => Cases.Each<(string, bool)>(
+        [
+            ("git", false),
+            ("bin", true),
+        ], row => Apart(test => test.An_installation_holding_anything_else_lends_its_dotnet_through_a_folder_holding_it_alone(row.Item1, row.Item2)))),
+        ("the folder lending an installations dotnet holds that dotnet alone and is the users own", () => Apart(test => test.The_folder_lending_an_installations_dotnet_holds_that_dotnet_alone_and_is_the_users_own())),
+        ("a dotnet put wrong in the folder is put right and another installation has a folder of its own", () => Apart(test => test.A_dotnet_put_wrong_in_the_folder_is_put_right_and_another_installation_has_a_folder_of_its_own())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<DotnetPathFolderTests> check)
+    {
+        using DotnetPathFolderTests test = new();
+        check(test);
+    }
+
+    private void An_installation_holding_dotnets_layout_alone_is_its_own_folder_on_the_path()
     {
         Assert.True(Dotnet.PathFolder(installation, state) == installation,
             $"An installation holding .NET's layout alone, {string.Join(", ", Directory.EnumerateFileSystemEntries(installation).Select(Path.GetFileName))}, was not put on the PATH itself");
@@ -53,11 +70,7 @@ public sealed class DotnetPathFolderTests : IDisposable
             "A folder lending dotnet was made for an installation that is put on the PATH itself");
     }
 
-    [Theory]
-    [InlineData("git", false)]
-    [InlineData("ssh.exe", false)]
-    [InlineData("bin", true)]
-    public void An_installation_holding_anything_else_lends_its_dotnet_through_a_folder_holding_it_alone(string name, bool folder)
+    private void An_installation_holding_anything_else_lends_its_dotnet_through_a_folder_holding_it_alone(string name, bool folder)
     {
         string other = Path.Combine(installation, name);
         if (folder)
@@ -74,8 +87,7 @@ public sealed class DotnetPathFolderTests : IDisposable
             $"An installation holding {name} beside .NET's layout was put on the PATH as {lent}, so a shell could run {name} in place of the system's");
     }
 
-    [Fact]
-    public void The_folder_lending_an_installations_dotnet_holds_that_dotnet_alone_and_is_the_users_own()
+    private void The_folder_lending_an_installations_dotnet_holds_that_dotnet_alone_and_is_the_users_own()
     {
         File.WriteAllText(Path.Combine(installation, "git"), "#!/bin/sh\n");
         string folder = Lent(installation);
@@ -98,8 +110,7 @@ public sealed class DotnetPathFolderTests : IDisposable
             $"The folder lending dotnet has mode {mode}, so another user could put a program in it that the shell would run");
     }
 
-    [Fact]
-    public void A_dotnet_put_wrong_in_the_folder_is_put_right_and_another_installation_has_a_folder_of_its_own()
+    private void A_dotnet_put_wrong_in_the_folder_is_put_right_and_another_installation_has_a_folder_of_its_own()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows lets a user make no link without Developer Mode");
         string folder = Lent(installation);

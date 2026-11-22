@@ -9,7 +9,12 @@ public sealed class UnreadSolutionTests
     private const string Path = "/work/Shop/Shop.slnx";
 
     [Fact]
-    public void A_solution_cut_short_is_named_where_its_reader_met_the_end()
+    public void A_solution_that_does_not_read_is_named_where_it_fails() => Cases.All(
+        ("a solution cut short is named where its reader met the end", A_solution_cut_short_is_named_where_its_reader_met_the_end),
+        ("a merge conflicts markers are named where they begin", A_merge_conflicts_markers_are_named_where_they_begin),
+        ("a solution that reads is none", A_solution_that_reads_is_none));
+
+    private void A_solution_cut_short_is_named_where_its_reader_met_the_end()
     {
         UnreadSolution? unread = SolutionModel.Unread(Path, "<Solution>\n  <Project Path=\"App/App.csproj\" />\n");
         Assert.True(unread is not null, "A .slnx cut short reads, so nothing says why the folder opens without it");
@@ -17,8 +22,7 @@ public sealed class UnreadSolutionTests
         Assert.Equal("Unexpected end of file has occurred. The following elements are not closed: Solution", unread.Why);
     }
 
-    [Fact]
-    public void A_merge_conflicts_markers_are_named_where_they_begin()
+    private void A_merge_conflicts_markers_are_named_where_they_begin()
     {
         UnreadSolution? unread = SolutionModel.Unread(Path,
             "<Solution>\n<<<<<<< HEAD\n  <Project Path=\"A/A.csproj\" />\n=======\n  <Project Path=\"B/B.csproj\" />\n>>>>>>> theirs\n</Solution>\n");
@@ -27,7 +31,6 @@ public sealed class UnreadSolutionTests
         Assert.Equal("Name cannot begin with the '<' character, hexadecimal value 0x3C", unread.Why);
     }
 
-    [Fact]
-    public void A_solution_that_reads_is_none() =>
+    private void A_solution_that_reads_is_none() =>
         Assert.Null(SolutionModel.Unread(Path, "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n"));
 }

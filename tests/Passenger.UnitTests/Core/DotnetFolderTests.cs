@@ -15,7 +15,12 @@ public sealed class DotnetFolderTests
     private static readonly string Repository = Path.GetFullPath(Path.Combine(Path.DirectorySeparatorChar.ToString(), "dotnet-folder-tests", "repo"));
 
     [Fact]
-    public void An_sdks_command_for_a_folder_not_trusted_works_in_the_persons_home()
+    public void An_SDKs_command_works_inside_a_folder_only_once_it_is_trusted() => Cases.All(
+        ("an sdks command for a folder not trusted works in the persons home", An_sdks_command_for_a_folder_not_trusted_works_in_the_persons_home),
+        ("a programs own run works in its folder and an sdks command for a folder holding home on the disks root", A_programs_own_run_works_in_its_folder_and_an_sdks_command_for_a_folder_holding_home_on_the_disks_root),
+        ("a trusted folder takes only a global json in a folder trusted too", A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too));
+
+    private void An_sdks_command_for_a_folder_not_trusted_works_in_the_persons_home()
     {
         foreach (string[] arguments in (string[][])[["--version"], ["new", "list"], ["msbuild", "App.csproj"], ["workload", "install", "android"], []])
         {
@@ -25,8 +30,7 @@ public sealed class DotnetFolderTests
         Assert.Equal(Home, ChildProcesses.DotnetQuestion(Host, ["--version"], Repository).WorkingDirectory);
     }
 
-    [Fact]
-    public void A_programs_own_run_works_in_its_folder_and_an_sdks_command_for_a_folder_holding_home_on_the_disks_root()
+    private void A_programs_own_run_works_in_its_folder_and_an_sdks_command_for_a_folder_holding_home_on_the_disks_root()
     {
         Assert.Equal(Repository, ChildProcesses.DotnetCommand(Host, ["exec", "--runtimeconfig", "App.runtimeconfig.json", "App.dll"], Repository).WorkingDirectory);
         Assert.Equal(Repository, ChildProcesses.DotnetCommand(Host, [Path.Combine(Repository, "Tool.dll"), "-Plugin"], Repository).WorkingDirectory);
@@ -38,8 +42,7 @@ public sealed class DotnetFolderTests
     /// <summary>A trusted folder takes what the host reads there only where the nearest global.json over it, whose sdk.paths
     /// name the SDK that runs, is in a folder trusted too: one in a folder above it not trusted sends its dotnet elsewhere,
     /// one in the folder itself does not.</summary>
-    [Fact]
-    public void A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too()
+    private void A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too()
     {
         string repository = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
         try

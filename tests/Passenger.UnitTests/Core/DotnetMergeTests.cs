@@ -53,7 +53,32 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     [Fact]
-    public async Task What_the_installation_has_stays_as_it_is_and_what_it_lacks_comes_whole()
+    public Task A_merge_brings_what_the_installation_lacks_whole_through_its_links_and_onto_other_volumes() => Cases.AllAsync(
+        ("what the installation has stays as it is and what it lacks comes whole", () => ApartAsync(test => test.What_the_installation_has_stays_as_it_is_and_what_it_lacks_comes_whole())),
+        ("a folder of the installation that is a link is merged through it and stays a link", () => Cases.EachAsync<string>(
+        [
+            "shared",
+            "host/fxr",
+        ], row => ApartAsync(test => test.A_folder_of_the_installation_that_is_a_link_is_merged_through_it_and_stays_a_link(row)))),
+        ("taking back a merge made through a link empties what it filled and leaves the link", () => ApartAsync(test => test.Taking_back_a_merge_made_through_a_link_empties_what_it_filled_and_leaves_the_link())),
+        ("a folder from another volume comes beside where it goes under a name of its own its programs still programs", () =>
+        {
+            Apart(test => test.A_folder_from_another_volume_comes_beside_where_it_goes_under_a_name_of_its_own_its_programs_still_programs());
+            return Task.CompletedTask;
+        }),
+        ("the folder of the hosts resolver waits to come whole and never stands without it", () => ApartAsync(test => test.The_folder_of_the_hosts_resolver_waits_to_come_whole_and_never_stands_without_it())),
+        ("what makes a folder count to the host is told from the rest", () =>
+        {
+            Cases.Each<(string, bool)>(
+            [
+                ("sdk/10.0.403/dotnet.dll", true),
+                ("shared/Microsoft.NETCore.App/10.0.14/System.Private.CoreLib.dll", false),
+                ("sdk/10.0.403/dotnet.runtimeconfig.json", false),
+            ], row => Apart(test => test.What_makes_a_folder_count_to_the_host_is_told_from_the_rest(row.Item1, row.Item2)));
+            return Task.CompletedTask;
+        }));
+
+    private async Task What_the_installation_has_stays_as_it_is_and_what_it_lacks_comes_whole()
     {
         Write(Installation, "dotnet", "old host\n");
         Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
@@ -67,11 +92,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
     }
 
-    [Theory]
-    [InlineData("shared")]
-    [InlineData("sdk")]
-    [InlineData("host/fxr")]
-    public async Task A_folder_of_the_installation_that_is_a_link_is_merged_through_it_and_stays_a_link(string linked)
+    private async Task A_folder_of_the_installation_that_is_a_link_is_merged_through_it_and_stays_a_link(string linked)
     {
         string link = Path.Join(Installation, linked);
         string elsewhere = Path.Join(root, "another-disk", Path.GetFileName(linked));
@@ -87,8 +108,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.True(File.Exists(Path.Join(Installation, RuntimeFolder, "System.Private.CoreLib.dll")), "The SDK came with no runtime to run on");
     }
 
-    [Fact]
-    public async Task Taking_back_a_merge_made_through_a_link_empties_what_it_filled_and_leaves_the_link()
+    private async Task Taking_back_a_merge_made_through_a_link_empties_what_it_filled_and_leaves_the_link()
     {
         string elsewhere = Path.Join(root, "another-disk", "shared");
         Write(elsewhere, Path.Join("Microsoft.NETCore.App", "9.0.1", "kept.dll"), "kept\n");
@@ -103,8 +123,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal(["shared"], Directory.EnumerateFileSystemEntries(Installation).Select(Path.GetFileName));
     }
 
-    [Fact]
-    public void A_folder_from_another_volume_comes_beside_where_it_goes_under_a_name_of_its_own_its_programs_still_programs()
+    private void A_folder_from_another_volume_comes_beside_where_it_goes_under_a_name_of_its_own_its_programs_still_programs()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -130,7 +149,17 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     [Fact]
-    public async Task A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was()
+    public Task A_merge_that_cannot_land_whole_leaves_the_installation_as_it_was() => Cases.AllAsync(
+        ("a runtime refused its place leaves no SDK to read as installed and taking back leaves the installation as it was", () => ApartAsync(test => test.A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was())),
+        ("a move refused at its last step has what came before it taken out again", () => ApartAsync(test => test.A_move_refused_at_its_last_step_has_what_came_before_it_taken_out_again())),
+        ("a merge that ended is taken out whole where what follows it fails and a folder it did not make stays", () => ApartAsync(test => test.A_merge_that_ended_is_taken_out_whole_where_what_follows_it_fails_and_a_folder_it_did_not_make_stays())),
+        ("what stands in the way of an SDKs entry is named and nothing of the SDK stays", () => Cases.EachAsync<(string, string)>(
+        [
+            ("shared", "no folder, where the SDK has one"),
+        ], row => ApartAsync(test => test.What_stands_in_the_way_of_an_SDKs_entry_is_named_and_nothing_of_the_SDK_stays(row.Item1, row.Item2)))),
+        ("stopped it moves nothing more", () => ApartAsync(test => test.Stopped_it_moves_nothing_more())));
+
+    private async Task A_runtime_refused_its_place_leaves_no_SDK_to_read_as_installed_and_taking_back_leaves_the_installation_as_it_was()
     {
         Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
         Refuse(Path.Join(Installation, "shared", "Microsoft.NETCore.App"), Path.Join(Unpacked, RuntimeFolder, "System.Private.CoreLib.dll"));
@@ -144,8 +173,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal(before, Listed(Installation));
     }
 
-    [Fact]
-    public async Task A_move_refused_at_its_last_step_has_what_came_before_it_taken_out_again()
+    private async Task A_move_refused_at_its_last_step_has_what_came_before_it_taken_out_again()
     {
         Write(Installation, Path.Join("sdk", "9.0.319", "dotnet.dll"), "older cli\n");
         Refuse(Path.Join(Installation, "sdk"), Path.Join(Unpacked, SdkFolder, "dotnet.dll"));
@@ -158,9 +186,29 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal(before, Listed(Installation));
     }
 
-    /// <summary>What a virus scanner does to files just unpacked: the move waits, saying so, and goes on once let go.</summary>
     [Fact]
-    public async Task A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go()
+    public Task A_file_another_program_holds_is_waited_for_and_what_stays_held_is_named() => Cases.AllAsync(
+        ("a file held in what moves is waited for saying so and the merge lands once it is let go", () => ApartAsync(test => test.A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go())),
+        ("what stays held past the wait is named and all the rest is taken out again", () => ApartAsync(test => test.What_stays_held_past_the_wait_is_named_and_all_the_rest_is_taken_out_again())),
+        ("folders whose files another program reads come in entry by entry with no wait and the SDK installs", () => ApartAsync(test => test.Folders_whose_files_another_program_reads_come_in_entry_by_entry_with_no_wait_and_the_SDK_installs())),
+        ("a folder brought in entry by entry counts only once all of it is there", () => ApartAsync(test => test.A_folder_brought_in_entry_by_entry_counts_only_once_all_of_it_is_there())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<DotnetMergeTests> check)
+    {
+        using DotnetMergeTests test = new();
+        check(test);
+    }
+
+    /// <summary>As Apart, for a check that waits.</summary>
+    private static async Task ApartAsync(Func<DotnetMergeTests, Task> check)
+    {
+        using DotnetMergeTests test = new();
+        await check(test);
+    }
+
+    /// <summary>What a virus scanner does to files just unpacked: the move waits, saying so, and goes on once let go.</summary>
+    private async Task A_file_held_in_what_moves_is_waited_for_saying_so_and_the_merge_lands_once_it_is_let_go()
     {
         WindowsAlone();
         FileStream file = Hold(Path.Join(Unpacked, RuntimeFolder, "System.Private.CoreLib.dll"));
@@ -177,30 +225,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
     }
 
-    /// <summary>Taking back waits as the move does: what it reaches may be held by the same scanner.</summary>
-    [Fact]
-    public async Task A_file_held_as_taking_back_reaches_it_is_waited_for_saying_so_and_taken_out_once_it_is_let_go()
-    {
-        WindowsAlone();
-        Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
-        List<string> before = Listed(Installation);
-        FileStream? file = null;
-        DotnetMerge waiting = new(Sdk, said =>
-        {
-            stages.Add(said);
-            file?.Dispose();
-        });
-        await waiting.IntoAsync(Unpacked, Installation, CancellationToken.None);
-        file = Hold(Path.Join(Installation, RuntimeFolder, "System.Private.CoreLib.dll"));
-
-        Assert.Empty(await waiting.TakeBackAsync());
-
-        Assert.Contains(stages, said => said.StartsWith("Waiting for Windows to let go of the .NET SDK's ", StringComparison.Ordinal));
-        Assert.Equal(before, Listed(Installation));
-    }
-
-    [Fact]
-    public async Task What_stays_held_past_the_wait_is_named_and_all_the_rest_is_taken_out_again()
+    private async Task What_stays_held_past_the_wait_is_named_and_all_the_rest_is_taken_out_again()
     {
         WindowsAlone();
         Write(Installation, Path.Join("shared", "Microsoft.NETCore.App", "9.0.1", "System.Private.CoreLib.dll"), "older runtime\n");
@@ -216,8 +241,7 @@ public sealed class DotnetMergeTests : IDisposable
 
     /// <summary>A reader of the files just unpacked that shares their deletion, as a scanner or Passenger's own Local History
     /// does, holds up no file's move, only its folder's: the folders come in entry by entry with no wait.</summary>
-    [Fact]
-    public async Task Folders_whose_files_another_program_reads_come_in_entry_by_entry_with_no_wait_and_the_SDK_installs()
+    private async Task Folders_whose_files_another_program_reads_come_in_entry_by_entry_with_no_wait_and_the_SDK_installs()
     {
         WindowsAlone();
         Read(Path.Join(Unpacked, RuntimeFolder, "System.Private.CoreLib.dll"));
@@ -234,8 +258,7 @@ public sealed class DotnetMergeTests : IDisposable
 
     /// <summary>What makes a folder count to the dotnet host comes after all else of a folder brought in entry by entry, so
     /// until then the host passes over it and the SDK reads as none; each wait names who holds the file.</summary>
-    [Fact]
-    public async Task A_folder_brought_in_entry_by_entry_counts_only_once_all_of_it_is_there()
+    private async Task A_folder_brought_in_entry_by_entry_counts_only_once_all_of_it_is_there()
     {
         WindowsAlone();
         string deps = Write(Unpacked, Path.Join(RuntimeFolder, "Microsoft.NETCore.App.deps.json"), "{}\n");
@@ -260,8 +283,7 @@ public sealed class DotnetMergeTests : IDisposable
 
     /// <summary>The dotnet host takes the newest of host/fxr's folders as it stands, so the one holding its resolver waits
     /// to come whole, even for a reader a file's move would pass.</summary>
-    [Fact]
-    public async Task The_folder_of_the_hosts_resolver_waits_to_come_whole_and_never_stands_without_it()
+    private async Task The_folder_of_the_hosts_resolver_waits_to_come_whole_and_never_stands_without_it()
     {
         WindowsAlone();
         string fxr = Path.Join("host", "fxr", Runtime);
@@ -281,44 +303,10 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.True(File.Exists(Path.Join(Installation, fxr, "hostfxr.dll")), "The host's resolver did not come");
     }
 
-    [Theory]
-    [InlineData("sdk/10.0.403/dotnet.dll", true)]
-    [InlineData("shared/Microsoft.NETCore.App/10.0.14/Microsoft.NETCore.App.deps.json", true)]
-    [InlineData("shared/Microsoft.AspNetCore.App/10.0.14/Microsoft.AspNetCore.App.deps.json", true)]
-    [InlineData("shared/Microsoft.NETCore.App/10.0.14/System.Private.CoreLib.dll", false)]
-    [InlineData("sdk/10.0.403/dotnet.deps.json", false)]
-    [InlineData("sdk/10.0.403/dotnet.runtimeconfig.json", false)]
-    public void What_makes_a_folder_count_to_the_host_is_told_from_the_rest(string entry, bool counts) =>
+    private void What_makes_a_folder_count_to_the_host_is_told_from_the_rest(string entry, bool counts) =>
         Assert.Equal(counts, DotnetMerge.Counts(Path.Join("dotnet", entry)));
 
-    /// <summary>The folder a link leads to lies on a volume of its own, so nothing of the SDK can be renamed there.</summary>
-    [Fact]
-    public async Task A_merge_through_a_link_onto_another_volume_lands_whole_and_is_taken_out_whole()
-    {
-        string elsewhere = AnotherVolume();
-        try
-        {
-            Write(elsewhere, Path.Join("Microsoft.NETCore.App", "9.0.1", "kept.dll"), "kept\n");
-            Directory.CreateDirectory(Installation);
-            Link(() => Directory.CreateSymbolicLink(Path.Join(Installation, "shared"), elsewhere));
-            List<string> before = Listed(elsewhere);
-
-            await merge.IntoAsync(Unpacked, Installation, CancellationToken.None);
-
-            Assert.Equal("runtime\n", File.ReadAllText(Path.Join(elsewhere, "Microsoft.NETCore.App", Runtime, "System.Private.CoreLib.dll")));
-            Assert.DoesNotContain(Directory.EnumerateFileSystemEntries(Path.Join(elsewhere, "Microsoft.NETCore.App")), entry => Path.GetFileName(entry).StartsWith('.'));
-            Assert.Equal([Sdk], DotnetInstallation.Read(Installation).Sdks);
-            Assert.Empty(await merge.TakeBackAsync());
-            Assert.Equal(before, Listed(elsewhere));
-        }
-        finally
-        {
-            Directory.Delete(elsewhere, recursive: true);
-        }
-    }
-
-    [Fact]
-    public async Task A_merge_that_ended_is_taken_out_whole_where_what_follows_it_fails_and_a_folder_it_did_not_make_stays()
+    private async Task A_merge_that_ended_is_taken_out_whole_where_what_follows_it_fails_and_a_folder_it_did_not_make_stays()
     {
         Write(Installation, Path.Join("sdk", "9.0.319", "dotnet.dll"), "older cli\n");
         List<string> before = Listed(Installation);
@@ -330,10 +318,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal(before, Listed(Installation));
     }
 
-    [Theory]
-    [InlineData("shared", "no folder, where the SDK has one")]
-    [InlineData("dotnet", "a folder, where the SDK has a file")]
-    public async Task What_stands_in_the_way_of_an_SDKs_entry_is_named_and_nothing_of_the_SDK_stays(string entry, string said)
+    private async Task What_stands_in_the_way_of_an_SDKs_entry_is_named_and_nothing_of_the_SDK_stays(string entry, string said)
     {
         if (entry == "shared")
         {
@@ -353,22 +338,7 @@ public sealed class DotnetMergeTests : IDisposable
         Assert.Equal(before, Listed(Installation));
     }
 
-    [Fact]
-    public async Task A_link_to_nothing_where_the_SDK_has_a_folder_fails_and_leaves_the_link_alone()
-    {
-        Directory.CreateDirectory(Installation);
-        string link = Path.Join(Installation, "shared");
-        Link(() => Directory.CreateSymbolicLink(link, Path.Join(root, "unplugged")));
-
-        await Assert.ThrowsAnyAsync<Exception>(() => merge.IntoAsync(Unpacked, Installation, CancellationToken.None));
-
-        Assert.Empty(await merge.TakeBackAsync());
-        Assert.Equal(["shared"], Directory.EnumerateFileSystemEntries(Installation).Select(Path.GetFileName));
-        Assert.NotNull(new FileInfo(link).LinkTarget);
-    }
-
-    [Fact]
-    public async Task Stopped_it_moves_nothing_more()
+    private async Task Stopped_it_moves_nothing_more()
     {
         using CancellationTokenSource stopped = new();
         await stopped.CancelAsync();
@@ -426,26 +396,6 @@ public sealed class DotnetMergeTests : IDisposable
     }
 
     private static void WindowsAlone() => Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses a move or a removal for a file another program holds");
-
-    /// <summary>A new folder on a volume other than the test's, the test skipped where this system has none to hand.</summary>
-    private string AnotherVolume()
-    {
-        const string Memory = "/dev/shm";
-        Assert.SkipUnless(Directory.Exists(Memory), $"No volume to hand beside the test's: this system has no {Memory}");
-        string elsewhere = Path.Join(Memory, $"passenger-unit-{Guid.NewGuid():N}");
-        string probe = Directory.CreateDirectory(Path.Join(root, "probe")).FullName;
-        try
-        {
-            Directory.Move(probe, elsewhere);
-        }
-        catch (IOException)
-        {
-            return Directory.CreateDirectory(elsewhere).FullName;
-        }
-        Directory.Delete(elsewhere);
-        Assert.Skip($"{Memory} lies on the test's own volume");
-        return elsewhere;
-    }
 
     /// <summary>A folder nothing may be moved into, opened again as the test ends.</summary>
     [UnsupportedOSPlatform("windows")]

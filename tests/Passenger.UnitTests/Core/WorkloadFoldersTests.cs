@@ -13,7 +13,20 @@ public sealed class WorkloadFoldersTests : IDisposable
     public void Dispose() => Directory.Delete(place, recursive: true);
 
     [Fact]
-    public void A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release()
+    public void An_SDKs_workloads_are_installed_where_dotnet_reads_them() => Cases.All(
+        ("a dotnet installs an SDKs workloads for each user by the marker of its feature band whatever its pre release", () => Apart(test => test.A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release())),
+        ("the users own dotnet comes first and takes the installs only where the SDKs band carries the marker", () => Apart(test => test.The_users_own_dotnet_comes_first_and_takes_the_installs_only_where_the_SDKs_band_carries_the_marker())),
+        ("a dotnet installed in the users own dotnet folder is its one folder however its home is reached", () => Apart(test => test.A_dotnet_installed_in_the_users_own_dotnet_folder_is_its_one_folder_however_its_home_is_reached())),
+        ("the SDKs home is DOTNET CLI HOME else the systems home folder", () => Apart(test => test.The_SDKs_home_is_DOTNET_CLI_HOME_else_the_systems_home_folder())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<WorkloadFoldersTests> check)
+    {
+        using WorkloadFoldersTests test = new();
+        check(test);
+    }
+
+    private void A_dotnet_installs_an_SDKs_workloads_for_each_user_by_the_marker_of_its_feature_band_whatever_its_pre_release()
     {
         string root = Path.Combine("/usr", "lib64", "dotnet");
         string Band(string band) => Path.Combine(root, "metadata", "workloads", band, "userlocal");
@@ -25,8 +38,7 @@ public sealed class WorkloadFoldersTests : IDisposable
         Assert.Null(WorkloadFolders.UserLocalMarker(root, "eleven"));
     }
 
-    [Fact]
-    public void The_users_own_dotnet_comes_first_and_takes_the_installs_only_where_the_SDKs_band_carries_the_marker()
+    private void The_users_own_dotnet_comes_first_and_takes_the_installs_only_where_the_SDKs_band_carries_the_marker()
     {
         string root = Directory.CreateDirectory(Path.Combine(place, "usr", "lib64", "dotnet")).FullName;
         string home = Directory.CreateDirectory(Path.Combine(place, "home", "ann")).FullName;
@@ -51,8 +63,7 @@ public sealed class WorkloadFoldersTests : IDisposable
         Assert.Equal([root], WorkloadFolders.Of(root, "10.0.113", "").All);
     }
 
-    [Fact]
-    public void A_dotnet_installed_in_the_users_own_dotnet_folder_is_its_one_folder_however_its_home_is_reached()
+    private void A_dotnet_installed_in_the_users_own_dotnet_folder_is_its_one_folder_however_its_home_is_reached()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "A link to a folder needs Developer Mode on Windows");
         string home = Directory.CreateDirectory(Path.Combine(place, "var", "home", "ann")).FullName;
@@ -65,8 +76,7 @@ public sealed class WorkloadFoldersTests : IDisposable
         Assert.Equal([root], WorkloadFolders.Of(root, "10.0.102", Path.Combine(linked, "ann")).All);
     }
 
-    [Fact]
-    public void The_SDKs_home_is_DOTNET_CLI_HOME_else_the_systems_home_folder()
+    private void The_SDKs_home_is_DOTNET_CLI_HOME_else_the_systems_home_folder()
     {
         string homeVariable = OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME";
         Dictionary<string, string> both = new() { ["DOTNET_CLI_HOME"] = "/srv/cli", [homeVariable] = "/home/ann" };

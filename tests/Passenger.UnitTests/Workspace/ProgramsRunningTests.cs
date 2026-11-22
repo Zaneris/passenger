@@ -18,7 +18,14 @@ public sealed class ProgramsRunningTests
     private static string[] Names(IEnumerable<ProjectModel> projects) => [.. projects.Select(p => p.Name)];
 
     [Fact]
-    public void A_library_is_run_by_each_program_referencing_it_directly_or_through_libraries()
+    public void A_librarys_code_is_run_by_each_program_referencing_it() => Cases.All(
+        ("a library is run by each program referencing it directly or through libraries", A_library_is_run_by_each_program_referencing_it_directly_or_through_libraries),
+        ("a program and a test project run their own code and a test runs no library s", A_program_and_a_test_project_run_their_own_code_and_a_test_runs_no_library_s),
+        ("an AppHost referencing a service runs none of the service s libraries", An_AppHost_referencing_a_service_runs_none_of_the_service_s_libraries),
+        ("a library no program references is run by none even through a cycle", A_library_no_program_references_is_run_by_none_even_through_a_cycle),
+        ("the code a program runs is what names that program as running it", The_code_a_program_runs_is_what_names_that_program_as_running_it));
+
+    private void A_library_is_run_by_each_program_referencing_it_directly_or_through_libraries()
     {
         ProjectModel api = Project("Api", "Exe", "Core");
         ProjectModel core = Project("Core", "Library", "Data");
@@ -31,8 +38,7 @@ public sealed class ProgramsRunningTests
         Assert.Equal(["Api", "Core", "Data"], Names(api.CodeItRuns(all)));
     }
 
-    [Fact]
-    public void A_program_and_a_test_project_run_their_own_code_and_a_test_runs_no_library_s()
+    private void A_program_and_a_test_project_run_their_own_code_and_a_test_runs_no_library_s()
     {
         ProjectModel api = Project("Api", "Exe");
         ProjectModel core = Project("Core", "Library");
@@ -45,8 +51,7 @@ public sealed class ProgramsRunningTests
         Assert.Equal(["Core.Tests"], Names(tests.CodeItRuns(all)));
     }
 
-    [Fact]
-    public void An_AppHost_referencing_a_service_runs_none_of_the_service_s_libraries()
+    private void An_AppHost_referencing_a_service_runs_none_of_the_service_s_libraries()
     {
         ProjectModel host = Project("AppHost", "Exe", "Api", "Shared");
         ProjectModel api = Project("Api", "Exe", "Core");
@@ -59,8 +64,7 @@ public sealed class ProgramsRunningTests
         Assert.Equal(["AppHost", "Shared"], Names(host.CodeItRuns(all)));
     }
 
-    [Fact]
-    public void A_library_no_program_references_is_run_by_none_even_through_a_cycle()
+    private void A_library_no_program_references_is_run_by_none_even_through_a_cycle()
     {
         ProjectModel one = Project("One", "Library", "Two");
         ProjectModel two = Project("Two", "Library", "One");
@@ -74,8 +78,7 @@ public sealed class ProgramsRunningTests
 
     /// <summary>Whatever the graph, a project's code is a program's to run exactly where the program runs it, so what a
     /// settings file completes and what checks a read against it never disagree.</summary>
-    [Fact]
-    public void The_code_a_program_runs_is_what_names_that_program_as_running_it()
+    private void The_code_a_program_runs_is_what_names_that_program_as_running_it()
     {
         ProjectModel[] all =
         [

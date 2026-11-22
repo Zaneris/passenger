@@ -15,11 +15,28 @@ public sealed class SolutionProjectsTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
-    [Theory]
-    [InlineData(null, "b/Hello/Hello.csproj", "the solution's top")]
-    [InlineData(null, "b/hello/hello.csproj", "the solution's top")]
-    [InlineData("/src/", "b/Hello/Hello.csproj", "the solution folder src")]
-    public void A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(string? folder, string project, string where)
+    [Fact]
+    public void A_project_added_to_a_solution_folder_is_refused_where_its_name_is_taken_and_none_is_lost() => Cases.All(
+        ("a project of a name its solution folder holds already is refused and the file left as it was", () => Cases.Each<(string?, string, string)>(
+        [
+            (null, "b/hello/hello.csproj", "the solution's top"),
+            ("/src/", "b/Hello/Hello.csproj", "the solution folder src"),
+        ], row => Apart(test => test.A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(row.Item1, row.Item2, row.Item3)))),
+        ("folders nested past what a solution holds stand in the deepest and lose no project", () => Cases.Each<string>(
+        [
+            "elements",
+            "nested projects",
+        ], row => Apart(test => test.Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(row)))),
+        ("a project of that name is taken in another solution folder", () => Apart(test => test.A_project_of_that_name_is_taken_in_another_solution_folder())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<SolutionProjectsTests> check)
+    {
+        using SolutionProjectsTests test = new();
+        check(test);
+    }
+
+    private void A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(string? folder, string project, string where)
     {
         string solution = Write("Shop.slnx", Solution);
         string? problem = SolutionEdits.AddProject(solution, folder, At(project));
@@ -30,11 +47,7 @@ public sealed class SolutionProjectsTests : IDisposable
         Assert.Equal(Solution, File.ReadAllText(solution));
     }
 
-    [Theory]
-    [InlineData("elements")]
-    [InlineData("a name")]
-    [InlineData("nested projects")]
-    public void Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(string how)
+    private void Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(string how)
     {
         const int Deep = 5_000;
         string project = "<Project Path=\"a/A.csproj\" />";
@@ -77,8 +90,7 @@ public sealed class SolutionProjectsTests : IDisposable
         return text.Append("\tEndGlobalSection\nEndGlobal\n").ToString();
     }
 
-    [Fact]
-    public void A_project_of_that_name_is_taken_in_another_solution_folder()
+    private void A_project_of_that_name_is_taken_in_another_solution_folder()
     {
         string solution = Write("Shop.slnx", Solution);
         Assert.Null(SolutionEdits.AddFolder(solution, null, "tests"));

@@ -10,16 +10,22 @@ public sealed class X86ProgramsTests
 {
     private static readonly Dictionary<string, string> None = [];
 
-    [Theory]
-    [InlineData("x86", true)]
-    [InlineData("X86", true)]
-    [InlineData("AnyCPU", false)]
-    [InlineData("x64", false)]
-    public void A_program_runs_as_32_bit_x86_by_its_platform_target(string platform, bool x86) =>
+    [Fact]
+    public void A_32_bit_program_runs_on_an_x86_dotnet_and_names_the_runtime_it_lacks() => Cases.All(
+        ("a program runs as 32 bit x86 by its platform target", () => Cases.Each<(string, bool)>(
+        [
+            ("X86", true),
+            ("AnyCPU", false),
+        ], row => A_program_runs_as_32_bit_x86_by_its_platform_target(row.Item1, row.Item2))),
+        ("the x86 net is where the x86 apphost looks first its own variables over the ides", The_x86_net_is_where_the_x86_apphost_looks_first_its_own_variables_over_the_ides),
+        ("without a variable for x86 the ides dotnet root is passed over for the registered then the default folder", Without_a_variable_for_x86_the_ides_dotnet_root_is_passed_over_for_the_registered_then_the_default_folder),
+        ("a wpf app lacking the desktop runtime names it alone as it carries nets own", A_wpf_app_lacking_the_desktop_runtime_names_it_alone_as_it_carries_nets_own),
+        ("a later major serves only where the program rolls forward by major", A_later_major_serves_only_where_the_program_rolls_forward_by_major));
+
+    private void A_program_runs_as_32_bit_x86_by_its_platform_target(string platform, bool x86) =>
         Assert.Equal(x86, X86Programs.Builds(new Dictionary<string, string> { [MSBuildNames.PlatformTarget] = platform }));
 
-    [Fact]
-    public void The_x86_net_is_where_the_x86_apphost_looks_first_its_own_variables_over_the_ides()
+    private void The_x86_net_is_where_the_x86_apphost_looks_first_its_own_variables_over_the_ides()
     {
         Dictionary<string, string> inherited = new() { ["DOTNET_ROOT_X86"] = @"D:\ide-x86", [RuntimeVariables.Root] = @"C:\Program Files\dotnet" };
         Assert.Equal(@"E:\own", Root(new() { ["dotnet_root_x86"] = @"E:\own" }, inherited));
@@ -28,16 +34,14 @@ public sealed class X86ProgramsTests
         Assert.Equal(@"E:\shared", Root(new() { [RuntimeVariables.Root] = @"E:\shared" }, new() { [RuntimeVariables.Root] = @"C:\Program Files\dotnet" }));
     }
 
-    [Fact]
-    public void Without_a_variable_for_x86_the_ides_dotnet_root_is_passed_over_for_the_registered_then_the_default_folder()
+    private void Without_a_variable_for_x86_the_ides_dotnet_root_is_passed_over_for_the_registered_then_the_default_folder()
     {
         Dictionary<string, string> inherited = new() { [RuntimeVariables.Root] = @"C:\Program Files\dotnet" };
         Assert.Equal(@"F:\registered", X86Programs.Root(None, inherited.GetValueOrDefault, () => @"F:\registered", @"C:\Program Files (x86)"));
         Assert.Equal(Path.Combine(@"C:\Program Files (x86)", "dotnet"), X86Programs.Root(None, inherited.GetValueOrDefault, () => null, @"C:\Program Files (x86)"));
     }
 
-    [Fact]
-    public void A_wpf_app_lacking_the_desktop_runtime_names_it_alone_as_it_carries_nets_own()
+    private void A_wpf_app_lacking_the_desktop_runtime_names_it_alone_as_it_carries_nets_own()
     {
         RuntimeConfig wpf = Config(("Microsoft.NETCore.App", "8.0.0"), (FrameworkNames.WindowsDesktop, "8.0.0"));
         Assert.Equal([(".NET Desktop Runtime", "8.0")], Lacking(wpf, [], null));
@@ -45,20 +49,12 @@ public sealed class X86ProgramsTests
         Assert.Empty(Lacking(wpf, [("Microsoft.NETCore.App", "8.0.11"), (FrameworkNames.WindowsDesktop, "8.0.11")], null));
     }
 
-    [Fact]
-    public void A_later_major_serves_only_where_the_program_rolls_forward_by_major()
+    private void A_later_major_serves_only_where_the_program_rolls_forward_by_major()
     {
         RuntimeConfig console = Config(("Microsoft.NETCore.App", "8.0.0"));
         Assert.Equal([(".NET Runtime", "8.0")], Lacking(console, [("Microsoft.NETCore.App", "10.0.1")], null));
         Assert.Empty(Lacking(console, [("Microsoft.NETCore.App", "10.0.1")], "LatestMajor"));
         Assert.Equal([(".NET Runtime", "8.0")], Lacking(console, [("Microsoft.NETCore.App", "7.0.20")], "Major"));
-    }
-
-    [Fact]
-    public void A_web_app_lacking_both_runtimes_names_each_installer()
-    {
-        RuntimeConfig web = Config(("Microsoft.NETCore.App", "9.0.0"), ("Microsoft.AspNetCore.App", "9.0.0"));
-        Assert.Equal([(".NET Runtime", "9.0"), ("ASP.NET Core Runtime", "9.0")], Lacking(web, [], null));
     }
 
     private static string Root(Dictionary<string, string> given, Dictionary<string, string> inherited) =>

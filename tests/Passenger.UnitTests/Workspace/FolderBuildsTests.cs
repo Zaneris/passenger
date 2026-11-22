@@ -13,7 +13,13 @@ public sealed class FolderBuildsTests
     private static readonly string ShopProject = Path.Combine(Root, "Shop.csproj");
 
     [Fact]
-    public void Where_working_folders_are_held_a_folder_whose_project_has_landed_waits_for_its_round_to_end()
+    public void A_folder_let_go_of_waits_only_for_the_builds_that_reach_it() => Cases.All(
+        ("where working folders are held a folder whose project has landed waits for its round to end", Where_working_folders_are_held_a_folder_whose_project_has_landed_waits_for_its_round_to_end),
+        ("where working folders are held a folder waits for its project to land and its round to end", Where_working_folders_are_held_a_folder_waits_for_its_project_to_land_and_its_round_to_end),
+        ("where working folders do not hold a folder goes once its projects have landed whatever the round", Where_working_folders_do_not_hold_a_folder_goes_once_its_projects_have_landed_whatever_the_round),
+        ("a folder waits for no round that built none of its projects", A_folder_waits_for_no_round_that_built_none_of_its_projects));
+
+    private void Where_working_folders_are_held_a_folder_whose_project_has_landed_waits_for_its_round_to_end()
     {
         TaskCompletionSource ended = new();
         DesignTimeRound round = new([ShopProject, LibProject], ended.Task);
@@ -25,8 +31,7 @@ public sealed class FolderBuildsTests
         Assert.True(awaited.IsCompleted, "Lib's delete still waited once the round that built it had ended");
     }
 
-    [Fact]
-    public void Where_working_folders_are_held_a_folder_waits_for_its_project_to_land_and_its_round_to_end()
+    private void Where_working_folders_are_held_a_folder_waits_for_its_project_to_land_and_its_round_to_end()
     {
         TaskCompletionSource landed = new();
         TaskCompletionSource ended = new();
@@ -40,8 +45,7 @@ public sealed class FolderBuildsTests
         Assert.True(awaited.IsCompleted);
     }
 
-    [Fact]
-    public void Where_working_folders_do_not_hold_a_folder_goes_once_its_projects_have_landed_whatever_the_round()
+    private void Where_working_folders_do_not_hold_a_folder_goes_once_its_projects_have_landed_whatever_the_round()
     {
         TaskCompletionSource landed = new();
         DesignTimeRound round = new([ShopProject, LibProject], new TaskCompletionSource().Task);
@@ -53,8 +57,7 @@ public sealed class FolderBuildsTests
         Assert.True(awaited.IsCompleted, "Lib waited for the round, or for Shop's build, where no folder a process works in is held");
     }
 
-    [Fact]
-    public void A_folder_waits_for_no_round_that_built_none_of_its_projects()
+    private void A_folder_waits_for_no_round_that_built_none_of_its_projects()
     {
         DesignTimeRound round = new([ShopProject], new TaskCompletionSource().Task);
 

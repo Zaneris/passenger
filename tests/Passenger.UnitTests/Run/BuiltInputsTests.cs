@@ -16,7 +16,20 @@ public sealed class BuiltInputsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_source_file_deleted_since_the_build_began_is_a_change()
+    public void A_change_since_a_build_is_what_its_project_reads_never_what_its_program_writes() => Cases.All(
+        ("a source file deleted since the build began is a change", () => Apart(test => test.A_source_file_deleted_since_the_build_began_is_a_change())),
+        ("a source file moved in keeping an older time is a change", () => Apart(test => test.A_source_file_moved_in_keeping_an_older_time_is_a_change())),
+        ("a file gone from a referenced project is a change of the project referencing it alone where references count", () => Apart(test => test.A_file_gone_from_a_referenced_project_is_a_change_of_the_project_referencing_it_alone_where_references_count())),
+        ("what a running program writes or deletes beside its project is no change", () => Apart(test => test.What_a_running_program_writes_or_deletes_beside_its_project_is_no_change())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<BuiltInputsTests> check)
+    {
+        using BuiltInputsTests test = new();
+        check(test);
+    }
+
+    private void A_source_file_deleted_since_the_build_began_is_a_change()
     {
         string project = Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
         Write("Api/Program.cs", "Greeter.Hello();\n");
@@ -30,8 +43,7 @@ public sealed class BuiltInputsTests : IDisposable
             "A source file deleted since the build began was no change, so Rerun would leave the old build running with the deleted code in it");
     }
 
-    [Fact]
-    public void A_source_file_moved_in_keeping_an_older_time_is_a_change()
+    private void A_source_file_moved_in_keeping_an_older_time_is_a_change()
     {
         string project = Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
         Write("Api/Program.cs", "System.Console.WriteLine();\n");
@@ -44,8 +56,7 @@ public sealed class BuiltInputsTests : IDisposable
             "A source file moved in since the build began, keeping its older time, was no change, so Rerun would run a build without it");
     }
 
-    [Fact]
-    public void A_file_gone_from_a_referenced_project_is_a_change_of_the_project_referencing_it_alone_where_references_count()
+    private void A_file_gone_from_a_referenced_project_is_a_change_of_the_project_referencing_it_alone_where_references_count()
     {
         string library = Write("Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
         string shared = Write("Lib/Shared.cs", "public static class Shared { }\n");
@@ -61,8 +72,7 @@ public sealed class BuiltInputsTests : IDisposable
             "A file deleted from a referenced project was a change of the project's own files, which an AppHost's own check reads alone");
     }
 
-    [Fact]
-    public void What_a_running_program_writes_or_deletes_beside_its_project_is_no_change()
+    private void What_a_running_program_writes_or_deletes_beside_its_project_is_no_change()
     {
         string project = Write("Api/Api.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
         Write("Api/Program.cs", "System.Console.WriteLine();\n");

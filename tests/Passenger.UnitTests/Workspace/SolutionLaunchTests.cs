@@ -19,10 +19,21 @@ public sealed class SolutionLaunchTests : IDisposable
         + "        \"Action\": \"StartWithoutDebugging\"\n      }\n    ]\n  },\n  {\n    \"Name\": \"Api alone\",\n    \"Projects\": [\n      {\n"
         + "        \"Path\": \"src\\\\Api\\\\Api.csproj\",\n        \"Action\": \"Start\",\n        \"Extra\": 7\n      }\n    ]\n  }\n]";
 
-    [Theory]
-    [InlineData("Shop.sln")]
-    [InlineData("Shop.slnx")]
-    public void A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(string solution)
+    [Fact]
+    public void A_solutions_launch_profiles_are_read_from_the_files_beside_it() => Cases.All(
+        ("a solutions profiles are its name with slnLaunch and the persons own with user after", () => Cases.Each<string>(
+        [
+            "Shop.slnx",
+        ], row => Apart(test => test.A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(row)))),
+        ("each project is read from the solutions folder with its action and launch profile", () => Apart(test => test.Each_project_is_read_from_the_solutions_folder_with_its_action_and_launch_profile())),
+        ("an early files Name for a path an action of any letter case and comments are read and an unknown action is kept", () => Apart(test => test.An_early_files_Name_for_a_path_an_action_of_any_letter_case_and_comments_are_read_and_an_unknown_action_is_kept())),
+        ("a file that is no list of profiles says why and is never written over", () => Cases.Each<string>(
+        [
+            "{ \"Name\": \"x\" }",
+            "[ { \"Name\": ",
+        ], row => Apart(test => test.A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(row)))));
+
+    private void A_solutions_profiles_are_its_name_with_slnLaunch_and_the_persons_own_with_user_after(string solution)
     {
         string path = Path.Combine(root, solution);
         Assert.True(SolutionLaunch.SharedFile(path) == Path.Combine(root, "Shop.slnLaunch"),
@@ -33,8 +44,7 @@ public sealed class SolutionLaunchTests : IDisposable
             "A change to a profiles file is not heard as one");
     }
 
-    [Fact]
-    public void Each_project_is_read_from_the_solutions_folder_with_its_action_and_launch_profile()
+    private void Each_project_is_read_from_the_solutions_folder_with_its_action_and_launch_profile()
     {
         (IReadOnlyList<SolutionLaunchProfile> profiles, string? problem) = SolutionLaunch.Parse(TwoProfiles, root, shared: true);
         Assert.Null(problem);
@@ -47,8 +57,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.True(both.Shared && both.Index == 0 && profiles[1].Index == 1, "A profile's place in its file is not kept, so writing it back would move it");
     }
 
-    [Fact]
-    public void An_early_files_Name_for_a_path_an_action_of_any_letter_case_and_comments_are_read_and_an_unknown_action_is_kept()
+    private void An_early_files_Name_for_a_path_an_action_of_any_letter_case_and_comments_are_read_and_an_unknown_action_is_kept()
     {
         const string Early = "// written by hand\n[\n  { \"Name\": \"Early\", \"Projects\": [\n    { \"Name\": \"Api\\\\Api.csproj\", \"Action\": \"startwithoutdebugging\", \"DebugTarget\": \"\" },\n"
             + "    { \"Path\": \"Tool\\\\Tool.csproj\", \"Action\": \"Profile\" },\n  ], },\n  { \"Projects\": [] },\n  42,\n]";
@@ -61,10 +70,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.True(early.Projects[1] is { Action: null, ActionWritten: "Profile" }, "An action Passenger does not know is read as one it does, so it would start what the file does not say");
     }
 
-    [Theory]
-    [InlineData("{ \"Name\": \"x\" }")]
-    [InlineData("[ { \"Name\": ")]
-    public void A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(string text)
+    private void A_file_that_is_no_list_of_profiles_says_why_and_is_never_written_over(string text)
     {
         (IReadOnlyList<SolutionLaunchProfile> profiles, string? problem) = SolutionLaunch.Parse(text, root, shared: true);
         Assert.Empty(profiles);
@@ -74,7 +80,23 @@ public sealed class SolutionLaunchTests : IDisposable
     }
 
     [Fact]
-    public void Profiles_written_back_unchanged_keep_every_character()
+    public void Profiles_written_back_keep_every_character_Passenger_did_not_change() => Cases.All(
+        ("profiles written back unchanged keep every character", () => Apart(test => test.Profiles_written_back_unchanged_keep_every_character())),
+        ("a changed profile is written in its place keeping what Passenger does not model and the others as they were", () => Apart(test => test.A_changed_profile_is_written_in_its_place_keeping_what_Passenger_does_not_model_and_the_others_as_they_were())),
+        ("a new profile goes after the last laid out as Visual Studio writes one and a removed one goes with its lines", () => Apart(test => test.A_new_profile_goes_after_the_last_laid_out_as_Visual_Studio_writes_one_and_a_removed_one_goes_with_its_lines())),
+        ("a new file is written as Visual Studio writes one and an item that is no profile is kept", () => Apart(test => test.A_new_file_is_written_as_Visual_Studio_writes_one_and_an_item_that_is_no_profile_is_kept())),
+        ("a profile moved from the persons file to the teams keeps its members and both files are read beside the solution", () => Apart(test => test.A_profile_moved_from_the_persons_file_to_the_teams_keeps_its_members_and_both_files_are_read_beside_the_solution())),
+        ("a project renamed or moved is named where it went in the separator it was written with every other character kept", () => Apart(test => test.A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept())),
+        ("the solution moved names each project from its new folder and a file that does not read is left alone", () => Apart(test => test.The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<SolutionLaunchTests> check)
+    {
+        using SolutionLaunchTests test = new();
+        check(test);
+    }
+
+    private void Profiles_written_back_unchanged_keep_every_character()
     {
         (IReadOnlyList<SolutionLaunchProfile> profiles, _) = SolutionLaunch.Parse(TwoProfiles, root, shared: true);
         Assert.Equal(TwoProfiles, SolutionLaunch.Written(TwoProfiles, profiles, root).Text);
@@ -83,8 +105,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.Equal(crlf, SolutionLaunch.Written(crlf, again, root).Text);
     }
 
-    [Fact]
-    public void A_changed_profile_is_written_in_its_place_keeping_what_Passenger_does_not_model_and_the_others_as_they_were()
+    private void A_changed_profile_is_written_in_its_place_keeping_what_Passenger_does_not_model_and_the_others_as_they_were()
     {
         (IReadOnlyList<SolutionLaunchProfile> profiles, _) = SolutionLaunch.Parse(TwoProfiles, root, shared: true);
         SolutionLaunchProfile alone = profiles[1];
@@ -99,8 +120,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.Equal(expected, text);
     }
 
-    [Fact]
-    public void A_new_profile_goes_after_the_last_laid_out_as_Visual_Studio_writes_one_and_a_removed_one_goes_with_its_lines()
+    private void A_new_profile_goes_after_the_last_laid_out_as_Visual_Studio_writes_one_and_a_removed_one_goes_with_its_lines()
     {
         (IReadOnlyList<SolutionLaunchProfile> profiles, _) = SolutionLaunch.Parse(TwoProfiles, root, shared: true);
         SolutionLaunchProfile added = new("Worker", [new SolutionLaunchProject(At("Worker", "Worker.csproj"), ProjectLaunchAction.Start, null)], true);
@@ -114,8 +134,7 @@ public sealed class SolutionLaunchTests : IDisposable
             "What was written does not read back as the profiles written");
     }
 
-    [Fact]
-    public void A_new_file_is_written_as_Visual_Studio_writes_one_and_an_item_that_is_no_profile_is_kept()
+    private void A_new_file_is_written_as_Visual_Studio_writes_one_and_an_item_that_is_no_profile_is_kept()
     {
         SolutionLaunchProfile made = new("Up", [
             new SolutionLaunchProject(At("src", "Api", "Api.csproj"), ProjectLaunchAction.Start, "http"),
@@ -129,8 +148,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.Equal("[\n  { \"Note\": \"kept\" }\n]", SolutionLaunch.Written(WithNote, [], root).Text);
     }
 
-    [Fact]
-    public void A_profile_moved_from_the_persons_file_to_the_teams_keeps_its_members_and_both_files_are_read_beside_the_solution()
+    private void A_profile_moved_from_the_persons_file_to_the_teams_keeps_its_members_and_both_files_are_read_beside_the_solution()
     {
         string solution = Path.Combine(root, "Shop.slnx");
         File.WriteAllText(SolutionLaunch.SharedFile(solution), TwoProfiles);
@@ -146,8 +164,7 @@ public sealed class SolutionLaunchTests : IDisposable
             $"The profile moved to the team's file lost what it held or changed the others: {text}");
     }
 
-    [Fact]
-    public void A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept()
+    private void A_project_renamed_or_moved_is_named_where_it_went_in_the_separator_it_was_written_with_every_other_character_kept()
     {
         const string Written = "// ours\n[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": [\n      { \"Path\": \"src\\\\Api\\\\Api.csproj\", \"Action\": \"Start\", \"Kept\": 1 },\n"
             + "      { \"Name\": \"Worker/Worker.csproj\", \"Action\": \"None\" },\n      { \"Path\": \"Tool\\\\Tool.csproj\", \"Action\": \"Start\" },\n    ],\n  },\n  42\n]";
@@ -159,8 +176,7 @@ public sealed class SolutionLaunchTests : IDisposable
         Assert.Equal(Written, SolutionLaunch.Moved(Written, root, root, [(At("docs"), At("notes"))]));
     }
 
-    [Fact]
-    public void The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone()
+    private void The_solution_moved_names_each_project_from_its_new_folder_and_a_file_that_does_not_read_is_left_alone()
     {
         const string Written = "[ { \"Name\": \"Both\", \"Projects\": [ { \"Path\": \"Api\\\\Api.csproj\", \"Action\": \"Start\" } ] } ]";
         string? moved = SolutionLaunch.Moved(Written, root, At("solution"), []);

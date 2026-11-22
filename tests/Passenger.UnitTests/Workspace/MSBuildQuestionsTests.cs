@@ -29,7 +29,14 @@ public sealed class MSBuildQuestionsTests
     private const string TaskSaid = "said on the console by a task, { before\n";
 
     [Fact]
-    public void An_answer_is_read_as_MSBuild_writes_it_its_warnings_on_its_errors()
+    public void An_MSBuild_answer_is_read_as_MSBuild_writes_it_whatever_lines_come_beside_it() => Cases.All(
+        ("an answer is read as MSBuild writes it its warnings on its errors", An_answer_is_read_as_MSBuild_writes_it_its_warnings_on_its_errors),
+        ("an answer is read past a task line before it and a warning line after it", An_answer_is_read_past_a_task_line_before_it_and_a_warning_line_after_it),
+        ("a property asked alone is read bare after any line before it and one answered empty is none", A_property_asked_alone_is_read_bare_after_any_line_before_it_and_one_answered_empty_is_none),
+        ("a run that failed still says what it answered and one that wrote none answered nothing", A_run_that_failed_still_says_what_it_answered_and_one_that_wrote_none_answered_nothing),
+        ("a question gives the globals but their framework its own properties over them and its framework", A_question_gives_the_globals_but_their_framework_its_own_properties_over_them_and_its_framework));
+
+    private void An_answer_is_read_as_MSBuild_writes_it_its_warnings_on_its_errors()
     {
         MSBuildAnswer answer = new(new ChildResult(0, Answered, Warned));
 
@@ -38,8 +45,7 @@ public sealed class MSBuildQuestionsTests
         Assert.Contains("warning PS0001", answer.Said.Error, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void An_answer_is_read_past_a_task_line_before_it_and_a_warning_line_after_it()
+    private void An_answer_is_read_past_a_task_line_before_it_and_a_warning_line_after_it()
     {
         MSBuildAnswer answer = new(new ChildResult(0, TaskSaid + Answered + Warned, string.Empty));
 
@@ -48,8 +54,7 @@ public sealed class MSBuildQuestionsTests
         Assert.True(answer.Property("answer") is null, "A property was read by another letter case than MSBuild wrote");
     }
 
-    [Fact]
-    public void A_property_asked_alone_is_read_bare_after_any_line_before_it_and_one_answered_empty_is_none()
+    private void A_property_asked_alone_is_read_bare_after_any_line_before_it_and_one_answered_empty_is_none()
     {
         MSBuildQuestion asked = new([]) { Properties = ["TargetPath"] };
         MSBuildAnswer answer = new(new ChildResult(0, TaskSaid + "/src/App/bin/Debug/net11.0/App.dll\n", Warned), asked.Alone);
@@ -61,8 +66,7 @@ public sealed class MSBuildQuestionsTests
         Assert.Null(new MSBuildQuestion([]) { Properties = ["TargetPath", "TargetDir"] }.Alone);
     }
 
-    [Fact]
-    public void A_run_that_failed_still_says_what_it_answered_and_one_that_wrote_none_answered_nothing()
+    private void A_run_that_failed_still_says_what_it_answered_and_one_that_wrote_none_answered_nothing()
     {
         // The Fail target's run: its error ended it with exit code 1, its answer written all the same.
         MSBuildAnswer failed = new(new ChildResult(1, "{\n  \"Properties\": {\n    \"Answer\": \"42\",\n    \"Computed\": \"\"\n  }\n}\n",
@@ -76,8 +80,7 @@ public sealed class MSBuildQuestionsTests
         Assert.Null(none.TargetResult(MSBuildNames.GetRequiredWorkloads));
     }
 
-    [Fact]
-    public void A_question_gives_the_globals_but_their_framework_its_own_properties_over_them_and_its_framework()
+    private void A_question_gives_the_globals_but_their_framework_its_own_properties_over_them_and_its_framework()
     {
         Dictionary<string, string> globals = new(StringComparer.OrdinalIgnoreCase)
         {

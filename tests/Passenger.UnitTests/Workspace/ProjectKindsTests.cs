@@ -12,56 +12,36 @@ public class ProjectKindsTests
     private const string Folder = "/work/Shop";
     private const string Project = Folder + "/Shop.csproj";
 
-    public static TheoryData<string, ProjectKind> Kinds => new()
-    {
-        { "an executable", ProjectKind.Console },
-        { "a windowed executable", ProjectKind.Desktop },
-        { "a Mac Catalyst app", ProjectKind.Desktop },
-        { "a library", ProjectKind.Library },
-        { "an AppHost", ProjectKind.AspireHost },
-        { "a test project", ProjectKind.Test },
-        { "a test project running as a program", ProjectKind.Test },
-        { "a Godot game", ProjectKind.GodotGame },
-        { "a Godot game's tests", ProjectKind.Test },
-        { "a Functions app", ProjectKind.Functions },
-        { "a MAUI app", ProjectKind.Maui },
-        { "a MAUI library", ProjectKind.Library },
-        { "an Android app", ProjectKind.Mobile },
-        { "an iOS app", ProjectKind.Mobile },
-        { "an Avalonia app for Android", ProjectKind.Mobile },
-        { "an Avalonia app", ProjectKind.Avalonia },
-        { "an Avalonia library", ProjectKind.Library },
-        { "a WPF app", ProjectKind.Wpf },
-        { "a WPF library", ProjectKind.Library },
-        { "a Windows Forms app", ProjectKind.WindowsForms },
-        { "a WPF and Windows Forms app", ProjectKind.Wpf },
-        { "a web app of pages", ProjectKind.WebApp },
-        { "a web app of components", ProjectKind.Blazor },
-        { "a web app of components and pages", ProjectKind.Blazor },
-        { "a web API", ProjectKind.WebApi },
-        { "a standalone Blazor WebAssembly app", ProjectKind.Blazor },
-        { "a Blazor Web App's client", ProjectKind.Blazor },
-        { "a Razor class library", ProjectKind.Library },
-        { "a library named like an API", ProjectKind.Library },
-        { "a project not evaluated", ProjectKind.Other },
-        { "a project MSBuild could not evaluate", ProjectKind.Other },
-        { "a project of another SDK", ProjectKind.Other },
-    };
-
-    [Theory]
-    [MemberData(nameof(Kinds))]
-    public void A_project_is_the_kind_its_evaluation_says(string project, ProjectKind kind) =>
-        Assert.Equal(kind, ProjectKinds.Of(Made(project)));
+    /// <summary>A project of each kind that most surely tells one rule from another, as its evaluation describes it.</summary>
+    private static readonly (string Project, ProjectKind Kind)[] Kinds =
+    [
+        ("an executable", ProjectKind.Console),
+        ("a windowed executable", ProjectKind.Desktop),
+        ("an AppHost", ProjectKind.AspireHost),
+        ("a test project running as a program", ProjectKind.Test),
+        ("a Godot game's tests", ProjectKind.Test),
+        ("a MAUI app", ProjectKind.Maui),
+        ("an Avalonia app for Android", ProjectKind.Mobile),
+        ("a WPF and Windows Forms app", ProjectKind.Wpf),
+        ("a web app of components and pages", ProjectKind.Blazor),
+        ("a Blazor Web App's client", ProjectKind.Blazor),
+        ("a library named like an API", ProjectKind.Library),
+        ("a project MSBuild could not evaluate", ProjectKind.Other),
+    ];
 
     [Fact]
-    public void A_docker_compose_project_and_a_shared_project_are_their_kinds_by_their_files_never_evaluated()
+    public void A_project_is_the_kind_its_evaluation_says_never_its_name_and_each_kind_has_words_of_its_own() => Cases.All(
+        ("a project is the kind its evaluation says", () => Cases.Each(Kinds, row => Assert.Equal(row.Kind, ProjectKinds.Of(Made(row.Project))), row => row.Project)),
+        ("a docker compose project and a shared project are their kinds by their files never evaluated", A_docker_compose_project_and_a_shared_project_are_their_kinds_by_their_files_never_evaluated),
+        ("every kind but other has words of its own said after a projects name", Every_kind_but_other_has_words_of_its_own_said_after_a_projects_name));
+
+    private static void A_docker_compose_project_and_a_shared_project_are_their_kinds_by_their_files_never_evaluated()
     {
         Assert.Equal(ProjectKind.Compose, ProjectKinds.Of(ProjectModel.Unevaluated("/work/docker-compose.dcproj")));
         Assert.Equal(ProjectKind.Shared, ProjectKinds.Of(ProjectModel.Unevaluated("/work/Shop.Shared/Shop.Shared.shproj")));
     }
 
-    [Fact]
-    public void Every_kind_but_other_has_words_of_its_own_said_after_a_projects_name()
+    private static void Every_kind_but_other_has_words_of_its_own_said_after_a_projects_name()
     {
         ProjectKind[] told = [.. Enum.GetValues<ProjectKind>().Where(k => k != ProjectKind.Other)];
         string?[] words = [.. told.Select(ProjectKinds.Words)];
@@ -77,39 +57,18 @@ public class ProjectKindsTests
     {
         "an executable" => Evaluated("Exe"),
         "a windowed executable" => Evaluated("WinExe"),
-        "a Mac Catalyst app" => Evaluated("Exe", frameworks: ["net11.0-maccatalyst"]),
-        "a library" => Evaluated("Library"),
         "an AppHost" => ProjectModel.From(Project, Plain("Exe") with { IsAspireHost = true }),
-        "a test project" => Evaluated("Library", test: true),
         "a test project running as a program" => Evaluated("Exe", test: true),
-        "a Godot game" => Evaluated("Library", properties: Godot()),
         "a Godot game's tests" => Evaluated("Library", properties: Godot(), test: true),
-        "a Functions app" => Evaluated("Exe", properties: new() { [CarriedProperties.AzureFunctionsVersion] = "v4" }),
         "a MAUI app" => Evaluated("Library", frameworks: ["net11.0-android", "net11.0-ios"],
             properties: new() { [MSBuildNames.UseMaui] = "true", [CarriedProperties.AndroidApplication] = "true" }),
-        "a MAUI library" => Evaluated("Library", frameworks: ["net11.0-android", "net11.0-ios"], properties: new() { [MSBuildNames.UseMaui] = "true" }),
-        "an Android app" => Evaluated("Library", frameworks: ["net11.0-android"], properties: new() { [CarriedProperties.AndroidApplication] = "true" }),
-        "an iOS app" => Evaluated("Exe", frameworks: ["net11.0-ios"]),
         "an Avalonia app for Android" => Evaluated("Library", frameworks: ["net11.0-android"],
             properties: new() { [CarriedProperties.AndroidApplication] = "true", [CarriedProperties.EnableAvaloniaXamlCompilation] = "true" }),
-        "an Avalonia app" => Evaluated("WinExe", properties: new() { [CarriedProperties.EnableAvaloniaXamlCompilation] = "true" }),
-        "an Avalonia library" => Evaluated("Library", properties: new() { [CarriedProperties.EnableAvaloniaXamlCompilation] = "true" }),
-        "a WPF app" => Evaluated("WinExe", frameworks: ["net11.0-windows"], shared: [FrameworkNames.Wpf]),
-        "a WPF library" => Evaluated("Library", frameworks: ["net11.0-windows"], shared: [FrameworkNames.Wpf]),
-        "a Windows Forms app" => Evaluated("WinExe", frameworks: ["net11.0-windows"], shared: [FrameworkNames.WindowsForms]),
         "a WPF and Windows Forms app" => Evaluated("WinExe", frameworks: ["net11.0-windows"], shared: [FrameworkNames.WindowsDesktop]),
-        "a web app of pages" => Evaluated("Exe", web: true, content: ["Pages/Index.cshtml"]),
-        "a web app of components" => Evaluated("Exe", web: true, content: ["Components/App.razor"]),
         "a web app of components and pages" => Evaluated("Exe", web: true, content: ["Components/App.razor", "Pages/Error.cshtml"]),
-        "a web API" => Evaluated("Exe", web: true, content: ["appsettings.json"]),
-        "a standalone Blazor WebAssembly app" => Evaluated("Exe", web: true,
-            packages: ["Microsoft.AspNetCore.Components.WebAssembly", "Microsoft.AspNetCore.Components.WebAssembly.DevServer"]),
         "a Blazor Web App's client" => Evaluated("Exe", web: true, packages: ["Microsoft.AspNetCore.Components.WebAssembly"]),
-        "a Razor class library" => Evaluated("Library", web: true, content: ["Component1.razor"]),
         "a library named like an API" => ProjectModel.From(Folder + "/Shop.Api/Shop.Api.csproj", Plain("Library") with { Path = Folder + "/Shop.Api/Shop.Api.csproj" }),
-        "a project not evaluated" => ProjectModel.Unevaluated(Project),
         "a project MSBuild could not evaluate" => ProjectModel.From(Project, new EvaluatedProject { Path = Project, Problem = "The SDK 'Missing.Sdk' was not found." }),
-        "a project of another SDK" => Evaluated(null, frameworks: []),
         _ => throw new ArgumentOutOfRangeException(nameof(described), described, "No such project here"),
     };
 

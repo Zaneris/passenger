@@ -17,7 +17,21 @@ public sealed class LoadingVariablesTests : IDisposable
     }
 
     [Fact]
-    public void An_instrumentation_installed_in_a_folder_of_the_persons_own_is_taken()
+    public void A_launchs_code_loading_variables_are_taken_only_from_the_persons_own_folders() => Cases.All(
+        ("an instrumentation installed in a folder of the persons own is taken", () => Apart(test => test.An_instrumentation_installed_in_a_folder_of_the_persons_own_is_taken())),
+        ("a file outside the persons own folders is refused naming the variable and the file", () => Apart(test => test.A_file_outside_the_persons_own_folders_is_refused_naming_the_variable_and_the_file())),
+        ("a link from a folder of the persons own to another is followed and refused", () => Apart(test => test.A_link_from_a_folder_of_the_persons_own_to_another_is_followed_and_refused())),
+        ("a path that is not whole and a diagnostic port are held to the same", () => Apart(test => test.A_path_that_is_not_whole_and_a_diagnostic_port_are_held_to_the_same())),
+        ("the systems own loader variables are held where its loader reads them", () => Apart(test => test.The_systems_own_loader_variables_are_held_where_its_loader_reads_them())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<LoadingVariablesTests> check)
+    {
+        using LoadingVariablesTests test = new();
+        check(test);
+    }
+
+    private void An_instrumentation_installed_in_a_folder_of_the_persons_own_is_taken()
     {
         string home = Path.Join(own, ".otel-dotnet-auto");
         Directory.CreateDirectory(Path.Join(home, "net"));
@@ -36,8 +50,7 @@ public sealed class LoadingVariablesTests : IDisposable
         Assert.Null(LoadingVariables.WhyNot(instrumented, [own]));
     }
 
-    [Fact]
-    public void A_file_outside_the_persons_own_folders_is_refused_naming_the_variable_and_the_file()
+    private void A_file_outside_the_persons_own_folders_is_refused_naming_the_variable_and_the_file()
     {
         string hook = Path.Join(shared, "hook.dll");
         string? why = LoadingVariables.WhyNot([(OtelVariables.ServiceName, "api"), (RuntimeVariables.StartupHooks, hook)], [own]);
@@ -48,8 +61,7 @@ public sealed class LoadingVariablesTests : IDisposable
         Assert.NotNull(LoadingVariables.WhyNot([("DOTNET_ADDITIONAL_DEPS", Path.Join(own, "deps") + Path.PathSeparator + Path.Join(shared, "deps"))], [own]));
     }
 
-    [Fact]
-    public void A_link_from_a_folder_of_the_persons_own_to_another_is_followed_and_refused()
+    private void A_link_from_a_folder_of_the_persons_own_to_another_is_followed_and_refused()
     {
         string hook = Path.Join(shared, "hook.dll");
         File.WriteAllBytes(hook, [1]);
@@ -65,8 +77,7 @@ public sealed class LoadingVariablesTests : IDisposable
         Assert.Contains($"loads {hook},", LoadingVariables.WhyNot([(RuntimeVariables.StartupHooks, link)], [own]), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_path_that_is_not_whole_and_a_diagnostic_port_are_held_to_the_same()
+    private void A_path_that_is_not_whole_and_a_diagnostic_port_are_held_to_the_same()
     {
         Assert.Contains("no full path", LoadingVariables.WhyNot([("CORECLR_PROFILER_PATH", "profiler.so")], [own]), StringComparison.Ordinal);
         Assert.NotNull(LoadingVariables.WhyNot([(RuntimeVariables.DiagnosticPorts, Path.Join(shared, "monitor.sock") + ",connect,nosuspend")], [own]));
@@ -74,8 +85,7 @@ public sealed class LoadingVariablesTests : IDisposable
             "A diagnostic port in a folder of the person's own was refused off Windows, or a named pipe taken on Windows");
     }
 
-    [Fact]
-    public void The_systems_own_loader_variables_are_held_where_its_loader_reads_them()
+    private void The_systems_own_loader_variables_are_held_where_its_loader_reads_them()
     {
         string library = Path.Join(shared, "lib.so");
         string? preloaded = LoadingVariables.WhyNot([("LD_PRELOAD", $"{Path.Join(own, "a.so")} {library}")], [own]);
