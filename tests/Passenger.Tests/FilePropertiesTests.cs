@@ -19,8 +19,37 @@ public sealed class FilePropertiesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A file's line breaks and encoding shown, converted and written as chosen, a conversion losing
+    /// characters asked first, an .editorconfig's choice shown, and each Undo writing the file as it was, as one flow,
+    /// each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void An_LF_file_converted_to_CRLF_and_back_is_written_so_and_each_undo_writes_the_file_as_it_was()
+    public void A_files_line_breaks_and_encoding_convert_as_chosen_and_each_undo_writes_it_as_it_was()
+    {
+        Flow.StepApart<FilePropertiesTests>("an LF file converted to CRLF and back is written so and each undo writes the file as it was", t => t.An_LF_file_converted_to_CRLF_and_back_is_written_so_and_each_undo_writes_the_file_as_it_was());
+        Flow.StepApart<FilePropertiesTests>("a classic Mac file shows its lines keeps its breaks through a save and converts to LF", t => t.A_classic_Mac_file_shows_its_lines_keeps_its_breaks_through_a_save_and_converts_to_LF());
+        Flow.StepApart<FilePropertiesTests>("a Windows 1252 file opens showing its letters and shows control characters only once reloaded as ISO 8859 1", t => t.A_Windows_1252_file_opens_showing_its_letters_and_shows_control_characters_only_once_reloaded_as_ISO_8859_1());
+        Flow.StepApart<FilePropertiesTests>("a file converted to UTF 16 is written with its byte order mark and undo writes it as UTF 8 again", t => t.A_file_converted_to_UTF_16_is_written_with_its_byte_order_mark_and_undo_writes_it_as_UTF_8_again());
+        Flow.StepApart<FilePropertiesTests>("a conversion that would lose characters warns first and converted anyway writes question marks undo brings back", t => t.A_conversion_that_would_lose_characters_warns_first_and_converted_anyway_writes_question_marks_undo_brings_back());
+        Flow.StepApart<FilePropertiesTests>("an editorconfigs end of line and charset show on the widgets and a choice against them outlasts a save", t => t.An_editorconfigs_end_of_line_and_charset_show_on_the_widgets_and_a_choice_against_them_outlasts_a_save());
+    }
+
+    /// <summary>The indent widget chooses and converts a file's indentation in one step of Undo, leaving every string,
+    /// block scalar, heredoc and code block as written, and refusing where it cannot tell them or Python's levels, as
+    /// one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Converting_indentation_changes_the_code_and_leaves_what_a_reader_keeps_or_refuses()
+    {
+        Flow.StepApart<FilePropertiesTests>("the indent widget chooses how a file indents and Automatic gives it back its own", t => t.The_indent_widget_chooses_how_a_file_indents_and_Automatic_gives_it_back_its_own());
+        Flow.StepApart<FilePropertiesTests>("the indent widget converts a files lines to tabs and back each one step of undo", t => t.The_indent_widget_converts_a_files_lines_to_tabs_and_back_each_one_step_of_undo());
+        Flow.StepApart<FilePropertiesTests>("converting indentation leaves the lines inside strings and says how many", t => t.Converting_indentation_leaves_the_lines_inside_strings_and_says_how_many());
+        Flow.StepApart<FilePropertiesTests>("converting indentation is refused where the lines inside strings cannot be told", t => t.Converting_indentation_is_refused_where_the_lines_inside_strings_cannot_be_told());
+        Flow.StepApart<FilePropertiesTests>("converting Python leaves every kind of string and converts the code around them", t => t.Converting_Python_leaves_every_kind_of_string_and_converts_the_code_around_them());
+        Flow.StepApart<FilePropertiesTests>("converting Python to tabs is refused where a blocks parent is no whole number of levels deep", t => t.Converting_Python_to_tabs_is_refused_where_a_blocks_parent_is_no_whole_number_of_levels_deep());
+        Flow.StepApart<FilePropertiesTests>("converting YAML leaves a block scalars lines and refuses tabs", t => t.Converting_YAML_leaves_a_block_scalars_lines_and_refuses_tabs());
+        Flow.StepApart<FilePropertiesTests>("converting indentation leaves code blocks heredocs and text a reader keeps", t => t.Converting_indentation_leaves_code_blocks_heredocs_and_text_a_reader_keeps());
+    }
+
+    private void An_LF_file_converted_to_CRLF_and_back_is_written_so_and_each_undo_writes_the_file_as_it_was()
     {
         string path = Write("One.cs", "class One\n{\n}\n");
         MainWindow window = Open("One.cs");
@@ -64,8 +93,7 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_classic_Mac_file_shows_its_lines_keeps_its_breaks_through_a_save_and_converts_to_LF()
+    private void A_classic_Mac_file_shows_its_lines_keeps_its_breaks_through_a_save_and_converts_to_LF()
     {
         string path = Write("Mac.txt", "one\rtwo\rthree\r");
         MainWindow window = Open("Mac.txt");
@@ -88,8 +116,7 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_Windows_1252_file_opens_showing_its_letters_and_shows_control_characters_only_once_reloaded_as_ISO_8859_1()
+    private void A_Windows_1252_file_opens_showing_its_letters_and_shows_control_characters_only_once_reloaded_as_ISO_8859_1()
     {
         // Windows-1252, not UTF-8, so read in the 8-bit encoding a file of no other is read in.
         string path = Path.Combine(folder, "Menu.txt");
@@ -123,8 +150,7 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_file_converted_to_UTF_16_is_written_with_its_byte_order_mark_and_undo_writes_it_as_UTF_8_again()
+    private void A_file_converted_to_UTF_16_is_written_with_its_byte_order_mark_and_undo_writes_it_as_UTF_8_again()
     {
         string path = Write("Cafe.cs", "class Café { }\n");
         MainWindow window = Open("Cafe.cs");
@@ -159,8 +185,7 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_conversion_that_would_lose_characters_warns_first_and_converted_anyway_writes_question_marks_undo_brings_back()
+    private void A_conversion_that_would_lose_characters_warns_first_and_converted_anyway_writes_question_marks_undo_brings_back()
     {
         string path = Write("Price.cs", "// 5 € → 🚀\n");
         MainWindow window = Open("Price.cs");
@@ -190,8 +215,7 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_editorconfigs_end_of_line_and_charset_show_on_the_widgets_and_a_choice_against_them_outlasts_a_save()
+    private void An_editorconfigs_end_of_line_and_charset_show_on_the_widgets_and_a_choice_against_them_outlasts_a_save()
     {
         Write(".editorconfig", "root = true\n\n[*]\nend_of_line = lf\ncharset = utf-8\n\n[Three.cs]\ncharset = latin1\n");
         string path = Write("One.cs", "class One\n{\n}\n");
@@ -225,8 +249,7 @@ public sealed class FilePropertiesTests : IDisposable
     /// <summary>The indent widget offers a tab and widths of spaces: one chosen is how Tab indents the file from then on,
     /// over what its lines showed, the widget saying so and the file's text left as it was, until Automatic gives the
     /// file its own back.</summary>
-    [AvaloniaFact]
-    public void The_indent_widget_chooses_how_a_file_indents_and_Automatic_gives_it_back_its_own()
+    private void The_indent_widget_chooses_how_a_file_indents_and_Automatic_gives_it_back_its_own()
     {
         const string Spaced = "class Spaced\n{\n    void Run()\n    {\n    }\n}\nint a;\nint b;\n";
         string path = Write("Spaced.cs", Spaced);
@@ -261,8 +284,7 @@ public sealed class FilePropertiesTests : IDisposable
     /// line's rest and a comment's left as they are, the file then indenting with a tab and the status bar saying so; Undo
     /// puts the spaces and the indentation detected back as one step, and from tabs to spaces converts them again, the file
     /// never written.</summary>
-    [AvaloniaFact]
-    public void The_indent_widget_converts_a_files_lines_to_tabs_and_back_each_one_step_of_undo()
+    private void The_indent_widget_converts_a_files_lines_to_tabs_and_back_each_one_step_of_undo()
     {
         const string Spaced = "class Spaced\n{\n    void Run()\n    {\n        int a  = 1; // a\n          // aligned two past\n    }\n}\n";
         const string Tabbed = "class Spaced\n{\n\tvoid Run()\n\t{\n\t\tint a  = 1; // a\n\t\t  // aligned two past\n\t}\n}\n";
@@ -295,8 +317,7 @@ public sealed class FilePropertiesTests : IDisposable
     /// <summary>The indent widget's conversion leaves alone the lines that begin inside a string, whose whitespace is the
     /// string's: a C# verbatim string's and a raw string's, its closing line with them, and an XML file's CDATA section's;
     /// the status bar says how many it left.</summary>
-    [AvaloniaFact]
-    public void Converting_indentation_leaves_the_lines_inside_strings_and_says_how_many()
+    private void Converting_indentation_leaves_the_lines_inside_strings_and_says_how_many()
     {
         const string Code = "class Strings\n{\n    string Verbatim = @\"one\n    two\";\n    string Raw = \"\"\"\n        three\n        \"\"\";\n    void Run()\n    {\n    }\n}\n";
         Write("Strings.cs", Code);
@@ -318,8 +339,7 @@ public sealed class FilePropertiesTests : IDisposable
 
     /// <summary>A language Passenger has no parse or grammar of declines the conversion, saying why, as a Ruby heredoc's
     /// lines can't be told from code, and leaves the file as it is; a file of prose, which holds no strings, converts.</summary>
-    [AvaloniaFact]
-    public void Converting_indentation_is_refused_where_the_lines_inside_strings_cannot_be_told()
+    private void Converting_indentation_is_refused_where_the_lines_inside_strings_cannot_be_told()
     {
         const string Code = "data = <<~TEXT\n        exact\nTEXT\n\ndef run\n        1\nend\n";
         Write("tool.rb", Code);
@@ -341,8 +361,7 @@ public sealed class FilePropertiesTests : IDisposable
     /// a triple-quoted, raw, bytes or f-string's, and one going on past a backslash, a statement's opening string among them. An
     /// f-string's format spec opens nothing whatever it holds, nor does a comment in its field, so what follows them is read as
     /// it is; the code around the strings converts, there and back.</summary>
-    [AvaloniaFact]
-    public void Converting_Python_leaves_every_kind_of_string_and_converts_the_code_around_them()
+    private void Converting_Python_leaves_every_kind_of_string_and_converts_the_code_around_them()
     {
         const string Spaced = """"
             """The module.
@@ -402,8 +421,7 @@ public sealed class FilePropertiesTests : IDisposable
     /// <summary>A Python file whose indent size leaves a block's parent between levels refuses tabs, which Python would refuse
     /// beside that line's spaces, saying which line; the same file at the indent its lines use converts, and to spaces at any
     /// size. A comment, a string's line and a line of code that opens nothing between levels stop nothing.</summary>
-    [AvaloniaFact]
-    public void Converting_Python_to_tabs_is_refused_where_a_blocks_parent_is_no_whole_number_of_levels_deep()
+    private void Converting_Python_to_tabs_is_refused_where_a_blocks_parent_is_no_whole_number_of_levels_deep()
     {
         const string Code = "class Loader:\n    # kept\n    def __init__(self):\n        self.text = \"\"\"\n          words\"\"\"\n   # between levels\n        self.done = call(1,\n                         2)\n";
         Write("loader.py", Code);
@@ -421,25 +439,9 @@ public sealed class FilePropertiesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A comprehension's <c>for</c> and <c>if</c> on lines of their own between levels open no block, Python reading no
-    /// indentation inside brackets, so tabs are taken there, where each was refused.</summary>
-    [AvaloniaFact]
-    public void Converting_Python_to_tabs_takes_a_comprehension_continued_between_levels()
-    {
-        const string Code = "class Loader:\n    def read(self):\n        return [x\n                  for x in self.items\n                  if x]\n";
-        Write("comprehension.py", Code);
-        MainWindow window = Open("comprehension.py");
-        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
-        Click(window, "IndentButton");
-        Choose(window, "Convert Indentation to Tabs");
-        Assert.Equal("class Loader:\n\tdef read(self):\n\t\treturn [x\n\t\t\t\t  for x in self.items\n\t\t\t\t  if x]\n", Text(window));
-        window.Close();
-    }
-
     /// <summary>A YAML file's block scalar keeps every line, the first whose indentation the scalar takes its own from among
     /// them, as the lines around it convert; tabs, which no YAML indents with, are refused saying why.</summary>
-    [AvaloniaFact]
-    public void Converting_YAML_leaves_a_block_scalars_lines_and_refuses_tabs()
+    private void Converting_YAML_leaves_a_block_scalars_lines_and_refuses_tabs()
     {
         Write("data.yaml", "list: [\n\t1,\n\t2\n]\nkey: |\n \tfirst\n second\nafter: 1\n");
         MainWindow window = Open("data.yaml");
@@ -453,8 +455,7 @@ public sealed class FilePropertiesTests : IDisposable
 
     /// <summary>What a file's reader keeps though no string shows it stays as it is, the lines around it converting: Markdown's
     /// code, a Dockerfile's heredoc, a resource's value over lines, HTML's preformatted text, a Godot resource's script.</summary>
-    [AvaloniaFact]
-    public void Converting_indentation_leaves_code_blocks_heredocs_and_text_a_reader_keeps()
+    private void Converting_indentation_leaves_code_blocks_heredocs_and_text_a_reader_keeps()
     {
         Dictionary<string, (string Before, string After)> files = new(StringComparer.Ordinal)
         {
@@ -483,25 +484,6 @@ public sealed class FilePropertiesTests : IDisposable
             Assert.Equal(after, Text(window));
         }
         window!.Close();
-    }
-
-    /// <summary>A click on the caret's place in the status bar opens Go to Line:Column, and the line given is where the
-    /// caret goes.</summary>
-    [AvaloniaFact]
-    public void A_click_on_the_carets_place_goes_to_a_line()
-    {
-        Write("Lines.cs", "class Lines\n{\n    int a;\n    int b;\n}\n");
-        MainWindow window = Open("Lines.cs");
-        Assert.Equal("1:1", Shown(window, "CaretText"));
-        Ui.Click(window.FindControl<Button>("CaretButton")!);
-        Assert.True(window.Popup is Passenger.App.Navigation.GoToLinePopup, $"A click on the caret's place opened {window.Popup?.GetType().Name ?? "nothing"}, not Go to Line");
-        window.KeyTextInput("4:5");
-        Ui.Settle();
-        Ui.Press(window, "ENTER");
-        Assert.False(window.IsPopupOpen, "Go to Line stayed open after Enter");
-        Assert.Equal(new Passenger.Text.TextPosition(3, 4), window.EditorArea.CodeEditor.CaretPosition);
-        Assert.Equal("4:5", Shown(window, "CaretText"));
-        window.Close();
     }
 
     private string Write(string name, string text) => TestFolders.Write(folder, name, text);

@@ -55,6 +55,231 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         base.Dispose();
     }
 
+    /// <summary>The gate's five checks for a newer release as one flow, to take their place once it has its record on
+    /// CI: a second window asking none of its own, the same, older or pre-release version saying nothing, the check
+    /// turned off, a failed check said and logged, and a newer release announced once.</summary>
+    [AvaloniaFact]
+    public void The_gates_update_checks_hold_as_one_flow()
+    {
+        Flow.StepApart("a second solution window asks for no release of its own and takes the watch over as the first closes", () => new UpdatesTests(images), t => t.A_second_solution_window_asks_for_no_release_of_its_own_and_takes_the_watch_over_as_the_first_closes());
+        Flow.StepApart("the same version an older one a pre release or a draft says nothing and Check for Updates says up to date", () => new UpdatesTests(images), t => t.The_same_version_an_older_one_a_pre_release_or_a_draft_says_nothing_and_Check_for_Updates_says_up_to_date());
+        Flow.StepApart("with Check for updates off in Settings nothing is asked until it is on again", () => new UpdatesTests(images), t => t.With_Check_for_updates_off_in_Settings_nothing_is_asked_until_it_is_on_again());
+        Flow.StepApart("a failed or unanswered check says nothing and is logged and Check for Updates says why", () => new UpdatesTests(images), t => t.A_failed_or_unanswered_check_says_nothing_and_is_logged_and_Check_for_Updates_says_why());
+        Flow.StepApart("a newer release is announced once naming its version with a link to this systems download", () => new UpdatesTests(images), t => t.A_newer_release_is_announced_once_naming_its_version_with_a_link_to_this_systems_download());
+    }
+
+    /// <summary>A newer release is announced as its answer comes, asked again a wall-clock day later, named a security
+    /// release where its notes say so, downloaded once for every window and checked against its SHA-256, never by a
+    /// copy no installer put in place or with checks off, and restarted into only by the person, as one flow, each step
+    /// the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public async Task A_release_is_announced_downloaded_checked_and_restarted_into_by_the_person_alone()
+    {
+        Flow.StepApart("a release answered late is announced as its answer comes and the notice never shows without its words", () => new UpdatesTests(images), t => t.A_release_answered_late_is_announced_as_its_answer_comes_and_the_notice_never_shows_without_its_words());
+        Flow.StepApart("a failed check is asked again at the next look and an answered one a day later by the wall clock however long the machine slept", () => new UpdatesTests(images), t => t.A_failed_check_is_asked_again_at_the_next_look_and_an_answered_one_a_day_later_by_the_wall_clock_however_long_the_machine_slept());
+        Flow.StepApart("a release whose notes mark it a security release is named one saying what it fixes and one unmarked is said as before", () => new UpdatesTests(images), t => t.A_release_whose_notes_mark_it_a_security_release_is_named_one_saying_what_it_fixes_and_one_unmarked_is_said_as_before());
+        Flow.StepApart("a release after a security release this version lacks is a security update in that releases words", () => new UpdatesTests(images), t => t.A_release_after_a_security_release_this_version_lacks_is_a_security_update_in_that_releases_words());
+        await Flow.StepApartAsync("a 0 3 4 is told 0 4 1 is a security update in 0 4 0s words and a 0 4 0 that it is out", () => new UpdatesTests(images), t => t.A_0_3_4_is_told_0_4_1_is_a_security_update_in_0_4_0s_words_and_a_0_4_0_that_it_is_out());
+        Flow.StepApart("an installed Passenger offers to restart into a security release at once when it is ready", () => new UpdatesTests(images), t => t.An_installed_Passenger_offers_to_restart_into_a_security_release_at_once_when_it_is_ready());
+        Flow.StepApart("an agents click on Restart to Update in the persons window restarts nothing and is told why", () => new UpdatesTests(images), t => t.An_agents_click_on_Restart_to_Update_in_the_persons_window_restarts_nothing_and_is_told_why());
+        Flow.StepApart("a newer release its download and Restart to Update are said in every window from one check and one download", () => new UpdatesTests(images), t => t.A_newer_release_its_download_and_Restart_to_Update_are_said_in_every_window_from_one_check_and_one_download());
+        Flow.StepApart("a download that does not match the SHA 256 its release gives is refused and the person told why", () => new UpdatesTests(images), t => t.A_download_that_does_not_match_the_SHA_256_its_release_gives_is_refused_and_the_person_told_why());
+        Flow.StepApart("with Check for updates off nothing is downloaded and turning it off drops a download made", () => new UpdatesTests(images), t => t.With_Check_for_updates_off_nothing_is_downloaded_and_turning_it_off_drops_a_download_made());
+        Flow.StepApart("a copy its installer or disk image did not put in place never downloads an update", () => new UpdatesTests(images), t => t.A_copy_its_installer_or_disk_image_did_not_put_in_place_never_downloads_an_update());
+        Flow.StepApart("an installed Passenger downloads a newer release in the background checks it and offers Restart to Update", () => new UpdatesTests(images), t => t.An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update());
+    }
+
+    /// <summary>On macOS Restart to Update puts the disk image's app in place of the old and starts it, a disk image
+    /// the Mac refuses or holds opens once let go, another Passenger open holds the update back, an update that could
+    /// not take the app's place or was cut between its renames is said, a state on another volume opens its image on
+    /// the startup disk, and an agent's relay follows, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_Macs_update_puts_its_disk_images_app_in_place_or_says_where_each_was_left()
+    {
+        Flow.StepApart("restart to Update puts the new version in place of the old and starts it and closing installs it too (DiskImageTool.Hdiutil)", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.Restart_to_Update_puts_the_new_version_in_place_of_the_old_and_starts_it_and_closing_installs_it_too(DiskImageTool.Hdiutil);
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("a disk image the Mac refuses as it lands opens once let go and one never let go is refused in the tools words (DiskImageTool.Hdiutil, \"hdiutil: attach failed - Resource temporarily unavailable\", \"{0}\")", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.A_disk_image_the_Mac_refuses_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_the_tools_words(DiskImageTool.Hdiutil, "hdiutil: attach failed - Resource temporarily unavailable", "{0}");
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("a disk image whose disk is held as it is let go goes once let go and one held throughout is said and opens again (DiskImageTool.Hdiutil)", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.A_disk_image_whose_disk_is_held_as_it_is_let_go_goes_once_let_go_and_one_held_throughout_is_said_and_opens_again(DiskImageTool.Hdiutil);
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("another Passenger open from the same app holds the update back until it closes and the next start names it", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.Another_Passenger_open_from_the_same_app_holds_the_update_back_until_it_closes_and_the_next_start_names_it();
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("an update that could not take the apps place is said at the next start and is still ready", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.An_update_that_could_not_take_the_apps_place_is_said_at_the_next_start_and_is_still_ready();
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("an app whose place is taken between its two renames says where each app was left", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.An_app_whose_place_is_taken_between_its_two_renames_says_where_each_app_was_left();
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("an update whose state is on another volume opens its disk image on the startup disk in a folder of the users alone", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.An_update_whose_state_is_on_another_volume_opens_its_disk_image_on_the_startup_disk_in_a_folder_of_the_users_alone();
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+        Flow.StepApart("an agents relay follows the update in its own process its calls meanwhile and after answered over the same connection", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                t.An_agents_relay_follows_the_update_in_its_own_process_its_calls_meanwhile_and_after_answered_over_the_same_connection();
+            }
+            else
+            {
+                Assert.Skip("This step runs on macOS alone");
+            }
+        });
+    }
+
+    /// <summary>On Windows another Passenger running from the install holds the update back, and an Update.exe that
+    /// does not start leaves it ready, each said at the next start, as one flow, each step in an instance of its
+    /// own.</summary>
+    [AvaloniaFact]
+    public void A_Windows_update_is_held_back_by_another_Passenger_or_left_ready_and_said()
+    {
+        Flow.StepApart("on Windows another Passenger running from the install holds the update back and the next start names it", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                t.On_Windows_another_Passenger_running_from_the_install_holds_the_update_back_and_the_next_start_names_it();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Windows alone");
+            }
+        });
+        Flow.StepApart("on Windows an Update exe that does not start leaves the update ready and the next start says why", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                t.On_Windows_an_Update_exe_that_does_not_start_leaves_the_update_ready_and_the_next_start_says_why();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Windows alone");
+            }
+        });
+    }
+
+    /// <summary>On Linux an install of the person's own is put in place as Passenger restarts, one that could not be
+    /// replaced is left as it was, one for everyone is made ready where only the person writes or names the command
+    /// that installs it, and a package manager's copy downloads nothing, as one flow, each step in an instance of its
+    /// own.</summary>
+    [AvaloniaFact]
+    public void A_Linux_update_replaces_its_own_install_or_leaves_it_as_it_was_and_says_why()
+    {
+        Flow.StepApart("a Linux install of ones own is put in place as Passenger restarts its agents relay following and its menu entry refreshed", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                t.A_Linux_install_of_ones_own_is_put_in_place_as_Passenger_restarts_its_agents_relay_following_and_its_menu_entry_refreshed();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Linux alone");
+            }
+        });
+        Flow.StepApart("a Linux copy a package manager installed says its package manager updates it and downloads nothing", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                t.A_Linux_copy_a_package_manager_installed_says_its_package_manager_updates_it_and_downloads_nothing();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Linux alone");
+            }
+        });
+        Flow.StepApart("a Linux install that could not be replaced is left as it was and the next start says why", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                t.A_Linux_install_that_could_not_be_replaced_is_left_as_it_was_and_the_next_start_says_why();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Linux alone");
+            }
+        });
+        Flow.StepApart("a Linux install for everyone this user cannot write says the command that installs it and a click copies it", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                t.A_Linux_install_for_everyone_this_user_cannot_write_says_the_command_that_installs_it_and_a_click_copies_it();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Linux alone");
+            }
+        });
+        Flow.StepApart("a Linux install for everyone is made ready where only the person writes and install sh takes only the archive Passenger checked", () => new UpdatesTests(images), t =>
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                t.A_Linux_install_for_everyone_is_made_ready_where_only_the_person_writes_and_install_sh_takes_only_the_archive_Passenger_checked();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Linux alone");
+            }
+        });
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_newer_release_is_announced_once_naming_its_version_with_a_link_to_this_systems_download()
@@ -239,8 +464,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>A release answered late, as a cold start's first request on a busy machine may be, is announced once its
     /// answer comes within the feed's limit; until then the status bar shows nothing, and its notice comes with its words.</summary>
-    [AvaloniaFact]
-    public void A_release_answered_late_is_announced_as_its_answer_comes_and_the_notice_never_shows_without_its_words()
+    private void A_release_answered_late_is_announced_as_its_answer_comes_and_the_notice_never_shows_without_its_words()
     {
         using IDisposable theme = TestsTheme();
         string newer = Bumped(1, 0);
@@ -267,8 +491,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>After the start a check comes a day after the last answer by the wall clock, which goes on while the
     /// machine sleeps where a window's timer waits, so a Passenger left open across nights still asks daily; one that
     /// failed (no network yet, GitHub refusing) is asked again at the next look rather than a day later.</summary>
-    [AvaloniaFact]
-    public void A_failed_check_is_asked_again_at_the_next_look_and_an_answered_one_a_day_later_by_the_wall_clock_however_long_the_machine_slept()
+    private void A_failed_check_is_asked_again_at_the_next_look_and_an_answered_one_a_day_later_by_the_wall_clock_however_long_the_machine_slept()
     {
         using IDisposable theme = TestsTheme();
         WallClock clock = new();
@@ -310,8 +533,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>What <see cref="SecurityNotes"/> says the release fixes, in plain words.</summary>
     private const string SecurityFixes = "Agents reach only the open folder (#1): a path outside it is refused";
 
-    [AvaloniaFact]
-    public void A_release_whose_notes_mark_it_a_security_release_is_named_one_saying_what_it_fixes_and_one_unmarked_is_said_as_before()
+    private void A_release_whose_notes_mark_it_a_security_release_is_named_one_saying_what_it_fixes_and_one_unmarked_is_said_as_before()
     {
         using IDisposable theme = TestsTheme();
         string newer = Bumped(1, 0);
@@ -341,8 +563,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>A release after a security release this version lacks is a security update in that release's words, however
     /// many releases came between, a newer pre-release's or draft's mark passed over; once this version is that security
     /// release or newer, a release after it says nothing of security.</summary>
-    [AvaloniaFact]
-    public void A_release_after_a_security_release_this_version_lacks_is_a_security_update_in_that_releases_words()
+    private void A_release_after_a_security_release_this_version_lacks_is_a_security_update_in_that_releases_words()
     {
         using IDisposable theme = TestsTheme();
         string marked = Bumped(1, 0);
@@ -383,8 +604,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>GitHub's releases once 0.4.1 follows 0.4.0, a security release: a Passenger 0.3.4 lacks 0.4.0's fixes and is
     /// told 0.4.1 brings them, in 0.4.0's words, where a Passenger 0.4.0 has them and is told of 0.4.1 alone.</summary>
-    [Fact]
-    public async Task A_0_3_4_is_told_0_4_1_is_a_security_update_in_0_4_0s_words_and_a_0_4_0_that_it_is_out()
+    private async Task A_0_3_4_is_told_0_4_1_is_a_security_update_in_0_4_0s_words_and_a_0_4_0_that_it_is_out()
     {
         github.Answer = Listed(
             Made("v0.4.1", body: "Passenger 0.4.1 fixes what 0.4.0 left.\n\n## Fixed\n\n- A fix.\n"),
@@ -402,8 +622,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             $"A Passenger 0.4.0, which has 0.4.0's security fixes, was told 0.4.1 is other than an update with none: {current.Said}");
     }
 
-    [AvaloniaFact]
-    public void An_installed_Passenger_offers_to_restart_into_a_security_release_at_once_when_it_is_ready()
+    private void An_installed_Passenger_offers_to_restart_into_a_security_release_at_once_when_it_is_ready()
     {
         using IDisposable theme = TestsTheme();
         InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
@@ -421,8 +640,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>An attached agent's click on the status bar's Restart to Update in the person's window restarts nothing: it
     /// is told why, the status bar saying it too, the window stays open and the update still waits for the person.</summary>
-    [AvaloniaFact]
-    public void An_agents_click_on_Restart_to_Update_in_the_persons_window_restarts_nothing_and_is_told_why()
+    private void An_agents_click_on_Restart_to_Update_in_the_persons_window_restarts_nothing_and_is_told_why()
     {
         using IDisposable theme = TestsTheme();
         InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
@@ -458,8 +676,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
-    [AvaloniaFact]
-    public void An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update()
+    private void An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update()
     {
         using IDisposable theme = TestsTheme();
         InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
@@ -509,8 +726,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>The window watching for updates may stand behind the person's others: what it finds, its download and
     /// Restart to Update are said in every window, the one in front and one opened afterwards, from its one check and
     /// one download; Check for Updates in another window is answered there, downloading nothing again.</summary>
-    [AvaloniaFact]
-    public void A_newer_release_its_download_and_Restart_to_Update_are_said_in_every_window_from_one_check_and_one_download()
+    private void A_newer_release_its_download_and_Restart_to_Update_are_said_in_every_window_from_one_check_and_one_download()
     {
         using IDisposable theme = TestsTheme();
         InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
@@ -572,8 +788,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
-    [AvaloniaFact]
-    public void A_download_that_does_not_match_the_SHA_256_its_release_gives_is_refused_and_the_person_told_why()
+    private void A_download_that_does_not_match_the_SHA_256_its_release_gives_is_refused_and_the_person_told_why()
     {
         using IDisposable theme = TestsTheme();
         InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
@@ -611,12 +826,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// diskutil image, which opens a held one, one it cannot read. The image, whose SHA-256 is the release's, is opened
     /// again once let go; one never let go is refused in the tool's words, the log naming what had it open, and one macOS
     /// refused access to also names the folder it was refused in and where else to get it.</summary>
-    [AvaloniaTheory]
-    [InlineData(DiskImageTool.Hdiutil, "hdiutil: attach failed - Resource temporarily unavailable", "{0}")]
-    [InlineData(DiskImageTool.Diskutil, "diskutil: The operation couldn\u2019t be completed. Permission denied",
-        "macOS refused access to it in {1} ({0}); the release's page has it to install by hand")]
     [SupportedOSPlatform("macos")]
-    public void A_disk_image_the_Mac_refuses_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_the_tools_words(DiskImageTool tool, string refused,
+    private void A_disk_image_the_Mac_refuses_as_it_lands_opens_once_let_go_and_one_never_let_go_is_refused_in_the_tools_words(DiskImageTool tool, string refused,
         string why)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
@@ -693,11 +904,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// tries again by the disk until hdiutil lists the image no more, saying what held it; held throughout, the app copied
     /// out is made ready all the same, the log naming what held the disk, and once let go the same release downloaded
     /// again opens and every attachment of it is let go.</summary>
-    [AvaloniaTheory]
-    [InlineData(DiskImageTool.Hdiutil)]
-    [InlineData(DiskImageTool.Diskutil)]
     [SupportedOSPlatform("macos")]
-    public void A_disk_image_whose_disk_is_held_as_it_is_let_go_goes_once_let_go_and_one_held_throughout_is_said_and_opens_again(DiskImageTool tool)
+    private void A_disk_image_whose_disk_is_held_as_it_is_let_go_goes_once_let_go_and_one_held_throughout_is_said_and_opens_again(DiskImageTool tool)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
         Assert.SkipWhen(tool == DiskImageTool.Diskutil && !OperatingSystem.IsMacOSVersionAtLeast(26), "diskutil image is macOS 26's");
@@ -847,8 +1055,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
-    [AvaloniaFact]
-    public void With_Check_for_updates_off_nothing_is_downloaded_and_turning_it_off_drops_a_download_made()
+    private void With_Check_for_updates_off_nothing_is_downloaded_and_turning_it_off_drops_a_download_made()
     {
         using IDisposable theme = TestsTheme();
         InstalledCopy copy = InstalledCopy.Make(images, TestFolders.Create("installed-"));
@@ -881,8 +1088,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             $"An update dropped as the setting went off was installed, as {copy.InstalledVersion}");
     }
 
-    [AvaloniaFact]
-    public void A_copy_its_installer_or_disk_image_did_not_put_in_place_never_downloads_an_update()
+    private void A_copy_its_installer_or_disk_image_did_not_put_in_place_never_downloads_an_update()
     {
         using IDisposable theme = TestsTheme();
         // The tests' own Passenger, a build from source as `just run` and a Debug build are, is one.
@@ -911,11 +1117,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>The disk image is opened and let go of by diskutil image where macOS has it, hdiutil before; each puts the
     /// update in place.</summary>
-    [AvaloniaTheory]
-    [InlineData(DiskImageTool.Hdiutil)]
-    [InlineData(DiskImageTool.Diskutil)]
     [SupportedOSPlatform("macos")]
-    public void Restart_to_Update_puts_the_new_version_in_place_of_the_old_and_starts_it_and_closing_installs_it_too(DiskImageTool tool)
+    private void Restart_to_Update_puts_the_new_version_in_place_of_the_old_and_starts_it_and_closing_installs_it_too(DiskImageTool tool)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
@@ -953,75 +1156,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(Ui.Shared(copy.Started) == $"started {newer}\n", "Closing Passenger started the version it installed, which only Restart to Update does");
     }
 
-    /// <summary>Restart to Update with a read-only file's changes unsaved: the window asks what to do with them. Kept open,
-    /// the restart is given up, so closing it later installs the update and starts nothing; Close Without Saving carries
-    /// the restart on, installing the update and starting it.</summary>
-    [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void Restart_to_Update_held_by_a_read_only_files_question_restarts_once_answered_Close_Without_Saving()
-    {
-        Assert.SkipUnless(OperatingSystem.IsMacOS(),
-            "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
-        using IDisposable theme = TestsTheme();
-        AppBundle copy = new(images, TestFolders.Create("installed-"));
-        string folder = TestFolders.Create("restart-locked-");
-        string locked = Path.Combine(folder, "Locked.cs");
-        File.WriteAllText(locked, "class Locked { }\n");
-        File.SetAttributes(locked, FileAttributes.ReadOnly);
-        try
-        {
-            string newer = Bumped(1, 0);
-            MainWindow window = ReadyWithLockedChanges(newer);
-            Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
-            Ui.ClickButton(Unsaved(window), "Cancel");
-            Assert.True(window.IsVisible, "Cancel closed the window, and the read-only file's changes with it");
-            window.Close();
-            Ui.ClickButton(Unsaved(window), "Close Without Saving");
-            Ui.WaitFor(() => !window.IsVisible, "the window to close without the read-only file's changes");
-            Ended(window);
-            window.InstallUpdate();
-            Assert.True(copy.InstalledVersion == newer, $"Passenger closed with v{newer} ready left {copy.Bundle} at {copy.InstalledVersion}");
-            Assert.True(Ui.Shared(copy.Started) == string.Empty, $"Restart to Update, given up, still started the new version: '{Ui.Shared(copy.Started)}'");
-
-            string later = Bumped(1, 1);
-            window = ReadyWithLockedChanges(later);
-            Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
-            Ui.ClickButton(Unsaved(window), "Close Without Saving");
-            Ui.WaitFor(() => !window.IsVisible, "Restart to Update to close the window once the read-only file's question was answered");
-            Ended(window);
-            window.InstallUpdate();
-            Assert.True(copy.InstalledVersion == later, $"Restart to Update left {copy.Bundle} at {copy.InstalledVersion}, not {later}");
-            Assert.True(Ui.Shared(copy.Started) == $"started {later}\n",
-                $"Restart to Update, answered Close Without Saving, did not start the new version once: what started says '{Ui.Shared(copy.Started)}'");
-            Assert.Equal("class Locked { }\n", File.ReadAllText(locked));
-        }
-        finally
-        {
-            File.SetAttributes(locked, FileAttributes.Normal);
-            TestFolders.Delete(folder);
-        }
-
-        // A window over the folder whose read-only file has changes it cannot save, offering Restart to Update to a version.
-        MainWindow ReadyWithLockedChanges(string version)
-        {
-            github.Answer = Release($"v{version}", files: copy.Update(version));
-            MainWindow window = Started(copy.Updater());
-            window.WatchForUpdates();
-            window.Confirm = (_, _, _) => Task.FromResult(false);
-            window.OpenFolder(folder);
-            window.OpenFile("Locked.cs");
-            Ui.Settle();
-            window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single(0);
-            window.KeyTextInput("public ");
-            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {version}", $"the status bar to offer Restart to Update to v{version}");
-            Assert.True(window.EditorArea.Active is { IsModified: true, Name: "Locked.cs" }, "The read-only file was not left changed and unsaved");
-            return window;
-        }
-    }
-
-    [AvaloniaFact]
-    [SupportedOSPlatform("macos")]
-    public void An_update_that_could_not_take_the_apps_place_is_said_at_the_next_start_and_is_still_ready()
+    private void An_update_that_could_not_take_the_apps_place_is_said_at_the_next_start_and_is_still_ready()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
@@ -1058,9 +1194,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void Another_Passenger_open_from_the_same_app_holds_the_update_back_until_it_closes_and_the_next_start_names_it()
+    private void Another_Passenger_open_from_the_same_app_holds_the_update_back_until_it_closes_and_the_next_start_names_it()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
@@ -1116,9 +1251,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>On Windows a Passenger running from the install's current\ holds the update back as Passenger closes, as
     /// Update.exe would find its files in use: the update stays ready, and the next start names what held it back.</summary>
-    [AvaloniaFact]
     [SupportedOSPlatform("windows")]
-    public void On_Windows_another_Passenger_running_from_the_install_holds_the_update_back_and_the_next_start_names_it()
+    private void On_Windows_another_Passenger_running_from_the_install_holds_the_update_back_and_the_next_start_names_it()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Velopack's install is Windows'");
         using IDisposable theme = TestsTheme();
@@ -1160,9 +1294,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>On Windows an Update.exe that does not start as Passenger closes (the test's install has none) leaves the
     /// install as it was and the update ready, and the next start says why.</summary>
-    [AvaloniaFact]
     [SupportedOSPlatform("windows")]
-    public void On_Windows_an_Update_exe_that_does_not_start_leaves_the_update_ready_and_the_next_start_says_why()
+    private void On_Windows_an_Update_exe_that_does_not_start_leaves_the_update_ready_and_the_next_start_says_why()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Velopack's install is Windows'");
         using IDisposable theme = TestsTheme();
@@ -1187,48 +1320,12 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [AvaloniaFact]
-    [SupportedOSPlatform("macos")]
-    public void An_app_on_another_volume_than_Passengers_state_is_updated_in_place_too()
-    {
-        Assert.SkipUnless(OperatingSystem.IsMacOS(),
-            "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
-        using IDisposable theme = TestsTheme();
-        // A volume of the test's own, as an external drive would be, with Passenger installed on it.
-        string folder = TestFolders.Create("installed-");
-        (string volume, string disk) = HfsVolume(folder);
-        try
-        {
-            AppBundle copy = new(images, folder, volume);
-            string newer = Bumped(1, 0);
-            github.Answer = Release($"v{newer}", files: copy.Update(newer));
-            MainWindow window = Started(copy.Updater());
-            window.WatchForUpdates();
-            Ui.WaitFor(() => Notice(window) == $"Restart to update to Passenger {newer}", $"the status bar to offer Restart to Update to v{newer}");
-            window.Close();
-            Ended(window);
-            window.InstallUpdate();
-            string said = string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("Updates:", StringComparison.Ordinal)).TakeLast(3));
-            Assert.True(copy.InstalledVersion == newer, $"Passenger on another volume closed with v{newer} ready, and is {copy.InstalledVersion}: {said}");
-            Assert.True(copy.SignatureHolds(), $"The app put in place on another volume, {copy.Bundle}, is not whole: its signature does not hold");
-            string[] beside = [.. Directory.EnumerateFileSystemEntries(volume).Select(p => Path.GetFileName(p))
-                .Where(name => !name.StartsWith('.') || name.StartsWith(".Passenger", StringComparison.Ordinal))];
-            Assert.True(beside.SequenceEqual(["Passenger.app"]), $"The update left {string.Join(", ", beside)} where the app is installed");
-            Assert.True(copy.Downloaded().Count == 0, $"The update installed left {string.Join(", ", copy.Downloaded())} behind");
-        }
-        finally
-        {
-            TestVolumes.Detach(volume, disk);
-        }
-    }
-
     /// <summary>Passenger and its state on a volume of their own, as a home folder moved to an external drive takes them,
     /// where macOS's disk image tools may refuse to open an image or mount one: the release's disk image is downloaded to
     /// and opened in a folder of the user's alone on the startup disk, its app copied out into the state, and nothing of
     /// the image is left once the update is ready.</summary>
-    [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void An_update_whose_state_is_on_another_volume_opens_its_disk_image_on_the_startup_disk_in_a_folder_of_the_users_alone()
+    private void An_update_whose_state_is_on_another_volume_opens_its_disk_image_on_the_startup_disk_in_a_folder_of_the_users_alone()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Disk images are macOS's");
         using IDisposable theme = TestsTheme();
@@ -1286,9 +1383,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>On a volume that cannot swap two folders (HFS+) the new app takes the installed one's place in two renames.
     /// Another program taking that place between them leaves neither app there: the install throws nothing, keeps both
     /// whole, and says where each was left, which the next start says too.</summary>
-    [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void An_app_whose_place_is_taken_between_its_two_renames_says_where_each_app_was_left()
+    private void An_app_whose_place_is_taken_between_its_two_renames_says_where_each_app_was_left()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "A volume that cannot swap two folders is a Mac's HFS+ disk image here");
         using IDisposable theme = TestsTheme();
@@ -1354,9 +1450,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         return (volume, disk);
     }
 
-    [AvaloniaFact]
     [SupportedOSPlatform("macos")]
-    public void An_agents_relay_follows_the_update_in_its_own_process_its_calls_meanwhile_and_after_answered_over_the_same_connection()
+    private void An_agents_relay_follows_the_update_in_its_own_process_its_calls_meanwhile_and_after_answered_over_the_same_connection()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(),
             "On Windows Velopack's Update.exe replaces the install once this process has ended; a test cannot end its own process");
@@ -1466,9 +1561,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
     /// <summary>Why the Linux install's tests skip elsewhere.</summary>
     private const string LinuxAlone = "A Linux install updates itself only on Linux, where its archive's app runs";
 
-    [AvaloniaFact]
     [SupportedOSPlatform("linux")]
-    public void A_Linux_install_of_ones_own_is_put_in_place_as_Passenger_restarts_its_agents_relay_following_and_its_menu_entry_refreshed()
+    private void A_Linux_install_of_ones_own_is_put_in_place_as_Passenger_restarts_its_agents_relay_following_and_its_menu_entry_refreshed()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
         using IDisposable theme = TestsTheme();
@@ -1530,9 +1624,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [AvaloniaFact]
     [SupportedOSPlatform("linux")]
-    public void A_Linux_install_that_could_not_be_replaced_is_left_as_it_was_and_the_next_start_says_why()
+    private void A_Linux_install_that_could_not_be_replaced_is_left_as_it_was_and_the_next_start_says_why()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
         using IDisposable theme = TestsTheme();
@@ -1571,9 +1664,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.Close();
     }
 
-    [AvaloniaFact]
     [SupportedOSPlatform("linux")]
-    public void A_Linux_install_for_everyone_this_user_cannot_write_says_the_command_that_installs_it_and_a_click_copies_it()
+    private void A_Linux_install_for_everyone_this_user_cannot_write_says_the_command_that_installs_it_and_a_click_copies_it()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
         using IDisposable theme = TestsTheme();
@@ -1618,9 +1710,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
     }
 
-    [AvaloniaFact]
     [SupportedOSPlatform("linux")]
-    public void A_Linux_install_for_everyone_is_made_ready_where_only_the_person_writes_and_install_sh_takes_only_the_archive_Passenger_checked()
+    private void A_Linux_install_for_everyone_is_made_ready_where_only_the_person_writes_and_install_sh_takes_only_the_archive_Passenger_checked()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
         using IDisposable theme = TestsTheme();
@@ -1671,9 +1762,8 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             $"install.sh did not install the archive Passenger checked: exit {installed.ExitCode}, {installed.Error}{installed.Output}; {mine} holds {LinuxInstall.ReleaseOf(mine) ?? "nothing"}");
     }
 
-    [AvaloniaFact]
     [SupportedOSPlatform("linux")]
-    public void A_Linux_copy_a_package_manager_installed_says_its_package_manager_updates_it_and_downloads_nothing()
+    private void A_Linux_copy_a_package_manager_installed_says_its_package_manager_updates_it_and_downloads_nothing()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), LinuxAlone);
         using IDisposable theme = TestsTheme();
@@ -1744,15 +1834,6 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         }
         item.Command!.Execute(null);
         Ui.Settle();
-    }
-
-    /// <summary>The question a window closed with a read-only file's changes asks, held to the dialogs' rules.</summary>
-    private static ChoiceDialog Unsaved(MainWindow window)
-    {
-        Ui.WaitFor(() => window.OwnedWindows.OfType<ChoiceDialog>().Any(), "the window to ask about the changes it cannot save");
-        ChoiceDialog asked = DialogButtonsTests.Check(window.OwnedWindows.OfType<ChoiceDialog>().Single());
-        Assert.Equal("Clear Read-Only Status", asked.Title);
-        return asked;
     }
 
     /// <summary>The status bar's notice of a newer release, or null while it shows none.</summary>

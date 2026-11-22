@@ -13,15 +13,21 @@ namespace Passenger.Tests;
 [SameOnEverySystem]
 public sealed class SideDockTests
 {
-    [AvaloniaTheory]
-    [InlineData(ToolWindowIds.Tests)]
-    [InlineData(ToolWindowIds.Problems)]
-    [InlineData(ToolWindowIds.NuGet)]
-    [InlineData(ToolWindowIds.Git)]
-    [InlineData(ToolWindowIds.Debug)]
-    [InlineData(ToolWindowIds.Containers)]
-    [InlineData(ToolWindowIds.Aspire)]
-    public void At_a_side_no_part_of_a_tool_windows_top_bar_is_drawn_over_another_or_past_its_edge(string id)
+    /// <summary>A tool window made for the bottom, moved to a side dock: its bar's parts inside it and over none
+    /// another, its panes one over the other and back side by side at the bottom, its divider moving them, as one flow,
+    /// each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_tool_window_moved_to_a_side_dock_wraps_its_bar_and_stacks_its_panes()
+    {
+        Flow.StepApart<SideDockTests>("at a side no part of a tool windows top bar is drawn over another or past its edge (ToolWindowIds.Tests)", t => t.At_a_side_no_part_of_a_tool_windows_top_bar_is_drawn_over_another_or_past_its_edge(ToolWindowIds.Tests));
+        Flow.StepApart<SideDockTests>("at a side no part of a tool windows top bar is drawn over another or past its edge (ToolWindowIds.Git)", t => t.At_a_side_no_part_of_a_tool_windows_top_bar_is_drawn_over_another_or_past_its_edge(ToolWindowIds.Git));
+        Flow.StepApart<SideDockTests>("at a side no part of a tool windows top bar is drawn over another or past its edge (ToolWindowIds.Aspire)", t => t.At_a_side_no_part_of_a_tool_windows_top_bar_is_drawn_over_another_or_past_its_edge(ToolWindowIds.Aspire));
+        Flow.StepApart<SideDockTests>("at a side a tool windows panes stand one over the other each as wide as the window and back at the bottom side by side (ToolWindowIds.Tests)", t => t.At_a_side_a_tool_windows_panes_stand_one_over_the_other_each_as_wide_as_the_window_and_back_at_the_bottom_side_by_side(ToolWindowIds.Tests));
+        Flow.StepApart<SideDockTests>("at a side a tool windows panes stand one over the other each as wide as the window and back at the bottom side by side (ToolWindowIds.Debug)", t => t.At_a_side_a_tool_windows_panes_stand_one_over_the_other_each_as_wide_as_the_window_and_back_at_the_bottom_side_by_side(ToolWindowIds.Debug));
+        Flow.StepApart<SideDockTests>("at a side the divider between the panes moves them up and down", t => t.At_a_side_the_divider_between_the_panes_moves_them_up_and_down());
+    }
+
+    private void At_a_side_no_part_of_a_tool_windows_top_bar_is_drawn_over_another_or_past_its_edge(string id)
     {
         MainWindow window = Open();
         try
@@ -43,12 +49,7 @@ public sealed class SideDockTests
         }
     }
 
-    [AvaloniaTheory]
-    [InlineData(ToolWindowIds.Tests)]
-    [InlineData(ToolWindowIds.NuGet)]
-    [InlineData(ToolWindowIds.Debug)]
-    [InlineData(ToolWindowIds.Containers)]
-    public void At_a_side_a_tool_windows_panes_stand_one_over_the_other_each_as_wide_as_the_window_and_back_at_the_bottom_side_by_side(string id)
+    private void At_a_side_a_tool_windows_panes_stand_one_over_the_other_each_as_wide_as_the_window_and_back_at_the_bottom_side_by_side(string id)
     {
         MainWindow window = Open();
         try
@@ -72,8 +73,7 @@ public sealed class SideDockTests
     }
 
     /// <summary>Unit Tests' divider moves its panes in whichever way they stand: the rows at a side.</summary>
-    [AvaloniaFact]
-    public void At_a_side_the_divider_between_the_panes_moves_them_up_and_down()
+    private void At_a_side_the_divider_between_the_panes_moves_them_up_and_down()
     {
         MainWindow window = Open();
         try

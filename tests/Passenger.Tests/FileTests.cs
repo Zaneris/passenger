@@ -18,8 +18,77 @@ public sealed partial class FileTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The gate's nine checks that a save lands and never goes where it should not, as one flow, to take their
+    /// place once it has its record on CI: no link followed, a dropped file opened, closing and leaving saving every
+    /// edit, a file another program reads saved, a read-only file never written unasked, and edits saved as the focus
+    /// leaves or the IDE idles.</summary>
     [AvaloniaFact]
-    public void An_edit_saved_keeps_the_files_byte_order_mark_and_its_windows_line_endings()
+    public void The_gates_saves_hold_as_one_flow()
+    {
+        Flow.StepApart<FileTests>("saving a file does not follow a planted temporary file link", t => t.Saving_a_file_does_not_follow_a_planted_temporary_file_link());
+        Flow.StepApart<FileTests>("a save never writes through a link left where its temporary file would go", t => t.A_save_never_writes_through_a_link_left_where_its_temporary_file_would_go());
+        Flow.StepApart<FileTests>("files dropped from the file manager open in the editor and a folder dropped on the Welcome screen opens", t => t.Files_dropped_from_the_file_manager_open_in_the_editor_and_a_folder_dropped_on_the_Welcome_screen_opens());
+        Flow.StepApart<FileTests>("closing a tab or the window saves every unsaved edit without asking", t => t.Closing_a_tab_or_the_window_saves_every_unsaved_edit_without_asking());
+        Flow.StepApart<FileTests>("a file another program reads without letting it be deleted is still saved and quitting goes ahead", t => t.A_file_another_program_reads_without_letting_it_be_deleted_is_still_saved_and_quitting_goes_ahead());
+        Flow.StepApart<FileTests>("edits are saved when the focus goes to the terminal unless settings say not and before another folder opens", t => t.Edits_are_saved_when_the_focus_goes_to_the_terminal_unless_settings_say_not_and_before_another_folder_opens());
+        Flow.StepApart<FileTests>("an edit left alone is saved once the IDE has been idle as long as settings say", t => t.An_edit_left_alone_is_saved_once_the_IDE_has_been_idle_as_long_as_settings_say());
+        Flow.StepApart<FileTests>("a read only file is never written by a save and its first edit and each save ask to make it writable", t => t.A_read_only_file_is_never_written_by_a_save_and_its_first_edit_and_each_save_ask_to_make_it_writable());
+        Flow.StepApart<FileTests>("a window closed with a read only files changes asks and closes with the file made writable or left as it was", t => t.A_window_closed_with_a_read_only_files_changes_asks_and_closes_with_the_file_made_writable_or_left_as_it_was());
+    }
+
+    /// <summary>A save keeps a file's byte order mark, line breaks and encoding or warns before it cannot, a binary or
+    /// too large file is shown read only or refused and never taken for text, a file another program reads is saved at
+    /// once, and each system's own marks on a file stay through a save, as one flow, each step the check one test made
+    /// in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_save_keeps_the_files_encoding_line_breaks_and_what_its_system_keeps_of_it()
+    {
+        Flow.StepApart<FileTests>("an edit saved keeps the files byte order mark and its windows line endings", t => t.An_edit_saved_keeps_the_files_byte_order_mark_and_its_windows_line_endings());
+        Flow.StepApart<FileTests>("a Windows 1252 file shows its quotes dashes and euro and a character it cannot hold is warned of then saved as UTF 8", t => t.A_Windows_1252_file_shows_its_quotes_dashes_and_euro_and_a_character_it_cannot_hold_is_warned_of_then_saved_as_UTF_8());
+        Flow.StepApart<FileTests>("a binary file opens as its bytes text read only and typing never changes it", t => t.A_binary_file_opens_as_its_bytes_text_read_only_and_typing_never_changes_it());
+        Flow.StepApart<FileTests>("a file too large to open as text or bytes is refused with why in the status bar", t => t.A_file_too_large_to_open_as_text_or_bytes_is_refused_with_why_in_the_status_bar());
+        Flow.StepApart<FileTests>("a binary files bytes are no text for the status bar an agent replace in files or a bookmark", t => t.A_binary_files_bytes_are_no_text_for_the_status_bar_an_agent_replace_in_files_or_a_bookmark());
+        Flow.StepApart<FileTests>("a file another program reads sharing its deletion is saved at once and that program reads on in the old one", t => t.A_file_another_program_reads_sharing_its_deletion_is_saved_at_once_and_that_program_reads_on_in_the_old_one());
+        Flow.Step("each system's own marks on a file and a hard link stay through a save", () => Cases.All(
+            ("a save on macOS keeps the files Finder tags its access control list and its creation date", () => Flow.StepApart("a save on macOS keeps the files Finder tags its access control list and its creation date", () => new FileTests(), t => t.A_save_on_macOS_keeps_the_files_Finder_tags_its_access_control_list_and_its_creation_date())),
+            ("a save on Linux keeps the files extended attributes its access control list and its group", () => Flow.StepApart("a save on Linux keeps the files extended attributes its access control list and its group", () => new FileTests(), t => t.A_save_on_Linux_keeps_the_files_extended_attributes_its_access_control_list_and_its_group())),
+            ("a save on macOS and Linux of a file another hard link names is read through that link", () => Flow.StepApart("a save on macOS and Linux of a file another hard link names is read through that link", () => new FileTests(), t => t.A_save_on_macOS_and_Linux_of_a_file_another_hard_link_names_is_read_through_that_link())),
+            ("a save on Windows keeps the files attributes its explicit access control list and its alternate data streams", () => Flow.StepApart("a save on Windows keeps the files attributes its explicit access control list and its alternate data streams", () => new FileTests(), t =>
+                {
+                    if (OperatingSystem.IsWindows())
+                    {
+                        t.A_save_on_Windows_keeps_the_files_attributes_its_explicit_access_control_list_and_its_alternate_data_streams();
+                    }
+                    else
+                    {
+                        Assert.Skip("This step runs on Windows alone");
+                    }
+                })),
+            ("a save on Windows of a file with only the access control list its folder gives moves it into place", () => Flow.StepApart("a save on Windows of a file with only the access control list its folder gives moves it into place", () => new FileTests(), t =>
+                {
+                    if (OperatingSystem.IsWindows())
+                    {
+                        t.A_save_on_Windows_of_a_file_with_only_the_access_control_list_its_folder_gives_moves_it_into_place();
+                    }
+                    else
+                    {
+                        Assert.Skip("This step runs on Windows alone");
+                    }
+                }))));
+    }
+
+    /// <summary>On Windows a save of a file another program holds lands once it lets go with the window's thread free,
+    /// one held past its wait leaves its changes unsaved saying why, and a tab closed meanwhile comes back with its
+    /// edits, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void On_Windows_a_save_of_a_held_file_lands_once_let_go_or_keeps_its_edits_and_says_why()
+    {
+        Flow.StepApart<FileTests>("a save of a file another program holds lands once it lets go the windows thread free and a later save after it", t => t.A_save_of_a_file_another_program_holds_lands_once_it_lets_go_the_windows_thread_free_and_a_later_save_after_it());
+        Flow.StepApart<FileTests>("a save of a file held past its wait leaves its changes unsaved and says why", t => t.A_save_of_a_file_held_past_its_wait_leaves_its_changes_unsaved_and_says_why());
+        Flow.StepApart<FileTests>("a tab closed while its save waits for a held file comes back with its edits when the save never lands", t => t.A_tab_closed_while_its_save_waits_for_a_held_file_comes_back_with_its_edits_when_the_save_never_lands());
+    }
+
+    private void An_edit_saved_keeps_the_files_byte_order_mark_and_its_windows_line_endings()
     {
         byte[] bom = [0xEF, 0xBB, 0xBF];
         string path = Path.Combine(folder, "Program.cs");
@@ -43,8 +112,7 @@ public sealed partial class FileTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_Windows_1252_file_shows_its_quotes_dashes_and_euro_and_a_character_it_cannot_hold_is_warned_of_then_saved_as_UTF_8()
+    private void A_Windows_1252_file_shows_its_quotes_dashes_and_euro_and_a_character_it_cannot_hold_is_warned_of_then_saved_as_UTF_8()
     {
         // Windows-1252's quotes, dashes and euro are bytes 0x80–0x9F, which Latin-1 reads as control characters.
         string path = Path.Combine(folder, "Prices.cs");
@@ -77,8 +145,7 @@ public sealed partial class FileTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_binary_file_opens_as_its_bytes_text_read_only_and_typing_never_changes_it()
+    private void A_binary_file_opens_as_its_bytes_text_read_only_and_typing_never_changes_it()
     {
         // A file with no view of its own: an image's name would open it as a preview.
         string path = Path.Combine(folder, "data.bin");
@@ -98,8 +165,7 @@ public sealed partial class FileTests : IDisposable
 
     /// <summary>A file past what the editor opens as text or bytes (64 MB) is refused at once, nothing of it read, with
     /// why in the status bar: opened, a file holds about six and a half times its size.</summary>
-    [AvaloniaFact]
-    public void A_file_too_large_to_open_as_text_or_bytes_is_refused_with_why_in_the_status_bar()
+    private void A_file_too_large_to_open_as_text_or_bytes_is_refused_with_why_in_the_status_bar()
     {
         string log = Path.Combine(folder, "huge.log");
         using (FileStream file = File.Create(log))
@@ -127,8 +193,7 @@ public sealed partial class FileTests : IDisposable
 
     /// <summary>A binary file's tab shows its bytes drawn as signs, none of the file's text: what reads or changes a
     /// file's text leaves it alone, or an agent's replace would write the signs over its bytes.</summary>
-    [AvaloniaFact]
-    public void A_binary_files_bytes_are_no_text_for_the_status_bar_an_agent_replace_in_files_or_a_bookmark()
+    private void A_binary_files_bytes_are_no_text_for_the_status_bar_an_agent_replace_in_files_or_a_bookmark()
     {
         string path = Path.Combine(folder, "data.bin");
         byte[] bytes = [(byte)'k', (byte)'e', (byte)'y', 0, (byte)'\n', (byte)'k', (byte)'e', (byte)'y', 0xFF];
@@ -246,8 +311,7 @@ public sealed partial class FileTests : IDisposable
 
     /// <summary>A save of a file another program reads sharing its deletion (a scanner, an indexer) lands at once as a new
     /// file in its place, that program reading on in the file it opened, never a write into the file it reads.</summary>
-    [AvaloniaFact]
-    public void A_file_another_program_reads_sharing_its_deletion_is_saved_at_once_and_that_program_reads_on_in_the_old_one()
+    private void A_file_another_program_reads_sharing_its_deletion_is_saved_at_once_and_that_program_reads_on_in_the_old_one()
     {
         string path = Path.Combine(folder, "One.cs");
         File.WriteAllText(path, "class One { }\n");
@@ -268,8 +332,7 @@ public sealed partial class FileTests : IDisposable
     /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, as a
     /// build reading it does: the save lands once the program lets go, the window's thread running on meanwhile, a save
     /// made meanwhile landing after it, and Local History keeping each one's old bytes.</summary>
-    [AvaloniaFact]
-    public void A_save_of_a_file_another_program_holds_lands_once_it_lets_go_the_windows_thread_free_and_a_later_save_after_it()
+    private void A_save_of_a_file_another_program_holds_lands_once_it_lets_go_the_windows_thread_free_and_a_later_save_after_it()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
         string path = Path.Combine(folder, "One.cs");
@@ -299,8 +362,7 @@ public sealed partial class FileTests : IDisposable
 
     /// <summary>A save another program holds the file against for longer than the save waits never lands: its changes are
     /// unsaved again, and the status bar says why.</summary>
-    [AvaloniaFact]
-    public void A_save_of_a_file_held_past_its_wait_leaves_its_changes_unsaved_and_says_why()
+    private void A_save_of_a_file_held_past_its_wait_leaves_its_changes_unsaved_and_says_why()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
         string path = Path.Combine(folder, "One.cs");
@@ -323,8 +385,7 @@ public sealed partial class FileTests : IDisposable
 
     /// <summary>A tab closed while its save waits for a file another program holds closes at once; once the save gives up,
     /// the file comes back in a tab with its edits, unsaved, rather than lost in no tab and no file.</summary>
-    [AvaloniaFact]
-    public void A_tab_closed_while_its_save_waits_for_a_held_file_comes_back_with_its_edits_when_the_save_never_lands()
+    private void A_tab_closed_while_its_save_waits_for_a_held_file_comes_back_with_its_edits_when_the_save_never_lands()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
         string path = Path.Combine(folder, "One.cs");
@@ -415,8 +476,7 @@ public sealed partial class FileTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_save_on_macOS_keeps_the_files_Finder_tags_its_access_control_list_and_its_creation_date()
+    private void A_save_on_macOS_keeps_the_files_Finder_tags_its_access_control_list_and_its_creation_date()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Finder's tags, macOS's ACLs and a creation date a program may set are macOS's");
         string path = Path.Combine(folder, "Tagged.cs");
@@ -441,8 +501,7 @@ public sealed partial class FileTests : IDisposable
     /// <summary>A file with a note of its own as a user.* attribute, an ACL entry letting user 65534 (nobody) read it and,
     /// where the person is in another group, that group: a save keeps all three, as an edit in place would. The ACL is
     /// checked where the volume holds one, the group where there is another.</summary>
-    [AvaloniaFact]
-    public void A_save_on_Linux_keeps_the_files_extended_attributes_its_access_control_list_and_its_group()
+    private void A_save_on_Linux_keeps_the_files_extended_attributes_its_access_control_list_and_its_group()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "user.* attributes, and a POSIX ACL as an extended attribute, are Linux's");
         string path = Path.Combine(folder, "Noted.cs");
@@ -471,8 +530,7 @@ public sealed partial class FileTests : IDisposable
 
     /// <summary>A file a second hard link outside the folder also names, as a dotfiles folder or a build's copy shares
     /// one: a save writes it in place, so the link reads what was saved rather than the text before it.</summary>
-    [AvaloniaFact]
-    public void A_save_on_macOS_and_Linux_of_a_file_another_hard_link_names_is_read_through_that_link()
+    private void A_save_on_macOS_and_Linux_of_a_file_another_hard_link_names_is_read_through_that_link()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "A save on Windows replaces the file with ReplaceFile, which a hard link does not follow either");
         string path = Path.Combine(folder, "Shared.cs");
@@ -497,9 +555,8 @@ public sealed partial class FileTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public void A_save_on_Windows_keeps_the_files_attributes_its_explicit_access_control_list_and_its_alternate_data_streams()
+    private void A_save_on_Windows_keeps_the_files_attributes_its_explicit_access_control_list_and_its_alternate_data_streams()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "File attributes such as Hidden, an explicit ACL and alternate data streams are NTFS's");
         string path = Path.Combine(folder, "Hidden.cs");
@@ -531,9 +588,8 @@ public sealed partial class FileTests : IDisposable
     /// <summary>A file whose access control list is just what its folder gives a new file, its entries unmarked as a folder
     /// whose own list is not marked auto-inherited gives them: a save moves the new file into place, never through
     /// ReplaceFile, which holds the file from every other program's read while it replaces it.</summary>
-    [AvaloniaFact]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public void A_save_on_Windows_of_a_file_with_only_the_access_control_list_its_folder_gives_moves_it_into_place()
+    private void A_save_on_Windows_of_a_file_with_only_the_access_control_list_its_folder_gives_moves_it_into_place()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "ReplaceFile and an access control list's marks of inheritance are Windows'");
         string plain = Path.Combine(folder, "Plain");

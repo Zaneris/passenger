@@ -25,8 +25,22 @@ public sealed class FirstStartTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(state);
 
+    /// <summary>A new state's first start asks the theme and dark or light by keys or clicks, Escape keeping the
+    /// defaults, and never asks again, after an update, in a window nobody sees, and fits the smallest window, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_new_states_first_start_asks_the_theme_then_dark_or_light_by_keys_and_Settings_shows_what_was_chosen()
+    public void A_new_states_first_start_asks_the_theme_and_its_look_once()
+    {
+        Flow.StepApart<FirstStartTests>("a new states first start asks the theme then dark or light by keys and Settings shows what was chosen", t => t.A_new_states_first_start_asks_the_theme_then_dark_or_light_by_keys_and_Settings_shows_what_was_chosen());
+        Flow.StepApart<FirstStartTests>("clicks choose a theme go back choose another and follow the system", t => t.Clicks_choose_a_theme_go_back_choose_another_and_follow_the_system());
+        Flow.StepApart<FirstStartTests>("Escape keeps the defaults and a later start asks nothing", t => t.Escape_keeps_the_defaults_and_a_later_start_asks_nothing());
+        Flow.StepApart<FirstStartTests>("an update from a version whose state is there asks nothing (StateStore.SettingsFile)", t => t.An_update_from_a_version_whose_state_is_there_asks_nothing(StateStore.SettingsFile));
+        Flow.StepApart<FirstStartTests>("an update from a version whose state is there asks nothing (\"recentSolutions.json\")", t => t.An_update_from_a_version_whose_state_is_there_asks_nothing("recentSolutions.json"));
+        Flow.StepApart<FirstStartTests>("a window nobody sees or that keeps no settings never asks", t => t.A_window_nobody_sees_or_that_keeps_no_settings_never_asks());
+        Flow.StepApart<FirstStartTests>("at the windows smallest size both questions fit its width and scroll to their end (3.0)", t => t.At_the_windows_smallest_size_both_questions_fit_its_width_and_scroll_to_their_end(3.0));
+    }
+
+    private void A_new_states_first_start_asks_the_theme_then_dark_or_light_by_keys_and_Settings_shows_what_was_chosen()
     {
         // As the person's window starts: asked before it shows, then started, which gives the Welcome screen the keys.
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false, Unseen = false };
@@ -83,8 +97,7 @@ public sealed class FirstStartTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Clicks_choose_a_theme_go_back_choose_another_and_follow_the_system()
+    private void Clicks_choose_a_theme_go_back_choose_another_and_follow_the_system()
     {
         MainWindow window = Started();
         try
@@ -118,8 +131,7 @@ public sealed class FirstStartTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Escape_keeps_the_defaults_and_a_later_start_asks_nothing()
+    private void Escape_keeps_the_defaults_and_a_later_start_asks_nothing()
     {
         MainWindow window = Started();
         Assert.True(window.ShowFirstStartOnce(), "A new state's first start asked nothing");
@@ -139,12 +151,7 @@ public sealed class FirstStartTests : IDisposable
 
     /// <summary>What an earlier Passenger left behind, any one of its files: its settings, layout, recent solutions or
     /// record of updates.</summary>
-    [AvaloniaTheory]
-    [InlineData(StateStore.SettingsFile)]
-    [InlineData("layout.json")]
-    [InlineData("recentSolutions.json")]
-    [InlineData("updates.json")]
-    public void An_update_from_a_version_whose_state_is_there_asks_nothing(string file)
+    private void An_update_from_a_version_whose_state_is_there_asks_nothing(string file)
     {
         File.WriteAllText(Path.Combine(state, file), "{}\n");
         MainWindow window = Started();
@@ -153,8 +160,7 @@ public sealed class FirstStartTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_window_nobody_sees_or_that_keeps_no_settings_never_asks()
+    private void A_window_nobody_sees_or_that_keeps_no_settings_never_asks()
     {
         MainWindow unseen = Started(unseen: true);
         Assert.False(unseen.ShowFirstStartOnce(), "A window nobody sees asked the theme over a new state");
@@ -172,10 +178,7 @@ public sealed class FirstStartTests : IDisposable
     /// <summary>At the window's smallest size, 640 by 500 at a display scale of 100% and that times the largest scale
     /// Settings offers, both questions are laid out at the smallest width with nothing past it: every tile, the system's
     /// choice, Back and Keep the Defaults whole across it, the tiles' words untrimmed, and the page scrolls down to its end.</summary>
-    [AvaloniaTheory]
-    [InlineData(1.0)]
-    [InlineData(3.0)]
-    public void At_the_windows_smallest_size_both_questions_fit_its_width_and_scroll_to_their_end(double scale)
+    private void At_the_windows_smallest_size_both_questions_fit_its_width_and_scroll_to_their_end(double scale)
     {
         MainWindow window = new()
         {

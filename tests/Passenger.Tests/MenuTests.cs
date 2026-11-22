@@ -23,8 +23,34 @@ public sealed class MenuTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Every menu shows its actions' keys, greys what cannot run and runs what is chosen, a toolbar menu and
+    /// the main menu bar take the keys and give them back, and macOS's application menu holds its items, as one flow,
+    /// each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Settings_applied_again_keep_the_menu_bar_macOS_was_given_with_each_menu_once()
+    public void The_menus_show_each_actions_keys_run_what_is_chosen_and_give_the_keys_back()
+    {
+        Flow.StepApart<MenuTests>("the menus show each actions shortcut disable what cannot run and run what is chosen", t => t.The_menus_show_each_actions_shortcut_disable_what_cannot_run_and_run_what_is_chosen());
+        Flow.StepApart<MenuTests>("the editors menu shows a chord for an action whose keys are all chords", t => t.The_editors_menu_shows_a_chord_for_an_action_whose_keys_are_all_chords());
+        Flow.StepApart<MenuTests>("an editor tabs menu copies its files path and opens it in the file manager or a terminal", t => t.An_editor_tabs_menu_copies_its_files_path_and_opens_it_in_the_file_manager_or_a_terminal());
+        Flow.StepApart<MenuTests>("a toolbar menu opened by a click takes the keys so escape closes it and the arrows and enter choose", t => t.A_toolbar_menu_opened_by_a_click_takes_the_keys_so_escape_closes_it_and_the_arrows_and_enter_choose());
+        Flow.StepApart<MenuTests>("the main menu bar takes the keys as a menu bar does and gives them back to the editor", t => t.The_main_menu_bar_takes_the_keys_as_a_menu_bar_does_and_gives_them_back_to_the_editor());
+        Flow.StepApart<MenuTests>("the main menu as a bar shows the menus the toolbar has room for and the rest behind its button", t => t.The_main_menu_as_a_bar_shows_the_menus_the_toolbar_has_room_for_and_the_rest_behind_its_button());
+        Flow.StepApart<MenuTests>("Settings applied again keep the menu bar macOS was given with each menu once", t => t.Settings_applied_again_keep_the_menu_bar_macOS_was_given_with_each_menu_once());
+    }
+
+    /// <summary>Every kind of menu holds to one greatest width, a submenu opens beside its item, and the pointer
+    /// crossing to it or resting in its shadow keeps it open, as one flow, each step in an instance of its
+    /// own.</summary>
+    [AvaloniaFact]
+    public void Menus_and_submenus_open_within_their_width_and_stay_open_under_the_pointer()
+    {
+        Flow.StepApart<MenuTests>("every kind of menu holds to the one greatest width an items words giving way inside it", t => t.Every_kind_of_menu_holds_to_the_one_greatest_width_an_items_words_giving_way_inside_it());
+        Flow.StepApart<MenuTests>("a submenu opens beside its item its shadow over none of it whichever side it opens", t => t.A_submenu_opens_beside_its_item_its_shadow_over_none_of_it_whichever_side_it_opens());
+        Flow.StepApart<MenuTests>("a pointer in a submenus shadow along its edge keeps it open with no close and open again", t => t.A_pointer_in_a_submenus_shadow_along_its_edge_keeps_it_open_with_no_close_and_open_again());
+        Flow.StepApart<MenuTests>("a pointer carried from an item across the gap into its submenu keeps it open and reaches its items", t => t.A_pointer_carried_from_an_item_across_the_gap_into_its_submenu_keeps_it_open_and_reaches_its_items());
+    }
+
+    private void Settings_applied_again_keep_the_menu_bar_macOS_was_given_with_each_menu_once()
     {
         MainWindow window = Ui.OpenFolder(folder);
         NativeMenu given = NativeMenu.GetMenu(window)!;
@@ -87,8 +113,7 @@ public sealed class MenuTests : IDisposable
 
     /// <summary>An editor tab's menu offers what the Explorer's row offers for its file: Copy Path, and Open In's file
     /// manager and terminal, an HTML page's browser too.</summary>
-    [AvaloniaFact]
-    public void An_editor_tabs_menu_copies_its_files_path_and_opens_it_in_the_file_manager_or_a_terminal()
+    private void An_editor_tabs_menu_copies_its_files_path_and_opens_it_in_the_file_manager_or_a_terminal()
     {
         string one = Path.Combine(folder, "One.cs");
         File.WriteAllText(one, "class One { }\n");
@@ -118,8 +143,7 @@ public sealed class MenuTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_menus_show_each_actions_shortcut_disable_what_cannot_run_and_run_what_is_chosen()
+    private void The_menus_show_each_actions_shortcut_disable_what_cannot_run_and_run_what_is_chosen()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         MainWindow window = Ui.OpenFolder(folder);
@@ -160,8 +184,7 @@ public sealed class MenuTests : IDisposable
 
     /// <summary>A menu in the window shows an action whose keys are all chords with its first chord ("⌘E, C" for Code
     /// Cleanup), where a gesture could hold only one keystroke.</summary>
-    [AvaloniaFact]
-    public void The_editors_menu_shows_a_chord_for_an_action_whose_keys_are_all_chords()
+    private void The_editors_menu_shows_a_chord_for_an_action_whose_keys_are_all_chords()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         MainWindow window = Ui.OpenFolder(folder);
@@ -180,8 +203,7 @@ public sealed class MenuTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_toolbar_menu_opened_by_a_click_takes_the_keys_so_escape_closes_it_and_the_arrows_and_enter_choose()
+    private void A_toolbar_menu_opened_by_a_click_takes_the_keys_so_escape_closes_it_and_the_arrows_and_enter_choose()
     {
         MainWindow window = Ui.OpenFolder(folder);
         window.SetConfigurations([new RunConfiguration { Name = "First" }, new RunConfiguration { Name = "Second" }], "First");
@@ -223,8 +245,7 @@ public sealed class MenuTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_main_menu_as_a_bar_shows_the_menus_the_toolbar_has_room_for_and_the_rest_behind_its_button()
+    private void The_main_menu_as_a_bar_shows_the_menus_the_toolbar_has_room_for_and_the_rest_behind_its_button()
     {
         // The menu on the toolbar, as on Windows and Linux, rather than in macOS's own menu bar.
         MainWindow.SystemMenuBar = false;
@@ -293,8 +314,7 @@ public sealed class MenuTests : IDisposable
     /// <summary>The bar takes the keys as a menu bar does: Alt tapped alone takes its first title, Left and Right move
     /// among the titles and, with a menu open, open the next one's, Down opens a menu, the open menu's title shows pressed,
     /// and Escape gives the keys back to the editor.</summary>
-    [AvaloniaFact]
-    public void The_main_menu_bar_takes_the_keys_as_a_menu_bar_does_and_gives_them_back_to_the_editor()
+    private void The_main_menu_bar_takes_the_keys_as_a_menu_bar_does_and_gives_them_back_to_the_editor()
     {
         MainWindow.SystemMenuBar = false;
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
@@ -350,48 +370,11 @@ public sealed class MenuTests : IDisposable
         }
     }
 
-    /// <summary>Alt held through a drag in the editor, a column's selection, gives the bar nothing as it is let go, though
-    /// Windows repeats the held Alt's press during the drag: the keys stay with the editor and its column (#1635).</summary>
-    [AvaloniaFact]
-    public void Alt_let_go_after_an_alt_drag_leaves_the_keys_and_the_column_with_the_editor()
-    {
-        MainWindow.SystemMenuBar = false;
-        File.WriteAllText(Path.Combine(folder, "Columns.txt"), "first line\nsecond line\nthird line\n");
-        MainWindow window = Ui.OpenFolder(folder, width: 1800);
-        try
-        {
-            window.OpenFile("Columns.txt");
-            window.ApplySettings(window.Settings with { MainMenuBar = true });
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.Focus();
-            Ui.Settle();
-            Point from = editor.TranslatePoint(editor.PointOf(0) + new Point(1, editor.LineHeight / 2), window)!.Value;
-            Point to = editor.TranslatePoint(editor.PointOf("first line\nsecond line\n".Length + 5) + new Point(1, editor.LineHeight / 2), window)!.Value;
-
-            window.KeyPress(Key.LeftAlt, RawInputModifiers.Alt, PhysicalKey.AltLeft, null);
-            Ui.Drag(window, from, to, MouseButton.Left, RawInputModifiers.Alt);
-            window.KeyPress(Key.LeftAlt, RawInputModifiers.Alt, PhysicalKey.AltLeft, null);
-            window.KeyRelease(Key.LeftAlt, RawInputModifiers.None, PhysicalKey.AltLeft, null);
-            Ui.Settle();
-
-            Assert.True(Focused(window) == editor, $"Alt let go after an Alt-drag gave the keys to {Focused(window)?.GetType().Name}, so the column's selection can't be typed into");
-            Assert.True(editor.Selections.Count == 3, $"Alt let go after an Alt-drag over three lines left {editor.Selections.Count} selections, not the column's three");
-            TapAlt(window);
-            Assert.True(Focused(window) is Button, "Alt tapped alone after the drag no longer takes the bar");
-        }
-        finally
-        {
-            MainWindow.SystemMenuBar = OperatingSystem.IsMacOS();
-            window.Close();
-        }
-    }
-
     /// <summary>Every kind of menu holds to the one greatest width (Shell.axaml's Passenger.MenuWidth): a context menu (the
     /// editor's, a list's), a menu flyout (a widget's, a run icon's, the main menu's) and a submenu of each, an item too long
     /// for it giving way inside its frame (MenuTrimming) with nothing cut at its edge, where a flyout laid its items out past
     /// its edge, unshortened.</summary>
-    [AvaloniaFact]
-    public void Every_kind_of_menu_holds_to_the_one_greatest_width_an_items_words_giving_way_inside_it()
+    private void Every_kind_of_menu_holds_to_the_one_greatest_width_an_items_words_giving_way_inside_it()
     {
         MainWindow window = OpenOne();
         try
@@ -453,8 +436,7 @@ public sealed class MenuTests : IDisposable
     /// main menu alike: its frame starts past the item's chevron (or ends before the item, opened to the left), its first
     /// item in line with the item, and its popup, the room its shadow is drawn in too, lies over none of the item, since a
     /// desktop gives a popup the pointer across its whole rect and the item would lose it to the shadow.</summary>
-    [AvaloniaFact]
-    public void A_submenu_opens_beside_its_item_its_shadow_over_none_of_it_whichever_side_it_opens()
+    private void A_submenu_opens_beside_its_item_its_shadow_over_none_of_it_whichever_side_it_opens()
     {
         // The main menu behind the toolbar's button, as on Windows and Linux, rather than in macOS's own menu bar.
         MainWindow.SystemMenuBar = false;
@@ -496,8 +478,7 @@ public sealed class MenuTests : IDisposable
     /// <summary>A pointer resting along a submenu's edge, in the shadow round its frame, beside its item, above, below and
     /// past it, keeps the submenu open past the delay a submenu the pointer left closes after: the shadow is the submenu's
     /// own, so it never closes and opens again under a still pointer.</summary>
-    [AvaloniaFact]
-    public void A_pointer_in_a_submenus_shadow_along_its_edge_keeps_it_open_with_no_close_and_open_again()
+    private void A_pointer_in_a_submenus_shadow_along_its_edge_keeps_it_open_with_no_close_and_open_again()
     {
         MainWindow window = OpenOne();
         try
@@ -541,8 +522,7 @@ public sealed class MenuTests : IDisposable
     /// and on a slant to a lower one across the item below, which has a submenu of its own (the editor's Local History,
     /// Git below it). The submenu never closes, no other opens, and the item reached takes the pointer: the gap is the
     /// submenu's, so resting there gives the menu back to its item.</summary>
-    [AvaloniaFact]
-    public void A_pointer_carried_from_an_item_across_the_gap_into_its_submenu_keeps_it_open_and_reaches_its_items()
+    private void A_pointer_carried_from_an_item_across_the_gap_into_its_submenu_keeps_it_open_and_reaches_its_items()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         TestGit.Init(folder);

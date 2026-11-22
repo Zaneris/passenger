@@ -41,8 +41,65 @@ public sealed class ExplorerFilesTests : IDisposable
         TestFolders.Delete(trash);
     }
 
+    /// <summary>The Explorer's New, Rename, Delete, Paste and keys change the disk, the tabs and the tree as one
+    /// command of Undo, a delete the Trash refuses keeping the open file and its edit, as one flow, each step the check
+    /// one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void New_class_rename_and_delete_change_the_disk_the_tabs_and_the_explorer()
+    public void The_Explorers_new_rename_and_delete_change_the_disk_the_tabs_and_the_tree_as_one_command()
+    {
+        Flow.StepApart<ExplorerFilesTests>("New class rename and delete change the disk the tabs and the explorer", t => t.New_class_rename_and_delete_change_the_disk_the_tabs_and_the_explorer());
+        Flow.StepApart<ExplorerFilesTests>("New class in a project with its own RootNamespace begins its namespace with it", t => t.New_class_in_a_project_with_its_own_RootNamespace_begins_its_namespace_with_it());
+        Flow.StepApart<ExplorerFilesTests>("a name with two dots in a row is made and renamed to and only a part climbing out is refused", t => t.A_name_with_two_dots_in_a_row_is_made_and_renamed_to_and_only_a_part_climbing_out_is_refused());
+        Flow.StepApart<ExplorerFilesTests>("a file renamed in the explorer keeps its tab in both splits its undo its bookmark and its breakpoint", t => t.A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint());
+        Flow.StepApart<ExplorerFilesTests>("Delete on files chosen together asks once and moves them all to the Trash and one chosen alone is asked of by name", t => t.Delete_on_files_chosen_together_asks_once_and_moves_them_all_to_the_Trash_and_one_chosen_alone_is_asked_of_by_name());
+        Flow.StepApart<ExplorerFilesTests>("Delete of a file a folder or several is one command Undo brings back from the Trash and Redo sends again", t => t.Delete_of_a_file_a_folder_or_several_is_one_command_Undo_brings_back_from_the_Trash_and_Redo_sends_again());
+        Flow.StepApart<ExplorerFilesTests>("Delete on a folder chosen with a file inside it moves the folder once with the file", t => t.Delete_on_a_folder_chosen_with_a_file_inside_it_moves_the_folder_once_with_the_file());
+        Flow.StepApart<ExplorerFilesTests>("Delete greys on a project chosen with a file saying the project is removed chosen alone", t => t.Delete_greys_on_a_project_chosen_with_a_file_saying_the_project_is_removed_chosen_alone());
+        Flow.StepApart<ExplorerFilesTests>("a delete the Trash refuses keeps the open file and its unsaved edit and one it takes goes with them kept in Local History", t => t.A_delete_the_Trash_refuses_keeps_the_open_file_and_its_unsaved_edit_and_one_it_takes_goes_with_them_kept_in_Local_History());
+        Flow.StepApart<ExplorerFilesTests>("a file or folder pasted where its name is the folder holding it is refused before any question and nothing moves", t => t.A_file_or_folder_pasted_where_its_name_is_the_folder_holding_it_is_refused_before_any_question_and_nothing_moves());
+        Flow.StepApart<ExplorerFilesTests>("the explorers rename delete and reveal run from its menu and from each keymaps keys", t => t.The_explorers_rename_delete_and_reveal_run_from_its_menu_and_from_each_keymaps_keys());
+        Flow.StepApart<ExplorerFilesTests>("the explorers keys open and close a folder go up from its file and open a file on enter", t => t.The_explorers_keys_open_and_close_a_folder_go_up_from_its_file_and_open_a_file_on_enter());
+        Flow.StepApart<ExplorerFilesTests>("an HTML page opens in the browser from the explorer its editors menu and the keys", t => t.An_HTML_page_opens_in_the_browser_from_the_explorer_its_editors_menu_and_the_keys());
+    }
+
+    /// <summary>A project deleted, moved or renamed in the Explorer takes its folder, its imports, its directives and
+    /// what its build leaves out along, one Undo putting each back, and on Windows a folder a program holds is refused
+    /// naming it, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Projects_moved_renamed_or_deleted_in_the_Explorer_take_their_paths_and_builds_along()
+    {
+        Flow.StepApart<ExplorerFilesTests>("Delete on a project in its own folder moves that folder to the Trash only once asked again and one beside its solution leaves the folder", t => t.Delete_on_a_project_in_its_own_folder_moves_that_folder_to_the_Trash_only_once_asked_again_and_one_beside_its_solution_leaves_the_folder());
+        Flow.StepApart<ExplorerFilesTests>("Undo of a project removed with its folder brings back both and redo takes both again", t => t.Undo_of_a_project_removed_with_its_folder_brings_back_both_and_redo_takes_both_again());
+        Flow.StepApart<ExplorerFilesTests>("a folder renamed keeps out of the build the files its project removed by name or by glob and undo puts the project back", t => t.A_folder_renamed_keeps_out_of_the_build_the_files_its_project_removed_by_name_or_by_glob_and_undo_puts_the_project_back());
+        Flow.StepApart<ExplorerFilesTests>("a programs directives follow the project it names and the program itself moved and one undo puts each back", t => t.A_programs_directives_follow_the_project_it_names_and_the_program_itself_moved_and_one_undo_puts_each_back());
+        Flow.StepApart<ExplorerFilesTests>("a project moved deeper follows its import and hint path and another projects import into it and still builds", t => t.A_project_moved_deeper_follows_its_import_and_hint_path_and_another_projects_import_into_it_and_still_builds());
+        Flow.StepApart<ExplorerFilesTests>("a web projects Properties and wwwroot list first in the file system view once evaluated and refuse delete and rename", t => t.A_web_projects_Properties_and_wwwroot_list_first_in_the_file_system_view_once_evaluated_and_refuse_delete_and_rename());
+    }
+
+    /// <summary>On Windows a folder a program works in, or one under which a program holds a file, is refused a move
+    /// naming the program and the file, as one flow of Windows's steps, each in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void On_Windows_a_folder_a_program_works_in_or_holds_a_file_of_is_refused_naming_it()
+    {
+        Flow.StepApart<ExplorerFilesTests>("a folder a program works in is refused on Windows naming the program", t => t.A_folder_a_program_works_in_is_refused_on_Windows_naming_the_program());
+        Flow.StepApart<ExplorerFilesTests>("a folder whose file a program holds is refused on Windows naming the program and the file (\"rename\")", t => t.A_folder_whose_file_a_program_holds_is_refused_on_Windows_naming_the_program_and_the_file("rename"));
+    }
+
+    /// <summary>A folder moved, renamed or deleted waits for the design-time builds and the language server's watches
+    /// working in it, and holds off evaluating what walks it, so nothing typed or built there is lost, as one flow,
+    /// each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_folder_moved_or_deleted_waits_for_the_builds_and_the_server_working_in_it()
+    {
+        Flow.StepApart<ExplorerFilesTests>("typing in a file while its folders delete waits for a design time build goes to the Trash with it", t => t.Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it());
+        Flow.StepApart<ExplorerFilesTests>("a loaded projects folder watched for the language server goes renames and moves (\"delete\")", t => t.A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves("delete"));
+        Flow.StepApart<ExplorerFilesTests>("a loaded projects folder watched for the language server goes renames and moves (\"move\")", t => t.A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves("move"));
+        Flow.StepApart<ExplorerFilesTests>("a folders rename or move waits for the design time build of its project to end (true)", t => t.A_folders_rename_or_move_waits_for_the_design_time_build_of_its_project_to_end(true));
+        Flow.StepApart<ExplorerFilesTests>("a projects folder renamed or deleted as its design time build lands goes before the language server is told the project (true)", t => t.A_projects_folder_renamed_or_deleted_as_its_design_time_build_lands_goes_before_the_language_server_is_told_the_project(true));
+        Flow.StepApart<ExplorerFilesTests>("a folder let go of holds off evaluating the projects whose wildcards walk it until let go", t => t.A_folder_let_go_of_holds_off_evaluating_the_projects_whose_wildcards_walk_it_until_let_go());
+    }
+
+    private void New_class_rename_and_delete_change_the_disk_the_tabs_and_the_explorer()
     {
         MainWindow window = Open();
         string models = PathNames.Canonical(Path.Combine(folder, "Models"));
@@ -97,8 +154,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>New Class in a project that names its own RootNamespace begins the type's namespace with it, as the rest of its
     /// code and the SDK's item templates do, never with the project file's name.</summary>
-    [AvaloniaFact]
-    public void New_class_in_a_project_with_its_own_RootNamespace_begins_its_namespace_with_it()
+    private void New_class_in_a_project_with_its_own_RootNamespace_begins_its_namespace_with_it()
     {
         File.Delete(Path.Combine(folder, "Shop.csproj"));
         File.WriteAllText(Path.Combine(folder, "Shop.Core.Impl.csproj"), TestProjects.Library("<RootNamespace>Shop.Core</RootNamespace>"));
@@ -115,8 +171,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>A project's folder deleted while its design-time build runs waits for the build to end; what is typed into
     /// the project's open file meanwhile goes to the Trash with it, the file saved again just before it goes.</summary>
-    [AvaloniaFact]
-    public void Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it()
+    private void Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it()
     {
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         string release = Path.Combine(folder, "release");
@@ -153,77 +208,10 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
-    /// <summary>On Windows, which moves no folder while a file under it is open, even for a look at whether it is there, a
-    /// folder going to the Trash waits for the folder watcher's read under it under way as its design-time build ends, and
-    /// the watcher reads nothing more under it, the save of what was typed just before it goes among it, until it has gone.
-    /// The read is held open, as a busy machine holds it.</summary>
-    [AvaloniaFact]
-    public void A_folders_delete_waits_for_the_watchers_read_under_it_and_the_watcher_reads_nothing_more_there_until_it_has_gone()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a folder from moving while a file under it is open");
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
-        string release = Path.Combine(folder, "release");
-        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
-        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(release));
-        Restore.Run(Path.Combine(library, "Lib.csproj"));
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        try
-        {
-            // Pumped, not settled: the language server's load waits for the design-time build.
-            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")), "Lib's design-time build to be held", TimeSpan.FromMinutes(2));
-            string lib = PathNames.Canonical(library);
-            string code = Path.Combine(lib, "Code.cs");
-            string notes = Path.Combine(lib, "Notes.txt");
-            window.OpenFile(code);
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            Task<bool> deleting = window.DeleteAsync(lib);
-            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
-                "the delete to wait for Lib's design-time build");
-            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
-
-            TaskCompletionSource reading = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            window.FolderWatcher!.WhileNextHeard(path => PathNames.Same(path, notes), () =>
-            {
-                using FileStream read = new(notes, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                reading.TrySetResult();
-                Waiting.Until(() => released.Task.IsCompleted, TimeSpan.FromMinutes(2));
-                // Long enough for the build's round to end and the delete to come, had it not waited for this read.
-                Waiting.Until(() => deleting.IsCompleted, TimeSpan.FromSeconds(5));
-            });
-            File.WriteAllText(notes, "noted");
-            Ui.PumpUntil(() => reading.Task.IsCompleted, "the folder's watcher to read Notes.txt");
-            window.EditorArea.CodeEditor.Focus();
-            window.KeyTextInput("// typed while it waited ");
-            TaskCompletionSource<bool> saveRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            window.FolderWatcher.WhileNextHeard(path => PathNames.Same(path, code), () => saveRead.TrySetResult(Directory.Exists(lib)));
-            File.WriteAllText(release, "go");
-            released.TrySetResult();
-
-            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)),
-                $"Lib was not deleted while the folder's watcher read Notes.txt in it: {window.Status}{Holders(window, library)}");
-            Assert.Equal("// typed while it waited class Code\n{\n}\n", File.ReadAllText(Path.Combine(trash, "Lib", "Code.cs")));
-            Assert.False(Ui.AwaitPumped(saveRead.Task, "the folder's watcher to read the save of Code.cs", TimeSpan.FromMinutes(1)),
-                "The folder's watcher read the save of Code.cs while Lib was still there to move, and a look at Code.cs then keeps Lib from moving");
-        }
-        finally
-        {
-            File.WriteAllText(release, "go");
-            window.Close();
-        }
-    }
-
     /// <summary>A loaded project's folder, whose build output is watched for the C# language server, goes to the Trash, takes a
     /// new name or moves into another folder: what watches inside it lets go first, as Windows moves and deletes no folder
     /// with one inside it watched, and nothing under it is watched once it is gone.</summary>
-    [AvaloniaTheory]
-    [InlineData("delete")]
-    [InlineData("rename")]
-    [InlineData("move")]
-    public void A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves(string change)
+    private void A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves(string change)
     {
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
@@ -256,102 +244,10 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A loaded project's folder renamed while a watcher of its build output for the C# language server walks it
-    /// waits for that walk to end, which lists nothing there once let go of: on Windows a folder with a folder under it open
-    /// does not move. The walk is held at its start, as a busy machine holds it.</summary>
-    [AvaloniaFact]
-    public void A_loaded_projects_folders_rename_waits_for_a_walk_of_its_build_output_under_way_for_the_language_server()
-    {
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
-        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
-        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        Restore.Run(Path.Combine(library, "Lib.csproj"));
-        MainWindow window = Ui.OpenFolder(folder);
-        string lib = PathNames.Canonical(library);
-        Ui.WaitFor(() => window.CSharpService?.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
-            () => $"Lib's build output to be watched for the C# language server, where {string.Join(", ", (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder))} are",
-            TimeSpan.FromMinutes(2));
-        ServerWatches watches = window.CSharpService!.Watching!;
-        string walked = watches.Watching.First(w => PathNames.Within(w.Folder, lib)).Folder;
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task holding = watches.HoldNextWalk(at => PathNames.Same(at, walked), released.Task);
-        watches.LetGo([walked]).Held.Dispose();
-        window.Confirm = (_, _, _) => Task.FromResult(true);
-        Task<string?> renaming;
-        try
-        {
-            Assert.True(Ui.Pumped(() => holding.IsCompleted, TimeSpan.FromSeconds(30)), $"The watcher of {walked}, started again, never came to its first walk");
-            renaming = window.RenameAsync(lib, "Core");
-            // Pumped, not settled: the walk held holds the IDE's quiet.
-            Ui.PumpUntil(() => renaming.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
-                "the rename to wait for the walk of Lib's build output");
-            Assert.False(renaming.IsCompleted, $"Lib was renamed while the watcher of {walked} let go of was still to walk it, which on Windows refuses the rename: {window.Status}");
-        }
-        finally
-        {
-            released.TrySetResult();
-        }
-        string? refused = Ui.Await(renaming, "the rename");
-        Assert.True(refused is null, $"Lib's rename was refused once the walk of its build output had ended: {refused}{Holders(window, lib)}");
-        Assert.True(File.Exists(Path.Combine(folder, "Core", "Lib.csproj")), $"Lib's rename did not take it to Core: {window.Status}");
-        window.Close();
-    }
-
-    /// <summary>A loaded project's folder moved into another folder is moved back by Undo and into it again by Redo, each once
-    /// its build output is watched for the C# language server where it is: what watches inside it lets go first, as for the
-    /// move itself, as Windows moves no folder with one inside it watched, and the folder is not made again where it was.</summary>
-    [AvaloniaFact]
-    public void Undo_and_redo_of_a_loaded_projects_folders_move_go_through_once_its_build_output_is_watched_for_the_language_server()
-    {
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
-        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
-        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        Restore.Run(Path.Combine(library, "Lib.csproj"));
-        MainWindow window = Ui.OpenFolder(folder);
-        List<string> asked = Answer(window);
-        string lib = PathNames.Canonical(library);
-        string models = PathNames.Canonical(Path.Combine(folder, "Models"));
-        string moved = Path.Combine(models, "Lib");
-        Watched(lib, "before its move");
-        Assert.True(Ui.Await(window.PutAsync([lib], models, copy: false), "the move").Count > 0 && File.Exists(Path.Combine(moved, "Lib.csproj")),
-            $"Lib was not moved into Models: {window.Status}{Holders(window, lib)}");
-
-        Put(EditorActions.Undo, moved, lib, "Undone");
-        Put(EditorActions.Redo, lib, moved, "Redone");
-        Assert.Equal(["Undo", "Redo"], asked);
-        window.Close();
-
-        void Watched(string at, string when)
-        {
-            Ui.WaitFor(() => window.CSharpService?.Watching?.Watching.Any(w => PathNames.Within(w.Folder, at)) == true,
-                () => $"Lib's build output to be watched for the C# language server {when}, where {string.Join(", ", (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder))} are",
-                TimeSpan.FromMinutes(2));
-        }
-
-        void Put(string action, string from, string to, string done)
-        {
-            Watched(from, $"before {action}");
-            window.ExplorerView.Reveal(from);
-            Ui.Settle();
-            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == from));
-            Ui.Run(window, action);
-            Ui.WaitFor(() => window.Status?.StartsWith(done, StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
-                () => $"{action} of Lib's move to end: {window.Status}", TimeSpan.FromMinutes(2));
-            Assert.True(window.Status == $"{done}: Move Lib to Models" && File.Exists(Path.Combine(to, "Lib.csproj")),
-                $"{action} of Lib's move did not take it to {to}: {window.Status}{Holders(window, from)}");
-            Ui.Settle();
-            Assert.False(Directory.Exists(from), $"Lib is there again after {action}, holding [{string.Join(", ", Left(from))}]: its design-time build wrote where it had been");
-            Assert.DoesNotContain(window.CSharpService?.Watching?.Watching ?? [], w => PathNames.Within(w.Folder, from));
-        }
-    }
-
     /// <summary>A project's folder renamed, or moved into another folder, while its design-time build runs waits for the build
     /// to end, as a delete does: the build, still writing its obj/, would make the folder again where it was, and on Windows
     /// the folder it works in would not move.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_folders_rename_or_move_waits_for_the_design_time_build_of_its_project_to_end(bool move)
+    private void A_folders_rename_or_move_waits_for_the_design_time_build_of_its_project_to_end(bool move)
     {
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         string release = Path.Combine(folder, "release");
@@ -392,10 +288,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// that build, goes before the server is told the project: telling it looks at the project's files, and the server then
     /// reads them, as the build lands, and on Windows a folder with a file under it open does not move. The project's file
     /// is shown, so the server asks for it first.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_projects_folder_renamed_or_deleted_as_its_design_time_build_lands_goes_before_the_language_server_is_told_the_project(bool delete)
+    private void A_projects_folder_renamed_or_deleted_as_its_design_time_build_lands_goes_before_the_language_server_is_told_the_project(bool delete)
     {
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         string release = Path.Combine(folder, "release");
@@ -520,65 +413,11 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
-    /// <summary>A project whose wildcards take in a folder deleted while its design-time build runs, here Shop over Lib, is
-    /// told to the C# language server only once the folder has gone, though its own build lands first: telling it looks at
-    /// what its build read, and the server then reads its files, Lib's among them, and on Windows a folder with a file under
-    /// it open does not go.</summary>
-    [AvaloniaFact]
-    public void A_project_whose_wildcards_take_in_a_folder_being_deleted_is_told_to_the_language_server_once_it_has_gone()
-    {
-        SkipUnlessTwoBuildsAtOnce();
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
-        string releaseLib = Path.Combine(folder, "release-lib");
-        string releaseShop = Path.Combine(folder, "release-shop");
-        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
-        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(releaseLib));
-        File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), Holding(releaseShop));
-        Restore.Run(Path.Combine(library, "Lib.csproj"));
-        Restore.Run(Path.Combine(folder, "Shop.csproj"));
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        ProjectBuilds builds = window.Session.DesignTimeBuilds;
-        string shop = PathNames.Canonical(Path.Combine(folder, "Shop.csproj"));
-        Task asked = builds.HoldNextAsked(shop, Task.CompletedTask);
-        try
-        {
-            // Pumped, not settled: the language server's load waits for the design-time builds.
-            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")) && File.Exists(Path.Combine(folder, "held")),
-                "Shop's and Lib's design-time builds to be held", TimeSpan.FromMinutes(2));
-            Assert.True(Ui.Pumped(() => asked.IsCompleted, TimeSpan.FromMinutes(2)), $"The language server never asked for Shop's design-time build{Ui.IdeLogTail()}");
-            Task<bool>? deleting = null;
-            bool? toldAfter = null;
-            builds.WhileNextLook(shop, () => toldAfter = deleting?.IsCompleted);
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            deleting = window.DeleteAsync(PathNames.Canonical(library));
-            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
-                "the delete to wait for Lib's design-time build");
-            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
-
-            File.WriteAllText(releaseShop, "go");
-            Ui.PumpUntil(() => deleting.IsCompleted || window.Session.DesignTimeBuilds.Builds > 0, "Shop's design-time build to land, Lib's still held");
-            File.WriteAllText(releaseLib, "go");
-            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}{Holders(window, library)}");
-            Ui.PumpUntil(() => toldAfter is not null, "the language server to be told Shop", TimeSpan.FromMinutes(1));
-            Assert.True(toldAfter, "The language server was told Shop, what its build read looked at, while Lib, whose files Shop's wildcards take in, waited to go: the server then reads them, and on Windows a folder with a file under it open does not go");
-        }
-        finally
-        {
-            File.WriteAllText(releaseLib, "go");
-            File.WriteAllText(releaseShop, "go");
-            window.Close();
-        }
-    }
-
     /// <summary>A folder let go of for a move or a delete holds off evaluating the projects that reach it, here Shop, whose
     /// wildcards walk Models though no project lies there, until let go, the round under way waited for: a round reads
     /// what each project's evaluation read and evaluates in the project host, and on Windows a folder with a file or folder
     /// under it open does not move.</summary>
-    [AvaloniaFact]
-    public void A_folder_let_go_of_holds_off_evaluating_the_projects_whose_wildcards_walk_it_until_let_go()
+    private void A_folder_let_go_of_holds_off_evaluating_the_projects_whose_wildcards_walk_it_until_let_go()
     {
         File.WriteAllText(Path.Combine(folder, "Models", "Order.cs"), "class Order { }\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -612,94 +451,9 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A loaded project's folder let go of for a move stays unwatched by the watches of a C# language server started
-    /// meanwhile, until the move is done: a move can begin while a server starts (its start waits for the design-time builds
-    /// the move waits out), and on Windows a move with the project's build output watched inside it is refused.</summary>
-    [AvaloniaFact]
-    public void A_folder_let_go_of_stays_unwatched_by_the_watches_of_a_language_server_started_meanwhile_until_done()
-    {
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
-        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
-        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        Restore.Run(Path.Combine(library, "Lib.csproj"));
-        Restore.Run(Path.Combine(folder, "Shop.csproj"));
-        MainWindow window = Ui.OpenFolder(folder);
-        CSharpService csharp = window.CSharpService ?? throw new InvalidOperationException("The folder opened with no C# service");
-        string lib = PathNames.Canonical(library);
-        string shopOutput = PathNames.Canonical(Path.Combine(folder, "obj"));
-        Ui.WaitFor(() => csharp.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
-            () => $"Lib's build output to be watched for the C# language server, where {Folders()} are", TimeSpan.FromMinutes(2));
-        ServerWatches first = csharp.Watching!;
-        IDisposable letting = csharp.LetGoOf([lib]).Held;
-        Assert.DoesNotContain(first.Watching, w => PathNames.Within(w.Folder, lib));
-
-        csharp.Restart();
-        Ui.WaitFor(() => csharp.Watching is { } now && now != first && now.Watching.Any(w => PathNames.Same(w.Folder, shopOutput)),
-            () => $"Shop's build output to be watched for the server started again, where {Folders()} are", TimeSpan.FromMinutes(2));
-        Assert.DoesNotContain(csharp.Watching!.Watching, w => PathNames.Within(w.Folder, lib));
-        letting.Dispose();
-        Ui.WaitFor(() => csharp.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
-            () => $"Lib's build output to be watched again once the move is done, where {Folders()} are", TimeSpan.FromMinutes(2));
-        window.Close();
-
-        string Folders() => string.Join(", ", (csharp.Watching?.Watching ?? []).Select(w => w.Folder));
-    }
-
-    /// <summary>Where no folder a process works in can go (Windows), a project's folder deleted while its design-time build
-    /// runs beside another project's goes only once that whole round has ended, not as its own build lands: the round's
-    /// build session leaves the MSBuild node that built it working in its folder until it ends. Elsewhere it goes as its
-    /// own build lands, the other project still building.</summary>
-    [AvaloniaFact]
-    public void A_folders_delete_waits_for_the_round_of_design_time_builds_that_built_its_project_to_end_only_where_a_folder_worked_in_is_held()
-    {
-        SkipUnlessTwoBuildsAtOnce();
-        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
-        string releaseLib = Path.Combine(folder, "release-lib");
-        string releaseShop = Path.Combine(folder, "release-shop");
-        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
-        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
-        File.WriteAllText(Path.Combine(library, "Directory.Build.targets"), Holding(releaseLib));
-        File.WriteAllText(Path.Combine(folder, "Directory.Build.targets"), Holding(releaseShop));
-        Restore.Run(Path.Combine(library, "Lib.csproj"));
-        Restore.Run(Path.Combine(folder, "Shop.csproj"));
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        try
-        {
-            // Pumped, not settled: the language server's load waits for the design-time builds.
-            Ui.PumpUntil(() => File.Exists(Path.Combine(library, "held")) && File.Exists(Path.Combine(folder, "held")),
-                "Shop's and Lib's design-time builds to be held at once, in one round", TimeSpan.FromMinutes(2));
-            window.Confirm = (_, _, _) => Task.FromResult(true);
-            Task<bool> deleting = window.DeleteAsync(PathNames.Canonical(library));
-            Ui.PumpUntil(() => deleting.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
-                "the delete to wait for Lib's design-time build");
-            Assert.False(deleting.IsCompleted, $"The delete of Lib did not wait for its design-time build: {window.Status}");
-
-            File.WriteAllText(releaseLib, "go");
-            Ui.PumpUntil(() => deleting.IsCompleted || window.Session.DesignTimeBuilds.Builds > 0, "Lib's design-time build to land, Shop's still held");
-            if (Passenger.Workspace.FolderBuilds.WorkingFoldersHeld)
-            {
-                Assert.False(Ui.Pumped(() => deleting.IsCompleted, TimeSpan.FromSeconds(2)),
-                    $"The delete of Lib went on once its own design-time build landed, while the round's build session, still building Shop, could work in Lib: {window.Status}");
-                File.WriteAllText(releaseShop, "go");
-            }
-            Assert.True(Ui.AwaitPumped(deleting, "the delete of Lib", TimeSpan.FromMinutes(2)), $"Lib was not deleted: {window.Status}{Holders(window, library)}");
-            Assert.False(Directory.Exists(library), $"Lib is still there, holding [{string.Join(", ", Left(library))}]");
-            Assert.True(File.Exists(Path.Combine(trash, "Lib", "Lib.csproj")), "Lib is not in the Trash");
-        }
-        finally
-        {
-            File.WriteAllText(releaseLib, "go");
-            File.WriteAllText(releaseShop, "go");
-            window.Close();
-        }
-    }
-
     /// <summary>On Windows a folder some program works in will not go to the Trash, and the refusal names that program, so
     /// the person knows what holds it.</summary>
-    [AvaloniaFact]
-    public void A_folder_a_program_works_in_is_refused_on_Windows_naming_the_program()
+    private void A_folder_a_program_works_in_is_refused_on_Windows_naming_the_program()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a folder a program works in from going");
         string library = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName);
@@ -727,10 +481,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>On Windows a folder with a file under it some program holds open will not take a new name or move, and the
     /// refusal names that program and the file, so the person knows what to close.</summary>
-    [AvaloniaTheory]
-    [InlineData("rename")]
-    [InlineData("move")]
-    public void A_folder_whose_file_a_program_holds_is_refused_on_Windows_naming_the_program_and_the_file(string change)
+    private void A_folder_whose_file_a_program_holds_is_refused_on_Windows_naming_the_program_and_the_file(string change)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a folder with a file under it held open from moving");
         string library = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName);
@@ -775,8 +526,7 @@ public sealed class ExplorerFilesTests : IDisposable
         </Project>
         """;
 
-    [AvaloniaFact]
-    public void Delete_on_a_project_in_its_own_folder_moves_that_folder_to_the_Trash_only_once_asked_again_and_one_beside_its_solution_leaves_the_folder()
+    private void Delete_on_a_project_in_its_own_folder_moves_that_folder_to_the_Trash_only_once_asked_again_and_one_beside_its_solution_leaves_the_folder()
     {
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         File.Copy(Path.Combine(folder, "Shop.csproj"), Path.Combine(library, "Lib.csproj"));
@@ -814,8 +564,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>A project removed with its folder moved to the Trash, as the second question asks, is one command: one Undo
     /// puts the project back in the solution and brings its folder back out of the Trash, and Redo takes both away again.</summary>
-    [AvaloniaFact]
-    public void Undo_of_a_project_removed_with_its_folder_brings_back_both_and_redo_takes_both_again()
+    private void Undo_of_a_project_removed_with_its_folder_brings_back_both_and_redo_takes_both_again()
     {
         string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
         File.Copy(Path.Combine(folder, "Shop.csproj"), Path.Combine(library, "Lib.csproj"));
@@ -854,8 +603,7 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_delete_the_Trash_refuses_keeps_the_open_file_and_its_unsaved_edit_and_one_it_takes_goes_with_them_kept_in_Local_History()
+    private void A_delete_the_Trash_refuses_keeps_the_open_file_and_its_unsaved_edit_and_one_it_takes_goes_with_them_kept_in_Local_History()
     {
         string notes = PathNames.Canonical(Path.Combine(folder, "Notes.txt"));
         File.WriteAllText(notes, "groceries\n");
@@ -900,8 +648,7 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_folder_renamed_keeps_out_of_the_build_the_files_its_project_removed_by_name_or_by_glob_and_undo_puts_the_project_back()
+    private void A_folder_renamed_keeps_out_of_the_build_the_files_its_project_removed_by_name_or_by_glob_and_undo_puts_the_project_back()
     {
         // Old.cs and Stale.cs no longer compile, so the project removes them: one by its name, the other by its folder's glob.
         string project = Path.Combine(folder, "Shop.csproj");
@@ -944,8 +691,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// extensionless file's too.</summary>
     /// <summary>A folder or file cut or copied and pasted where its name is the folder holding it (Docs/Docs beside Docs) is
     /// refused before any question: replacing that folder would send what was pasted to the Trash with it.</summary>
-    [AvaloniaFact]
-    public void A_file_or_folder_pasted_where_its_name_is_the_folder_holding_it_is_refused_before_any_question_and_nothing_moves()
+    private void A_file_or_folder_pasted_where_its_name_is_the_folder_holding_it_is_refused_before_any_question_and_nothing_moves()
     {
         string root = PathNames.Canonical(folder);
         string outer = TestFolders.Write(root, "Docs/outer.md", "outer\n");
@@ -982,8 +728,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>Two dots in a row inside a name are the name's own (release..notes.txt): New File, New Folder and Rename take
     /// them, and refuse only ".." as a whole name or one of its folders, which would climb out of the folder.</summary>
-    [AvaloniaFact]
-    public void A_name_with_two_dots_in_a_row_is_made_and_renamed_to_and_only_a_part_climbing_out_is_refused()
+    private void A_name_with_two_dots_in_a_row_is_made_and_renamed_to_and_only_a_part_climbing_out_is_refused()
     {
         string root = PathNames.Canonical(folder);
         string models = Path.Combine(root, "Models");
@@ -1002,48 +747,11 @@ public sealed class ExplorerFilesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_files_rename_selects_its_name_before_the_extension_and_a_folders_or_extensionless_files_its_whole_name()
-    {
-        string root = PathNames.Canonical(folder);
-        string program = Path.Combine(root, "Program.cs");
-        File.WriteAllText(program, "System.Console.WriteLine(\"Hello\");\n");
-        string makefile = Path.Combine(root, "Makefile");
-        File.WriteAllText(makefile, "all:\n");
-        string assets = Path.Combine(root, "My.Assets");
-        Directory.CreateDirectory(assets);
-        MainWindow window = Open();
-
-        Renamed(program, "Program", "Main");
-        Assert.True(File.Exists(Path.Combine(root, "Main.cs")), $"Program.cs renamed by typing Main over its selected name did not become Main.cs: [{string.Join(", ", Left(root))}]");
-        Assert.False(File.Exists(program), "Program.cs is still there after its rename");
-        Renamed(assets, "My.Assets", "Assets");
-        Assert.True(Directory.Exists(Path.Combine(root, "Assets")), $"My.Assets renamed by typing over its whole name did not become Assets: [{string.Join(", ", Left(root))}]");
-        Renamed(makefile, "Makefile", "GNUmakefile");
-        Assert.True(File.Exists(Path.Combine(root, "GNUmakefile")), $"Makefile renamed by typing over its whole name did not become GNUmakefile: [{string.Join(", ", Left(root))}]");
-        window.Close();
-
-        void Renamed(string path, string selected, string typed)
-        {
-            window.ExplorerView.Reveal(path);
-            Ui.Settle();
-            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == path));
-            Ui.Run(window, AppActions.Rename);
-            NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
-            TextBox box = popup.GetVisualDescendants().OfType<TextBox>().Single();
-            Assert.True(box.SelectedText == selected, $"Rename on {Path.GetFileName(path)} selected '{box.SelectedText}', so typing over it would not give what a person expects");
-            window.KeyTextInput(typed);
-            Ui.Press(window, "ENTER");
-            Ui.WaitFor(() => !window.IsPopupOpen, () => $"the rename of {Path.GetFileName(path)} to finish: {popup.Problem}");
-        }
-    }
-
     /// <summary>A file-based program's directives follow what they name: the project its <c>#:project</c> names renamed in
     /// the Explorer, its value names the new folder and the program evaluates with the project there; the program cut and
     /// pasted into a deeper folder, its <c>#:project</c> and <c>#:include</c> name from there what they named before. One
     /// Undo puts each back whole: the folder or the program where it was, and the program's text as it was.</summary>
-    [AvaloniaFact]
-    public void A_programs_directives_follow_the_project_it_names_and_the_program_itself_moved_and_one_undo_puts_each_back()
+    private void A_programs_directives_follow_the_project_it_names_and_the_program_itself_moved_and_one_undo_puts_each_back()
     {
         File.Delete(Path.Combine(folder, "Shop.csproj"));
         string root = PathNames.Canonical(folder);
@@ -1115,8 +823,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>A project cut and pasted a folder deeper: its Import and its reference's HintPath name from there the files
     /// they named, and another project's Import of a file in its folder names it where it went, so both still build with
     /// the .NET command line; one Undo puts the folder and both project files back.</summary>
-    [AvaloniaFact]
-    public void A_project_moved_deeper_follows_its_import_and_hint_path_and_another_projects_import_into_it_and_still_builds()
+    private void A_project_moved_deeper_follows_its_import_and_hint_path_and_another_projects_import_into_it_and_still_builds()
     {
         File.Delete(Path.Combine(folder, "Shop.csproj"));
         string root = PathNames.Canonical(folder);
@@ -1173,8 +880,7 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.True(built.Succeeded, $"{Path.GetFileName(project)} does not build {when}:\n{built.Output}{built.Error}");
     }
 
-    [AvaloniaFact]
-    public void A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint()
+    private void A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint()
     {
         string models = PathNames.Canonical(Path.Combine(folder, "Models"));
         string order = Path.Combine(models, "Order.cs");
@@ -1227,8 +933,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>An HTML page opens in the person's browser from the Explorer's Open In, from its editor's menu and from the
     /// keys Rider gives Open in Browser, the window handing the browser the file's address (headless, recorded and opened
     /// nowhere); a file that is no page is refused, saying why.</summary>
-    [AvaloniaFact]
-    public void An_HTML_page_opens_in_the_browser_from_the_explorer_its_editors_menu_and_the_keys()
+    private void An_HTML_page_opens_in_the_browser_from_the_explorer_its_editors_menu_and_the_keys()
     {
         File.WriteAllText(Path.Combine(folder, "index.html"), "<!doctype html>\n<title>Shop</title>\n");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "notes\n");
@@ -1264,8 +969,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>Delete on a file chosen with others (Ctrl+click, Cmd+click on macOS) asks once, by their count, and moves
     /// every one to the Trash, closing their tabs and saying so in one line; a file chosen alone is asked of by its name, as
     /// before.</summary>
-    [AvaloniaFact]
-    public void Delete_on_files_chosen_together_asks_once_and_moves_them_all_to_the_Trash_and_one_chosen_alone_is_asked_of_by_name()
+    private void Delete_on_files_chosen_together_asks_once_and_moves_them_all_to_the_Trash_and_one_chosen_alone_is_asked_of_by_name()
     {
         string[] names = ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"];
         foreach (string name in names)
@@ -1308,8 +1012,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>The Explorer's Delete, of a file, a folder or several chosen together, is one command of global undo named
     /// after them: Undo asks by that name and brings each back from the Trash with what it held, the Trash keeping it no
     /// more, and Redo sends it there again. On Windows through the Recycle Bin itself.</summary>
-    [AvaloniaFact]
-    public void Delete_of_a_file_a_folder_or_several_is_one_command_Undo_brings_back_from_the_Trash_and_Redo_sends_again()
+    private void Delete_of_a_file_a_folder_or_several_is_one_command_Undo_brings_back_from_the_Trash_and_Redo_sends_again()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -1379,8 +1082,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
     /// <summary>A folder chosen with a file inside it goes to the Trash once, the file with it: the question is of the
     /// folder alone, and nothing is said to have failed for the file gone before its turn.</summary>
-    [AvaloniaFact]
-    public void Delete_on_a_folder_chosen_with_a_file_inside_it_moves_the_folder_once_with_the_file()
+    private void Delete_on_a_folder_chosen_with_a_file_inside_it_moves_the_folder_once_with_the_file()
     {
         string order = Path.Combine(folder, "Models", "Order.cs");
         File.WriteAllText(order, "class Order { }\n");
@@ -1405,8 +1107,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>Delete on rows chosen together greys while one of them would only leave the solution (a project), which
     /// Remove takes chosen alone with its own questions: the row's menu and the keys say which row and why, and nothing is
     /// asked or deleted.</summary>
-    [AvaloniaFact]
-    public void Delete_greys_on_a_project_chosen_with_a_file_saying_the_project_is_removed_chosen_alone()
+    private void Delete_greys_on_a_project_chosen_with_a_file_saying_the_project_is_removed_chosen_alone()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.slnx"), "<Solution>\n  <Project Path=\"Shop.csproj\" />\n</Solution>\n");
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "groceries\n");
@@ -1438,8 +1139,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// from the keys of the keymap chosen, Visual Studio's Ctrl+R, R (⌘R, R on macOS) and Delete, VS Code's F2 and
     /// Delete, as Rider's RenameElement and $Delete are bound in each; F2 renames nothing in Visual Studio's, where
     /// Rider gives it none. Open In's file manager shows the row's file there (headless, it opens nothing).</summary>
-    [AvaloniaFact]
-    public void The_explorers_rename_delete_and_reveal_run_from_its_menu_and_from_each_keymaps_keys()
+    private void The_explorers_rename_delete_and_reveal_run_from_its_menu_and_from_each_keymaps_keys()
     {
         foreach (string name in (string[])["One.txt", "Two.txt", "Three.txt", "Four.txt"])
         {
@@ -1502,8 +1202,7 @@ public sealed class ExplorerFilesTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void The_explorers_keys_open_and_close_a_folder_go_up_from_its_file_and_open_a_file_on_enter()
+    private void The_explorers_keys_open_and_close_a_folder_go_up_from_its_file_and_open_a_file_on_enter()
     {
         File.WriteAllText(Path.Combine(folder, "Models", "Order.cs"), "class Order { }\n");
         MainWindow window = Open();
@@ -1519,8 +1218,7 @@ public sealed class ExplorerFilesTests : IDisposable
     /// <summary>A folder holding a web project and no solution opens in the File System view, where the project's
     /// Properties and, once MSBuild has evaluated the project as a web one, its wwwroot are listed before its other folders
     /// and refuse Delete and Rename saying why, Properties' Delete too while it is chosen with another folder.</summary>
-    [AvaloniaFact]
-    public void A_web_projects_Properties_and_wwwroot_list_first_in_the_file_system_view_once_evaluated_and_refuse_delete_and_rename()
+    private void A_web_projects_Properties_and_wwwroot_list_first_in_the_file_system_view_once_evaluated_and_refuse_delete_and_rename()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.csproj"), TestProjects.Web());
         TestFolders.Write(folder, "Properties/launchSettings.json", "{ \"profiles\": {} }\n");

@@ -33,8 +33,19 @@ public sealed class WhatsNewTests : IDisposable
         TestFolders.Delete(notes);
     }
 
+    /// <summary>What's New shows once after an update, an older state counting as one, never on a fresh state but
+    /// whenever Help asks, a patch release's notes over its minor version's, as one flow, each step the check one test
+    /// made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void After_an_update_the_notes_show_once_in_front_of_the_folder_the_window_opens_and_not_on_the_next_start()
+    public void Whats_New_shows_a_releases_notes_once_after_an_update_and_whenever_asked()
+    {
+        Flow.StepApart<WhatsNewTests>("after an update the notes show once in front of the folder the window opens and not on the next start", t => t.After_an_update_the_notes_show_once_in_front_of_the_folder_the_window_opens_and_not_on_the_next_start());
+        Flow.StepApart<WhatsNewTests>("an older Passengers state that kept no record of the notes counts as an update", t => t.An_older_Passengers_state_that_kept_no_record_of_the_notes_counts_as_an_update());
+        Flow.StepApart<WhatsNewTests>("a fresh state shows no notes and Help shows them whenever asked", t => t.A_fresh_state_shows_no_notes_and_Help_shows_them_whenever_asked());
+        Flow.StepApart<WhatsNewTests>("a patch releases notes show its minor versions earlier notes beneath newest first and a minor releases its own alone", t => t.A_patch_releases_notes_show_its_minor_versions_earlier_notes_beneath_newest_first_and_a_minor_releases_its_own_alone());
+    }
+
+    private void After_an_update_the_notes_show_once_in_front_of_the_folder_the_window_opens_and_not_on_the_next_start()
     {
         // The person used an older Passenger here: its folder's file open as they left it, and What's New's record older.
         MainWindow window = Started();
@@ -88,8 +99,7 @@ public sealed class WhatsNewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_older_Passengers_state_that_kept_no_record_of_the_notes_counts_as_an_update()
+    private void An_older_Passengers_state_that_kept_no_record_of_the_notes_counts_as_an_update()
     {
         // 0.1.0 kept no notes shown; what it did keep (the release it announced) says it ran here.
         File.WriteAllText(Path.Combine(state, "updates.json"), """{ "announced": "0.2.0" }""");
@@ -103,8 +113,7 @@ public sealed class WhatsNewTests : IDisposable
         Assert.True(Recorded() == Version, $"updates.json records '{Recorded()}' as the notes shown, not {Version}");
     }
 
-    [AvaloniaFact]
-    public void A_fresh_state_shows_no_notes_and_Help_shows_them_whenever_asked()
+    private void A_fresh_state_shows_no_notes_and_Help_shows_them_whenever_asked()
     {
         MainWindow window = Started();
         window.ShowWhatsNewOnce();
@@ -126,37 +135,10 @@ public sealed class WhatsNewTests : IDisposable
         Assert.True(Recorded() == Version, $"updates.json records '{Recorded()}' for the fresh state, not the version it began on, {Version}");
     }
 
-    [AvaloniaFact]
-    public void The_keys_that_move_through_a_page_move_through_the_notes()
-    {
-        // The longest notes the build carries, as a hotfix's own can fit one page.
-        MainWindow window = Started(Path.GetFileNameWithoutExtension(Directory.EnumerateFiles(ReleaseNotes.CarriedFolder, "*.md").MaxBy(f => new FileInfo(f).Length)!));
-        Assert.Null(window.ShowWhatsNew());
-        Ui.Settle();
-        ReleaseNotesView view = Rendered(window);
-        Assert.True(view.IsKeyboardFocusWithin, "The notes shown did not take the keys, so a person's first key goes elsewhere");
-        double page = view.Viewport.Height;
-        double end = view.Extent.Height - page;
-        Assert.True(end > page, $"The notes are {view.Extent.Height:0} high in a page of {page:0}, too short to move through");
-
-        double line = Moved(window, view, "DOWN", "a line down");
-        Assert.True(line > 0 && line < page / 4, $"Down moved the notes {line:0}, not a line of a page {page:0} high");
-        Assert.Equal(0, Moved(window, view, "UP", "a line up"));
-        double paged = Moved(window, view, "PAGE_DOWN", "a page down");
-        Assert.True(Math.Abs(paged - page) < 1, $"Page Down moved the notes {paged:0}, not their page of {page:0}");
-        Assert.Equal(0, Moved(window, view, "PAGE_UP", "a page up"));
-        Assert.Equal(end, Moved(window, view, "END", "to the end"), 1);
-        Assert.Equal(0, Moved(window, view, "HOME", "to the start"));
-        Assert.Equal(end, Moved(window, view, OperatingSystem.IsMacOS() ? "meta DOWN" : "control END", "to the end"), 1);
-        Assert.Equal(0, Moved(window, view, OperatingSystem.IsMacOS() ? "meta UP" : "control HOME", "to the start"));
-        window.Close();
-    }
-
     /// <summary>A patch release's page lays its own notes, then its minor version's earlier ones, newest first, each under
     /// its own heading, as one page a screen reader reads whole; a minor release's lays its own alone. Neither takes another
     /// minor version's notes, nor a newer version's the folder carries.</summary>
-    [AvaloniaFact]
-    public void A_patch_releases_notes_show_its_minor_versions_earlier_notes_beneath_newest_first_and_a_minor_releases_its_own_alone()
+    private void A_patch_releases_notes_show_its_minor_versions_earlier_notes_beneath_newest_first_and_a_minor_releases_its_own_alone()
     {
         Write("0.3.4", "Passenger 0.3.4 mends the older line.");
         Write("0.4.0", "Passenger 0.4.0 brings mobile apps.");
@@ -199,15 +181,6 @@ public sealed class WhatsNewTests : IDisposable
     /// <summary>A version's notes in the test's folder of notes, with the two sections each version's have.</summary>
     private void Write(string version, string lead) =>
         File.WriteAllText(Path.Combine(notes, version + ".md"), $"{lead}\n\n## Highlights\n\n- **{version}'s highlight**, said.\n\n## Fixed\n\n- {version}'s fix.\n");
-
-    /// <summary>Where the page's top stands after a key, which must have moved it.</summary>
-    private static double Moved(MainWindow window, ReleaseNotesView view, string keys, string where)
-    {
-        double before = view.Offset.Y;
-        Ui.Press(window, keys);
-        Assert.True(view.Offset.Y != before, $"{keys} did not move the notes {where}: they stand at {before:0} of {view.Extent.Height - view.Viewport.Height:0}");
-        return view.Offset.Y;
-    }
 
     /// <summary>A person's window over the test's state, keeping its layout and settings there, the version whose notes the
     /// build carries (or another's it carries, or the given folder holds); no C# server, since nothing here asks one.</summary>

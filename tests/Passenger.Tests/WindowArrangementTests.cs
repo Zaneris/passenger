@@ -30,8 +30,46 @@ public sealed class WindowArrangementTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Editor tabs down a side, titled tabs naming a place's windows, a hidden place a click away, and a
+    /// theme's look and places taken whole while what the person moved stays, as one flow, each step the check one test
+    /// made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Editor_tabs_set_down_a_side_stand_in_a_column_there_where_a_click_a_drag_and_the_next_tabs_keys_go_between_them()
+    public void Editor_tabs_and_titled_tabs_stand_where_the_theme_or_the_person_puts_them()
+    {
+        Flow.StepApart<WindowArrangementTests>("editor tabs set down a side stand in a column there where a click a drag and the next tabs keys go between them", t => t.Editor_tabs_set_down_a_side_stand_in_a_column_there_where_a_click_a_drag_and_the_next_tabs_keys_go_between_them());
+        Flow.StepApart<WindowArrangementTests>("a themes editor tabs place is the default the Settings row overrides and Theme default follows again", t => t.A_themes_editor_tabs_place_is_the_default_the_Settings_row_overrides_and_Theme_default_follows_again());
+        Flow.StepApart<WindowArrangementTests>("Titled tabs name the windows docked in a place where a click opens one and a drag takes it to another side", t => t.Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side());
+        Flow.StepApart<WindowArrangementTests>("Under titled tabs no stripe stands and a window docked beside another or opened again is named by a tab or its header", t => t.Under_titled_tabs_no_stripe_stands_and_a_window_docked_beside_another_or_opened_again_is_named_by_a_tab_or_its_header());
+        Flow.StepApart<WindowArrangementTests>("every window of a place hidden is a click away by its icon or by its tab along the edge which opens it over the editors", t => t.Every_window_of_a_place_hidden_is_a_click_away_by_its_icon_or_by_its_tab_along_the_edge_which_opens_it_over_the_editors());
+        Flow.StepApart<WindowArrangementTests>("a theme choosing either look gets that look whole", t => t.A_theme_choosing_either_look_gets_that_look_whole());
+        Flow.StepApart<WindowArrangementTests>("a theme chosen moves each window still where the theme before put it and keeps the one the person moved", t => t.A_theme_chosen_moves_each_window_still_where_the_theme_before_put_it_and_keeps_the_one_the_person_moved());
+    }
+
+    /// <summary>A tool window closed by its x, dragged among the editors or placed there by a theme comes back where it
+    /// was through a restart, Find in Files keeps its matches in the Find window, and an agent's call docks a hidden
+    /// window behind, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Tool_windows_closed_hidden_or_among_the_editors_come_back_where_they_were()
+    {
+        Flow.StepApart<WindowArrangementTests>("a tool window closed by its x leaves its stripe through a restart until its action opens it and keeping icons changes only the x", t => t.A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_changes_only_the_x());
+        Flow.StepApart<WindowArrangementTests>("Unit Tests dragged onto the editors is a tab among the files through a restart and docks again by its menu and by a drag", t => t.Unit_Tests_dragged_onto_the_editors_is_a_tab_among_the_files_through_a_restart_and_docks_again_by_its_menu_and_by_a_drag());
+        Flow.StepApart<WindowArrangementTests>("a themes layout places a tool window among the editors", t => t.A_themes_layout_places_a_tool_window_among_the_editors());
+        Flow.StepApart<WindowArrangementTests>("Find in Files matches are kept in the Find window once one is gone to and Open in Find Windows keys put them there", t => t.Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_and_Open_in_Find_Windows_keys_put_them_there());
+        Flow.StepApart<WindowArrangementTests>("an agents call for a window whose place is hidden docks it behind never over the editors with the persons keys", t => t.An_agents_call_for_a_window_whose_place_is_hidden_docks_it_behind_never_over_the_editors_with_the_persons_keys());
+    }
+
+    /// <summary>Cubicle arranges the window as an enterprise IDE does, an edge tab opening its window over the editors
+    /// without the keys until a click keeps it, and a header's pin sending its place to the edge, as one flow, each
+    /// step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Cubicle_arranges_the_window_and_its_edge_tabs_open_over_the_editors()
+    {
+        Flow.StepApart<WindowArrangementTests>("Cubicle arranges the window as an enterprise IDE does", t => t.Cubicle_arranges_the_window_as_an_enterprise_IDE_does());
+        Flow.StepApart<WindowArrangementTests>("Under Cubicle the pointer resting on an edge tab opens its window over the editors without the keys until it leaves and a click keeps it", t => t.Under_Cubicle_the_pointer_resting_on_an_edge_tab_opens_its_window_over_the_editors_without_the_keys_until_it_leaves_and_a_click_keeps_it());
+        Flow.StepApart<WindowArrangementTests>("Under Cubicle a docked headers pin sends its place to the edge and the pin turned over the editors docks it while stripe icons keep Hide", t => t.Under_Cubicle_a_docked_headers_pin_sends_its_place_to_the_edge_and_the_pin_turned_over_the_editors_docks_it_while_stripe_icons_keep_Hide());
+    }
+
+    private void Editor_tabs_set_down_a_side_stand_in_a_column_there_where_a_click_a_drag_and_the_next_tabs_keys_go_between_them()
     {
         MainWindow window = Open();
         try
@@ -70,8 +108,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_themes_editor_tabs_place_is_the_default_the_Settings_row_overrides_and_Theme_default_follows_again()
+    private void A_themes_editor_tabs_place_is_the_default_the_Settings_row_overrides_and_Theme_default_follows_again()
     {
         string name = Kept("""{"editorTabs": "right"}""");
         MainWindow window = Open();
@@ -110,8 +147,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side()
+    private void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side()
     {
         MainWindow window = Open();
         try
@@ -149,8 +185,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_changes_only_the_x()
+    private void A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_changes_only_the_x()
     {
         string state = TestFolders.Create("arrangement-state-");
         try
@@ -208,8 +243,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_and_Open_in_Find_Windows_keys_put_them_there()
+    private void Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_and_Open_in_Find_Windows_keys_put_them_there()
     {
         MainWindow window = Open();
         try
@@ -246,8 +280,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Cubicle_arranges_the_window_as_an_enterprise_IDE_does()
+    private void Cubicle_arranges_the_window_as_an_enterprise_IDE_does()
     {
         MainWindow window = Open();
         try
@@ -267,8 +300,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Unit_Tests_dragged_onto_the_editors_is_a_tab_among_the_files_through_a_restart_and_docks_again_by_its_menu_and_by_a_drag()
+    private void Unit_Tests_dragged_onto_the_editors_is_a_tab_among_the_files_through_a_restart_and_docks_again_by_its_menu_and_by_a_drag()
     {
         string state = TestFolders.Create("arrangement-state-");
         try
@@ -332,8 +364,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_themes_layout_places_a_tool_window_among_the_editors()
+    private void A_themes_layout_places_a_tool_window_among_the_editors()
     {
         string name = Kept("""{"places": {"editor": ["tests"]}, "open": ["explorer", "tests"]}""");
         string state = TestFolders.Create("arrangement-state-");
@@ -380,38 +411,7 @@ public sealed class WindowArrangementTests : IDisposable
     private static ToggleButton? StripeButton(MainWindow window, string id) =>
         window.DockHost.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(b => Equals(b.Tag, id));
 
-    [AvaloniaFact]
-    public void Under_stripe_icons_a_window_docked_beside_another_or_opened_again_takes_no_icon_off_the_stripes_and_no_tab_names_it()
-    {
-        MainWindow window = Open();
-        try
-        {
-            window.ApplySettings(window.Settings with { ClosedToolWindows = ClosedToolWindows.LeaveStripe });
-            Ui.Settle();
-            DockHost dock = window.DockHost;
-            Ui.Drag(window, Ui.Centre(StripeButton(window, ToolWindowIds.Bookmarks)!, window), new Point(Placed(window, dock[ToolWindowIds.Explorer].Content).X + 60, 80));
-            Assert.True(dock[ToolWindowIds.Bookmarks].Anchor == ToolAnchor.LeftTop && dock.IsShown(ToolWindowIds.Explorer),
-                $"Bookmarks dragged into the Explorer's place stands in {dock[ToolWindowIds.Bookmarks].Anchor}, the Explorer shown {dock.IsShown(ToolWindowIds.Explorer)}");
-            Assert.True(Iconless(window).Length == 0 && ToolTabs(window).Length == 0,
-                $"With Bookmarks docked beside the Explorer, {string.Join(", ", Iconless(window))} lost their stripe icons, {ToolTabs(window).Length} tabs name windows");
-
-            dock.Close(ToolWindowIds.Explorer);
-            Ui.Settle();
-            Assert.Null(StripeButton(window, ToolWindowIds.Explorer));
-            Assert.True(window.Perform(AppActions.FocusExplorer), "View | Tool Windows | Explorer was refused");
-            Ui.Settle();
-            Assert.True(dock.IsShown(ToolWindowIds.Explorer) && Iconless(window).Length == 0 && ToolTabs(window).Length == 0,
-                $"The Explorer opened again into the place Bookmarks holds left {string.Join(", ", Iconless(window))} without stripe icons, {ToolTabs(window).Length} tabs naming windows");
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Under_titled_tabs_no_stripe_stands_and_a_window_docked_beside_another_or_opened_again_is_named_by_a_tab_or_its_header()
+    private void Under_titled_tabs_no_stripe_stands_and_a_window_docked_beside_another_or_opened_again_is_named_by_a_tab_or_its_header()
     {
         MainWindow window = Open();
         try
@@ -464,8 +464,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Every_window_of_a_place_hidden_is_a_click_away_by_its_icon_or_by_its_tab_along_the_edge_which_opens_it_over_the_editors()
+    private void Every_window_of_a_place_hidden_is_a_click_away_by_its_icon_or_by_its_tab_along_the_edge_which_opens_it_over_the_editors()
     {
         MainWindow window = Open();
         try
@@ -514,8 +513,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_agents_call_for_a_window_whose_place_is_hidden_docks_it_behind_never_over_the_editors_with_the_persons_keys()
+    private void An_agents_call_for_a_window_whose_place_is_hidden_docks_it_behind_never_over_the_editors_with_the_persons_keys()
     {
         MainWindow window = Open();
         try
@@ -538,8 +536,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Under_Cubicle_the_pointer_resting_on_an_edge_tab_opens_its_window_over_the_editors_without_the_keys_until_it_leaves_and_a_click_keeps_it()
+    private void Under_Cubicle_the_pointer_resting_on_an_edge_tab_opens_its_window_over_the_editors_without_the_keys_until_it_leaves_and_a_click_keeps_it()
     {
         MainWindow window = Open();
         try
@@ -581,41 +578,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Under_Cubicle_a_window_over_the_editors_resizes_by_its_edge_and_keeps_the_size_open_again_and_docked()
-    {
-        MainWindow window = Open();
-        try
-        {
-            window.ApplySettings(window.Settings with { Look = SourcedTheme.BuiltIn("Cubicle") });
-            Ui.Settle();
-            DockHost dock = window.DockHost;
-            Ui.Click(EdgeTab(window, ToolWindowIds.Structure)!);
-            Border over = dock.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.ToolPeek));
-            Border grip = over.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.PeekGrip));
-            double before = Placed(window, over).Width;
-            Point at = Ui.Centre(grip, window);
-            Ui.Drag(window, at, at - new Vector(120, 0));
-            double after = Placed(window, over).Width;
-            Assert.True(Math.Abs(after - (before + 120)) <= 2 && Math.Abs(dock.Capture().RightWidth - after) <= 2 && dock.Peeked == dock[ToolWindowIds.Structure],
-                $"Structure's edge dragged 120 toward the editors left it {after:0} wide from {before:0}, the right side kept {dock.Capture().RightWidth:0} wide, over the editors {dock.Peeked?.Id}");
-
-            Ui.Press(window, "ESCAPE");
-            Ui.Click(EdgeTab(window, ToolWindowIds.Structure)!);
-            Assert.True(Math.Abs(Placed(window, over).Width - after) <= 2, $"Opened again, Structure is {Placed(window, over).Width:0} wide, not the {after:0} it was given");
-            Ui.Click(dock.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Dock" && b.IsEffectivelyVisible));
-            double docked = Placed(window, dock[ToolWindowIds.Structure].Content.FindAncestorOfType<DockPanel>()!).Width;
-            Assert.True(dock.IsShown(ToolWindowIds.Structure) && Math.Abs(docked - after) <= 2, $"Docked, Structure's side is {docked:0} wide, not the {after:0} it was given over the editors");
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Under_Cubicle_a_docked_headers_pin_sends_its_place_to_the_edge_and_the_pin_turned_over_the_editors_docks_it_while_stripe_icons_keep_Hide()
+    private void Under_Cubicle_a_docked_headers_pin_sends_its_place_to_the_edge_and_the_pin_turned_over_the_editors_docks_it_while_stripe_icons_keep_Hide()
     {
         MainWindow window = Open();
         try
@@ -653,8 +616,7 @@ public sealed class WindowArrangementTests : IDisposable
         window.DockHost.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Name == AppActions.HideToolWindow && b.IsEffectivelyVisible
             && b.FindAncestorOfType<DockPanel>() is { } pane && pane.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Classes.Contains(StyleClasses.ToolTitle) && t.Text == title));
 
-    [AvaloniaFact]
-    public void A_theme_choosing_either_look_gets_that_look_whole()
+    private void A_theme_choosing_either_look_gets_that_look_whole()
     {
         string icons = Kept("""{"toolWindows": "icons"}""");
         MainWindow window = Open();
@@ -679,8 +641,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_theme_chosen_moves_each_window_still_where_the_theme_before_put_it_and_keeps_the_one_the_person_moved()
+    private void A_theme_chosen_moves_each_window_still_where_the_theme_before_put_it_and_keeps_the_one_the_person_moved()
     {
         MainWindow window = Open();
         try

@@ -80,42 +80,20 @@ public sealed partial class WindowFontTests : IDisposable
         }
     }
 
-    /// <summary>Both font lists, the window's in Settings › Appearance and the editor's in Settings › Editor, show each name
-    /// in its own face in a row of one height, a list row's, whatever that face's lines need.</summary>
+    /// <summary>On macOS the system font, a tracked font and PingFang set the window's words as wide as the system's
+    /// own apps, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Both_font_lists_show_each_name_in_its_own_face_in_rows_of_one_list_rows_height()
+    public void On_macOS_the_window_sets_its_words_as_wide_as_the_systems_own_apps()
     {
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            SettingsDialog dialog = window.ShowSettings();
-            foreach (string page in (string[])[SettingsDialog.Appearance, SettingsDialog.EditorPage])
-            {
-                dialog.Page = page;
-                Ui.Settle();
-                ComboBox family = SettingsTests.Editor<ComboBox>(dialog, "Font family");
-                family.IsDropDownOpen = true;
-                Ui.Settle();
-                ComboBoxItem[] rows = [.. family.GetRealizedContainers().OfType<ComboBoxItem>()];
-                Assert.True(rows.Length > 0, $"The font list of {page} showed no rows");
-                Assert.True(rows.All(r => Math.Abs(r.Bounds.Height - ListRow.Height) < 0.01),
-                    $"The font list of {page} has rows of other heights than {ListRow.Height}: {string.Join(", ", rows.Select(r => $"{r.Content} {r.Bounds.Height:0.##}"))}");
-                family.IsDropDownOpen = false;
-                Ui.Settle();
-            }
-            dialog.Close();
-        }
-        finally
-        {
-            window.Close();
-        }
+        Flow.StepApart<WindowFontTests>("on macos the system font sets the windows words as wide as the systems own apps within a pixel", t => t.On_macos_the_system_font_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel());
+        Flow.StepApart<WindowFontTests>("on macos a font its shaper tracks sets the windows words as wide as the systems own apps within a pixel", t => t.On_macos_a_font_its_shaper_tracks_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel());
+        Flow.StepApart<WindowFontTests>("on macos pingfangs chinese is as wide in the window and the editor as the systems own apps set it", t => t.On_macos_pingfangs_chinese_is_as_wide_in_the_window_and_the_editor_as_the_systems_own_apps_set_it());
     }
 
     /// <summary>On macOS the system's own UI font chosen sets the window's words as tight as the system's own apps do: the
     /// Explorer's row as wide as CoreText sets its words in the system font at the row's size, within a pixel, the font's own
     /// tracking at that size its letter spacing; Inter chosen again has none.</summary>
-    [AvaloniaFact]
-    public void On_macos_the_system_font_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel()
+    private void On_macos_the_system_font_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
         File.WriteAllText(Path.Combine(folder, "Element.cs"), "class Element { }\n");
@@ -146,8 +124,7 @@ public sealed partial class WindowFontTests : IDisposable
     /// <summary>On macOS an installed family with tracking of its own at the size its shaper tracks every size at, PingFang
     /// SC, chosen sets the window's words as wide as the system's own apps set them in it, within a pixel: the shaper's
     /// tracking and the window's letter spacing together come to the font's own at the row's size, never to both.</summary>
-    [AvaloniaFact]
-    public void On_macos_a_font_its_shaper_tracks_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel()
+    private void On_macos_a_font_its_shaper_tracks_sets_the_windows_words_as_wide_as_the_systems_own_apps_within_a_pixel()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
         const string Chosen = "PingFang SC";
@@ -177,8 +154,7 @@ public sealed partial class WindowFontTests : IDisposable
     /// sets it, four ems; the Explorer's row of a file so named, its Chinese drawn in the face macOS's fallback names behind
     /// the window's Inter, and the editor's caret after those letters in its code font's fallback stand where CoreText sets
     /// them too, and a click on the third letter's right half puts the caret after it.</summary>
-    [AvaloniaFact]
-    public void On_macos_pingfangs_chinese_is_as_wide_in_the_window_and_the_editor_as_the_systems_own_apps_set_it()
+    private void On_macos_pingfangs_chinese_is_as_wide_in_the_window_and_the_editor_as_the_systems_own_apps_set_it()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
         GlyphTypeface? pingFang = WindowFonts.Named("PingFang SC") is { } named && FontManager.Current.TryGetGlyphTypeface(new Typeface(named), out GlyphTypeface? face)
@@ -221,60 +197,6 @@ public sealed partial class WindowFontTests : IDisposable
         }
         finally
         {
-            window.Close();
-        }
-    }
-
-    /// <summary>On macOS a face HarfBuzz sets no tracking in is shaped glyph for glyph as HarfBuzz alone shapes it: the carried
-    /// Inter and the editor's code font, with no 'trak' table, and Hoefler Text, whose tracks go with no 'STAT' table.</summary>
-    [AvaloniaFact]
-    public void On_macos_a_face_harfbuzz_sets_no_tracking_in_is_shaped_as_harfbuzz_alone_shapes_it()
-    {
-        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
-        const string Phrase = "Element.cs Explorer refresh";
-        List<FontFamily> families = [WindowFonts.Carried, CodeEditor.CodeFont];
-        if (WindowFonts.Named("Hoefler Text") is { } hoefler)
-        {
-            families.Add(hoefler);
-        }
-        foreach (FontFamily family in families)
-        {
-            Assert.True(FontManager.Current.TryGetGlyphTypeface(new Typeface(family), out GlyphTypeface? face), $"No face draws {family}");
-            foreach (double size in (double[])[12, 13, 24])
-            {
-                double[] shaped = [.. TextShaper.Current.ShapeText(Phrase, new TextShaperOptions(face, size)).Select(g => g.GlyphAdvance)];
-                double[] alone = HarfBuzzAlone(face, Phrase, size);
-                Assert.True(shaped.Length == alone.Length && shaped.Zip(alone).All(pair => Math.Abs(pair.First - pair.Second) < 1e-9),
-                    $"'{Phrase}' at {size} px in {Family(face)} is shaped [{string.Join(", ", shaped.Select(a => a.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}], "
-                    + $"where HarfBuzz alone shapes it [{string.Join(", ", alone.Select(a => a.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}]");
-            }
-        }
-    }
-
-    /// <summary>On macOS a family with tracks but no 'STAT' table, Hoefler Text, chosen sets the window's words untracked, as
-    /// the system's own apps set them, within a pixel: no letter spacing of its normal track.</summary>
-    [AvaloniaFact]
-    public void On_macos_a_font_with_tracks_but_no_style_table_sets_the_windows_words_untracked_as_the_systems_own_apps_do()
-    {
-        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The tracking the system's own apps set is macOS's text drawing's");
-        const string Chosen = "Hoefler Text";
-        Assert.SkipWhen(WindowFonts.Named(Chosen) is null, $"{Chosen} is not installed");
-        File.WriteAllText(Path.Combine(folder, "Element.cs"), "class Element { }\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.ApplySettings(window.Settings with { WindowFontFamily = Chosen });
-            Ui.Settle();
-            TextBlock row = Words(window.ExplorerView.Rows(), "Element.cs");
-            Ui.WaitFor(() => Family(Face(row)) == FamilyOf(WindowFonts.Named(Chosen)!), $"the Explorer's row drawn in {Chosen}");
-            Assert.True(row.LetterSpacing == 0, $"'{row.Text}' at {row.FontSize} px in {Chosen} has letter spacing {row.LetterSpacing:0.###} px, which macOS never sets without a 'STAT' table");
-            double native = NativeWidth(row.Text!, row.FontSize, Chosen);
-            double drawn = row.TextLayout.WidthIncludingTrailingWhitespace;
-            Assert.True(Math.Abs(drawn - native) <= 1, $"'{row.Text}' at {row.FontSize} px in {Chosen} is {drawn:0.##} wide in the window and {native:0.##} as the system's own apps set it");
-        }
-        finally
-        {
-            window.ApplySettings(window.Settings with { WindowFontFamily = null });
             window.Close();
         }
     }

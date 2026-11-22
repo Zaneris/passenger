@@ -22,8 +22,16 @@ public sealed class TitleBarTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Where the title bar is merged its empty space and the space beside the menus' titles move the window, a
+    /// double click maximising it, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void The_toolbar_is_the_title_bar_whose_empty_space_moves_the_window_and_a_double_click_on_it_maximizes_it()
+    public void The_merged_title_bar_moves_the_window_and_keeps_the_menus_clicks()
+    {
+        Flow.StepApart<TitleBarTests>("the toolbar is the title bar whose empty space moves the window and a double click on it maximizes it", t => t.The_toolbar_is_the_title_bar_whose_empty_space_moves_the_window_and_a_double_click_on_it_maximizes_it());
+        Flow.StepApart<TitleBarTests>("the main menus titles on the bar keep their clicks and the space beside them still moves the window", t => t.The_main_menus_titles_on_the_bar_keep_their_clicks_and_the_space_beside_them_still_moves_the_window());
+    }
+
+    private void The_toolbar_is_the_title_bar_whose_empty_space_moves_the_window_and_a_double_click_on_it_maximizes_it()
     {
         MainWindow window = Open();
         Assert.SkipUnless(window.TitleBarMerged, $"This desktop keeps the system's title bar: {TitleBars.NotOnThisDesktop}");
@@ -64,8 +72,7 @@ public sealed class TitleBarTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_main_menus_titles_on_the_bar_keep_their_clicks_and_the_space_beside_them_still_moves_the_window()
+    private void The_main_menus_titles_on_the_bar_keep_their_clicks_and_the_space_beside_them_still_moves_the_window()
     {
         // The menu on the toolbar, as on Windows and Linux, rather than in macOS's own menu bar.
         MainWindow.SystemMenuBar = false;

@@ -23,13 +23,28 @@ public sealed class LinuxInstallTests
     /// <summary>The command's name on the PATH.</summary>
     private const string Command = "passenger-ide";
 
+    /// <summary>install.sh installs a release and refreshes its menu entry, leaves another program's command of its
+    /// name, takes over only a link to a passenger, keeps the release replaced among the updates and leaves the install
+    /// as it was where its last move fails, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
+    [Fact]
+    public async Task A_Linux_install_takes_only_what_is_Passengers_and_an_update_failing_leaves_it_as_it_was()
+    {
+        await Flow.StepApartAsync("an install leaves another programs command of its name and refuses naming it (\"program\")", () => new LinuxInstallTests(), t => t.An_install_leaves_another_programs_command_of_its_name_and_refuses_naming_it("program"));
+        await Flow.StepApartAsync("an install leaves another programs command of its name and refuses naming it (\"folder\")", () => new LinuxInstallTests(), t => t.An_install_leaves_another_programs_command_of_its_name_and_refuses_naming_it("folder"));
+        await Flow.StepApartAsync("an install moves its former passenger link to the new name and leaves phusions passenger as it was (\"ours\")", () => new LinuxInstallTests(), t => t.An_install_moves_its_former_passenger_link_to_the_new_name_and_leaves_phusions_passenger_as_it_was("ours"));
+        await Flow.StepApartAsync("an install moves its former passenger link to the new name and leaves phusions passenger as it was (\"link\")", () => new LinuxInstallTests(), t => t.An_install_moves_its_former_passenger_link_to_the_new_name_and_leaves_phusions_passenger_as_it_was("link"));
+        await Flow.StepApartAsync("an install takes over a link that leads to a passenger", () => new LinuxInstallTests(), t => t.An_install_takes_over_a_link_that_leads_to_a_passenger());
+        await Flow.StepApartAsync("an update whose last move fails leaves the installed passenger as it was", () => new LinuxInstallTests(), t => t.An_update_whose_last_move_fails_leaves_the_installed_passenger_as_it_was());
+        await Flow.StepApartAsync("an installed install sh installs the release from names and run again refreshes the menu entry", () => new LinuxInstallTests(), t => t.An_installed_install_sh_installs_the_release_from_names_and_run_again_refreshes_the_menu_entry());
+        await Flow.StepApartAsync("an install keeping the release replaced leaves it in the updates folder and nothing beside the install", () => new LinuxInstallTests(), t => t.An_install_keeping_the_release_replaced_leaves_it_in_the_updates_folder_and_nothing_beside_the_install());
+        await Flow.StepApartAsync("an install finding fonts fontconfig lists not refreshes its cache or says to (true)", () => new LinuxInstallTests(), t => t.An_install_finding_fonts_fontconfig_lists_not_refreshes_its_cache_or_says_to(true));
+        await Flow.StepApartAsync("an install finding fonts fontconfig lists not refreshes its cache or says to (false)", () => new LinuxInstallTests(), t => t.An_install_finding_fonts_fontconfig_lists_not_refreshes_its_cache_or_says_to(false));
+    }
+
     /// <summary>Another program of the command's name in the bin folder, a link to one, or a folder, is left as it was,
     /// and the install stops naming it before it has installed anything.</summary>
-    [Theory]
-    [InlineData("program")]
-    [InlineData("link")]
-    [InlineData("folder")]
-    public async Task An_install_leaves_another_programs_command_of_its_name_and_refuses_naming_it(string what)
+    private async Task An_install_leaves_another_programs_command_of_its_name_and_refuses_naming_it(string what)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -67,11 +82,7 @@ public sealed class LinuxInstallTests
     /// <summary>The command's former name, <c>passenger</c>: an earlier install's link of it, leading to the install, moves
     /// to <c>passenger-ide</c> as the install is updated, and an uninstall takes either away; Phusion Passenger's own
     /// <c>passenger</c>, a program or a link to one, is left as it was, the install going ahead beside it.</summary>
-    [Theory]
-    [InlineData("ours")]
-    [InlineData("program")]
-    [InlineData("link")]
-    public async Task An_install_moves_its_former_passenger_link_to_the_new_name_and_leaves_phusions_passenger_as_it_was(string what)
+    private async Task An_install_moves_its_former_passenger_link_to_the_new_name_and_leaves_phusions_passenger_as_it_was(string what)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -132,8 +143,7 @@ public sealed class LinuxInstallTests
 
     /// <summary>A link at the command's path leading to another Passenger (an unpacked folder linked by hand), or to this
     /// install's launcher whose folder was deleted, is Passenger's to replace: the install goes ahead and links its own.</summary>
-    [Fact]
-    public async Task An_install_takes_over_a_link_that_leads_to_a_passenger()
+    private async Task An_install_takes_over_a_link_that_leads_to_a_passenger()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -164,8 +174,7 @@ public sealed class LinuxInstallTests
     /// installed release where it was, every file as it was and nothing beside it; the same update run again then lands.
     /// The failure is a <c>mv</c> on the PATH refusing the new folder: a parent made read-only would refuse the first move
     /// as well, before anything was set aside.</summary>
-    [Fact]
-    public async Task An_update_whose_last_move_fails_leaves_the_installed_passenger_as_it_was()
+    private async Task An_update_whose_last_move_fails_leaves_the_installed_passenger_as_it_was()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -204,8 +213,7 @@ public sealed class LinuxInstallTests
 
     /// <summary>The installed install.sh given another unpacked release with <c>--from</c> installs that one in its place,
     /// and run again with nothing given refreshes the menu entry where it is, leaving the install as it is.</summary>
-    [Fact]
-    public async Task An_installed_install_sh_installs_the_release_from_names_and_run_again_refreshes_the_menu_entry()
+    private async Task An_installed_install_sh_installs_the_release_from_names_and_run_again_refreshes_the_menu_entry()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -241,8 +249,7 @@ public sealed class LinuxInstallTests
     /// <summary>The installed install.sh given an update's unpacked release with <c>--keep-replaced</c>, as Passenger's
     /// update of an install for everyone runs it, installs that release and keeps the one it replaced beside the release's
     /// folder, in the update's own folder, for the new one's start to remove: nothing is left beside the install.</summary>
-    [Fact]
-    public async Task An_install_keeping_the_release_replaced_leaves_it_in_the_updates_folder_and_nothing_beside_the_install()
+    private async Task An_install_keeping_the_release_replaced_leaves_it_in_the_updates_folder_and_nothing_beside_the_install()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -273,10 +280,7 @@ public sealed class LinuxInstallTests
     /// <c>fc-cache -f</c> and says so, never that no font is installed; where fontconfig still lists none after it, the
     /// install says to run <c>fc-cache -f</c>. Stand-ins of fontconfig's tools list the font only once the cache is
     /// refreshed, or never.</summary>
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task An_install_finding_fonts_fontconfig_lists_not_refreshes_its_cache_or_says_to(bool refreshes)
+    private async Task An_install_finding_fonts_fontconfig_lists_not_refreshes_its_cache_or_says_to(bool refreshes)
     {
         if (OperatingSystem.IsWindows())
         {

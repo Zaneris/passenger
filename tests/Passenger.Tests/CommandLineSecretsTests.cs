@@ -14,9 +14,30 @@ public sealed class CommandLineSecretsTests
 {
     private const string Masked = ContainerSecrets.Masked;
 
-    /// <summary>The SDK's registry password goes by a word of its own, its name beside it no secret.</summary>
+    /// <summary>A secret on a command line, after a flag naming one, in a variable or marked sensitive, is masked every
+    /// way the command line is shown, in Passenger's echo and a program's, its other words kept as they were, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [Fact]
-    public void The_SDKs_registry_password_is_a_secret_by_its_name()
+    public void A_command_lines_secrets_are_masked_every_way_one_is_shown_and_its_other_words_kept()
+    {
+        Flow.StepApart<CommandLineSecretsTests>("the SDKs registry password is a secret by its name", t => t.The_SDKs_registry_password_is_a_secret_by_its_name());
+        Flow.StepApart<CommandLineSecretsTests>("a running programs secret given as the word after its flag is masked and its other words kept", t => t.A_running_programs_secret_given_as_the_word_after_its_flag_is_masked_and_its_other_words_kept());
+        Flow.StepApart<CommandLineSecretsTests>("the word after a flag naming a secret is masked every way a command line is shown", t => t.The_word_after_a_flag_naming_a_secret_is_masked_every_way_a_command_line_is_shown());
+        Flow.StepApart<CommandLineSecretsTests>("the word after a flag that takes no secret or is itself a flag is kept every way a command line is shown", t => t.The_word_after_a_flag_that_takes_no_secret_or_is_itself_a_flag_is_kept_every_way_a_command_line_is_shown());
+        Flow.StepApart<CommandLineSecretsTests>("a variable naming a secrets file name or address shows it and a secrets own is masked", t => t.A_variable_naming_a_secrets_file_name_or_address_shows_it_and_a_secrets_own_is_masked());
+        Flow.StepApart<CommandLineSecretsTests>("a word after a flag naming no secret or of one letter comes back as it was", t => t.A_word_after_a_flag_naming_no_secret_or_of_one_letter_comes_back_as_it_was());
+        Flow.StepApart<CommandLineSecretsTests>("a command passenger starts has the word after a secrets flag masked in its echo", t => t.A_command_passenger_starts_has_the_word_after_a_secrets_flag_masked_in_its_echo());
+        Flow.StepApart<CommandLineSecretsTests>("a command a program echoes has the word after a secrets flag masked", t => t.A_command_a_program_echoes_has_the_word_after_a_secrets_flag_masked());
+        Flow.StepApart<CommandLineSecretsTests>("an argument marked sensitive is masked whatever is before it", t => t.An_argument_marked_sensitive_is_masked_whatever_is_before_it());
+        Flow.StepApart<CommandLineSecretsTests>("an argument marked sensitive is masked from then on wherever a command line holds it", t => t.An_argument_marked_sensitive_is_masked_from_then_on_wherever_a_command_line_holds_it());
+        Flow.StepApart<CommandLineSecretsTests>("Inspects command lines are masked as a programs arguments are", t => t.Inspects_command_lines_are_masked_as_a_programs_arguments_are());
+        Flow.StepApart<CommandLineSecretsTests>("a command lines secrets are masked word by word and its other words kept", t => t.A_command_lines_secrets_are_masked_word_by_word_and_its_other_words_kept());
+        Flow.StepApart<CommandLineSecretsTests>("a quoted words secret is masked whole and the word after it kept", t => t.A_quoted_words_secret_is_masked_whole_and_the_word_after_it_kept());
+        Flow.StepApart<CommandLineSecretsTests>("a command line with no secret comes back as it was", t => t.A_command_line_with_no_secret_comes_back_as_it_was());
+    }
+
+    /// <summary>The SDK's registry password goes by a word of its own, its name beside it no secret.</summary>
+    private void The_SDKs_registry_password_is_a_secret_by_its_name()
     {
         foreach ((string user, string password) in RegistryVariables.PushLogins)
         {
@@ -28,8 +49,7 @@ public sealed class CommandLineSecretsTests
     /// <summary>A secret given as the word after its flag (<c>--password hunter2</c>, <c>--api-key sk-live-123</c>, PuTTY's
     /// <c>-pw</c>) is masked where it stands, in double quotes still when it was, its spacing kept; a flag that says it takes
     /// no value leaves the next flag as it is, which is read in turn.</summary>
-    [Fact]
-    public void A_running_programs_secret_given_as_the_word_after_its_flag_is_masked_and_its_other_words_kept()
+    private void A_running_programs_secret_given_as_the_word_after_its_flag_is_masked_and_its_other_words_kept()
     {
         Func<string, string> shown = ContainerSecrets.CommandLines();
         Assert.Equal(
@@ -44,8 +64,7 @@ public sealed class CommandLineSecretsTests
     /// <summary>The word after a flag naming a secret is masked in a running program's line, a command Passenger starts, what a
     /// program says and an argument list alike, the words after it kept: a password, an API key, a token, a client secret,
     /// PuTTY's <c>-pw</c>, an AppRole's secret id, and a value that begins with a dash.</summary>
-    [Fact]
-    public void The_word_after_a_flag_naming_a_secret_is_masked_every_way_a_command_line_is_shown()
+    private void The_word_after_a_flag_naming_a_secret_is_masked_every_way_a_command_line_is_shown()
     {
         string[][] secrets =
         [
@@ -64,8 +83,7 @@ public sealed class CommandLineSecretsTests
     /// itself a flag (the next flag after a switch, psql's <c>--password</c> before <c>-h</c>), one after a flag whose name says
     /// what its value is (a file, path, folder, name, address, id, type or kind), a key into data, and a switch saying it
     /// takes no secret (<c>use-</c>, <c>ask-</c>, <c>store-</c>, <c>no-</c>, <c>-stdin</c>); so too after an '=' (<c>--key-file=</c>).</summary>
-    [Fact]
-    public void The_word_after_a_flag_that_takes_no_secret_or_is_itself_a_flag_is_kept_every_way_a_command_line_is_shown()
+    private void The_word_after_a_flag_that_takes_no_secret_or_is_itself_a_flag_is_kept_every_way_a_command_line_is_shown()
     {
         string[][] kept =
         [
@@ -88,8 +106,7 @@ public sealed class CommandLineSecretsTests
 
     /// <summary>A variable whose name says its value is a secret's file, name or address shows it, as a key into data does, and
     /// one holding a secret is masked still: a connection string's whatever its connection is named, and an AppRole's secret id.</summary>
-    [Fact]
-    public void A_variable_naming_a_secrets_file_name_or_address_shows_it_and_a_secrets_own_is_masked()
+    private void A_variable_naming_a_secrets_file_name_or_address_shows_it_and_a_secrets_own_is_masked()
     {
         Assert.Equal("/run/secrets/db", ContainerSecrets.Shown("POSTGRES_PASSWORD_FILE", "/run/secrets/db"));
         Assert.Equal("DbPassword", ContainerSecrets.Shown("KeyVault__SecretName", "DbPassword"));
@@ -120,8 +137,7 @@ public sealed class CommandLineSecretsTests
     /// <summary>A word after a flag that names no secret stays as the system gave it, and so does one after a flag of one
     /// letter, which names nothing the rule can read: <c>-p</c> is a port to psql and ssh, a Compose project to docker
     /// compose and a password only to some.</summary>
-    [Fact]
-    public void A_word_after_a_flag_naming_no_secret_or_of_one_letter_comes_back_as_it_was()
+    private void A_word_after_a_flag_naming_no_secret_or_of_one_letter_comes_back_as_it_was()
     {
         string line = "dotnet run --port 5000 --project App.csproj --keymap vs --monkey business -p 5432 -P -k value";
         Assert.Same(line, ContainerSecrets.CommandLines()(line));
@@ -131,8 +147,7 @@ public sealed class CommandLineSecretsTests
 
     /// <summary>A command Passenger starts, as its log and consoles echo it (<see cref="ChildProcesses.Shown"/>), has the word
     /// after a flag naming a secret masked whatever it holds, and the rest as it runs; an empty one shows as it is.</summary>
-    [Fact]
-    public void A_command_passenger_starts_has_the_word_after_a_secrets_flag_masked_in_its_echo()
+    private void A_command_passenger_starts_has_the_word_after_a_secrets_flag_masked_in_its_echo()
     {
         Assert.Equal($"docker login --username ada --password {Masked} registry.example",
             ContainerSecrets.CommandLine(ChildProcesses.Command("docker", ["login", "--username", "ada", "--password", "hunter2", "registry.example"])));
@@ -145,8 +160,7 @@ public sealed class CommandLineSecretsTests
 
     /// <summary>A command a program echoes (BuildKit's word that a <c>RUN</c> failed, an Aspire resource's arguments) has the
     /// word after a flag naming a secret masked, the quote after it kept, and the rest of the line as it was.</summary>
-    [Fact]
-    public void A_command_a_program_echoes_has_the_word_after_a_secrets_flag_masked()
+    private void A_command_a_program_echoes_has_the_word_after_a_secrets_flag_masked()
     {
         Assert.Equal(
             $"failed to solve: process \"/bin/sh -c dotnet nuget add source https://feed.example/v3/index.json --username ada --password {Masked}\" did not complete successfully: exit code: 1",
@@ -160,8 +174,7 @@ public sealed class CommandLineSecretsTests
     /// <summary>An argument its sender marks sensitive (an Aspire resource's) is masked whatever is before it, the word after
     /// a flag naming a secret still masked and the rest shown; an empty one shows as it is, and marks that are not one an
     /// argument mask every argument.</summary>
-    [Fact]
-    public void An_argument_marked_sensitive_is_masked_whatever_is_before_it()
+    private void An_argument_marked_sensitive_is_masked_whatever_is_before_it()
     {
         Assert.Equal(["run", Masked, "--port", "5000", "--token", Masked, ""],
             ContainerSecrets.Arguments(["run", "hunter2", "--port", "5000", "--token", "sk-live-123", ""], [false, true, false, false, false, false, true]));
@@ -171,8 +184,7 @@ public sealed class CommandLineSecretsTests
     /// <summary>An argument its sender marks sensitive (an Aspire resource's) is a known secret from then on: the line of the
     /// program given it, as the system lists it, as the log and a console echo its start and as a program says it, shows it
     /// as the dots whatever is before it; marks that are not one an argument make none known.</summary>
-    [Fact]
-    public void An_argument_marked_sensitive_is_masked_from_then_on_wherever_a_command_line_holds_it()
+    private void An_argument_marked_sensitive_is_masked_from_then_on_wherever_a_command_line_holds_it()
     {
         const string Marked = "marked-positional-7f3a";
         const string Unmatched = "unmatched-positional-7f3a";
@@ -189,8 +201,7 @@ public sealed class CommandLineSecretsTests
     /// <summary>Inspect's command lines are masked as a program's arguments are, an array read on from the one it continues
     /// (a container's Args from its Path, a Config's Cmd from its Entrypoint) and a health check's Test on its own, and a
     /// copy written so comes back as it was.</summary>
-    [Fact]
-    public void Inspects_command_lines_are_masked_as_a_programs_arguments_are()
+    private void Inspects_command_lines_are_masked_as_a_programs_arguments_are()
     {
         JsonNode said = JsonNode.Parse("""
             [{ "Path": "/app/shop", "Args": ["--password", "hunter2", "--port", "5000"],
@@ -213,8 +224,7 @@ public sealed class CommandLineSecretsTests
 
     /// <summary>A password, an API key, a connection string's password and a URL's are masked where they stand in the line,
     /// and every other word, the program's path and an option after a secret among them, shows as the system gave it.</summary>
-    [Fact]
-    public void A_command_lines_secrets_are_masked_word_by_word_and_its_other_words_kept()
+    private void A_command_lines_secrets_are_masked_word_by_word_and_its_other_words_kept()
     {
         Func<string, string> shown = ContainerSecrets.CommandLines();
         Assert.Equal(
@@ -227,8 +237,7 @@ public sealed class CommandLineSecretsTests
 
     /// <summary>A word in double quotes, as the system quotes one holding a space, is masked inside its quotes, and one
     /// quoted within (Windows' <c>--password="two words"</c>) as a whole value; neither spills into the word after it.</summary>
-    [Fact]
-    public void A_quoted_words_secret_is_masked_whole_and_the_word_after_it_kept()
+    private void A_quoted_words_secret_is_masked_whole_and_the_word_after_it_kept()
     {
         Func<string, string> shown = ContainerSecrets.CommandLines();
         Assert.Equal($"\"C:\\Program Files\\Shop\\Shop.exe\" --Password={Masked} --name \"two words\"",
@@ -238,8 +247,7 @@ public sealed class CommandLineSecretsTests
 
     /// <summary>A line with nothing to mask comes back as it was, the same string, its spacing and quotes as the system gave
     /// them.</summary>
-    [Fact]
-    public void A_command_line_with_no_secret_comes_back_as_it_was()
+    private void A_command_line_with_no_secret_comes_back_as_it_was()
     {
         string line = "\"C:\\Program Files\\dotnet\\dotnet.exe\"  exec   Shop.dll --urls http://localhost:5000 --port=5000 \"\\\"quoted\\\" word\"";
         Assert.Same(line, ContainerSecrets.CommandLines()(line));

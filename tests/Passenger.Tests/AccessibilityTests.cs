@@ -37,8 +37,34 @@ public sealed class AccessibilityTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A question, what the window tells, the colour picker, the toolbar's icons and the regions the keys go
+    /// round are each named and heard as a screen reader asks, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void A_question_is_a_window_by_its_title_saying_its_words_and_pressing_Cancel_by_name_answers_it()
+    public void What_the_window_tells_and_asks_reaches_a_screen_reader_by_name()
+    {
+        Flow.StepApart<AccessibilityTests>("a question is a window by its title saying its words and pressing Cancel by name answers it", t => t.A_question_is_a_window_by_its_title_saying_its_words_and_pressing_Cancel_by_name_answers_it());
+        Flow.StepApart<AccessibilityTests>("what the window tells is heard once a refusal at once and a progress tick never", t => t.What_the_window_tells_is_heard_once_a_refusal_at_once_and_a_progress_tick_never());
+        Flow.StepApart<AccessibilityTests>("the colour picker a swatch opens is a group called colour its hex a named field", t => t.The_colour_picker_a_swatch_opens_is_a_group_called_colour_its_hex_a_named_field());
+        Flow.StepApart<AccessibilityTests>("the toolbar and stripes icons are named by what they do their keys left in the tip", t => t.The_toolbar_and_stripes_icons_are_named_by_what_they_do_their_keys_left_in_the_tip());
+        Flow.StepApart<AccessibilityTests>("Next and Previous Region take the keys round the window saying each region in every keymap", t => t.Next_and_Previous_Region_take_the_keys_round_the_window_saying_each_region_in_every_keymap());
+        Flow.StepApart<AccessibilityTests>("Under titled tabs an edge of hidden tool windows is a region of tabs named as buttons Tab goes along and Enter opens over the editors saying so", t => t.Under_titled_tabs_an_edge_of_hidden_tool_windows_is_a_region_of_tabs_named_as_buttons_Tab_goes_along_and_Enter_opens_over_the_editors_saying_so());
+    }
+
+    /// <summary>A tree's rows say their words, level, place and state, telling a reader as they change, and every field
+    /// of a form or dialog is named by its label, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Trees_and_forms_name_each_row_and_field_for_a_screen_reader()
+    {
+        Flow.StepApart<AccessibilityTests>("an Explorer row is named by its words never by its items type", t => t.An_Explorer_row_is_named_by_its_words_never_by_its_items_type());
+        Flow.StepApart<AccessibilityTests>("a trees row says its level its place and whether it is open telling a reader as that changes", t => t.A_trees_row_says_its_level_its_place_and_whether_it_is_open_telling_a_reader_as_that_changes());
+        Flow.StepApart<AccessibilityTests>("a trees row reused from a folder for a file answers as a file and tells a reader nothing it cannot ask", t => t.A_trees_row_reused_from_a_folder_for_a_file_answers_as_a_file_and_tells_a_reader_nothing_it_cannot_ask());
+        Flow.StepApart<AccessibilityTests>("a settings field is named by its label and the project button by the project", t => t.A_settings_field_is_named_by_its_label_and_the_project_button_by_the_project());
+        Flow.StepApart<AccessibilityTests>("every field of a dialogs form is named by the label beside it", t => t.Every_field_of_a_dialogs_form_is_named_by_the_label_beside_it());
+        Flow.StepApart<AccessibilityTests>("every field of a refactorings dialog is named by the label beside it", t => t.Every_field_of_a_refactorings_dialog_is_named_by_the_label_beside_it());
+    }
+
+    private void A_question_is_a_window_by_its_title_saying_its_words_and_pressing_Cancel_by_name_answers_it()
     {
         string notes = Path.Combine(folder, "notes.txt");
         File.WriteAllText(notes, "kept\n");
@@ -76,8 +102,7 @@ public sealed class AccessibilityTests : IDisposable
     /// and what is told is heard through the window's announcing region, whose name change is the live-region event each
     /// system's bridge passes on: a refusal at once, a work's stage and its end once each, a progress tick never, and a
     /// window that comes without the keys by its title and words.</summary>
-    [AvaloniaFact]
-    public void What_the_window_tells_is_heard_once_a_refusal_at_once_and_a_progress_tick_never()
+    private void What_the_window_tells_is_heard_once_a_refusal_at_once_and_a_progress_tick_never()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -150,8 +175,7 @@ public sealed class AccessibilityTests : IDisposable
 
     /// <summary>The colour picker a swatch opens is met as a group called Colour, placed at its line as every popup there
     /// is, its hex a field named so.</summary>
-    [AvaloniaFact]
-    public void The_colour_picker_a_swatch_opens_is_a_group_called_colour_its_hex_a_named_field()
+    private void The_colour_picker_a_swatch_opens_is_a_group_called_colour_its_hex_a_named_field()
     {
         string palette = TestFolders.Write(folder, "Palette.cs", "class Palette\n{\n    static object Brand = Avalonia.Media.Color.FromRgb(0x33, 0x66, 0x99);\n}\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -176,8 +200,7 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void The_toolbar_and_stripes_icons_are_named_by_what_they_do_their_keys_left_in_the_tip()
+    private void The_toolbar_and_stripes_icons_are_named_by_what_they_do_their_keys_left_in_the_tip()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -197,8 +220,7 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_Explorer_row_is_named_by_its_words_never_by_its_items_type()
+    private void An_Explorer_row_is_named_by_its_words_never_by_its_items_type()
     {
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "kept\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -218,8 +240,7 @@ public sealed class AccessibilityTests : IDisposable
     /// place among the rows beside it where the system's own bridge does not say it (all but Linux's AT-SPI, which reads the
     /// place the row gives the system); open or closed where rows go under it, neither where none do, telling a reader as
     /// it opens by its key and as the reader itself closes and opens it, its rows then said one level deeper.</summary>
-    [AvaloniaFact]
-    public void A_trees_row_says_its_level_its_place_and_whether_it_is_open_telling_a_reader_as_that_changes()
+    private void A_trees_row_says_its_level_its_place_and_whether_it_is_open_telling_a_reader_as_that_changes()
     {
         Directory.CreateDirectory(Path.Combine(folder, "Models"));
         foreach (string name in (string[])["Order.cs", "Price.cs", "Stock.cs"])
@@ -283,8 +304,7 @@ public sealed class AccessibilityTests : IDisposable
     /// back again: on macOS, through the elements Avalonia's bridge makes for VoiceOver, it gives no AXExpanded while it is
     /// a file's, and no question or change of the bridge's throws through the system's call, which ends Passenger; on every
     /// system, each change of a row's open state comes while the row gives the pattern a reader asks it by.</summary>
-    [AvaloniaFact]
-    public void A_trees_row_reused_from_a_folder_for_a_file_answers_as_a_file_and_tells_a_reader_nothing_it_cannot_ask()
+    private void A_trees_row_reused_from_a_folder_for_a_file_answers_as_a_file_and_tells_a_reader_nothing_it_cannot_ask()
     {
         Directory.CreateDirectory(Path.Combine(folder, "Parts", "Inner"));
         File.WriteAllText(Path.Combine(folder, "Parts", "Inner", "Gear.cs"), "// Gear\n");
@@ -398,8 +418,7 @@ public sealed class AccessibilityTests : IDisposable
     /// <summary>Next Region and Previous Region take the keys round the window's regions in one order, by their own keys in
     /// every keymap: each region told as it is entered, the keys landing inside it on something shown with its focus drawn
     /// (the ring, or a text field's edge), and round again to where they began.</summary>
-    [AvaloniaFact]
-    public void Next_and_Previous_Region_take_the_keys_round_the_window_saying_each_region_in_every_keymap()
+    private void Next_and_Previous_Region_take_the_keys_round_the_window_saying_each_region_in_every_keymap()
     {
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\ntwo\n");
         TestGit.Init(folder);
@@ -483,8 +502,7 @@ public sealed class AccessibilityTests : IDisposable
     private static bool Ringed(Control focused) => AdornerLayer.GetAdornerLayer(focused) is { } layer
         && layer.Children.OfType<FocusRing>().Any(r => r.IsVisible && AdornerLayer.GetAdornedElement(r) == focused);
 
-    [AvaloniaFact]
-    public void Under_titled_tabs_an_edge_of_hidden_tool_windows_is_a_region_of_tabs_named_as_buttons_Tab_goes_along_and_Enter_opens_over_the_editors_saying_so()
+    private void Under_titled_tabs_an_edge_of_hidden_tool_windows_is_a_region_of_tabs_named_as_buttons_Tab_goes_along_and_Enter_opens_over_the_editors_saying_so()
     {
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\ntwo\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -531,8 +549,7 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_settings_field_is_named_by_its_label_and_the_project_button_by_the_project()
+    private void A_settings_field_is_named_by_its_label_and_the_project_button_by_the_project()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -557,19 +574,9 @@ public sealed class AccessibilityTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_forms_field_is_named_by_its_rows_label()
-    {
-        TextBox field = new();
-        _ = FormRows.Of("Target framework", field);
-        string name = ControlAutomationPeer.CreatePeerForElement(field).GetName();
-        Assert.True(name == "Target framework", $"A form's field is named \"{name}\", not by its label");
-    }
-
     /// <summary>The dialogs that ask for words, a choice or a box checked, as a screen reader meets each: every field named
     /// by the label beside it, so someone who cannot see the label still hears what the field is for.</summary>
-    [AvaloniaFact]
-    public void Every_field_of_a_dialogs_form_is_named_by_the_label_beside_it()
+    private void Every_field_of_a_dialogs_form_is_named_by_the_label_beside_it()
     {
         ConfigFile config = new(Path.Combine(folder, "nuget.config"), ConfigPlace.Folder, [], [], false, null, null, null);
         Named(new FeedDialog(config, null), "Name", "URL", "User", "Password", "Enabled", "Allow insecure connections");
@@ -585,8 +592,7 @@ public sealed class AccessibilityTests : IDisposable
 
     /// <summary>The refactorings that ask their options in a dialog, as a screen reader meets each: every field named by the
     /// label beside it, as every other form's is.</summary>
-    [AvaloniaFact]
-    public void Every_field_of_a_refactorings_dialog_is_named_by_the_label_beside_it()
+    private void Every_field_of_a_refactorings_dialog_is_named_by_the_label_beside_it()
     {
         Member name = new("P:Shop.Cart.Name", "Name: string", "property");
         Member total = new("M:Shop.Cart.Total", "Total(): int", "method");

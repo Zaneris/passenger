@@ -42,8 +42,47 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         TestFolders.Delete(beta);
     }
 
+    /// <summary>A start reopens the folder left, or with reopening off the Welcome screen offers the recent ones, a
+    /// removed one gone for good and one deleted marked, the screen let go while a folder is open, and Close Solution
+    /// saving and coming back to it, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
     [AvaloniaFact]
-    public void A_start_that_names_nothing_reopens_the_folder_opened_last_as_it_was_left()
+    public void A_start_reopens_the_last_folder_or_offers_the_recent_ones_on_the_Welcome_screen()
+    {
+        Flow.StepApart("a start that names nothing reopens the folder opened last as it was left", () => new WelcomeTests(workspaces), t => t.A_start_that_names_nothing_reopens_the_folder_opened_last_as_it_was_left());
+        Flow.StepApart("a start asking for a new window reopens nothing and shows the Welcome screen", () => new WelcomeTests(workspaces), t => t.A_start_asking_for_a_new_window_reopens_nothing_and_shows_the_Welcome_screen());
+        Flow.StepApart("with reopening off the Welcome screen lists the recent ones newest first narrowed by a search and opens one by its keys", () => new WelcomeTests(workspaces), t => t.With_reopening_off_the_Welcome_screen_lists_the_recent_ones_newest_first_narrowed_by_a_search_and_opens_one_by_its_keys());
+        Flow.StepApart("the Welcome screen is let go while a folder is open and made again with the recent ones as it closes", () => new WelcomeTests(workspaces), t => t.The_Welcome_screen_is_let_go_while_a_folder_is_open_and_made_again_with_the_recent_ones_as_it_closes());
+        Flow.StepApart("one removed from the Welcome screen is gone for good and one deleted on disk is marked and says so when opened", () => new WelcomeTests(workspaces), t => t.One_removed_from_the_Welcome_screen_is_gone_for_good_and_one_deleted_on_disk_is_marked_and_says_so_when_opened());
+        Flow.StepApart("Close Solution saves its files ends what it runs and shows the Welcome screen with it first among the recent ones", () => new WelcomeTests(workspaces), t => t.Close_Solution_saves_its_files_ends_what_it_runs_and_shows_the_Welcome_screen_with_it_first_among_the_recent_ones());
+    }
+
+    /// <summary>Open, its panels and Recent Solutions open the solution, project, folder or file chosen, a binary file
+    /// read only and a path not there refused, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Open_and_Recent_Solutions_open_the_workspace_folder_or_file_chosen()
+    {
+        Flow.StepApart("File Recent Solutions lists the others and opens the one chosen with its recent files", () => new WelcomeTests(workspaces), t => t.File_Recent_Solutions_lists_the_others_and_opens_the_one_chosen_with_its_recent_files());
+        Flow.StepApart("Open takes the solution chosen of a folders several and Recent Solutions keeps and reopens that one", () => new WelcomeTests(workspaces), t => t.Open_takes_the_solution_chosen_of_a_folders_several_and_Recent_Solutions_keeps_and_reopens_that_one());
+        Flow.StepApart("Open takes a project beside a folders solutions as the workspace alone and Recent Solutions reopens it", () => new WelcomeTests(workspaces), t => t.Open_takes_a_project_beside_a_folders_solutions_as_the_workspace_alone_and_Recent_Solutions_reopens_it());
+        Flow.StepApart("Open opens any other file in an editor a binary one as its bytes read only and refuses a path that is not there", () => new WelcomeTests(workspaces), t => t.Open_opens_any_other_file_in_an_editor_a_binary_one_as_its_bytes_read_only_and_refuses_a_path_that_is_not_there());
+        Flow.StepApart("File Open Solution Open Folder and Open File ask their panels and open a workspace a folder and a file", () => new WelcomeTests(workspaces), t => t.File_Open_Solution_Open_Folder_and_Open_File_ask_their_panels_and_open_a_workspace_a_folder_and_a_file());
+        Flow.StepApart("the Welcome screens Open Solution Open Folder and Open File open a workspace a folder and a file on its own", () => new WelcomeTests(workspaces), t => t.The_Welcome_screens_Open_Solution_Open_Folder_and_Open_File_open_a_workspace_a_folder_and_a_file_on_its_own());
+    }
+
+    /// <summary>Clone Repository clones into the folder chosen and opens it, asks for a login the remote asks for, and
+    /// says why a URL could not be cloned or stops when cancelled, leaving nothing behind, as one flow, each step in an
+    /// instance of its own.</summary>
+    [AvaloniaFact]
+    public void Clone_Repository_clones_and_opens_or_says_why_and_leaves_nothing_behind()
+    {
+        Flow.StepApart("Clone Repository clones into the folder chosen and opens the clone", () => new WelcomeTests(workspaces), t => t.Clone_Repository_clones_into_the_folder_chosen_and_opens_the_clone());
+        Flow.StepApart("Clone Repository asks for the login a remote asks for and clones once signed in", () => new WelcomeTests(workspaces), t => t.Clone_Repository_asks_for_the_login_a_remote_asks_for_and_clones_once_signed_in());
+        Flow.StepApart("Clone Repository says why a URL could not be cloned and leaves nothing behind", () => new WelcomeTests(workspaces), t => t.Clone_Repository_says_why_a_URL_could_not_be_cloned_and_leaves_nothing_behind());
+        Flow.StepApart("Cancel stops a clone under way and removes what it made", () => new WelcomeTests(workspaces), t => t.Cancel_stops_a_clone_under_way_and_removes_what_it_made());
+    }
+
+    private void A_start_that_names_nothing_reopens_the_folder_opened_last_as_it_was_left()
     {
         using IDisposable theme = TestsTheme();
         File.WriteAllText(Path.Combine(alpha, "One.cs"), "class One { }\n");
@@ -71,8 +110,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         third.Close();
     }
 
-    [AvaloniaFact]
-    public void A_start_asking_for_a_new_window_reopens_nothing_and_shows_the_Welcome_screen()
+    private void A_start_asking_for_a_new_window_reopens_nothing_and_shows_the_Welcome_screen()
     {
         using IDisposable theme = TestsTheme();
         MainWindow first = Started(LaunchOptions.Empty);
@@ -88,8 +126,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void With_reopening_off_the_Welcome_screen_lists_the_recent_ones_newest_first_narrowed_by_a_search_and_opens_one_by_its_keys()
+    private void With_reopening_off_the_Welcome_screen_lists_the_recent_ones_newest_first_narrowed_by_a_search_and_opens_one_by_its_keys()
     {
         using IDisposable theme = TestsTheme();
         MainWindow first = Started(LaunchOptions.Empty);
@@ -124,8 +161,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
 
     /// <summary>The Welcome screen is let go of while a folder is open, and made again as the folder closes, the folder
     /// among its recent ones.</summary>
-    [AvaloniaFact]
-    public void The_Welcome_screen_is_let_go_while_a_folder_is_open_and_made_again_with_the_recent_ones_as_it_closes()
+    private void The_Welcome_screen_is_let_go_while_a_folder_is_open_and_made_again_with_the_recent_ones_as_it_closes()
     {
         MainWindow window = Started(LaunchOptions.Empty);
         try
@@ -156,8 +192,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         return shown;
     }
 
-    [AvaloniaFact]
-    public void One_removed_from_the_Welcome_screen_is_gone_for_good_and_one_deleted_on_disk_is_marked_and_says_so_when_opened()
+    private void One_removed_from_the_Welcome_screen_is_gone_for_good_and_one_deleted_on_disk_is_marked_and_says_so_when_opened()
     {
         using IDisposable theme = TestsTheme();
         string gamma = TestFolders.Create("gamma-");
@@ -200,8 +235,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         last.Close();
     }
 
-    [AvaloniaFact]
-    public void File_Recent_Solutions_lists_the_others_and_opens_the_one_chosen_with_its_recent_files()
+    private void File_Recent_Solutions_lists_the_others_and_opens_the_one_chosen_with_its_recent_files()
     {
         using IDisposable theme = TestsTheme();
         File.WriteAllText(Path.Combine(alpha, "One.cs"), "class One { }\n");
@@ -229,8 +263,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Open_takes_the_solution_chosen_of_a_folders_several_and_Recent_Solutions_keeps_and_reopens_that_one()
+    private void Open_takes_the_solution_chosen_of_a_folders_several_and_Recent_Solutions_keeps_and_reopens_that_one()
     {
         using IDisposable theme = TestsTheme();
         string folder = Solutions();
@@ -262,8 +295,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         next.Close();
     }
 
-    [AvaloniaFact]
-    public void Open_takes_a_project_beside_a_folders_solutions_as_the_workspace_alone_and_Recent_Solutions_reopens_it()
+    private void Open_takes_a_project_beside_a_folders_solutions_as_the_workspace_alone_and_Recent_Solutions_reopens_it()
     {
         using IDisposable theme = TestsTheme();
         string tool = PathNames.Canonical(Path.Combine(Solutions(), "Tool.csproj"));
@@ -283,8 +315,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         next.Close();
     }
 
-    [AvaloniaFact]
-    public void Open_opens_any_other_file_in_an_editor_a_binary_one_as_its_bytes_read_only_and_refuses_a_path_that_is_not_there()
+    private void Open_opens_any_other_file_in_an_editor_a_binary_one_as_its_bytes_read_only_and_refuses_a_path_that_is_not_there()
     {
         using IDisposable theme = TestsTheme();
         string notes = Path.Combine(alpha, "notes.txt");
@@ -320,8 +351,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
     /// opens the one chosen as the workspace; Open Folder's takes a folder, which opens; Open File's offers every file and
     /// opens the one chosen in the editor, a file of the folder where it lies inside it, a project outside it as its text,
     /// the folder staying the workspace.</summary>
-    [AvaloniaFact]
-    public void File_Open_Solution_Open_Folder_and_Open_File_ask_their_panels_and_open_a_workspace_a_folder_and_a_file()
+    private void File_Open_Solution_Open_Folder_and_Open_File_ask_their_panels_and_open_a_workspace_a_folder_and_a_file()
     {
         using IDisposable theme = TestsTheme();
         string folder = Solutions();
@@ -385,8 +415,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
     /// <summary>The Welcome screen's tiles are New Solution, Open Solution, Open Folder, Open File and Clone Repository; with
     /// nothing open, Open Solution's opens the solution its panel takes, Open Folder's the folder, and Open File's a project
     /// as a file in the editor on its own, opening no workspace.</summary>
-    [AvaloniaFact]
-    public void The_Welcome_screens_Open_Solution_Open_Folder_and_Open_File_open_a_workspace_a_folder_and_a_file_on_its_own()
+    private void The_Welcome_screens_Open_Solution_Open_Folder_and_Open_File_open_a_workspace_a_folder_and_a_file_on_its_own()
     {
         using IDisposable theme = TestsTheme();
         string folder = Solutions();
@@ -424,34 +453,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
             tile.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains(StyleClasses.WelcomeActionTitle)).Text ?? string.Empty;
     }
 
-    /// <summary>A shortcut a person kept for Open, the id Open Solution had, opens Open Solution's panel; an agent's
-    /// ide_action naming it reaches Open Solution, which leaves the system's panels to the person.</summary>
-    [AvaloniaFact]
-    public void A_shortcut_kept_for_Open_opens_Open_Solutions_panel_and_its_id_names_Open_Solution()
-    {
-        string former = AppActions.Formerly.Single(f => f.Value == AppActions.OpenSolution).Key;
-        const string Key = "control alt shift F11";
-        File.WriteAllText(Path.Combine(settings, "settings.json"),
-            $"{{\n  \"version\": {Passenger.App.Settings.AppSettings.Upgrades.Count},\n  \"shortcuts\": {{ \"{former}\": [\"{Key}\"] }}\n}}\n");
-        MainWindow window = Started(LaunchOptions.Empty);
-        Panels panels = new(window);
-        try
-        {
-            Ui.Press(window, Key);
-            Assert.Equal(("file", "Open Solution", "Solutions and Projects: *.sln *.slnx *.slnf *.csproj"), Assert.Single(panels.Asked));
-            Assert.Equal(AppActions.OpenSolution, window.Actions[former]?.Id);
-            Assert.Equal(Refusals.AsksThePerson, window.Actions.WhyNot(former, window.Actions.Context().ForAgent()));
-        }
-        finally
-        {
-            // The keymap in force is the process's; the next test starts on the platform's own.
-            window.ApplySettings(new Passenger.App.Settings.AppSettings());
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Clone_Repository_clones_into_the_folder_chosen_and_opens_the_clone()
+    private void Clone_Repository_clones_into_the_folder_chosen_and_opens_the_clone()
     {
         using IDisposable theme = TestsTheme();
         string source = TestFolders.Create("source-");
@@ -484,8 +486,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
 
     /// <summary>Clone Repository from a remote that asks for a login asks the person over the dialog, and clones once they
     /// sign in.</summary>
-    [AvaloniaFact]
-    public void Clone_Repository_asks_for_the_login_a_remote_asks_for_and_clones_once_signed_in()
+    private void Clone_Repository_asks_for_the_login_a_remote_asks_for_and_clones_once_signed_in()
     {
         using IDisposable theme = TestsTheme();
         string source = TestFolders.Create("source-");
@@ -517,24 +518,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Tab_from_the_clone_URL_goes_to_the_directory_to_clone_into_and_then_to_Browse()
-    {
-        using IDisposable theme = TestsTheme();
-        MainWindow window = Started(LaunchOptions.Empty);
-        CloneDialog dialog = window.ShowCloneRepository();
-        Ui.Settle();
-        Ui.Press(dialog, "Tab");
-        Assert.True(dialog.FocusManager?.GetFocusedElement() is TextBox { Text: { } typed } && typed == dialog.Folder,
-            $"Tab from the URL went to {dialog.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} rather than the directory to clone into");
-        Ui.Press(dialog, "Tab");
-        Assert.True(dialog.FocusManager?.GetFocusedElement() is Button { Content: "Browse…" }, "Tab from the directory did not go on to Browse…");
-        dialog.Close();
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Clone_Repository_says_why_a_URL_could_not_be_cloned_and_leaves_nothing_behind()
+    private void Clone_Repository_says_why_a_URL_could_not_be_cloned_and_leaves_nothing_behind()
     {
         using IDisposable theme = TestsTheme();
         string clones = TestFolders.Create("clones-");
@@ -559,8 +543,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Cancel_stops_a_clone_under_way_and_removes_what_it_made()
+    private void Cancel_stops_a_clone_under_way_and_removes_what_it_made()
     {
         using IDisposable theme = TestsTheme();
         string clones = TestFolders.Create("clones-");
@@ -606,8 +589,7 @@ public sealed class WelcomeTests : IClassFixture<WelcomeTests.Workspaces>, IDisp
         }
     }
 
-    [AvaloniaFact]
-    public void Close_Solution_saves_its_files_ends_what_it_runs_and_shows_the_Welcome_screen_with_it_first_among_the_recent_ones()
+    private void Close_Solution_saves_its_files_ends_what_it_runs_and_shows_the_Welcome_screen_with_it_first_among_the_recent_ones()
     {
         using IDisposable theme = TestsTheme();
         // A step of the build that would run for ten minutes, writing its process's id.

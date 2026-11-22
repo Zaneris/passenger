@@ -33,8 +33,21 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         TestFolders.Delete(sources);
     }
 
+    /// <summary>The theme explorer asks Open VSX only once opened, a theme chosen shows before Apply, one from the
+    /// explorer, a vsix or a JSON file is kept as a theme file that draws offline under its own tokens, and a vsix that
+    /// does not read changes nothing, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
     [AvaloniaFact]
-    public void The_explorer_asks_Open_VSX_only_once_opened_lists_colour_themes_most_downloaded_first_and_one_chosen_shows_before_Apply_and_draws_offline()
+    public void A_VS_Code_theme_found_or_added_is_kept_as_a_theme_file_and_draws_offline()
+    {
+        Flow.StepApart<VsCodeThemeExplorerTests>("the explorer asks Open VSX only once opened lists colour themes most downloaded first and one chosen shows before Apply and draws offline", t => t.The_explorer_asks_Open_VSX_only_once_opened_lists_colour_themes_most_downloaded_first_and_one_chosen_shows_before_Apply_and_draws_offline());
+        Flow.StepApart<VsCodeThemeExplorerTests>("a vsix that cannot be read is refused saying why and changes nothing", t => t.A_vsix_that_cannot_be_read_is_refused_saying_why_and_changes_nothing());
+        Flow.StepApart<VsCodeThemeExplorerTests>("a VS Code theme from the explorer or a vsix is kept as a theme file reads it its long label cut short and draws", t => t.A_VS_Code_theme_from_the_explorer_or_a_vsix_is_kept_as_a_theme_file_reads_it_its_long_label_cut_short_and_draws());
+        Flow.StepApart<VsCodeThemeExplorerTests>("a theme naming a VS Code theme by its id draws it under its own tokens and is kept with it so it draws offline", t => t.A_theme_naming_a_VS_Code_theme_by_its_id_draws_it_under_its_own_tokens_and_is_kept_with_it_so_it_draws_offline());
+        Flow.StepApart<VsCodeThemeExplorerTests>("Add from File takes a VS Code theme s JSON or vsix as a theme and one as a code colour scheme under any theme", t => t.Add_from_File_takes_a_VS_Code_theme_s_JSON_or_vsix_as_a_theme_and_one_as_a_code_colour_scheme_under_any_theme());
+    }
+
+    private void The_explorer_asks_Open_VSX_only_once_opened_lists_colour_themes_most_downloaded_first_and_one_chosen_shows_before_Apply_and_draws_offline()
     {
         StandInOpenVsx registry = new();
         registry.Add("lantern", "lantern-theme", "Lantern Themes", 5000, 4.5, LanternVsix());
@@ -104,8 +117,7 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_vsix_that_cannot_be_read_is_refused_saying_why_and_changes_nothing()
+    private void A_vsix_that_cannot_be_read_is_refused_saying_why_and_changes_nothing()
     {
         using StandInOpenVsx registry = new();
         registry.Add("broken", "theme", "Broken Theme", 10, null, Encoding.UTF8.GetBytes("no zip at all"), """
@@ -135,8 +147,7 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_VS_Code_theme_from_the_explorer_or_a_vsix_is_kept_as_a_theme_file_reads_it_its_long_label_cut_short_and_draws()
+    private void A_VS_Code_theme_from_the_explorer_or_a_vsix_is_kept_as_a_theme_file_reads_it_its_long_label_cut_short_and_draws()
     {
         string label = "Midnight Harbour Lights " + new string('x', 70);
         string Plain(string colour) => $$$"""{"colors": {"editor.background": "{{{colour}}}"}}""";
@@ -189,8 +200,7 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_theme_naming_a_VS_Code_theme_by_its_id_draws_it_under_its_own_tokens_and_is_kept_with_it_so_it_draws_offline()
+    private void A_theme_naming_a_VS_Code_theme_by_its_id_draws_it_under_its_own_tokens_and_is_kept_with_it_so_it_draws_offline()
     {
         StandInOpenVsx registry = new();
         registry.Add("lantern", "lantern-theme", "Lantern Themes", 5000, 4.5, LanternVsix());
@@ -250,72 +260,7 @@ public sealed class VsCodeThemeExplorerTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_theme_s_VS_Code_theme_beside_it_named_Theme_json_or_including_theme_json_is_kept_apart_from_the_theme_s_own_file_and_draws()
-    {
-        // On a file system that ignores letter case, Theme.json is the name the theme's own file is kept under.
-        string source = Path.Combine(sources, "beside");
-        string lit = Path.Combine(source, "lit");
-        string dim = Path.Combine(source, "dim");
-        Directory.CreateDirectory(lit);
-        Directory.CreateDirectory(dim);
-        byte[] lanternJson = CarriedThemes.VsCodeBytes("Lantern.json");
-        byte[] lanternBase = CarriedThemes.VsCodeBytes("lantern-base.json");
-        File.WriteAllText(Path.Combine(source, ThemeFiles.IndexFile), """{"format": 1, "themes": ["lit/Lit.json", "dim/Dim.json"]}""");
-        string litFile = Path.Combine(lit, "Lit.json");
-        File.WriteAllText(litFile, """{"format": 1, "name": "Lit", "vscode": {"file": "Theme.json"}, "tokens": {"Frame": "#0A0A12"}}""");
-        File.WriteAllBytes(Path.Combine(lit, "Theme.json"), lanternJson);
-        File.WriteAllBytes(Path.Combine(lit, "lantern-base.json"), lanternBase);
-        File.WriteAllText(Path.Combine(dim, "Dim.json"), """{"format": 1, "name": "Dim", "vscode": {"file": "dusk.json"}, "tokens": {"Frame": "#0B0B13"}}""");
-        File.WriteAllText(Path.Combine(dim, "dusk.json"), """{"name": "Dusk", "type": "dark", "include": "./theme.json", "colors": {"editor.foreground": "#ECE7F5"}}""");
-        File.WriteAllBytes(Path.Combine(dim, "theme.json"), lanternJson);
-        File.WriteAllBytes(Path.Combine(dim, "lantern-base.json"), lanternBase);
-        ThemeFile lantern = CarriedThemes.Theme(CarriedThemes.VsCodePrefix + "Lantern")!;
-        MainWindow window = Open();
-        try
-        {
-            window.KeepSettings();
-            SettingsDialog dialog = window.ShowSettings();
-            Ui.Settle();
-            dialog.ThemeSourceBox.Text = source;
-            Ui.Click(dialog.AddThemeSourceButton);
-            Ui.Settle();
-            string added = PathNames.Canonical(source);
-            ThemeSource from = new(ThemeSourceKind.Folder, added);
-            ThemePicker picker = dialog.ThemePicker;
-            picker.Box.IsDropDownOpen = true;
-            Ui.WaitFor(() => picker.Listed.Contains($"Lit ({added})") && picker.Listed.Contains($"Dim ({added})"),
-                () => $"Lit and Dim listed, where it lists {string.Join(", ", picker.Listed)}");
-            picker.Box.IsDropDownOpen = false;
-            foreach ((string name, string frame) in ((string, string)[])[("Lit", "#0A0A12"), ("Dim", "#0B0B13")])
-            {
-                picker.Choose(name, added);
-                Ui.Settle();
-                Assert.True(picker.Problems is null && Themes.Said is null, $"{name} was refused: {picker.Problems ?? Themes.Said}");
-                Assert.Equal(Color.Parse(frame), Drawn(window, TokenKeys.Frame));
-                Assert.True(Token(lantern, "Editor.Background") == Drawn(window, TokenKeys.Editor_Background)
-                    && Token(lantern, "Syntax.Keyword") == Drawn(window, TokenKeys.Syntax_Keyword),
-                    $"{name} chosen from its source does not draw Lantern's colours, so its VS Code theme was lost to its own kept file");
-                Assert.Equal(File.ReadAllBytes(Path.Combine(source, name.ToLowerInvariant(), $"{name}.json")), KeptThemes.Bytes(from, false, name));
-            }
-
-            // Added from its file, the theme and its VS Code theme are kept apart too.
-            Assert.Null(Ui.Await(picker.AddFileAsync(litFile), "Lit added from its file"));
-            Ui.Settle();
-            Assert.Equal(new SourcedTheme(ThemeSource.Added.Name, "Lit"), dialog.Working.Look);
-            Assert.True(Themes.Said is null, $"Lit added was refused: {Themes.Said}");
-            Assert.Equal(Token(lantern, "Editor.Background"), Drawn(window, TokenKeys.Editor_Background));
-            dialog.Close();
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Add_from_File_takes_a_VS_Code_theme_s_JSON_or_vsix_as_a_theme_and_one_as_a_code_colour_scheme_under_any_theme()
+    private void Add_from_File_takes_a_VS_Code_theme_s_JSON_or_vsix_as_a_theme_and_one_as_a_code_colour_scheme_under_any_theme()
     {
         string files = Path.Combine(sources, "files");
         Directory.CreateDirectory(files);

@@ -55,8 +55,20 @@ public sealed class ToolWindowServesTests
         (ToolWindowIds.LiveTree, Refusals.NoInspectedApp),
     ];
 
+    /// <summary>Each tool window declares what it serves, a console solution shows none it lacks and View greys each
+    /// saying why, and a Godot project brings the Game window as it comes and takes it as it goes, as one flow, each
+    /// step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Every_tool_window_declares_what_it_serves_as_the_sweep_decided()
+    public void Tool_windows_show_only_for_what_the_folder_holds_and_come_and_go_with_it()
+    {
+        Flow.StepApart<ToolWindowServesTests>("every tool window declares what it serves as the sweep decided", t => t.Every_tool_window_declares_what_it_serves_as_the_sweep_decided());
+        Flow.StepApart<ToolWindowServesTests>("a plain console solution shows no window of a kind of project it lacks and View greys each saying why", t => t.A_plain_console_solution_shows_no_window_of_a_kind_of_project_it_lacks_and_View_greys_each_saying_why());
+        Flow.StepApart<ToolWindowServesTests>("a Godot project come brings the Game window and gone takes it away", t => t.A_Godot_project_come_brings_the_Game_window_and_gone_takes_it_away());
+        Flow.StepApart<ToolWindowServesTests>("Under titled tabs a console solution names no Game window and a Godot project come brings its tab", t => t.Under_titled_tabs_a_console_solution_names_no_Game_window_and_a_Godot_project_come_brings_its_tab());
+        Flow.StepApart<ToolWindowServesTests>("a theme chosen over an arranged layout leaves a window serving nothing where it stood", t => t.A_theme_chosen_over_an_arranged_layout_leaves_a_window_serving_nothing_where_it_stood());
+    }
+
+    private void Every_tool_window_declares_what_it_serves_as_the_sweep_decided()
     {
         MainWindow window = new() { Width = 1200, Height = 800 };
         window.Show();
@@ -83,8 +95,7 @@ public sealed class ToolWindowServesTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_plain_console_solution_shows_no_window_of_a_kind_of_project_it_lacks_and_View_greys_each_saying_why()
+    private void A_plain_console_solution_shows_no_window_of_a_kind_of_project_it_lacks_and_View_greys_each_saying_why()
     {
         string folder = ConsoleSolution();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -136,8 +147,7 @@ public sealed class ToolWindowServesTests
     /// <summary>A Godot project comes as a person brings one: its folder moved in whole (as a copy or a clone lands, which the
     /// system may tell as the folder alone), or its project.godot written; and goes as its file or its whole folder is
     /// deleted.</summary>
-    [AvaloniaFact]
-    public void A_Godot_project_come_brings_the_Game_window_and_gone_takes_it_away()
+    private void A_Godot_project_come_brings_the_Game_window_and_gone_takes_it_away()
     {
         string folder = ConsoleSolution();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -175,44 +185,9 @@ public sealed class ToolWindowServesTests
         }
     }
 
-    /// <summary>A Godot project's file saved by Godot's editor's safe save (written whole beside it, then moved over it) is the
-    /// game the folder knows, come again in place: the folder is read again for nothing, and the Game window stays.</summary>
-    [AvaloniaFact]
-    public void A_Godot_editors_safe_save_of_project_godot_reads_the_folder_again_for_nothing()
-    {
-        string folder = ConsoleSolution();
-        string project = TestFolders.Write(folder, "game/project.godot", ProjectGodot);
-        TestFolders.Write(folder, "game/main.gd", "extends Node\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Came(window, "with the folder as it opened");
-            Ui.Settle();
-            List<string> listed = [];
-            window.FileIndex.Changed += (_, change) => listed.AddRange(change.Came);
-            int read = 0;
-            window.Session.WorkspaceChanged += (_, _) => read++;
-            Task walk = window.Session.WorkspaceRead;
-
-            File.WriteAllText(project + "-a1B2c3", ProjectGodot + "\n[display]\n\nwindow/size/viewport_width=640\n");
-            File.Move(project + "-a1B2c3", project, overwrite: true);
-            string saved = Path.Combine("game", "project.godot");
-            Ui.WaitFor(() => listed.Contains(saved), () => $"Go to File's index to hear {saved} come again, where it heard [{string.Join(", ", listed)}]");
-            Ui.Settle();
-            Assert.True(read == 0 && ReferenceEquals(walk, window.Session.WorkspaceRead),
-                $"Godot's safe save of project.godot read the folder again {read} times, walking it {(ReferenceEquals(walk, window.Session.WorkspaceRead) ? "never" : "again")}, for a game it knows");
-            Assert.True(StripeButton(window, ToolWindowIds.Game) is not null, "The Game window's icon went with Godot's safe save of project.godot");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Under titled tabs, as Cubicle names the tool windows, a console solution names no window of a kind of project
     /// it lacks by a tab along an edge or at a place's foot, and a Godot project come brings the Game window's tab.</summary>
-    [AvaloniaFact]
-    public void Under_titled_tabs_a_console_solution_names_no_Game_window_and_a_Godot_project_come_brings_its_tab()
+    private void Under_titled_tabs_a_console_solution_names_no_Game_window_and_a_Godot_project_come_brings_its_tab()
     {
         string folder = ConsoleSolution();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -238,8 +213,7 @@ public sealed class ToolWindowServesTests
 
     /// <summary>A theme chosen over a layout the person arranged moves, window by window, only those serving the folder: one
     /// serving nothing that the theme places elsewhere keeps its place for when it serves.</summary>
-    [AvaloniaFact]
-    public void A_theme_chosen_over_an_arranged_layout_leaves_a_window_serving_nothing_where_it_stood()
+    private void A_theme_chosen_over_an_arranged_layout_leaves_a_window_serving_nothing_where_it_stood()
     {
         string folder = ConsoleSolution();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

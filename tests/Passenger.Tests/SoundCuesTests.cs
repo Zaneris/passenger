@@ -22,8 +22,17 @@ public sealed class SoundCuesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A line's cue plays once as the caret comes to it and Settings turns each off, and a command failing in
+    /// each shell plays its cue once and Read as Text reads it, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void Each_lines_cue_plays_once_as_the_caret_comes_to_it_and_Settings_turns_each_off()
+    public void Sound_cues_play_once_for_a_line_and_a_failed_command()
+    {
+        Flow.StepApart<SoundCuesTests>("each lines cue plays once as the caret comes to it and Settings turns each off", t => t.Each_lines_cue_plays_once_as_the_caret_comes_to_it_and_Settings_turns_each_off());
+        Flow.Step("a command failing in a shell plays its cue once and Read as Text reads the last command by its marks", () => Cases.Each<string>(["zsh", "bash", "pwsh", "cmd"], row => Flow.StepApart($"a command failing in a shell plays its cue once and Read as Text reads the last command by its marks ({row})", () => new SoundCuesTests(), t => t.A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(row))));
+    }
+
+    private void Each_lines_cue_plays_once_as_the_caret_comes_to_it_and_Settings_turns_each_off()
     {
         string path = Path.Combine(folder, "Shop.cs");
         File.WriteAllText(path, Head);
@@ -143,14 +152,7 @@ public sealed class SoundCuesTests : IDisposable
     /// <summary>Each shell here, set up to mark its commands: a command that fails plays its cue once (where the shell tells a
     /// command ran: not bash before 4.4, nor cmd), one that passes and an empty line none, and Read as Text reads the last
     /// command and its output from its prompt's mark.</summary>
-    [AvaloniaTheory]
-    [InlineData("zsh")]
-    [InlineData("bash")]
-    [InlineData("fish")]
-    [InlineData("pwsh")]
-    [InlineData("powershell")]
-    [InlineData("cmd")]
-    public void A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(string kind)
+    private void A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(string kind)
     {
         (string? program, string[] arguments) = kind switch
         {

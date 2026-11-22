@@ -19,8 +19,20 @@ public sealed class WindowPlacementTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(state);
 
+    /// <summary>The window opens maximised or normal where the last one closed stood, wholly on a screen, a second
+    /// beside the first, and a window nobody sees neither takes nor keeps a place, as one flow, each step the check one
+    /// test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_window_closed_maximized_after_a_move_and_a_resize_opens_maximized_over_those_bounds()
+    public void The_window_opens_where_the_last_stood_wholly_on_a_screen()
+    {
+        Flow.StepApart<WindowPlacementTests>("a window closed maximized after a move and a resize opens maximized over those bounds", t => t.A_window_closed_maximized_after_a_move_and_a_resize_opens_maximized_over_those_bounds());
+        Flow.StepApart<WindowPlacementTests>("a window closed minimized opens normal at the bounds it had before", t => t.A_window_closed_minimized_opens_normal_at_the_bounds_it_had_before());
+        Flow.StepApart<WindowPlacementTests>("a place off every screen and larger than any opens wholly on a screen", t => t.A_place_off_every_screen_and_larger_than_any_opens_wholly_on_a_screen());
+        Flow.StepApart<WindowPlacementTests>("a second window opens beside the first and the last closed is where the next start opens", t => t.A_second_window_opens_beside_the_first_and_the_last_closed_is_where_the_next_start_opens());
+        Flow.StepApart<WindowPlacementTests>("a window nobody sees neither opens at the place kept nor keeps its own", t => t.A_window_nobody_sees_neither_opens_at_the_place_kept_nor_keeps_its_own());
+    }
+
+    private void A_window_closed_maximized_after_a_move_and_a_resize_opens_maximized_over_those_bounds()
     {
         MainWindow first = Start();
         PixelRect area = Area(first);
@@ -50,8 +62,7 @@ public sealed class WindowPlacementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_window_closed_minimized_opens_normal_at_the_bounds_it_had_before()
+    private void A_window_closed_minimized_opens_normal_at_the_bounds_it_had_before()
     {
         MainWindow first = Start();
         PixelRect area = Area(first);
@@ -79,8 +90,7 @@ public sealed class WindowPlacementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_place_off_every_screen_and_larger_than_any_opens_wholly_on_a_screen()
+    private void A_place_off_every_screen_and_larger_than_any_opens_wholly_on_a_screen()
     {
         File.WriteAllText(Path.Combine(state, "windowPlacement.json"), """
             { "version": 1, "x": -40000, "y": 50000, "width": 90000, "height": 700, "state": "Minimized" }
@@ -101,8 +111,7 @@ public sealed class WindowPlacementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_second_window_opens_beside_the_first_and_the_last_closed_is_where_the_next_start_opens()
+    private void A_second_window_opens_beside_the_first_and_the_last_closed_is_where_the_next_start_opens()
     {
         MainWindow first = Start();
         PixelPoint placed = Area(first).TopLeft + new PixelPoint(40, 30);
@@ -128,8 +137,7 @@ public sealed class WindowPlacementTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_window_nobody_sees_neither_opens_at_the_place_kept_nor_keeps_its_own()
+    private void A_window_nobody_sees_neither_opens_at_the_place_kept_nor_keeps_its_own()
     {
         string kept = Path.Combine(state, "windowPlacement.json");
         string written = """{ "version": 1, "x": 30, "y": 20, "width": 800, "height": 500, "state": "Maximized" }""";

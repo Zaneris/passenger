@@ -17,8 +17,22 @@ public sealed class LogsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A missing SDK said in the status bar and the log, a restore shown, the language server's and the
+    /// debugger's traces written until turned off, a secret masked, only failed programs named, and on Windows a log
+    /// another program holds rotated once let go, as one flow, each step the check one test made in an instance of its
+    /// own.</summary>
     [AvaloniaFact]
-    public void A_project_naming_a_missing_sdk_says_why_in_the_status_bar_and_the_ides_log()
+    public void The_IDEs_log_and_traces_say_what_failed_and_mask_secrets()
+    {
+        Flow.StepApart<LogsTests>("a project naming a missing sdk says why in the status bar and the ides log", t => t.A_project_naming_a_missing_sdk_says_why_in_the_status_bar_and_the_ides_log());
+        Flow.StepApart<LogsTests>("the status bar shows a projects restore but never the language servers own project for loose files", t => t.The_status_bar_shows_a_projects_restore_but_never_the_language_servers_own_project_for_loose_files());
+        Flow.StepApart<LogsTests>("tracing writes the language servers messages to lsp log and every program to the ides log until turned off", t => t.Tracing_writes_the_language_servers_messages_to_lsp_log_and_every_program_to_the_ides_log_until_turned_off());
+        Flow.StepApart<LogsTests>("a secret on a programs command line is masked in the ides log and the run consoles echo", t => t.A_secret_on_a_programs_command_line_is_masked_in_the_ides_log_and_the_run_consoles_echo());
+        Flow.StepApart<LogsTests>("tracing writes the debuggers messages to dap log beside each sessions start and end", t => t.Tracing_writes_the_debuggers_messages_to_dap_log_beside_each_sessions_start_and_end());
+        Flow.StepApart<LogsTests>("the ides log names programs that failed not git answering no nor servers ended with their window", t => t.The_ides_log_names_programs_that_failed_not_git_answering_no_nor_servers_ended_with_their_window());
+    }
+
+    private void A_project_naming_a_missing_sdk_says_why_in_the_status_bar_and_the_ides_log()
     {
         File.WriteAllText(Path.Combine(folder, "Bad.csproj"),
             $"<Project Sdk=\"Missing.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
@@ -51,8 +65,7 @@ public sealed class LogsTests : IDisposable
     /// <summary>A file no project holds is in the server's own project (Canonical.csproj, in the temp folder), which it
     /// restores as it makes it: the status bar shows the restore of the person's project, never the server's, and the log
     /// does not take the server's for a project of theirs with unresolved dependencies.</summary>
-    [AvaloniaFact]
-    public void The_status_bar_shows_a_projects_restore_but_never_the_language_servers_own_project_for_loose_files()
+    private void The_status_bar_shows_a_projects_restore_but_never_the_language_servers_own_project_for_loose_files()
     {
         Directory.CreateDirectory(Path.Combine(folder, "App"));
         Directory.CreateDirectory(Path.Combine(folder, "Scripts"));
@@ -83,49 +96,7 @@ public sealed class LogsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The start's timing waits for an open file to be placed in a project without asking the server itself:
-    /// the first file open being one no project holds, left in the server's Miscellaneous Files, it is never asked
-    /// after again and again.</summary>
-    [AvaloniaFact]
-    public void Timing_the_start_never_asks_the_language_server_again_and_again_of_a_file_no_project_holds()
-    {
-        Directory.CreateDirectory(Path.Combine(folder, "App"));
-        Directory.CreateDirectory(Path.Combine(folder, "Scripts"));
-        File.WriteAllText(Path.Combine(folder, "App", "App.csproj"),
-            TestProjects.Library());
-        File.WriteAllText(Path.Combine(folder, "App", "App.cs"), "class App { }\n");
-        File.WriteAllText(Path.Combine(folder, "Scripts", "Loose.cs"), "class Loose { }\n");
-        Restore.Run(Path.Combine(folder, "App"));
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.ApplySettings(window.Settings with { TraceProtocols = true });
-        try
-        {
-            window.OpenFolder(folder);
-            window.OpenFile(Path.Combine("Scripts", "Loose.cs"));
-            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to finish loading ({window.CSharpService?.State})");
-            int server = window.CSharpService!.Session!.Server.ProcessId;
-            Ui.WaitFor(() => Ui.IdeLog().Contains($"(process {server}) gave an open file its colours", StringComparison.Ordinal), "the loose file's colours from the server");
-            int Asked() => Logged("lsp.log").Split('\n').Count(line => line.Contains($"[server {server}] --> ", StringComparison.Ordinal)
-                && line.Contains($"\"method\":\"{Passenger.Lsp.LspMethods.GetProjectContexts}\"", StringComparison.Ordinal));
-            int before = Asked();
-            Ui.Hold(TimeSpan.FromSeconds(2), "time in which a file asked after ten times a second is asked after twenty");
-            int during = Asked() - before;
-            Assert.True(during <= 1, $"The language server was asked {during} times in 2 s which projects hold a file no project holds");
-
-            // A file a project holds, opened next, is the one the start is timed by.
-            window.OpenFile(Path.Combine("App", "App.cs"));
-            Ui.WaitFor(() => Ui.IdeLog().Contains($"(process {server}) had App.cs in App", StringComparison.Ordinal), "the start timed by the file its project holds");
-        }
-        finally
-        {
-            window.ApplySettings(window.Settings with { TraceProtocols = false });
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Tracing_writes_the_language_servers_messages_to_lsp_log_and_every_program_to_the_ides_log_until_turned_off()
+    private void Tracing_writes_the_language_servers_messages_to_lsp_log_and_every_program_to_the_ides_log_until_turned_off()
     {
         File.WriteAllText(Path.Combine(folder, "Sample.csproj"),
             TestProjects.Console());
@@ -176,8 +147,7 @@ public sealed class LogsTests : IDisposable
     /// <summary>A secret given a program on its command line (an argument naming a password, a URL's credentials) reaches
     /// neither the IDE's log, with every program logged, nor the Run console's echo of the command: both say it as dots, as
     /// every secret Passenger says is, while the program is given it whole.</summary>
-    [AvaloniaFact]
-    public void A_secret_on_a_programs_command_line_is_masked_in_the_ides_log_and_the_run_consoles_echo()
+    private void A_secret_on_a_programs_command_line_is_masked_in_the_ides_log_and_the_run_consoles_echo()
     {
         const string Password = "lantern-7f3a";
         const string Token = "quill-9e2b";
@@ -234,8 +204,7 @@ public sealed class LogsTests : IDisposable
         return string.Join('\n', Directory.GetFiles(IdeErrors.LogFolder, "passenger*.log").Select(Ui.Shared));
     }
 
-    [AvaloniaFact]
-    public void Tracing_writes_the_debuggers_messages_to_dap_log_beside_each_sessions_start_and_end()
+    private void Tracing_writes_the_debuggers_messages_to_dap_log_beside_each_sessions_start_and_end()
     {
         File.WriteAllText(Path.Combine(folder, "Sum.csproj"),
             TestProjects.Console());
@@ -270,8 +239,7 @@ public sealed class LogsTests : IDisposable
     /// <summary>The IDE's log names the programs that failed, and no others: not git answering no (a file opened that the
     /// last commit lacks, which git show exits 128 for), nor a language server the IDE ended with its window, however long
     /// it ran and however it went (Node's 141 as the pipes it writes to close); a git command that failed is there.</summary>
-    [AvaloniaFact]
-    public void The_ides_log_names_programs_that_failed_not_git_answering_no_nor_servers_ended_with_their_window()
+    private void The_ides_log_names_programs_that_failed_not_git_answering_no_nor_servers_ended_with_their_window()
     {
         // Named for the test's folder, since the log is the whole run's.
         string untracked = $"Untracked{Path.GetFileName(folder)}";

@@ -30,8 +30,34 @@ public sealed class SystemMotionTests
 
     private static readonly MotionAsked Still = new(true, CaretBlink.Default);
 
+    /// <summary>The editor's caret, a field's and the terminal's cursor blink at the system's rate or stay drawn where
+    /// it keeps carets steady, drawn as broad as Settings says, the system read again as a window comes in front, as
+    /// one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void With_the_system_keeping_carets_steady_the_editors_caret_stays_drawn_across_what_would_be_its_blinks()
+    public void Carets_blink_as_the_system_asks_or_stand_still_where_it_keeps_them_steady()
+    {
+        Flow.StepApart<SystemMotionTests>("with the system keeping carets steady the editors caret stays drawn across what would be its blinks", t => t.With_the_system_keeping_carets_steady_the_editors_caret_stays_drawn_across_what_would_be_its_blinks());
+        Flow.StepApart<SystemMotionTests>("the editors caret blinks at the rate the system names", t => t.The_editors_caret_blinks_at_the_rate_the_system_names());
+        Flow.StepApart<SystemMotionTests>("with the system keeping carets steady the terminals cursor stays drawn though its setting blinks it", t => t.With_the_system_keeping_carets_steady_the_terminals_cursor_stays_drawn_though_its_setting_blinks_it());
+        Flow.StepApart<SystemMotionTests>("a fields caret blinks as the system asks and not at all where it keeps carets steady", t => t.A_fields_caret_blinks_as_the_system_asks_and_not_at_all_where_it_keeps_carets_steady());
+        Flow.StepApart<SystemMotionTests>("Settings caret width draws the editors caret and the terminals line cursor that broad", t => t.Settings_caret_width_draws_the_editors_caret_and_the_terminals_line_cursor_that_broad());
+        Flow.StepApart<SystemMotionTests>("a window coming in front reads the system again", t => t.A_window_coming_in_front_reads_the_system_again());
+        Flow.StepApart<SystemMotionTests>("the systems own answer is read whatever stands in for it", t => t.The_systems_own_answer_is_read_whatever_stands_in_for_it());
+    }
+
+    /// <summary>With less motion asked a fling stops where the finger lets go, the working ring stands still and the
+    /// editor lands a fling or a page at once, and a longer wait holds a chord's first key, as one flow, each step in
+    /// an instance of its own.</summary>
+    [AvaloniaFact]
+    public void With_less_motion_nothing_moves_by_itself_and_a_chord_waits_longer()
+    {
+        Flow.StepApart<SystemMotionTests>("with less motion a touchs fling stops where the finger lets go", t => t.With_less_motion_a_touchs_fling_stops_where_the_finger_lets_go());
+        Flow.StepApart<SystemMotionTests>("with less motion the working ring stands still", t => t.With_less_motion_the_working_ring_stands_still());
+        Flow.StepApart<SystemMotionTests>("with less motion the editor lands a fling and a page in the frame they come in", t => t.With_less_motion_the_editor_lands_a_fling_and_a_page_in_the_frame_they_come_in());
+        Flow.StepApart<SystemMotionTests>("a longer wait for a shortcuts second key holds its first past two seconds", t => t.A_longer_wait_for_a_shortcuts_second_key_holds_its_first_past_two_seconds());
+    }
+
+    private void With_the_system_keeping_carets_steady_the_editors_caret_stays_drawn_across_what_would_be_its_blinks()
     {
         EditorRig rig = new("class One { }\n");
         long blinks = rig.Editor.Blinks;
@@ -50,8 +76,7 @@ public sealed class SystemMotionTests
         rig.Window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_editors_caret_blinks_at_the_rate_the_system_names()
+    private void The_editors_caret_blinks_at_the_rate_the_system_names()
     {
         EditorRig rig = new("class One { }\n");
         using (SystemMotion.StandIn(Blinking(5000, 5000)))
@@ -71,8 +96,7 @@ public sealed class SystemMotionTests
         rig.Window.Close();
     }
 
-    [AvaloniaFact]
-    public void With_the_system_keeping_carets_steady_the_terminals_cursor_stays_drawn_though_its_setting_blinks_it()
+    private void With_the_system_keeping_carets_steady_the_terminals_cursor_stays_drawn_though_its_setting_blinks_it()
     {
         string folder = TestFolders.Create("motion-");
         try
@@ -103,8 +127,7 @@ public sealed class SystemMotionTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_fields_caret_blinks_as_the_system_asks_and_not_at_all_where_it_keeps_carets_steady()
+    private void A_fields_caret_blinks_as_the_system_asks_and_not_at_all_where_it_keeps_carets_steady()
     {
         TextBox field = new() { Width = 200 };
         Window window = new() { Width = 300, Height = 100, Content = field };
@@ -124,8 +147,7 @@ public sealed class SystemMotionTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void With_less_motion_a_touchs_fling_stops_where_the_finger_lets_go()
+    private void With_less_motion_a_touchs_fling_stops_where_the_finger_lets_go()
     {
         double Fling()
         {
@@ -159,8 +181,7 @@ public sealed class SystemMotionTests
         }
     }
 
-    [AvaloniaFact]
-    public void With_less_motion_the_working_ring_stands_still()
+    private void With_less_motion_the_working_ring_stands_still()
     {
         WorkingRing ring = new() { Width = 16, Height = 16 };
         Window window = new() { Width = 100, Height = 100, Content = ring };
@@ -177,8 +198,7 @@ public sealed class SystemMotionTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void With_less_motion_the_editor_lands_a_fling_and_a_page_in_the_frame_they_come_in()
+    private void With_less_motion_the_editor_lands_a_fling_and_a_page_in_the_frame_they_come_in()
     {
         using IDisposable still = SystemMotion.StandIn(Still);
         EditorRig rig = new(string.Join('\n', Enumerable.Range(0, 2000).Select(i => $"int line{i} = {i};")));
@@ -203,8 +223,7 @@ public sealed class SystemMotionTests
         rig.Window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_window_coming_in_front_reads_the_system_again()
+    private void A_window_coming_in_front_reads_the_system_again()
     {
         MotionAsked system = MotionAsked.Default;
         using IDisposable asked = SystemMotion.StandIn(() => system);
@@ -227,8 +246,7 @@ public sealed class SystemMotionTests
         }
     }
 
-    [AvaloniaFact]
-    public void Settings_caret_width_draws_the_editors_caret_and_the_terminals_line_cursor_that_broad()
+    private void Settings_caret_width_draws_the_editors_caret_and_the_terminals_line_cursor_that_broad()
     {
         string folder = TestFolders.Create("motion-");
         try
@@ -268,8 +286,7 @@ public sealed class SystemMotionTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_longer_wait_for_a_shortcuts_second_key_holds_its_first_past_two_seconds()
+    private void A_longer_wait_for_a_shortcuts_second_key_holds_its_first_past_two_seconds()
     {
         string folder = TestFolders.Create("motion-");
         try
@@ -295,8 +312,7 @@ public sealed class SystemMotionTests
         }
     }
 
-    [AvaloniaFact]
-    public void The_systems_own_answer_is_read_whatever_stands_in_for_it()
+    private void The_systems_own_answer_is_read_whatever_stands_in_for_it()
     {
         MotionAsked read = Ui.Await(SystemMotion.ReadSystemAsync(), "the system's motion and caret settings");
         TestContext.Current.TestOutputHelper?.WriteLine($"{Environment.OSVersion}: the system asks for {read}");

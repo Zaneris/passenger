@@ -30,10 +30,52 @@ public sealed class StateTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>The gate's seven checks of what the state keeps, as one flow, to take their place once it has its
+    /// record on CI: a hand edit set aside, values out of range kept, a dotfiles link followed, breakpoints, bookmarks,
+    /// tabs and layouts coming back with their folder, and a layout reaching every window.</summary>
+    [AvaloniaFact]
+    public void The_gates_kept_state_holds_as_one_flow()
+    {
+        Flow.StepApart<StateTests>("a settings file a hand edit left not reading is set aside by the next change and the status bar says where it went", t => t.A_settings_file_a_hand_edit_left_not_reading_is_set_aside_by_the_next_change_and_the_status_bar_says_where_it_went());
+        Flow.StepApart<StateTests>("a later builds values and a hand edit out of range stay in the file while the window uses what it can", t => t.A_later_builds_values_and_a_hand_edit_out_of_range_stay_in_the_file_while_the_window_uses_what_it_can());
+        Flow.StepApart<StateTests>("Settings kept in a dotfiles folder through a symlink take each change there and the link stays", t => t.Settings_kept_in_a_dotfiles_folder_through_a_symlink_take_each_change_there_and_the_link_stays());
+        Flow.StepApart<StateTests>("breakpoints and bookmarks come back when the folder opens again and go when another opens", t => t.Breakpoints_and_bookmarks_come_back_when_the_folder_opens_again_and_go_when_another_opens());
+        Flow.StepApart<StateTests>("a folder opens with its own tabs whatever was open before it which stays beside them", t => t.A_folder_opens_with_its_own_tabs_whatever_was_open_before_it_which_stays_beside_them());
+        Flow.StepApart<StateTests>("each folder opens on its own layout and one without on the one there was", t => t.Each_folder_opens_on_its_own_layout_and_one_without_on_the_one_there_was());
+        Flow.StepApart<StateTests>("a layout kept for a screen no longer there or by a later build opens every tool window where it can be reached", t => t.A_layout_kept_for_a_screen_no_longer_there_or_by_a_later_build_opens_every_tool_window_where_it_can_be_reached());
+    }
+
+    /// <summary>A settings file a crash cut short is set aside and never written over, a value of the wrong kind passed
+    /// over alone, a change made while the file is held reaching it once let go, even as Passenger closes, and what was
+    /// kept before the store there on the first run, as one flow, each step the check one test made in an instance of
+    /// its own.</summary>
+    [AvaloniaFact]
+    public void Settings_and_state_never_lose_a_change_or_a_hand_edit()
+    {
+        Flow.StepApart<StateTests>("a settings file a crash cut short is set aside said in the status bar and logged and never written over", t => t.A_settings_file_a_crash_cut_short_is_set_aside_said_in_the_status_bar_and_logged_and_never_written_over());
+        Flow.StepApart<StateTests>("a settings value of the wrong kind is passed over alone and a hand edit that does not read is said as it is read again", t => t.A_settings_value_of_the_wrong_kind_is_passed_over_alone_and_a_hand_edit_that_does_not_read_is_said_as_it_is_read_again());
+        Flow.StepApart<StateTests>("a change made while settings json is held reaches the file once it is let go", t => t.A_change_made_while_settings_json_is_held_reaches_the_file_once_it_is_let_go());
+        Flow.StepApart<StateTests>("changes written at once while the file is held each reach it once let go", t => t.Changes_written_at_once_while_the_file_is_held_each_reach_it_once_let_go());
+        Flow.StepApart<StateTests>("a change lands at once while another program reads the file sharing its deletion", t => t.A_change_lands_at_once_while_another_program_reads_the_file_sharing_its_deletion());
+        Flow.StepApart<StateTests>("a change refused as Passenger closes lands as it ends once the file is let go", t => t.A_change_refused_as_Passenger_closes_lands_as_it_ends_once_the_file_is_let_go());
+        Flow.StepApart<StateTests>("what a person kept before the store is there on the first run", t => t.What_a_person_kept_before_the_store_is_there_on_the_first_run());
+    }
+
+    /// <summary>A folder's tabs, splits and carets come back as it opens again, its documents read off the window's
+    /// thread and let go once no window has it, its tests' results kept, as one flow, each step in an instance of its
+    /// own.</summary>
+    [AvaloniaFact]
+    public void A_folders_tabs_documents_and_tests_come_back_as_it_opens_again()
+    {
+        Flow.StepApart<StateTests>("a folders tabs splits and carets come back when it opens again after another in the same window and a new one", t => t.A_folders_tabs_splits_and_carets_come_back_when_it_opens_again_after_another_in_the_same_window_and_a_new_one());
+        Flow.StepApart<StateTests>("a folders documents leave the store once no window has the folder open", t => t.A_folders_documents_leave_the_store_once_no_window_has_the_folder_open());
+        Flow.StepApart<StateTests>("a folders kept documents are read off the windows thread as it opens and all come back", t => t.A_folders_kept_documents_are_read_off_the_windows_thread_as_it_opens_and_all_come_back());
+        Flow.StepApart<StateTests>("a kept tests code read otherwise goes and its results stay", t => t.A_kept_tests_code_read_otherwise_goes_and_its_results_stay());
+    }
+
     /// <summary>A kept run's code as an earlier build read it compares with nothing read now: left in, every test kept would
     /// read as changed since its run.</summary>
-    [Fact]
-    public void A_kept_tests_code_read_otherwise_goes_and_its_results_stay()
+    private void A_kept_tests_code_read_otherwise_goes_and_its_results_stay()
     {
         JsonObject kept = JsonNode.Parse("{\"methods\":{\"Sums.Adds\":{\"ran\":\"2026-11-01T10:00:00+00:00\",\"code\":7,\"results\":[{\"fullyQualifiedName\":\"Sums.Adds\"}]}}}")!.AsObject();
         Passenger.App.Testing.TestResultsState.Upgrades[1](kept);
@@ -43,8 +85,7 @@ public sealed class StateTests : IDisposable
         Passenger.App.Testing.TestResultsState.Upgrades[1](JsonNode.Parse("{}")!.AsObject());
     }
 
-    [AvaloniaFact]
-    public void A_settings_file_a_crash_cut_short_is_set_aside_said_in_the_status_bar_and_logged_and_never_written_over()
+    private void A_settings_file_a_crash_cut_short_is_set_aside_said_in_the_status_bar_and_logged_and_never_written_over()
     {
         using IDisposable theme = TestsTheme();
         string file = Path.Combine(settings, "settings.json");
@@ -100,8 +141,7 @@ public sealed class StateTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_settings_value_of_the_wrong_kind_is_passed_over_alone_and_a_hand_edit_that_does_not_read_is_said_as_it_is_read_again()
+    private void A_settings_value_of_the_wrong_kind_is_passed_over_alone_and_a_hand_edit_that_does_not_read_is_said_as_it_is_read_again()
     {
         string file = Path.Combine(settings, "settings.json");
         File.WriteAllText(file, $"{{\n  \"version\": {AppSettings.Upgrades.Count},\n  \"editorFontSize\": \"16\",\n  \"terminalFontSize\": 15,\n  \"editorLineSpacing\": 1.5\n}}\n");
@@ -195,8 +235,7 @@ public sealed class StateTests : IDisposable
     /// <summary>A change to the settings made while another program holds settings.json without sharing its deletion (on
     /// Windows another Passenger's read or a scanner, which a move over the file waits out; elsewhere, where an open file is
     /// moved over all the same, its folder closed to writes) is tried again until it lands, reaching the file once let go.</summary>
-    [AvaloniaFact]
-    public void A_change_made_while_settings_json_is_held_reaches_the_file_once_it_is_let_go()
+    private void A_change_made_while_settings_json_is_held_reaches_the_file_once_it_is_let_go()
     {
         using IDisposable theme = TestsTheme();
         string file = Path.Combine(settings, "settings.json");
@@ -221,8 +260,7 @@ public sealed class StateTests : IDisposable
     /// <summary>Changes written at once (as an update's word kept as the process ends, or Aspire's record of its
     /// containers) made one after another while another program holds the file: each write is refused, and the change after
     /// it keeps it, so every change reaches the file once let go.</summary>
-    [AvaloniaFact]
-    public void Changes_written_at_once_while_the_file_is_held_each_reach_it_once_let_go()
+    private void Changes_written_at_once_while_the_file_is_held_each_reach_it_once_let_go()
     {
         StateStore store = StateStore.Open(settings);
         try
@@ -248,8 +286,7 @@ public sealed class StateTests : IDisposable
 
     /// <summary>A change made while another program reads the file sharing its deletion (a scanner, an indexer, a backup)
     /// lands at once, that program reading on in the file it opened, where Windows refused a move over it.</summary>
-    [AvaloniaFact]
-    public void A_change_lands_at_once_while_another_program_reads_the_file_sharing_its_deletion()
+    private void A_change_lands_at_once_while_another_program_reads_the_file_sharing_its_deletion()
     {
         StateStore store = StateStore.Open(settings);
         try
@@ -272,8 +309,7 @@ public sealed class StateTests : IDisposable
 
     /// <summary>A change refused at the flush as Passenger closes, while another program holds the file a moment sharing no
     /// deletion, is written again as Passenger ends and lands once that program lets go, where it was lost with the process.</summary>
-    [AvaloniaFact]
-    public void A_change_refused_as_Passenger_closes_lands_as_it_ends_once_the_file_is_let_go()
+    private void A_change_refused_as_Passenger_closes_lands_as_it_ends_once_the_file_is_let_go()
     {
         StateStore store = StateStore.Open(settings);
         StateDocument<DockLayout> layout = store.Layout;
@@ -301,8 +337,7 @@ public sealed class StateTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void What_a_person_kept_before_the_store_is_there_on_the_first_run()
+    private void What_a_person_kept_before_the_store_is_there_on_the_first_run()
     {
         using IDisposable theme = TestsTheme();
         // As the build before the store left them: no versions, and a folder's workspace in one file of its own.
@@ -389,8 +424,7 @@ public sealed class StateTests : IDisposable
 
     /// <summary>A folder's tabs, splits and carets come back when it opens again after another, read anew from what was
     /// written as it was left: in the window that left it, and in a new window while that one has the other open.</summary>
-    [AvaloniaFact]
-    public void A_folders_tabs_splits_and_carets_come_back_when_it_opens_again_after_another_in_the_same_window_and_a_new_one()
+    private void A_folders_tabs_splits_and_carets_come_back_when_it_opens_again_after_another_in_the_same_window_and_a_new_one()
     {
         string other = TestFolders.Create("other-");
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    int x;\n}\n");
@@ -425,8 +459,7 @@ public sealed class StateTests : IDisposable
     /// <summary>A folder's documents are held in the store only while a window has the folder open: left again and again, by
     /// Close Solution and by another folder's open, the store keeps none of them, what the window kept of the folder written
     /// as it goes; two windows on the folder share them until the last lets them go.</summary>
-    [AvaloniaFact]
-    public void A_folders_documents_leave_the_store_once_no_window_has_the_folder_open()
+    private void A_folders_documents_leave_the_store_once_no_window_has_the_folder_open()
     {
         string other = TestFolders.Create("other-");
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
@@ -479,8 +512,7 @@ public sealed class StateTests : IDisposable
     /// <summary>A folder's kept documents are read off the window's thread as it opens, so their size never holds the
     /// window: the open's own work on the window's thread allocates no more with 4,000 breakpoints kept than with 40, and
     /// every one comes back once read.</summary>
-    [AvaloniaFact]
-    public void A_folders_kept_documents_are_read_off_the_windows_thread_as_it_opens_and_all_come_back()
+    private void A_folders_kept_documents_are_read_off_the_windows_thread_as_it_opens_and_all_come_back()
     {
         long Opening(int count)
         {

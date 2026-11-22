@@ -19,15 +19,25 @@ public sealed class ConfirmClosingTests : ProjectWindowsFolders
 
     private const string CloseTitle = "Close Window";
 
+    /// <summary>Exit, the system's Quit and a window's close ask first as Confirm before closing says, Don't ask again
+    /// setting Never, a close agreed to asking no more, and an agent's input never closing a window that would ask, as
+    /// one flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Closing_asks_first_as_Confirm_before_closing_says_and_never_for_an_agent()
+    {
+        Flow.StepApart<ConfirmClosingTests>("exit and the systems Quit ask once before quitting as Confirm before closing says (ConfirmClosing.Never)", t => t.Exit_and_the_systems_Quit_ask_once_before_quitting_as_Confirm_before_closing_says(ConfirmClosing.Never));
+        Flow.StepApart<ConfirmClosingTests>("exit and the systems Quit ask once before quitting as Confirm before closing says (ConfirmClosing.EveryWindow)", t => t.Exit_and_the_systems_Quit_ask_once_before_quitting_as_Confirm_before_closing_says(ConfirmClosing.EveryWindow));
+        Flow.StepApart<ConfirmClosingTests>("a windows close asks first as Confirm before closing says and Dont ask again sets Never (ConfirmClosing.WhenQuitting)", t => t.A_windows_close_asks_first_as_Confirm_before_closing_says_and_Dont_ask_again_sets_Never(ConfirmClosing.WhenQuitting));
+        Flow.StepApart<ConfirmClosingTests>("a windows close asks first as Confirm before closing says and Dont ask again sets Never (ConfirmClosing.EveryWindow)", t => t.A_windows_close_asks_first_as_Confirm_before_closing_says_and_Dont_ask_again_sets_Never(ConfirmClosing.EveryWindow));
+        Flow.StepApart<ConfirmClosingTests>("a close agreed to asks no more after the question of changes it could not save", t => t.A_close_agreed_to_asks_no_more_after_the_question_of_changes_it_could_not_save());
+        Flow.StepApart<ConfirmClosingTests>("an agents input never closes a window that would ask nor answers the question", t => t.An_agents_input_never_closes_a_window_that_would_ask_nor_answers_the_question());
+    }
+
     /// <summary>Exit and the system's Quit ask before Passenger quits where Confirm before closing says When quitting or
     /// Every window: once, however many windows are open and however often it is asked meanwhile (the system's Quit closing
     /// each window in turn, the first's question holding the rest), Cancel keeping every window open, and agreed, every
     /// window closes, the setting kept as it was. Under Never, Exit quits unasked.</summary>
-    [AvaloniaTheory]
-    [InlineData(ConfirmClosing.Never)]
-    [InlineData(ConfirmClosing.WhenQuitting)]
-    [InlineData(ConfirmClosing.EveryWindow)]
-    public void Exit_and_the_systems_Quit_ask_once_before_quitting_as_Confirm_before_closing_says(ConfirmClosing choice)
+    private void Exit_and_the_systems_Quit_ask_once_before_quitting_as_Confirm_before_closing_says(ConfirmClosing choice)
     {
         (MainWindow first, MainWindow second) = TwoWindows(choice);
         try
@@ -76,11 +86,7 @@ public sealed class ConfirmClosingTests : ProjectWindowsFolders
     /// which quits, where it says When quitting or Every window: Cancel keeps the window open, and Don't ask again, ticked
     /// as the person agrees, sets Never in settings.json. Under Never neither asks, and under When quitting a window that is
     /// not the last closes unasked.</summary>
-    [AvaloniaTheory]
-    [InlineData(ConfirmClosing.Never)]
-    [InlineData(ConfirmClosing.WhenQuitting)]
-    [InlineData(ConfirmClosing.EveryWindow)]
-    public void A_windows_close_asks_first_as_Confirm_before_closing_says_and_Dont_ask_again_sets_Never(ConfirmClosing choice)
+    private void A_windows_close_asks_first_as_Confirm_before_closing_says_and_Dont_ask_again_sets_Never(ConfirmClosing choice)
     {
         (MainWindow first, MainWindow second) = TwoWindows(choice);
         try
@@ -129,8 +135,7 @@ public sealed class ConfirmClosingTests : ProjectWindowsFolders
     /// <summary>A close the person agreed to asks nothing more of Confirm before closing, whatever else it asks: a window
     /// holding a read-only file's changes, closed under Every window and agreed to, asks about the changes, and Close
     /// Without Saving closes it at once, where asking again would make the person agree twice.</summary>
-    [AvaloniaFact]
-    public void A_close_agreed_to_asks_no_more_after_the_question_of_changes_it_could_not_save()
+    private void A_close_agreed_to_asks_no_more_after_the_question_of_changes_it_could_not_save()
     {
         string locked = Path.Combine(beta, "Locked.cs");
         File.WriteAllText(locked, "class Locked { }\n");
@@ -164,8 +169,7 @@ public sealed class ConfirmClosingTests : ProjectWindowsFolders
     /// <summary>An attached agent's input never meets the question: under Every window its close of a window is refused,
     /// saying the person closes it, and no question is asked; and its click on the question the person's own close or Exit
     /// asked is refused too, the question left asking.</summary>
-    [AvaloniaFact]
-    public void An_agents_input_never_closes_a_window_that_would_ask_nor_answers_the_question()
+    private void An_agents_input_never_closes_a_window_that_would_ask_nor_answers_the_question()
     {
         (MainWindow first, MainWindow second) = TwoWindows(ConfirmClosing.EveryWindow);
         try
