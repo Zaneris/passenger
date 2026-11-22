@@ -49,8 +49,41 @@ public sealed class MobileNeedsWindowTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    /// <summary>A workload a mobile project lacks: offered by New Project, said in the window, installed by Install
+    /// Workloads (its workload set first, a download out of room said plainly) and the projects loaded again; refused
+    /// where the .NET is not writable, and needing no administrator where each user's own folder takes it. The last
+    /// steps skip where this machine's .NET can't stand in for those.</summary>
     [AvaloniaFact]
-    public void A_project_whose_workload_is_missing_says_so_and_Install_Workloads_asks_installs_and_loads_it_again()
+    public void A_workload_a_project_lacks_is_said_and_installed_by_Install_Workloads_as_the_dotnet_takes_it_with_no_administrator_where_none_is_needed()
+    {
+        Flow.StepApart<MobileNeedsWindowTests>("New Project offers each mobile template a missing workload brings, naming the workload that installs it", t => t.New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it());
+        Flow.StepApart<MobileNeedsWindowTests>("a project whose workload is missing says so, and Install Workloads asks, installs and loads it again", t => t.A_project_whose_workload_is_missing_says_so_and_Install_Workloads_asks_installs_and_loads_it_again());
+        Flow.StepApart<MobileNeedsWindowTests>("Install Workloads installs a workload set first where the .NET has none, and says a download out of room plainly", t => t.Install_Workloads_installs_a_workload_set_first_where_the_dotnet_has_none_and_says_a_download_out_of_room_plainly());
+        Flow.StepApart<MobileNeedsWindowTests>("New Project's Install of a workload's template is Install Workloads' own, refused where the .NET is not writable", t => t.New_Projects_Install_of_a_workloads_template_is_Install_Workloads_own_refused_where_the_dotnet_is_not_writable_and_loading_the_projects_again());
+        Flow.StepApart<MobileNeedsWindowTests>("Install Workloads needs no administrator where the .NET installs workloads into each user's own folder", t => t.Install_Workloads_needs_no_administrator_where_the_dotnet_installs_workloads_into_each_users_own_folder());
+    }
+
+    /// <summary>An Android project's SDK packages and JDK: a JAVA_HOME the workload finds no JDK in is said and never
+    /// installed over, they are installed only once the person accepted their licences, and the JDK put where a window
+    /// opened after finds it. Skipped where this machine builds no Android app.</summary>
+    [AvaloniaFact]
+    public void An_Android_projects_SDK_and_JDK_are_installed_only_once_the_person_accepted_their_licences_never_over_a_JAVA_HOME()
+    {
+        Flow.StepApart<MobileNeedsWindowTests>("a JAVA_HOME where the Android workload finds no JDK is said and never given to its installer to install over", t => t.A_JAVA_HOME_where_the_Android_workload_finds_no_JDK_is_said_and_never_given_to_its_installer_to_install_over());
+        Flow.StepApart<MobileNeedsWindowTests>("an Android project lacking its platform and a JDK installs them only once the person accepted the SDK's licences", t => t.An_Android_project_lacking_its_platform_and_a_JDK_installs_them_only_once_the_person_accepted_the_SDKs_licences());
+        Flow.StepApart<MobileNeedsWindowTests>("Install Android SDK and Java puts the JDK where a window opened after finds it, with no JAVA_HOME", t => t.Install_Android_SDK_and_Java_puts_the_JDK_where_a_window_opened_after_finds_it_with_no_JAVA_HOME());
+    }
+
+    /// <summary>An iOS project whose Xcode the workload refuses, or which has no simulator runtime of its SDK, says so
+    /// with how to get one. On a Mac only.</summary>
+    [AvaloniaFact]
+    public void An_iOS_projects_Xcode_refused_or_lacking_a_simulator_runtime_is_said_with_how_to_get_one()
+    {
+        Flow.StepApart<MobileNeedsWindowTests>("an iOS project whose Xcode the workload refuses says why, and Get Xcode opens where Xcode comes from", t => t.An_iOS_project_whose_Xcode_the_workload_refuses_says_why_and_Get_Xcode_opens_where_Xcode_comes_from());
+        Flow.StepApart<MobileNeedsWindowTests>("an iOS project whose Xcode has no simulator runtime of its SDK says so, with how Xcode installs one", t => t.An_iOS_project_whose_Xcode_has_no_simulator_runtime_of_its_SDK_says_so_with_how_Xcode_installs_one());
+    }
+
+    private void A_project_whose_workload_is_missing_says_so_and_Install_Workloads_asks_installs_and_loads_it_again()
     {
         (MainWindow window, string name, string platform, string said) = LackingWorkload();
 
@@ -82,8 +115,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
     /// <summary>A .NET this user may not write whose SDK installs workloads into each user's own folder (its userlocal
     /// marker, which Fedora's packaged .NET carries) is no reason to send the person to an administrator: Install Workloads
     /// asks and runs the install (a stand-in of dotnet's) as for a .NET of their own, where sudo would install it for root.</summary>
-    [AvaloniaFact]
-    public void Install_Workloads_needs_no_administrator_where_the_dotnet_installs_workloads_into_each_users_own_folder()
+    private void Install_Workloads_needs_no_administrator_where_the_dotnet_installs_workloads_into_each_users_own_folder()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -128,91 +160,12 @@ public sealed class MobileNeedsWindowTests : IDisposable
         }
     }
 
-    /// <summary>Where the .NET installs workloads for each user (a stand-in carrying its SDK's band's userlocal marker,
-    /// this machine's SDKs, and a dotnet running this machine's), the window's workloads go into the user's own .dotnet,
-    /// DOTNET_CLI_HOME's, which New Solution's templates are watched in: a template pack a workload installed from a
-    /// terminal writes there has them read again once the person is back in the window, heard or, where macOS's watcher
-    /// dropped the change, found as the window comes in front.</summary>
-    [AvaloniaFact]
-    public void A_template_pack_put_in_the_users_own_dotnet_is_found_where_the_dotnet_installs_workloads_there()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Skip("Each user's own .dotnet is the person's on Windows, where the test run names no DOTNET_CLI_HOME of its own");
-            return;
-        }
-        string sdk = Ui.Await(Dotnet.SdkAsync(folder), "the SDK the folder takes", Slow);
-        string host = Dotnet.Host(folder);
-        // Kept for the run, as the templates' watch on it is kept for the process; its SDKs and runtimes this machine's.
-        string standIn = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(TestRun.Root, "userlocal-dotnet")).FullName);
-        foreach (string held in (string[])["host", "sdk", "shared"])
-        {
-            if (!Path.Exists(Path.Combine(standIn, held)))
-            {
-                Directory.CreateSymbolicLink(Path.Combine(standIn, held), Path.Combine(Path.GetDirectoryName(host)!, held));
-            }
-        }
-        string marker = WorkloadFolders.UserLocalMarker(standIn, sdk) ?? throw new InvalidOperationException($"dotnet --version named {sdk}, which names no feature band");
-        Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
-        File.WriteAllText(marker, string.Empty);
-        string dotnet = Path.Combine(standIn, Dotnet.HostName);
-        File.WriteAllText(dotnet, $"#!/bin/sh\nexec '{host}' \"$@\"\n");
-        File.SetUnixFileMode(dotnet, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        string own = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(Dotnet.CliHome()!, ".dotnet")).FullName);
-        string packs = Path.Combine(own, WorkloadFolders.TemplatePacks);
-        string pack = Path.Combine(packs, $"probe.userlocal.templates.{Guid.NewGuid():N}.nupkg");
-        bool made = !Directory.Exists(packs);
-        int changes = 0;
-        void Changed() => changes++;
-        Dotnet.HostSearch = () => dotnet;
-        Dotnet.ForgetSdks();
-        ProjectTemplates.Changed += Changed;
-        try
-        {
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-            Assert.Equal(new WorkloadFolders(standIn, own), Ui.Await(window.WorkloadFoldersAsync(), "where the window's workloads go", Slow));
-            window.Perform(AppActions.NewSolution);
-            Ui.Settle();
-            NewProjectDialog dialog = Assert.Single(window.OwnedWindows.OfType<NewProjectDialog>(), d => d.IsVisible);
-            Ui.WaitFor(() => dialog.TemplatesRead.IsCompleted, "dotnet new's templates to be read", Slow);
-            Assert.True(dialog.Problem is null, $"The templates could not be read through the stand-in .NET: {dialog.Problem}");
-            Passenger.App.Workspace.WatchedTree watch = ProjectTemplates.InstallWatch(own)
-                ?? throw new InvalidOperationException($"New Solution's templates are watched in {standIn}'s own folder alone, not in {own}, where it installs workloads");
-            Ui.Await(watch.Ready, $"the watch on {own} to begin", Slow);
-            int before = changes;
-            int logged = Ui.Shared(IdeLog.PathOf(IdeLog.Ide)).Length;
-
-            Directory.CreateDirectory(packs);
-            File.WriteAllText(pack, string.Empty);
-            window.Activate();
-            Ui.WaitFor(() => changes > before, () => $"New Solution's templates to be read again once a template pack came into {packs}; the IDE said meanwhile:\n"
-                + Ui.Shared(IdeLog.PathOf(IdeLog.Ide))[logged..], Slow);
-            dialog.Cancel();
-            window.Close();
-        }
-        finally
-        {
-            ProjectTemplates.Changed -= Changed;
-            Dotnet.HostSearch = null;
-            Dotnet.ForgetSdks();
-            if (File.Exists(pack))
-            {
-                File.Delete(pack);
-            }
-            if (made && Directory.Exists(packs) && !Directory.EnumerateFileSystemEntries(packs).Any())
-            {
-                Directory.Delete(packs);
-            }
-        }
-    }
-
     /// <summary>A .NET with no workload set installed knows no workload until one is (dotnet's own words, from a stand-in):
     /// Install Workloads installs its newest first, then the workload, whose download running out of room is said plainly
     /// with the folder it ran out in. Where the temporary folder is held in memory (Linux's /dev/shm stands for a tmpfs
     /// /tmp), every dotnet it runs downloads into a folder of Passenger's own cache, taken away after; elsewhere into the
     /// temporary folder.</summary>
-    [AvaloniaFact]
-    public void Install_Workloads_installs_a_workload_set_first_where_the_dotnet_has_none_and_says_a_download_out_of_room_plainly()
+    private void Install_Workloads_installs_a_workload_set_first_where_the_dotnet_has_none_and_says_a_download_out_of_room_plainly()
     {
         (MainWindow window, _, string platform, _) = LackingWorkload();
         List<IReadOnlyList<string>> asked = [];
@@ -270,8 +223,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
     /// own: refused where the .NET is not this user's to write, in the status bar and the dialog, which copies the
     /// command to run; else run asking nothing more, a workload set first, its lines shown, the project loaded again,
     /// dotnet new still listing none of its templates. None is offered where this machine builds no Android app.</summary>
-    [AvaloniaFact]
-    public void New_Projects_Install_of_a_workloads_template_is_Install_Workloads_own_refused_where_the_dotnet_is_not_writable_and_loading_the_projects_again()
+    private void New_Projects_Install_of_a_workloads_template_is_Install_Workloads_own_refused_where_the_dotnet_is_not_writable_and_loading_the_projects_again()
     {
         File.WriteAllText(Path.Combine(folder, "Desk.csproj"), TestProjects.Library());
         string templates = PathNames.Canonical(TestFolders.Create("workload-templates-"));
@@ -450,8 +402,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         return ChildProcesses.Command("/bin/sh", ["-c", "cat \"$1\"; exit $2", "sh", text, code.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
     }
 
-    [AvaloniaFact]
-    public void An_Android_project_lacking_its_platform_and_a_JDK_installs_them_only_once_the_person_accepted_the_SDKs_licences()
+    private void An_Android_project_lacking_its_platform_and_a_JDK_installs_them_only_once_the_person_accepted_the_SDKs_licences()
     {
         SkipWhereAndroidIsNotBuilt();
         string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
@@ -497,8 +448,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Install_Android_SDK_and_Java_puts_the_JDK_where_a_window_opened_after_finds_it_with_no_JAVA_HOME()
+    private void Install_Android_SDK_and_Java_puts_the_JDK_where_a_window_opened_after_finds_it_with_no_JAVA_HOME()
     {
         SkipWhereAndroidIsNotBuilt();
         if (OperatingSystem.IsWindows())
@@ -549,8 +499,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         again.Close();
     }
 
-    [AvaloniaFact]
-    public void A_JAVA_HOME_where_the_Android_workload_finds_no_JDK_is_said_and_never_given_to_its_installer_to_install_over()
+    private void A_JAVA_HOME_where_the_Android_workload_finds_no_JDK_is_said_and_never_given_to_its_installer_to_install_over()
     {
         SkipWhereAndroidIsNotBuilt();
         string sdk = Directory.CreateDirectory(Path.Combine(folder, "android-sdk")).FullName;
@@ -587,8 +536,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_iOS_project_whose_Xcode_has_no_simulator_runtime_of_its_SDK_says_so_with_how_Xcode_installs_one()
+    private void An_iOS_project_whose_Xcode_has_no_simulator_runtime_of_its_SDK_says_so_with_how_Xcode_installs_one()
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -609,50 +557,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_iOS_simulator_runtime_this_Macs_own_Xcode_lacks_is_said_as_its_simctl_lists_them()
-    {
-        if (!OperatingSystem.IsMacOS())
-        {
-            Assert.Skip("Xcode and its simulator runtimes are asked of only on a Mac");
-        }
-        string? xcode = Directory.Exists("/Applications")
-            ? Directory.EnumerateDirectories("/Applications", "Xcode*.app").Order(StringComparer.Ordinal).Select(x => Path.Combine(x, "Contents", "Developer")).FirstOrDefault(Directory.Exists)
-            : null;
-        if (xcode is null)
-        {
-            Assert.Skip("This Mac has no Xcode in Applications to ask of its simulator runtimes");
-        }
-        Environment.SetEnvironmentVariable("DEVELOPER_DIR", xcode);
-        // The workload's own check, its Xcode version passed over, so a Mac's Xcode of another version is asked too.
-        File.WriteAllText(Path.Combine(folder, "Ios.csproj"), $"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>{Mobile}-ios</TargetFramework>
-                <OutputType>Exe</OutputType>
-                <ValidateXcodeVersion>false</ValidateXcodeVersion>
-              </PropertyGroup>
-            </Project>
-            """);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
-        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
-        if (window.MobileWant.Workloads.Count > 0)
-        {
-            Assert.Skip($"This .NET lacks the ios workload, so its Xcode is not asked of: {window.MobileSaid}");
-        }
-        Assert.True(window.MobileWant.Xcode is null, $"The workload refused {xcode}: {window.MobileWant.Xcode}");
-        if (window.MobileWant.Simulators.Count == 0)
-        {
-            Assert.Skip($"{xcode} has an iOS simulator runtime of its SDK's version, so nothing lacks");
-        }
-        Assert.Matches(@"^Ios needs the iOS \d+\.\d+ simulator runtime, which Xcode installs \(Xcode › Settings › Components, or xcodebuild -downloadPlatform iOS\)$",
-            window.MobileSaid);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void An_iOS_project_whose_Xcode_the_workload_refuses_says_why_and_Get_Xcode_opens_where_Xcode_comes_from()
+    private void An_iOS_project_whose_Xcode_the_workload_refuses_says_why_and_Get_Xcode_opens_where_Xcode_comes_from()
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -671,50 +576,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
         window.Close();
     }
 
-    /// <summary>DEVELOPER_DIR naming the command-line tools (or, on a Mac without them, a folder of no Xcode): the iOS
-    /// workload finds no Xcode there though one is in Applications, and the banner names DEVELOPER_DIR, never the system's
-    /// choice of Xcode, which DEVELOPER_DIR passes over, nor Get Xcode, as one is here.</summary>
-    [AvaloniaFact]
-    public void An_iOS_project_where_DEVELOPER_DIR_names_no_Xcode_says_so_in_place_of_choosing_the_Xcode_in_Applications()
-    {
-        if (!OperatingSystem.IsMacOS())
-        {
-            Assert.Skip("Xcode is asked of only on a Mac");
-        }
-        string? xcode = Directory.Exists("/Applications")
-            ? Directory.EnumerateDirectories("/Applications", "Xcode*.app").Order(StringComparer.Ordinal).FirstOrDefault(x => Directory.Exists(Path.Combine(x, "Contents", "Developer")))
-            : null;
-        if (xcode is null)
-        {
-            Assert.Skip("This Mac has no Xcode in Applications for the banner to name");
-        }
-        string tools = Directory.Exists("/Library/Developer/CommandLineTools") ? "/Library/Developer/CommandLineTools"
-            : Directory.CreateDirectory(Path.Combine(folder, "CommandLineTools")).FullName;
-        Environment.SetEnvironmentVariable("DEVELOPER_DIR", tools);
-        File.WriteAllText(Path.Combine(folder, "Ios.csproj"), $"""
-            <Project Sdk="Microsoft.NET.Sdk">
-              <PropertyGroup>
-                <TargetFramework>{Mobile}-ios</TargetFramework>
-                <OutputType>Exe</OutputType>
-              </PropertyGroup>
-            </Project>
-            """);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
-        Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
-        if (window.MobileWant.Workloads.Count > 0)
-        {
-            window.Close();
-            Assert.Skip($"This .NET lacks the ios workload, so its Xcode is not asked of: {window.MobileSaid}");
-        }
-
-        Assert.Equal($"Ios needs Xcode, which is in {xcode}. DEVELOPER_DIR names {tools}, where the Apple workloads find no Xcode", window.MobileSaid);
-        Assert.DoesNotContain(ShownButtons(window), b => b == "Get Xcode");
-        window.Close();
-    }
-
-    [Fact]
-    public void New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it()
+    private void New_Project_offers_each_mobile_template_a_missing_workload_brings_naming_the_workload_that_installs_it()
     {
         List<ProjectTemplate> offered = [.. TemplatePacks.Offered([], androidHost: null)];
         string id = OperatingSystem.IsLinux() ? "maui-android" : "maui";
