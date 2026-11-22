@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- macOS's report shard 1, CI 45075856385 (an M1 of 7 GB and three processors), at 5ab484ccf: no test ran, the job
+  cancelled 7 minutes into its Build, "The operation was canceled.". **The workflow, starving its runner**: 5ab484ccf
+  booted the iOS simulator in the background as the solution built; the build, which prints a project every few
+  seconds, printed nothing from 22:11:51 until GitHub cancelled the job at 22:18:53, 11 minutes into its 95 as the run's
+  other jobs went on, and report shard 3's build beside its own boot printed nothing for 4.5 minutes and took 10.3
+  minutes, against 1.4 to 4.9 for both shards in the six runs before. The boot is taken out (b98279487): the first iOS
+  test boots the simulator as before, the device classes running last in their shard.
+- `MarkdownPreviewTests`' `A_readme_draws_beside_its_editor_and_follows_it`, CI 45075856385 (Linux report shard 1), at
+  5ab484ccf: "A heading typed made 2 blocks' controls and kept 44 of 45, not one and all". **The test waited wrong**: it
+  typed "## Typed heading" and two Enters and took it that no typing pause came between them, but where the runner took
+  more than the run's 100 ms between the heading's text and its first Enter, Avalonia's headless key ran the pause's
+  read first, which drew "## Typed heading## Getting started" as the one heading it then was, in place of Getting
+  started's block, as it should for a person who paused there. With 700 ms stalled there the old test failed with CI's
+  words on the Ubuntu VM and the Mac. The test now holds the preview's typing pause open across the keys
+  (`MarkdownPreview.HoldTypingOpen`, through `Debounce.HoldOpen`); with the same stall it passes on both (506b62d9e).
 - `McpIosSimulatorTests`' `An_agent_chooses_an_ios_heads_simulator_and_runs_it_in_a_call_each_…`, CI 45069301166
   (macOS report shard 3), at f4262be65: "run failed: … The simulator iPhone 17 - iOS 27.2 did not start: Device boot
   failed … (domain=com.apple.CoreSimulator.SimError, code=405): Unable to boot device in current state: Booted". **A
