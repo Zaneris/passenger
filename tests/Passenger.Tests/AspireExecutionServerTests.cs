@@ -28,10 +28,29 @@ public sealed class AspireExecutionServerTests
         args = new[] { "one", "two" }
     });
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Disconnecting_a_pending_complete_PUT_cancels_only_that_create(bool reset)
+    /// <summary>Launches as DCP drives them: a pending create cancelled alone by its disconnect, several started at once with a
+    /// delete waiting for its own create alone, a Functions launch offered with its overlays, a committed 201 surviving
+    /// a normal close, a fragmented body and Expect: 100-continue keeping the overlays, a trickled body refused after
+    /// ten real seconds, and an unsolicited WebSocket payload ending only its instance.</summary>
+    [Fact]
+    public Task Launches_start_end_and_outlive_their_connections_as_DCP_drives_them() => Cases.AllAsync(
+        ("disconnecting a pending complete PUT cancels only that create", () => Cases.EachAsync<bool>(
+        [
+            false,
+            true,
+        ], Disconnecting_a_pending_complete_PUT_cancels_only_that_create)),
+        ("several services start at once and a delete waits only for its own create", Several_services_start_at_once_and_a_delete_waits_only_for_its_own_create),
+        ("an azure functions launch is offered and reaches the launch callback as a functions app with its overlays", An_azure_functions_launch_is_offered_and_reaches_the_launch_callback_as_a_functions_app_with_its_overlays),
+        ("committed 201 survives normal HTTP close and remains instance owned", Committed_201_survives_normal_HTTP_close_and_remains_instance_owned),
+        ("fragmented valid body and Expect continue preserve launch overlays", () => Cases.EachAsync<bool>(
+        [
+            false,
+            true,
+        ], Fragmented_valid_body_and_Expect_continue_preserve_launch_overlays)),
+        ("body total deadline elapsed rejects fixed and chunked trickles after ten real seconds", Body_total_deadline_elapsed_rejects_fixed_and_chunked_trickles_after_ten_real_seconds),
+        ("prefetched masked frame is preserved and unsolicited WebSocket payload ends only its instance", Prefetched_masked_frame_is_preserved_and_unsolicited_WebSocket_payload_ends_only_its_instance));
+
+    private async Task Disconnecting_a_pending_complete_PUT_cancels_only_that_create(bool reset)
     {
         TaskCompletionSource<AspireProjectLaunch> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -96,8 +115,7 @@ public sealed class AspireExecutionServerTests
     /// others begin (a start that waits for the other two to begin, which one at a time would never see), and a delete
     /// of a started service is answered while their starts still wait. One service's own creates keep the order DCP
     /// sent them, the second beginning only once the first has ended.</summary>
-    [Fact]
-    public async Task Several_services_start_at_once_and_a_delete_waits_only_for_its_own_create()
+    private async Task Several_services_start_at_once_and_a_delete_waits_only_for_its_own_create()
     {
         const int together = 3;
         int begun = 0;
@@ -184,8 +202,7 @@ public sealed class AspireExecutionServerTests
         });
     }
 
-    [Fact]
-    public async Task An_azure_functions_launch_is_offered_and_reaches_the_launch_callback_as_a_functions_app_with_its_overlays()
+    private async Task An_azure_functions_launch_is_offered_and_reaches_the_launch_callback_as_a_functions_app_with_its_overlays()
     {
         TaskCompletionSource<AspireProjectLaunch> launched = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync((launch, _) =>
@@ -244,8 +261,7 @@ public sealed class AspireExecutionServerTests
         Assert.Equal(200, await wire.Status());
     }
 
-    [Fact]
-    public async Task Committed_201_survives_normal_HTTP_close_and_remains_instance_owned()
+    private async Task Committed_201_survives_normal_HTTP_close_and_remains_instance_owned()
     {
         ConcurrentQueue<string> stopped = new();
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync(
@@ -268,37 +284,50 @@ public sealed class AspireExecutionServerTests
         notifications.Abort();
     }
 
-    [Theory]
-    [InlineData("duplicate-length", 400)]
-    [InlineData("comma-length", 400)]
-    [InlineData("length-and-chunked", 400)]
-    [InlineData("duplicate-encoding", 400)]
-    [InlineData("encoding-list", 400)]
-    [InlineData("bad-chunk", 400)]
-    [InlineData("bad-chunk-ending", 400)]
-    [InlineData("bad-extension", 400)]
-    [InlineData("trailer-auth", 400)]
-    [InlineData("duplicate-auth", 401)]
-    [InlineData("wrong-auth", 401)]
-    [InlineData("basic-auth", 401)]
-    [InlineData("missing-auth", 401)]
-    [InlineData("query-auth", 401)]
-    [InlineData("oversized-auth", 401)]
-    [InlineData("duplicate-instance", 400)]
-    [InlineData("invalid-instance", 400)]
-    [InlineData("duplicate-version", 400)]
-    [InlineData("invalid-version", 400)]
-    [InlineData("duplicate-host", 400)]
-    [InlineData("duplicate-content-type", 415)]
-    [InlineData("folded-header", 400)]
-    [InlineData("request-line", 414)]
-    [InlineData("header-count", 431)]
-    [InlineData("header-bytes", 431)]
-    [InlineData("body-limit", 413)]
-    [InlineData("chunk-limit", 413)]
-    [InlineData("json-depth", 400)]
-    [InlineData("invalid-json", 400)]
-    public async Task Malformed_or_ambiguous_wire_input_never_reaches_the_launch_callback(string kind, int expected)
+    /// <summary>Every malformed, ambiguous or unauthorised request of the 29 kinds DCP's wire could carry is refused with its
+    /// status and never reaches the launch callback, and a refusal of a request read in part reaches a client that
+    /// reads it late.</summary>
+    [Fact]
+    public Task Malformed_ambiguous_or_unauthorised_wire_input_is_refused_and_never_reaches_the_launch_callback() => Cases.AllAsync(
+        ("malformed or ambiguous wire input never reaches the launch callback", () => Cases.EachAsync<(string, int)>(
+        [
+            ("duplicate-length", 400),
+            ("comma-length", 400),
+            ("length-and-chunked", 400),
+            ("duplicate-encoding", 400),
+            ("encoding-list", 400),
+            ("bad-chunk", 400),
+            ("bad-chunk-ending", 400),
+            ("bad-extension", 400),
+            ("trailer-auth", 400),
+            ("duplicate-auth", 401),
+            ("wrong-auth", 401),
+            ("basic-auth", 401),
+            ("missing-auth", 401),
+            ("query-auth", 401),
+            ("oversized-auth", 401),
+            ("duplicate-instance", 400),
+            ("invalid-instance", 400),
+            ("duplicate-version", 400),
+            ("invalid-version", 400),
+            ("duplicate-host", 400),
+            ("duplicate-content-type", 415),
+            ("folded-header", 400),
+            ("request-line", 414),
+            ("header-count", 431),
+            ("header-bytes", 431),
+            ("body-limit", 413),
+            ("chunk-limit", 413),
+            ("json-depth", 400),
+            ("invalid-json", 400),
+        ], row => Malformed_or_ambiguous_wire_input_never_reaches_the_launch_callback(row.Item1, row.Item2))),
+        ("a refusal of a request read in part reaches a client that reads it late", () => Cases.EachAsync<int>(
+        [
+            414,
+            401,
+        ], A_refusal_of_a_request_read_in_part_reaches_a_client_that_reads_it_late)));
+
+    private async Task Malformed_or_ambiguous_wire_input_never_reaches_the_launch_callback(string kind, int expected)
     {
         int calls = 0;
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync((launch, _) =>
@@ -385,10 +414,7 @@ public sealed class AspireExecutionServerTests
     /// <summary>A refusal of a request the server read only in part reaches a client that reads it after the server is
     /// done with the connection, on Windows too, where a socket closed with input unread resets the
     /// connection.</summary>
-    [Theory]
-    [InlineData(414)]
-    [InlineData(401)]
-    public async Task A_refusal_of_a_request_read_in_part_reaches_a_client_that_reads_it_late(int expected)
+    private async Task A_refusal_of_a_request_read_in_part_reaches_a_client_that_reads_it_late(int expected)
     {
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync(
             (launch, _) => Task.FromResult(new AspireProjectSession(launch.SessionId, 1)), (_, _) => Task.CompletedTask, Cancel);
@@ -403,10 +429,7 @@ public sealed class AspireExecutionServerTests
         Assert.Equal(expected, await wire.Status());
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Fragmented_valid_body_and_Expect_continue_preserve_launch_overlays(bool chunked)
+    private async Task Fragmented_valid_body_and_Expect_continue_preserve_launch_overlays(bool chunked)
     {
         TaskCompletionSource<AspireProjectLaunch> launched = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync((launch, _) =>
@@ -439,8 +462,7 @@ public sealed class AspireExecutionServerTests
 
     /// <summary>A body trickled a byte every four seconds, fixed in length on one connection and chunked on another at the same
     /// time, is refused once the ten seconds the server gives a whole body have passed, and nothing is launched.</summary>
-    [Fact]
-    public async Task Body_total_deadline_elapsed_rejects_fixed_and_chunked_trickles_after_ten_real_seconds()
+    private async Task Body_total_deadline_elapsed_rejects_fixed_and_chunked_trickles_after_ten_real_seconds()
     {
         int calls = 0;
         await using AspireExecutionServer server = await AspireExecutionServer.StartAsync((launch, _) =>
@@ -467,8 +489,7 @@ public sealed class AspireExecutionServerTests
         Assert.Equal(0, Volatile.Read(ref calls));
     }
 
-    [Fact]
-    public async Task Prefetched_masked_frame_is_preserved_and_unsolicited_WebSocket_payload_ends_only_its_instance()
+    private async Task Prefetched_masked_frame_is_preserved_and_unsolicited_WebSocket_payload_ends_only_its_instance()
     {
         TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
         string? owned = null;

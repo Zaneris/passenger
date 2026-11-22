@@ -32,8 +32,27 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
         }
     }
 
+    /// <summary>A Functions app an AppHost runs as one flow, every step needing a real AppHost and func, each in an
+    /// instance of its own: Debug stopping in its function with Restart and Stop acting on func and its worker, and an
+    /// attach to the worker that fails running the app undebugged, saying why.</summary>
     [AvaloniaFact(Skip = AspireFunctionsApp.AppHostSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsAppHostUnavailable))]
-    public void Debug_of_an_AppHost_stops_in_its_Functions_apps_function_and_Restart_and_Stop_act_on_func_and_its_worker()
+    public void An_AppHosts_Functions_app_is_debugged_through_func_or_run_undebugged_saying_why()
+    {
+        Flow.StepApart("debug of an AppHost stops in its Functions apps function and Restart and Stop act on func and its worker", () => new AspireFunctionsTests(project), t => t.Debug_of_an_AppHost_stops_in_its_Functions_apps_function_and_Restart_and_Stop_act_on_func_and_its_worker());
+        Flow.StepApart("debug of an AppHost whose attach to its Functions worker fails runs the app undebugged saying why", () => new AspireFunctionsTests(project), t => t.Debug_of_an_AppHost_whose_attach_to_its_Functions_worker_fails_runs_the_app_undebugged_saying_why());
+    }
+
+    /// <summary>A Functions project's own run as one flow, every step needing func, each in an instance of its own: its
+    /// Run serving its function through func and its Debug stopping in it, and a Debug whose attach to the worker fails
+    /// ending func, saying why.</summary>
+    [AvaloniaFact(Skip = AspireFunctionsApp.FuncSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsUnavailable))]
+    public void A_Functions_projects_own_Run_and_Debug_go_through_func_and_end_it_saying_why_an_attach_failed()
+    {
+        Flow.StepApart("a Functions projects own Run serves its function through func and its Debug stops in it", () => new AspireFunctionsTests(project), t => t.A_Functions_projects_own_Run_serves_its_function_through_func_and_its_Debug_stops_in_it());
+        Flow.StepApart("a Functions projects own Debug whose attach to the worker fails ends func saying why", () => new AspireFunctionsTests(project), t => t.A_Functions_projects_own_Debug_whose_attach_to_the_worker_fails_ends_func_saying_why());
+    }
+
+    private void Debug_of_an_AppHost_stops_in_its_Functions_apps_function_and_Restart_and_Stop_act_on_func_and_its_worker()
     {
         MainWindow window = project.Open(project.HostProgram, languageServer: false);
         try
@@ -67,8 +86,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
         }
     }
 
-    [AvaloniaFact(Skip = AspireFunctionsApp.FuncSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsUnavailable))]
-    public void A_Functions_projects_own_Run_serves_its_function_through_func_and_its_Debug_stops_in_it()
+    private void A_Functions_projects_own_Run_serves_its_function_through_func_and_its_Debug_stops_in_it()
     {
         MainWindow window = project.Open(project.Function, languageServer: false);
         try
@@ -112,8 +130,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
     /// <summary>Debug of an AppHost whose attach to its Functions app's worker fails (a refusal standing in for the
     /// debugger's) says why and starts func again with its worker unheld, which would otherwise wait for a debugger as each
     /// worker func's host starts again does: the function answers a request, and Stop ends it all.</summary>
-    [AvaloniaFact(Skip = AspireFunctionsApp.AppHostSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsAppHostUnavailable))]
-    public void Debug_of_an_AppHost_whose_attach_to_its_Functions_worker_fails_runs_the_app_undebugged_saying_why()
+    private void Debug_of_an_AppHost_whose_attach_to_its_Functions_worker_fails_runs_the_app_undebugged_saying_why()
     {
         MainWindow window = project.Open(project.HostProgram, languageServer: false);
         try
@@ -147,8 +164,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
     /// <summary>A Functions project's own Debug whose attach to the worker fails (a refusal standing in for the debugger's)
     /// says why, and that func ends with what it started, which would otherwise wait for a debugger; nothing is left
     /// running.</summary>
-    [AvaloniaFact(Skip = AspireFunctionsApp.FuncSkipped, SkipType = typeof(AspireFunctionsApp), SkipWhen = nameof(AspireFunctionsApp.IsUnavailable))]
-    public void A_Functions_projects_own_Debug_whose_attach_to_the_worker_fails_ends_func_saying_why()
+    private void A_Functions_projects_own_Debug_whose_attach_to_the_worker_fails_ends_func_saying_why()
     {
         MainWindow window = project.Open(project.Function, languageServer: false);
         try

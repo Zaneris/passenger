@@ -25,11 +25,122 @@ namespace Passenger.Tests;
 /// so these run on every system.</summary>
 public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<StandInAppHost>
 {
+    /// <summary>AppHosts found and run as one flow, each step one test's check in an instance of its own: single-file
+    /// AppHosts found and followed, Rerun of one whose code changed, a release run, Running and Rerun following the
+    /// configuration, a taken port started again on another, logs read where the dashboard was placed, a run ending
+    /// with its own AppHosts, an older kept AppHost, and a service added by path lent trust only beside the
+    /// folder.</summary>
+    [AvaloniaFact]
+    public void An_AppHost_is_found_run_and_rerun_as_its_configuration_says_ending_with_its_own_programs()
+    {
+        Flow.StepApart("single file AppHosts are found as the folder opens and followed as files come change and go", () => new AspireStandInTests(project), t => t.Single_file_AppHosts_are_found_as_the_folder_opens_and_followed_as_files_come_change_and_go());
+        Flow.StepApart("a single file AppHost that came with its folder is read only once the folder has stood still", () => new AspireStandInTests(project), t => t.A_single_file_AppHost_that_came_with_its_folder_is_read_only_once_the_folder_has_stood_still());
+        Flow.StepApart("rerun runs an AppHost whose own code changed again once stopped and leaves one unchanged running", () => new AspireStandInTests(project), t => t.Rerun_runs_an_AppHost_whose_own_code_changed_again_once_stopped_and_leaves_one_unchanged_running());
+        Flow.StepApart("run under release runs the AppHosts release build", () => new AspireStandInTests(project), t => t.Run_under_release_runs_the_AppHosts_release_build());
+        Flow.StepApart("running and Rerun follow the configuration chosen while an AppHost runs", () => new AspireStandInTests(project), t => t.Running_and_Rerun_follow_the_configuration_chosen_while_an_AppHost_runs());
+        Flow.StepApart("an AppHost whose chosen resource service port was taken as it started is started again on another saying so", () => new AspireStandInTests(project), t => t.An_AppHost_whose_chosen_resource_service_port_was_taken_as_it_started_is_started_again_on_another_saying_so());
+        Flow.StepApart("an AppHost given no dashboard address has its logs read where its orchestrator placed the dashboard", () => new AspireStandInTests(project), t => t.An_AppHost_given_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard());
+        Flow.StepApart("a run of an AppHost ends with its own AppHosts while another configurations runs on", () => new AspireStandInTests(project), t => t.A_run_of_an_AppHost_ends_with_its_own_AppHosts_while_another_configurations_runs_on());
+        Flow.StepApart("run or Debug of a configuration that runs starts it again and only the Run consoles own is said running", () => new AspireStandInTests(project), t => t.Run_or_Debug_of_a_configuration_that_runs_starts_it_again_and_only_the_Run_consoles_own_is_said_running());
+        Flow.StepApart("an AppHost an older Passenger kept as a plain project opens with its Aspire configuration", () => new AspireStandInTests(project), t => t.An_AppHost_an_older_Passenger_kept_as_a_plain_project_opens_with_its_Aspire_configuration());
+        Flow.StepApart("a service an AppHost adds by path beside the open folder starts lent its trust and one above it is refused saying why", () => new AspireStandInTests(project), t => t.A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why());
+    }
+
+    /// <summary>The Aspire window as one flow, each step one test's check in an instance of its own: the console
+    /// dropping overlapping lines and following a new generation, a log landing at the cost of what it adds, a restart
+    /// reading only its own console again, a resource's row, details, commands and merged console, an argument marked
+    /// sensitive shown as dots everywhere, a service marked Don't start, the graph's edges, a resource waiting for
+    /// another, a JavaScript resource's folder and restart, and a request duration charted while shown.</summary>
+    [AvaloniaFact]
+    public void The_Aspire_window_shows_each_resources_row_console_telemetry_and_graph_its_secrets_as_dots()
+    {
+        Flow.StepApart("the console drops overlapping lines follows a new generation links its lines and ends its streams when hidden", () => new AspireStandInTests(project), t => t.The_console_drops_overlapping_lines_follows_a_new_generation_links_its_lines_and_ends_its_streams_when_hidden());
+        Flow.StepApart("a log landing costs the UI thread what it adds however many are kept", () => new AspireStandInTests(project), t => t.A_log_landing_costs_the_UI_thread_what_it_adds_however_many_are_kept());
+        Flow.StepApart("a resources restart reads only its own console again", () => new AspireStandInTests(project), t => t.A_resources_restart_reads_only_its_own_console_again());
+        Flow.StepApart("the window shows a resources row details commands and merged console as Containers shows a services", () => new AspireStandInTests(project), t => t.The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services());
+        Flow.StepApart("an argument the AppHost marks sensitive shows as dots in the log the console and the list of programs", () => new AspireStandInTests(project), t => t.An_argument_the_AppHost_marks_sensitive_shows_as_dots_in_the_log_the_console_and_the_list_of_programs());
+        Flow.StepApart("a service marked Dont start reads Not started in its row and Details", () => new AspireStandInTests(project), t => t.A_service_marked_Dont_start_reads_Not_started_in_its_row_and_Details());
+        Flow.StepApart("the apphosts graph has an edge for each wait and a node chooses its row", () => new AspireStandInTests(project), t => t.The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row());
+        Flow.StepApart("a resource waiting for another says what for in its details with links both ways", () => new AspireStandInTests(project), t => t.A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways());
+        Flow.StepApart("a javascript app resource goes to its folder and restarts from its row", () => new AspireStandInTests(project), t => t.A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row());
+        Flow.StepApart("a web services request duration is charted on its Stats tab while the tab is shown", () => new AspireStandInTests(project), t => t.A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown());
+    }
+
+    /// <summary>Aspire services as one flow, each step one test's check in an instance of its own: a service started
+    /// with arguments where the AppHost says no resource's, Profile asking which service and Stop reading the profile
+    /// before the program goes, a failed restart said in words, Rerun restarting only a service whose scoped CSS
+    /// changed, each replica restarted and acted on as its own program, Profile giving up past its time however late
+    /// its timer runs, and a Restart going through the run and attaching again.</summary>
+    [AvaloniaFact]
+    public void An_Aspire_services_restart_replica_and_profile_act_on_its_own_program_saying_what_failed()
+    {
+        Flow.StepApart("a service started with arguments by an AppHost that says no resources arguments starts without waiting for them", () => new AspireStandInTests(project), t => t.A_service_started_with_arguments_by_an_AppHost_that_says_no_resources_arguments_starts_without_waiting_for_them());
+        Flow.StepApart("profile of a running AppHost asks which service in a dialog held to the dialogs rules", () => new AspireStandInTests(project), t => t.Profile_of_a_running_AppHost_asks_which_service_in_a_dialog_held_to_the_dialogs_rules());
+        Flow.StepApart("stop reads the profile of an Aspire service as it runs before its program goes", () => new AspireStandInTests(project), t => t.Stop_reads_the_profile_of_an_Aspire_service_as_it_runs_before_its_program_goes());
+        Flow.StepApart("a restart that fails is said as its refusal in words", () => new AspireStandInTests(project), t => t.A_restart_that_fails_is_said_as_its_refusal_in_words());
+        Flow.StepApart("rerun restarts a service whose scoped CSS changed and nothing for other CSS", () => new AspireStandInTests(project), t => t.Rerun_restarts_a_service_whose_scoped_CSS_changed_and_nothing_for_other_CSS());
+        Flow.StepApart("each replica of a service restarts by its own resource", () => new AspireStandInTests(project), t => t.Each_replica_of_a_service_restarts_by_its_own_resource());
+        Flow.StepApart("each action on one replica of a service acts on its own program and holds it alone", () => new AspireStandInTests(project), t => t.Each_action_on_one_replica_of_a_service_acts_on_its_own_program_and_holds_it_alone());
+        Flow.StepApart("profile of an AppHost gives up on a service past its time saying so (false)", () => new AspireStandInTests(project), t => t.Profile_of_an_AppHost_gives_up_on_a_service_past_its_time_saying_so(false));
+        Flow.StepApart("profile of an AppHost gives up on a service past its time saying so (true)", () => new AspireStandInTests(project), t => t.Profile_of_an_AppHost_gives_up_on_a_service_past_its_time_saying_so(true));
+        Flow.StepApart("an Aspire services Restart goes through its run and one attached as it ran is attached again", () => new AspireStandInTests(project), t => t.An_Aspire_services_Restart_goes_through_its_run_and_one_attached_as_it_ran_is_attached_again());
+    }
+
+    /// <summary>Debugging Aspire services as one flow, each step one test's check in an instance of its own: Rerun
+    /// attaching again past a refused attach, both replicas debugged and one replica's Debug saying the next run debugs
+    /// every one, a service the debugger cannot reach running on saying so, one update per save and an edit made as it
+    /// starts applied, actions greyed on a container, and an Avalonia service's bindings and saved XAML.</summary>
+    [AvaloniaFact]
+    public void Aspire_services_are_debugged_and_hot_reloaded_or_run_on_saying_why_the_debugger_could_not_reach_them()
+    {
+        Flow.StepApart("rerun attaches again to each service attached as it ran after one attach is refused", () => new AspireStandInTests(project), t => t.Rerun_attaches_again_to_each_service_attached_as_it_ran_after_one_attach_is_refused());
+        Flow.StepApart("both replicas of a service are debugged at once each in a tab of its own", () => new AspireStandInTests(project), t => t.Both_replicas_of_a_service_are_debugged_at_once_each_in_a_tab_of_its_own());
+        Flow.StepApart("debug of one replica says the next run debugs every replica which it does", () => new AspireStandInTests(project), t => t.Debug_of_one_replica_says_the_next_run_debugs_every_replica_which_it_does());
+        Flow.StepApart("a held Aspire service the debugger cannot reach runs on without it saying so", () => new AspireStandInTests(project), t => t.A_held_Aspire_service_the_debugger_cannot_reach_runs_on_without_it_saying_so());
+        Flow.StepApart("a held services update handlers hook no debugger took lets go of its socket as the window closes", () => new AspireStandInTests(project), t => t.A_held_services_update_handlers_hook_no_debugger_took_lets_go_of_its_socket_as_the_window_closes());
+        Flow.StepApart("an Aspire service the debugger cannot reach runs on and so does a program it starts", () => new AspireStandInTests(project), t => t.An_Aspire_service_the_debugger_cannot_reach_runs_on_and_so_does_a_program_it_starts());
+        Flow.StepApart("a save during an apply to a service run with Hot Reload sends it one update", () => new AspireStandInTests(project), t => t.A_save_during_an_apply_to_a_service_run_with_Hot_Reload_sends_it_one_update());
+        Flow.StepApart("an edit made after the AppHosts build as its service starts is applied once the service runs", () => new AspireStandInTests(project), t => t.An_edit_made_after_the_AppHosts_build_as_its_service_starts_is_applied_once_the_service_runs());
+        Flow.StepApart("service actions grey with why on a container and Debug starts a service left unstarted under the debugger", () => new AspireStandInTests(project), t => t.Service_actions_grey_with_why_on_a_container_and_Debug_starts_a_service_left_unstarted_under_the_debugger());
+        Flow.StepApart("an agent is told the failed bindings of an Avalonia app the AppHost runs as a service", () => new AspireStandInTests(project), t => t.An_agent_is_told_the_failed_bindings_of_an_Avalonia_app_the_AppHost_runs_as_a_service());
+        Flow.StepApart("an Avalonia app the AppHost runs as a service takes its saved xaml into its window", () => new AspireStandInTests(project), t => t.An_Avalonia_app_the_AppHost_runs_as_a_service_takes_its_saved_xaml_into_its_window());
+    }
+
+    /// <summary>The AppHost's interactions as one flow, each step one test's check in an instance of its own: a
+    /// confirmation cancelled and a form it updates sending what the dialog shows, a notification leaving the keys
+    /// where the person types, a prompt closing with the window that ends the AppHost, a terminal prompt closed any way
+    /// answered cancelled, and a file input it replaces refusing the upload under way.</summary>
+    [AvaloniaFact]
+    public void The_AppHosts_questions_are_answered_as_the_dialog_shows_them_and_never_take_the_persons_keys()
+    {
+        Flow.StepApart("a confirmation cancelled and a form the AppHost updates send what the dialog shows", () => new AspireStandInTests(project), t => t.A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows());
+        Flow.StepApart("a notification the AppHost sends while the person types leaves the keys where they are", () => new AspireStandInTests(project), t => t.A_notification_the_AppHost_sends_while_the_person_types_leaves_the_keys_where_they_are());
+        Flow.StepApart("a prompt the AppHost shows closes with the window whose close ends the AppHost", () => new AspireStandInTests(project), t => t.A_prompt_the_AppHost_shows_closes_with_the_window_whose_close_ends_the_AppHost());
+        Flow.StepApart("a terminal prompt closed any way is answered cancelled and ordinary prompts go on", () => new AspireStandInTests(project), t => t.A_terminal_prompt_closed_any_way_is_answered_cancelled_and_ordinary_prompts_go_on());
+        Flow.StepApart("a file input the AppHost replaces refuses the upload under way and takes the file chosen again", () => new AspireStandInTests(project), t => t.A_file_input_the_AppHost_replaces_refuses_the_upload_under_way_and_takes_the_file_chosen_again());
+    }
+
+    /// <summary>What the stand-in shell scripts answer as one flow, every step off Windows alone (Windows runs no shell
+    /// script), each in an instance of its own: an AppHost serving HTTPS with no trusted certificate asking once, Debug
+    /// while Run brings it up taking its place, Discover taking a CLI of 13.6 or later, an AppHost read through the CLI
+    /// with no credentials in its addresses and its failure masked, an engine stopping or down said once, and the
+    /// Containers window's AppHost row merging its containers.</summary>
+    [AvaloniaFact]
+    public void An_AppHosts_certificate_CLI_and_container_engine_are_asked_and_said_as_each_answers()
+    {
+        Flow.StepApart("an AppHost that serves HTTPS with no trusted certificate asks once before it starts to run over HTTP or trust it", () => new AspireStandInTests(project), t => t.An_AppHost_that_serves_HTTPS_with_no_trusted_certificate_asks_once_before_it_starts_to_run_over_HTTP_or_trust_it());
+        Flow.StepApart("debug while Run brings the AppHost up takes its place", () => new AspireStandInTests(project), t => t.Debug_while_Run_brings_the_AppHost_up_takes_its_place());
+        Flow.StepApart("discover takes a CLI of 13 6 or later within 13 or of 17 and says why it will not take another", () => new AspireStandInTests(project), t => t.Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another());
+        Flow.StepApart("an AppHost read through the CLI shows its addresses without credentials and its failure masked", () => new AspireStandInTests(project), t => t.An_AppHost_read_through_the_CLI_shows_its_addresses_without_credentials_and_its_failure_masked());
+        Flow.StepApart("a container engine that stops while an AppHost runs is said in the status bar and Problems as for a container run", () => new AspireStandInTests(project), t => t.A_container_engine_that_stops_while_an_AppHost_runs_is_said_in_the_status_bar_and_Problems_as_for_a_container_run());
+        Flow.StepApart("an engine down as an AppHost starts is said once and its events ending leave the runs own words", () => new AspireStandInTests(project), t => t.An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words());
+        Flow.StepApart("the Containers windows AppHost row merges its containers logs and stats", () => new AspireStandInTests(project), t => t.The_Containers_windows_AppHost_row_merges_its_containers_logs_and_stats());
+    }
+
     /// <summary>A single-file AppHost has its run configuration as the folder opens, found among the files of the folder's one
     /// walk, and as the folder watcher sees one come, a C# file gain the AppHost SDK's line, or one go; never one under a hidden
     /// folder, which a walk for what projects build passes over.</summary>
-    [AvaloniaFact]
-    public void Single_file_AppHosts_are_found_as_the_folder_opens_and_followed_as_files_come_change_and_go()
+    private void Single_file_AppHosts_are_found_as_the_folder_opens_and_followed_as_files_come_change_and_go()
     {
         project.Reset();
         string sdk = $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n";
@@ -66,8 +177,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A single-file AppHost brought in with its folder by another program is read only once that folder has stood
     /// still: moved out again before then it is never read, which on Windows would refuse that move, and brought in to stay
     /// it is found once the folder has stood still.</summary>
-    [AvaloniaFact]
-    public void A_single_file_AppHost_that_came_with_its_folder_is_read_only_once_the_folder_has_stood_still()
+    private void A_single_file_AppHost_that_came_with_its_folder_is_read_only_once_the_folder_has_stood_still()
     {
         project.Reset();
         string sdk = $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n";
@@ -106,8 +216,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// machine): Stop closes the question and starts nothing; Run over HTTP has it serve HTTP where it would have
     /// served HTTPS, unsecured transport allowed, the status bar saying why; and Create and Trust has dev-certs trust
     /// it, the AppHost serving HTTPS as its profile says.</summary>
-    [AvaloniaFact]
-    public void An_AppHost_that_serves_HTTPS_with_no_trusted_certificate_asks_once_before_it_starts_to_run_over_HTTP_or_trust_it()
+    private void An_AppHost_that_serves_HTTPS_with_no_trusted_certificate_asks_once_before_it_starts_to_run_over_HTTP_or_trust_it()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in dev-certs is a shell script");
         project.Reset();
@@ -170,8 +279,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Debug pressed while Run brings the AppHost up takes Run's place: Run's start ends, saying so, and the
     /// AppHost comes up once, debugged. Run's start is held at its certificate's check, a stand-in that takes its time
     /// (<see cref="DevCerts"/>), which trusts nothing on this machine.</summary>
-    [AvaloniaFact]
-    public void Debug_while_Run_brings_the_AppHost_up_takes_its_place()
+    private void Debug_while_Run_brings_the_AppHost_up_takes_its_place()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in dev-certs is a shell script");
         project.Reset();
@@ -209,8 +317,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// the AppHost first, then builds it and runs it again, never building over its running files, which Windows locks
     /// while it runs. Neither the builds nor the AppHost start on the window's thread, where a fork of a large process
     /// costs tens of milliseconds.</summary>
-    [AvaloniaFact]
-    public void Rerun_runs_an_AppHost_whose_own_code_changed_again_once_stopped_and_leaves_one_unchanged_running()
+    private void Rerun_runs_an_AppHost_whose_own_code_changed_again_once_stopped_and_leaves_one_unchanged_running()
     {
         project.Reset();
         // Each AppHost writes its own key, which its resource connection is read by: none an earlier test's.
@@ -287,8 +394,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     }
 
     /// <summary>Release chosen, Run builds the AppHost as Release and runs the program its Release build made.</summary>
-    [AvaloniaFact]
-    public void Run_under_release_runs_the_AppHosts_release_build()
+    private void Run_under_release_runs_the_AppHosts_release_build()
     {
         project.Reset();
         File.Delete(project.KeyFile);
@@ -330,8 +436,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         return DialogButtonsTests.Check(window.CertificateQuestion!);
     }
 
-    [AvaloniaFact]
-    public void The_console_drops_overlapping_lines_follows_a_new_generation_links_its_lines_and_ends_its_streams_when_hidden()
+    private void The_console_drops_overlapping_lines_follows_a_new_generation_links_its_lines_and_ends_its_streams_when_hidden()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -404,8 +509,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Following an app's logs costs each log what it adds: a log landing while a thousand are kept allocates
     /// on the UI thread about what one does while ten are, and the oldest leaves the list as the dashboard's bound is
     /// passed.</summary>
-    [AvaloniaFact]
-    public void A_log_landing_costs_the_UI_thread_what_it_adds_however_many_are_kept()
+    private void A_log_landing_costs_the_UI_thread_what_it_adds_however_many_are_kept()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -456,42 +560,6 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>An app's logs kept in the Telemetry tab, scrolled with the wheel as <see cref="LongListsTests"/> scrolls
-    /// the IDE's own lists: a step down the dashboard's bound of them allocates what one down a hundred does, and the rows
-    /// are handed other logs, none made again.</summary>
-    [AvaloniaFact]
-    public void A_scroll_step_down_a_thousand_logs_in_the_telemetry_tab_hands_the_rows_other_logs_never_making_one_again()
-    {
-        project.Reset();
-        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
-        backend.PushResource(new Resource { Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running" });
-        AspireDashboardHost dashboard = Ui.Await(AspireDashboardHost.StartAsync(), "the stand-in dashboard");
-        dashboard.Streams = true;
-        MainWindow window = OpenRunning(backend, dashboard.Endpoint);
-        int sent = 0;
-        try
-        {
-            FindAction(window, "Show Aspire Resources");
-            Ui.Click(Tab(window, "Telemetry"));
-            Ui.WaitFor(() => dashboard.Following("logs") == 1, "the Telemetry tab to follow the dashboard's logs");
-            LongListsTests.Holds("The Telemetry tab's logs", "logs", 100, AspireClient.LogLimit, count =>
-            {
-                sent = SendLogs(dashboard, sent, count - sent);
-                Ui.WaitFor(() => LogLanded(window, sent), $"the first {sent} logs to land");
-                Ui.Settle();
-                return (window.AspireWindow.StructuredLogs, () => { });
-            });
-            Assert.Equal(AspireClient.LogLimit, window.AspireWindow.Telemetry.Logs.Count);
-            Assert.Empty(backend.Errors);
-        }
-        finally
-        {
-            window.Close();
-            Ui.Await(Complete(dashboard.DisposeAsync().AsTask()), "the stand-in dashboard to stop");
-            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
-        }
-    }
-
     /// <summary>The apiservice's logs after the first <paramref name="sent"/>, as many as <paramref name="count"/>, sent by
     /// the stand-in dashboard in one envelope, each saying its number: how many it has sent now.</summary>
     private static int SendLogs(AspireDashboardHost dashboard, int sent, int count)
@@ -512,8 +580,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>One resource's restart costs what it changed: with three resources' consoles merged and shown, a new
     /// generation of one ends its own stream alone and reads its lines again after those shown; the others' streams go
     /// on as they were, never asked for again, and every line already shown stays.</summary>
-    [AvaloniaFact]
-    public void A_resources_restart_reads_only_its_own_console_again()
+    private void A_resources_restart_reads_only_its_own_console_again()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -558,67 +625,12 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         AspireInteractionHost.ConsoleSubscription Of(string name) => backend.Consoles.Last(console => console.ResourceName == name);
     }
 
-    /// <summary>An AppHost's resources reach the Aspire window while it is hidden, as its run follows them, and show
-    /// once it is; an update in the background keeps the chosen parent and its children open.</summary>
-    [AvaloniaFact]
-    public void A_resource_update_in_the_background_keeps_the_chosen_parent_and_its_children_open()
-    {
-        project.Reset();
-        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
-        backend.PushResource(new Resource
-        {
-            Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running",
-            HealthReports = { new HealthReport { Key = "ready", Status = HealthStatus.Healthy } },
-        });
-        Resource worker = new()
-        {
-            Name = "worker", DisplayName = "worker", Uid = "worker", ResourceType = "Executable", State = "Running",
-            Relationships = { new ResourceRelationship { Type = "Parent", ResourceName = "apiservice" } },
-        };
-        MainWindow window = OpenRunning(backend);
-        try
-        {
-            // Run showed the window: hidden now, it is still told what its run's resources become.
-            window.DockHost.Hide(ToolWindowIds.Aspire);
-            Ui.Settle();
-            backend.PushResource(worker);
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Count == 2, "the child that came with the window hidden");
-            Assert.False(window.Aspire.IsDisplayed, "The hidden Aspire window still streams its resources");
-            FindAction(window, "Show Aspire Resources");
-            Assert.Equal([("apiservice", 0), ("worker", 1)], window.Aspire.Rows.Select(row => (row.Resource.Name, row.Depth)));
-            Assert.Contains(Row(window, "worker").GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text == "worker");
-            Ui.Click(Words(Row(window, "apiservice"), "apiservice"));
-            Assert.Equal("apiservice", window.Aspire.SelectedResource?.Name);
-            Ui.Click(Chevron(window, "apiservice"));
-            Ui.WaitFor(() => window.Aspire.Rows.Count == 1, "the chevron to close the parent");
-            Ui.Click(Chevron(window, "apiservice"));
-            Ui.WaitFor(() => window.Aspire.Rows.Count == 2, "the chevron to open the parent");
-            Assert.Equal("apiservice", window.Aspire.SelectedResource?.Name);
-            ListBox resources = window.AspireWindow.ResourceList;
-            TreeKeysCheck.Press(window, resources.ItemsSource!, resources.Items.OfType<Passenger.App.ToolWindows.RunItem<AspireRow>>().First(i => i.Data.Resource.Name == "apiservice"), i => i.Data, "the Aspire window");
-            worker.State = "Stopped";
-            backend.PushResource(worker);
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Any(resource => resource.Name == "worker" && resource.State == "Stopped"),
-                "the child's update");
-            Assert.Equal("apiservice", window.Aspire.SelectedResource?.Name);
-            Assert.True(window.Aspire.Rows.Any(row => row.Resource.Name == "worker"), "The child's update closed its parent");
-            Assert.Contains(Row(window, "apiservice").GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text == "healthy");
-            Assert.Empty(backend.Errors);
-        }
-        finally
-        {
-            window.Close();
-            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
-        }
-    }
-
     /// <summary>The Aspire window over the AppHost's resources, driven by clicks: a resource's row has its state's dot, its
     /// health's tag and its address as a link to the browser; its Details are framed tables, a secret's value masked (by its
     /// name, a connection string's password, an argument after its flag or marked sensitive, the others shown); its toolbar's
     /// icon buttons each run an action, showing its work; its commands are a menu; its console merges every resource's lines,
     /// a toggle each ending that resource's stream, with Find; and at the window's least width nothing overflows its room.</summary>
-    [AvaloniaFact]
-    public void The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services()
+    private void The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -750,8 +762,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// IDE to start the service with it as a positional argument before an AppHost that says its resources' arguments (its
     /// cache's) has said the service's, as it may, and the start waits for them, so the IDE's log of the program's start, its
     /// console's echo and an agent's list of running programs show it as the dots, the arguments before it as they are.</summary>
-    [AvaloniaFact]
-    public void An_argument_the_AppHost_marks_sensitive_shows_as_dots_in_the_log_the_console_and_the_list_of_programs()
+    private void An_argument_the_AppHost_marks_sensitive_shows_as_dots_in_the_log_the_console_and_the_list_of_programs()
     {
         const string Secret = "marked-never-shown";
         project.Reset();
@@ -800,8 +811,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A service DCP starts with arguments starts at once where its AppHost has not shown it says its resources'
     /// arguments, as one older than Aspire 9.1 never does, never waiting for them.</summary>
-    [AvaloniaFact]
-    public void A_service_started_with_arguments_by_an_AppHost_that_says_no_resources_arguments_starts_without_waiting_for_them()
+    private void A_service_started_with_arguments_by_an_AppHost_that_says_no_resources_arguments_starts_without_waiting_for_them()
     {
         project.Reset();
         project.BuildApi();
@@ -830,95 +840,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>A click on a resource's address, in its row or its Details, or on its commands lands while the AppHost
-    /// streams updates: an update between the press and the release (its health turned degraded) changes the row in
-    /// place, its control and its link kept, and the click opens the browser; the commands button and its menu's item,
-    /// each pressed as an update comes, still run the command at the AppHost.</summary>
-    [AvaloniaFact]
-    public void A_click_on_a_resources_address_or_command_lands_while_the_AppHost_streams_updates()
-    {
-        project.Reset();
-        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
-        Resource api = new()
-        {
-            Name = "apiservice", DisplayName = "apiservice", Uid = "api", ResourceType = "Project", State = "Running",
-            HealthReports = { new HealthReport { Key = "ready", Status = HealthStatus.Healthy } },
-            Urls = { new Url { EndpointName = "http", FullUrl = "http://localhost:5310/" } },
-        };
-        backend.PushResource(api);
-        MainWindow window = OpenRunning(backend);
-        try
-        {
-            FindAction(window, "Show Aspire Resources");
-            Ui.WaitFor(() => window.Aspire.Rows.Count == 1, "the API's row");
-            Control row = Row(window, "apiservice");
-            Button address = row.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "aspireUrl");
-            Ui.Settle();
-            Point at = Ui.Centre(address, window);
-            Assert.Same(address, Avalonia.Input.InputExtensions.InputHitTest(window, at) is Visual found ? found.GetVisualAncestors().Prepend(found).OfType<Button>().FirstOrDefault() : null);
-            window.MouseDown(at, Avalonia.Input.MouseButton.Left);
-            api.HealthReports[0].Status = HealthStatus.Degraded;
-            backend.PushResource(api);
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Single().HealthStatus == "Degraded", "the AppHost's update as the address is pressed");
-            Assert.Contains(row.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "degraded");
-            window.MouseUp(at, Avalonia.Input.MouseButton.Left);
-            Ui.Settle();
-            Assert.Equal("http://localhost:5310/", Assert.Single(window.Browsed).AbsoluteUri);
-            Assert.Same(row, Row(window, "apiservice"));
-
-            Ui.Click(Words(row, "apiservice"));
-            Ui.Click(Tab(window, "Details"));
-            Button detailed = window.AspireWindow.Details.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "aspireDetailsUrl");
-            detailed.BringIntoView();
-            Ui.Settle();
-            at = Ui.Centre(detailed, window);
-            Assert.Same(detailed, Avalonia.Input.InputExtensions.InputHitTest(window, at) is Visual under ? under.GetVisualAncestors().Prepend(under).OfType<Button>().FirstOrDefault() : null);
-            window.MouseDown(at, Avalonia.Input.MouseButton.Left);
-            api.Commands.Add(new ResourceCommand { Name = "resource-restart", DisplayName = "Restart", State = ResourceCommandState.Enabled });
-            backend.PushResource(api);
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Single().Commands.Count == 1, "the AppHost's update as the Details' address is pressed");
-            window.MouseUp(at, Avalonia.Input.MouseButton.Left);
-            Ui.Settle();
-            Assert.Equal(2, window.Browsed.Count);
-
-            api.Commands.Add(new ResourceCommand { Name = "passenger-ping", DisplayName = "Ping", State = ResourceCommandState.Enabled });
-            backend.PushResource(api);
-            Ui.WaitFor(() => window.Aspire.SelectedResource?.Commands.Any(command => command.Name == "passenger-ping") == true, "the API's Ping command");
-            Button commands = window.AspireWindow.Tools[AppActions.AspireCommand];
-            at = Ui.Centre(commands, window);
-            window.MouseDown(at, Avalonia.Input.MouseButton.Left);
-            api.HealthReports[0].Status = HealthStatus.Healthy;
-            backend.PushResource(api);
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Single().HealthStatus == "Healthy", "the AppHost's update as the commands button is pressed");
-            window.MouseUp(at, Avalonia.Input.MouseButton.Left);
-            Ui.Settle();
-            ContextMenu menu = window.GetVisualDescendants().OfType<ContextMenu>().FirstOrDefault(open => open.IsOpen)
-                ?? throw new Xunit.Sdk.XunitException("The commands button pressed as an update came opened no menu");
-            MenuItem ping = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Ping"));
-            TopLevel shown = TopLevel.GetTopLevel(ping)!;
-            at = Ui.Centre(ping, shown);
-            shown.MouseDown(at, Avalonia.Input.MouseButton.Left);
-            api.HealthReports[0].Status = HealthStatus.Degraded;
-            backend.PushResource(api);
-            Ui.WaitFor(() => window.Aspire.ResourceSnapshots.Single().HealthStatus == "Degraded", "the AppHost's update as the command's item is pressed");
-            shown.MouseUp(at, Avalonia.Input.MouseButton.Left);
-            Ui.WaitFor(() => backend.Commands.Any(command => command is { ResourceName: "apiservice", CommandName: "passenger-ping" }),
-                "the command pressed as an update came to reach the AppHost");
-            Assert.Empty(backend.Errors);
-        }
-        finally
-        {
-            window.Close();
-            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
-        }
-    }
-
     /// <summary>A service an Aspire 17 AppHost adds by a path outside the open folder (AddDotnetProject, which no ProjectReference
     /// backs) is lent the folder's trust as a solution's project beside it is, while the window holds it: its start, as DCP asks,
     /// runs it. One the AppHost names in a folder holding the open folder is lent nothing: its start is refused, the status and the
     /// AppHost's console saying why. The window is open on the AppHost's own folder, the stand-in's folder holding it.</summary>
-    [AvaloniaFact]
-    public void A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why()
+    private void A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why()
     {
         project.Reset();
         string beside = PathNames.Canonical(TestFolders.Create("aspire-beside-"));
@@ -989,8 +915,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Profile of an AppHost the window runs asks which of its running .NET services to profile, in a dialog held to
     /// the dialogs' rules: the stand-in AppHost's service started by the IDE as DCP asks it to (the execution protocol, with
     /// the endpoint and token the IDE gave the AppHost), listed by its resource; Cancel starts no profile.</summary>
-    [AvaloniaFact]
-    public void Profile_of_a_running_AppHost_asks_which_service_in_a_dialog_held_to_the_dialogs_rules()
+    private void Profile_of_a_running_AppHost_asks_which_service_in_a_dialog_held_to_the_dialogs_rules()
     {
         project.Reset();
         project.BuildApi();
@@ -1028,8 +953,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Profile of an Aspire service as it runs (the stand-in's API, started by the IDE as DCP asks) records it
     /// through its AppHost's run: Stop reads its snapshot before the API's program goes, so the trace keeps its rundown
     /// and names the API's own code, which ran before the recording began.</summary>
-    [AvaloniaFact]
-    public void Stop_reads_the_profile_of_an_Aspire_service_as_it_runs_before_its_program_goes()
+    private void Stop_reads_the_profile_of_an_Aspire_service_as_it_runs_before_its_program_goes()
     {
         project.Reset();
         project.BuildApi();
@@ -1069,8 +993,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>An Avalonia app the AppHost runs as a service (DCP's start of it, Passenger's inspector put in it as in Run's
     /// app) has its failed bindings told to an agent as Problems lists them, named by its service.</summary>
-    [AvaloniaFact]
-    public void An_agent_is_told_the_failed_bindings_of_an_Avalonia_app_the_AppHost_runs_as_a_service()
+    private void An_agent_is_told_the_failed_bindings_of_an_Avalonia_app_the_AppHost_runs_as_a_service()
     {
         project.Reset();
         string app = project.WriteBindingsApp();
@@ -1098,8 +1021,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>An Avalonia app the AppHost runs as a service takes XAML Hot Reload as Run's app does: a save of its window's
     /// XAML puts a button added into the window it shows, the apply said with the service's name.</summary>
-    [AvaloniaFact]
-    public void An_Avalonia_app_the_AppHost_runs_as_a_service_takes_its_saved_xaml_into_its_window()
+    private void An_Avalonia_app_the_AppHost_runs_as_a_service_takes_its_saved_xaml_into_its_window()
     {
         project.Reset();
         string app = project.WriteBindingsApp();
@@ -1137,8 +1059,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>"(running)" says only what runs, and Rerun follows the configuration chosen: a plain run that ended is not
     /// "(running)" once an AppHost runs; with the API's configuration chosen while the AppHost runs, Rerun runs the API beside
     /// it, then stops it and runs it again, the AppHost running on as another configuration's run.</summary>
-    [AvaloniaFact]
-    public void Running_and_Rerun_follow_the_configuration_chosen_while_an_AppHost_runs()
+    private void Running_and_Rerun_follow_the_configuration_chosen_while_an_AppHost_runs()
     {
         project.Reset();
         File.Delete(project.KeyFile);
@@ -1186,8 +1107,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>An AppHost that says, as its start fails, that the port Passenger chose for its resource service was taken
     /// before it bound it is started again on another port, the console of that start saying so: the stand-in, whose profile
     /// names no resource service, says so of the first port it is given, as ASP.NET Core's server does.</summary>
-    [AvaloniaFact]
-    public void An_AppHost_whose_chosen_resource_service_port_was_taken_as_it_started_is_started_again_on_another_saying_so()
+    private void An_AppHost_whose_chosen_resource_service_port_was_taken_as_it_started_is_started_again_on_another_saying_so()
     {
         project.Reset();
         const string Taken = "Taken.AppHost";
@@ -1247,8 +1167,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>An AppHost whose profile names no HTTP address for its dashboard is handed one at port 0, which its
     /// orchestrator places, never a port Passenger chose and let go: its logs are read where the dashboard's resource says
     /// the orchestrator placed it, the Telemetry tab, shown before then, following them once it says so.</summary>
-    [AvaloniaFact]
-    public void An_AppHost_given_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard()
+    private void An_AppHost_given_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -1293,8 +1212,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A run of an AppHost ends with its own AppHosts, whatever another configuration's still runs: with the stand-in
     /// AppHost running, Run of a second AppHost of the folder, whose program then ends, ends that run (what an agent's run
     /// waits on), the first running on.</summary>
-    [AvaloniaFact]
-    public void A_run_of_an_AppHost_ends_with_its_own_AppHosts_while_another_configurations_runs_on()
+    private void A_run_of_an_AppHost_ends_with_its_own_AppHosts_while_another_configurations_runs_on()
     {
         project.Reset();
         File.Delete(project.KeyFile);
@@ -1345,8 +1263,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A restart that fails is said as the restart's refusal, in words, whoever asked for it: Rerun after the API's
     /// code changed has its AppHost stop it (the stand-in's stop command ends its program), builds it, and finds the resource
     /// to start again made anew under another identity, which it says rather than a sequence's raw complaint.</summary>
-    [AvaloniaFact]
-    public void A_restart_that_fails_is_said_as_its_refusal_in_words()
+    private void A_restart_that_fails_is_said_as_its_refusal_in_words()
     {
         project.Reset();
         project.BuildApi();
@@ -1391,8 +1308,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Rerun after a service's scoped CSS changed, which its build makes into the app's styles, has its AppHost stop
     /// it, builds it and has it started again; after a change to another CSS file, which the app serves from where it is,
     /// it restarts nothing.</summary>
-    [AvaloniaFact]
-    public void Rerun_restarts_a_service_whose_scoped_CSS_changed_and_nothing_for_other_CSS()
+    private void Rerun_restarts_a_service_whose_scoped_CSS_changed_and_nothing_for_other_CSS()
     {
         project.Reset();
         string scoped = $"{StandInAppHost.Api}/Counter.razor.css";
@@ -1455,8 +1371,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// (service.instance.id, the suffix of DCP's name for its resource), restarts each by its own resource: Rerun after an
     /// edit has the AppHost stop both, builds the project once and has each started again, and Restart of one replica
     /// restarts it alone.</summary>
-    [AvaloniaFact]
-    public void Each_replica_of_a_service_restarts_by_its_own_resource()
+    private void Each_replica_of_a_service_restarts_by_its_own_resource()
     {
         project.Reset();
         project.BuildApi();
@@ -1501,8 +1416,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>The run's Rerun after a service's code changed attaches the debugger again to every replica attached to as it
     /// ran, in turn, whichever refuses: of three replicas attached to, the second's next start ends at once, so the debugger
     /// cannot reach it, which Rerun says, and the third is attached to again all the same.</summary>
-    [AvaloniaFact]
-    public void Rerun_attaches_again_to_each_service_attached_as_it_ran_after_one_attach_is_refused()
+    private void Rerun_attaches_again_to_each_service_attached_as_it_ran_after_one_attach_is_refused()
     {
         project.Reset();
         project.BuildApi();
@@ -1544,8 +1458,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// Profile records it, Debug restarts it held and attaches to it, its hold that replica's alone, so the other's restart
     /// starts the other unheld and leaves the session as it was; Run without Debugger restarts it unheld; and Attach reaches
     /// the other, now the older start, as it runs.</summary>
-    [AvaloniaFact]
-    public void Each_action_on_one_replica_of_a_service_acts_on_its_own_program_and_holds_it_alone()
+    private void Each_action_on_one_replica_of_a_service_acts_on_its_own_program_and_holds_it_alone()
     {
         project.Reset();
         project.BuildApi();
@@ -1623,8 +1536,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Both replicas of a service its AppHost runs as two, each debugged from the Aspire window, are debugged at once:
     /// each session in a Debug tab of its own, named by its replica's resource, attached to its own program, so Debug of the
     /// first leaves the second's session as it was; an agent's workspace names each one's session on its own resource.</summary>
-    [AvaloniaFact]
-    public void Both_replicas_of_a_service_are_debugged_at_once_each_in_a_tab_of_its_own()
+    private void Both_replicas_of_a_service_are_debugged_at_once_each_in_a_tab_of_its_own()
     {
         project.Reset();
         project.BuildApi();
@@ -1674,8 +1586,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Debug of one replica of a service its AppHost runs as two says, in its row's menu and the status bar, that the
     /// configuration's next run debugs every replica, as that run's replicas are new (their instances made again); and the next
     /// run does, each of its replicas held at its start and debugged.</summary>
-    [AvaloniaFact]
-    public void Debug_of_one_replica_says_the_next_run_debugs_every_replica_which_it_does()
+    private void Debug_of_one_replica_says_the_next_run_debugs_every_replica_which_it_does()
     {
         project.Reset();
         project.BuildApi();
@@ -1836,10 +1747,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// service its time to reach the profiler, counted from the ask: past it, the start is given up as the time limit it is,
     /// never as a stop nobody pressed, and the AppHost is stopped, however late the limit's timer runs (held past Profile's
     /// answer, as a busy machine's may be). Here the window's limit is a moment, which the built API's start never meets.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Profile_of_an_AppHost_gives_up_on_a_service_past_its_time_saying_so(bool timerLate)
+    private void Profile_of_an_AppHost_gives_up_on_a_service_past_its_time_saying_so(bool timerLate)
     {
         TaskCompletionSource late = new(TaskCreationOptions.RunContinuationsAsynchronously);
         project.Reset();
@@ -1885,8 +1793,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Run or Debug of a configuration that runs ends it and starts it again, a plain program's in the Run console and an
     /// AppHost's alike, each start in its own words; and "Already running" is said only of what shares the Run console, naming
     /// it: another configuration's Run while the API has it.</summary>
-    [AvaloniaFact]
-    public void Run_or_Debug_of_a_configuration_that_runs_starts_it_again_and_only_the_Run_consoles_own_is_said_running()
+    private void Run_or_Debug_of_a_configuration_that_runs_starts_it_again_and_only_the_Run_consoles_own_is_said_running()
     {
         project.Reset();
         File.Delete(project.KeyFile);
@@ -1939,8 +1846,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// as it ran is attached to again once its AppHost has started it again (the stand-in's restart command ends it and
     /// asks for it again, as DCP does). Run without Debugger of one that nothing holds or debugs restarts nothing,
     /// saying so.</summary>
-    [AvaloniaFact]
-    public void An_Aspire_services_Restart_goes_through_its_run_and_one_attached_as_it_ran_is_attached_again()
+    private void An_Aspire_services_Restart_goes_through_its_run_and_one_attached_as_it_ran_is_attached_again()
     {
         project.Reset();
         project.BuildApi();
@@ -2001,8 +1907,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A service held at its start for a debugger that cannot reach it runs on without it, saying so, never left
     /// FailedToStart or held for good: debugged, the stand-in's API started by DCP with its runtime's diagnostics off.</summary>
-    [AvaloniaFact]
-    public void A_held_Aspire_service_the_debugger_cannot_reach_runs_on_without_it_saying_so()
+    private void A_held_Aspire_service_the_debugger_cannot_reach_runs_on_without_it_saying_so()
     {
         project.Reset();
         project.BuildApi();
@@ -2034,8 +1939,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A service held at its start for the debugger, its update handlers' hook made, and the window closed before any
     /// debugger took the hook: the hook lets go of its socket, which its program, held, never reached (#1450).</summary>
-    [AvaloniaFact]
-    public void A_held_services_update_handlers_hook_no_debugger_took_lets_go_of_its_socket_as_the_window_closes()
+    private void A_held_services_update_handlers_hook_no_debugger_took_lets_go_of_its_socket_as_the_window_closes()
     {
         project.Reset();
         project.BuildApi();
@@ -2092,8 +1996,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A service held at its start for a debugger its runtime keeps out (the debugger off, its diagnostic port on) runs
     /// on undebugged, and a .NET program it starts runs too, held for no one: debugged, the stand-in's API runs a child of its
     /// own as it starts, and says what the child wrote.</summary>
-    [AvaloniaFact]
-    public void An_Aspire_service_the_debugger_cannot_reach_runs_on_and_so_does_a_program_it_starts()
+    private void An_Aspire_service_the_debugger_cannot_reach_runs_on_and_so_does_a_program_it_starts()
     {
         project.Reset();
         project.BuildApi();
@@ -2127,8 +2030,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A save made while Apply Hot Reload Changes applies an edit to a service run with Hot Reload sends the service no
     /// second update: the save's apply waits for the one under way, which took the edit, and the service's console says the
     /// one apply. Run with Hot Reload, the stand-in's API is attached to quietly as DCP starts it.</summary>
-    [AvaloniaFact]
-    public void A_save_during_an_apply_to_a_service_run_with_Hot_Reload_sends_it_one_update()
+    private void A_save_during_an_apply_to_a_service_run_with_Hot_Reload_sends_it_one_update()
     {
         project.Reset();
         project.BuildApi();
@@ -2176,8 +2078,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Under Run with Hot Reload, an edit typed once the AppHost's build has saved the files, before DCP starts its
     /// service from that build, is one Apply Hot Reload Changes applies once the service runs: the service's session follows
     /// the edits from the AppHost's build, not from its attach.</summary>
-    [AvaloniaFact]
-    public void An_edit_made_after_the_AppHosts_build_as_its_service_starts_is_applied_once_the_service_runs()
+    private void An_edit_made_after_the_AppHosts_build_as_its_service_starts_is_applied_once_the_service_runs()
     {
         project.Reset();
         project.BuildApi();
@@ -2228,8 +2129,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A service its run configuration says not to start is Not started, never a failure: the IDE refuses DCP's first
     /// start of it, and the resource DCP then calls FailedToStart has a muted dot and a tip saying why and how it runs, in its
     /// row and in its Details.</summary>
-    [AvaloniaFact]
-    public void A_service_marked_Dont_start_reads_Not_started_in_its_row_and_Details()
+    private void A_service_marked_Dont_start_reads_Not_started_in_its_row_and_Details()
     {
         project.Reset();
         project.BuildApi();
@@ -2276,8 +2176,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// once. On a container they are greyed in the menu with why; and Debug Service of a service its run left unstarted
     /// (its configuration's Don't start), chosen from its row's menu, has its AppHost start it, the debugger attaching
     /// as it starts.</summary>
-    [AvaloniaFact]
-    public void Service_actions_grey_with_why_on_a_container_and_Debug_starts_a_service_left_unstarted_under_the_debugger()
+    private void Service_actions_grey_with_why_on_a_container_and_Debug_starts_a_service_left_unstarted_under_the_debugger()
     {
         project.Reset();
         project.BuildApi();
@@ -2343,8 +2242,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// AppHost's relationships say, and as the other resource's state stands.</summary>
     /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
     /// each resource right of those it waits for; a click on a node chooses its row.</summary>
-    [AvaloniaFact]
-    public void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
+    private void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2383,8 +2281,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    [AvaloniaFact]
-    public void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
+    private void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2431,8 +2328,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A JavaScript app the AppHost runs (npm in its own folder) is a row like any other: Open Aspire Resource Source
     /// chooses its folder in the Explorer, its Details' source is that folder, and its row's Restart, the AppHost's own
     /// command, restarts it.</summary>
-    [AvaloniaFact]
-    public void A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row()
+    private void A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row()
     {
         project.Reset();
         string app = PathNames.Canonical(Directory.CreateDirectory(project.PathOf("frontend")).FullName);
@@ -2474,8 +2370,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A web service's metrics are read only while its Stats tab is shown: chosen there, the request duration of the
     /// requests it serves is charted from its runtime, their rate and median beside the line, and the count its own meter
     /// keeps once that meter is published; once another tab is shown nothing is read and nothing charted.</summary>
-    [AvaloniaFact]
-    public void A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown()
+    private void A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown()
     {
         project.Reset();
         string web = project.WriteWebApp();
@@ -2586,8 +2481,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     internal static Avalonia.Controls.Primitives.ToggleButton Tab(MainWindow window, string page) => window.AspireWindow.GetVisualDescendants()
         .OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => tab.Classes.Contains(StyleClasses.PanelTab) && Equals(tab.Content, page));
 
-    [AvaloniaFact]
-    public void A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows()
+    private void A_confirmation_cancelled_and_a_form_the_AppHost_updates_send_what_the_dialog_shows()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2662,8 +2556,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A notification the AppHost sends whenever its start gets to it (a real AppHost's development certificate's)
     /// shows over the window without taking its keys: what the person goes on typing in Find Action as it comes stays
     /// there, and Enter runs the action they typed.</summary>
-    [AvaloniaFact]
-    public void A_notification_the_AppHost_sends_while_the_person_types_leaves_the_keys_where_they_are()
+    private void A_notification_the_AppHost_sends_while_the_person_types_leaves_the_keys_where_they_are()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2704,8 +2597,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A prompt the AppHost shows (a real AppHost's own, as the development certificate's notification is)
     /// never keeps the main window open: the window's close closes it with it, and ends the AppHost as Stop
     /// would.</summary>
-    [AvaloniaFact]
-    public void A_prompt_the_AppHost_shows_closes_with_the_window_whose_close_ends_the_AppHost()
+    private void A_prompt_the_AppHost_shows_closes_with_the_window_whose_close_ends_the_AppHost()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2734,8 +2626,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A terminal prompt, which Passenger cannot give, closed by its button, by Escape and by the window's close, each
     /// answered as cancelled for the request it shows last, the connection and the next prompt going on.</summary>
-    [AvaloniaFact]
-    public void A_terminal_prompt_closed_any_way_is_answered_cancelled_and_ordinary_prompts_go_on()
+    private void A_terminal_prompt_closed_any_way_is_answered_cancelled_and_ordinary_prompts_go_on()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2812,8 +2703,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_input_the_AppHost_replaces_refuses_the_upload_under_way_and_takes_the_file_chosen_again()
+    private void A_file_input_the_AppHost_replaces_refuses_the_upload_under_way_and_takes_the_file_chosen_again()
     {
         project.Reset();
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
@@ -2880,8 +2770,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>Discover asks the window's aspire CLI (a stand-in's, <see cref="MainWindow.AspireCliFrom"/>) its version first:
     /// within 13.x from 13.6.0, any patch, or 17.x, it lists the AppHosts the CLI finds; below it, or another major, it says
     /// why and lists none.</summary>
-    [AvaloniaFact]
-    public void Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another()
+    private void Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
         project.Reset();
@@ -2914,8 +2803,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>An AppHost the window did not start is read through the CLI: its addresses shown without the credentials or
     /// query keys they carried, one that is no web address not offered at all, and the CLI's failure said with its secrets
     /// masked.</summary>
-    [AvaloniaFact]
-    public void An_AppHost_read_through_the_CLI_shows_its_addresses_without_credentials_and_its_failure_masked()
+    private void An_AppHost_read_through_the_CLI_shows_its_addresses_without_credentials_and_its_failure_masked()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
         project.Reset();
@@ -3003,8 +2891,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>A folder's projects kept by a Passenger from before evaluations said which are AppHosts (the cache's version 5,
     /// whose entries say nothing of it) are evaluated again as the folder opens, so its AppHost has its Aspire configuration,
     /// rather than shown as a plain program from the cache until its project changes.</summary>
-    [AvaloniaFact]
-    public void An_AppHost_an_older_Passenger_kept_as_a_plain_project_opens_with_its_Aspire_configuration()
+    private void An_AppHost_an_older_Passenger_kept_as_a_plain_project_opens_with_its_Aspire_configuration()
     {
         project.Reset();
         string state = TestFolders.Create("aspire-state-");
@@ -3067,8 +2954,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// says it, in the same words: the status bar, whose click starts Docker Desktop where it is installed (never
     /// clicked here), and Problems' Containers tab, which empties as the engine comes back; an engine with no Compose
     /// serves the run, which needs none. A stand-in engine stops and starts, never Docker Desktop.</summary>
-    [AvaloniaFact]
-    public void A_container_engine_that_stops_while_an_AppHost_runs_is_said_in_the_status_bar_and_Problems_as_for_a_container_run()
+    private void A_container_engine_that_stops_while_an_AppHost_runs_is_said_in_the_status_bar_and_Problems_as_for_a_container_run()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         project.Reset();
@@ -3115,8 +3001,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// <summary>An engine already down as an AppHost starts is said once, as the run begins: its events ending later, as a
     /// slow CLI ends them, find it as it was and leave the status bar to the run's own words. A stand-in engine is held
     /// down, its events let end once the run has said it runs.</summary>
-    [AvaloniaFact]
-    public void An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words()
+    private void An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         project.Reset();
@@ -3163,8 +3048,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     /// under its container's name, a toggle each, one turned off leaving its lines out, and each container's numbers, a
     /// reading changing its line in place. A stand-in engine lists the two containers the stand-in AppHost's resources
     /// name (kept ones, which the run never takes down), their logs and stats what it echoes.</summary>
-    [AvaloniaFact]
-    public void The_Containers_windows_AppHost_row_merges_its_containers_logs_and_stats()
+    private void The_Containers_windows_AppHost_row_merges_its_containers_logs_and_stats()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         project.Reset();

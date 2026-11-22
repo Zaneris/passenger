@@ -24,8 +24,42 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         project.Reset();
     }
 
+    /// <summary>Code help over an AppHost's resources as one flow, each step one test's check in an instance of its
+    /// own: AddProject and an identifier going to their declarations, a connection string to its AppHost line, a
+    /// resource renamed everywhere under one Undo, a parameter with no value marked and set in user secrets or
+    /// appsettings, a secret one giving the AppHost a UserSecretsId, and the marks following what the AppHost
+    /// reads.</summary>
     [AvaloniaFact]
-    public void AddProject_navigates_to_the_real_project_but_a_resource_identifier_to_its_declaration()
+    public void An_AppHosts_resources_are_navigated_renamed_and_their_parameters_set_where_the_AppHost_reads_them_undoably()
+    {
+        Flow.StepApart("addProject navigates to the real project but a resource identifier to its declaration", () => new AspireCodeHelpTests(project), t => t.AddProject_navigates_to_the_real_project_but_a_resource_identifier_to_its_declaration());
+        Flow.StepApart("a service s connection string or discovered service goes to the AppHost line declaring it", () => new AspireCodeHelpTests(project), t => t.A_service_s_connection_string_or_discovered_service_goes_to_the_AppHost_line_declaring_it());
+        Flow.StepApart("renaming a resource renames it in the AppHost and the services that read it and one undo takes it back", () => new AspireCodeHelpTests(project), t => t.Renaming_a_resource_renames_it_in_the_AppHost_and_the_services_that_read_it_and_one_undo_takes_it_back());
+        Flow.StepApart("a parameter with no value is marked and its fix sets it in user secrets or appsettings and undo takes it back", () => new AspireCodeHelpTests(project), t => t.A_parameter_with_no_value_is_marked_and_its_fix_sets_it_in_user_secrets_or_appsettings_and_undo_takes_it_back());
+        Flow.StepApart("a secret parameters fix gives an AppHost with no UserSecretsId one and keeps the value in its secrets", () => new AspireCodeHelpTests(project), t => t.A_secret_parameters_fix_gives_an_AppHost_with_no_UserSecretsId_one_and_keeps_the_value_in_its_secrets());
+        Flow.StepApart("a parameter set where its key is there with no value is written in its place and read as one key", () => new AspireCodeHelpTests(project), t => t.A_parameter_set_where_its_key_is_there_with_no_value_is_written_in_its_place_and_read_as_one_key());
+        Flow.StepApart("a parameter s value typed in appsettings and not saved takes its mark away", () => new AspireCodeHelpTests(project), t => t.A_parameter_s_value_typed_in_appsettings_and_not_saved_takes_its_mark_away());
+        Flow.StepApart("a parameter only settings files the AppHost never reads give is marked", () => new AspireCodeHelpTests(project), t => t.A_parameter_only_settings_files_the_AppHost_never_reads_give_is_marked());
+    }
+
+    /// <summary>Connections as one flow, each step one test's check in an instance of its own: completion offering only
+    /// connected resources and a warning's native reference fix undone whole, a connection string no resource names
+    /// warned of unless settings give it, a direct HttpClient address warned of with a stale fix writing nothing, an
+    /// ambiguous AppHost or an unknown mutation accusing no service, generic and reordered AddProject calls sharing one
+    /// graph, and a typing pause in a file no AppHost involves costing nothing of Aspire.</summary>
+    [AvaloniaFact]
+    public void A_services_connections_are_completed_and_warned_of_by_the_AppHosts_graph_never_accusing_a_service_it_cannot_read()
+    {
+        Flow.StepApart("connection completion offers only connected resources and a connection warning offers a native reference fix undo takes back", () => new AspireCodeHelpTests(project), t => t.Connection_completion_offers_only_connected_resources_and_a_connection_warning_offers_a_native_reference_fix_undo_takes_back());
+        Flow.StepApart("a connection string no resource names is warned of unless settings give it and changed to the declared name near it", () => new AspireCodeHelpTests(project), t => t.A_connection_string_no_resource_names_is_warned_of_unless_settings_give_it_and_changed_to_the_declared_name_near_it());
+        Flow.StepApart("a direct HttpClient address has a warning but a stale fix does not overwrite the AppHost", () => new AspireCodeHelpTests(project), t => t.A_direct_HttpClient_address_has_a_warning_but_a_stale_fix_does_not_overwrite_the_AppHost());
+        Flow.StepApart("an ambiguous AppHost or unknown graph mutation does not accuse the service (false)", () => new AspireCodeHelpTests(project), t => t.An_ambiguous_AppHost_or_unknown_graph_mutation_does_not_accuse_the_service(false));
+        Flow.StepApart("an ambiguous AppHost or unknown graph mutation does not accuse the service (true)", () => new AspireCodeHelpTests(project), t => t.An_ambiguous_AppHost_or_unknown_graph_mutation_does_not_accuse_the_service(true));
+        Flow.StepApart("configuration resources share the semantic graph for generic and reordered named constant AddProject calls", () => new AspireCodeHelpTests(project), t => t.Configuration_resources_share_the_semantic_graph_for_generic_and_reordered_named_constant_AddProject_calls());
+        Flow.StepApart("a typing pause in a file no AppHost involves costs nothing of Aspire", () => new AspireCodeHelpTests(project), t => t.A_typing_pause_in_a_file_no_AppHost_involves_costs_nothing_of_Aspire());
+    }
+
+    private void AddProject_navigates_to_the_real_project_but_a_resource_identifier_to_its_declaration()
     {
         MainWindow window = project.Open(project.PathOf("Host/Program.cs"));
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "AddProject<Projects.Ap");
@@ -47,8 +81,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// <summary>A connection string a service reads, by GetConnectionString or a ConnectionStrings: key, and a service
     /// it discovers, by an https+http:// address or a services: key, go to the AppHost line that declares the resource,
     /// at its name.</summary>
-    [AvaloniaFact]
-    public void A_service_s_connection_string_or_discovered_service_goes_to_the_AppHost_line_declaring_it()
+    private void A_service_s_connection_string_or_discovered_service_goes_to_the_AppHost_line_declaring_it()
     {
         project.Rewrite("Api/Program.cs", Project.Service.Replace("builder.Build().Run();",
             "var keyed = builder.Configuration[\"ConnectionStrings:connected\"];\nvar section = builder.Configuration.GetSection(\"services:worker:http:0\");\nbuilder.Build().Run();", StringComparison.Ordinal));
@@ -87,8 +120,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// <summary>Rename on a resource's name, where a service reads it or where the AppHost declares it, renames it in the
     /// AppHost and in every service that reads it (a connection string's name, a ConnectionStrings: key, a discovered
     /// service's address), and global undo takes the whole rename back; another resource's names stay as they were.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_resource_renames_it_in_the_AppHost_and_the_services_that_read_it_and_one_undo_takes_it_back()
+    private void Renaming_a_resource_renames_it_in_the_AppHost_and_the_services_that_read_it_and_one_undo_takes_it_back()
     {
         project.Rewrite("Worker/Program.cs", Project.Worker.Replace("builder.Build().Run();",
             "var store = builder.Configuration[\"ConnectionStrings:connected\"];\nbuilder.Build().Run();", StringComparison.Ordinal));
@@ -151,8 +183,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// one; its fix asks for the value (masked for a secret) and sets it in the AppHost's user secrets for a secret (the run's
     /// own, never the person's) or in its appsettings.json, the file's other values kept, its mark going, the value never
     /// said; global undo takes each back. A parameter appsettings.json gives a value, or one with a value of its own, is not marked.</summary>
-    [AvaloniaFact]
-    public void A_parameter_with_no_value_is_marked_and_its_fix_sets_it_in_user_secrets_or_appsettings_and_undo_takes_it_back()
+    private void A_parameter_with_no_value_is_marked_and_its_fix_sets_it_in_user_secrets_or_appsettings_and_undo_takes_it_back()
     {
         string secrets = Path.Combine(TestRun.UserSecrets, Project.SecretsId, "secrets.json");
         string settings = project.PathOf("Host/appsettings.json");
@@ -198,8 +229,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// <summary>A secret parameter of an AppHost with no UserSecretsId: its fix gives the AppHost one (a GUID in its project
     /// file) and keeps the value in those user secrets, the run's own, in one command, the mark going once they give it;
     /// undo takes back both.</summary>
-    [AvaloniaFact]
-    public void A_secret_parameters_fix_gives_an_AppHost_with_no_UserSecretsId_one_and_keeps_the_value_in_its_secrets()
+    private void A_secret_parameters_fix_gives_an_AppHost_with_no_UserSecretsId_one_and_keeps_the_value_in_its_secrets()
     {
         string projectFile = project.PathOf("OtherHost/OtherHost.csproj");
         string writtenProject = File.ReadAllText(projectFile);
@@ -243,8 +273,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// <summary>A parameter whose key a configuration file has with no value (null), flat or in its Parameters object, in
     /// another letter case or with underscores for its dashes, is set in that key's place, appsettings.json and user secrets
     /// alike: .NET's JSON configuration reads the file, one key giving the value, where a second key would fail its read.</summary>
-    [Fact]
-    public void A_parameter_set_where_its_key_is_there_with_no_value_is_written_in_its_place_and_read_as_one_key()
+    private void A_parameter_set_where_its_key_is_there_with_no_value_is_written_in_its_place_and_read_as_one_key()
     {
         (string Was, string Name, bool Secret, string Key, string Written)[] cases =
         [
@@ -275,8 +304,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// <summary>A parameter's value typed into the AppHost's appsettings.json is its value before it is saved: the mark on the
     /// parameter goes once typing pauses, read from the text the editor has, as its fix reads it, and the file on disk stays
     /// as it was.</summary>
-    [AvaloniaFact]
-    public void A_parameter_s_value_typed_in_appsettings_and_not_saved_takes_its_mark_away()
+    private void A_parameter_s_value_typed_in_appsettings_and_not_saved_takes_its_mark_away()
     {
         string program = PathNames.Canonical(project.PathOf("Host/Program.cs"));
         string settings = PathNames.Canonical(project.PathOf("Host/appsettings.json"));
@@ -307,8 +335,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// environment its launch profiles run it in (Development, where none says): a value in appsettings.Development.json
     /// is one, where appsettings.Production.json, of an environment it never runs in, and appsettings-old.json, no settings
     /// file at all, give none, so those parameters are marked.</summary>
-    [AvaloniaFact]
-    public void A_parameter_only_settings_files_the_AppHost_never_reads_give_is_marked()
+    private void A_parameter_only_settings_files_the_AppHost_never_reads_give_is_marked()
     {
         string program = PathNames.Canonical(project.PathOf("Host/Program.cs"));
         project.Write("Host/Program.cs", Project.Host.Replace("builder.Build().Run();",
@@ -350,8 +377,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     private static HashSet<string> UnsetParameters(MainWindow window) => [.. window.EditorArea.Active!.Markers
         .Where(m => m.Message.StartsWith("Parameter '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
 
-    [AvaloniaFact]
-    public void Connection_completion_offers_only_connected_resources_and_a_connection_warning_offers_a_native_reference_fix_undo_takes_back()
+    private void Connection_completion_offers_only_connected_resources_and_a_connection_warning_offers_a_native_reference_fix_undo_takes_back()
     {
         string host = File.ReadAllText(project.PathOf("Host/Program.cs"));
         string service = File.ReadAllText(project.PathOf("Api/Program.cs"));
@@ -403,8 +429,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// ConnectionStrings: key, is warned of on the name unless the service's appsettings give it; Show Context Actions there
     /// offers Passenger's own Change to the declared name near it first, one edit Undo takes back, and its warning goes once
     /// the name is a resource's. An agent's code_actions lists the same fix first and apply_code_action makes it, saved.</summary>
-    [AvaloniaFact]
-    public void A_connection_string_no_resource_names_is_warned_of_unless_settings_give_it_and_changed_to_the_declared_name_near_it()
+    private void A_connection_string_no_resource_names_is_warned_of_unless_settings_give_it_and_changed_to_the_declared_name_near_it()
     {
         string service = Project.Service.Replace("builder.Build().Run();", "var typo = builder.Configuration.GetConnectionString(\"conected\");\n"
             + "var keyed = builder.Configuration[\"ConnectionStrings:connectd\"];\nvar given = builder.Configuration.GetConnectionString(\"settled\");\nbuilder.Build().Run();",
@@ -448,8 +473,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             .Where(m => m.Message.StartsWith("No resource of the AppHost is named '", StringComparison.Ordinal)).Select(m => m.Message.Split('\'')[1])];
     }
 
-    [AvaloniaFact]
-    public void A_direct_HttpClient_address_has_a_warning_but_a_stale_fix_does_not_overwrite_the_AppHost()
+    private void A_direct_HttpClient_address_has_a_warning_but_a_stale_fix_does_not_overwrite_the_AppHost()
     {
         MainWindow window = project.Open(project.PathOf("Worker/Program.cs"));
         WaitForMissing(window, "worker", "api");
@@ -467,10 +491,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void An_ambiguous_AppHost_or_unknown_graph_mutation_does_not_accuse_the_service(bool mutation)
+    private void An_ambiguous_AppHost_or_unknown_graph_mutation_does_not_accuse_the_service(bool mutation)
     {
         if (mutation)
         {
@@ -487,8 +508,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Configuration_resources_share_the_semantic_graph_for_generic_and_reordered_named_constant_AddProject_calls()
+    private void Configuration_resources_share_the_semantic_graph_for_generic_and_reordered_named_constant_AddProject_calls()
     {
         project.Rewrite("Host/Program.cs", Project.Host.Replace("var worker = builder.AddProject<Projects.Worker>(\"worker\");", """
             const string WorkerName = "worker";
@@ -535,8 +555,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
     /// allocate on the UI thread under 8 bytes a line more with the open AppHost 5,000 lines longer; the AppHost's run
     /// icons stand through it, read again only as its own text changes; and the file's completion, context actions and
     /// declarations are the server's, Passenger's extension never asked.</summary>
-    [AvaloniaFact]
-    public void A_typing_pause_in_a_file_no_AppHost_involves_costs_nothing_of_Aspire()
+    private void A_typing_pause_in_a_file_no_AppHost_involves_costs_nothing_of_Aspire()
     {
         const int Notes = 5000;
         MainWindow window = project.Open(project.PathOf("Host/Program.cs"));

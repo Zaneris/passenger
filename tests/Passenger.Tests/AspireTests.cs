@@ -46,8 +46,39 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
+    /// <summary>A real AppHost run through the window as one flow, each step one test's check in an instance of its
+    /// own: Run with Hot Reload applying to both quiet sessions with a rude edit restarting only its service, Rerun
+    /// restarting only the edited project, copied service choices and a linked configuration surviving a reopening, the
+    /// official starter's console, telemetry, commands and restart, a starter's logs read where its orchestrator placed
+    /// the dashboard, and a discovered single-file AppHost running with its profile's values.</summary>
     [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Run_with_Hot_Reload_applies_to_both_quiet_sessions_and_a_rude_edit_restarts_only_its_service()
+    public void A_real_AppHost_runs_reruns_and_hot_reloads_through_the_window_restarting_only_what_changed()
+    {
+        Flow.StepApart("run with Hot Reload applies to both quiet sessions and a rude edit restarts only its service", () => new AspireTests(project), t => t.Run_with_Hot_Reload_applies_to_both_quiet_sessions_and_a_rude_edit_restarts_only_its_service());
+        Flow.StepApart("rerun keeps unchanged processes and restarts only the edited project", () => new AspireTests(project), t => t.Rerun_keeps_unchanged_processes_and_restarts_only_the_edited_project());
+        Flow.StepApart("copied service choices and a linked configuration survive reopening and single file discovery and the linked pair stops together", () => new AspireTests(project), t => t.Copied_service_choices_and_a_linked_configuration_survive_reopening_and_single_file_discovery_and_the_linked_pair_stops_together());
+        Flow.StepApart("the official starter runs through the window with its console telemetry commands and resource restart", () => new AspireTests(project), t => t.The_official_starter_runs_through_the_window_with_its_console_telemetry_commands_and_resource_restart());
+        Flow.StepApart("a starter whose profile names no dashboard address has its logs read where its orchestrator placed the dashboard", () => new AspireTests(project), t => t.A_starter_whose_profile_names_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard());
+        Flow.StepApart("a discovered single file AppHost runs through the window with its profiles number value and one beside a project is refused before starting a process", () => new AspireTests(project), t => t.A_discovered_single_file_AppHost_runs_through_the_window_with_its_profiles_number_value_and_one_beside_a_project_is_refused_before_starting_a_process());
+    }
+
+    /// <summary>A real AppHost's services as one flow, each step one test's check in an instance of its own: the gutter
+    /// running or debugging only the project asked, a gutter profile using its AppHost, two services' breakpoints
+    /// keeping both sessions alive, attach, run without the debugger and profile acting on the service chosen alone,
+    /// the window's DCP endpoint refusing what it must and starting nothing after close, and a start cancelled ending
+    /// the pending AppHost and its endpoint.</summary>
+    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
+    public void A_real_AppHosts_services_are_debugged_attached_and_run_from_the_gutter_its_endpoint_refusing_what_it_must()
+    {
+        Flow.StepApart("the AppHost gutter runs or debugs only the requested project and refuses a declaration whose source changed", () => new AspireTests(project), t => t.The_AppHost_gutter_runs_or_debugs_only_the_requested_project_and_refuses_a_declaration_whose_source_changed());
+        Flow.StepApart("gutter startup profile uses its AppHost not the toolbar and records the first hot turn", () => new AspireTests(project), t => t.Gutter_startup_profile_uses_its_AppHost_not_the_toolbar_and_records_the_first_hot_turn());
+        Flow.StepApart("two service breakpoints keep both sessions alive and later breakpoints reach the background session", () => new AspireTests(project), t => t.Two_service_breakpoints_keep_both_sessions_alive_and_later_breakpoints_reach_the_background_session());
+        Flow.StepApart("attach run without debugger and profile target only the selected real service and a native tab takes its selection", () => new AspireTests(project), t => t.Attach_run_without_debugger_and_profile_target_only_the_selected_real_service_and_a_native_tab_takes_its_selection());
+        Flow.StepApart("the running windows Dcp endpoint refuses what it must isolates foreign instances and starts nothing after close", () => new AspireTests(project), t => t.The_running_windows_Dcp_endpoint_refuses_what_it_must_isolates_foreign_instances_and_starts_nothing_after_close());
+        Flow.StepApart("canceling a window start ends the pending AppHost and its owned endpoint", () => new AspireTests(project), t => t.Canceling_a_window_start_ends_the_pending_AppHost_and_its_owned_endpoint());
+    }
+
+    private void Run_with_Hot_Reload_applies_to_both_quiet_sessions_and_a_rude_edit_restarts_only_its_service()
     {
         MainWindow window = project.OpenHost();
         try
@@ -130,8 +161,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Rerun_keeps_unchanged_processes_and_restarts_only_the_edited_project()
+    private void Rerun_keeps_unchanged_processes_and_restarts_only_the_edited_project()
     {
         MainWindow window = OpenRunning();
         try
@@ -169,8 +199,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Copied_service_choices_and_a_linked_configuration_survive_reopening_and_single_file_discovery_and_the_linked_pair_stops_together()
+    private void Copied_service_choices_and_a_linked_configuration_survive_reopening_and_single_file_discovery_and_the_linked_pair_stops_together()
     {
         string settings = TestFolders.Create("aspire-configurations-");
         MainWindow window = Keeping(settings);
@@ -254,8 +283,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void The_AppHost_gutter_runs_or_debugs_only_the_requested_project_and_refuses_a_declaration_whose_source_changed()
+    private void The_AppHost_gutter_runs_or_debugs_only_the_requested_project_and_refuses_a_declaration_whose_source_changed()
     {
         MainWindow window = project.OpenHost();
         try
@@ -297,8 +325,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Gutter_startup_profile_uses_its_AppHost_not_the_toolbar_and_records_the_first_hot_turn()
+    private void Gutter_startup_profile_uses_its_AppHost_not_the_toolbar_and_records_the_first_hot_turn()
     {
         string source = File.ReadAllText(project.ApiProgram);
         Assert.Contains("var builder = WebApplication.CreateBuilder(args);", source, StringComparison.Ordinal);
@@ -352,8 +379,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
     /// <summary>One run of the starter, read as a person reads it: the window's tabs in a small window, a service's health and
     /// address, the merged console and Find in it, a request's structured log and its trace across both services, a span
     /// chosen kept through the next batch, the API's command and the prompts it asks, and Restart of the API alone.</summary>
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void The_official_starter_runs_through_the_window_with_its_console_telemetry_commands_and_resource_restart()
+    private void The_official_starter_runs_through_the_window_with_its_console_telemetry_commands_and_resource_restart()
     {
         MainWindow window = OpenRunning();
         try
@@ -483,8 +509,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
 
     /// <summary>The starter whose profile names no address for its dashboard is handed one at port 0, which its orchestrator
     /// places itself: the dashboard's resource says where, and a request's structured log is read there.</summary>
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void A_starter_whose_profile_names_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard()
+    private void A_starter_whose_profile_names_no_dashboard_address_has_its_logs_read_where_its_orchestrator_placed_the_dashboard()
     {
         string settings = $"First/{AspireApp.Name}.AppHost/Properties/launchSettings.json";
         JsonObject launch = JsonNode.Parse(File.ReadAllText(project.PathOf(settings)))!.AsObject();
@@ -524,8 +549,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             .Select(url => $"{JsonMembers.Text(url, "name")} {Redacted(JsonMembers.Text(url, "url") ?? "none")}"));
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void A_discovered_single_file_AppHost_runs_through_the_window_with_its_profiles_number_value_and_one_beside_a_project_is_refused_before_starting_a_process()
+    private void A_discovered_single_file_AppHost_runs_through_the_window_with_its_profiles_number_value_and_one_beside_a_project_is_refused_before_starting_a_process()
     {
         Directory.CreateDirectory(project.PathOf("Loose"));
         string loose = PathNames.Canonical(project.Write("Loose/apphost.cs", $"#:sdk Aspire.AppHost.Sdk@{AspireApp.TemplatesVersion}\nvar builder = DistributedApplication.CreateBuilder(args);\nbuilder.Build().Run();\n"));
@@ -620,8 +644,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         }
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Two_service_breakpoints_keep_both_sessions_alive_and_later_breakpoints_reach_the_background_session()
+    private void Two_service_breakpoints_keep_both_sessions_alive_and_later_breakpoints_reach_the_background_session()
     {
         MainWindow window = project.OpenHost(languageServer: false);
         int apiLine = BreakAt(window, project.ApiProgram, "logger.LogInformation");
@@ -675,8 +698,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Ui.WaitFor(() => owned.All(pid => !Processes.IsRunning(pid)), "closing the window to stop both service debuggers and the AppHost");
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Attach_run_without_debugger_and_profile_target_only_the_selected_real_service_and_a_native_tab_takes_its_selection()
+    private void Attach_run_without_debugger_and_profile_target_only_the_selected_real_service_and_a_native_tab_takes_its_selection()
     {
         MainWindow window = OpenRunning();
         try
@@ -749,8 +771,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
     /// orchestrator or another client might ask: each wrong request refused with the starter's services left running, a
     /// foreign instance kept from the starter's, and a create its client gives up on while the window is held starting no
     /// service once the window closes, which ends every program and the endpoint.</summary>
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void The_running_windows_Dcp_endpoint_refuses_what_it_must_isolates_foreign_instances_and_starts_nothing_after_close()
+    private void The_running_windows_Dcp_endpoint_refuses_what_it_must_isolates_foreign_instances_and_starts_nothing_after_close()
     {
         MainWindow window = OpenRunning();
         AspireAppRun app = Assert.Single(window.AspireRuntime.Apps);
@@ -906,8 +927,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         Assert.Throws<HttpRequestException>(() => Ui.AwaitPumped(closed, "the request-owning endpoint to stop listening"));
     }
 
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Canceling_a_window_start_ends_the_pending_AppHost_and_its_owned_endpoint()
+    private void Canceling_a_window_start_ends_the_pending_AppHost_and_its_owned_endpoint()
     {
         MainWindow window = project.OpenHost(languageServer: false);
         Choose(window);

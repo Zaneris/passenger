@@ -26,8 +26,29 @@ public sealed class ProjectTelemetryTests : McpRig
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
 
+    /// <summary>A project run's telemetry through a dashboard container as one flow, every step needing a container
+    /// engine and the dashboard's image, each in an instance of its own: its logs and traces shown in the Telemetry tab
+    /// and reaching an agent with Stop leaving nothing of the dashboard, a run ending in an error keeping its last log
+    /// and trace until Stop, and an agent's run with telemetry turning it on for its configuration.</summary>
     [AvaloniaFact]
-    public void A_project_runs_logs_and_traces_show_in_its_dashboards_Telemetry_tab_and_reach_an_agent_and_Stop_leaves_nothing_of_the_dashboard()
+    public void A_project_runs_telemetry_shows_in_its_dashboard_and_reaches_an_agent_Stop_leaving_nothing_of_the_dashboard()
+    {
+        Flow.StepApart<ProjectTelemetryTests>("a project runs logs and traces show in its dashboards Telemetry tab and reach an agent and Stop leaves nothing of the dashboard", t => t.A_project_runs_logs_and_traces_show_in_its_dashboards_Telemetry_tab_and_reach_an_agent_and_Stop_leaves_nothing_of_the_dashboard());
+        Flow.StepApart<ProjectTelemetryTests>("a project run that ends with an error keeps its last log and trace in the Run windows Telemetry until Stop takes its dashboard down", t => t.A_project_run_that_ends_with_an_error_keeps_its_last_log_and_trace_in_the_Run_windows_Telemetry_until_Stop_takes_its_dashboard_down());
+        Flow.StepApart<ProjectTelemetryTests>("an agents run with telemetry turns on its configurations logs and traces and the run collects them", t => t.An_agents_run_with_telemetry_turns_on_its_configurations_logs_and_traces_and_the_run_collects_them());
+    }
+
+    /// <summary>A project run that collects no telemetry as one flow, each step one test's check in an instance of its
+    /// own: one with no container engine saying why and running as it would, and one inheriting an OTLP endpoint left
+    /// to it, starting no dashboard.</summary>
+    [AvaloniaFact]
+    public void A_project_run_that_cannot_or_need_not_collect_its_telemetry_runs_as_it_would_saying_why()
+    {
+        Flow.StepApart<ProjectTelemetryTests>("a project run that collects its logs and traces with no container engine says why and runs as it would", t => t.A_project_run_that_collects_its_logs_and_traces_with_no_container_engine_says_why_and_runs_as_it_would());
+        Flow.StepApart<ProjectTelemetryTests>("a project run that inherits an OTLP endpoint is left to it and starts no dashboard", t => t.A_project_run_that_inherits_an_OTLP_endpoint_is_left_to_it_and_starts_no_dashboard());
+    }
+
+    private void A_project_runs_logs_and_traces_show_in_its_dashboards_Telemetry_tab_and_reach_an_agent_and_Stop_leaves_nothing_of_the_dashboard()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
@@ -109,8 +130,7 @@ public sealed class ProjectTelemetryTests : McpRig
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_project_run_that_collects_its_logs_and_traces_with_no_container_engine_says_why_and_runs_as_it_would()
+    private void A_project_run_that_collects_its_logs_and_traces_with_no_container_engine_says_why_and_runs_as_it_would()
     {
         using HeldPort held = new();
         int port = held.Port;
@@ -139,8 +159,7 @@ public sealed class ProjectTelemetryTests : McpRig
 
     /// <summary>A run inherits Passenger's environment: an endpoint named there sends its records where it says, so they are
     /// left to go there and no dashboard is started for it.</summary>
-    [AvaloniaFact]
-    public void A_project_run_that_inherits_an_OTLP_endpoint_is_left_to_it_and_starts_no_dashboard()
+    private void A_project_run_that_inherits_an_OTLP_endpoint_is_left_to_it_and_starts_no_dashboard()
     {
         using HeldPort held = new();
         int port = held.Port;
@@ -169,8 +188,7 @@ public sealed class ProjectTelemetryTests : McpRig
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_project_run_that_ends_with_an_error_keeps_its_last_log_and_trace_in_the_Run_windows_Telemetry_until_Stop_takes_its_dashboard_down()
+    private void A_project_run_that_ends_with_an_error_keeps_its_last_log_and_trace_in_the_Run_windows_Telemetry_until_Stop_takes_its_dashboard_down()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),
@@ -258,8 +276,7 @@ public sealed class ProjectTelemetryTests : McpRig
 
     /// <summary>An agent turns a project run's logs and traces on as it runs it (run's telemetry), kept for its configuration
     /// as Edit Configurations' box keeps it, and the run collects them into a dashboard of its own, which Stop takes down.</summary>
-    [AvaloniaFact]
-    public void An_agents_run_with_telemetry_turns_on_its_configurations_logs_and_traces_and_the_run_collects_them()
+    private void An_agents_run_with_telemetry_turns_on_its_configurations_logs_and_traces_and_the_run_collects_them()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image], TimeSpan.FromSeconds(30).Scaled())),

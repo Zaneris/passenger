@@ -79,8 +79,18 @@ public sealed class AspirePackageApp : SharedProject
 [Collection(Alone.Name)]
 public sealed class AspirePackageAppHostTests(AspirePackageApp project) : IClassFixture<AspirePackageApp>
 {
+    /// <summary>Aspire 17's AppHosts found as one flow, each step one test's check in an instance of its own: its
+    /// starter and a single-file AppHost found with their run configurations and the Aspire window, and a project
+    /// referencing Aspire's AppHost package an AppHost before its first restore while one saying otherwise is
+    /// not.</summary>
     [AvaloniaFact]
-    public void Aspire_17s_starter_and_single_file_AppHost_are_found_with_their_run_configurations_and_the_Aspire_window()
+    public void Aspire_17s_AppHosts_are_found_with_their_configurations_by_the_SDK_or_package_they_name()
+    {
+        Flow.StepApart("aspire 17s starter and single file AppHost are found with their run configurations and the Aspire window", () => new AspirePackageAppHostTests(project), t => t.Aspire_17s_starter_and_single_file_AppHost_are_found_with_their_run_configurations_and_the_Aspire_window());
+        Flow.StepApart("a project referencing Aspires AppHost package is an AppHost before its first restore and one saying otherwise is not", () => new AspirePackageAppHostTests(project), t => t.A_project_referencing_Aspires_AppHost_package_is_an_AppHost_before_its_first_restore_and_one_saying_otherwise_is_not());
+    }
+
+    private void Aspire_17s_starter_and_single_file_AppHost_are_found_with_their_run_configurations_and_the_Aspire_window()
     {
         project.Reset();
         MainWindow window = project.Open(null, languageServer: false);
@@ -108,8 +118,7 @@ public sealed class AspirePackageAppHostTests(AspirePackageApp project) : IClass
         }
     }
 
-    [AvaloniaFact]
-    public void A_project_referencing_Aspires_AppHost_package_is_an_AppHost_before_its_first_restore_and_one_saying_otherwise_is_not()
+    private void A_project_referencing_Aspires_AppHost_package_is_an_AppHost_before_its_first_restore_and_one_saying_otherwise_is_not()
     {
         string folder = TestFolders.Create("aspire-unrestored-");
         string package = $"  <ItemGroup><PackageReference Include=\"{Passenger.Host.AspireHosts.Package}\" Version=\"{AspireApp.PackageTemplatesVersion}\" /></ItemGroup>\n";

@@ -25,8 +25,44 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         project.Reset();
     }
 
+    /// <summary>Adding orchestration as one flow, each step one test's check in an instance of its own: the missing
+    /// projects made under one Undo, loaded and restored as written, backing services added by their connection
+    /// strings' names, a hosting package beside a commented one, no resource added twice, each project's code read as
+    /// it compiles, a conflict refused before anything is written, and an open solution filter taking the projects
+    /// made.</summary>
     [AvaloniaFact]
-    public void Adding_orchestration_creates_the_missing_projects_and_one_global_undo_and_redo_restores_every_file()
+    public void Orchestration_adds_its_projects_services_and_packages_as_one_undoable_change_refusing_a_conflict_before_writing()
+    {
+        Flow.StepApart("adding orchestration creates the missing projects and one global undo and redo restores every file", () => new AspireOrchestrationTests(project), t => t.Adding_orchestration_creates_the_missing_projects_and_one_global_undo_and_redo_restores_every_file());
+        Flow.StepApart("the language server loads and restores the projects orchestration makes as soon as they are written", () => new AspireOrchestrationTests(project), t => t.The_language_server_loads_and_restores_the_projects_orchestration_makes_as_soon_as_they_are_written());
+        Flow.StepApart("orchestration adds the backing services a service reads and references them by its connection strings names", () => new AspireOrchestrationTests(project), t => t.Orchestration_adds_the_backing_services_a_service_reads_and_references_them_by_its_connection_strings_names());
+        Flow.StepApart("a hosting package is added beside one the AppHost has commented out and the comment is left as it was", () => new AspireOrchestrationTests(project), t => t.A_hosting_package_is_added_beside_one_the_AppHost_has_commented_out_and_the_comment_is_left_as_it_was());
+        Flow.StepApart("reordered named AddProject arguments do not add the same resource twice", () => new AspireOrchestrationTests(project), t => t.Reordered_named_AddProject_arguments_do_not_add_the_same_resource_twice());
+        Flow.StepApart("orchestration reads each projects code as it compiles taking extensions under its frameworks symbols and passing over a builder it never compiles", () => new AspireOrchestrationTests(project), t => t.Orchestration_reads_each_projects_code_as_it_compiles_taking_extensions_under_its_frameworks_symbols_and_passing_over_a_builder_it_never_compiles());
+        Flow.StepApart("a conflicting folder or resource is refused before any solution file is written (false)", () => new AspireOrchestrationTests(project), t => t.A_conflicting_folder_or_resource_is_refused_before_any_solution_file_is_written(false));
+        Flow.StepApart("a conflicting folder or resource is refused before any solution file is written (true)", () => new AspireOrchestrationTests(project), t => t.A_conflicting_folder_or_resource_is_refused_before_any_solution_file_is_written(true));
+        Flow.StepApart("windows ServiceDefaults cannot be referenced by a plain service and refusal writes nothing", () => new AspireOrchestrationTests(project), t => t.Windows_ServiceDefaults_cannot_be_referenced_by_a_plain_service_and_refusal_writes_nothing());
+        Flow.StepApart("orchestration added under an open solution filter puts the projects it makes in the filter so the filter opened again loads them", () => new AspireOrchestrationTests(project), t => t.Orchestration_added_under_an_open_solution_filter_puts_the_projects_it_makes_in_the_filter_so_the_filter_opened_again_loads_them());
+    }
+
+    /// <summary>New projects and solutions with Aspire as one flow, each step one test's check in an instance of its
+    /// own: New Project joining the solution's AppHost with its ServiceDefaults, New Solution with an AppHost chosen,
+    /// one whose set-up fails saying why once its build ends, and orchestration and a hosting package under central
+    /// package management pinning their versions in Directory.Packages.props, wherever the build's props name
+    /// it.</summary>
+    [AvaloniaFact]
+    public void New_projects_and_solutions_with_Aspire_join_its_AppHost_and_central_versions_saying_why_a_set_up_failed()
+    {
+        Flow.StepApart("new Project with Aspire joins the solutions AppHost with its ServiceDefaults and the AppHost is chosen", () => new AspireOrchestrationTests(project), t => t.New_Project_with_Aspire_joins_the_solutions_AppHost_with_its_ServiceDefaults_and_the_AppHost_is_chosen());
+        Flow.StepApart("new Solution with Aspire has an AppHost and ServiceDefaults and the AppHost is chosen", () => new AspireOrchestrationTests(project), t => t.New_Solution_with_Aspire_has_an_AppHost_and_ServiceDefaults_and_the_AppHost_is_chosen());
+        Flow.StepApart("new Solution whose set up fails says why once its build ends", () => new AspireOrchestrationTests(project), t => t.New_Solution_whose_set_up_fails_says_why_once_its_build_ends());
+        Flow.StepApart("orchestration where packages are managed centrally puts the versions in Directory Packages props and the solution restores (true)", () => new AspireOrchestrationTests(project), t => t.Orchestration_where_packages_are_managed_centrally_puts_the_versions_in_Directory_Packages_props_and_the_solution_restores(true));
+        Flow.StepApart("orchestration where packages are managed centrally puts the versions in Directory Packages props and the solution restores (false)", () => new AspireOrchestrationTests(project), t => t.Orchestration_where_packages_are_managed_centrally_puts_the_versions_in_Directory_Packages_props_and_the_solution_restores(false));
+        Flow.StepApart("a hosting package added where packages are managed centrally is pinned in Directory Packages props (true)", () => new AspireOrchestrationTests(project), t => t.A_hosting_package_added_where_packages_are_managed_centrally_is_pinned_in_Directory_Packages_props(true));
+        Flow.StepApart("a hosting package added where packages are managed centrally is pinned in Directory Packages props (false)", () => new AspireOrchestrationTests(project), t => t.A_hosting_package_added_where_packages_are_managed_centrally_is_pinned_in_Directory_Packages_props(false));
+    }
+
+    private void Adding_orchestration_creates_the_missing_projects_and_one_global_undo_and_redo_restores_every_file()
     {
         MainWindow window = Open();
         Dictionary<string, byte[]> before = Snapshot();
@@ -70,8 +106,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// <summary>The AppHost and ServiceDefaults orchestration makes join the solution's language server as soon as they are
     /// written, restored: each one's code is answered for in its own project, the types and members its packages give
     /// known there.</summary>
-    [AvaloniaFact]
-    public void The_language_server_loads_and_restores_the_projects_orchestration_makes_as_soon_as_they_are_written()
+    private void The_language_server_loads_and_restores_the_projects_orchestration_makes_as_soon_as_they_are_written()
     {
         MainWindow window = Open();
         Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: false));
@@ -83,49 +118,11 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
-    /// <summary>The language server a closed window leaves for the next test may still be restoring the projects
-    /// orchestration made, its restore working in their folders, which Windows will not remove meanwhile (#1488): the next
-    /// test's reset removes them all the same. Here the restore holds where it works in ServiceDefaults until let go.</summary>
-    [AvaloniaFact]
-    public void The_next_tests_reset_removes_the_projects_orchestration_made_while_the_language_server_left_for_it_restores_them()
-    {
-        string held = project.PathOf("restore-held");
-        string release = project.PathOf("restore-released");
-        project.Write("Directory.Build.targets", $$"""
-            <Project>
-              <Target Name="HoldRestore" BeforeTargets="_GenerateRestoreGraphProjectEntry" Condition="'$(MSBuildProjectName)' == 'Shop.ServiceDefaults' And !Exists('{{release}}')">
-                <Exec Condition="'$(OS)' == 'Windows_NT'" Timeout="120000" Command="powershell -NoProfile -Command &quot;Set-Content -Path '{{held}}' -Value held; while (-not (Test-Path '{{release}}')) { Start-Sleep -Milliseconds 100 }&quot;" />
-                <Exec Condition="'$(OS)' != 'Windows_NT'" Timeout="120000" Command="echo held &gt; '{{held}}'; while [ ! -f '{{release}}' ]; do sleep 0.1; done" />
-              </Target>
-            </Project>
-            """);
-        MainWindow window = Open();
-        try
-        {
-            AspireOrchestrationDialog dialog = Show(window, "Api");
-            // Pumped, not settled: the language server's load of what orchestration made ends only with its restore, which holds.
-            Ui.Click(dialog.Add, settle: false);
-            Ui.PumpUntil(() => window.AspireOrchestrationResult is { IsCompleted: true } && File.Exists(held),
-                "orchestration, and the language server's restore to work in the ServiceDefaults it made", TimeSpan.FromMinutes(2));
-            Assert.Equal("Added Aspire orchestration", Finished(window));
-            window.Close();
-            Ui.PumpUntil(() => window.Ended is { IsCompleted: true }, "the window's end");
-            project.Reset();
-            Assert.False(Directory.Exists(project.PathOf("Shop.ServiceDefaults")), "The reset left the ServiceDefaults orchestration made, which the next test's orchestration refuses to make again");
-            Assert.False(Directory.Exists(project.PathOf("Shop.AppHost")), "The reset left the AppHost orchestration made, which the next test's orchestration refuses to make again");
-        }
-        finally
-        {
-            File.WriteAllText(release, "go");
-        }
-    }
-
     /// <summary>The backing services a service's packages point to join the AppHost with it: a Postgres server and the
     /// database its connection string names, a Redis by its connection string's name, each referenced and waited for by
     /// the service under the name it reads, Aspire's hosting integrations referenced at the AppHost's own version; one
     /// undo takes it all back.</summary>
-    [AvaloniaFact]
-    public void Orchestration_adds_the_backing_services_a_service_reads_and_references_them_by_its_connection_strings_names()
+    private void Orchestration_adds_the_backing_services_a_service_reads_and_references_them_by_its_connection_strings_names()
     {
         project.Write("Plain/Plain.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk.Web\"><PropertyGroup><TargetFramework>{TestProjects.Framework}</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>"
             + "<ItemGroup><PackageReference Include=\"Npgsql\" Version=\"9.0.3\" /><PackageReference Include=\"StackExchange.Redis\" Version=\"2.8.16\" /></ItemGroup></Project>");
@@ -159,8 +156,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_hosting_package_is_added_beside_one_the_AppHost_has_commented_out_and_the_comment_is_left_as_it_was()
+    private void A_hosting_package_is_added_beside_one_the_AppHost_has_commented_out_and_the_comment_is_left_as_it_was()
     {
         string commented = $"    <!-- <PackageReference Include=\"Aspire.Hosting.PostgreSQL\" Version=\"{AspireApp.TemplatesVersion}\" /> -->\n";
         project.Write("Host/Host.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <Sdk Name=\"Aspire.AppHost.Sdk\" Version=\"{AspireApp.TemplatesVersion}\" />\n"
@@ -182,8 +178,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Reordered_named_AddProject_arguments_do_not_add_the_same_resource_twice()
+    private void Reordered_named_AddProject_arguments_do_not_add_the_same_resource_twice()
     {
         MainWindow window = Open();
         Assert.Equal("Added Aspire orchestration", Add(window, "Api", existing: true));
@@ -201,8 +196,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// <summary>Each project's code is read as it compiles: a ServiceDefaults whose extensions are declared under
     /// #if NET8_0_OR_GREATER is taken for one, and an AppHost's second builder, in a file under #if !NET8_0_OR_GREATER that
     /// its project never compiles, leaves its one builder's file the one the resource is added to.</summary>
-    [AvaloniaFact]
-    public void Orchestration_reads_each_projects_code_as_it_compiles_taking_extensions_under_its_frameworks_symbols_and_passing_over_a_builder_it_never_compiles()
+    private void Orchestration_reads_each_projects_code_as_it_compiles_taking_extensions_under_its_frameworks_symbols_and_passing_over_a_builder_it_never_compiles()
     {
         string extensions = File.ReadAllText(project.PathOf("Defaults/Extensions.cs"));
         project.Rewrite("Defaults/Extensions.cs", "#if NET8_0_OR_GREATER\n" + extensions + "\n#endif\n");
@@ -214,10 +208,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_conflicting_folder_or_resource_is_refused_before_any_solution_file_is_written(bool resource)
+    private void A_conflicting_folder_or_resource_is_refused_before_any_solution_file_is_written(bool resource)
     {
         if (resource)
         {
@@ -237,8 +228,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Windows_ServiceDefaults_cannot_be_referenced_by_a_plain_service_and_refusal_writes_nothing()
+    private void Windows_ServiceDefaults_cannot_be_referenced_by_a_plain_service_and_refusal_writes_nothing()
     {
         MainWindow window = Open();
         Ui.WaitFor(() => window.WorkspaceModel!.Projects.Any(p => p.Name == "Plain" && p.TargetFrameworks.Contains(TestProjects.Framework)),
@@ -259,8 +249,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// <summary>New Project into a solution with an AppHost, with Aspire: the new web project joins that AppHost as a
     /// resource, with the ServiceDefaults of its framework the solution has, nothing else made, and the AppHost's
     /// configuration is chosen.</summary>
-    [AvaloniaFact]
-    public void New_Project_with_Aspire_joins_the_solutions_AppHost_with_its_ServiceDefaults_and_the_AppHost_is_chosen()
+    private void New_Project_with_Aspire_joins_the_solutions_AppHost_with_its_ServiceDefaults_and_the_AppHost_is_chosen()
     {
         MainWindow window = Open();
         try
@@ -294,8 +283,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
 
     /// <summary>New Solution of a web project with Aspire: an AppHost and a ServiceDefaults are made with it as the AppHost's
     /// resource, and the AppHost's configuration is chosen.</summary>
-    [AvaloniaFact]
-    public void New_Solution_with_Aspire_has_an_AppHost_and_ServiceDefaults_and_the_AppHost_is_chosen()
+    private void New_Solution_with_Aspire_has_an_AppHost_and_ServiceDefaults_and_the_AppHost_is_chosen()
     {
         string place = TestFolders.Create("aspire-new-");
         string settings = TestFolders.Create("settings-");
@@ -342,8 +330,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// <summary>New Solution of a web project with Aspire whose project makes no program by the time its set-up reads it (a
     /// library, written as Create is held): once the solution's build ends, the status bar says the set-up failed and why,
     /// with the warning mark, before the build's words.</summary>
-    [AvaloniaFact]
-    public void New_Solution_whose_set_up_fails_says_why_once_its_build_ends()
+    private void New_Solution_whose_set_up_fails_says_why_once_its_build_ends()
     {
         string place = TestFolders.Create("aspire-unset-");
         string settings = TestFolders.Create("settings-");
@@ -395,10 +382,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// Directory.Packages.props that never says so, or by a Directory.Packages.props with no versions yet: the ServiceDefaults
     /// made names no version, Directory.Packages.props gains each of its packages', and the solution restores; one Undo
     /// takes Directory.Packages.props back.</summary>
-    [AvaloniaTheory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Orchestration_where_packages_are_managed_centrally_puts_the_versions_in_Directory_Packages_props_and_the_solution_restores(bool inBuildProps)
+    private void Orchestration_where_packages_are_managed_centrally_puts_the_versions_in_Directory_Packages_props_and_the_solution_restores(bool inBuildProps)
     {
         string folder = CentralFolder(inBuildProps, inBuildProps ? "    <PackageVersion Include=\"Humanizer\" Version=\"2.14.1\" />\n" : string.Empty, string.Empty);
         string props = Path.Combine(folder, "Directory.Packages.props");
@@ -433,10 +417,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// <summary>Aspire's hosting integration for the database a service reads, added to the AppHost made where packages are
     /// managed centrally, turned on by Directory.Build.props or by a Directory.Packages.props whose versions are written out
     /// in full: its reference names no version and Directory.Packages.props pins it at the AppHost's Aspire version.</summary>
-    [AvaloniaTheory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void A_hosting_package_added_where_packages_are_managed_centrally_is_pinned_in_Directory_Packages_props(bool inBuildProps)
+    private void A_hosting_package_added_where_packages_are_managed_centrally_is_pinned_in_Directory_Packages_props(bool inBuildProps)
     {
         string folder = CentralFolder(inBuildProps, inBuildProps ? "    <PackageVersion Include=\"Npgsql\" Version=\"10.0.3\" />\n"
             : "    <PackageVersion Include=\"Npgsql\" Version=\"10.0.3\"></PackageVersion>\n", "<ItemGroup><PackageReference Include=\"Npgsql\" /></ItemGroup>");
@@ -464,8 +445,7 @@ public sealed class AspireOrchestrationTests : IClassFixture<AspireOrchestration
     /// <summary>Add Aspire Orchestration with a solution filter open puts the AppHost and ServiceDefaults it makes in the
     /// filter's list as well as the solution's, in its one command of Undo, so the filter opened again loads them, the
     /// project it leaves out still unloaded.</summary>
-    [AvaloniaFact]
-    public void Orchestration_added_under_an_open_solution_filter_puts_the_projects_it_makes_in_the_filter_so_the_filter_opened_again_loads_them()
+    private void Orchestration_added_under_an_open_solution_filter_puts_the_projects_it_makes_in_the_filter_so_the_filter_opened_again_loads_them()
     {
         const string Filter = "{\n  \"solution\": {\n    \"path\": \"Shop.slnx\",\n    \"projects\": [\n      \"Api\\\\Api.csproj\"\n    ]\n  }\n}\n";
         string folder = PathNames.Canonical(TestFolders.Create("aspire-filter-"));

@@ -28,11 +28,24 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
 
     private string Api => $"{AspirePackageApp.Name}.ApiService";
 
+    /// <summary>Aspire 17's AddDotnetProject as one flow, each step one test's check in an instance of its own:
+    /// orchestration adding a service by it, referencing none and taking Aspire.Hosting.Dotnet, a service's path going
+    /// to its project, the gutter marking each service and its files a service's, a service's configuration checked
+    /// with what its AppHost gives it, and a reference it lacks warned of.</summary>
+    [AvaloniaFact]
+    public void Aspire_17s_AppHost_adds_services_by_path_which_the_IDE_orchestrates_navigates_marks_and_checks()
+    {
+        Flow.StepApart("orchestration adds a service to Aspire 17s AppHost by AddDotnetProject referencing none and takes Aspire Hosting Dotnet", () => new AspirePackageServicesTests(project), t => t.Orchestration_adds_a_service_to_Aspire_17s_AppHost_by_AddDotnetProject_referencing_none_and_takes_Aspire_Hosting_Dotnet());
+        Flow.StepApart("a services path in AddDotnetProject goes to its project", () => new AspirePackageServicesTests(project), t => t.A_services_path_in_AddDotnetProject_goes_to_its_project());
+        Flow.StepApart("the AppHosts gutter marks each service AddDotnetProject adds and its files are a services", () => new AspirePackageServicesTests(project), t => t.The_AppHosts_gutter_marks_each_service_AddDotnetProject_adds_and_its_files_are_a_services());
+        Flow.StepApart("a services configuration is checked with what its AppHost gives it", () => new AspirePackageServicesTests(project), t => t.A_services_configuration_is_checked_with_what_its_AppHost_gives_it());
+        Flow.StepApart("a service 17s AppHost adds by path is warned of a reference it lacks and goes to the resource it names", () => new AspirePackageServicesTests(project), t => t.A_service_17s_AppHost_adds_by_path_is_warned_of_a_reference_it_lacks_and_goes_to_the_resource_it_names());
+    }
+
     /// <summary>A service added to the AppHost by orchestration is added by path with AddDotnetProject, the AppHost referencing
     /// none and given Aspire.Hosting.Dotnet at its own Aspire version where it lacked it; a service it adds already, by
     /// AddDotnetProject with its options, is not added again.</summary>
-    [AvaloniaFact]
-    public void Orchestration_adds_a_service_to_Aspire_17s_AppHost_by_AddDotnetProject_referencing_none_and_takes_Aspire_Hosting_Dotnet()
+    private void Orchestration_adds_a_service_to_Aspire_17s_AppHost_by_AddDotnetProject_referencing_none_and_takes_Aspire_Hosting_Dotnet()
     {
         string hostProject = File.ReadAllText(project.Host);
         string dotnet = $"    <PackageReference Include=\"Aspire.Hosting.Dotnet\" Version=\"{AspireApp.PackageTemplatesVersion}\" />\n";
@@ -69,8 +82,7 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
     }
 
     /// <summary>Go to Declaration from the path AddDotnetProject adds a service by opens the service's project file.</summary>
-    [AvaloniaFact]
-    public void A_services_path_in_AddDotnetProject_goes_to_its_project()
+    private void A_services_path_in_AddDotnetProject_goes_to_its_project()
     {
         MainWindow window = project.Open(HostSource);
         try
@@ -88,8 +100,7 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
 
     /// <summary>The AppHost's gutter marks each service AddDotnetProject adds on the line it is added, for the AppHost's Aspire
     /// configuration, and a service's file is one of a service, as the AppHost runs its project.</summary>
-    [AvaloniaFact]
-    public void The_AppHosts_gutter_marks_each_service_AddDotnetProject_adds_and_its_files_are_a_services()
+    private void The_AppHosts_gutter_marks_each_service_AddDotnetProject_adds_and_its_files_are_a_services()
     {
         MainWindow window = project.Open(HostSource);
         try
@@ -115,8 +126,7 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
 
     /// <summary>A key the AppHost gives a service it adds by path (WithEnvironment's Weather__Banner) is given to the service's
     /// reads, where a key nothing gives is still warned of.</summary>
-    [AvaloniaFact]
-    public void A_services_configuration_is_checked_with_what_its_AppHost_gives_it()
+    private void A_services_configuration_is_checked_with_what_its_AppHost_gives_it()
     {
         string program = $"Starter/{Api}/Program.cs";
         string text = File.ReadAllText(project.PathOf(program));
@@ -141,8 +151,7 @@ public sealed class AspirePackageServicesTests : IClassFixture<AspirePackageApp>
     /// <summary>A service of an AppHost read whole (each resource a variable, nothing but Aspire's calls) that discovers another
     /// the AppHost adds by AddDotnetProject without referencing it is warned of the reference it lacks, and Go to Declaration
     /// from the name it discovers goes to the AppHost's AddDotnetProject that names it.</summary>
-    [AvaloniaFact]
-    public void A_service_17s_AppHost_adds_by_path_is_warned_of_a_reference_it_lacks_and_goes_to_the_resource_it_names()
+    private void A_service_17s_AppHost_adds_by_path_is_warned_of_a_reference_it_lacks_and_goes_to_the_resource_it_names()
     {
         string web = $"{AspirePackageApp.Name}.Web";
         project.Rewrite(HostFile, $$"""

@@ -15,10 +15,17 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class ProjectTelemetryStartsTests
 {
-    [AvaloniaTheory]
-    [InlineData(AppActions.Debug)]
-    [InlineData(AppActions.Profile)]
-    public void A_project_debugged_or_profiled_sends_its_logs_to_its_dashboard_and_Stop_takes_the_dashboard_down(string start)
+    /// <summary>A project debugged, then profiled, as one flow, every step needing a container engine and the
+    /// dashboard's image, each in an instance of its own: each start sending its logs to its dashboard and Stop taking
+    /// the dashboard down.</summary>
+    [AvaloniaFact]
+    public void A_project_debugged_and_profiled_sends_its_logs_to_its_dashboard_and_Stop_takes_the_dashboard_down()
+    {
+        Flow.StepApart<ProjectTelemetryStartsTests>("a project debugged or profiled sends its logs to its dashboard and Stop takes the dashboard down (AppActions.Debug)", t => t.A_project_debugged_or_profiled_sends_its_logs_to_its_dashboard_and_Stop_takes_the_dashboard_down(AppActions.Debug));
+        Flow.StepApart<ProjectTelemetryStartsTests>("a project debugged or profiled sends its logs to its dashboard and Stop takes the dashboard down (AppActions.Profile)", t => t.A_project_debugged_or_profiled_sends_its_logs_to_its_dashboard_and_Stop_takes_the_dashboard_down(AppActions.Profile));
+    }
+
+    private void A_project_debugged_or_profiled_sends_its_logs_to_its_dashboard_and_Stop_takes_the_dashboard_down(string start)
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(!Ui.AwaitPumped(Waiting.Apart(() => ContainerEngine.Shared.RunAsync(["image", "inspect", ContainerTelemetry.Image],
