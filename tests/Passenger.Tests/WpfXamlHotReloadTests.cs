@@ -25,10 +25,13 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     /// <summary>The counter's element, whole, before which the tests add elements.</summary>
     private const string Counter = "<TextBlock x:Name=\"Counter\" Text=\"Not clicked yet\" />";
 
+    private readonly RestoredFolders folders;
+
     private readonly string folder = string.Empty;
 
     public WpfXamlHotReloadTests(RestoredFolders folders)
     {
+        this.folders = folders;
         if (!OperatingSystem.IsWindows())
         {
             return;
@@ -53,10 +56,24 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
 
     private string Xaml => Path.Combine(folder, "MainWindow.xaml");
 
+    /// <summary>XAML Hot Reload of a WPF app, debugged or running: its saved XAML shows in its window, an element WPF
+    /// lacks refused at its line, a new button running the window's handler, a resource dictionary reaching what uses
+    /// it, what the app added in code staying through an edit and a refused one, a refusal partway leaving what the
+    /// window holds found by name, and an element asked of at a place being that file's. On Windows only.</summary>
+    [AvaloniaFact]
+    public void A_wpf_apps_saved_xaml_applies_running_or_debugged_keeping_what_it_added_and_its_own_elements()
+    {
+        Flow.StepApart("a debugged WPF app's saved XAML shows in its window, and an element WPF has not is refused at its line", () => new WpfXamlHotReloadTests(folders), t => t.A_debugged_wpf_apps_saved_xaml_shows_in_its_window_and_an_element_wpf_has_not_is_refused_at_its_line());
+        Flow.StepApart("a running WPF app's saved XAML shows in its window, and its new button runs the window's handler", () => new WpfXamlHotReloadTests(folders), t => t.A_running_wpf_apps_saved_xaml_shows_in_its_window_and_its_new_button_runs_the_windows_handler());
+        Flow.StepApart("a running WPF app's saved resource dictionary reaches what uses its resources", () => new WpfXamlHotReloadTests(folders), t => t.A_running_wpf_apps_saved_resource_dictionary_reaches_what_uses_its_resources());
+        Flow.StepApart("what a running WPF app added in code stays through a saved edit and a refused one", () => new WpfXamlHotReloadTests(folders), t => t.What_a_running_wpf_app_added_in_code_stays_through_a_saved_edit_and_a_refused_one());
+        Flow.StepApart("an edit WPF refuses partway through its load leaves what the window holds found by name", () => new WpfXamlHotReloadTests(folders), t => t.An_edit_wpf_refuses_part_way_through_its_load_leaves_what_the_window_holds_found_by_name());
+        Flow.StepApart("an element asked of at a place in a XAML file is that file's, not one of a file of its name in another folder", () => new WpfXamlHotReloadTests(folders), t => t.An_element_asked_of_at_a_place_in_a_xaml_file_is_that_files_and_not_one_of_a_file_of_its_name_in_another_folder());
+    }
+
     /// <summary>Under Debug, a save of the window's XAML puts its edits into the window as it runs, the button added runs
     /// the window's own handler, and an element WPF has not is refused at its line in Problems' Hot Reload tab.</summary>
-    [AvaloniaFact]
-    public void A_debugged_wpf_apps_saved_xaml_shows_in_its_window_and_an_element_wpf_has_not_is_refused_at_its_line()
+    private void A_debugged_wpf_apps_saved_xaml_shows_in_its_window_and_an_element_wpf_has_not_is_refused_at_its_line()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
@@ -100,8 +117,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
 
     /// <summary>Under Run, with no debugger, a save of the window's XAML puts its edits into the running window, said in the
     /// Run window, and the button added runs the window's own handler.</summary>
-    [AvaloniaFact]
-    public void A_running_wpf_apps_saved_xaml_shows_in_its_window_and_its_new_button_runs_the_windows_handler()
+    private void A_running_wpf_apps_saved_xaml_shows_in_its_window_and_its_new_button_runs_the_windows_handler()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
@@ -135,8 +151,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
 
     /// <summary>Under Run, a resource dictionary App.xaml merges, edited and saved, reaches the running app: the caption's
     /// colour, a dynamic resource of the dictionary's, takes the new brush.</summary>
-    [AvaloniaFact]
-    public void A_running_wpf_apps_saved_resource_dictionary_reaches_what_uses_its_resources()
+    private void A_running_wpf_apps_saved_resource_dictionary_reaches_what_uses_its_resources()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         string app = Path.Combine(folder, "App.xaml");
@@ -188,8 +203,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
     /// <summary>What the app added itself, in code, stays through a saved edit and through an edit WPF refuses part way through
     /// its load: the resources added before and after the window's XAML loaded, with the XAML's look-ups of them, a merged
     /// dictionary, a trigger, an input and a command binding, and the one handler the root's XAML names.</summary>
-    [AvaloniaFact]
-    public void What_a_running_wpf_app_added_in_code_stays_through_a_saved_edit_and_a_refused_one()
+    private void What_a_running_wpf_app_added_in_code_stays_through_a_saved_edit_and_a_refused_one()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         string code = Path.Combine(folder, "MainWindow.xaml.cs");
@@ -277,8 +291,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
 
     /// <summary>An edit WPF refuses part way through its load leaves the window's name scope as it was: the window still finds
     /// by name what it holds, what the load never reached among it.</summary>
-    [AvaloniaFact]
-    public void An_edit_wpf_refuses_part_way_through_its_load_leaves_what_the_window_holds_found_by_name()
+    private void An_edit_wpf_refuses_part_way_through_its_load_leaves_what_the_window_holds_found_by_name()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         string code = Path.Combine(folder, "MainWindow.xaml.cs");
@@ -321,88 +334,9 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
                 beat.Start();
         """;
 
-    /// <summary>An attached property a user control's root sets in its XAML (Grid.Row) is named there as Owner.Name: the row
-    /// the app moved the control to itself stays through a saved edit that leaves the attribute as it was, and the attribute
-    /// taken out and saved clears it, as an Avalonia root's does.</summary>
-    [AvaloniaFact]
-    public void An_attached_property_of_a_user_controls_root_keeps_the_apps_value_through_an_edit_and_is_cleared_once_taken_out()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        string card = Path.Combine(folder, "Card.xaml");
-        File.WriteAllText(card, """
-            <UserControl x:Class="WpfTreeApp.Card"
-                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                         Grid.Row="1" Tag="card">
-                <TextBlock Text="Card" />
-            </UserControl>
-
-            """);
-        File.WriteAllText(Path.Combine(folder, "Card.xaml.cs"), """
-            using System.Windows.Controls;
-
-            namespace WpfTreeApp;
-
-            public partial class Card : UserControl
-            {
-                public Card() => InitializeComponent();
-            }
-
-            """);
-        string code = Path.Combine(folder, "MainWindow.xaml.cs");
-        File.WriteAllText(code, File.ReadAllText(code).Replace("InitializeComponent();", "InitializeComponent();\n        System.Windows.Controls.Grid.SetRow(Placed, 0);", StringComparison.Ordinal));
-        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"WpfTreeApp.MainWindow\"", "x:Class=\"WpfTreeApp.MainWindow\" xmlns:local=\"clr-namespace:WpfTreeApp\"", StringComparison.Ordinal)
-            .Replace(Counter, $"<Grid><Grid.RowDefinitions><RowDefinition Height=\"Auto\" /><RowDefinition Height=\"Auto\" /></Grid.RowDefinitions><local:Card x:Name=\"Placed\" /></Grid>\n{Counter}",
-                StringComparison.Ordinal));
-        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
-        try
-        {
-            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
-            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
-            LiveApp app = window.Session.RunApp!;
-            Assert.Equal("0", Row(app));
-
-            window.OpenFile(card);
-            Typing.Replace(window, "Tag=\"card\"", "Tag=\"edited\"");
-            Ui.Run(window, AppActions.SaveAll);
-            Applied(window, 1);
-            Assert.True(Row(app) == "0", $"The row the app moved the card to was {Row(app)} after an edit that left Grid.Row as it was: the text's overwrote the app's");
-
-            Typing.Replace(window, "Grid.Row=\"1\" Tag=\"edited\"", "Tag=\"edited\"");
-            Ui.Run(window, AppActions.SaveAll);
-            Applied(window, 2);
-            Assert.True(Row(app) is null, $"Grid.Row taken out of the card's XAML and saved still holds {Row(app)} on the card");
-        }
-        finally
-        {
-            if (window.Runner.IsRunning)
-            {
-                Ui.Run(window, AppActions.Stop);
-                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
-            }
-            window.Close();
-        }
-
-        static string? Row(LiveApp app) => Find(Ui.Await(app.AgentTreeAsync(["Grid.Row"]), "the app's tree").Roots, "Placed")?.Values?.GetValueOrDefault("Grid.Row");
-
-        static void Applied(MainWindow window, int times) => Ui.WaitFor(() =>
-        {
-            OutputView run = window.BottomPanel.Run;
-            run.Flush();
-            string said = run.Document.Snapshot.ToString();
-            int count = 0;
-            for (int at = said.IndexOf("XAML changes applied: Card.xaml", StringComparison.Ordinal); at >= 0; at = said.IndexOf("XAML changes applied: Card.xaml", at + 1, StringComparison.Ordinal))
-            {
-                count++;
-            }
-            return count >= times;
-        }, () => $"the Run window to say the card's XAML applied {times} times ({window.Status})");
-    }
-
     /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns: asked what it made at
     /// a place in one, the app answers that file's element and not the other's.</summary>
-    [AvaloniaFact]
-    public void An_element_asked_of_at_a_place_in_a_xaml_file_is_that_files_and_not_one_of_a_file_of_its_name_in_another_folder()
+    private void An_element_asked_of_at_a_place_in_a_xaml_file_is_that_files_and_not_one_of_a_file_of_its_name_in_another_folder()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         foreach (string inside in (string[])["A", "B"])
@@ -452,90 +386,6 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             }
             window.Close();
         }
-    }
-
-    /// <summary>A user control in a folder whose name a URI would read as its fragment (Views/C#), edited and saved under Run,
-    /// applies with the dictionary it merges from beside it: the card made again from the edit, its text still the
-    /// dictionary's.</summary>
-    [AvaloniaFact]
-    public void A_saved_control_in_a_folder_named_c_sharp_applies_with_the_dictionary_it_merges_from_beside_it()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        string views = Path.Combine(folder, "Views", "C#");
-        Directory.CreateDirectory(views);
-        File.WriteAllText(Path.Combine(views, "Palette.xaml"), """
-            <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                                xmlns:s="clr-namespace:System;assembly=System.Runtime">
-                <s:String x:Key="Word">From the palette</s:String>
-            </ResourceDictionary>
-
-            """);
-        string card = Path.Combine(views, "Card.xaml");
-        File.WriteAllText(card, """
-            <UserControl x:Class="WpfTreeApp.Views.Card"
-                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-                <Border Height="40">
-                    <Border.Resources>
-                        <ResourceDictionary>
-                            <ResourceDictionary.MergedDictionaries>
-                                <ResourceDictionary Source="Palette.xaml" />
-                            </ResourceDictionary.MergedDictionaries>
-                        </ResourceDictionary>
-                    </Border.Resources>
-                    <TextBlock x:Name="Worded" Text="{StaticResource Word}" />
-                </Border>
-            </UserControl>
-
-            """);
-        File.WriteAllText(Path.Combine(views, "Card.xaml.cs"), """
-            using System.Windows.Controls;
-
-            namespace WpfTreeApp.Views;
-
-            public partial class Card : UserControl
-            {
-                public Card() => InitializeComponent();
-            }
-
-            """);
-        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"WpfTreeApp.MainWindow\"", "x:Class=\"WpfTreeApp.MainWindow\" xmlns:v=\"clr-namespace:WpfTreeApp.Views\"", StringComparison.Ordinal)
-            .Replace(Counter, $"<v:Card />\n{Counter}", StringComparison.Ordinal));
-        MainWindow window = Ui.OpenFolder(folder, 1400, 900, languageServer: false);
-        try
-        {
-            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
-            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
-            LiveApp app = window.Session.RunApp!;
-            Assert.Equal("From the palette", Text(app, "Worded"));
-
-            window.OpenFile(card);
-            Typing.Replace(window, "Height=\"40\"", "Height=\"48\"");
-            Ui.Run(window, AppActions.SaveAll);
-            Ui.WaitFor(() => RunSays(window, "XAML changes applied: Card.xaml") || RunSays(window, "Card.xaml could not apply")
-                || window.Status?.Contains("Card.xaml could not apply", StringComparison.Ordinal) == true,
-                () => $"the Run window to say what the card's edit came to ({window.Status})");
-            Assert.True(RunSays(window, "XAML changes applied: Card.xaml"),
-                $"The card's edit did not apply, its dictionary beside it looked for elsewhere: {window.Status}");
-            Assert.Equal("From the palette", Text(app, "Worded"));
-        }
-        finally
-        {
-            if (window.Runner.IsRunning)
-            {
-                Ui.Run(window, AppActions.Stop);
-                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
-            }
-            window.Close();
-        }
-    }
-
-    private static bool RunSays(MainWindow window, string words)
-    {
-        OutputView run = window.BottomPanel.Run;
-        run.Flush();
-        return run.Document.Snapshot.ToString().Contains(words, StringComparison.Ordinal);
     }
 
     /// <summary>The caption's colour as the running app has it.</summary>

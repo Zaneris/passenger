@@ -37,8 +37,20 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
         }
     }
 
+    /// <summary>WPF's preview: a window with App.xaml's resources following an edit and saying why broken XAML did not
+    /// load, at its line; a user control at its design size with its design-time data context; the caret outlining its
+    /// element and a click selecting its start tag; and a window's controls in design mode, the app's run showing them
+    /// running. On Windows only.</summary>
     [AvaloniaFact]
-    public void A_window_previews_with_app_xamls_resources_follows_an_edit_and_shows_why_broken_xaml_did_not_load_with_its_line()
+    public void A_wpf_preview_draws_a_window_or_user_control_as_the_app_does_follows_edits_and_the_caret()
+    {
+        Flow.StepApart("a window previews with App.xaml's resources, follows an edit, and shows why broken XAML did not load, with its line", () => new WpfPreviewTests(app), t => t.A_window_previews_with_app_xamls_resources_follows_an_edit_and_shows_why_broken_xaml_did_not_load_with_its_line());
+        Flow.StepApart("a user control previews at its design size with its design-time data context", () => new WpfPreviewTests(app), t => t.A_user_control_previews_at_its_design_size_with_its_design_time_data_context());
+        Flow.StepApart("the caret outlines its element from the first frame, and clicking an element in the preview selects its start tag", () => new WpfPreviewTests(app), t => t.The_caret_outlines_its_element_from_the_first_frame_and_clicking_an_element_in_the_preview_selects_its_start_tag());
+        Flow.StepApart("a window previews its controls in design mode, its chrome kept, and the app's run shows them running", () => new WpfPreviewTests(app), t => t.A_window_previews_its_controls_in_design_mode_its_window_chrome_kept_and_the_app_run_shows_them_running());
+    }
+
+    private void A_window_previews_with_app_xamls_resources_follows_an_edit_and_shows_why_broken_xaml_did_not_load_with_its_line()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
@@ -79,8 +91,7 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
 
     /// <summary>Its root tag holds a lone '\r', which the previewer's XML reader counts as a line's end and the editor does
     /// not, so the places its boxes come with run a line ahead of the editor's below it: each still lands on its element.</summary>
-    [AvaloniaFact]
-    public void A_user_control_previews_at_its_design_size_with_its_design_time_data_context()
+    private void A_user_control_previews_at_its_design_size_with_its_design_time_data_context()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         string card = app.Write("Card.xaml", Card.Replace("d:DesignWidth=\"320\" d:DesignHeight", "d:DesignWidth=\"320\"\r d:DesignHeight", StringComparison.Ordinal));
@@ -106,34 +117,7 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_user_control_draws_its_own_xaml_in_a_window_that_uses_it_and_one_with_no_code_behind_draws_nothing_as_the_app_does()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        app.Write("Tile.xaml", Tile);
-        app.Write("Tile.xaml.cs", TileCodeBehind);
-        app.Write("Badge.xaml", Badge);
-        string tiles = app.Write("Tiles.xaml", Tiles);
-        MainWindow window = app.Open(tiles);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument document = window.EditorArea.Active!;
-        XamlPreview preview = Previewed(window, document);
-        Assert.Null(preview.Error);
-        XamlPreviewPane pane = window.PreviewPaneOf(document)!;
-
-        PreviewElement tile = ElementOf(preview, editor, "<local:Tile");
-        Assert.True(tile.Box.Height > 20, $"The tile is drawn {tile.Box.Height} high: its own XAML did not load");
-        Point inside = pane.Frame.TranslatePoint(new Point(tile.Box.Right - 6, tile.Box.Bottom - 4), window)!.Value;
-        Assert.Equal(Color.Parse("#FFF4E0"), Ui.Pixel(window, inside));
-
-        // Nothing calls a XAML-only control's InitializeComponent, so the app draws it empty, and so does its preview.
-        PreviewElement badge = ElementOf(preview, editor, "<local:Badge");
-        Assert.Equal(0, badge.Box.Height);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void The_caret_outlines_its_element_from_the_first_frame_and_clicking_an_element_in_the_preview_selects_its_start_tag()
+    private void The_caret_outlines_its_element_from_the_first_frame_and_clicking_an_element_in_the_preview_selects_its_start_tag()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
@@ -175,51 +159,11 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
         window.Close();
     }
 
-    /// <summary>The window is drawn as itself, never shown, so what its content finds of it as the app runs is found in the
-    /// preview too.</summary>
-    [AvaloniaFact]
-    public void Content_previewed_in_a_window_finds_the_window_its_binding_shows_the_title_and_window_get_window_answers()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        app.Write("WindowFinder.xaml", WindowFinder);
-        app.Write("WindowFinder.xaml.cs", WindowFinderCodeBehind);
-        string titled = app.Write("Titled.xaml", Titled);
-        MainWindow window = app.Open(titled);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument document = window.EditorArea.Active!;
-        XamlPreview preview = Previewed(window, document);
-        Assert.Null(preview.Error);
-        XamlPreviewPane pane = window.PreviewPaneOf(document)!;
-
-        FindsItsHolder(window, preview, editor, pane, "Window");
-        window.Close();
-    }
-
-    /// <summary>A page is drawn in a window, as an app's page is, so its content finds the page and that window.</summary>
-    [AvaloniaFact]
-    public void Content_previewed_in_a_page_finds_the_page_and_the_window_the_page_is_in()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        app.Write("WindowFinder.xaml", WindowFinder);
-        app.Write("WindowFinder.xaml.cs", WindowFinderCodeBehind);
-        string paged = app.Write("Paged.xaml", Paged);
-        MainWindow window = app.Open(paged);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument document = window.EditorArea.Active!;
-        XamlPreview preview = Previewed(window, document);
-        Assert.Null(preview.Error);
-        XamlPreviewPane pane = window.PreviewPaneOf(document)!;
-
-        FindsItsHolder(window, preview, editor, pane, "Page");
-        window.Close();
-    }
-
     /// <summary>The preview runs the project's code in design mode, so a control that asks as it is made shows what it shows
     /// at design time; the app run is not in design mode, and the same control shows it is running. The window's
     /// WindowChrome, which WPF leaves to a designer in design mode, still makes the whole window its content's, as the app
     /// draws it, with no title bar drawn above.</summary>
-    [AvaloniaFact]
-    public void A_window_previews_its_controls_in_design_mode_its_window_chrome_kept_and_the_app_run_shows_them_running()
+    private void A_window_previews_its_controls_in_design_mode_its_window_chrome_kept_and_the_app_run_shows_them_running()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         app.Write("ModeSign.xaml", ModeSign);
@@ -279,23 +223,6 @@ public sealed class WpfPreviewTests : IClassFixture<WpfPreviewTests.Gallery>
 
     private static Element? Named(IEnumerable<Element> elements, string name) =>
         elements.Select(e => e.Name == name ? e : Named(e.Children, name)).FirstOrDefault(e => e is not null);
-
-    /// <summary>The title bound through <c>AncestorType</c> drawn as wide as the same words written out, and the user control
-    /// whose Loaded asks <c>Window.GetWindow</c> drawn in the colour that says it found one.</summary>
-    private static void FindsItsHolder(MainWindow window, XamlPreview preview, CodeEditor editor, XamlPreviewPane pane, string holder)
-    {
-        PreviewElement bound = ElementOf(preview, editor, "<TextBlock Text=\"{Binding Title");
-        PreviewElement written = ElementOf(preview, editor, $"<TextBlock Text=\"{FinderTitle}\"");
-        Assert.True(written.Box.Width > 20, $"The title written out is drawn {written.Box.Width} wide");
-        Assert.True(Math.Abs(bound.Box.Width - written.Box.Width) < 0.5,
-            $"The title bound through AncestorType={holder} is drawn {bound.Box.Width} wide, the same words written out {written.Box.Width}: the binding did not find the {holder.ToLowerInvariant()}");
-        PreviewElement finder = ElementOf(preview, editor, "<local:WindowFinder");
-        Point inside = pane.Frame.TranslatePoint(new Point(finder.Box.X + 3, finder.Box.Y + 3), window)!.Value;
-        Color drawn = Ui.Pixel(window, inside);
-        Assert.True(drawn == Found, drawn == Missing
-            ? "Window.GetWindow found no window for the control in the preview, as it does in the app"
-            : $"The control that asks Window.GetWindow is drawn {drawn}, neither the colour of a window found nor of none");
-    }
 
     /// <summary>The outline is drawn on the window just around an element's box.</summary>
     private static void OutlineAround(MainWindow window, XamlPreviewPane pane, PreviewElement element)

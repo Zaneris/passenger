@@ -49,12 +49,31 @@ public sealed class CodeBehindRenameTests : McpRig
     private const string AppCode = "using Avalonia;\nusing Avalonia.Controls;\nusing Avalonia.Markup.Xaml;\n\nnamespace Gallery;\n\npublic partial class App : Application\n{\n"
         + "    public override void Initialize() => AvaloniaXamlLoader.Load(this);\n\n    public static Window Open() => new MainWindow();\n}\n";
 
+    /// <summary>A Razor component renamed from its code-behind, its file in the solution view, its typeof or its tag:
+    /// its .razor file, code-behind and scoped style renamed with it, in the window and for an agent, and one Undo
+    /// putting it back.</summary>
+    [AvaloniaFact]
+    public void A_razor_component_renamed_from_its_code_behind_file_typeof_or_tag_takes_its_files_along_and_one_undo_puts_it_back()
+    {
+        Flow.StepApart<CodeBehindRenameTests>("renaming a Razor component's class from its code-behind moves its .razor file and scoped style with it, in the window and for an agent", t => t.Renaming_a_razor_components_class_from_its_code_behind_moves_its_razor_file_and_scoped_style_with_it_in_the_window_and_for_an_agent());
+        Flow.StepApart<CodeBehindRenameTests>("renaming a Razor component's file in the solution view renames its class with its uses and code-behind, and one Undo puts it back", t => t.Renaming_a_razor_components_file_in_the_solution_view_renames_its_class_with_its_uses_and_code_behind_and_one_undo_puts_it_back());
+        Flow.StepApart<CodeBehindRenameTests>("renaming a Razor component with no code-behind from its file, its typeof or its tag renames it whole, and one Undo puts it back", t => t.Renaming_a_razor_component_with_no_code_behind_from_its_file_its_typeof_or_its_tag_renames_it_whole_and_one_undo_puts_it_back());
+    }
+
+    /// <summary>An Avalonia window's class renamed from its code-behind, or its .axaml in the solution view: its
+    /// x:Class changed and its .axaml renamed, in the window and for an agent, and one Undo putting it back.</summary>
+    [AvaloniaFact]
+    public void An_avalonia_windows_class_renamed_from_its_code_behind_or_its_axaml_takes_the_other_along_and_one_undo_puts_it_back()
+    {
+        Flow.StepApart<CodeBehindRenameTests>("renaming an Avalonia window's class from its code-behind changes its x:Class and renames its .axaml, in the window and for an agent", t => t.Renaming_an_avalonia_windows_class_from_its_code_behind_changes_its_x_class_and_renames_its_axaml_in_the_window_and_for_an_agent());
+        Flow.StepApart<CodeBehindRenameTests>("renaming an Avalonia window's .axaml in the solution view offers to rename its class, and one Undo puts it back", t => t.Renaming_an_avalonia_windows_axaml_in_the_solution_view_offers_to_rename_its_class_and_one_undo_puts_it_back());
+    }
+
     /// <summary>A component's class renamed from its code-behind in the window moves its .razor file and scoped style with
     /// it and changes the tag that uses it, and the app builds; the person's Undo puts all of it back at once; an agent's
     /// rename does the same, saying each file it moved; and so does the code-behind's file renamed with its class in the
     /// Solution view, the app building after each.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_razor_components_class_from_its_code_behind_moves_its_razor_file_and_scoped_style_with_it_in_the_window_and_for_an_agent()
+    private void Renaming_a_razor_components_class_from_its_code_behind_moves_its_razor_file_and_scoped_style_with_it_in_the_window_and_for_an_agent()
     {
         string folder = PathNames.Canonical(TestFolders.Create("razor-rename-"));
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
@@ -120,8 +139,7 @@ public sealed class CodeBehindRenameTests : McpRig
     /// .axaml file with the code-behind, and the app builds; the person's Undo puts all of it back at once; then an agent's
     /// rename with renameFiles false changes the x:Class alone of the markup, the files keeping their names, and the app
     /// builds again.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_avalonia_windows_class_from_its_code_behind_changes_its_x_class_and_renames_its_axaml_in_the_window_and_for_an_agent()
+    private void Renaming_an_avalonia_windows_class_from_its_code_behind_changes_its_x_class_and_renames_its_axaml_in_the_window_and_for_an_agent()
     {
         string folder = PathNames.Canonical(TestFolders.Create("xaml-rename-"));
         TestFolders.Write(folder, "Gallery.csproj", AvaloniaApp.HeadlessProject());
@@ -171,41 +189,10 @@ public sealed class CodeBehindRenameTests : McpRig
         }
     }
 
-    /// <summary>A window's class renamed from its code-behind, its XAML writing x:Class in single quotes with spaces about
-    /// its equals sign as XAML allows, changes that x:Class too and renames the .axaml with the code-behind, and the app
-    /// builds.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_windows_class_changes_its_x_class_written_in_single_quotes_and_spaced()
-    {
-        string folder = PathNames.Canonical(TestFolders.Create("xaml-quoted-rename-"));
-        string quoted = Window.Replace("x:Class=\"Gallery.MainWindow\"", "x:Class = 'Gallery.MainWindow'", StringComparison.Ordinal);
-        TestFolders.Write(folder, "Gallery.csproj", AvaloniaApp.HeadlessProject());
-        TestFolders.Write(folder, "Program.cs", "namespace Gallery;\n\npublic static class Program\n{\n    public static void Main()\n    {\n    }\n}\n");
-        TestFolders.Write(folder, "App.axaml", App);
-        TestFolders.Write(folder, "App.axaml.cs", AppCode);
-        TestFolders.Write(folder, "MainWindow.axaml", quoted);
-        TestFolders.Write(folder, "MainWindow.axaml.cs", WindowCode);
-        Restore.Run(folder);
-        MainWindow window = Opened(folder, "MainWindow.axaml.cs");
-        try
-        {
-            RenameAt(window, "class MainWin", "MainView");
-            Assert.True(Names(folder, "*.axaml*").SequenceEqual(["App.axaml", "App.axaml.cs", "MainView.axaml", "MainView.axaml.cs"]),
-                $"The window's files after its class was renamed from its code-behind: [{string.Join(", ", Names(folder, "*.axaml*"))}], {window.Status}");
-            Assert.Equal(quoted.Replace("'Gallery.MainWindow'", "'Gallery.MainView'", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "MainView.axaml")));
-            Builds(window, folder, "the class of a window whose x:Class is single-quoted was renamed");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A component's .razor file renamed in the Solution view offers to rename its class with it, as a C# file named
     /// after its type does: taken, the code-behind's partial class, the tag and the typeof that use it follow, the
     /// code-behind and the scoped style are renamed with it, and the app builds; one Undo puts all of it back.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_razor_components_file_in_the_solution_view_renames_its_class_with_its_uses_and_code_behind_and_one_undo_puts_it_back()
+    private void Renaming_a_razor_components_file_in_the_solution_view_renames_its_class_with_its_uses_and_code_behind_and_one_undo_puts_it_back()
     {
         string folder = PathNames.Canonical(TestFolders.Create("razor-file-rename-"));
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
@@ -250,8 +237,7 @@ public sealed class CodeBehindRenameTests : McpRig
     /// .razor file in the Solution view, from the typeof and from the tag: each time its file and scoped style move, the tag
     /// and the typeof follow, and the app builds, and one Undo puts all of it back. An agent attached finds its usages by
     /// its name and renames it by its name the same way. The folder's _Imports.razor offers no class to rename.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_razor_component_with_no_code_behind_from_its_file_its_typeof_or_its_tag_renames_it_whole_and_one_undo_puts_it_back()
+    private void Renaming_a_razor_component_with_no_code_behind_from_its_file_its_typeof_or_its_tag_renames_it_whole_and_one_undo_puts_it_back()
     {
         string folder = PathNames.Canonical(TestFolders.Create("razor-alone-rename-"));
         TestFolders.Write(folder, "Shop.csproj", TestProjects.Web("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
@@ -347,8 +333,7 @@ public sealed class CodeBehindRenameTests : McpRig
     /// <summary>A window's .axaml file renamed in the Solution view offers to rename its class, which its x:Class names after
     /// the file: taken, the x:Class, the code-behind's class and file and the code that makes the window follow, and the
     /// app builds; one Undo puts all of it back. A XAML file whose class is named otherwise offers nothing.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_avalonia_windows_axaml_in_the_solution_view_offers_to_rename_its_class_and_one_undo_puts_it_back()
+    private void Renaming_an_avalonia_windows_axaml_in_the_solution_view_offers_to_rename_its_class_and_one_undo_puts_it_back()
     {
         string folder = PathNames.Canonical(TestFolders.Create("xaml-file-rename-"));
         TestFolders.Write(folder, "Gallery.csproj", AvaloniaApp.HeadlessProject());

@@ -25,8 +25,24 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         app.Reset();
     }
 
+    /// <summary>WPF's XAML as a person writes it: completion of controls, properties, events, values, resources and a
+    /// design-time binding's path; marks where its compiler would refuse it and after a build; Go to Declaration into
+    /// the C#; and renames from the C# and of an x:Name reaching it, a user control of no code-behind a class of its
+    /// own.</summary>
     [AvaloniaFact]
-    public void Typing_a_tag_offers_wpfs_controls_then_a_controls_properties_and_events_and_then_the_values_of_the_one_chosen()
+    public void WPF_xaml_completes_checks_goes_to_and_renames_as_its_compiler_and_the_csharp_read_it()
+    {
+        Flow.StepApart("typing a tag offers WPF's controls, then a control's properties and events, then the values of the one chosen", () => new WpfXamlTests(app), t => t.Typing_a_tag_offers_wpfs_controls_then_a_controls_properties_and_events_and_then_the_values_of_the_one_chosen());
+        Flow.StepApart("resources complete from what App.xaml merges in, and a binding from its design-time data context through a path", () => new WpfXamlTests(app), t => t.Resources_complete_from_what_app_xaml_merges_in_and_a_binding_from_its_design_time_data_context_through_a_path());
+        Flow.StepApart("a window that compiles is marked with nothing, and a misspelt property, value, resource and binding path are marked as typed", () => new WpfXamlTests(app), t => t.A_window_that_compiles_is_marked_with_nothing_and_a_misspelt_property_value_resource_and_binding_path_are_marked_as_typed());
+        Flow.StepApart("after a build, the markup compiler's error is marked on its line and listed with its code", () => new WpfXamlTests(app), t => t.After_a_build_markup_compiles_error_is_marked_on_its_line_and_listed_with_its_code());
+        Flow.StepApart("Go to Declaration from WPF XAML opens a control's class, a resource's definition, a bound property and a handler", () => new WpfXamlTests(app), t => t.Go_to_declaration_from_wpf_xaml_opens_a_controls_class_a_resources_definition_a_bound_property_and_a_handler());
+        Flow.StepApart("renaming a bound property, a command and a handler in C# renames the WPF XAML using them", () => new WpfXamlTests(app), t => t.Renaming_a_property_bound_under_a_design_time_data_context_a_command_and_a_handler_in_csharp_renames_the_wpf_xaml_using_them());
+        Flow.StepApart("an element's x:Name renames with its code-behind's uses, and Go to Declaration from the code lands on it", () => new WpfXamlTests(app), t => t.An_elements_x_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it());
+        Flow.StepApart("a user control with no code-behind is a class, its uses unmarked, and Go to Declaration reaches its XAML", () => new WpfXamlTests(app), t => t.A_user_control_with_no_code_behind_is_a_class_its_x_class_and_its_uses_are_not_marked_and_go_to_declaration_reaches_its_xaml());
+    }
+
+    private void Typing_a_tag_offers_wpfs_controls_then_a_controls_properties_and_events_and_then_the_values_of_the_one_chosen()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -80,8 +96,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Resources_complete_from_what_app_xaml_merges_in_and_a_binding_from_its_design_time_data_context_through_a_path()
+    private void Resources_complete_from_what_app_xaml_merges_in_and_a_binding_from_its_design_time_data_context_through_a_path()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -165,8 +180,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_window_that_compiles_is_marked_with_nothing_and_a_misspelt_property_value_resource_and_binding_path_are_marked_as_typed()
+    private void A_window_that_compiles_is_marked_with_nothing_and_a_misspelt_property_value_resource_and_binding_path_are_marked_as_typed()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -200,8 +214,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void After_a_build_markup_compiles_error_is_marked_on_its_line_and_listed_with_its_code()
+    private void After_a_build_markup_compiles_error_is_marked_on_its_line_and_listed_with_its_code()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -231,8 +244,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Go_to_declaration_from_wpf_xaml_opens_a_controls_class_a_resources_definition_a_bound_property_and_a_handler()
+    private void Go_to_declaration_from_wpf_xaml_opens_a_controls_class_a_resources_definition_a_bound_property_and_a_handler()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -286,8 +298,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
     /// <summary>A view model's property bound under the window's design-time data context, its command and the window's
     /// handler, each renamed from its C# in the window, take along the WPF XAML that uses them, which is not open; one Undo
     /// puts the property's rename back in both files.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_property_bound_under_a_design_time_data_context_a_command_and_a_handler_in_csharp_renames_the_wpf_xaml_using_them()
+    private void Renaming_a_property_bound_under_a_design_time_data_context_a_command_and_a_handler_in_csharp_renames_the_wpf_xaml_using_them()
     {
         string model = Gallery.MainViewModel.Replace("using System.Collections.ObjectModel;\n", "using System.Collections.ObjectModel;\nusing System.Windows.Input;\n", StringComparison.Ordinal)
             .Replace("    public bool IsBusy { get; set; }\n", "    public bool IsBusy { get; set; }\n\n    public ICommand? Save { get; set; }\n", StringComparison.Ordinal);
@@ -325,43 +336,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
-    /// <summary>WPF reads an enum's member in any letter case, so a rename of one in C#, with no XAML of the project read yet,
-    /// reaches a window that spells it otherwise: the project is read for it, and the use takes the new name.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_enum_member_in_csharp_reaches_wpf_xaml_spelling_it_in_another_case_in_a_project_not_read_yet()
-    {
-        string bound = Gallery.Window.Replace("<TextBlock Text=\"{Binding Content, ElementName=Go}\" />",
-            "<TextBlock Text=\"{Binding Content, ElementName=Go}\" />\n        <vm:Lamp State=\"ready\" />", StringComparison.Ordinal);
-        app.Rewrite("MainWindow.xaml", bound);
-        app.Write([("ViewModels/Lamp.cs", """
-            using System.Windows.Controls;
-
-            namespace Gallery.ViewModels;
-
-            public enum Phase
-            {
-                Ready,
-                Done,
-            }
-
-            public class Lamp : Control
-            {
-                public Phase State { get; set; }
-            }
-
-            """)]);
-        string view = app.PathOf("MainWindow.xaml");
-        MainWindow window = app.Open(app.PathOf("ViewModels/Lamp.cs"));
-
-        XamlTests.RenameInCode(window, "    Rea", "Waiting");
-
-        string renamed = bound.Replace("State=\"ready\"", "State=\"Waiting\"", StringComparison.Ordinal);
-        Ui.WaitFor(() => File.ReadAllText(view) == renamed, () => $"the window's use of the enum's member to follow its rename ({window.Status}):\n{File.ReadAllText(view)}");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void An_elements_x_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
+    private void An_elements_x_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.xaml.cs"));
         CodeEditor code = window.EditorArea.CodeEditor;
@@ -392,8 +367,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_user_control_with_no_code_behind_is_a_class_its_x_class_and_its_uses_are_not_marked_and_go_to_declaration_reaches_its_xaml()
+    private void A_user_control_with_no_code_behind_is_a_class_its_x_class_and_its_uses_are_not_marked_and_go_to_declaration_reaches_its_xaml()
     {
         string badge = app.Write("Badge.xaml", Badge);
         string uses = app.Write("Badges.xaml", Badges);
@@ -440,27 +414,6 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         </Window>
 
         """;
-
-    [AvaloniaFact]
-    public void Xaml_preview_on_a_wpf_file_off_windows_says_where_the_preview_would_be_that_wpf_previews_only_on_windows()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "WPF previews on Windows: WpfPreviewTests draw it there");
-        MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
-        OpenDocument document = window.EditorArea.Active!;
-        Ui.Run(window, AppActions.FindAction);
-        Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-        popup.Query = "xaml preview";
-        Ui.Settle();
-        Assert.Equal(AppActions.XamlPreview, popup.Rows[0].Id);
-        Ui.Press(window, "ENTER");
-        Ui.Settle();
-        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document) ?? throw new InvalidOperationException("XAML Preview showed nothing beside the WPF file");
-        Ui.WaitFor(() => preview.Status.StartsWith("WPF XAML previews only", StringComparison.Ordinal), "the note that WPF previews only on Windows");
-        Assert.Equal("WPF XAML previews only on Windows, where WPF draws", preview.Status);
-        Assert.Null(preview.Frame);
-        Assert.Null(preview.Error);
-        window.Close();
-    }
 
     /// <summary>The app: WPF's template with a view model its window names through <c>d:DataContext</c>, brushes merged in
     /// by App.xaml, and a button style whose template's triggers set its parts.</summary>

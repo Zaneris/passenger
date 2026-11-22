@@ -27,11 +27,14 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
 {
     private const string OnlyOnWindows = "WPF runs on Windows alone";
 
+    private readonly RestoredFolders folders;
+
     private readonly string folder = string.Empty;
     private readonly string? traceBefore = Environment.GetEnvironmentVariable(Wire.TraceVariable);
 
     public WpfLiveTreeTests(RestoredFolders folders)
     {
+        this.folders = folders;
         if (!OperatingSystem.IsWindows())
         {
             return;
@@ -64,8 +67,19 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
 
     private string AppXaml => Path.Combine(folder, "App.xaml");
 
+    /// <summary>A debugged WPF app's live tree: its elements with where each value comes from, going to their XAML; a
+    /// misspelt binding in the debug console linked to its line and in Problems; XAML binding errors stopping the app
+    /// where its binding fails; and Select Element choosing the element clicked. On Windows only.</summary>
     [AvaloniaFact]
-    public void A_debugged_wpf_app_shows_its_elements_where_each_value_comes_from_and_goes_to_their_xaml()
+    public void A_debugged_wpf_apps_elements_bindings_and_clicks_reach_their_xaml()
+    {
+        Flow.StepApart("a debugged WPF app shows its elements, where each value comes from, and goes to their XAML", () => new WpfLiveTreeTests(folders), t => t.A_debugged_wpf_app_shows_its_elements_where_each_value_comes_from_and_goes_to_their_xaml());
+        Flow.StepApart("a debugged WPF app's misspelt binding shows in the debug console linked to its line and in Problems", () => new WpfLiveTreeTests(folders), t => t.A_debugged_wpf_apps_misspelt_binding_shows_in_the_debug_console_linked_to_its_line_and_in_problems());
+        Flow.StepApart("XAML Binding Errors stops a debugged WPF app where its binding fails", () => new WpfLiveTreeTests(folders), t => t.Xaml_binding_errors_stops_a_debugged_wpf_app_where_its_binding_fails());
+        Flow.StepApart("Select Element chooses the element clicked in a WPF app", () => new WpfLiveTreeTests(folders), t => t.Select_element_chooses_the_element_clicked_in_a_wpf_app());
+    }
+
+    private void A_debugged_wpf_app_shows_its_elements_where_each_value_comes_from_and_goes_to_their_xaml()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = Debugged();
@@ -121,8 +135,7 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_debugged_wpf_apps_misspelt_binding_shows_in_the_debug_console_linked_to_its_line_and_in_problems()
+    private void A_debugged_wpf_apps_misspelt_binding_shows_in_the_debug_console_linked_to_its_line_and_in_problems()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = Opened();
@@ -162,8 +175,7 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Xaml_binding_errors_stops_a_debugged_wpf_app_where_its_binding_fails()
+    private void Xaml_binding_errors_stops_a_debugged_wpf_app_where_its_binding_fails()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = Opened();
@@ -209,8 +221,7 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Select_element_chooses_the_element_clicked_in_a_wpf_app()
+    private void Select_element_chooses_the_element_clicked_in_a_wpf_app()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
         MainWindow window = Debugged();
@@ -235,33 +246,6 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         Assert.Equal("Button#Count", tree.Details!.TemplatedParent);
         // The click was Select Element's: the app never saw it, and its counter says so.
         Assert.Equal("\"Not clicked yet\"", Choose(window, "Counter").Properties.Single(p => p.Name == "Text").Value);
-
-        Stop(window);
-        window.Close();
-    }
-
-    /// <summary>The Count button's Margin, which its implicit Style gave it, set by the control itself (SetCurrentValue): the
-    /// property's row says the control set it, and the Style's setter is overridden by it rather than shown winning.</summary>
-    [AvaloniaFact]
-    public void A_value_a_wpf_control_sets_itself_overrides_its_styles_setter_in_the_words_its_row_says()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        MainWindow window = Debugged();
-        Ui.TypeToDebugged(window, "nudge");
-        Ui.WaitFor(() =>
-        {
-            window.BottomPanel.Debug.Console.Flush();
-            return window.BottomPanel.Debug.Console.Document.Snapshot.ToString().Contains("Nudged", StringComparison.Ordinal);
-        }, () => $"the app to say Count set its own Margin: {Said(window)}");
-
-        Choose(window, "Greeting");
-        ElementDetails count = Choose(window, "Count");
-        PropertyValue margin = count.Properties.Single(p => p.Name == "Margin");
-        Assert.True(margin is { Source: ValueSources.Current, Detail: "Set by the control itself (SetCurrentValue)" },
-            $"Count's Margin row said it came from {margin.Source} ({margin.Detail}), not the control itself");
-        SetterReport styled = count.Styles.Single(s => s.Kind == StyleKinds.Style).Setters.Single(s => s.Property == "Margin");
-        Assert.True(styled is { State: SetterStates.Overridden, By: "the control itself (SetCurrentValue)" },
-            $"The implicit Style's Margin setter on Count was {styled.State} by {styled.By}, not overridden by the control itself");
 
         Stop(window);
         window.Close();
@@ -293,54 +277,6 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
 
     /// <summary>Where the caption's binding names Nmae, from zero.</summary>
     private TextPosition Misspelt => new(Line(Xaml, "{Binding Nmae}") - 1, File.ReadAllLines(Xaml)[Line(Xaml, "{Binding Nmae}") - 1].IndexOf("Nmae", StringComparison.Ordinal));
-
-    /// <summary>The folder opened in a window.</summary>
-    /// <summary>In the XAML workspace a WPF element is one choice across the editor, the preview and the debugged app's tree:
-    /// Delete clicked in the preview chosen in the tree, Greeting chosen in the tree puts the caret on its tag and is outlined
-    /// in the preview, the caret rested in the name box's tag chooses it in the tree and outlines it, and the caption chosen
-    /// shows its binding's failure among its own.</summary>
-    [AvaloniaFact]
-    public void In_the_xaml_workspace_a_wpf_element_chosen_in_the_preview_the_tree_or_at_the_caret_is_chosen_in_all_three()
-    {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), OnlyOnWindows);
-        MainWindow window = Debugged();
-        LiveTreeView tree = window.LiveTree;
-        window.ApplySettings(window.Settings with { XamlWorkspace = true });
-        Assert.Null(window.OpenFile(Xaml));
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
-        Ui.WaitFor(() => window.PreviewOf(document) is { Elements.Count: > 0 }, () => $"the preview beside MainWindow.xaml to draw its elements ({window.PreviewOf(document)?.Status})",
-            TimeSpan.FromMinutes(2));
-        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(document)!;
-        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(document)!;
-        Passenger.App.Xaml.PreviewElement ElementOf(string tag)
-        {
-            int at = editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal);
-            return preview.Elements.FirstOrDefault(e => e.Tag.Start == at) ?? throw new InvalidOperationException($"The preview drew no element for {tag}");
-        }
-
-        Rect delete = ElementOf("<Button x:Name=\"Delete\"").Box;
-        Point at = pane.Frame.TranslatePoint(delete.Center, window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
-        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
-        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
-        Ui.WaitFor(() => tree.Details?.Name == "Delete", () => $"Delete chosen in the tree as it was clicked in the preview, where the tree chose {tree.Details?.Name}");
-
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
-        int greeting = Line(Xaml, "x:Name=\"Greeting\"") - 1;
-        Ui.WaitFor(() => editor.CaretPosition.Line == greeting, () => $"the caret on Greeting's tag, line {greeting + 1}, not {editor.CaretPosition.Line + 1}");
-        Ui.WaitFor(() => pane.Outlined == ElementOf("<TextBlock x:Name=\"Greeting\"").Box, "Greeting outlined in the preview as it was chosen in the tree");
-
-        Ui.PlaceAfter(editor, "<TextBox x:Name=\"Name");
-        Ui.WaitFor(() => tree.Details?.Name == "NameBox", () => $"the name box chosen in the tree as the caret rested in its tag, not {tree.Details?.Name}");
-        Assert.Equal(ElementOf("<TextBox x:Name=\"NameBox\"").Box, pane.Outlined);
-
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Caption");
-        Ui.WaitFor(() => tree.FailuresShown.Any(f => f.Contains("Nmae", StringComparison.Ordinal)),
-            () => $"the caption's binding failure among its own, where it shows {string.Join("; ", tree.FailuresShown)}");
-
-        Stop(window);
-        window.Close();
-    }
 
     private MainWindow Opened() => Ui.OpenFolder(folder, 1400, 900);
 

@@ -23,10 +23,13 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public XamlHotReloadTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("xamlreload-", made => AvaloniaApp.Debuggee(made, "LiveTreeApp")));
     }
 
@@ -37,13 +40,39 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>The password box's element, whole, before which the tests add elements.</summary>
     private const string Pin = "<TextBox x:Name=\"Pin\" PasswordChar=\"•\" />";
 
+    /// <summary>XAML Hot Reload of a debugged Avalonia app: its saved XAML shows in its live tree, an edit its compiler
+    /// refuses said at its line; C# and XAML saved together apply through the debugger, a handler and the button naming
+    /// it together; and C# applied beside XAML that failed is the program's code, a breakpoint on its new line stopping
+    /// there.</summary>
+    [AvaloniaFact]
+    public void A_debugged_avalonia_apps_saved_xaml_and_csharp_apply_together_a_refused_edit_said_at_its_line()
+    {
+        Flow.StepApart("a debugged app's saved XAML shows in its live tree, and an edit its compiler refuses is said at its line", () => new XamlHotReloadTests(folders), t => t.A_debugged_apps_saved_xaml_shows_in_its_live_tree_and_an_edit_its_compiler_refuses_is_said_at_its_line());
+        Flow.StepApart("a handler added in C# and the button naming it in XAML apply together, and the click reaches the new greeting", () => new XamlHotReloadTests(folders), t => t.A_handler_added_in_csharp_and_the_button_naming_it_in_xaml_apply_together_and_the_click_reaches_the_new_greeting());
+        Flow.StepApart("Run with Hot Reload applies an app's C# and XAML saved together through the debugger, not dotnet watch", () => new XamlHotReloadTests(folders), t => t.Run_with_hot_reload_applies_an_apps_csharp_and_xaml_saved_together_through_the_debugger_not_dotnet_watch());
+        Flow.StepApart("C# applied beside XAML that failed is the program's code, and a breakpoint on its new line stops there", () => new XamlHotReloadTests(folders), t => t.Csharp_applied_beside_xaml_that_failed_is_the_programs_code_and_a_breakpoint_on_its_new_line_stops_there());
+    }
+
+    /// <summary>XAML Hot Reload of a running Avalonia app: its saved XAML, and XAML written on disk while not open,
+    /// shows in its window, an edit its compiler refuses said at its line; App.axaml's styles and resources reach what
+    /// they style; what the app added in code stays through an edit and one that fails; and a file's boxes are its own,
+    /// not those of a file of its name elsewhere.</summary>
+    [AvaloniaFact]
+    public void A_running_avalonia_apps_xaml_saved_or_written_applies_to_its_own_boxes_keeping_what_the_app_added()
+    {
+        Flow.StepApart("a running app's saved XAML shows in its window, and an edit its compiler refuses is said at its line", () => new XamlHotReloadTests(folders), t => t.A_running_apps_saved_xaml_shows_in_its_window_and_an_edit_its_compiler_refuses_is_said_at_its_line());
+        Flow.StepApart("a running app's XAML written on disk while not open shows in its window", () => new XamlHotReloadTests(folders), t => t.A_running_apps_xaml_written_on_disk_while_not_open_shows_in_its_window());
+        Flow.StepApart("a running app's saved App.axaml styles and resources reach what they style", () => new XamlHotReloadTests(folders), t => t.A_running_apps_saved_app_axaml_styles_and_resources_reach_what_they_style());
+        Flow.StepApart("what a running app added in code stays through a saved edit and through one that fails as it loads", () => new XamlHotReloadTests(folders), t => t.What_a_running_app_added_in_code_stays_through_a_saved_edit_and_through_one_that_fails_as_it_loads());
+        Flow.StepApart("a XAML file's boxes in the running app are its own, not those of a file of its name in another folder", () => new XamlHotReloadTests(folders), t => t.A_xaml_files_boxes_in_the_running_app_are_its_own_and_not_those_of_a_file_of_its_name_in_another_folder());
+    }
+
     /// <summary>Under Debug, a save of the window's XAML puts the edits into the window as it runs: its greeting's new text,
     /// Delete's new colour and a button added, in the Live Visual Tree under the same window; then an element the XAML names
     /// that Avalonia has not is refused, said with its line in Problems' Hot Reload tab, and the window keeps what it had; and
     /// a property Delete has not, refused in its tag, shows among Delete's failures in the Live Visual Tree and not the
     /// greeting's.</summary>
-    [AvaloniaFact]
-    public void A_debugged_apps_saved_xaml_shows_in_its_live_tree_and_an_edit_its_compiler_refuses_is_said_at_its_line()
+    private void A_debugged_apps_saved_xaml_shows_in_its_live_tree_and_an_edit_its_compiler_refuses_is_said_at_its_line()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         try
@@ -92,8 +121,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
 
     /// <summary>Under Run, with no debugger, a save of the window's XAML puts the edits into the running window, said in the
     /// Run window; an edit the app's compiler refuses is said in the status bar with its line, and listed there in Problems.</summary>
-    [AvaloniaFact]
-    public void A_running_apps_saved_xaml_shows_in_its_window_and_an_edit_its_compiler_refuses_is_said_at_its_line()
+    private void A_running_apps_saved_xaml_shows_in_its_window_and_an_edit_its_compiler_refuses_is_said_at_its_line()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         try
@@ -128,8 +156,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>Under Run, the window's XAML written on disk while it is not open (another editor's save) reaches the running
     /// window as a save in the editor does, from the text the app's build read: its greeting's text, Delete's colour and a
     /// button added, in the window it had; the file never opened.</summary>
-    [AvaloniaFact]
-    public void A_running_apps_xaml_written_on_disk_while_not_open_shows_in_its_window()
+    private void A_running_apps_xaml_written_on_disk_while_not_open_shows_in_its_window()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         try
@@ -161,8 +188,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
 
     /// <summary>Under Run, App.axaml's styles and resources edited and saved reach the running app: the title style's size,
     /// and its colour from a resource added, on the greeting it styles.</summary>
-    [AvaloniaFact]
-    public void A_running_apps_saved_app_axaml_styles_and_resources_reach_what_they_style()
+    private void A_running_apps_saved_app_axaml_styles_and_resources_reach_what_they_style()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         try
@@ -201,8 +227,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>A handler added in C# and a button added in XAML that names it, applied together by Apply Hot Reload Changes:
     /// C#'s first, so the button finds the handler; a click on the new button runs it, and what it does to the greeting
     /// through its x:Name field shows on the greeting the XAML made again.</summary>
-    [AvaloniaFact]
-    public void A_handler_added_in_csharp_and_the_button_naming_it_in_xaml_apply_together_and_the_click_reaches_the_new_greeting()
+    private void A_handler_added_in_csharp_and_the_button_naming_it_in_xaml_apply_together_and_the_click_reaches_the_new_greeting()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
         try
@@ -236,8 +261,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>Under Run with Hot Reload, an Avalonia app runs held at its start and attached to quietly for its C#, never under
     /// dotnet watch, whose app carries no inspector: a handler added in C# and the button naming it in XAML, saved, apply
     /// together, C#'s first, said in the Run window, and a click on the new button runs the handler.</summary>
-    [AvaloniaFact]
-    public void Run_with_hot_reload_applies_an_apps_csharp_and_xaml_saved_together_through_the_debugger_not_dotnet_watch()
+    private void Run_with_hot_reload_applies_an_apps_csharp_and_xaml_saved_together_through_the_debugger_not_dotnet_watch()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
         window.ApplySettings(window.Settings with { HotReload = true });
@@ -277,8 +301,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>What the app added itself, in code, stays through a saved edit and through an edit that fails as it loads: the
     /// resources added before and after its window's XAML loaded, with the XAML's look-ups of them, a merged dictionary, a
     /// style, a template, a key binding, a class, and the one handler the root's XAML names.</summary>
-    [AvaloniaFact]
-    public void What_a_running_app_added_in_code_stays_through_a_saved_edit_and_through_one_that_fails_as_it_loads()
+    private void What_a_running_app_added_in_code_stays_through_a_saved_edit_and_through_one_that_fails_as_it_loads()
     {
         File.WriteAllText(Path.Combine(folder, "MainWindow.axaml.cs"), Adding);
         File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"LiveTreeApp.MainWindow\"", "x:Class=\"LiveTreeApp.MainWindow\" DataContextChanged=\"OnContext\"", StringComparison.Ordinal)
@@ -373,8 +396,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>C# applied beside XAML the app's compiler refuses: what comes of it is the XAML's error, but the program runs the
     /// new C#, so the file's lines are the program's from then, and a breakpoint on the line the edit added stops there with
     /// its new local.</summary>
-    [AvaloniaFact]
-    public void Csharp_applied_beside_xaml_that_failed_is_the_programs_code_and_a_breakpoint_on_its_new_line_stops_there()
+    private void Csharp_applied_beside_xaml_that_failed_is_the_programs_code_and_a_breakpoint_on_its_new_line_stops_there()
     {
         string code = Path.Combine(folder, "MainWindow.axaml.cs");
         File.WriteAllText(code, Beating);
@@ -440,8 +462,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
 
     /// <summary>Two files of one name in two folders, whose elements stand at the same lines and columns, are asked of apart:
     /// each answers its own elements' boxes, and not the other's.</summary>
-    [AvaloniaFact]
-    public void A_xaml_files_boxes_in_the_running_app_are_its_own_and_not_those_of_a_file_of_its_name_in_another_folder()
+    private void A_xaml_files_boxes_in_the_running_app_are_its_own_and_not_those_of_a_file_of_its_name_in_another_folder()
     {
         foreach ((string inside, string shows) in new[] { ("A", "First"), ("B", "Second") })
         {
@@ -484,82 +505,6 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
                 return first.Count > 0 && second.Count > 0;
             }, "the app to show both cards");
             Assert.Empty(first.Select(p => p.Box).Intersect(second.Select(p => p.Box)));
-        }
-        finally
-        {
-            if (window.Runner.IsRunning)
-            {
-                Ui.Run(window, AppActions.Stop);
-                Ui.WaitFor(() => !window.Runner.IsRunning, "the run to end");
-            }
-            window.Close();
-        }
-    }
-
-    /// <summary>A user control in a folder whose name a URI would read as its fragment (Views/C#), edited and saved under Run,
-    /// applies with the dictionary it merges from beside it: the card made again from the edit, its text still the
-    /// dictionary's.</summary>
-    [AvaloniaFact]
-    public void A_saved_control_in_a_folder_named_c_sharp_applies_with_the_dictionary_it_merges_from_beside_it()
-    {
-        string views = Path.Combine(folder, "Views", "C#");
-        Directory.CreateDirectory(views);
-        File.WriteAllText(Path.Combine(views, "Palette.axaml"), """
-            <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-                <x:String x:Key="Word">From the palette</x:String>
-            </ResourceDictionary>
-
-            """);
-        string card = Path.Combine(views, "Card.axaml");
-        File.WriteAllText(card, """
-            <UserControl xmlns="https://github.com/avaloniaui"
-                         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                         x:Class="LiveTreeApp.Views.Card">
-                <Border Height="40">
-                    <Border.Resources>
-                        <ResourceDictionary>
-                            <ResourceDictionary.MergedDictionaries>
-                                <ResourceInclude Source="Palette.axaml" />
-                            </ResourceDictionary.MergedDictionaries>
-                        </ResourceDictionary>
-                    </Border.Resources>
-                    <TextBlock x:Name="Worded" Text="{StaticResource Word}" />
-                </Border>
-            </UserControl>
-
-            """);
-        File.WriteAllText(Path.Combine(views, "Card.axaml.cs"), """
-            using Avalonia.Controls;
-
-            namespace LiveTreeApp.Views;
-
-            public partial class Card : UserControl
-            {
-                public Card() => InitializeComponent();
-            }
-
-            """);
-        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("x:Class=\"LiveTreeApp.MainWindow\"",
-            "xmlns:v=\"using:LiveTreeApp.Views\" x:Class=\"LiveTreeApp.MainWindow\"", StringComparison.Ordinal)
-            .Replace(Pin, $"<v:Card />\n{Pin}", StringComparison.Ordinal));
-        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
-        try
-        {
-            Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
-            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, $"the app's inspector to say hello ({window.Status})", TimeSpan.FromMinutes(2));
-            LiveApp app = window.Session.RunApp!;
-            Assert.Equal("From the palette", Text(app, "Worded"));
-
-            window.OpenFile(card);
-            Typing.Replace(window, "Height=\"40\"", "Height=\"48\"");
-            Ui.Run(window, AppActions.SaveAll);
-            Ui.WaitFor(() => RunSays(window, "XAML changes applied: Card.axaml") || RunSays(window, "Card.axaml could not apply")
-                || window.Status?.Contains("Card.axaml could not apply", StringComparison.Ordinal) == true,
-                () => $"the Run window to say what the card's edit came to ({window.Status})");
-            Assert.True(RunSays(window, "XAML changes applied: Card.axaml"),
-                $"The card's edit did not apply, its dictionary beside it looked for elsewhere: {window.Status}");
-            Assert.Equal("From the palette", Text(app, "Worded"));
         }
         finally
         {
