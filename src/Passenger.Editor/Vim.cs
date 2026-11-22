@@ -101,7 +101,8 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>Where the operator's object or motion that just failed left its caret, a count cut short; null where it stays.</summary>
     private int? ranOutAt;
 
-    /// <summary>Set where an operator acted over nothing (x on an empty line), which is a change made, not one that failed.</summary>
+    /// <summary>Set where an operator acted, whatever it changed (x on an empty line, gU over capitals), which is a change
+    /// made, not one that failed.</summary>
     private bool actedOnNothing;
 
     /// <summary>The line an exclusive motion just ended at the start of, which the operator's stretch leaves out; null with none.</summary>
@@ -230,7 +231,7 @@ public sealed partial class Vim(VimRegisters registers)
             : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
             : Run(command, text, selections, view);
         if ((command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
-                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" }
+                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
             || (command is { Operator: not null, Name: not ("i" or "a" or "$") } && ReferenceEquals(result, VimResult.Held)))
         {
@@ -720,7 +721,7 @@ public sealed partial class Vim(VimRegisters registers)
             if (plans.Count == 0 && !actedOnNothing && Mode == VimMode.Normal && change.Visual is null)
             {
                 // A change failing again keeps its count, and what it typed is pressed as normal mode's keys, as Vim's are.
-                lastChange = kept;
+                lastChange = kept with { JoinedNothing = lastChange?.JoinedNothing ?? kept.JoinedNothing };
                 pressedAfter = change.Inserted.Length > 0 ? [.. VimKeys.Pressed(change.Inserted), VimKeys.Escape] : null;
             }
             if (Mode == VimMode.Replace)

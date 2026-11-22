@@ -29,6 +29,8 @@ public sealed partial class Vim
     private VimResult OneEx(string line, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         VimResult result = ExCommand(line, text, selections, view);
+        // One that changes the text or moves the carets sets the column j and k aim for afresh.
+        wantedFor = result.Edits is { Count: > 0 } || (result.Selections is { } moved && !moved.SameAs(selections)) ? null : wantedFor;
         return view.Refuses is { } why && result.Edits is { Count: > 0 } ? Refused(why) : result;
     }
 
@@ -97,6 +99,8 @@ public sealed partial class Vim
                 {
                     return VimResult.Held;
                 }
+                // A line's number goes to its first non-blank, the column j and k aim at set afresh even where the caret stays.
+                wantedFor = null;
                 return Jumped(text, selections, view, VimMotions.FirstNonBlank(text, range.Value.Last < 0 ? 0 : Math.Min(range.Value.Last, last), breakEnds));
             case "w" or "write" or "up" or "upd" or "upda" or "updat" or "update":
                 return trimmed.Length > 0 ? Said($"Vim mode saves the file shown: :{name} {trimmed} is not done") : Asked(VimRequestKind.Save);

@@ -332,7 +332,6 @@ public sealed partial class Vim
         bool stays = replaying && !replayingCounted && lastChange is { JoinedNothing: true };
         Remember(command);
         lastChange = lastChange is null ? null : lastChange with { JoinedNothing = true };
-        actedOnNothing = true;
         return new VimResult(true, stays ? selections : selections.With(s => Selection.At(VimMotions.LineOf(text, s.Caret).Start)));
     }
 

@@ -90,8 +90,8 @@ public sealed partial class Vim
     /// <summary>The display columns the last stretch a visual operator took began and ended at, which A over characters or
     /// lines places itself by: a block's edges; after $ those before kept; none by lines, or by characters for I or A,
     /// taken back over lines; else for I or A by characters, and lines taken back on one line, from the first column to
-    /// the cursor's; else over lines or by lines from the first column (for I or A over lines the left one kept) to the
-    /// end's; else its corners'.</summary>
+    /// the cursor's; else over lines or by lines from the first column (for I or A, or a block's S or R, over lines the
+    /// left one kept) to the end's; else its corners'.</summary>
     private int keptBlockLeft;
 
     private int keptBlockRight;

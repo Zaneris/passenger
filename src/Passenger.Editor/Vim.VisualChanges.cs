@@ -66,7 +66,7 @@ public sealed partial class Vim
             : toEnd ? (keptBlockLeft, keptBlockRight)
             : inserts && !lines ? (0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
             : lines || overLines
-                ? (inserts && overLines ? keptBlockLeft : 0,
+                ? ((inserts || (block && op is "S" or "R")) && overLines ? keptBlockLeft : 0,
                     stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab) : !overLines ? CaretColumn(text, stretch.Cursor, tab) : 0)
             : (CaretColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
