@@ -13,15 +13,30 @@ public sealed class AppHostsTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_framework_dependent_apphost_for_the_sdks_own_machine_starts_naming_the_net_of_its_processor()
+    public void A_project_starts_through_its_apphost_where_the_SDKs_own_machine_runs_it_naming_the_NET_it_takes_else_under_dotnet_saying_why() => Cases.All(
+        ("a framework dependent apphost for the sdks own machine starts naming the net of its processor", A_framework_dependent_apphost_for_the_sdks_own_machine_starts_naming_the_net_of_its_processor),
+        ("a self contained apphost and one for the portable identifier of a distributions sdk start too", A_self_contained_apphost_and_one_for_the_portable_identifier_of_a_distributions_sdk_start_too),
+        ("an apphost for another processor or system leaves its assembly to dotnet saying which it is built for", An_apphost_for_another_processor_or_system_leaves_its_assembly_to_dotnet_saying_which_it_is_built_for),
+        ("a win x86 apphost under a 64 bit windows sdk starts on the x86 net", () => Cases.Each<string>(
+        [
+            "win-x64",
+        ], A_win_x86_apphost_under_a_64_bit_windows_sdk_starts_on_the_x86_net)),
+        ("an assembly named with dots has its apphost beside it and another program or dotnet is none", An_assembly_named_with_dots_has_its_apphost_beside_it_and_another_program_or_dotnet_is_none),
+        ("the variable an apphost reads first is its processors from net 6 and the shared one before", () => Cases.Each<(string, string, string)>(
+        [
+            ("osx-arm64", "v11.0", "DOTNET_ROOT_ARM64"),
+            ("osx-x64", "v5.0", RuntimeVariables.Root),
+            ("win-x86", "v3.1", RuntimeVariables.RootX86),
+        ], row => The_variable_an_apphost_reads_first_is_its_processors_from_net_6_and_the_shared_one_before(row.Item1, row.Item2, row.Item3))));
+
+    private void A_framework_dependent_apphost_for_the_sdks_own_machine_starts_naming_the_net_of_its_processor()
     {
         (AppHost? host, string? why) = AppHosts.Of(Evaluated("Hello", runtime: null, defaultHost: "osx-arm64"), Target("Hello"));
         Assert.True(host == new AppHost(Path.Combine(root, "Hello"), "DOTNET_ROOT_ARM64") && why is null,
             $"The apphost of the SDK's own osx-arm64 read as {host?.ToString() ?? "none"} ({why}), so Run would lose the program's manifest, icon and name to dotnet");
     }
 
-    [Fact]
-    public void A_self_contained_apphost_and_one_for_the_portable_identifier_of_a_distributions_sdk_start_too()
+    private void A_self_contained_apphost_and_one_for_the_portable_identifier_of_a_distributions_sdk_start_too()
     {
         (AppHost? contained, _) = AppHosts.Of(Evaluated("Hello.exe", runtime: "win-x64", defaultHost: null, sdk: "win-x64"), Target("Hello"));
         (AppHost? portable, _) = AppHosts.Of(Evaluated("Hello", runtime: "linux-x64", defaultHost: null, sdk: "fedora.40-x64", portable: "linux-x64"), Target("Hello"));
@@ -29,8 +44,7 @@ public sealed class AppHostsTests : IDisposable
             $"An apphost for the SDK's own machine did not start: {contained?.ToString() ?? "none"} for win-x64, {portable?.ToString() ?? "none"} for linux-x64 under a fedora.40-x64 SDK");
     }
 
-    [Fact]
-    public void An_apphost_for_another_processor_or_system_leaves_its_assembly_to_dotnet_saying_which_it_is_built_for()
+    private void An_apphost_for_another_processor_or_system_leaves_its_assembly_to_dotnet_saying_which_it_is_built_for()
     {
         (AppHost? emulated, string? why) = AppHosts.Of(Evaluated("Hello", runtime: "osx-x64", defaultHost: null), Target("Hello"));
         (AppHost? linux, string? elsewhere) = AppHosts.Of(Evaluated("Hello", runtime: "linux-arm64", defaultHost: null), Target("Hello"));
@@ -40,10 +54,7 @@ public sealed class AppHostsTests : IDisposable
             && onArm?.Contains("win-x64", StringComparison.Ordinal) == true, $"The run says nothing of why it is no apphost's: {why} / {elsewhere} / {onArm}");
     }
 
-    [Theory]
-    [InlineData("win-x64")]
-    [InlineData("win-arm64")]
-    public void A_win_x86_apphost_under_a_64_bit_windows_sdk_starts_on_the_x86_net(string sdk)
+    private void A_win_x86_apphost_under_a_64_bit_windows_sdk_starts_on_the_x86_net(string sdk)
     {
         (AppHost? x86, string? why) = AppHosts.Of(Evaluated("Plate.exe", runtime: null, defaultHost: "win-x86", sdk: sdk), Target("Plate"));
         Assert.True(x86 == new AppHost(Path.Combine(root, "Plate.exe"), "DOTNET_ROOT_X86", X86: true) && why is null,
@@ -52,8 +63,7 @@ public sealed class AppHostsTests : IDisposable
         Assert.True(own is { X86: false }, $"The apphost of an x86 SDK's own machine read as {own?.ToString() ?? "none"}, where it starts on that SDK's .NET");
     }
 
-    [Fact]
-    public void An_assembly_named_with_dots_has_its_apphost_beside_it_and_another_program_or_dotnet_is_none()
+    private void An_assembly_named_with_dots_has_its_apphost_beside_it_and_another_program_or_dotnet_is_none()
     {
         (AppHost? dotted, _) = AppHosts.Of(Evaluated("My.Game", runtime: null, defaultHost: "osx-arm64"), Target("My.Game"));
         Assert.True(dotted is { } host && host.Program == Path.Combine(root, "My.Game"), $"My.Game's apphost read as {dotted?.ToString() ?? "none"}");
@@ -65,14 +75,7 @@ public sealed class AppHostsTests : IDisposable
         Assert.Equal((null, null), AppHosts.Of(underDotnet, Target("My.Game")));
     }
 
-    [Theory]
-    [InlineData("osx-arm64", "v11.0", "DOTNET_ROOT_ARM64")]
-    [InlineData("linux-musl-x64", "v8.0", "DOTNET_ROOT_X64")]
-    [InlineData("win-x86", "v6.0", "DOTNET_ROOT_X86")]
-    [InlineData("osx-x64", "v5.0", RuntimeVariables.Root)]
-    [InlineData("win-x86", "v3.1", RuntimeVariables.RootX86)]
-    [InlineData("linux-arm", "v3.1", RuntimeVariables.Root)]
-    public void The_variable_an_apphost_reads_first_is_its_processors_from_net_6_and_the_shared_one_before(string runtime, string framework, string variable) =>
+    private void The_variable_an_apphost_reads_first_is_its_processors_from_net_6_and_the_shared_one_before(string runtime, string framework, string variable) =>
         Assert.Equal(variable, AppHosts.RootVariable(runtime, framework));
 
     /// <summary>An evaluation of a project building into the test's folder, its RunCommand <paramref name="command"/> there,

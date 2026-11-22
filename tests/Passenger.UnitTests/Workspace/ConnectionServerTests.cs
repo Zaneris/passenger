@@ -8,7 +8,15 @@ namespace Passenger.UnitTests.Workspace;
 public class ConnectionServerTests
 {
     [Fact]
-    public void A_URL_with_a_password_and_no_user_name_moves_to_another_host_and_port_with_the_rest_as_written()
+    public void A_connection_string_is_given_again_at_the_host_and_port_this_machine_reaches_its_server_on_nothing_else_changed() => Cases.All(
+        ("a URL with a password and no user name moves to another host and port with the rest as written", A_URL_with_a_password_and_no_user_name_moves_to_another_host_and_port_with_the_rest_as_written),
+        ("a URL keeps its users escapes path and query as written and gains a port it did not name", A_URL_keeps_its_users_escapes_path_and_query_as_written_and_gains_a_port_it_did_not_name),
+        ("a keyword string with a quoted semicolon changes only its host and port", A_keyword_string_with_a_quoted_semicolon_changes_only_its_host_and_port),
+        ("SQL Servers host keeps its protocol and its port after a comma", SQL_Servers_host_keeps_its_protocol_and_its_port_after_a_comma),
+        ("a keyword string no reader takes names its host yet cannot be written again", A_keyword_string_no_reader_takes_names_its_host_yet_cannot_be_written_again),
+        ("a string that names no server has none", A_string_that_names_no_server_has_none));
+
+    private void A_URL_with_a_password_and_no_user_name_moves_to_another_host_and_port_with_the_rest_as_written()
     {
         ConnectionServer server = Read("redis://:secret@cache:6379");
         Assert.Equal(("cache", 6379), (server.Host, server.Port));
@@ -16,8 +24,7 @@ public class ConnectionServerTests
         Assert.Equal("redis://:s%20ecret@localhost:32768/0", Read("redis://:s%20ecret@cache:6379/0").At("localhost", 32768));
     }
 
-    [Fact]
-    public void A_URL_keeps_its_users_escapes_path_and_query_as_written_and_gains_a_port_it_did_not_name()
+    private void A_URL_keeps_its_users_escapes_path_and_query_as_written_and_gains_a_port_it_did_not_name()
     {
         ConnectionServer server = Read("postgresql://user:pa%3Bss@db/app?sslmode=disable");
         Assert.Equal(("db", (int?)null), (server.Host, server.Port));
@@ -26,8 +33,7 @@ public class ConnectionServerTests
         Assert.Equal("amqp://app:p@ss@localhost:2", Read("amqp://app:p@ss@rabbit:5672").At("localhost", 2));
     }
 
-    [Fact]
-    public void A_keyword_string_with_a_quoted_semicolon_changes_only_its_host_and_port()
+    private void A_keyword_string_with_a_quoted_semicolon_changes_only_its_host_and_port()
     {
         const string Written = "Host=db;Password=\"a;b\"";
         ConnectionServer server = Read(Written);
@@ -37,8 +43,7 @@ public class ConnectionServerTests
             ("host", "localhost"), ("port", "1"));
     }
 
-    [Fact]
-    public void SQL_Servers_host_keeps_its_protocol_and_its_port_after_a_comma()
+    private void SQL_Servers_host_keeps_its_protocol_and_its_port_after_a_comma()
     {
         const string Written = "Server=tcp:sql,1433;Database=app;User Id=sa;Password=p;TrustServerCertificate=True";
         ConnectionServer server = Read(Written);
@@ -48,16 +53,14 @@ public class ConnectionServerTests
         AssertMoved("Server=mysql;Database=app", Read("Server=mysql;Database=app").At("localhost", 3), ("server", "localhost"), ("port", "3"));
     }
 
-    [Fact]
-    public void A_keyword_string_no_reader_takes_names_its_host_yet_cannot_be_written_again()
+    private void A_keyword_string_no_reader_takes_names_its_host_yet_cannot_be_written_again()
     {
         ConnectionServer server = Read("Host=db;Port=5432;Password=\"a;b");
         Assert.Equal(("db", (int?)5432), (server.Host, server.Port));
         Assert.Null(server.At("localhost", 1));
     }
 
-    [Fact]
-    public void A_string_that_names_no_server_has_none()
+    private void A_string_that_names_no_server_has_none()
     {
         string[] none = ["file:///data/app.db", "redis://", "redis://cache:port", "redis://cache:70000", "mongodb://a:1,b:2/x", "cache:6379,password=secret",
             "Database=app", "plain words", ""];

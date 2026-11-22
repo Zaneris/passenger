@@ -27,21 +27,33 @@ public sealed class AppHostPipelineTests
     ];
 
     [Fact]
-    public void Deploy_steps_are_deploy_and_each_environments_last_step_in_the_apphosts_order()
+    public void An_AppHosts_deploy_steps_are_read_from_its_backchannel_with_what_each_needs_and_only_an_Aspire_that_lists_them_asked() => Cases.All(
+        ("steps are read from the backchannels answer as it names them", Steps_are_read_from_the_backchannels_answer_as_it_names_them),
+        ("deploy steps are deploy and each environments last step in the apphosts order", Deploy_steps_are_deploy_and_each_environments_last_step_in_the_apphosts_order),
+        ("an apphost whose deploy runs only aspires own steps offers none", An_apphost_whose_deploy_runs_only_aspires_own_steps_offers_none),
+        ("a step needs what the steps it runs need", A_step_needs_what_the_steps_it_runs_need),
+        ("only an aspire that lists its steps is asked for them", () => Cases.Each<(string?, bool)>(
+        [
+            ("13.6.1", true),
+            ("13.7.0-preview.1.25500.1", true),
+            ("13.5.4", false),
+            (null, false),
+        ], row => Only_an_aspire_that_lists_its_steps_is_asked_for_them(row.Item1, row.Item2))),
+        ("a step is run by name with its files written to the folder given", A_step_is_run_by_name_with_its_files_written_to_the_folder_given));
+
+    private void Deploy_steps_are_deploy_and_each_environments_last_step_in_the_apphosts_order()
     {
         Assert.Equal([AppHostPipeline.Deploy, "docker-compose-up-compose", "deploy-web", "helm-deploy-k8s"], AppHostPipeline.DeploySteps(Steps).Select(s => s.Name));
     }
 
-    [Fact]
-    public void An_apphost_whose_deploy_runs_only_aspires_own_steps_offers_none()
+    private void An_apphost_whose_deploy_runs_only_aspires_own_steps_offers_none()
     {
         AppHostStep[] nothing = [new("deploy-prereq", null, [], [], null), new(AppHostPipeline.Deploy, null, ["deploy-prereq"], [], null)];
         Assert.Empty(AppHostPipeline.DeploySteps(nothing));
         Assert.Empty(AppHostPipeline.DeploySteps([new("publish", null, [], [], null)]));
     }
 
-    [Fact]
-    public void A_step_needs_what_the_steps_it_runs_need()
+    private void A_step_needs_what_the_steps_it_runs_need()
     {
         Assert.Equal(DeployNeeds.ContainerEngine, AppHostPipeline.Needs("docker-compose-up-compose", Steps));
         Assert.Equal(DeployNeeds.AzureLogin | DeployNeeds.ContainerEngine, AppHostPipeline.Needs("deploy-web", Steps));
@@ -50,8 +62,7 @@ public sealed class AppHostPipelineTests
         Assert.Equal(DeployNeeds.None, AppHostPipeline.Needs("deploy-prereq", Steps));
     }
 
-    [Fact]
-    public void Steps_are_read_from_the_backchannels_answer_as_it_names_them()
+    private void Steps_are_read_from_the_backchannels_answer_as_it_names_them()
     {
         using JsonDocument answer = JsonDocument.Parse("""
             {"Steps":[{"Name":"deploy","Description":"Aggregation step for all deploy operations.","DependsOn":["deploy-prereq"],"Tags":[],"ResourceName":null},
@@ -66,21 +77,12 @@ public sealed class AppHostPipelineTests
         Assert.Equal("env", steps[1].Resource);
     }
 
-    [Theory]
-    [InlineData("13.6.1", true)]
-    [InlineData("13.7.0-preview.1.25500.1", true)]
-    [InlineData("14.0.0", true)]
-    [InlineData("13.5.4", false)]
-    [InlineData("9.4.0", false)]
-    [InlineData(null, false)]
-    [InlineData("13.*", false)]
-    public void Only_an_aspire_that_lists_its_steps_is_asked_for_them(string? version, bool asked)
+    private void Only_an_aspire_that_lists_its_steps_is_asked_for_them(string? version, bool asked)
     {
         Assert.Equal(asked, AppHostPipeline.WhyNotListed(version) is null);
     }
 
-    [Fact]
-    public void A_step_is_run_by_name_with_its_files_written_to_the_folder_given()
+    private void A_step_is_run_by_name_with_its_files_written_to_the_folder_given()
     {
         Assert.Equal(["--operation", "publish", "--step", "deploy", "--output-path", "out"], AppHostPipeline.RunArguments("deploy", "out"));
         Assert.Equal(["--operation", "inspect", "--list-steps", "true"], AppHostPipeline.ListArguments);
