@@ -17,7 +17,7 @@ namespace Passenger.Tests;
 /// shared project's App, its locals shown, steps, evaluates and, gone on, shows its tree; each Stop ends the app and takes
 /// out what was carried, and a simulator the window booted is shut down as it closes. Skips, saying why, off a Mac, without
 /// the iOS workload, Xcode or an iPhone simulator, the simulator's relay, or nuget.org's Avalonia iOS packages. Debugged
-/// through the window, so alone; its waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+/// through the window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
 public sealed class AvaloniaSimulatorTests
 {
@@ -25,50 +25,17 @@ public sealed class AvaloniaSimulatorTests
 
     private const string Name = "XApp";
 
+    private const string Head = $"{Name}.iOS";
+
     [AvaloniaFact]
-    public void An_avalonia_apps_ios_head_on_a_simulator_shows_its_tree_takes_a_xaml_edit_and_stops_at_a_breakpoint_in_its_shared_code()
+    public void An_avalonia_apps_ios_head_run_on_a_simulator_shows_its_tree_and_takes_a_xaml_edit()
     {
         using IDisposable hang = Limits.BeginHang();
-        if (!OperatingSystem.IsMacOS())
-        {
-            Assert.Skip(Refusals.IosOnMacAlone);
-        }
-        string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
-        if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))
-        {
-            Assert.Skip($"This build carries no debug relay for {runtime}, which `just debug-relay apple` makes before a build carries it");
-        }
-        string folder = PathNames.Canonical(TestFolders.Create("avalonia-ios"));
-        (string project, string? unrestored) = Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateIosHeadAsync(folder, Name)),
-            "dotnet new avalonia.xplat and the iOS head's restore", Slow);
-        if (unrestored is not null)
-        {
-            Assert.Skip(unrestored);
-        }
-        (IReadOnlyList<DeviceTarget> targets, AppleTools? tools, string? problem) = Ui.Await(Waiting.Apart(() =>
-            AppleSimulators.ListAsync(project, MauiApp.Ios, new Dictionary<string, string>(), CancellationToken.None)), "the iOS workload's simulators", Slow);
-        if (tools is null)
-        {
-            Assert.Skip($"There is nothing to run on: {problem}");
-        }
-        if (targets.Where(t => t is { Platform: TargetPlatform.Ios, Kind: TargetKind.Simulator } && t.Name.StartsWith("iPhone", StringComparison.Ordinal))
-            .OrderBy(t => t.Running ? 0 : 1).FirstOrDefault() is not { } target)
-        {
-            Assert.Skip("The iOS workload lists no iPhone simulator: add one in Xcode, with its iOS simulator runtime");
-            return;
-        }
-        string head = $"{Name}.iOS";
+        (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("avalonia-ios-run");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == head), () => $"{head}'s run configuration; the window has configurations "
-                + $"{string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
-            Assert.True(window.SelectConfiguration(head));
-            ProjectModel model = window.Session.Projects.Single(p => PathNames.Same(p.Path, project));
-            window.ChooseRunTarget(model, target);
-            Ui.Settle();
-            Assert.True(window.Session.Targets.Of(model)?.Key == target.Key, $"{target.Name} was not kept as where {head} runs");
-
+            Choose(window, project, target);
             Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the simulator", Slow);
             Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected }, () => $"the inspector in the app on the simulator to say hello; it is "
                 + $"{window.Session.RunApp?.State.ToString() ?? "not made"} ({window.Session.RunApp?.Problem}): {Ui.Said(window)}\n{Output(window)}", Slow);
@@ -93,7 +60,23 @@ public sealed class AvaloniaSimulatorTests
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => !Runs(started!), () => $"the app to end on the simulator once stopped; process {started} still runs", TimeSpan.FromSeconds(30));
             Ui.WaitFor(() => !Directory.Exists(carried), () => $"what the run carried into the app to be taken out once stopped; {carried} is still there", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
+        }
+        LeftAsFound(target, tools);
+    }
 
+    [AvaloniaFact]
+    public void An_avalonia_apps_ios_head_debugged_on_a_simulator_stops_at_a_breakpoint_in_its_shared_code_and_shows_its_tree()
+    {
+        using IDisposable hang = Limits.BeginHang();
+        (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("avalonia-ios-debug");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Choose(window, project, target);
             string shared = Path.Combine(folder, Name, "App.axaml.cs");
             window.OpenFile(shared);
             Ui.Settle();
@@ -102,13 +85,13 @@ public sealed class AvaloniaSimulatorTests
             Assert.True(line >= 0, $"The template's App no longer asks for the desktop's lifetime:\n{string.Join('\n', lines)}");
             window.EditorArea.CodeEditor.GoTo(new TextPosition(line, lines[line].Length - lines[line].TrimStart().Length));
             Ui.Run(window, AppActions.ToggleBreakpoint);
-            Ui.Launched(window, window.DebugAsync(), "the debugged start on the simulator", Slow);
+            Ui.Launched(window, window.DebugAsync(), "the build, the install and the debugged start on the simulator", Slow);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "this") is not null,
                 () => $"the stop at the breakpoint in the shared project's App with its locals; the debugger is "
                     + $"{window.Debugger.Session?.State.ToString() ?? "not debugging"}: {Ui.Said(window)}\n{Console(window)}", Slow);
             Assert.Equal("null", Shown(window, "desktop"));
-            started = Started(window, window.BottomPanel.Debug.Console.Document.Snapshot, debugged: true);
-            carried = Carried(window, relayed: true);
+            string? started = Started(window, window.BottomPanel.Debug.Console.Document.Snapshot, debugged: true);
+            string carried = Carried(window, relayed: true);
             Ui.Run(window, AppActions.StepOver);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "singleViewFactoryApplicationLifetime") is not null,
                 () => $"the step past the desktop's lifetime to the next branch; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}: "
@@ -119,13 +102,13 @@ public sealed class AvaloniaSimulatorTests
 
             // The inspector carried in beside the relay shows the debugged app's tree once it goes on.
             Ui.Run(window, AppActions.Resume);
-            LiveApp debugged = window.Debugger.Tabs.LastOrDefault(t => t.Name == head)?.App is { Kind: LiveAppKind.Avalonia } inspected ? inspected
+            LiveApp debugged = window.Debugger.Tabs.LastOrDefault(t => t.Name == Head)?.App is { Kind: LiveAppKind.Avalonia } inspected ? inspected
                 : throw new Xunit.Sdk.XunitException("Debug's tab holds no Avalonia app for the Live Visual Tree");
             Ui.WaitFor(() => debugged.State == LiveAppState.Connected, () => $"the inspector in the debugged app to say hello; it is {debugged.State} ({debugged.Problem}): "
                 + $"{Ui.Said(window)}\n{Console(window)}", Slow);
             TreeAsked debuggedTree = new(debugged);
-            Ui.WaitFor(() => debuggedTree.Holds(e => e.Type == "MainView") && debuggedTree.Holds(e => e.Type == "TextBlock"),
-                () => $"the shared view as saved in the debugged app's tree; it shows {debuggedTree.Shown}", Slow);
+            Ui.WaitFor(() => debuggedTree.Holds(e => e.Type == "MainView") && debuggedTree.Holds(e => e.Type == "TextBox"),
+                () => $"the shared view and its TextBox in the debugged app's tree; it shows {debuggedTree.Shown}", Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Assert.True(started is not null, $"simctl did not say the app's process in the Debug console:\n{Console(window)}");
@@ -136,6 +119,60 @@ public sealed class AvaloniaSimulatorTests
         {
             window.Close();
         }
+        LeftAsFound(target, tools);
+    }
+
+    /// <summary>The template's solution with its iOS head in a folder of its own, and the simulator to run it on: an iPhone
+    /// simulator already booted, else the first shut down, which the window boots; or a skip saying why there is none.</summary>
+    private static (string Folder, string Project, DeviceTarget Target, AppleTools Tools) Prepared(string name)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip(Refusals.IosOnMacAlone);
+        }
+        string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
+        if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))
+        {
+            Assert.Skip($"This build carries no debug relay for {runtime}, which `just debug-relay apple` makes before a build carries it");
+        }
+        string folder = PathNames.Canonical(TestFolders.Create(name));
+        (string project, string? unrestored) = Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateIosHeadAsync(folder, Name)),
+            "dotnet new avalonia.xplat and the iOS head's restore", Slow);
+        if (unrestored is not null)
+        {
+            Assert.Skip(unrestored);
+        }
+        (IReadOnlyList<DeviceTarget> targets, AppleTools? tools, string? problem) = Ui.Await(Waiting.Apart(() =>
+            AppleSimulators.ListAsync(project, MauiApp.Ios, new Dictionary<string, string>(), CancellationToken.None)), "the iOS workload's simulators", Slow);
+        if (tools is null)
+        {
+            Assert.Skip($"There is nothing to run on: {problem}");
+        }
+        if (targets.Where(t => t is { Platform: TargetPlatform.Ios, Kind: TargetKind.Simulator } && t.Name.StartsWith("iPhone", StringComparison.Ordinal))
+            .OrderBy(t => t.Running ? 0 : 1).FirstOrDefault() is not { } target)
+        {
+            Assert.Skip("The iOS workload lists no iPhone simulator: add one in Xcode, with its iOS simulator runtime");
+            return default;
+        }
+        return (folder, project, target, tools);
+    }
+
+    /// <summary>The head's run configuration chosen, and the simulator kept as where its project runs.</summary>
+    private static void Choose(MainWindow window, string project, DeviceTarget target)
+    {
+        Ui.WaitFor(() => window.Configurations.Any(c => c.Name == Head), () => $"{Head}'s run configuration; the window has configurations "
+            + $"{string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
+        Assert.True(window.SelectConfiguration(Head));
+        ProjectModel model = window.Session.Projects.Single(p => PathNames.Same(p.Path, project));
+        window.ChooseRunTarget(model, target);
+        Ui.Settle();
+        Assert.True(window.Session.Targets.Of(model)?.Key == target.Key, $"{target.Name} was not kept as where {Head} runs");
+    }
+
+    /// <summary>The simulator as the test found it once the window has closed: shut down again where the window booted it,
+    /// still booted where it was already.</summary>
+    private static void LeftAsFound(DeviceTarget target, AppleTools tools)
+    {
         string expected = target.Running ? "(Booted)" : "(Shutdown)";
         Ui.WaitFor(() => State(target, tools).Contains(expected, StringComparison.Ordinal),
             () => $"{target.Name} to be left {expected} as the window closed; simctl lists it as {State(target, tools)}", TimeSpan.FromMinutes(1));
