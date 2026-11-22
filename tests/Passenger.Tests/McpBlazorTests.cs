@@ -67,10 +67,19 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
         TestFolders.Delete(app);
     }
 
+    /// <summary>An agent debugging Blazor's WebAssembly as one flow, each step one test's check in an instance of its
+    /// own: a component stopped in the browser with its field read, and a hit count counting only the hits its
+    /// condition held on through an edit of its message, logged as every debugger logs.</summary>
+    [Fact]
+    public async Task An_agent_debugs_a_WebAssembly_component_in_the_browser_reading_its_fields_and_counting_its_conditional_hits()
+    {
+        await Flow.StepApartLivedAsync("an agent stops a WebAssembly component in the browser and reads its field", () => new McpBlazorTests(), t => t.An_agent_stops_a_WebAssembly_component_in_the_browser_and_reads_its_field());
+        await Flow.StepApartLivedAsync("a hit count counts the hits its condition held on through an edit of its message logged as every debugger logs it", () => new McpBlazorTests(), t => t.A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it());
+    }
+
     /// <summary>The agent's breakpoint in the component stops the page as it renders it, debug_state naming the line with the
     /// component as this, and after a step debug_evaluate reads the field the line set.</summary>
-    [Fact]
-    public async Task An_agent_stops_a_WebAssembly_component_in_the_browser_and_reads_its_field()
+    private async Task An_agent_stops_a_WebAssembly_component_in_the_browser_and_reads_its_field()
     {
         await using McpClient client = await Start(["--mcp", app], languageServer: false);
         int line = Array.FindIndex(Counter.Split('\n'), l => l.Contains("currentCount = 41;", StringComparison.Ordinal)) + 1;
@@ -119,8 +128,7 @@ public sealed class McpBlazorTests : McpRig, IAsyncLifetime
     /// page at i 14, as every debugger counts (the managed debugger's and GDScript's tests stop alike); one that neither stops
     /// nor logs says where it was reached. The edited message logs \{ and \} as braces, a string quoted unless ,nq and a
     /// whole number in hexadecimal under ,h, as every debugger does; one writing {{ is refused saying how to write a brace.</summary>
-    [Fact]
-    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
+    private async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
     {
         await File.WriteAllTextAsync(Path.Combine(app, "Pages", "Counter.razor"), Looping, TestContext.Current.CancellationToken);
         await using McpClient client = await Start(["--mcp", app], languageServer: false);
