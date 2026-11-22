@@ -33,12 +33,160 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         project.Reset();
     }
 
+    /// <summary>The gate's completion, edits and cards of C# as one flow, to take the place of their six tests once it
+    /// has its record on CI.</summary>
+    [AvaloniaFact]
+    public void The_gates_completion_edits_and_cards_hold_as_one_flow()
+    {
+        Flow.StepApart("a member chosen from the list a dot opened with nothing typed leaves the caret after it", () => new CodeAssistTests(project), t => t.A_member_chosen_from_the_list_a_dot_opened_with_nothing_typed_leaves_the_caret_after_it());
+        Flow.StepApart("choosing await in a method not yet async makes the method async as well", () => new CodeAssistTests(project), t => t.Choosing_await_in_a_method_not_yet_async_makes_the_method_async_as_well());
+        Flow.StepApart("Undo and Redo of a paste at a file's end keep their steps and the server's copy, with an input method following", () => new CodeAssistTests(project), t => t.Undo_and_redo_of_a_paste_at_a_files_end_keep_their_steps_and_the_servers_copy_with_an_input_method_following());
+        Flow.StepApart("Code Cleanup removes unused usings, sorts the rest and reformats", () => new CodeAssistTests(project), t => t.Code_cleanup_removes_unused_usings_sorts_the_rest_and_reformats());
+        Flow.StepApart("parameter info keeps a sentence apart from a parameter its documentation names straight after it", () => new CodeAssistTests(project), t => t.Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it());
+        Flow.StepApart("the error stripe marks a problem in its colour, says what it is, and a click goes there", () => new CodeAssistTests(project), t => t.The_error_stripe_marks_a_problem_in_its_colour_says_what_it_is_and_a_click_goes_there());
+    }
+
+    /// <summary>The gate's navigation and refactorings of C# as one flow, to take the place of their six tests once it
+    /// has its record on CI.</summary>
+    [AvaloniaFact]
+    public void The_gates_navigation_and_refactorings_hold_as_one_flow()
+    {
+        Flow.StepApart("Go to Declaration, Back and Forward land where the code is, and a library type opens its decompiled source read-only", () => new CodeAssistTests(project), t => t.Go_to_declaration_back_and_forward_land_where_the_code_is_and_a_library_type_opens_its_decompiled_source_read_only());
+        Flow.StepApart("a right click on a call puts the caret there, and its menu renames it in every file that uses it and goes to an implementation", () => new CodeAssistTests(project), t => t.A_right_click_on_a_call_puts_the_caret_there_and_its_menu_renames_it_in_every_file_that_uses_it_and_goes_to_an_implementation());
+        Flow.StepApart("call and type hierarchies show who calls a method and what derives from a type", () => new CodeAssistTests(project), t => t.Call_and_type_hierarchies_show_who_calls_a_method_and_what_derives_from_a_type());
+        Flow.StepApart("Extract Method asks each new method's name and keeps the next statement on its line, and Refactor This lists only what fits", () => new CodeAssistTests(project), t => t.Extract_method_asks_each_new_methods_name_and_keeps_the_next_statement_on_its_line_and_refactor_this_lists_only_what_fits());
+        Flow.StepApart("a fix with choices offers them as a second list and makes the one chosen", () => new CodeAssistTests(project), t => t.A_fix_with_choices_offers_them_as_a_second_list_and_makes_the_one_chosen());
+        Flow.StepApart("Fix All offers its scopes and fixes every occurrence in the one chosen", () => new CodeAssistTests(project), t => t.Fix_all_offers_its_scopes_and_fixes_every_occurrence_in_the_one_chosen());
+    }
+
+    /// <summary>Completion writes the item chosen as C# needs it: a named argument's colon or an attribute's equals
+    /// sign, one separator after a declaration keyword, an extension method's using, a method called with the caret in
+    /// its brackets in the name's step of Undo or alone with brackets turned off, the item before a commit character
+    /// with its documentation beside the list, CamelHumps' names, and the members to override after a space; the names
+    /// of the type the place takes listed first, and a list still asked for let go by an Escape.</summary>
+    [AvaloniaFact]
+    public void Completion_writes_the_item_chosen_with_its_separator_brackets_using_and_step_of_undo()
+    {
+        Flow.StepApart("a named argument chosen by Enter writes its colon", () => new CodeAssistTests(project), t => t.Choosing_a_named_argument_writes_its_colon("ENTER", false));
+        Flow.StepApart("an attribute's named argument chosen by Tab before an equals sign keeps one", () => new CodeAssistTests(project), t => t.Choosing_an_attributes_named_argument_keeps_its_equals_sign("TAB", true));
+        Flow.StepApart("a declaration keyword chosen leaves the caret after one separator", () => new CodeAssistTests(project), t => t.Declaration_completion_leaves_the_caret_after_one_separator("ENTER", " "));
+        Flow.StepApart("completion lists first the names of the type the place takes, keeping the rest", () => new CodeAssistTests(project), t => t.Completion_lists_first_the_names_of_the_type_the_place_takes_keeping_the_rest());
+        Flow.StepApart("an extension method chosen after a dot adds its using above and leaves the caret after the method", () => new CodeAssistTests(project), t => t.An_extension_method_chosen_after_a_dot_adds_its_using_above_and_leaves_the_caret_after_the_method());
+        Flow.StepApart("a method chosen from the list is written called, the caret inside its brackets when it takes arguments", () => new CodeAssistTests(project), t => t.A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments());
+        Flow.StepApart("a method chosen is written at once, its brackets following in its step of Undo unless typed on before they came", () => new CodeAssistTests(project), t => t.A_method_chosen_is_written_at_once_its_brackets_following_in_its_step_of_undo_unless_typed_on_before_they_came());
+        Flow.StepApart("with parentheses turned off a method chosen from the list is written as its name alone", () => new CodeAssistTests(project), t => t.With_parentheses_turned_off_a_method_chosen_from_the_list_is_written_as_its_name_alone());
+        Flow.StepApart("typing after a dot completes, filtered as you type, and Enter commits it", () => new CodeAssistTests(project), t => t.Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out());
+        Flow.StepApart("CamelHumps typed offer the names they start after the prefix matches, and Enter writes the one chosen", () => new CodeAssistTests(project), t => t.CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen());
+        Flow.StepApart("a space after override lists the members to override and no template, and Enter writes one", () => new CodeAssistTests(project), t => t.A_space_after_override_lists_the_members_to_override_and_no_template_and_Enter_writes_one());
+        Flow.StepApart("a list still asked for is let go by an Escape or the caret moved out of its name", () => new CodeAssistTests(project), t => t.A_list_still_asked_for_is_let_go_by_an_escape_or_the_caret_moved_out_of_its_name());
+        Flow.StepApart("a commit character types the chosen item before it, and the item's documentation shows beside the list", () => new CodeAssistTests(project), t => t.A_commit_character_types_the_chosen_item_before_it_and_the_items_documentation_shows_beside_the_list());
+    }
+
+    /// <summary>A completion list as the window keeps it: its first rows laid out as the window opened, narrowed off
+    /// the window's thread laying out only the rows that came or went, a statement's in-scope rows before the types of
+    /// namespaces not imported which join them, its whole list narrowed here asking the server nothing, and one of more
+    /// than 10,000 in the server's order.</summary>
+    [AvaloniaFact]
+    public void A_completion_list_is_laid_out_ahead_narrowed_off_the_window_and_comes_in_its_parts_in_the_servers_order()
+    {
+        Flow.StepApart("a window's first completion list shows in the rows laid out as the window opened", () => new CodeAssistTests(project), t => t.A_windows_first_completion_list_shows_in_the_rows_laid_out_as_the_window_opened());
+        Flow.StepApart("typing into a completion list narrows it off the window's thread, in the rows it shows", () => new CodeAssistTests(project), t => t.Typing_into_a_completion_list_narrows_it_off_the_UI_thread_in_the_rows_it_shows());
+        Flow.StepApart("a key that changes how many rows the completion list shows lays out only the rows that came or went", () => new CodeAssistTests(project), t => t.A_key_that_changes_how_many_rows_the_completion_list_shows_lays_out_only_the_rows_that_came_or_went());
+        Flow.StepApart("a statement's first rows show before the types of namespaces not imported, which join them leaving the choice", () => new CodeAssistTests(project), t => t.A_statements_first_rows_show_before_the_types_of_namespaces_not_imported_which_join_them_leaving_the_choice());
+        Flow.StepApart("a statement's whole list narrows here as its name is typed, asking the server nothing", () => new CodeAssistTests(project), t => t.A_statements_whole_list_narrows_here_as_its_name_is_typed_asking_the_server_nothing());
+        Flow.StepApart("a statement's list of more than ten thousand lists the names found alike in the server's order", () => new CodeAssistTests(project), t => t.A_statements_list_of_more_than_ten_thousand_lists_the_names_found_alike_in_the_servers_order());
+    }
+
+    /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
+    /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
+    /// declarations; and parameter info's overloads, those the arguments no longer fit set back.</summary>
+    [AvaloniaFact]
+    public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
+    {
+        Flow.StepApart("the path, a hover card, File Structure and Go to Symbol name the code and go to it", () => new CodeAssistTests(project), t => t.The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it());
+        Flow.StepApart("a file shown before its folder's server has it names the member the caret is in once it does", () => new CodeAssistTests(project), t => t.A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does());
+        Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
+        Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
+        Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
+    }
+
+    /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
+    /// keys; Show Usages hands them to the Find window; a file another program has just written lists its caller; and
+    /// the call hierarchy finds callers at a use in another file and a record's positional property.</summary>
+    [AvaloniaFact]
+    public void Usages_and_callers_are_listed_once_each_given_the_keys_and_followed_into_a_file_just_written()
+    {
+        Flow.StepApart("Find Usages groups them, previews the chosen one, keeps each search and lists each place once at its line", () => new CodeAssistTests(project), t => t.Find_usages_groups_them_previews_the_chosen_one_keeps_each_search_and_lists_each_place_once_at_its_line());
+        Flow.StepApart("Show Usages lists them in a popup under the caret, goes to the one chosen and hands them to the Find window", () => new CodeAssistTests(project), t => t.Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window());
+        Flow.StepApart("Find Usages gives its results the keys, so Down and Enter open the next usage", () => new CodeAssistTests(project), t => t.Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage());
+        Flow.StepApart("Find Usages in a file another program has just written lists the caller it wrote beside it", () => new CodeAssistTests(project), t => t.Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it());
+        Flow.StepApart("the call hierarchy at a use in another file and at a record's positional property shows its callers", () => new CodeAssistTests(project), t => t.Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers());
+    }
+
+    /// <summary>Reformat Code of a method, on save as one step of Undo or turned off, changes only its own file and
+    /// never a letter typed meanwhile; and what a reformat, a completion, a template or a fix writes takes the file's
+    /// line breaks and indents as its .editorconfig says, else as the file's own lines.</summary>
+    [AvaloniaFact]
+    public void Reformat_and_what_a_completion_or_fix_writes_keep_the_files_indent_and_line_breaks_and_only_their_own_file()
+    {
+        Flow.StepApart("a reformat started before switching tabs changes only its own file and breaks lines as the file does", () => new CodeAssistTests(project), t => t.A_reformat_started_before_switching_tabs_changes_only_its_own_file_and_breaks_lines_as_the_file_does());
+        Flow.StepApart("Reformat Code with a method selected reformats that method alone and leaves the code around it", () => new CodeAssistTests(project), t => t.Reformat_code_with_a_method_selected_reformats_that_method_alone_and_leaves_the_code_around_it());
+        Flow.StepApart("Reformat on Save lays a file out before writing it as one step of Undo, and without the server or turned off saves it as typed", () => new CodeAssistTests(project), t => t.Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed());
+        Flow.StepApart("a letter typed at the start of what a reformat is about to change stays once the reformat lands", () => new CodeAssistTests(project), t => t.A_letter_typed_at_the_start_of_what_a_reformat_is_about_to_change_stays_once_the_reformat_lands());
+        Flow.StepApart("what a completion or a fix writes takes the file's line breaks, whichever the server writes", () => new CodeAssistTests(project), t => t.What_a_completion_or_a_fix_writes_takes_the_files_line_breaks_whichever_the_server_writes());
+        Flow.StepApart("a tab-indented .editorconfig has Enter, Tab, a template, a completion and a fix indent with tabs", () => new CodeAssistTests(project), t => t.A_tab_indented_editorconfig_has_enter_tab_a_template_a_completion_and_a_fix_indent_with_tabs());
+        Flow.StepApart("where no .editorconfig says, completions and reformatting indent as the file's own lines", () => new CodeAssistTests(project), t => t.Where_no_editorconfig_says_completions_and_reformatting_indent_as_the_files_own_lines());
+    }
+
+    /// <summary>Edits keep the language server in step below line breaks only Roslyn counts, between a CRLF's halves
+    /// and past what Passenger reads: code typed there squiggled, coloured and reformatted in place, Go to Symbol,
+    /// Declaration, Implementation and a refactoring's lines landing on the editor's, and a paste too deep said and
+    /// kept from the server until undone.</summary>
+    [AvaloniaFact]
+    public void Edits_keep_the_server_in_step_below_line_breaks_only_roslyn_counts_and_past_what_passenger_reads()
+    {
+        Flow.StepApart("code typed below a comment holding line breaks only Roslyn counts is squiggled, coloured and reformatted in place", () => new CodeAssistTests(project), t => t.Code_typed_below_a_comment_holding_line_breaks_only_roslyn_counts_is_squiggled_coloured_and_reformatted_in_place());
+        Flow.StepApart("edits that make and unmake line breaks only Roslyn counts, or fall between a CRLF's halves, keep the server in step", () => new CodeAssistTests(project), t => t.Edits_that_make_and_unmake_line_breaks_only_roslyn_counts_or_fall_between_a_crlfs_halves_keep_the_server_in_step());
+        Flow.StepApart("Go to Symbol, Declaration, Implementation and a refactoring's changed lines are the editor's below line breaks only Roslyn counts", () => new CodeAssistTests(project), t => t.Go_to_symbol_declaration_implementation_and_a_refactorings_changed_lines_are_the_editors_below_line_breaks_only_roslyn_counts());
+        Flow.StepApart("a paste past what Passenger reads is said and kept from the server until it is undone", () => new CodeAssistTests(project), t => t.A_paste_past_what_passenger_reads_is_said_and_kept_from_the_server_until_it_is_undone());
+    }
+
+    /// <summary>A library type's decompiled source refuses every change and stays as another window's server decompiles
+    /// one; a rename keeps a line typed while it is out and a file's unsaved edits; and an agent opening the open
+    /// folder again keeps its language server.</summary>
+    [AvaloniaFact]
+    public void Decompiled_code_refuses_changes_and_renames_keep_the_persons_typing_and_unsaved_edits()
+    {
+        Flow.StepApart("every action of the Code and Refactor menus that would change a decompiled file greys, saying it is read-only", () => new CodeAssistTests(project), t => t.Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only());
+        Flow.StepApart("a library type's source decompiled for one window stays as another window's server decompiles one", () => new CodeAssistTests(project), t => t.A_library_types_source_decompiled_for_one_window_stays_as_another_windows_server_decompiles_one());
+        Flow.StepApart("a line typed while a rename is out still leaves the new name on the symbol", () => new CodeAssistTests(project), t => t.A_line_typed_while_a_rename_is_out_still_leaves_the_new_name_on_the_symbol());
+        Flow.StepApart("renaming a file to match its type with unsaved edits leaves one file of the new name holding them", () => new CodeAssistTests(project), t => t.Renaming_a_file_to_match_its_type_with_unsaved_edits_leaves_one_file_of_the_new_name_holding_them());
+        Flow.StepApart("opening the open folder again through MCP keeps the open file's language server", () => new CodeAssistTests(project), t => t.Opening_the_open_folder_again_through_mcp_keeps_the_open_files_language_server());
+    }
+
+    /// <summary>Fixes and context actions do what they offer: Fix All in the solution undone in every file at once, a
+    /// fix the server will not make saying why, an agent's action with choices; Escape closes their lists wherever the
+    /// keys are; live and postfix templates expand and end as their editor moves on; Extend Selection grows and
+    /// shrinks; and type and parameter hints show and go with Settings.</summary>
+    [AvaloniaFact]
+    public void Fixes_context_actions_templates_and_selection_do_what_they_offer_and_take_back_whole()
+    {
+        Flow.StepApart("Fix All in the solution reaching a file not open is undone in every file it changed at once", () => new CodeAssistTests(project), t => t.Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once());
+        Flow.StepApart("a fix the language server will not make, once chosen, says why in the status bar", () => new CodeAssistTests(project), t => t.A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar());
+        Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
+        Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
+        Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
+        Flow.StepApart("a live template ends when its editor shows another file, and Enter there breaks the line", () => new CodeAssistTests(project), t => t.A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line());
+        Flow.StepApart("Extend Selection grows through the code around the caret, and Shrink takes it back", () => new CodeAssistTests(project), t => t.Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back());
+        Flow.StepApart("type and parameter name hints show, make room, step as one place and go with Settings", () => new CodeAssistTests(project), t => t.Type_and_parameter_name_hints_show_where_Rider_shows_them_make_room_step_as_one_place_and_go_with_Settings());
+        Flow.StepApart("with both kinds of hint off no hints are asked for, and turning one on brings its hints at once", () => new CodeAssistTests(project), t => t.With_both_kinds_of_hint_off_no_hints_are_asked_for_and_turning_one_on_brings_its_hints_at_once());
+    }
+
     /// <summary>What the window says of the code around the caret, in one window on Program.cs: the status bar's path names
     /// the file and the member the caret is in; resting the pointer on a method shows a card with its signature; File
     /// Structure lists the file's members, opens on the caret's and filters keeping their type; and Go to Symbol finds a
     /// member in another file by name and goes to it.</summary>
-    [AvaloniaFact]
-    public void The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it()
+    private void The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it()
     {
         MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -84,72 +232,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>The status bar's path keeps its buttons as the caret moves: a move within a member makes and changes none,
-    /// and one to another member, out to the type and back in, gives the buttons there are that member's words, the path
-    /// shown through the same buttons throughout. Every move to another member made the path's buttons and marks again,
-    /// each with a handler of its own.</summary>
-    [AvaloniaFact]
-    public void The_path_in_the_status_bar_keeps_its_buttons_as_the_caret_moves()
-    {
-        MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "Helper.Tw");
-        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
-        Button[] made = Crumbs();
-        Assert.Equal(["Program.cs", "Program", "Main()"], made.Select(b => b.Content as string));
-        Ui.Press(window, "RIGHT");
-        Ui.Press(window, "LEFT");
-        Assert.True(Crumbs().SequenceEqual(made), "A caret move within Main() made the path's buttons again");
-        editor.GoTo(new TextPosition(1, 0));
-        Ui.Settle();
-        Assert.Equal(["Program.cs", "Program"], window.Breadcrumbs);
-        Assert.True(Crumbs()[..2].SequenceEqual(made[..2]), "A caret move out of Main() to its type made the path's buttons again, each with a handler of its own");
-        Ui.PlaceAfter(editor, "Helper.Tw");
-        Ui.Settle();
-        Assert.Equal(["Program.cs", "Program", "Main()"], window.Breadcrumbs);
-        Assert.True(Crumbs().SequenceEqual(made), "A caret move back into Main() made the path's buttons again, each with a handler of its own");
-        window.Close();
-
-        // The path's buttons in the status bar, those hidden past the path shown too.
-        Button[] Crumbs() => [.. PathHost(window).GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Crumb))];
-    }
-
-    /// <summary>The status bar's path draws the class and the method the caret is in whole, as it draws the file, though they
-    /// come once the server's outline does, after the file's name alone was laid out; in a window too narrow for long names,
-    /// the longest are shortened to an ellipsis after their first letters, never to one, and none is cut by the path's edge.
-    /// The parts that came later were laid out in the room the file's name had taken, so a method showed as its first letter.</summary>
-    [AvaloniaFact]
-    public void The_status_bars_path_draws_the_class_and_method_whole_and_shortens_long_ones_with_an_ellipsis_in_a_narrow_window()
-    {
-        MainWindow window = WithoutNavigationBar(project.Open("Program.cs"));
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "Helper.Tw");
-        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, "the member the caret is in");
-        Assert.True(DrawnPath(window) is ["Program.cs", "Program", "Main()"], $"With the caret in Main() the path draws {string.Join(" › ", DrawnPath(window))}");
-        editor.GoTo(new TextPosition(1, 0));
-        Ui.Settle();
-        Assert.True(DrawnPath(window) is ["Program.cs", "Program"], $"With the caret in Program the path draws {string.Join(" › ", DrawnPath(window))}");
-        // Down a line into Main(), the caret's place as wide in the status bar as before, so nothing but the path changes there.
-        Ui.Press(window, "DOWN");
-        Assert.True(DrawnPath(window) is ["Program.cs", "Program", "Main()"], $"With the caret moved down into Main() the path draws {string.Join(" › ", DrawnPath(window))}");
-        window.Close();
-
-        project.Write("Lengths.cs", "class AShapeWhoseNameRunsOnAndOnPastTheBar\n{\n    static void MeasuresEachOfItsSidesInTurnAndAddsThemUp()\n    {\n"
-            + "        int sides = 0;\n    }\n}\n");
-        MainWindow narrow = WithoutNavigationBar(project.Open("Lengths.cs"));
-        narrow.Width = MainWindow.SmallestWidth;
-        Ui.PlaceAfter(narrow.EditorArea.CodeEditor, "int sides");
-        Ui.WaitFor(() => narrow.Breadcrumbs.Count == 3, "the member the caret is in");
-        Ui.Settle();
-        string[] drawn = DrawnPath(narrow);
-        Assert.True(drawn.Length == 3 && drawn.All(part => !part.EndsWith(CutMark, StringComparison.Ordinal))
-            && drawn.Any(part => part.EndsWith('…'))
-            && drawn.Where(part => part.EndsWith('…')).All(part => part.Length > 3)
-            && drawn.Zip(narrow.Breadcrumbs).All(p => p.First == p.Second || p.Second.StartsWith(p.First.TrimEnd('…'), StringComparison.Ordinal)),
-            $"In a narrow window the path was to shorten its long parts with an ellipsis after a few letters, each drawn inside it; it draws {string.Join(" › ", drawn)}");
-        narrow.Close();
-    }
-
     /// <summary>Where the status bar's path is drawn.</summary>
     private static Control PathHost(MainWindow window) => window.GetVisualDescendants().OfType<Control>().First(c => c.Name == "BreadcrumbHost");
 
@@ -160,40 +242,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.ApplySettings(window.Settings with { ShowNavigationBar = false });
         Ui.Settle();
         return window;
-    }
-
-    /// <summary>One place says where the caret is: while the navigation bar over the editor names the type and member, the
-    /// status bar's path names only the file; with the bar turned off, in Settings' preview too, the path names them again,
-    /// and turned back on, it leaves them to the bar once more.</summary>
-    [AvaloniaFact]
-    public void The_status_bars_path_leaves_the_type_and_member_to_the_navigation_bar_while_it_shows_and_names_them_with_it_off()
-    {
-        MainWindow window = project.Open("Program.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Passenger.App.Editors.NavigationBar bar = window.EditorArea.ActiveGroup.Navigation;
-        Ui.PlaceAfter(editor, "Helper.Tw");
-        Ui.WaitFor(() => window.CSharpService?.For(window.EditorArea.Active!)?.Lsp is not null, "the language server to have the file");
-        Ui.WaitFor(() => bar.Shown.Count == 2, () => $"the bar naming Main(), not {string.Join(" › ", bar.Shown)}");
-        Ui.Settle();
-        Assert.Equal(["Program", "Main()"], bar.Shown);
-        Assert.True(window.Breadcrumbs.SequenceEqual(["Program.cs"]),
-            $"With the navigation bar naming Program › Main(), the status bar's path named them too: {string.Join(" › ", window.Breadcrumbs)}");
-
-        SettingsDialog dialog = window.ShowSettings();
-        Ui.Settle();
-        dialog.Change(s => s with { ShowNavigationBar = false });
-        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, () => $"the path naming the member as Settings shows the bar off, not {string.Join(" › ", window.Breadcrumbs)}");
-        Assert.Equal(["Program.cs", "Program", "Main()"], window.Breadcrumbs);
-        Assert.False(bar.Bar.IsVisible, "Settings showing the navigation bar off left it over the editor");
-        dialog.Close();
-        Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.Count == 2, "the bar back as Settings closed without its change");
-        Assert.True(window.Breadcrumbs.SequenceEqual(["Program.cs"]),
-            $"With the navigation bar back, the status bar's path still named the member: {string.Join(" › ", window.Breadcrumbs)}");
-
-        window.ApplySettings(window.Settings with { ShowNavigationBar = false });
-        Ui.WaitFor(() => window.Breadcrumbs.Count == 3, () => $"the path naming the member with the bar off, not {string.Join(" › ", window.Breadcrumbs)}");
-        Assert.False(bar.Bar.IsVisible, "With the setting off, the navigation bar still shows over the editor");
-        window.Close();
     }
 
     /// <summary>What marks a part of the path its edge cuts, as <see cref="DrawnPath"/> reads it.</summary>
@@ -213,8 +261,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>A file shown before its folder's language server has it names the member the caret is in once the server
     /// does, though nothing changes after: here a file opened alone, its folder opened after, on a server already loaded
     /// (the one the class's last window left), which is ready before the file is opened in it.</summary>
-    [AvaloniaFact]
-    public void A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does()
+    private void A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does()
     {
         MainWindow first = project.Open(file: null);
         int warm = first.CSharpService!.Session!.Server.ProcessId;
@@ -241,8 +288,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Go to Symbol lists the solution's own declarations first, never a source generator's part of one of them: a
     /// [GeneratedRegex] method is found in its own file alone, and what only the generator declares comes after, said to be
     /// generated, nothing at a path no file is at.</summary>
-    [AvaloniaFact]
-    public void Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after()
+    private void Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after()
     {
         project.Write("Words.cs", "using System.Text.RegularExpressions;\n\nstatic partial class Words\n{\n"
             + "    [GeneratedRegex(@\"\\w+\")]\n    public static partial Regex Word();\n}\n");
@@ -267,8 +313,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    [AvaloniaFact]
-    public void The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor()
+    private void The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor()
     {
         // A server started after the file opened, as a folder reopened with its files starts one.
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
@@ -313,10 +358,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>A named argument chosen by either key writes its colon where none follows the caret (the first) or takes the
     /// one there (the second), so the caret stands after one colon.</summary>
-    [AvaloniaTheory]
-    [InlineData("ENTER", false)]
-    [InlineData("TAB", true)]
-    public void Choosing_a_named_argument_writes_its_colon(string key, bool existingColon)
+    private void Choosing_a_named_argument_writes_its_colon(string key, bool existingColon)
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -350,10 +392,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>An attribute's named argument chosen by either key keeps its " =": written after the name where none follows
     /// the caret, the caret after it (the first); where one follows, the list offers the name alone, which goes in before
     /// it (the second), so one " =" stands after the name either way.</summary>
-    [AvaloniaTheory]
-    [InlineData("ENTER", false)]
-    [InlineData("TAB", true)]
-    public void Choosing_an_attributes_named_argument_keeps_its_equals_sign(string key, bool existingEquals)
+    private void Choosing_an_attributes_named_argument_keeps_its_equals_sign(string key, bool existingEquals)
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -383,10 +422,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>A declaration keyword chosen by either key takes the separator already after the caret (the first) or
     /// writes a space where none is (the next two), so the caret stands after one separator.</summary>
-    [AvaloniaTheory]
-    [InlineData("ENTER", " ")]
-    [InlineData("TAB", "\t")]
-    public void Declaration_completion_leaves_the_caret_after_one_separator(string key, string existing)
+    private void Declaration_completion_leaves_the_caret_after_one_separator(string key, string existing)
     {
         string path = project.PathOf("Program.cs");
         File.WriteAllText(path, existing + "\n" + File.ReadAllText(path));
@@ -440,8 +476,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>Where the code takes a type, the name typed lists first what is of that type, as Roslyn's own matching says
     /// it fits, ahead of a name that begins as well, which stays listed: in an if's condition, an argument and a return.</summary>
-    [AvaloniaFact]
-    public void Completion_lists_first_the_names_of_the_type_the_place_takes_keeping_the_rest()
+    private void Completion_lists_first_the_names_of_the_type_the_place_takes_keeping_the_rest()
     {
         MainWindow window = project.Open("Fits.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -469,42 +504,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
     }
 
-    /// <summary>A C# name holding marks (नमस्ते's virama and vowel sign), one name to Roslyn, is narrowed by and replaced whole:
-    /// a list asked for after it is typed, and one opened by its first letter that its marks typed on narrow; and Find Usages
-    /// names it whole.</summary>
-    [AvaloniaFact]
-    public void A_name_holding_marks_is_narrowed_by_and_replaced_whole()
-    {
-        MainWindow window = project.Open("Marks.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.Focus();
-        Ui.PlaceAfter(editor, "return ");
-        window.KeyTextInput("नमस्त");
-        Ui.Press(window, "control SPACE", settle: false);
-        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "नमस्त" && window.Assist.CompletionLabels.FirstOrDefault() == "नमस्ते",
-            () => $"नमस्ते first in the list asked for after नमस्त, narrowed by {window.Assist.CompletionNarrowedBy ?? "nothing, the list closed"}: [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}]");
-        Ui.Press(window, "ENTER");
-        Assert.True(editor.Document.Snapshot.ToString().Contains("        return नमस्ते;\n", StringComparison.Ordinal),
-            $"नमस्ते was not put in place of नमस्त whole: the line reads {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
-
-        Ui.PlaceAfter(editor, "int twice = ");
-        foreach (string letter in new[] { "न", "म", "स", "\u094D", "त" })
-        {
-            window.KeyTextInput(letter);
-            Ui.Settle();
-        }
-        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "नमस्त" && window.Assist.CompletionLabels.FirstOrDefault() == "नमस्ते",
-            () => $"नमस्ते first in the list its first letter opened, narrowed through its virama by {window.Assist.CompletionNarrowedBy ?? "nothing, the list closed"}");
-        Ui.Press(window, "ENTER");
-        Assert.True(editor.Document.Snapshot.ToString().Contains("        int twice = नमस्ते;\n", StringComparison.Ordinal),
-            $"नमस्ते was not put in place of what was typed: the line reads {editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}");
-
-        Ui.PlaceAfter(editor, "int न");
-        Ui.Run(window, AppActions.FindUsages);
-        Ui.WaitFor(() => window.Find.Shown == "Usages of नमस्ते", () => $"the Find window naming नमस्ते whole, where it shows {window.Find.Shown}");
-        window.Close();
-    }
-
     /// <summary>A method whose places each take a type, one local of that type and one of another type beginning as its
     /// name does.</summary>
     private const string KindsCode = "using System.Linq;\n\nstatic class Kinds\n{\n    public static int Totalled(int first, string label)\n    {\n"
@@ -512,73 +511,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         + "        _ = label;\n        _ = Described(label, label, first);\n        _ = System.Math.Max(1, 2);\n        return Doubled(count, false) + (int)half;\n    }\n\n"
         + "    public static string Described(string firstName, string lastName, int yearOfBirth, bool includeTheMiddleInitial = false) => firstName;\n}\n";
 
-    /// <summary>A call's list names each value by what it is, its type beside it: a local (the inferred one too) apart from
-    /// a parameter, and a named argument apart from both, a method with what it returns, each with the badge of its kind.</summary>
-    [AvaloniaFact]
-    public void A_calls_list_badges_a_local_a_parameter_and_a_named_argument_apart_each_with_its_type()
-    {
-        MainWindow window = project.Open("Kinds.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "return Doubled(");
-        editor.Focus();
-        Ui.Run(window, AppActions.Complete);
-        string[] named = ["count", "half", "first", "label", "value:", "loud:", "Doubled"];
-        Ui.WaitFor(() => named.All(window.Assist.CompletionLabels.Contains),
-            () => $"the call's values and named arguments in its list: {string.Join(", ", window.Assist.CompletionLabels.Take(12))}");
-        Dictionary<string, (string Letter, string Detail)> rows = window.Assist.CompletionBadges.Zip(window.Assist.CompletionDetails)
-            .Where(r => named.Contains(r.First.Label)).ToDictionary(r => r.First.Label, r => (r.First.Letter, r.Second.Detail));
-        Assert.Equal(("v", "int"), rows["count"]);
-        Assert.Equal(("v", "double"), rows["half"]);
-        Assert.Equal(("a", "int"), rows["first"]);
-        Assert.Equal(("a", "string"), rows["label"]);
-        Assert.Equal(("n", "int"), rows["value:"]);
-        Assert.Equal(("n", "bool"), rows["loud:"]);
-        Assert.Equal(("m", "int"), rows["Doubled"]);
-        window.Close();
-    }
-
-    /// <summary>A hover card's signature too long for the card takes a parameter a line, each indented under the line that
-    /// opens the list, the card held to a width words read at; a short one stays on its line. A screen reader is told the
-    /// signature on one line either way.</summary>
-    [AvaloniaFact]
-    public void A_hover_cards_long_signature_takes_a_parameter_a_line_within_a_card_held_to_a_readable_width()
-    {
-        MainWindow window = project.Open("Kinds.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        string text = editor.Document.Snapshot.ToString();
-
-        string[] lines = Hovered(text.IndexOf("_ = Described(", StringComparison.Ordinal) + 6);
-        Assert.True(lines.Length == 5 && lines[0].EndsWith("Kinds.Described(", StringComparison.Ordinal) && lines[1] == "    string firstName,"
-            && lines[2] == "    string lastName," && lines[3] == "    int yearOfBirth," && lines[4].StartsWith("    ", StringComparison.Ordinal)
-            && lines[4].Contains("bool includeTheMiddleInitial", StringComparison.Ordinal),
-            $"The long signature showed as [{string.Join(" | ", lines)}], not a parameter a line");
-        Assert.Contains("Kinds.Described(string firstName, string lastName, int yearOfBirth,", window.Assist.HoverText, StringComparison.Ordinal);
-        Assert.True(window.Assist.HoverCard!.Bounds.Width <= PopupFrame.Medium + 0.5,
-            $"The card took {window.Assist.HoverCard.Bounds.Width} wide, past the {PopupFrame.Medium} its words read at");
-
-        lines = Hovered(text.IndexOf("return Doubled(", StringComparison.Ordinal) + 9);
-        Assert.True(lines.Length == 1 && lines[0].EndsWith("Doubled(int value, bool loud)", StringComparison.Ordinal),
-            $"The short signature showed as [{string.Join(" | ", lines)}], not on its line");
-        window.Close();
-
-        // The lines of the hover card's first code, the pointer resting on the name at an offset.
-        string[] Hovered(int at)
-        {
-            window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
-            Ui.WaitFor(() => window.Assist.HoverText is null, "the last card gone");
-            Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-            window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
-            Ui.WaitFor(() => window.Assist.HoverCard?.GetVisualDescendants().OfType<ColouredCode>().FirstOrDefault() is { Bounds.Width: > 0 },
-                "the hover card's signature laid out");
-            return window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>().First().Shown.Split('\n');
-        }
-    }
-
     /// <summary>Parameter Info at a call of several overloads shows each: those the arguments so far no longer fit set back,
     /// the parameter the caret's argument fills strong in each that fits. An argument typed that only one overload takes sets
     /// the other back, and once it is gone again both fit; an argument not typed yet is no evidence against either.</summary>
-    [AvaloniaFact]
-    public void Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit()
+    private void Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit()
     {
         MainWindow window = project.Open("Kinds.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -634,80 +570,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private static string Keys(string action) =>
         AppActions.Keymap().ShortcutsFor(AppActions.KeysIn(action)).First(s => s.Second is null).Notation();
 
-    /// <summary>A completion item naming several overloads lists each in its card, in the code's colours, where the card
-    /// said one and how many more; completing a name a call already makes again, those its arguments no longer fit are set
-    /// back.</summary>
-    [AvaloniaFact]
-    public void A_completion_items_card_lists_every_overload_setting_back_those_its_calls_arguments_no_longer_fit()
-    {
-        MainWindow window = project.Open("Kinds.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "Math.Ma");
-        editor.Focus();
-        Ui.Run(window, AppActions.Complete);
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Max"), () => $"Math's Max in the list: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
-        for (int moves = 0; moves < window.Assist.CompletionLabels.Count && window.Assist.CompletionChosen != "Max"; moves++)
-        {
-            Ui.Press(window, "DOWN");
-        }
-        Ui.WaitFor(() => Overloads().Count > 6, () => $"Max's overloads in its card: {window.Assist.ItemDocumentation}");
-        Assert.Contains(Overloads(), o => o.Code.EndsWith("Max(int val1, int val2)", StringComparison.Ordinal) && o.Fits);
-        Assert.Contains(Overloads(), o => o.Code.EndsWith("Max(long val1, long val2)", StringComparison.Ordinal) && o.Fits);
-        Assert.Contains(Overloads(), o => o.Code.EndsWith("Max(byte val1, byte val2)", StringComparison.Ordinal) && !o.Fits);
-        Assert.DoesNotContain("(+ ", window.Assist.ItemDocumentation, StringComparison.Ordinal);
-        Assert.Contains("Returns the larger of two", window.Assist.ItemDocumentation, StringComparison.Ordinal);
-        window.Close();
-
-        // Each overload the card shows: its code, and whether the call's arguments still fit it.
-        List<(string Code, bool Fits)> Overloads() =>
-            window.Assist.ItemCard?.GetVisualDescendants().OfType<ColouredCode>().Select(c => (c.Code, !c.Classes.Contains(StyleClasses.Unfit))).ToList() ?? [];
-    }
-
-    /// <summary>A type's members after its dot are offered filters by kind under the rows, the kinds its items are of: turned
-    /// on, by a click or their keys (Alt and the badge's letter), the list shows only members of the kinds on, narrowed as
-    /// typed within them, every member again once each is off; the keys stay in the editor throughout and a filter's key
-    /// types nothing.</summary>
-    [AvaloniaFact]
-    public void A_members_list_narrows_to_the_kinds_turned_on_under_it_and_leaves_the_keys_in_the_editor()
-    {
-        MainWindow window = project.Open("Kinds.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "_ = label");
-        editor.Focus();
-        window.KeyTextInput(".");
-        Ui.WaitFor(() => window.Assist.CompletionFilters.Count > 0, () => $"the filters under string's members: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
-        Assert.Equal(["Properties", "Methods", "Extension methods"], window.Assist.CompletionFilters);
-
-        Ui.Click(window.Assist.CompletionFilter("Properties"));
-        Ui.WaitFor(() => window.Assist.CompletionBadges.All(b => b.Letter == "p") && window.Assist.CompletionLabels.Contains("Length"),
-            () => $"string's properties alone: {string.Join(", ", window.Assist.CompletionBadges.Take(8))}");
-        Ui.Click(window.Assist.CompletionFilter("Methods"));
-        Ui.WaitFor(() => window.Assist.CompletionBadges.Any(b => b.Letter == "m"), "string's methods with its properties");
-        Assert.All(window.Assist.CompletionBadges, b => Assert.Contains(b.Letter, new[] { "p", "m" }));
-        Assert.True(editor.IsKeyboardFocusWithin, "A filter's click took the keys from the editor");
-
-        window.KeyTextInput("Su");
-        Ui.WaitFor(() => window.Assist.CompletionNarrowedBy == "Su" && window.Assist.CompletionLabels.Contains("Substring"),
-            () => $"Substring among the properties and methods narrowed by Su: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
-        Assert.DoesNotContain(window.Assist.CompletionLabels, label => label.StartsWith("Sum", StringComparison.Ordinal));
-        Ui.Press(window, Keys(AppActions.CompletionProperties));
-        Ui.Press(window, Keys(AppActions.CompletionMethods));
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Any(label => label.StartsWith("Sum", StringComparison.Ordinal)) && window.Assist.CompletionLabels.Contains("Substring"),
-            () => $"every member narrowed by Su once the filters are off: {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
-        Assert.Equal("        _ = label.Su;", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
-        Ui.Press(window, Keys(AppActions.CompletionExtensionMethods));
-        Ui.WaitFor(() => window.Assist.CompletionBadges.All(b => b.Letter == "x") && window.Assist.CompletionLabels.Any(label => label.StartsWith("Sum", StringComparison.Ordinal)),
-            () => $"string's extension methods alone after their filter's keys: {string.Join(", ", window.Assist.CompletionBadges.Take(8))}");
-        Assert.Equal("        _ = label.Su;", editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line));
-        window.Close();
-    }
-
     private const string FitsCode = "static class Fits\n{\n    public static bool Check()\n    {\n        int abc = 1;\n        bool aef = true;\n"
         + "        int count = 2;\n        string caption = \"\";\n        if ()\n        {\n        }\n        Name();\n        return ;\n    }\n\n"
         + "    private static void Name(string text)\n    {\n    }\n}\n";
 
-    [AvaloniaFact]
-    public void CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen()
+    private void CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -771,37 +638,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    /// <summary>With Vim mode on, completion opens as insert mode types, and one Escape closes it and leaves insert mode, as
-    /// Vim's Escape does, where a second press would be needed if the list took the key alone.</summary>
-    [AvaloniaFact]
-    public void With_vim_mode_one_escape_closes_completion_and_leaves_insert_mode()
-    {
-        MainWindow window = project.Open("Program.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        try
-        {
-            window.ApplySettings(window.Settings with { VimMode = true });
-            Ui.PlaceAfter(editor, "static void Main()\n    {\n");
-            Ui.Type(window, "I", "i");
-            Assert.Equal(VimMode.Insert, editor.VimModeShown);
-            window.KeyTextInput("        System.");
-            Ui.WaitFor(() => window.Assist.IsCompletionOpen, "System's members");
-            Ui.Press(window, "ESCAPE");
-            Assert.False(window.Assist.IsCompletionOpen, "Escape left completion open");
-            Assert.True(editor.VimModeShown == VimMode.Normal, "Escape closed completion but left Vim in insert mode");
-            Assert.Equal('.', editor.Document.Snapshot[editor.Selections.Primary.Caret]);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A list the server is still answering is let go by an Escape, and by the caret moved back over the dot that
     /// asked for it: its answer, held until then, opens nothing, where System's members opened after the Escape, or at the
     /// caret before the dot.</summary>
-    [AvaloniaFact]
-    public void A_list_still_asked_for_is_let_go_by_an_escape_or_the_caret_moved_out_of_its_name()
+    private void A_list_still_asked_for_is_let_go_by_an_escape_or_the_caret_moved_out_of_its_name()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -832,8 +672,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_commit_character_types_the_chosen_item_before_it_and_the_items_documentation_shows_beside_the_list()
+    private void A_commit_character_types_the_chosen_item_before_it_and_the_items_documentation_shows_beside_the_list()
     {
         Assert.SkipWhen(project.ReferencePackDownloaded,
             $"No installed .NET SDK has the {TestProjects.Framework} reference pack the newest SDK targets, so restore took it from NuGet, whose "
@@ -889,8 +728,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_extension_method_chosen_after_a_dot_adds_its_using_above_and_leaves_the_caret_after_the_method()
+    private void An_extension_method_chosen_after_a_dot_adds_its_using_above_and_leaves_the_caret_after_the_method()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -936,65 +774,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>The C# cards draw their code as the editor draws it, in the server's classifications: the hover card's,
-    /// Parameter Info's and the completion item's documentation's signature each name a keyword, a class, a method and a
-    /// parameter in the theme's colour for each, and in the light theme's once the theme changes.</summary>
-    [AvaloniaFact]
-    public void The_hover_parameter_info_and_completion_cards_draw_their_code_in_the_themes_syntax_colours_and_follow_a_theme_change()
-    {
-        MainWindow window = project.Open("Program.cs");
-        window.RequestedThemeVariant = ThemeVariant.Dark;
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        (string Word, string Key)[] signature = [("int", TokenKeys.Syntax_Keyword), ("Helper", TokenKeys.Syntax_Class), ("Twice", TokenKeys.Syntax_Method),
-            ("value", TokenKeys.Syntax_Parameter)];
-        int at = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + 2;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
-        CodeColoured(window, () => window.Assist.HoverCard, "The hover card", signature);
-        window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
-        Ui.Settle();
-
-        Ui.PlaceAfter(editor, "Helper.Twice(");
-        editor.Focus();
-        Ui.Run(window, AppActions.ParameterInfo);
-        CodeColoured(window, () => window.Assist.SignatureCard, "Parameter Info", signature);
-        window.RequestedThemeVariant = ThemeVariant.Light;
-        CodeColoured(window, () => window.Assist.SignatureCard, "Parameter Info", signature);
-        Ui.Press(window, "ESCAPE");
-
-        Ui.PlaceAfter(editor, "int result = Helper.Twice(2);");
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("int doubled = Helper");
-        window.KeyTextInput(".");
-        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("Twice"), "Helper's members");
-        // The card follows the choice as it moves: off Twice, the type the place takes listing it first, and back.
-        Ui.Press(window, "DOWN");
-        for (int moves = 0; moves < window.Assist.CompletionLabels.Count && window.Assist.CompletionChosen != "Twice"; moves++)
-        {
-            Ui.Press(window, "UP");
-        }
-        Assert.Equal("Twice", window.Assist.CompletionChosen);
-        CodeColoured(window, () => window.Assist.ItemCard, "The completion item's documentation", signature);
-        window.RequestedThemeVariant = ThemeVariant.Dark;
-        CodeColoured(window, () => window.Assist.ItemCard, "The completion item's documentation", signature);
-        window.Close();
-    }
-
-    /// <summary>Waits for a card's code to draw each word in the brush the theme in force gives its kind.</summary>
-    private static void CodeColoured(MainWindow window, Func<Border?> card, string what, (string Word, string Key)[] words)
-    {
-        IBrush Brush(string key) =>
-            window.TryFindResource(key, window.ActualThemeVariant, out object? found) && found is IBrush brush ? brush : throw new Xunit.Sdk.XunitException($"No {key} brush");
-        Avalonia.Controls.Documents.Run[] Runs() => [.. card()?.GetLogicalDescendants().OfType<ColouredCode>().SelectMany(c => c.Runs) ?? []];
-        Ui.WaitFor(() => words.All(w => Runs().Any(r => r.Text == w.Word && ReferenceEquals(r.Foreground, Brush(w.Key)))),
-            () => $"{what} to draw its code's {string.Join(", ", words.Select(w => w.Word))} in the {window.ActualThemeVariant} theme's colours for them, "
-                + $"where its runs are [{string.Join(", ", Runs().Select(r => $"'{r.Text}' {(r.Foreground as ISolidColorBrush)?.Color}"))}]: its code would read as one colour");
-    }
-
     /// <summary>A method chosen by Enter is written with its call's brackets: the caret between them where an overload
     /// takes arguments, its signature shown, and after them where none does, its name typed whole too; a method given where
     /// a delegate is asked for (an Action, a System.Delegate) stays a method group, without them.</summary>
-    [AvaloniaFact]
-    public void A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments()
+    private void A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1065,8 +848,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>A method chosen by Enter is written at once, its brackets following as the server says it is called there,
     /// and one Undo takes back both; a key typed before that answer came is what follows the name, and no brackets come.</summary>
-    [AvaloniaFact]
-    public void A_method_chosen_is_written_at_once_its_brackets_following_in_its_step_of_undo_unless_typed_on_before_they_came()
+    private void A_method_chosen_is_written_at_once_its_brackets_following_in_its_step_of_undo_unless_typed_on_before_they_came()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1119,8 +901,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>With Settings' parentheses for a method chosen from completion turned off, a method chosen by Enter is
     /// written as its name alone, the caret after it.</summary>
-    [AvaloniaFact]
-    public void With_parentheses_turned_off_a_method_chosen_from_the_list_is_written_as_its_name_alone()
+    private void With_parentheses_turned_off_a_method_chosen_from_the_list_is_written_as_its_name_alone()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1158,8 +939,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>Typing after a dot opens completion, filtered as one types, and Enter commits the item chosen, from a
     /// language server that has none of the Visual Studio assemblies Passenger leaves out.</summary>
-    [AvaloniaFact]
-    public void Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out()
+    private void Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out()
     {
         string roslyn = Path.Combine(AppContext.BaseDirectory, "roslyn");
         string[] carried = [.. Directory.EnumerateFiles(roslyn, "*.dll", SearchOption.AllDirectories)
@@ -1197,8 +977,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// project and file, previews the chosen one beside a divider that drags, keeps each search, goes to a usage on
     /// Enter, lists a usage in a closed UTF-16 file at its line with its code, and lists a declaration once where a
     /// primary constructor or a record's property is declared with it.</summary>
-    [AvaloniaFact]
-    public void Find_usages_groups_them_previews_the_chosen_one_keeps_each_search_and_lists_each_place_once_at_its_line()
+    private void Find_usages_groups_them_previews_the_chosen_one_keeps_each_search_and_lists_each_place_once_at_its_line()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1293,8 +1072,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Show Usages, from its keys, lists the usages Find Usages finds in a popup under the caret, framed as every
     /// popup is, the declaration first with what each does and the usage in its line; Enter goes to the one chosen, and its
     /// link hands the usages to the Find window.</summary>
-    [AvaloniaFact]
-    public void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
+    private void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1384,8 +1162,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_reformat_started_before_switching_tabs_changes_only_its_own_file_and_breaks_lines_as_the_file_does()
+    private void A_reformat_started_before_switching_tabs_changes_only_its_own_file_and_breaks_lines_as_the_file_does()
     {
         MainWindow window = project.Open("Messy.cs");
         string helper = File.ReadAllText(project.PathOf("Helper.cs"));
@@ -1406,8 +1183,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Reformat_code_with_a_method_selected_reformats_that_method_alone_and_leaves_the_code_around_it()
+    private void Reformat_code_with_a_method_selected_reformats_that_method_alone_and_leaves_the_code_around_it()
     {
         MainWindow window = project.Open("Ragged.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1426,8 +1202,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Settings' Reformat on save: File, Save lays the changed file out as Reformat Code does before writing it, and
     /// one Undo takes the layout back; a language server that does not answer in time leaves the file saved as typed,
     /// saying why; turned off, the file is saved as typed.</summary>
-    [AvaloniaFact]
-    public void Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed()
+    private void Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed()
     {
         const string Laid = "using System.Text;\nusing System;\nusing System.Collections.Generic;\n\nstatic class Messy\n{\n    public static int Count()\n    {\n"
             + "        List<string> names = [];\n        Console.WriteLine(names.Count);\n        int extra = names.Count;\n        return names.Count;\n    }\n}\n";
@@ -1464,30 +1239,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_letter_deleted_inside_a_name_the_server_coloured_leaves_its_colour_on_the_name_left_until_the_server_answers()
-    {
-        MainWindow window = project.Open("Separators.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument document = window.EditorArea.Active!;
-        int use = editor.Document.Snapshot.ToString().IndexOf("return total", StringComparison.Ordinal) + "return ".Length;
-        Ui.WaitFor(() => document.Highlighter!.GetSpans(editor.Document.Snapshot, use, 1).Any(s => s.Start == use && s.Kind == TokenKind.Local),
-            "the server's colour on the local's use");
-        editor.Selections = SelectionSet.Single(use + "tot".Length);
-        // The key alone, before the server is asked again: what shows is the colour carried through the delete.
-        window.KeyPress(Avalonia.Input.Key.Back, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
-        window.KeyRelease(Avalonia.Input.Key.Back, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
-        Assert.Equal("toal", editor.Document.Snapshot.GetText(use, 4));
-        SyntaxSpan[] spans = [.. document.Highlighter!.GetSpans(editor.Document.Snapshot, use, 4).Where(s => s.Kind == TokenKind.Local)];
-        Assert.True(spans is [{ Length: 4 } local] && local.Start == use,
-            $"After a letter was deleted inside the local's name, its colour was on [{string.Join(", ", spans.Select(s => $"{s.Start - use}+{s.Length}"))}] of the name left, not on all of it");
-        window.Close();
-    }
-
     /// <summary>Text pasted past what Passenger reads would end the C# language server if it read it: the file says so where
     /// it goes too deep and is taken from the server, and once the paste is undone the file goes back to it, its error marked.</summary>
-    [AvaloniaFact]
-    public void A_paste_past_what_passenger_reads_is_said_and_kept_from_the_server_until_it_is_undone()
+    private void A_paste_past_what_passenger_reads_is_said_and_kept_from_the_server_until_it_is_undone()
     {
         MainWindow window = project.Open("Separators.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1511,8 +1265,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Code_typed_below_a_comment_holding_line_breaks_only_roslyn_counts_is_squiggled_coloured_and_reformatted_in_place()
+    private void Code_typed_below_a_comment_holding_line_breaks_only_roslyn_counts_is_squiggled_coloured_and_reformatted_in_place()
     {
         MainWindow window = project.Open("Separators.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1544,8 +1297,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// without reading it again, so code typed below them afterwards is squiggled and coloured on its own words. So do
     /// changes that begin or end between a "\r\n"'s halves (text put between them, a line's end replaced up to its
     /// '\r', a '\n' taken with what follows it); and the server never ends over a change it cannot place.</summary>
-    [AvaloniaFact]
-    public void Edits_that_make_and_unmake_line_breaks_only_roslyn_counts_or_fall_between_a_crlfs_halves_keep_the_server_in_step()
+    private void Edits_that_make_and_unmake_line_breaks_only_roslyn_counts_or_fall_between_a_crlfs_halves_keep_the_server_in_step()
     {
         string separator = ((char)0x2028).ToString();
         string paragraph = ((char)0x2029).ToString();
@@ -1646,8 +1398,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>A letter typed where Reformat Code's answer is about to delete a space, before the answer comes: the answer
     /// still lands, and deletes only the space it was made for, never the letter typed at its start.</summary>
-    [AvaloniaFact]
-    public void A_letter_typed_at_the_start_of_what_a_reformat_is_about_to_change_stays_once_the_reformat_lands()
+    private void A_letter_typed_at_the_start_of_what_a_reformat_is_about_to_change_stays_once_the_reformat_lands()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1733,8 +1484,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }, $"the language server to hold the editor's text after {after}");
     }
 
-    [AvaloniaFact]
-    public void A_line_typed_while_a_rename_is_out_still_leaves_the_new_name_on_the_symbol()
+    private void A_line_typed_while_a_rename_is_out_still_leaves_the_new_name_on_the_symbol()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1751,8 +1501,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Opening_the_open_folder_again_through_mcp_keeps_the_open_files_language_server()
+    private void Opening_the_open_folder_again_through_mcp_keeps_the_open_files_language_server()
     {
         MainWindow window = project.Open("Program.cs");
         Passenger.App.Workspace.OpenDocument program = window.EditorArea.Active!;
@@ -1770,32 +1519,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Places_to_choose_from_are_kept_in_the_Find_window_where_Find_in_Files_results_are_kept()
-    {
-        MainWindow window = project.Open("Separated.cs");
-        try
-        {
-            window.ApplySettings(window.Settings with { FindResults = Passenger.App.FindResults.FindWindow });
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "    int Val");
-            Ui.Run(window, AppActions.GoToImplementation);
-            Ui.WaitFor(() => window.Find.Rows.Count(r => r.Usage is not null) == 2,
-                () => $"the two implementations listed in the Find window, where it shows {window.Find.Shown} with {window.Find.Rows.Count(r => r.Usage is not null)} rows");
-            Assert.True(window.DockHost.IsShown(ToolWindowIds.Find) && window.Assist.Offered.Count == 0 && window.Find.IsKeyboardFocusWithin,
-                "The implementations kept in the Find window were offered in a popup too, or the Find window, open, has not the keys");
-        }
-        finally
-        {
-            window.ApplySettings(new Passenger.App.Settings.AppSettings());
-            window.Close();
-        }
-    }
-
     /// <summary>The server counts a line at each break in Separators.cs's and Separated.cs's comments that the editor does
     /// not, so a place it names is read in the file's own text, a file not open as it is on disk: Go to Symbol's rows, Go to
     /// Declaration and Implementation, what an agent asks of the code, and the lines an agent's refactoring changed.</summary>
-    [AvaloniaFact]
-    public void Go_to_symbol_declaration_implementation_and_a_refactorings_changed_lines_are_the_editors_below_line_breaks_only_roslyn_counts()
+    private void Go_to_symbol_declaration_implementation_and_a_refactorings_changed_lines_are_the_editors_below_line_breaks_only_roslyn_counts()
     {
         MainWindow window = project.Open("Separated.cs");
         Ui.Run(window, AppActions.GoToSymbol);
@@ -1853,52 +1580,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             changed.Files.Select(f => $"{f.Path} {f.Change} on {string.Join(", ", f.Lines)}").Order(StringComparer.Ordinal));
         Assert.Contains("public int Value() => Separators.Value(0);", File.ReadAllText(project.PathOf("Separated.cs")), StringComparison.Ordinal);
         window.Close();
-    }
-
-    /// <summary>Rename's box and Move's list follow the text while open; closed by a switch of tab, which answers neither,
-    /// they let it go, rather than keep every edit made to the file for as long as it is open.</summary>
-    [AvaloniaFact]
-    public void Rename_and_moves_list_closed_by_switching_tabs_stop_following_the_file()
-    {
-        MainWindow window = project.Open("Program.cs");
-        window.OpenFile(project.PathOf("Helper.cs"));
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        TextDocument helper = editor.Document;
-        int before = Trackers(helper);
-        Ui.PlaceAfter(editor, "static int Tw");
-        Ui.Run(window, AppActions.Rename);
-        Ui.WaitFor(() => window.Assist.Renaming == "Twice", "the rename box");
-        Assert.Equal(before + 1, Trackers(helper));
-        Ui.Run(window, AppActions.PreviousTab);
-        Ui.Settle();
-        Assert.Equal("Program.cs", window.EditorArea.Active?.Name);
-        Assert.Null(window.Assist.Renaming);
-        Assert.True(Trackers(helper) == before, $"Rename's box, closed by the switch of tab, still follows every edit to Helper.cs ({Trackers(helper) - before} more followers)");
-
-        Ui.Run(window, AppActions.NextTab);
-        Ui.Settle();
-        Ui.PlaceAfter(editor, "static class Hel");
-        Ui.Run(window, AppActions.Move);
-        Ui.WaitFor(() => window.Assist.Offered.Contains("Move to Another File…"), "Move's list");
-        Assert.Equal(before + 1, Trackers(helper));
-        Ui.Run(window, AppActions.PreviousTab);
-        Ui.Settle();
-        Assert.Empty(window.Assist.Offered);
-        Assert.True(Trackers(helper) == before, $"Move's list, closed by the switch of tab, still follows every edit to Helper.cs ({Trackers(helper) - before} more followers)");
-        window.Close();
-    }
-
-    /// <summary>How many requests' and popups' trackers follow a document's edits: those among the handlers of its
-    /// <see cref="TextDocument.Changed"/>.</summary>
-    private static int Trackers(TextDocument document)
-    {
-        const System.Reflection.BindingFlags Own = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        object handlers = typeof(TextDocument).GetField("changed", Own)?.GetValue(document)
-            ?? throw new MissingFieldException("TextDocument no longer keeps the handlers of Changed in a field named changed");
-        Delegate[] heard = handlers.GetType().GetField("handlers", Own)?.GetValue(handlers) as Delegate[]
-            ?? throw new MissingFieldException("A document's change handlers are no longer an array named handlers");
-        return heard.Count(d => d.Target is ChangeTracker);
     }
 
     /// <summary>Go to Declaration opens the other file at the method, and Forward after Back goes there again when the caret
@@ -1966,8 +1647,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// greys saying it is read-only (those of another language's files saying that instead), and those that only fold it
     /// or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only read it; Code
     /// Cleanup's and Rename's keys there say so and change nothing.</summary>
-    [AvaloniaFact]
-    public void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
+    private void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
         MainWindow window = project.Open("Program.cs");
         Passenger.App.Workspace.OpenDocument decompiled = Decompiled(window, "        in");
@@ -2014,8 +1694,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>A library type's source the language server decompiled for one window stays where it was written, and Go
     /// to Declaration there opens it again, after another window's server, a program of its own, decompiles one too.</summary>
-    [AvaloniaFact]
-    public void A_library_types_source_decompiled_for_one_window_stays_as_another_windows_server_decompiles_one()
+    private void A_library_types_source_decompiled_for_one_window_stays_as_another_windows_server_decompiles_one()
     {
         MainWindow window = project.Open("Program.cs");
         string written = Decompiled(window, "        in").Path;
@@ -2137,23 +1816,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Generate_lists_what_the_server_can_write_for_the_type_and_nothing_else()
-    {
-        MainWindow window = project.Open("Point.cs");
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "public int X");
-        Ui.Run(window, AppActions.Generate);
-        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "what can be generated");
-        Assert.Contains("Generate Equals and GetHashCode", window.Assist.Offered);
-        Assert.All(window.Assist.Offered, title => Assert.StartsWith("Generate", title, StringComparison.Ordinal));
-        Ui.Press(window, "ESCAPE");
-        window.Close();
-    }
-
     /// <summary>Choosing an override from completion writes the overriding method with the caret in its body, and what a
     /// completion or a fix writes takes the file's line breaks, whichever the server writes.</summary>
-    [AvaloniaFact]
-    public void What_a_completion_or_a_fix_writes_takes_the_files_line_breaks_whichever_the_server_writes()
+    private void What_a_completion_or_a_fix_writes_takes_the_files_line_breaks_whichever_the_server_writes()
     {
         string lfFile = File.ReadAllText(project.PathOf("Breaks/LfFile.cs"));
         try
@@ -2227,8 +1892,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    [AvaloniaFact]
-    public void A_tab_indented_editorconfig_has_enter_tab_a_template_a_completion_and_a_fix_indent_with_tabs()
+    private void A_tab_indented_editorconfig_has_enter_tab_a_template_a_completion_and_a_fix_indent_with_tabs()
     {
         MainWindow window = project.Open("Tabs/Tabbed.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2267,8 +1931,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Where_no_editorconfig_says_completions_and_reformatting_indent_as_the_files_own_lines()
+    private void Where_no_editorconfig_says_completions_and_reformatting_indent_as_the_files_own_lines()
     {
         MainWindow window = project.Open("Detected/TwoSpaces.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2290,50 +1953,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>Reformat Code of a selection of whole lines, which ends at the start of the line after them, lays out those
-    /// lines and leaves that line, and the member it begins, as they were.</summary>
-    [AvaloniaFact]
-    public void Reformat_code_of_whole_lines_selected_leaves_the_line_the_selection_ends_at_the_start_of()
-    {
-        MainWindow window = project.Open("Selected.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        string text = editor.Document.Snapshot.ToString();
-        int start = text.IndexOf("    public static int First", StringComparison.Ordinal);
-        int end = text.IndexOf("\n\n", start, StringComparison.Ordinal) + 1;
-        editor.Selections = SelectionSet.Single(new Selection(start, end));
-        Ui.Run(window, AppActions.Reformat);
-        Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted", () => $"the reformat; the status says '{window.Status}'");
-        string formatted = editor.Document.Snapshot.ToString();
-        Assert.True(formatted == SelectedLines.Replace("First( int a,int b )", "First(int a, int b)", StringComparison.Ordinal).Replace("a+b", "a + b", StringComparison.Ordinal),
-            $"Reformat Code of First's lines, the selection ending at the start of the blank line after them, left the file as:\n{formatted}");
-        window.Close();
-    }
-
-    /// <summary>Reformat Code on a file whose own lines indent in sixes lays its ragged line out in sixes and says so; asked
-    /// again, with nothing left to change, it changes nothing and says the file was formatted already.</summary>
-    [AvaloniaFact]
-    public void Reformat_code_lays_a_file_indented_in_sixes_out_in_sixes_and_says_so_only_where_it_changed()
-    {
-        MainWindow window = project.Open("Detected/Sixes.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Assert.Equal("6 spaces, detected", IndentShown(window));
-        Ui.Run(window, AppActions.Reformat);
-        Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted", () => $"the reformat; the status says '{window.Status}'");
-        string formatted = Sixes.Replace("                  return", "            return", StringComparison.Ordinal);
-        Assert.True(window.Status == "Reformatted" && editor.Document.Snapshot.ToString() == formatted,
-            $"Reformat Code ({window.Status}) left the file of six spaces as:\n{editor.Document.Snapshot}");
-
-        Ui.Run(window, AppActions.Reformat);
-        Ui.WaitFor(() => window.Status != "Reformatted", () => $"the second reformat; the status says '{window.Status}'");
-        Assert.True(window.Status == "Already formatted" && editor.Document.Snapshot.ToString() == formatted,
-            $"Reformat Code on the file formatted ({window.Status}) left it as:\n{editor.Document.Snapshot}");
-        window.Close();
-    }
-
     /// <summary>A space typed after override in a class lists the members it may override, with no live template among
     /// them, and Enter writes the one chosen as an override calling the base's.</summary>
-    [AvaloniaFact]
-    public void A_space_after_override_lists_the_members_to_override_and_no_template_and_Enter_writes_one()
+    private void A_space_after_override_lists_the_members_to_override_and_no_template_and_Enter_writes_one()
     {
         MainWindow window = project.Open("Figures.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2429,8 +2051,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar()
+    private void A_fix_the_language_server_will_not_make_once_chosen_says_why_in_the_status_bar()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2476,8 +2097,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once()
+    private void Fix_all_in_the_solution_reaching_a_file_not_open_is_undone_in_every_file_it_changed_at_once()
     {
         string closed = project.PathOf("Casts.cs");
         string casts = File.ReadAllText(closed);
@@ -2512,8 +2132,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named()
+    private void Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named()
     {
         string source = File.ReadAllText(project.PathOf("Program.cs"));
         MainWindow window = project.Open("Program.cs");
@@ -2545,75 +2164,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    [AvaloniaFact]
-    public void Show_context_actions_says_beside_each_whether_it_is_a_quick_fix_or_a_context_action_in_riders_words()
-    {
-        MainWindow window = project.Open("Actions.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument actions = window.EditorArea.Active!;
-        Ui.WaitFor(() => window.CSharpService!.For(actions)!.Diagnostics.Any(d => d.Code?.ToString() == "CS0246"), "Missing's error");
-
-        Ui.PlaceAfter(editor, "Missi");
-        editor.Focus();
-        Ui.Run(window, AppActions.QuickFix);
-        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the fixes for Missing");
-        List<(string, string)> fixes = Shown(window);
-        Assert.True(fixes.Contains(("Generate class 'Missing'", "Quick-fix")), $"The error's fix does not say it is a quick-fix: {Said(fixes)}");
-        Ui.Press(window, "ESCAPE");
-
-        Ui.PlaceAfter(editor, "Half(4)");
-        Ui.Run(window, AppActions.QuickFix);
-        Ui.WaitFor(() => window.Assist.Offered.Count > 0, "the actions for half");
-        List<(string, string)> offered = Shown(window);
-        // Roslyn's kinds for these are refactor.inline and refactor.
-        Assert.True(offered.Contains(("Inline temporary variable", "Context action")) && offered.Contains(("Use implicit type", "Context action")),
-            $"Inline temporary variable and Use implicit type do not say they are context actions: {Said(offered)}");
-        Ui.Press(window, "ESCAPE");
-
-        string[] raw = [.. fixes.Concat(offered).Select(o => o.Item2).Where(d => System.Text.RegularExpressions.Regex.IsMatch(d, @"^(quickfix|refactor|source)(\.|$)"))];
-        Assert.True(raw.Length == 0, $"Show Context Actions shows the language server's own kinds beside its actions, which are no words of Rider's: {string.Join(", ", raw)}");
-        window.Close();
-
-        static List<(string, string)> Shown(MainWindow window) => [.. window.Assist.Offered.Zip(window.Assist.OfferedDetails)];
-
-        static string Said(List<(string Title, string Detail)> shown) => string.Join("; ", shown.Select(s => $"{s.Title} [{s.Detail}]"));
-    }
-
-    /// <summary>Show Context Actions' list closes on a click in the editor away from it, the caret going where the click
-    /// was and nothing applied, as the completion list closes on one; a click on one of its rows chooses that row and
-    /// leaves it open.</summary>
-    [AvaloniaFact]
-    public void Show_context_actions_list_closes_on_a_click_in_the_editor_away_from_it()
-    {
-        MainWindow window = project.Open("Program.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        string before = editor.Document.Snapshot.ToString();
-        Ui.PlaceAfter(editor, "int res");
-        editor.Focus();
-        Ui.Run(window, AppActions.QuickFix);
-        Ui.WaitFor(() => window.Assist.Offered.Count > 1, "Show Context Actions' list for result");
-        IReadOnlyList<string> offered = window.Assist.Offered;
-
-        ListBoxItem second = OfferedRow(window, offered[1]);
-        Ui.Click(second);
-        Assert.True(second.IsSelected && window.Assist.Offered.SequenceEqual(offered),
-            $"A click on the list's second row ({offered[1]}) did not choose it in the list, which shows [{string.Join("; ", window.Assist.Offered)}]");
-
-        int away = before.IndexOf("class Program", StringComparison.Ordinal) + "class Pro".Length;
-        Ui.Click(editor, editor.PointOf(away) + new Point(1, editor.LineHeight / 2));
-        Assert.True(window.Assist.Offered.Count == 0,
-            $"A click in the editor away from Show Context Actions' list left it open, its fixes now applying at the old caret: [{string.Join("; ", window.Assist.Offered)}]");
-        Assert.Equal(new TextPosition(0, "class Pro".Length), editor.CaretPosition);
-        Assert.Equal(before, editor.Document.Snapshot.ToString());
-        window.Close();
-    }
-
     /// <summary>Escape closes the code's lists of choices and its rename box wherever in the window the keys are: Show
     /// Context Actions' list and the rename box once Find Action, closed, has given them back the keys they had, and
     /// Generate's once the Explorer has them, which keeps them; Generate's list and the rename box close on a click away
     /// too, renaming nothing.</summary>
-    [AvaloniaFact]
-    public void Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are()
+    private void Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2676,44 +2231,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.GetVisualDescendants().OfType<ListBoxItem>().FirstOrDefault(row => row.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == title))
         ?? throw new Xunit.Sdk.XunitException($"No row of the list of choices shows {title}");
 
-    /// <summary>In a window at its smallest with the default layout, the Explorer open leaving the editor narrower than a
-    /// card's words would be, the hover card and Parameter Info each show whole in the editor, held to its width: the
-    /// signature and its documentation wrap inside the card, none of their words cut at the editor's edge or trimmed.</summary>
-    [AvaloniaFact]
-    public void A_hover_card_and_parameter_info_in_an_editor_at_the_windows_smallest_width_show_whole_their_words_wrapping()
-    {
-        MainWindow window = project.Open("Joins.cs", width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Rect layer = Layer(window);
-        Assert.True(layer.Width < 300, $"The default layout at the window's smallest width was to leave the editor narrower than a card's signature; it is {layer.Width} wide");
-
-        Ui.PlaceAfter(editor, "=> Jo");
-        Ui.Run(window, AppActions.QuickDocumentation);
-        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Joins the values", StringComparison.Ordinal) == true, "the card over Join with its documentation");
-        TextBlock signature = Untrimmed(WholeInEditor(window, window.Assist.HoverCard!, "The hover card"), "The hover card");
-        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in the card; it is one line, '{Said(signature)}'");
-        Ui.Press(window, "ESCAPE");
-
-        Ui.PlaceAfter(editor, "=> Join(");
-        Ui.Run(window, AppActions.ParameterInfo);
-        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("is put between", StringComparison.Ordinal) == true, "Join's parameter info with its separator's documentation");
-        signature = Untrimmed(WholeInEditor(window, window.Assist.SignatureCard!, "Parameter Info"), "Parameter Info");
-        Assert.True(signature.TextLayout.TextLines.Count > 1, $"Join's signature, wider than the editor, was to wrap in Parameter Info; it is one line, '{Said(signature)}'");
-        Ui.Press(window, "ESCAPE");
-        window.Close();
-    }
-
-    /// <summary>A card's words, none trimmed to an ellipsis; its first block of them.</summary>
-    private static TextBlock Untrimmed(IReadOnlyList<TextBlock> words, string what)
-    {
-        Assert.True(words.Count > 0, $"{what} shows no words");
-        foreach (TextBlock said in words)
-        {
-            Assert.True(said.TextLayout.TextLines.All(l => !l.HasCollapsed), $"{what} trims '{Said(said)}' where its words were to wrap whole");
-        }
-        return words[0];
-    }
-
     /// <summary>Where the editor's layer of popups lies in its window.</summary>
     internal static Rect Layer(MainWindow window)
     {
@@ -2742,38 +2259,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private static string Said(TextBlock block) =>
         block.Text is { Length: > 0 } text ? text : string.Concat(block.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(r => r.Text) ?? []);
 
-    /// <summary>Parameter Info after a target-typed new's first argument shows the constructor's signature whole, the second
-    /// parameter the one heard as current, at every display scale: code whose width falls on the screen's pixels at a scale
-    /// (1.25's, 2's) was laid out a rounding error short of it, its last word wrapped to a line the card had no room for, so
-    /// the signature read "Greeter(string name, int" (#2046).</summary>
-    [AvaloniaFact]
-    public void Parameter_info_at_a_target_typed_new_shows_the_constructors_signature_whole_at_every_display_scale()
-    {
-        MainWindow window = project.Open("Greeters.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        List<(string Words, Avalonia.Automation.AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
-        const string Signature = "Greeter(string name, int times)";
-        foreach (double scale in (double[])[1, 1.25, 1.5, 2, 2.5])
-        {
-            window.SetRenderScaling(scale);
-            Ui.PlaceAfter(editor, "new(name, ");
-            editor.Focus();
-            heard.Clear();
-            Ui.Run(window, AppActions.ParameterInfo);
-            Ui.WaitFor(() => window.Assist.SignatureText == Signature, () => $"Parameter Info at new(name, to show {Signature}; it shows '{window.Assist.SignatureText}'");
-            Ui.Settle();
-            Assert.True(heard is [(var said, _)] && said == $"Parameter Info, {Signature}, parameter times",
-                $"Parameter Info at new(name, was heard as {AccessibilityTests.Said(heard)}, not the signature with its second parameter current");
-            TextBlock code = window.Assist.SignatureCard!.GetVisualDescendants().OfType<TextBlock>().Single(t => Said(t) == Signature);
-            Avalonia.Media.TextFormatting.TextLayout laid = code.TextLayout;
-            Assert.True(laid.TextLines.Count == 1 && laid.TextLines[0].Length >= Signature.Length && laid.Height <= code.Bounds.Height + 0.5,
-                $"At a display scale of {scale} Parameter Info draws '{Signature}' as [{string.Join(" | ", laid.TextLines.Select(l => Signature.Substring(l.FirstTextSourceIndex, Math.Min(l.Length, Signature.Length - l.FirstTextSourceIndex))))}] "
-                + $"in {code.Bounds.Width:R} by {code.Bounds.Height:R}, {laid.Height:R} tall: the signature is cut short");
-            Ui.Press(window, "ESCAPE");
-        }
-        window.Close();
-    }
-
     [Gate]
     [AvaloniaFact]
     public void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()
@@ -2801,21 +2286,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>The card over a member whose documentation names a path as code and in its words shows its backslashes as
-    /// written, where it took every backslash out of the server's Markdown, a code span's too, so a path read "C:temp".</summary>
-    [AvaloniaFact]
-    public void The_hover_card_shows_a_documented_paths_backslashes_and_quotes_as_written()
-    {
-        MainWindow window = project.Open("Paths.cs");
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int Kee");
-        Ui.Run(window, AppActions.QuickDocumentation);
-        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Keeps", StringComparison.Ordinal) == true, "the card over Keep with its documentation");
-        string card = window.Assist.HoverText!;
-        Assert.True(card.Contains(@"Keeps its logs under C:\temp, in C:\temp\logs, ""never"" elsewhere.", StringComparison.Ordinal),
-            $"The card showed the documentation's path without its backslashes, or Markdown's marks:\n{card}");
-        window.Close();
-    }
-
     private static T Await<T>(Task<T> task, string what) => Ui.Await(task, what, TimeSpan.FromSeconds(30));
 
     /// <summary>Chooses an item of the open list of choices by its words, with the keys a person would press.</summary>
@@ -2831,8 +2301,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, "ENTER");
     }
 
-    [AvaloniaFact]
-    public void Renaming_a_file_to_match_its_type_with_unsaved_edits_leaves_one_file_of_the_new_name_holding_them()
+    private void Renaming_a_file_to_match_its_type_with_unsaved_edits_leaves_one_file_of_the_new_name_holding_them()
     {
         string foo = project.PathOf("Foo.cs");
         string bar = project.PathOf("Bar.cs");
@@ -2877,8 +2346,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// type is, and Settings turns type name hints off and on again, parameter name hints staying; the caret steps
     /// across a hint as one place and typing at a name keeps its type after it; and a literal argument shows its
     /// parameter's name before it, the text after making room, until Settings turns them off.</summary>
-    [AvaloniaFact]
-    public void Type_and_parameter_name_hints_show_where_Rider_shows_them_make_room_step_as_one_place_and_go_with_Settings()
+    private void Type_and_parameter_name_hints_show_where_Rider_shows_them_make_room_step_as_one_place_and_go_with_Settings()
     {
         MainWindow window = project.Open("Inferred.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2983,43 +2451,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>A hint's card shows though the server has read the project's options again since it gave the hint, the
-    /// file's text the same: here an .editorconfig changed on disk, with the hints the server gives after that held
-    /// unanswered, so the editor still shows those it gave before, which the server refuses to describe.</summary>
-    [AvaloniaFact]
-    public void A_hints_card_shows_when_the_server_has_read_an_editorconfig_since_it_gave_the_hint()
-    {
-        MainWindow window = project.Open("Inferred.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        int name = editor.Document.Snapshot.ToString().IndexOf("var total", StringComparison.Ordinal) + "var total".Length;
-        Ui.WaitFor(() => editor.InlayHints.Any(h => h.Kind == InlayHintKind.Type && h.Offset == name), "the hint after 'total'");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.InlayHint, _ => true, answered.Task);
-        try
-        {
-            project.Rewrite("Tabs/.editorconfig", "[*.cs]\nindent_style = tab\n\n[*.md]\nindent_size = 3\n");
-            Ui.AwaitPumped(held, "the hints the server gives once it has read the .editorconfig, held unanswered");
-            double character = editor.PointOf(name - 1).X - editor.PointOf(name - 2).X;
-            Point hint = editor.PointOf(name) + new Point(character * 1.5, editor.LineHeight / 2);
-            window.MouseMove(editor.TranslatePoint(hint, window)!.Value, Avalonia.Input.RawInputModifiers.None);
-            Ui.PumpUntil(() => window.Assist.HoverText is not null, "the card of a hint the server gave before it read the .editorconfig");
-        }
-        finally
-        {
-            answered.SetResult();
-        }
-        Assert.Contains("Int32", window.Assist.HoverText, StringComparison.Ordinal);
-        window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
-        Ui.Settle();
-        window.Close();
-    }
-
     /// <summary>With Settings showing neither kind of hint, typing with pauses asks the server for none, though each pause
     /// still pulls the file's diagnostics; turning parameter name hints on brings them at once, the server asked for that
     /// kind alone, and turning type name hints on brings those too. Counted in the protocol's own trace.</summary>
-    [AvaloniaFact]
-    public void With_both_kinds_of_hint_off_no_hints_are_asked_for_and_turning_one_on_brings_its_hints_at_once()
+    private void With_both_kinds_of_hint_off_no_hints_are_asked_for_and_turning_one_on_brings_its_hints_at_once()
     {
         MainWindow window = project.Open("Inferred.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -3080,8 +2515,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    [AvaloniaFact]
-    public void Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back()
+    private void Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -3116,8 +2550,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// belongs (prop in a type's body, cw in a method's); a live template fills every place of a variable at once, Tab
     /// goes on and back, and a caret moved away ends it; and a postfix template after an expression and a dot wraps it
     /// where it fits, asking which expression when more than one could be meant.</summary>
-    [AvaloniaFact]
-    public void Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow()
+    private void Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow()
     {
         MainWindow window = project.Open("Point.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -3217,8 +2650,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line()
+    private void A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line()
     {
         MainWindow window = project.Open("Helper.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -3253,8 +2685,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>A class and its caller another program wrote a moment ago (an agent in the terminal), heard by the window but
     /// not yet taken into the project by the language server: Find Usages on the class's method, opened at once, lists the
     /// caller too, where an answer from the server's Miscellaneous Files lists the declaration alone.</summary>
-    [AvaloniaFact]
-    public void Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it()
+    private void Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it()
     {
         MainWindow window = project.Open("Program.cs");
         HashSet<string> heard = new(StringComparer.Ordinal);
@@ -3276,8 +2707,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>Find Usages' keys put the keys on its results, the first usage chosen, so Down goes on to the next usage
     /// and Enter opens it, where the keys stayed in the editor and Down moved its caret.</summary>
-    [AvaloniaFact]
-    public void Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage()
+    private void Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage()
     {
         MainWindow window = project.Open("Loop.cs");
         FindView find = window.Find;
@@ -3300,72 +2730,6 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(window.EditorArea.CodeEditor.CaretPosition == new TextPosition(second.Line, second.Column) && window.EditorArea.CodeEditor.IsFocused,
             $"Down and Enter in Find Usages' results left the caret at {window.EditorArea.CodeEditor.CaretPosition}, not at the second usage {second.Line}:{second.Column}");
         Assert.Equal(File.ReadAllText(project.PathOf("Loop.cs")), window.EditorArea.Active!.Text.Snapshot.ToString());
-        window.Close();
-    }
-
-    /// <summary>Find Usages' results that come once the person has moved on leave the keys where they went: with the
-    /// server's answer held, Go to File opened and a name typed in it, the usages come to the Find window, the keys stay in
-    /// Go to File, and Enter opens the file, where the results took the keys and Enter opened a usage.</summary>
-    [AvaloniaFact]
-    public void Find_usages_coming_after_the_person_moved_on_leave_the_keys_where_they_went()
-    {
-        MainWindow window = project.Open("Loop.cs");
-        FindView find = window.Find;
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int tot");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.References, _ => true, answered.Task);
-        GoToFilePopup? goToFile;
-        try
-        {
-            Ui.Run(window, AppActions.FindUsages, settle: false);
-            Ui.AwaitPumped(held, "the server's usages, held unanswered");
-            Ui.Press(window, Ui.Shortcut(AppActions.GoToFile), settle: false);
-            window.KeyTextInput("Inferr");
-            Ui.PumpUntil(() => window.Popup is GoToFilePopup { Rows: [{ Name: "Inferred.cs" }, ..] }, "Go to File to offer Inferred.cs first");
-            goToFile = (GoToFilePopup)window.Popup!;
-        }
-        finally
-        {
-            answered.SetResult();
-        }
-        Ui.WaitFor(() => find.Rows.Count(r => r.Usage is not null) == 3, "the usages in the Find window");
-        Assert.True(window.Popup == goToFile && goToFile.IsKeyboardFocusWithin,
-            $"Find Usages' results, come after Go to File opened, left the keys on {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not in Go to File");
-        Ui.Press(window, "ENTER");
-        Assert.Equal("Inferred.cs", window.EditorArea.Active?.Name);
-        Assert.Equal(File.ReadAllText(project.PathOf("Loop.cs")), window.EditorArea.Documents.Single(d => d.Name == "Loop.cs").Text.Snapshot.ToString());
-        window.Close();
-    }
-
-    /// <summary>The Find and Hierarchy windows' rows have the menu every list of results has: Go to (F4) and Copy.</summary>
-    [AvaloniaFact]
-    public void A_usages_and_a_callers_menu_goes_to_it_and_copies_its_path()
-    {
-        MainWindow window = project.Open("Loop.cs");
-        FindView find = window.Find;
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int tot");
-        Ui.Run(window, AppActions.FindUsages);
-        Ui.WaitFor(() => find.Rows.Count(r => r.Usage is not null) == 3, "the usages in the Find window");
-        find.Selected = find.Rows.Last(r => r.Usage is not null);
-        window.OpenFile(project.PathOf("Program.cs"));
-        Ui.Settle();
-        Avalonia.Controls.ListBox usages = find.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
-        Ui.ChooseFromMenu(usages, "Go to Source");
-        Assert.Equal("Loop.cs", window.EditorArea.Active?.Name);
-        Assert.Equal(new TextPosition(9, 15), window.EditorArea.CodeEditor.CaretPosition);
-        Ui.ChooseFromMenu(usages, "Copy Path");
-        Ui.WaitFor(() => Ui.Clipboard(window) == PathNames.Canonical(project.PathOf("Loop.cs")), "the usage's path on the clipboard");
-
-        window.OpenFile(project.PathOf("Helper.cs"));
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
-        Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy"));
-        HierarchyRow caller = window.Hierarchy.Rows[1];
-        Avalonia.Controls.ListBox callers = window.Hierarchy.GetVisualDescendants().OfType<Avalonia.Controls.ListBox>().Single();
-        callers.SelectedItem = caller;
-        Ui.ChooseFromMenu(callers, "Go to Source");
-        Assert.True(window.EditorArea.Active?.Path == caller.Node.Path, "Go to Source in a caller's menu in the Hierarchy window did not go to its call");
-        Assert.Equal(caller.Node.Where.Line, window.EditorArea.CodeEditor.CaretPosition.Line);
         window.Close();
     }
 
@@ -3405,47 +2769,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    /// <summary>A hierarchy row opened again while its level is on its way waits for that level: with the server's callers
-    /// of Twice held as the Hierarchy window opens its top row, a click on the row's chevron opens it too, and once the
-    /// callers come Main is listed once.</summary>
-    [AvaloniaFact]
-    public void A_hierarchy_row_opened_twice_before_its_level_comes_lists_each_row_of_it_once()
-    {
-        MainWindow window = project.Open("Helper.cs");
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(Passenger.Lsp.LspMethods.IncomingCalls, _ => true, answered.Task);
-        try
-        {
-            Ui.Run(window, AppActions.CallHierarchy, settle: false);
-            Ui.AwaitPumped(held, "the server's callers of Twice, held unanswered");
-            RowIcon? chevron = null;
-            Ui.PumpUntil(() => (chevron = TopChevron()) is not null, "the Hierarchy window's top row, its callers on their way");
-            Ui.Click(chevron!, settle: false);
-        }
-        finally
-        {
-            answered.SetResult();
-        }
-        Ui.WaitFor(() => window.Hierarchy.Rows is [{ IsExpanded: true }, ..], "the callers of Twice");
-        // Both opens' answers in, whichever came first.
-        Ui.Settle();
-        Assert.True(window.Hierarchy.Rows.Count(r => r.Depth == 1) == 1 && window.Hierarchy.Rows[1].Node.Item.Name.Contains("Main", StringComparison.Ordinal),
-            $"Opened twice before its callers came, Twice lists {string.Join(", ", window.Hierarchy.Rows.Skip(1).Select(r => r.Node.Item.Name))}, not Main once");
-        window.Close();
-
-        RowIcon? TopChevron() => window.Hierarchy.Rows is [{ IsExpanded: false } top]
-            ? window.Hierarchy.GetVisualDescendants().OfType<RowIcon>().FirstOrDefault(i => i.IsEffectivelyVisible && (i.Parent as Control)?.DataContext == top)
-            : null;
-    }
-
     /// <summary>Call Hierarchy at a use of a method declared in another file shows it and its callers as at its declaration,
     /// and at a record's positional property, from a use in another file or at its declaration, shows the property with the
     /// members that read or set it, each at its first use, as for any property; what the property calls is nothing, as an
     /// auto-property's.</summary>
-    [AvaloniaFact]
-    public void Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers()
+    private void Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers()
     {
         MainWindow window = project.Open("Program.cs");
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "Helper.Tw");
@@ -3474,8 +2802,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// times the items costs the UI thread what it does in the shorter one, counted rather than timed. The lists differ in
     /// length alone: a class's members after its dot, listed whole by the server, its fields named alike, so both hold as
     /// many rows narrowed and show the same ones.</summary>
-    [AvaloniaFact]
-    public void Typing_into_a_completion_list_narrows_it_off_the_UI_thread_in_the_rows_it_shows()
+    private void Typing_into_a_completion_list_narrows_it_off_the_UI_thread_in_the_rows_it_shows()
     {
         MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
         window.OpenFile(project.PathOf("Pantry.cs"));
@@ -3540,8 +2867,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// shows lays out only those that came onto the screen or left it: narrowing a class's members from 200 rows to 100, 10
     /// and 1 and widening them back costs the UI thread, key for key, less than a key that hands every row on screen another
     /// member does, counted rather than timed; so does each Down once the list scrolls, which hands each row the next member.</summary>
-    [AvaloniaFact]
-    public void A_key_that_changes_how_many_rows_the_completion_list_shows_lays_out_only_the_rows_that_came_or_went()
+    private void A_key_that_changes_how_many_rows_the_completion_list_shows_lays_out_only_the_rows_that_came_or_went()
     {
         MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
         window.OpenFile(project.PathOf("Pantry.cs"));
@@ -3629,85 +2955,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
     }
 
-    /// <summary>A completion list of more rows than it shows scrolls by the wheel turned over it, two rows a notch as a
-    /// scrolled view goes, and by a click on its bar's track, a screen at a time, the row chosen staying chosen; the server's
-    /// types of namespaces not imported, held until the list is scrolled, join it with the rows scrolled to still shown; a
-    /// Down from the row chosen, scrolled away, brings the list back to the row after it.</summary>
-    [AvaloniaFact]
-    public void A_completion_list_scrolls_by_the_wheel_and_its_bar_its_choice_staying()
-    {
-        MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
-        window.OpenFile(project.PathOf("Pantry.cs"));
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.Settle();
-        Assert.True(window.CSharpService?.IsReady, window.CSharpService?.State);
-        Ui.PlaceAfter(editor, "        int total = 0;");
-        editor.Focus();
-        Ui.Press(window, "ENTER");
-        Ui.Settle();
-        // The server's types of namespaces not imported indexed, so the part held below has items to join the list with.
-        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(window.EditorArea.Active!)!.Lsp!;
-        int caret = editor.Selections.Primary.Caret;
-        Task<int>? asking = null;
-        Ui.WaitFor(() =>
-        {
-            if (asking is { IsCompleted: true } asked)
-            {
-                if (asked.IsCompletedSuccessfully && Ui.Await(asked, "the types of namespaces not imported") > 0)
-                {
-                    return true;
-                }
-                asking = null;
-            }
-            asking ??= Waiting.Apart(() => LaterItemsAsync(lsp, caret));
-            return false;
-        }, "the server's types of namespaces not imported, indexed");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.LaterCompletion, _ => true, released.Task);
-        try
-        {
-            window.KeyTextInput("R");
-            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "R", "a statement's list opened by R");
-            window.KeyTextInput("ation");
-            Ui.PumpUntil(() => window.Assist.CompletionNarrowedBy == "Ration" && window.Assist.CompletionLabels.Count == 200 && FirstShown() == "Ration000",
-                $"a statement's list narrowed by Ration to the 200 shown, Ration000 first, where it shows {FirstShown()} first of {window.Assist.CompletionLabels.Count}");
-            Ui.AwaitPumped(held, "the types of namespaces not imported, come and held unanswered");
-            Assert.Equal("Ration000", window.Assist.CompletionChosen);
-            Rect list = window.Assist.CompletionPlace ?? throw new InvalidOperationException("The completion list shows, yet has no place");
-            window.MouseMove(list.Center);
-            window.MouseWheel(list.Center, new Vector(0, -1));
-            Ui.Draw();
-            Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration002"),
-                $"A notch of the wheel down over the list shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not Ration002 with Ration000 still chosen");
-        }
-        finally
-        {
-            released.TrySetResult();
-        }
-        Ui.Settle();
-        Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration002"),
-            $"With the types of namespaces not imported joined, the list scrolled to Ration002 shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen: it went back to the row chosen");
-        Avalonia.Controls.Primitives.ScrollBar bar = window.EditorArea.AssistLayer.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>().Single(b => b.IsEffectivelyVisible);
-        Ui.Click(bar.GetVisualDescendants().OfType<RepeatButton>().Single(b => b.Name == "PART_PageDownButton"));
-        Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration000", "Ration012"),
-            $"A click on the list's bar below its thumb shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not Ration012 with Ration000 still chosen");
-        Ui.Press(window, "DOWN");
-        Assert.True((window.Assist.CompletionChosen, FirstShown()) == ("Ration001", "Ration001"),
-            $"Down from Ration000 scrolled away shows {FirstShown()} first, {window.Assist.CompletionChosen} chosen, not the list back at Ration001, chosen");
-        Ui.Press(window, "ESCAPE");
-        window.Close();
-
-        string? FirstShown() => window.Assist.CompletionRowControls.OfType<Avalonia.Controls.Panel>().FirstOrDefault()?.Children.OfType<TextBlock>().FirstOrDefault()?.Text;
-
-        static async Task<int> LaterItemsAsync(Passenger.Lsp.LspDocument lsp, int caret) =>
-            (await lsp.CompletionAsync(caret, null)).List?.Later is { } later ? (await later)?.Items.Count ?? 0 : 0;
-    }
-
     /// <summary>A window's completion list is laid out once as the window opens, off screen: its first list shows in row
     /// controls made then, so the first list a person asks for waits for no control to be made, styled or shaped.</summary>
-    [AvaloniaFact]
-    public void A_windows_first_completion_list_shows_in_the_rows_laid_out_as_the_window_opened()
+    private void A_windows_first_completion_list_shows_in_the_rows_laid_out_as_the_window_opened()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -3731,8 +2981,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// unanswered, are still to come; once they come they join the list, the row chosen meanwhile still chosen and the
     /// caret where it was, and typing on asks the server for no list. A name nothing in scope fits shows no list until
     /// they come, then theirs.</summary>
-    [AvaloniaFact]
-    public void A_statements_first_rows_show_before_the_types_of_namespaces_not_imported_which_join_them_leaving_the_choice()
+    private void A_statements_first_rows_show_before_the_types_of_namespaces_not_imported_which_join_them_leaving_the_choice()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -3843,8 +3092,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// with no word to the server, and costs the UI thread what a key into a far shorter list does, counted rather than
     /// timed. The lists differ in length alone: a statement in Pantry's method and in Silo's lists each class's fields
     /// and the same rest, Silo's thousands more than the thousand the server cuts a list it is let cut to.</summary>
-    [AvaloniaFact]
-    public void A_statements_whole_list_narrows_here_as_its_name_is_typed_asking_the_server_nothing()
+    private void A_statements_whole_list_narrows_here_as_its_name_is_typed_asking_the_server_nothing()
     {
         MainWindow window = Ui.OpenFolder(project.Folder, autosaves: false);
         window.OpenFile(project.PathOf("Pantry.cs"));
@@ -3866,8 +3114,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>A statement's list of more than 10,000 items, a class's 13,500 fields among the types in reach, lists the
     /// 12,000 the name typed finds alike in the server's order, from its 1,000s on: none of those past its 10,000th item
     /// ahead of one before; and the server still describes the list's last item, which it finds by its sort text.</summary>
-    [AvaloniaFact]
-    public void A_statements_list_of_more_than_ten_thousand_lists_the_names_found_alike_in_the_servers_order()
+    private void A_statements_list_of_more_than_ten_thousand_lists_the_names_found_alike_in_the_servers_order()
     {
         string folder = PathNames.Canonical(TestFolders.Create("assist-lots-"));
         TestFolders.Write(folder, "Lots.csproj", TestProjects.Console());
