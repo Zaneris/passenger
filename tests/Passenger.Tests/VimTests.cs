@@ -203,22 +203,22 @@ public sealed partial class VimTests
         ($"iw and a( over a visual stretch by lines, which Vim's carry on or not, and keep by lines or not, by rules of their own; {ToFix}",
             (vimCase, _, _) => vimCase.Commands.Any(command => (command.Keys[0] == "V" || command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "p")))
                 && command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "w") or ("a", "(")))),
-        ($"Lines put from a visual stretch over a text a delete emptied, which Vim's place by where the stretch and the lines' "
-            + $"empty ones fall; {ToFix}",
-            (vimCase, _, passenger) => passenger.Seen.Contains(Emptied) && vimCase.Commands.Any(command => command.Keys[0] is "v" or "V" or VimKeys.CtrlV
-                && command.Keys.Any(key => key is "p" or "P"))),
-        ($"A over a visual stretch by characters or lines after another visual operator, which Vim's places by where that "
-            + $"operator's stretch began; {ToFix}",
+        ($"A over a visual stretch after another visual I or A, which Vim's places by columns that I or A keeps otherwise than the "
+            + $"stretch it took; {ToFix}",
             (vimCase, _, _) => vimCase.Commands.Where((command, at) => command.Uses.Contains(VisualInsert)
-                && vimCase.Commands.Take(at).Any(before => before.Keys[0] is "v" or "V" or VimKeys.CtrlV && !before.Uses.Contains(LeftVisual))).Any()),
+                && vimCase.Commands.Take(at).Any(before => before.Uses.Contains(VisualInsert))).Any()),
+        ("A characterwise visual change of one line made after $ and made again by . takes from the caret to its line's end, "
+            + "as . makes a visual change again from the caret, where Vim's takes that only from the line's first two columns and "
+            + "from any other the line's start to the caret, whatever the stretch was: Vim's . there follows no rule of its own",
+            (vimCase, _, _) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => made.command.Keys[0] == "v" && made.command.Keys.Contains("$")
+                && vimCase.Commands.Skip(made.at).SelectMany(after => after.Keys).Contains("."))),
     ];
 
-    private const string VisualInsert = "I or A in visual mode";
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
     private const string SentenceObject = "is or as";
     private const string OpenedByAnEnd = "a line opened by a sentence's end or a closer";
-    private const string Emptied = "a text a delete emptied";
+    private const string VisualInsert = "I or A in visual mode";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -611,12 +611,11 @@ public sealed partial class VimTests
     private const string Asked = "asked the host";
 
     /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a line opened by a sentence's end or
-    /// a closing bracket or quote, a text a delete emptied.</summary>
+    /// a closing bracket or quote.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
         seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span
             && text[span.Start] is '.' or '!' or '?' or ')' or ']' or '"' or '\'' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
-        seen.UnionWith(text.Length == 0 ? [Emptied] : []);
     }
 
     /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>

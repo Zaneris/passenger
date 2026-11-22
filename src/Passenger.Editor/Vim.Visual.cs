@@ -84,9 +84,12 @@ public sealed partial class Vim
     /// <summary>The visual extent of the change under way, kept with it for . to take again.</summary>
     private VisualExtent? changeExtent;
 
-    /// <summary>The display column the last block a visual operator took began at, which A over characters or lines
-    /// compares its column with.</summary>
+    /// <summary>The display columns the last stretch a visual operator took began and ended at, which A over characters or
+    /// lines places itself by: a block's edges; none after $, nor over lines or by lines taken back; taken on over lines
+    /// or by lines, from the first column to the end's; else its corners'.</summary>
     private int keptBlockLeft;
+
+    private int keptBlockRight;
 
     /// <summary>Set where words in linewise mode ran out at the text's last character, which keeps the mode linewise.</summary>
     private bool wordsKeptLines;
