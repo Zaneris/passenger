@@ -96,6 +96,9 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
     /// <summary>Ends at the game's next monitors.</summary>
     private TaskCompletionSource nextBeat = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <summary>Ends as the game does (<see cref="Ended"/>), when no beat or stop will come.</summary>
+    private readonly TaskCompletionSource over = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>The game's temporary folder, where Godot writes a picture asked of it (<see cref="GodotPictures"/>).</summary>
     private string temporary = Path.GetTempPath();
 
@@ -542,6 +545,7 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         }
         State = LiveAppState.Ended;
         Picking = GodotPicking.Off;
+        over.TrySetResult();
         Scripts?.GameEnded();
         treeAsked?.TrySetException(new LiveAppException($"{Name} has ended"));
         foreach (TaskCompletionSource<GodotObjectState> asked in objectsAsked.Values)
@@ -877,8 +881,8 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
 
     /// <summary>Waits for the game to run its loop (<see cref="looped"/>), as Passenger's helper comes in only then: a game
     /// reads Passenger's messages between a script's lines and in its script debugger, where a node's _ready may be running
-    /// under the root, which adds no node then. A <see cref="LiveAppException"/> says the game is paused, stopped meanwhile,
-    /// or ran no loop within an answer's limit.</summary>
+    /// under the root, which adds no node then. A <see cref="LiveAppException"/> says the game is paused, stopped or ended
+    /// meanwhile, or ran no loop within an answer's limit.</summary>
     private async Task LoopedAsync()
     {
         if (looped)
@@ -896,10 +900,15 @@ public sealed class GodotGame : ILiveTreeSource, ILiveTreeValues, IGodotValues, 
         Task stopped = nextStop.Task;
         try
         {
-            if (await Task.WhenAny(beat, stopped).WaitAsync(limit, asking?.GiveUp ?? CancellationToken.None) == stopped)
+            Task came = await Task.WhenAny(beat, stopped, over.Task).WaitAsync(limit, asking?.GiveUp ?? CancellationToken.None);
+            if (came == stopped)
             {
                 throw new LiveAppException($"{Name} stopped under the debugger before Passenger's helper came into it, which it does once the game runs on: "
                     + "debug_state says where");
+            }
+            if (came == over.Task)
+            {
+                throw new LiveAppException($"{Name} has ended");
             }
         }
         catch (OperationCanceledException) when (asking is { GiveUp.IsCancellationRequested: true })
