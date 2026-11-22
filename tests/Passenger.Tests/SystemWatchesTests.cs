@@ -31,8 +31,7 @@ public sealed class SystemWatchesTests : IDisposable
     /// <summary>Windows opened on a repository and on a worktree of it (whose Git folders lie outside it), the folder changed
     /// in each, its watcher failed and started again, and one on a C# project with its language server, each closed: the
     /// system's watches of every tree and file, and macOS's streams, are back where they were, none left on their folders.</summary>
-    [AvaloniaFact]
-    public void Windows_opened_and_closed_and_folders_changed_many_times_leave_the_system_watches_as_they_were()
+    internal void Windows_opened_and_closed_and_folders_changed_many_times_leave_the_system_watches_as_they_were()
     {
         TestFolders.Write(first, "One.cs", "class One { }\n");
         TestGit.Init(first);
@@ -77,8 +76,7 @@ public sealed class SystemWatchesTests : IDisposable
     /// system's watchers on macOS and Windows, over the folder they share once there are many, and a watch each on Linux;
     /// each still hears what changes in it and nothing of the others, one deleted is heard gone, and with all of them let go
     /// the watchers are back where they were.</summary>
-    [AvaloniaFact]
-    public void Hundreds_of_folders_watched_apart_share_a_few_of_the_systems_watchers_and_each_hears_its_own_changes()
+    internal void Hundreds_of_folders_watched_apart_share_a_few_of_the_systems_watchers_and_each_hears_its_own_changes()
     {
         IReadOnlyList<string> before = WatchedTree.SharedWatchers;
         int trees = WatchedTree.SystemWatches;
@@ -114,8 +112,7 @@ public sealed class SystemWatchesTests : IDisposable
     /// server's registrations outside the folder's watcher each a folder watched apart (each project's obj and bin, each
     /// package's lib folder): on macOS and Windows they are read through a few of the system's watchers, a source written
     /// into obj still reaching the server, and with the window closed every watch is back where it was.</summary>
-    [AvaloniaFact]
-    public void A_window_over_a_solution_of_many_projects_and_packages_reads_their_folders_through_a_few_watchers()
+    internal void A_window_over_a_solution_of_many_projects_and_packages_reads_their_folders_through_a_few_watchers()
     {
         string[] libraries = ["Shop", "Till", "Stock", "Cart"];
         foreach (string library in libraries)
@@ -179,8 +176,7 @@ public sealed class SystemWatchesTests : IDisposable
     /// <summary>The system's word that it dropped changes, come as the watcher's record is new, has the changes taken for
     /// lost and the folder walked again, once: the burst's look once it is quiet lists what it touched against the record
     /// that walk made, rather than taking the changes for lost again because the record is newer than the burst.</summary>
-    [AvaloniaFact]
-    public void A_drop_taken_for_lost_is_not_taken_for_lost_again_as_its_burst_is_looked_at_once_quiet()
+    internal void A_drop_taken_for_lost_is_not_taken_for_lost_again_as_its_burst_is_looked_at_once_quiet()
     {
         string folder = Directory.CreateDirectory(Path.Combine(apart, "dropped")).FullName;
         TestFolders.Write(folder, "One.cs", "class One { }\n");

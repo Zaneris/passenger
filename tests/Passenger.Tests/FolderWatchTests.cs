@@ -22,8 +22,91 @@ public sealed class FolderWatchTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Files and folders another program makes, changes, moves and deletes in the folder reach the Explorer,
+    /// Go to File, Local History and the open tabs, each watched the platform's own way: build output and a
+    /// repository's Git folder come and go, a file deleted and written again keeps its tab, lines changed on disk leave
+    /// breakpoints, bookmarks and the caret with their own lines, and Go to File lists what a walk of the folder lists,
+    /// through links and hidden folders too.</summary>
     [AvaloniaFact]
-    public void Files_created_changed_and_deleted_elsewhere_reach_the_explorer_go_to_file_and_the_open_tabs()
+    public void Files_and_folders_changed_elsewhere_reach_the_explorer_go_to_file_local_history_and_the_open_files()
+    {
+        Flow.StepApart<FolderWatchTests>("files created changed and deleted elsewhere reach the explorer Go to File and the open tabs", t => t.Files_created_changed_and_deleted_elsewhere_reach_the_explorer_go_to_file_and_the_open_tabs());
+        Flow.StepApart<FolderWatchTests>("build output folders made and deleted elsewhere come and go in the explorer", t => t.Build_output_folders_made_and_deleted_elsewhere_come_and_go_in_the_explorer(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("a repository git init makes outside the window is taken and one removed is let go", t => t.A_repository_git_init_makes_outside_the_window_is_taken_and_one_removed_is_let_go(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("a file deleted and written again at once keeps its tab with the new text and one deleted for good closes", t => t.A_file_deleted_and_written_again_at_once_keeps_its_tab_with_the_new_text_and_one_deleted_for_good_closes());
+        Flow.StepApart<FolderWatchTests>("lines changed on disk leave breakpoints bookmarks and the caret with their own lines", t => t.Lines_changed_on_disk_leave_breakpoints_bookmarks_and_the_caret_with_their_own_lines());
+        Flow.StepApart<FolderWatchTests>("a folder moved in or out hands over each of its files in the batch it comes or goes in", t => t.A_folder_moved_in_or_out_hands_over_each_of_its_files_in_the_batch_it_comes_or_goes_in(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("Go to File follows files and folders come and gone to list what a walk of the folder lists", t => t.Go_to_file_follows_files_and_folders_come_and_gone_to_list_what_a_walk_of_the_folder_lists());
+        Flow.StepApart<FolderWatchTests>("Go to File, Local History and the folder's projects see its files alike through links and hidden folders", t => t.Go_to_file_local_history_and_the_folders_projects_see_its_files_alike_through_links_and_hidden_folders());
+    }
+
+    /// <summary>An open file's unsaved edits are never lost to what another program does on disk: a change asks which
+    /// to keep and nothing is saved over the disk's version while it asks, a stray key answers neither way, a file
+    /// deleted stays open and saving writes it back, open files follow their folder renamed and a folder trashed makes
+    /// no autosave write it again, an agent's edit there says why it was not saved, a BOM added on disk survives the
+    /// next save, and two files whose names differ only in letter case are each saved to their own file.</summary>
+    [AvaloniaFact]
+    public void An_open_files_unsaved_edits_are_never_lost_to_what_another_program_does_to_it_on_disk()
+    {
+        Flow.StepApart<FolderWatchTests>("a file with unsaved edits changed on disk asks which to keep", t => t.A_file_with_unsaved_edits_changed_on_disk_asks_which_to_keep());
+        Flow.StepApart<FolderWatchTests>("while the conflict question is open nothing is saved over the disk's version", t => t.While_the_conflict_question_is_open_nothing_is_saved_over_the_disks_version());
+        Flow.StepApart<FolderWatchTests>("a key meant for the editor answers the conflict question neither way and the next save asks again", t => t.A_key_meant_for_the_editor_answers_the_conflict_question_neither_way_and_the_next_save_asks_again());
+        Flow.StepApart<FolderWatchTests>("a file with unsaved edits deleted on disk stays open and saving writes it back", t => t.A_file_with_unsaved_edits_deleted_on_disk_stays_open_and_saving_writes_it_back());
+        Flow.StepApart<FolderWatchTests>("open files follow their folder renamed elsewhere and their saves never make the old folder again", t => t.Open_files_follow_their_folder_renamed_elsewhere_and_their_saves_never_make_the_old_folder_again(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("a folder trashed elsewhere closes its open files and no autosave makes it again", t => t.A_folder_trashed_elsewhere_closes_its_open_files_and_no_autosave_makes_it_again(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("an agent's edit of a file whose folder has gone says why it was not saved", t => t.An_agents_edit_of_a_file_whose_folder_has_gone_says_why_it_was_not_saved());
+        Flow.StepApart<FolderWatchTests>("a BOM added on disk or a conversion to UTF-8 survives the next save without a question", t => t.A_BOM_added_on_disk_or_a_conversion_to_UTF_8_survives_the_next_save_without_a_question());
+        Flow.StepApart<CaseTellingFolderTests>("two files whose names differ only in case open as two documents each saved to its own file", t => t.Two_files_whose_names_differ_only_in_case_open_as_two_documents_each_saved_to_its_own_file());
+    }
+
+    /// <summary>Changes the platform's watcher lost (an error, an overflow, nothing heard, Git's watch failing) are
+    /// found again, as the watcher looks again or the window comes in front; and Linux's way, a watch for each folder
+    /// from a pool with a limit, leaves build output, dependencies and Git's objects unwatched, says once how to raise
+    /// the limit when it runs out, and leaves nothing watched under a moved folder's old name.</summary>
+    [AvaloniaFact]
+    public void Changes_the_watcher_lost_are_found_and_linuxs_watches_stay_within_their_limit()
+    {
+        Flow.StepApart<FolderWatchTests>("changes the watcher lost are read again into the open files the explorer and Go to File", t => t.Changes_the_watcher_lost_are_read_again_into_the_open_files_the_explorer_and_go_to_file(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("changes an overflow lost are found by listing again the folders they changed", t => t.Changes_an_overflow_lost_are_found_by_listing_again_the_folders_they_changed(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("files made and deleted unheard are found once the watcher looks again", t => t.Files_made_and_deleted_unheard_are_found_once_the_watcher_looks_again(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("files made and deleted while the watcher heard nothing are found once the window comes in front", t => t.Files_made_and_deleted_while_the_watcher_heard_nothing_are_found_once_the_window_comes_in_front(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("a branch switched while Git's watcher heard nothing is read once its watch fails", t => t.A_branch_switched_while_gits_watcher_heard_nothing_is_read_once_its_watch_fails(OperatingSystem.IsLinux()));
+        Flow.StepApart<FolderWatchTests>("watching each folder as on Linux leaves build output dependencies and Git's objects unwatched and follows new folders", t => t.Watching_each_folder_as_on_Linux_leaves_build_output_dependencies_and_gits_objects_unwatched_and_follows_new_folders());
+        Flow.StepApart<FolderWatchTests>("running out of inotify watches is one IDE error saying how to raise the limit", t => t.Running_out_of_inotify_watches_is_one_ide_error_saying_how_to_raise_the_limit());
+        Flow.StepApart<SystemWatchesTests>("windows opened and closed and folders changed many times leave the system watches as they were", t => t.Windows_opened_and_closed_and_folders_changed_many_times_leave_the_system_watches_as_they_were());
+        Flow.StepApart<SystemWatchesTests>("hundreds of folders watched apart share a few of the system's watchers and each hears its own changes", t => t.Hundreds_of_folders_watched_apart_share_a_few_of_the_systems_watchers_and_each_hears_its_own_changes());
+        Flow.StepApart<SystemWatchesTests>("a window over a solution of many projects and packages reads their folders through a few watchers", t => t.A_window_over_a_solution_of_many_projects_and_packages_reads_their_folders_through_a_few_watchers());
+        Flow.StepApart<SystemWatchesTests>("a drop taken for lost is not taken for lost again as its burst is looked at once quiet", t => t.A_drop_taken_for_lost_is_not_taken_for_lost_again_as_its_burst_is_looked_at_once_quiet());
+        Flow.StepApart<FolderWatchTests>("a folder moved away whose own watch is heard ending first leaves nothing watched under its old name", t => t.A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name());
+    }
+
+    /// <summary>What macOS's watcher drops from a stream read late, or falls minutes behind on saying nothing, is
+    /// found: as its word of the drop comes, and as the beat that goes on only while a window the person sees is in
+    /// front has the watchers look for themselves.</summary>
+    [AvaloniaFact]
+    public void What_macOSs_watcher_drops_or_falls_behind_on_is_found()
+    {
+        Flow.StepApart<FolderWatchTests>("changes macOS drops from a stream read late are found as its word of the drop comes", t => t.Changes_macOS_drops_from_a_stream_read_late_are_found_as_its_word_of_the_drop_comes());
+        Flow.StepApart<FolderWatchTests>("changes made while the system's watcher is behind are found as it lags", t => t.Changes_made_while_the_systems_watcher_is_behind_are_found_as_it_lags());
+        Flow.StepApart<FolderWatchTests>("the system's watchers' beat goes on only while a window the person sees is in front", t => t.The_systems_watchers_beat_goes_on_only_while_a_window_the_person_sees_is_in_front());
+    }
+
+    /// <summary>Projects and solutions written, moved in or out or changed on disk reach the Solution view, the run
+    /// configurations and the language server: a project added to the solution joins them, a changed .csproj has the
+    /// solution read again, a project and a program written or moved in with their folders are found and go with them,
+    /// and a folder's .sln and .slnx listing different projects give the Explorer and the language server the same
+    /// one.</summary>
+    [AvaloniaFact]
+    public void Projects_and_solutions_written_moved_or_changed_on_disk_reach_the_solution_view_the_run_configurations_and_the_language_server()
+    {
+        Flow.StepApart<FolderWatchTests>("a project added to the solution on disk joins the solution view and the run configurations", t => t.A_project_added_to_the_solution_on_disk_joins_the_solution_view_and_the_run_configurations());
+        Flow.StepApart<FolderWatchTests>("a .csproj changed elsewhere has the solution read again", t => t.A_proj_file_changed_elsewhere_has_the_solution_read_again());
+        Flow.StepApart<FolderWatchTests>("a project and a program written each with its folder are found with their run configurations", t => t.A_project_and_a_program_written_each_with_its_folder_are_found_with_their_run_configurations(false));
+        Flow.StepApart<FolderWatchTests>("a project and a program moved in with their folders whole are found and gone with their folders", t => t.A_project_and_a_program_moved_in_with_their_folders_whole_are_found_and_gone_with_their_folders(false));
+        Flow.StepApart<FolderWatchTests>("a folder's .sln and .slnx listing different projects give the explorer and the language server the same one", t => t.A_folders_sln_and_slnx_listing_different_projects_give_the_explorer_and_the_language_server_the_same_one());
+    }
+
+    private void Files_created_changed_and_deleted_elsewhere_reach_the_explorer_go_to_file_and_the_open_tabs()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         MainWindow window = Open();
@@ -47,10 +130,7 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>A build makes bin and obj after the folder opened, and a clean takes them away: the Explorer shows them come
     /// and go, dimmed as build output is, as it shows those there when the folder opened, though nothing in them is followed.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Build_output_folders_made_and_deleted_elsewhere_come_and_go_in_the_explorer(bool eachFolder)
+    private void Build_output_folders_made_and_deleted_elsewhere_come_and_go_in_the_explorer(bool eachFolder)
     {
         Write("Program.cs", "class Program { }\n");
         MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree);
@@ -70,10 +150,7 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>A repository git init makes in the folder from outside the window (a terminal) is taken as the folder watcher
     /// hears it, the branch widget naming its branch and the Commit window listing the folder's files; its .git removed,
     /// the window says again that the folder is in none. Watched each folder on its own as on Linux too.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_repository_git_init_makes_outside_the_window_is_taken_and_one_removed_is_let_go(bool eachFolder)
+    private void A_repository_git_init_makes_outside_the_window_is_taken_and_one_removed_is_let_go(bool eachFolder)
     {
         Write("Shop.cs", "class Shop { }\n");
         MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
@@ -102,8 +179,7 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>Git's checkout and rollback, and editors that save so, delete a file and write it anew: the open file
     /// keeps its tab, even when the deletion is handed over just before the file is there again.</summary>
-    [AvaloniaFact]
-    public void A_file_deleted_and_written_again_at_once_keeps_its_tab_with_the_new_text_and_one_deleted_for_good_closes()
+    private void A_file_deleted_and_written_again_at_once_keeps_its_tab_with_the_new_text_and_one_deleted_for_good_closes()
     {
         string path = Path.Combine(folder, "One.cs");
         File.WriteAllText(path, "class One { }\n");
@@ -134,39 +210,7 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A save writes the new text beside the file and moves it over the file, which the watcher takes for no
-    /// change of which files there are: the folder read again in that moment (another program's new file seen) leaves
-    /// the temporary file offered nowhere once the save is done.</summary>
-    [AvaloniaFact]
-    public void A_saves_temporary_file_there_as_the_folder_is_read_is_never_offered_by_go_to_file_find_in_files_or_the_explorer()
-    {
-        File.WriteAllText(Path.Combine(folder, "Shop.cs"), "class Shop { }\n");
-        MainWindow window = Open();
-        string saving = "Shop.cs" + FileText.SaveSuffix;
-
-        // There as a save has it, as another program's new file makes the window read the folder again.
-        File.WriteAllText(Path.Combine(folder, saving), "class Shop { }\n");
-        File.WriteAllText(Path.Combine(folder, "Two.cs"), "class Two { }\n");
-        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Two.cs"), "the new file in the Explorer");
-        Ui.WaitFor(() => window.FileIndex.Files.Contains("Two.cs"), "the new file in Go to File");
-        Assert.False(window.ExplorerView.Tree.Rows.Any(r => r.Name == saving), $"The Explorer shows {saving}, a save's temporary file, as a file of the folder");
-
-        Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
-        window.KeyTextInput("Shop");
-        Ui.Settle();
-        string[] offered = [.. Assert.IsType<Passenger.App.Navigation.GoToFilePopup>(window.Popup).Rows.Select(h => h.Name)];
-        Assert.True(offered.SequenceEqual(["Shop.cs"]), $"Go to File offers [{string.Join(", ", offered)}] for Shop, a save's temporary file among them");
-        Ui.Press(window, "ESCAPE");
-
-        Passenger.App.Navigation.FindInFilesPopup find = window.ShowFindInFiles(replace: false)!;
-        Ui.Search(find, "class Shop");
-        string[] found = [.. find.Matches.Select(m => Path.GetFileName(m.Path))];
-        Assert.True(found.SequenceEqual(["Shop.cs"]), $"Find in Files finds class Shop in [{string.Join(", ", found)}], a save's temporary file among them; the popup says '{find.Status}'");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_file_with_unsaved_edits_changed_on_disk_asks_which_to_keep()
+    private void A_file_with_unsaved_edits_changed_on_disk_asks_which_to_keep()
     {
         string path = Path.Combine(folder, "One.cs");
         File.WriteAllText(path, "class One { }\n");
@@ -198,8 +242,7 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void While_the_conflict_question_is_open_nothing_is_saved_over_the_disks_version()
+    private void While_the_conflict_question_is_open_nothing_is_saved_over_the_disks_version()
     {
         string path = Path.Combine(folder, "One.cs");
         File.WriteAllText(path, "class One { }\n");
@@ -227,8 +270,7 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>The File Cache Conflict comes on its own as another program writes the file, while the person may be
     /// typing, so a key meant for the editor answers it neither way: Escape and Enter close it with the edits kept unsaved
     /// and the disk's version as it was, and the next save asks again, where Keep Memory Changes writes the edits over it.</summary>
-    [AvaloniaFact]
-    public void A_key_meant_for_the_editor_answers_the_conflict_question_neither_way_and_the_next_save_asks_again()
+    private void A_key_meant_for_the_editor_answers_the_conflict_question_neither_way_and_the_next_save_asks_again()
     {
         string path = Path.Combine(folder, "One.cs");
         File.WriteAllText(path, "class One { }\n");
@@ -262,8 +304,7 @@ public sealed class FolderWatchTests : IDisposable
     private static Avalonia.Controls.Button Answer(ChoiceDialog dialog, string words) =>
         Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(dialog).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == words);
 
-    [AvaloniaFact]
-    public void A_file_with_unsaved_edits_deleted_on_disk_stays_open_and_saving_writes_it_back()
+    private void A_file_with_unsaved_edits_deleted_on_disk_stays_open_and_saving_writes_it_back()
     {
         string path = Path.Combine(folder, "Gone", "One.cs");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -286,10 +327,7 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>A folder renamed elsewhere (mv, git mv, Finder) is seen as that folder alone, not the files in it: its
     /// open files move with it, and a save writes them in its new place alone.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Open_files_follow_their_folder_renamed_elsewhere_and_their_saves_never_make_the_old_folder_again(bool eachFolder)
+    private void Open_files_follow_their_folder_renamed_elsewhere_and_their_saves_never_make_the_old_folder_again(bool eachFolder)
     {
         Assert.SkipWhen(eachFolder && OperatingSystem.IsWindows(), "Windows renames a folder only once its own watch lets go; there one watch covers the tree");
         string old = Path.Combine(folder, "src", "Old");
@@ -320,10 +358,7 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>Finder's Move to Trash renames a folder out of the one open, seen as that folder gone alone: an open file in
     /// it with no edits closes as a file deleted does, and one with edits keeps them, never written back there unasked.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_folder_trashed_elsewhere_closes_its_open_files_and_no_autosave_makes_it_again(bool eachFolder)
+    private void A_folder_trashed_elsewhere_closes_its_open_files_and_no_autosave_makes_it_again(bool eachFolder)
     {
         Assert.SkipWhen(eachFolder && OperatingSystem.IsWindows(), "Windows moves a folder only once its own watch lets go; there one watch covers the tree");
         string old = Path.Combine(folder, "src", "Old");
@@ -360,8 +395,7 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>An agent's edit of a file whose folder has gone (a volume ejected, a folder trashed elsewhere) keeps the edit
     /// and answers why it was not saved, in the save's own words.</summary>
-    [AvaloniaFact]
-    public void An_agents_edit_of_a_file_whose_folder_has_gone_says_why_it_was_not_saved()
+    private void An_agents_edit_of_a_file_whose_folder_has_gone_says_why_it_was_not_saved()
     {
         string old = Path.Combine(folder, "src", "Old");
         string trash = TestFolders.Create("trash-");
@@ -386,8 +420,7 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Lines_changed_on_disk_leave_breakpoints_bookmarks_and_the_caret_with_their_own_lines()
+    private void Lines_changed_on_disk_leave_breakpoints_bookmarks_and_the_caret_with_their_own_lines()
     {
         string path = Path.Combine(folder, "Long.cs");
         File.WriteAllText(path, string.Concat(Enumerable.Range(1, 60).Select(i => $"// line {i}\n")));
@@ -412,8 +445,7 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_BOM_added_on_disk_or_a_conversion_to_UTF_8_survives_the_next_save_without_a_question()
+    private void A_BOM_added_on_disk_or_a_conversion_to_UTF_8_survives_the_next_save_without_a_question()
     {
         string path = Path.Combine(folder, "One.cs");
         File.WriteAllText(path, "class One { }\n");
@@ -447,8 +479,7 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Watching_each_folder_as_on_Linux_leaves_build_output_dependencies_and_gits_objects_unwatched_and_follows_new_folders()
+    private void Watching_each_folder_as_on_Linux_leaves_build_output_dependencies_and_gits_objects_unwatched_and_follows_new_folders()
     {
         Write("src/App/App.cs", "class App { }\n");
         Write("src/App/bin/Debug/App.dll", "");
@@ -520,8 +551,7 @@ public sealed class FolderWatchTests : IDisposable
     /// where it went, each heard on its own thread: heard ending first, the folder lets go of the folders watched under it
     /// too, so none stays watched under its old name, and one made again there is watched anew. The system's watchers hear
     /// nothing while the folder moves but the moved folder's own watch ending.</summary>
-    [AvaloniaFact]
-    public void A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name()
+    private void A_folder_moved_away_whose_own_watch_is_heard_ending_first_leaves_nothing_watched_under_its_old_name()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows moves a watched folder only once its watch lets go");
         Write("src/Feature/Deep/Deep.cs", "class Deep { }\n");
@@ -547,8 +577,7 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Running_out_of_inotify_watches_is_one_ide_error_saying_how_to_raise_the_limit()
+    private void Running_out_of_inotify_watches_is_one_ide_error_saying_how_to_raise_the_limit()
     {
         Write("One/One.cs", "class One { }\n");
         Write("Two/Two.cs", "class Two { }\n");
@@ -578,10 +607,7 @@ public sealed class FolderWatchTests : IDisposable
     /// reads again what it shows, and a file the watcher's record held that is gone is named among the changes, for the
     /// language server to be told it went. Its watchers stop while the files change, so the changes are lost as an
     /// overflow loses them.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Changes_the_watcher_lost_are_read_again_into_the_open_files_the_explorer_and_go_to_file(bool eachFolder)
+    private void Changes_the_watcher_lost_are_read_again_into_the_open_files_the_explorer_and_go_to_file(bool eachFolder)
     {
         Write("One.cs", "class One { }\n");
         Write("Old/Old.cs", "class Old { }\n");
@@ -617,8 +643,7 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>macOS's stream of the folder, its reading held up as a loaded system holds it while thousands of files change,
     /// drops changes and says so: the watcher takes its word as an overflow and lists again what changed, so a commit, a file
     /// made in a new folder and one deleted among the dropped changes reach Git's status and Go to File.</summary>
-    [AvaloniaFact]
-    public void Changes_macOS_drops_from_a_stream_read_late_are_found_as_its_word_of_the_drop_comes()
+    private void Changes_macOS_drops_from_a_stream_read_late_are_found_as_its_word_of_the_drop_comes()
     {
         Assert.SkipUnless(FolderWatching.ReadsMacEvents, "Only macOS's stream of Passenger's own says when the system dropped its changes");
         Write("One.cs", "class One { }\n");
@@ -655,10 +680,7 @@ public sealed class FolderWatchTests : IDisposable
     /// what it lost is found by listing again the folders whose entries changed, against what the watcher last knew of
     /// them, rather than by reading the whole folder again. Its watchers stop while the files change, so the changes are
     /// lost as an overflow loses them.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Changes_an_overflow_lost_are_found_by_listing_again_the_folders_they_changed(bool eachFolder)
+    private void Changes_an_overflow_lost_are_found_by_listing_again_the_folders_they_changed(bool eachFolder)
     {
         Write("One.cs", "class One { }\n");
         Write("Old/Old.cs", "class Old { }\n");
@@ -694,10 +716,7 @@ public sealed class FolderWatchTests : IDisposable
     /// without a word, are found once the watcher is asked to look again: the folders whose stamp moved are listed against
     /// its record, and what came or went there is handed over, the whole folder never read again. Its watchers stop while
     /// the files change, so the changes are lost as a dropped event loses them.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Files_made_and_deleted_unheard_are_found_once_the_watcher_looks_again(bool eachFolder)
+    private void Files_made_and_deleted_unheard_are_found_once_the_watcher_looks_again(bool eachFolder)
     {
         Write("One.cs", "class One { }\n");
         Write("Old/Gone.cs", "class Gone { }\n");
@@ -729,10 +748,7 @@ public sealed class FolderWatchTests : IDisposable
     /// dropped without a word, are found once the window comes in front, as when a person comes back to it from a terminal:
     /// Go to File and the Explorer gain the one and lose the other, and Git's status lists both. The watchers stop while the
     /// files change, so the changes are lost as a dropped event loses them.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Files_made_and_deleted_while_the_watcher_heard_nothing_are_found_once_the_window_comes_in_front(bool eachFolder)
+    private void Files_made_and_deleted_while_the_watcher_heard_nothing_are_found_once_the_window_comes_in_front(bool eachFolder)
     {
         Write("One.cs", "class One { }\n");
         Write("Old/Gone.cs", "class Gone { }\n");
@@ -770,8 +786,7 @@ public sealed class FolderWatchTests : IDisposable
     /// written in place are found without the window coming in front: the beat goes unheard, so the watchers look for
     /// themselves until it is heard again, and Git's status, Go to File and the open file follow. The system's watchers,
     /// the beat's too, hear nothing while the files change.</summary>
-    [AvaloniaFact]
-    public void Changes_made_while_the_systems_watcher_is_behind_are_found_as_it_lags()
+    private void Changes_made_while_the_systems_watcher_is_behind_are_found_as_it_lags()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word; the others say when they lose changes");
         Write("One.cs", "class One { }\n");
@@ -817,42 +832,10 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A window opened while macOS's watcher is still behind from before, its beat having ended with the window
-    /// before it, finds a file made in a new folder as it opens: the system's watcher stays behind as the beat ends, and the
-    /// beat begun again goes on looking from when it fell behind. The window's own watcher hears nothing meanwhile, and Go
-    /// to File lists only what a watcher found.</summary>
-    [AvaloniaFact]
-    public void A_file_made_as_a_window_opens_while_the_systems_watcher_is_still_behind_is_found()
-    {
-        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word; the others say when they lose changes");
-        Write("One.cs", "class One { }\n");
-        string made = Path.Combine("Fresh", "Fresh.cs");
-        MainWindow before = Open(FolderWatching.WholeTree, languageServer: false);
-        WatchedFile beat = WatchLag.Canary ?? throw new InvalidOperationException("Nothing checks the system's watcher for lagging while a folder is watched");
-        using (beat.Deaf())
-        {
-            Ui.WaitFor(() => WatchLag.IsBehind, "the system's watcher taken for behind as its beat went unheard");
-            before.Close();
-        }
-        Assert.True(!WatchLag.IsBeating && WatchLag.IsBehind,
-            $"With its window closed the beat went on ({WatchLag.IsBeating}), or the system's watcher was taken for in time ({!WatchLag.IsBehind}) though nothing was heard in time since it fell behind");
-
-        MainWindow window = Open(FolderWatching.WholeTree, languageServer: false);
-        Ui.WaitFor(() => window.FileIndex.Files.Contains("One.cs"), "the folder's file in Go to File");
-        using (window.FolderWatcher!.Deaf())
-        {
-            Write(made, "class Fresh { }\n");
-            Ui.WaitFor(() => window.FileIndex.Files.Contains(made),
-                () => $"the file made as the window opened, while the system's watcher was still behind, in Go to File, which lists {string.Join(", ", window.FileIndex.Files)}");
-        }
-        window.Close();
-    }
-
     /// <summary>The system's watcher's beat goes on only while it can matter: while a window the person sees is in front,
     /// a write of its file and its change heard at each beat; never while that window is in the background, whose look as
     /// it comes in front finds what went unheard meanwhile, nor for a window closed as it came in front.</summary>
-    [AvaloniaFact]
-    public void The_systems_watchers_beat_goes_on_only_while_a_window_the_person_sees_is_in_front()
+    private void The_systems_watchers_beat_goes_on_only_while_a_window_the_person_sees_is_in_front()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's watcher falls behind without a word, so only there is a beat written");
         Write("One.cs", "class One { }\n");
@@ -898,10 +881,7 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>A branch switched from outside while the watcher of Git's folder heard nothing is read once that watcher's
     /// watch fails, which says at once that anything there may have moved, rather than at the next change it hears: in a
     /// folder opened below the repository's top, whose Git folder is outside it and watched apart.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_branch_switched_while_gits_watcher_heard_nothing_is_read_once_its_watch_fails(bool eachFolder)
+    private void A_branch_switched_while_gits_watcher_heard_nothing_is_read_once_its_watch_fails(bool eachFolder)
     {
         Write("src/Shop.cs", "class Shop { }\n");
         TestGit.Init(folder);
@@ -925,118 +905,10 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A folder of branches made while the watcher of Git's folder heard nothing, each folder watched on its own as
-    /// on Linux, is watched once the window comes in front: a branch made in it from outside after that joins the Git
-    /// window's branches. In a folder opened below the repository's top, whose Git folder is outside it and watched apart.</summary>
-    [AvaloniaFact]
-    public void A_folder_of_branches_made_while_gits_watcher_heard_nothing_is_watched_once_the_window_comes_in_front()
-    {
-        Write("src/Shop.cs", "class Shop { }\n");
-        TestGit.Init(folder);
-        MainWindow window = Open(FolderWatching.Inotify, languageServer: false, opened: Path.Combine(folder, "src"));
-        Ui.WaitFor(() => window.Vcs.Branch == "main", () => $"the branch read (it is {window.Vcs.Branch})");
-        Passenger.App.Vcs.GitWatcher git = Assert.Single(window.Vcs.GitWatchers);
-        window.Perform(AppActions.ShowGit);
-        Passenger.App.ToolWindows.BranchesPanel panel = window.GitBranches;
-        Ui.WaitFor(() => panel.Branches.Any(b => b.Ref.Name == "main"), () => $"the Git window's branches (they are {Branches()})");
-        IDisposable deaf = git.Deaf();
-        try
-        {
-            Git("branch", "team/one");
-        }
-        finally
-        {
-            deaf.Dispose();
-        }
-        window.Activate();
-        Ui.WaitFor(() => panel.Branches.Any(b => b.Ref.Name == "team/one"), () => $"the branch made unheard among the branches once the window came in front (they are {Branches()})");
-
-        Git("branch", "team/two");
-        Ui.WaitFor(() => panel.Branches.Any(b => b.Ref.Name == "team/two"), () => $"a branch made from outside in the folder of branches made unheard to join the branches, "
-            + $"where they are {Branches()} and Git's watcher watches {string.Join(", ", git.Watched.Select(k => Path.GetRelativePath(git.Top, k)))}");
-        window.Close();
-
-        string Branches() => string.Join(", ", panel.Branches.Select(b => b.Ref.Name));
-    }
-
-    /// <summary>A file made, which Go to File lists, then deleted unheard, as a burst on a busy machine drops the deletion's
-    /// event: the folder's watcher took the file into its record as it handed it over, so the listing after the burst
-    /// finds it gone, and Go to File lets it go. A batch's hand-over, looking at what came or went in it on disk, needs
-    /// nothing of the window's thread: the record takes in a file made while that thread runs nothing.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_file_made_then_deleted_unheard_is_found_gone_after_a_burst(bool eachFolder)
-    {
-        Write("One.cs", "class One { }\n");
-        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
-        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
-        FolderWatcher watcher = window.FolderWatcher!;
-        int entries = watcher.RecordSize.Entries;
-        Write("Brief.cs", "class Brief { }\n");
-        Assert.True(Ui.Idle(Waiting.Apart(() => Waiting.Until(() => watcher.RecordSize.Entries > entries, TimeSpan.FromSeconds(10))), "the record to take in a file made"),
-            "The folder's watcher took a file made into its record only once the window's thread ran, so a batch's hand-over looked at the disk there");
-        Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file made in Go to File");
-        IDisposable? deaf = null;
-        try
-        {
-            deaf = watcher.Deaf();
-            File.Delete(Path.Combine(folder, "Brief.cs"));
-            watcher.Fail(folder, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
-            Ui.PumpUntil(() => !window.FileIndex.Files.Contains("Brief.cs"),
-                $"Go to File to let go of the file deleted unheard, which it still lists among {string.Join(", ", window.FileIndex.Files)}", TimeSpan.FromSeconds(30));
-        }
-        finally
-        {
-            deaf?.Dispose();
-        }
-        window.Close();
-    }
-
-    /// <summary>The system's watcher saying it overflowed while a batch is handed over, after the batch was looked at for a
-    /// burst at risk, as a burst's last changes overflow it on a busy machine: what it lost is looked for all the same, so a
-    /// file deleted unheard then is found gone, and Go to File lets go of it.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void An_overflow_said_as_a_batch_is_handed_over_has_what_it_lost_found(bool eachFolder)
-    {
-        Write("One.cs", "class One { }\n");
-        Write("Brief.cs", "class Brief { }\n");
-        MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
-        Ui.Hold(TimeSpan.FromSeconds(3.5), "the watcher's record of the folder to be older than what an overflow may have lost");
-        FolderWatcher watcher = window.FolderWatcher!;
-        Ui.PumpUntil(() => window.FileIndex.Files.Contains("Brief.cs"), "the file in Go to File");
-        IDisposable? deaf = null;
-        int said = 0;
-        watcher.WhileNextHandOver(() =>
-        {
-            deaf = watcher.Deaf();
-            File.Delete(Path.Combine(folder, "Brief.cs"));
-            watcher.Fail(folder, new InternalBufferOverflowException("Too many changes at once; directory listing is required."));
-            Volatile.Write(ref said, 1);
-        });
-        try
-        {
-            Write("Heard.cs", "class Heard { }\n");
-            Ui.PumpUntil(() => Volatile.Read(ref said) == 1, "the next batch's hand-over");
-            Ui.PumpUntil(() => !window.FileIndex.Files.Contains("Brief.cs"),
-                $"Go to File to let go of the file deleted unheard as the watcher overflowed, which it still lists among {string.Join(", ", window.FileIndex.Files)}", TimeSpan.FromSeconds(30));
-        }
-        finally
-        {
-            deaf?.Dispose();
-        }
-        window.Close();
-    }
-
     /// <summary>A folder of fifty files moved into the folder from elsewhere, then out again, as a person's mv or file
     /// manager moves one: each of its files is handed over with it, come and then gone, in the batch the folder comes or
     /// goes in, the folder never read again whole, and Go to File follows.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_folder_moved_in_or_out_hands_over_each_of_its_files_in_the_batch_it_comes_or_goes_in(bool eachFolder)
+    private void A_folder_moved_in_or_out_hands_over_each_of_its_files_in_the_batch_it_comes_or_goes_in(bool eachFolder)
     {
         Write("One.cs", "class One { }\n");
         MainWindow window = Open(eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree, languageServer: false);
@@ -1066,8 +938,7 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>Go to File follows what another program makes, moves, renames and deletes, files and folders, a link, a
     /// letter's case and a save's temporary file among them, to list after each what a window opened on the folder afresh
     /// lists, in the same order (which Find in Files searches in).</summary>
-    [AvaloniaFact]
-    public void Go_to_file_follows_files_and_folders_come_and_gone_to_list_what_a_walk_of_the_folder_lists()
+    private void Go_to_file_follows_files_and_folders_come_and_gone_to_list_what_a_walk_of_the_folder_lists()
     {
         Write("App/App.cs", "class App { }\n");
         Write("App/Sub/Deep.cs", "class Deep { }\n");
@@ -1117,34 +988,6 @@ public sealed class FolderWatchTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Names with a '~' that is no 8.3 alias's come and go without Go to File's index walking the folder again: another
-    /// program's save, whose old file is set aside under the name Windows' ReplaceFile gives it, and an owner file beside
-    /// a workbook. The index then lists what a walk lists.</summary>
-    [AvaloniaFact]
-    public void A_tilde_in_the_names_another_program_saves_through_walks_nothing_again_for_go_to_file()
-    {
-        Write("App/App.cs", "class App { }\n");
-        Write("App/Book.xlsx", "a workbook\n");
-        MainWindow window = Open(languageServer: false);
-        string app = Path.Combine(folder, "App", "App.cs");
-        string written = Path.Combine(folder, "App", "App.cs.new");
-        string setAside = app + "~RF71cb1793.TMP";
-        FilesFollowed.Check(window, "A save that set App.cs aside as ReplaceFile does", [app, written, setAside], () =>
-        {
-            Write("App/App.cs.new", "class App { int saved; }\n");
-            File.Move(app, setAside);
-            File.Move(written, app);
-            File.Delete(setAside);
-        });
-        string owner = Path.Combine(folder, "App", "~$Book.xlsx");
-        FilesFollowed.Check(window, "An owner file made beside Book.xlsx", [owner], () => Write("App/~$Book.xlsx", "its owner\n"));
-        FilesFollowed.Check(window, "The owner file deleted", [owner], () => File.Delete(owner));
-        string[] walked = Walked(folder);
-        Ui.WaitFor(() => walked.SequenceEqual(window.FileIndex.Files),
-            () => $"Go to File to list [{string.Join(", ", walked)}], not [{string.Join(", ", window.FileIndex.Files)}]");
-        window.Close();
-    }
-
     /// <summary>The files a window opened on a folder afresh lists for Go to File, in their order.</summary>
     internal static string[] Walked(string root)
     {
@@ -1175,8 +1018,7 @@ public sealed class FolderWatchTests : IDisposable
         Ui.Settle();
     }
 
-    [AvaloniaFact]
-    public void A_project_added_to_the_solution_on_disk_joins_the_solution_view_and_the_run_configurations()
+    private void A_project_added_to_the_solution_on_disk_joins_the_solution_view_and_the_run_configurations()
     {
         Write("App/App.csproj", Project);
         Write("Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
@@ -1194,8 +1036,7 @@ public sealed class FolderWatchTests : IDisposable
 
     /// <summary>A .proj is a project file as a .csproj is, so one another program changes, here one the solution's project
     /// imports, has the solution read again and its project evaluated anew.</summary>
-    [AvaloniaFact]
-    public void A_proj_file_changed_elsewhere_has_the_solution_read_again()
+    private void A_proj_file_changed_elsewhere_has_the_solution_read_again()
     {
         Write("Shared.proj", Shared("one"));
         Write("App/App.csproj", Project.With("  <Import Project=\"../Shared.proj\" />\n"));
@@ -1214,10 +1055,7 @@ public sealed class FolderWatchTests : IDisposable
     /// <summary>A project and a program each written with its folder at once (as <c>dotnet new -o</c> and an agent write
     /// them) are the folder's, each with its run configuration, watched the system's way and as on Linux, each folder on
     /// its own, whose watch on a new folder begins only once the files are written in it.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_project_and_a_program_written_each_with_its_folder_are_found_with_their_run_configurations(bool asOnLinux)
+    private void A_project_and_a_program_written_each_with_its_folder_are_found_with_their_run_configurations(bool asOnLinux)
     {
         Write("App/App.csproj", Project);
         MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
@@ -1234,10 +1072,7 @@ public sealed class FolderWatchTests : IDisposable
     /// an unzip lands them (which the system may tell as each folder alone, never the files in it), are the folder's, each
     /// with its run configuration; the project's folder deleted and the program's moved out (as to the Trash), both are
     /// gone. Watched the system's way and as on Linux, each folder on its own.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_project_and_a_program_moved_in_with_their_folders_whole_are_found_and_gone_with_their_folders(bool asOnLinux)
+    private void A_project_and_a_program_moved_in_with_their_folders_whole_are_found_and_gone_with_their_folders(bool asOnLinux)
     {
         Write("App/App.csproj", Project);
         MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
@@ -1270,78 +1105,11 @@ public sealed class FolderWatchTests : IDisposable
         static IReadOnlyList<string> Configurations(MainWindow window) => [.. window.Configurations.Select(c => c.Name).Order(StringComparer.Ordinal)];
     }
 
-    /// <summary>A program brought into a folder with no solution with its folder whole, nothing else coming with it, is the
-    /// folder's with its run configuration, its head read for its directive; its folder moved out, it is gone. Watched the
-    /// system's way and as on Linux.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_program_moved_in_with_its_folder_alone_is_found_and_gone_with_it(bool asOnLinux)
-    {
-        Write("App/App.csproj", Project);
-        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
-        Assert.Equal(["App"], Names(window.Projects));
-        string elsewhere = PathNames.Canonical(TestFolders.Create("elsewhere-"));
-        try
-        {
-            TestFolders.Write(elsewhere, "scripts/hello.cs", "#:property PublishAot=false\nConsole.WriteLine(\"hello\");\n");
-            TestFolders.Write(elsewhere, "scripts/notes.cs", "// Not a program: no directive, and the folder has a project.\n");
-            Directory.Move(Path.Combine(elsewhere, "scripts"), Path.Combine(folder, "scripts"));
-            Ui.WaitFor(() => Names(window.Projects) is ["App", "hello"] && Names(window.Configurations) is ["App", "hello"],
-                () => $"hello.cs, moved in with its folder, the folder's with its run configuration; its projects are {string.Join(", ", Names(window.Projects))} "
-                    + $"and its run configurations {string.Join(", ", Names(window.Configurations))}");
-
-            Directory.Move(Path.Combine(folder, "scripts"), Path.Combine(elsewhere, "gone"));
-            Ui.WaitFor(() => Names(window.Projects) is ["App"] && Names(window.Configurations) is ["App"],
-                () => $"hello.cs gone with its folder, and its run configuration; the folder's projects are {string.Join(", ", Names(window.Projects))} "
-                    + $"and its run configurations {string.Join(", ", Names(window.Configurations))}");
-        }
-        finally
-        {
-            window.Close();
-            TestFolders.Delete(elsewhere);
-        }
-    }
-
-    /// <summary>A project's folder replaced by another of the same name between the folder watcher hearing of it and handing it
-    /// over, as a checkout or a sync swapping it whole lands in one batch, which names the folder alone: the project the new
-    /// folder holds is the folder's with its run configuration, and the one gone with the old folder is not. Watched the
-    /// system's way and as on Linux.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_project_folder_replaced_under_its_name_within_one_batch_brings_the_project_it_holds(bool asOnLinux)
-    {
-        Write("App/App.csproj", Project);
-        Write("Tool/Tool.csproj", Project);
-        Write("Tool/Program.cs", "Console.WriteLine(\"tool\");\n");
-        MainWindow window = Open(asOnLinux ? FolderWatching.Inotify : FolderWatching.Platform, languageServer: false);
-        Assert.Equal(["App", "Tool"], Names(window.Projects));
-        string elsewhere = PathNames.Canonical(TestFolders.Create("elsewhere-"));
-        try
-        {
-            TestFolders.Write(elsewhere, "Tool/Gadget.csproj", Project);
-            TestFolders.Write(elsewhere, "Tool/Program.cs", "Console.WriteLine(\"gadget\");\n");
-            string tool = Path.Combine(folder, "Tool");
-            window.FolderWatcher!.WhileNextHandOver(() => Directory.Move(Path.Combine(elsewhere, "Tool"), tool));
-            Directory.Move(tool, Path.Combine(elsewhere, "Old"));
-            Ui.WaitFor(() => Names(window.Projects) is ["App", "Gadget"] && Names(window.Configurations) is ["App", "Gadget"],
-                () => $"Gadget, in the Tool folder that took the old one's place, the folder's with its run configuration and Tool gone; its projects are "
-                    + $"{string.Join(", ", Names(window.Projects))} and its run configurations {string.Join(", ", Names(window.Configurations))}");
-        }
-        finally
-        {
-            window.Close();
-            TestFolders.Delete(elsewhere);
-        }
-    }
-
     private static IReadOnlyList<string> Names(IEnumerable<ProjectModel> projects) => [.. projects.Select(p => p.Name).Order(StringComparer.Ordinal)];
 
     private static IReadOnlyList<string> Names(IEnumerable<Passenger.App.Run.RunConfiguration> configurations) => [.. configurations.Select(c => c.Name).Order(StringComparer.Ordinal)];
 
-    [AvaloniaFact]
-    public void A_folders_sln_and_slnx_listing_different_projects_give_the_explorer_and_the_language_server_the_same_one()
+    private void A_folders_sln_and_slnx_listing_different_projects_give_the_explorer_and_the_language_server_the_same_one()
     {
         // As dotnet sln migrate leaves a folder, with a project added to the .slnx since.
         Write("App/App.csproj", Project);
@@ -1373,8 +1141,7 @@ public sealed class FolderWatchTests : IDisposable
     /// links lead to it again, back up the tree or out of the folder, never build output or the system's own files; a folder
     /// with no solution takes its projects from those files but a hidden folder's (a tool's copy); and a folder another
     /// program makes, a link back up in it, is kept by Local History file for file as Go to File lists it.</summary>
-    [AvaloniaFact]
-    public void Go_to_file_local_history_and_the_folders_projects_see_its_files_alike_through_links_and_hidden_folders()
+    private void Go_to_file_local_history_and_the_folders_projects_see_its_files_alike_through_links_and_hidden_folders()
     {
         Write("App/App.csproj", Project);
         Write("App/Program.cs", "System.Console.WriteLine(\"app\");\n");
@@ -1466,11 +1233,21 @@ public sealed class FolderWatchTests : IDisposable
 [Collection(Alone.Name)]
 public sealed class FolderWatchBytesTests
 {
+    /// <summary>What a file made or deleted costs Go to File among twenty thousand against two thousand, a change under
+    /// build output no watch matches, and a child's kill with three hundred other processes running, each held to what
+    /// it costs in the small case, counted on every thread as this class runs alone.</summary>
+    [AvaloniaFact]
+    public async Task What_a_file_change_and_a_childs_kill_cost_stays_the_same_as_the_folder_and_the_machine_grow()
+    {
+        Flow.StepApart<FolderWatchBytesTests>("a file made or deleted among twenty thousand costs Go to File what it does among two thousand", t => t.A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand());
+        Flow.StepApart<WatcherChurnTests>("a change under build output no registration matches costs no allocation", t => t.A_change_under_build_output_no_registration_matches_costs_no_allocation());
+        await Flow.StepApartAsync("a kill allocates no more with three hundred other processes running", () => new ChildKillCostTests(TestContext.Current.TestOutputHelper!), t => t.A_kill_allocates_no_more_with_three_hundred_other_processes_running());
+    }
+
     /// <summary>A file made in the folder joins Go to File, and one deleted leaves it, without a walk of the folder: over
     /// 20,000 files each batch allocates (on every thread, the least of three) under 8 bytes for each file more than over
     /// 2,000, where walking the folder again cost hundreds; and Go to File then lists what a walk lists, in its order.</summary>
-    [AvaloniaFact]
-    public void A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand()
+    private void A_file_made_or_deleted_among_twenty_thousand_costs_go_to_file_what_it_does_among_two_thousand()
     {
         string few = PathNames.Canonical(TestFolders.Create("watch-few-"));
         string many = PathNames.Canonical(TestFolders.Create("watch-many-"));

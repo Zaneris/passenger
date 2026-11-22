@@ -12,8 +12,7 @@ public sealed class WatcherChurnTests
 {
     private const string Project = "/game/App";
 
-    [Fact]
-    public void A_change_under_build_output_no_registration_matches_costs_no_allocation()
+    internal void A_change_under_build_output_no_registration_matches_costs_no_allocation()
     {
         FileWatch sources = new(Project, "**/*.{cs,csx}", WatchKinds.Create | WatchKinds.Change | WatchKinds.Delete);
         FileWatch assets = new($"{Project}/obj", "project.assets.json", WatchKinds.Create | WatchKinds.Change | WatchKinds.Delete);

@@ -13,8 +13,7 @@ public sealed class ChildReadsTests
 {
     /// <summary>A child writing without end, whose output's read fails after its first 64 KB, is ended, and the run fails
     /// with the read's IOException: neither the child, writing to a pipe nobody reads, nor the run waits for good.</summary>
-    [Fact]
-    public async Task A_read_of_a_childs_output_that_fails_part_of_the_way_ends_the_child_and_fails_the_run_with_what_it_threw()
+    internal async Task A_read_of_a_childs_output_that_fails_part_of_the_way_ends_the_child_and_fails_the_run_with_what_it_threw()
     {
         ProcessStartInfo start = ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["chatter"]);
         int child = 0;

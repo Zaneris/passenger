@@ -25,8 +25,23 @@ public sealed class ParentFoldersTests : IDisposable
         TestFolders.Delete(parent);
     }
 
-    [Fact]
-    public void A_walk_up_from_the_persons_home_reads_every_folder_to_the_root_of_its_disk()
+    /// <summary>What a folder's parents decide (an .editorconfig, a TypeScript) is taken from the person's own parents
+    /// alone: a walk up from home reads every folder to the root of its disk, an .editorconfig in the person's own
+    /// parent decides the indent whatever the folder's trust, one in a parent another user owns or put in the person's
+    /// own is passed over with the log saying where the walk ended, a TypeScript in another user's parent never runs,
+    /// and an .editorconfig at the top of an exFAT volume still decides the indent below it.</summary>
+    [AvaloniaFact]
+    public void What_a_parent_folder_decides_is_taken_only_from_the_persons_own()
+    {
+        Flow.StepApart<ParentFoldersTests>("a walk up from the person's home reads every folder to the root of its disk", t => t.A_walk_up_from_the_persons_home_reads_every_folder_to_the_root_of_its_disk());
+        Flow.StepApart<ParentFoldersTests>("an editorconfig in the person's own parent folder decides the indent whatever the folder's mode", t => t.An_editorconfig_in_the_persons_own_parent_folder_decides_the_indent_whatever_the_folders_mode());
+        Flow.StepApart<ParentFoldersTests>("an editorconfig in a parent folder another user owns is passed over and the log says where the walk ended", t => t.An_editorconfig_in_a_parent_folder_another_user_owns_is_passed_over_and_the_log_says_where_the_walk_ended());
+        Flow.StepApart<ParentFoldersTests>("an editorconfig another user put in the person's own parent is passed over", t => t.An_editorconfig_another_user_put_in_the_persons_own_parent_is_passed_over());
+        Flow.StepApart<ParentFoldersTests>("a TypeScript in a parent another user owns never runs and one in the person's own parent serves the folder", t => t.A_TypeScript_in_a_parent_another_user_owns_never_runs_and_one_in_the_persons_own_parent_serves_the_folder());
+        Flow.StepApart<ParentFoldersTests>("an editorconfig at the top of an exFAT volume decides the indent of a project below it", t => t.An_editorconfig_at_the_top_of_an_exFAT_volume_decides_the_indent_of_a_project_below_it());
+    }
+
+    private void A_walk_up_from_the_persons_home_reads_every_folder_to_the_root_of_its_disk()
     {
         string home = PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         string[] walked = [.. FoldersUp.From(home)];
@@ -34,8 +49,7 @@ public sealed class ParentFoldersTests : IDisposable
             $"The walk up from {home} read {string.Join(", ", walked)} and no further, so a global.json or .editorconfig the person keeps above their projects there goes unread");
     }
 
-    [AvaloniaFact]
-    public void An_editorconfig_in_the_persons_own_parent_folder_decides_the_indent_whatever_the_folders_mode()
+    private void An_editorconfig_in_the_persons_own_parent_folder_decides_the_indent_whatever_the_folders_mode()
     {
         string app = App();
         Mode(Everyones);
@@ -50,8 +64,7 @@ public sealed class ParentFoldersTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_editorconfig_in_a_parent_folder_another_user_owns_is_passed_over_and_the_log_says_where_the_walk_ended()
+    private void An_editorconfig_in_a_parent_folder_another_user_owns_is_passed_over_and_the_log_says_where_the_walk_ended()
     {
         string app = App();
         using IDisposable another = FoldersUp.HeldByAnother(parent);
@@ -69,8 +82,7 @@ public sealed class ParentFoldersTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_editorconfig_another_user_put_in_the_persons_own_parent_is_passed_over()
+    private void An_editorconfig_another_user_put_in_the_persons_own_parent_is_passed_over()
     {
         string app = App();
         string planted = Path.Combine(parent, ".editorconfig");
@@ -88,8 +100,7 @@ public sealed class ParentFoldersTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_TypeScript_in_a_parent_another_user_owns_never_runs_and_one_in_the_persons_own_parent_serves_the_folder()
+    private void A_TypeScript_in_a_parent_another_user_owns_never_runs_and_one_in_the_persons_own_parent_serves_the_folder()
     {
         WebLanguagesTests.SkipWithoutNode(typescript: true);
         string ran = Path.Combine(parent, "tsserver.marker");
@@ -131,8 +142,7 @@ public sealed class ParentFoldersTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_editorconfig_at_the_top_of_an_exFAT_volume_decides_the_indent_of_a_project_below_it()
+    private void An_editorconfig_at_the_top_of_an_exFAT_volume_decides_the_indent_of_a_project_below_it()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "A test's exFAT volume is a disk image, on macOS alone");
         string volume = Directory.CreateDirectory(Path.Combine(parent, "volume")).FullName;

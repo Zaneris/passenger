@@ -8,8 +8,7 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class HelperMemoryTests
 {
-    [Fact]
-    public void A_helper_runs_conserving_memory_unless_the_person_set_it_themselves()
+    internal void A_helper_runs_conserving_memory_unless_the_person_set_it_themselves()
     {
         ProcessStartInfo start = ChildProcesses.ConservingMemory(ChildProcesses.HelperCommand("Passenger.Host.dll", []));
         string? persons = Environment.GetEnvironmentVariable(RuntimeVariables.ConserveMemory);

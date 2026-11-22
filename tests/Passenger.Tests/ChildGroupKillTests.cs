@@ -12,8 +12,7 @@ public sealed class ChildGroupKillTests
     /// <summary>Each of the child's forks writes a line a fifth of a second after it starts, so one that outlived the kill
     /// is seen writing after it, where what was writing as the child was killed has landed by a twentieth of a second.
     /// Thirty rounds, as one kill of the group passed over such a fork in about one round of twenty.</summary>
-    [Fact]
-    public async Task A_child_forking_as_it_is_killed_leaves_nothing_of_its_group_to_write_after()
+    internal async Task A_child_forking_as_it_is_killed_leaves_nothing_of_its_group_to_write_after()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows ends a child with its tree and held family, not a process group");
         CancellationToken cancel = TestContext.Current.CancellationToken;

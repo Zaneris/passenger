@@ -14,8 +14,7 @@ public sealed class SecretValuesTests
 
     /// <summary>A quoted password holding an escaped quote is masked to its real closing quote, as a JSON member and as a
     /// <c>NAME="value"</c>, the words after it kept; one whose quote no other closes is masked to that quote.</summary>
-    [Fact]
-    public void A_quoted_password_holding_an_escaped_quote_is_masked_whole()
+    internal void A_quoted_password_holding_an_escaped_quote_is_masked_whole()
     {
         Assert.Equal($$"""{"user": "ada", "password": "{{Masked}}", "host": "db"}""",
             ContainerSecrets.InSaid("""{"user": "ada", "password": "abc\"def", "host": "db"}"""));
@@ -28,8 +27,7 @@ public sealed class SecretValuesTests
     /// <summary>A signed URL's signature grants what the URL reaches, so an Azure SAS's sig and an S3 or GCS presigned URL's
     /// signature and session token are masked as a password is: dropped from a URL Passenger offers to open, and masked in a
     /// container's or Aspire resource's variable, in what a program says and in a connection string's SAS, the rest kept.</summary>
-    [Fact]
-    public void A_signed_urls_signature_is_masked_in_a_url_offered_a_variables_value_and_what_a_program_says()
+    internal void A_signed_urls_signature_is_masked_in_a_url_offered_a_variables_value_and_what_a_program_says()
     {
         const string Sas = "https://shop.blob.core.windows.net/orders/a.json?sv=2025-01-05&sp=r&se=2026-12-31T00%3A00%3A00Z&sr=b&sig=SasSig0123%2Bab%3D";
         const string S3 = "https://shop.s3.us-east-1.amazonaws.com/a.json?X-Amz-Algorithm=AWS4-HMAC-SHA256"
@@ -59,8 +57,7 @@ public sealed class SecretValuesTests
     /// <summary>A command's parameter is masked in the Requests window and an agent's answer when any column it meets is a
     /// secret's, not only the first: one compared with a name and then a password, each of an IN list's, one inside an IN's
     /// query (EF Core's Contains on SQLite) and an ANY's array (on PostgreSQL); one meeting no secret's column shows.</summary>
-    [Fact]
-    public void A_commands_parameter_meeting_a_secrets_column_anywhere_in_it_is_masked()
+    internal void A_commands_parameter_meeting_a_secrets_column_anywhere_in_it_is_masked()
     {
         Assert.Equal("@p0='••••••'", Parameters("@p0='hunter22' (Size = 8)", "SELECT * FROM \"Users\" WHERE \"Name\" = @p0 OR \"Password\" = @p0"));
         Assert.Equal("@p0='••••••', @p1='••••••', @p2='Ada' (Size = 3)",

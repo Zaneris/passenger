@@ -15,8 +15,7 @@ public sealed class ChildKillCostTests(ITestOutputHelper output)
     /// <summary>The kills each case takes the least of, as a collection on the thread may count a few kilobytes it never used.</summary>
     private const int Rounds = 5;
 
-    [Fact]
-    public async Task A_kill_allocates_no_more_with_three_hundred_other_processes_running()
+    internal async Task A_kill_allocates_no_more_with_three_hundred_other_processes_running()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows ends a child with its tree and held family, not a process group");
         CancellationToken cancel = TestContext.Current.CancellationToken;

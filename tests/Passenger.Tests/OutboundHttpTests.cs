@@ -11,8 +11,21 @@ namespace Passenger.Tests;
 /// window tests: it names the symbol server in the process's environment.</summary>
 public sealed class OutboundHttpTests
 {
+    /// <summary>What leaves the IDE carries no secret: values shown to a person or an agent are masked through the one
+    /// mask (a quoted password holding an escaped quote whole, a signed URL's signature, a command's parameter meeting
+    /// a secret's column), and Passenger's own requests carry a User-Agent naming it but no cookie an earlier answer
+    /// set and no trace header, an answer read whole held to the most its reader takes.</summary>
     [Fact]
-    public async Task A_Source_Link_request_carries_Passengers_User_Agent_and_no_cookie_or_trace_header()
+    public async Task What_leaves_the_ide_carries_no_secret()
+    {
+        Flow.StepApart<SecretValuesTests>("a quoted password holding an escaped quote is masked whole", t => t.A_quoted_password_holding_an_escaped_quote_is_masked_whole());
+        Flow.StepApart<SecretValuesTests>("a signed URL's signature is masked in a URL offered, a variable's value and what a program says", t => t.A_signed_urls_signature_is_masked_in_a_url_offered_a_variables_value_and_what_a_program_says());
+        Flow.StepApart<SecretValuesTests>("a command's parameter meeting a secret's column anywhere in it is masked", t => t.A_commands_parameter_meeting_a_secrets_column_anywhere_in_it_is_masked());
+        await Flow.StepApartAsync("a Source Link request carries Passenger's User Agent and no cookie or trace header", () => new OutboundHttpTests(), t => t.A_Source_Link_request_carries_Passengers_User_Agent_and_no_cookie_or_trace_header());
+        await Flow.StepApartAsync("an answer read whole is held to the most its reader takes whether or not it says its length", () => new OutboundHttpTests(), t => t.An_answer_read_whole_is_held_to_the_most_its_reader_takes_whether_or_not_it_says_its_length());
+    }
+
+    private async Task A_Source_Link_request_carries_Passengers_User_Agent_and_no_cookie_or_trace_header()
     {
         List<StandInHttp.Exchange> asked = [];
         await using StandInHttp symbols = new(async exchange =>
@@ -61,8 +74,7 @@ public sealed class OutboundHttpTests
             $"Source Link's second request sent back the cookie the symbol server's first answer set, so a host can follow one IDE's requests:\n{requests[1].Head}");
     }
 
-    [Fact]
-    public async Task An_answer_read_whole_is_held_to_the_most_its_reader_takes_whether_or_not_it_says_its_length()
+    private async Task An_answer_read_whole_is_held_to_the_most_its_reader_takes_whether_or_not_it_says_its_length()
     {
         byte[] large = new byte[1_300_000];
         await using StandInHttp host = new(async exchange =>

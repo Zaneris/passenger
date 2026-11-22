@@ -8,8 +8,7 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class HelperHostTests
 {
-    [Fact]
-    public async Task A_helpers_properties_of_every_kind_reach_it_as_its_own_host_gives_them()
+    internal async Task A_helpers_properties_of_every_kind_reach_it_as_its_own_host_gives_them()
     {
         TimeSpan limit = TimeSpan.FromSeconds(60).Scaled();
         ChildResult own = await ChildProcesses.RunAsync(ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["appcontext"]), limit: limit, cancel: TestContext.Current.CancellationToken);

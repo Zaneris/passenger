@@ -16,8 +16,46 @@ namespace Passenger.Tests;
 /// Folder, and then each; its trust taken back in Settings, and its answer forgotten.</summary>
 public sealed class WorkspaceTrustTests
 {
+    /// <summary>A folder not trusted runs none of its code until the person trusts it, and trusting starts what was
+    /// held back: its targets, Git's programs, the monitor and the language server, its own TypeScript where the
+    /// carried one served meanwhile, a project added to its solution without the restore that would run its MSBuild
+    /// files, a mobile project kept from before with none of its targets run, and the SDK its global.json, or one above
+    /// a trusted folder, names.</summary>
     [AvaloniaFact]
-    public void An_untrusted_folder_runs_none_of_its_code_until_trusted_then_its_targets_git_monitor_and_language_server_run()
+    public void An_untrusted_folder_runs_none_of_its_code_until_the_person_trusts_it()
+    {
+        Flow.StepApart<WorkspaceTrustTests>("an untrusted folder runs none of its code until trusted then its targets git monitor and language server run", t => t.An_untrusted_folder_runs_none_of_its_code_until_trusted_then_its_targets_git_monitor_and_language_server_run());
+        Flow.StepApart<WorkspaceTrustTests>("an untrusted folder is served by the carried TypeScript until trusted then by its own", t => t.An_untrusted_folder_is_served_by_the_carried_TypeScript_until_trusted_then_by_its_own());
+        Flow.StepApart<WorkspaceTrustTests>("a project added to a solution not trusted is made without its restore which would run the folder's MSBuild files", t => t.A_project_added_to_a_solution_not_trusted_is_made_without_its_restore_which_would_run_the_folders_MSBuild_files());
+        Flow.StepApart<WorkspaceTrustTests>("a mobile project kept from before is shown in a folder not trusted and none of its targets run until trusted", t => t.A_mobile_project_kept_from_before_is_shown_in_a_folder_not_trusted_and_none_of_its_targets_run_until_trusted());
+        Flow.StepApart<WorkspaceTrustTests>("a folder not trusted never runs the SDK its global.json names until trusted", t => t.A_folder_not_trusted_never_runs_the_sdk_its_global_json_names_until_trusted());
+        Flow.StepApart<WorkspaceTrustTests>("a trusted folder never runs the SDK a global.json above it names until that folder is trusted too", t => t.A_trusted_folder_never_runs_the_sdk_a_global_json_above_it_names_until_that_folder_is_trusted_too());
+    }
+
+    /// <summary>Trust is the person's: asked once and kept, a parent covering its folders and a folder in a Git
+    /// repository trusted with the repository, a kept trust below the repository's top asked again naming it, a new
+    /// solution made in a repository not trusted opening untrusted, and trust taken back in Settings ending the
+    /// language server, saying what runs on and asking again at the next open.</summary>
+    [AvaloniaFact]
+    public void Trust_is_asked_once_kept_covers_what_it_should_and_is_taken_back_only_in_settings()
+    {
+        Flow.StepApart<WorkspaceTrustTests>("the trust question is asked once and kept and a parent folder trusted covers the folders in it", t => t.The_trust_question_is_asked_once_and_kept_and_a_parent_folder_trusted_covers_the_folders_in_it());
+        Flow.StepApart<WorkspaceTrustTests>("a folder in a Git repository is trusted with the repository whose build files its project then evaluates with", t => t.A_folder_in_a_Git_repository_is_trusted_with_the_repository_whose_build_files_its_project_then_evaluates_with());
+        Flow.StepApart<WorkspaceTrustTests>("a trust kept of a folder below its repository's top is asked again naming the repository", t => t.A_trust_kept_of_a_folder_below_its_repositorys_top_is_asked_again_naming_the_repository());
+        Flow.StepApart<WorkspaceTrustTests>("a new solution made in a Git repository not trusted is not trusted and opens asking of the repository", t => t.A_new_solution_made_in_a_Git_repository_not_trusted_is_not_trusted_and_opens_asking_of_the_repository());
+        Flow.StepApart<WorkspaceTrustTests>("trust taken back in Settings ends the language server says what runs on and forgotten asks again at the next open", t => t.Trust_taken_back_in_Settings_ends_the_language_server_says_what_runs_on_and_forgotten_asks_again_at_the_next_open());
+    }
+
+    /// <summary>A file Git stores through a filter runs no filter in a folder not trusted: it is offered for commit,
+    /// rolled back, stashed and checked out only once the folder is trusted.</summary>
+    [AvaloniaFact]
+    public void A_file_git_stores_through_a_filter_is_written_or_committed_only_once_the_folder_is_trusted()
+    {
+        Flow.StepApart<WorkspaceTrustTests>("a file stored through a git filter is offered for commit only once the folder is trusted", t => t.A_file_stored_through_a_git_filter_is_offered_for_commit_only_once_the_folder_is_trusted());
+        Flow.StepApart<WorkspaceTrustTests>("rollback stash and checkout writing out a file stored through a git filter are offered only once the folder is trusted", t => t.Rollback_stash_and_checkout_writing_out_a_file_stored_through_a_git_filter_are_offered_only_once_the_folder_is_trusted());
+    }
+
+    private void An_untrusted_folder_runs_none_of_its_code_until_trusted_then_its_targets_git_monitor_and_language_server_run()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-"));
         // Outside the folder, whose watcher would hear each mark and have Git's status read again, marking it again.
@@ -75,8 +113,7 @@ public sealed class WorkspaceTrustTests
         }
     }
 
-    [AvaloniaFact]
-    public void The_trust_question_is_asked_once_and_kept_and_a_parent_folder_trusted_covers_the_folders_in_it()
+    private void The_trust_question_is_asked_once_and_kept_and_a_parent_folder_trusted_covers_the_folders_in_it()
     {
         string parent = PathNames.Canonical(TestFolders.Create("trusted-parent-"));
         string first = Directory.CreateDirectory(Path.Combine(parent, "First")).FullName;
@@ -136,8 +173,7 @@ public sealed class WorkspaceTrustTests
     /// folder beside it in the repository trusted too, and the folder's project evaluates with the repository's
     /// Directory.Build.props; taken back, no folder in it is trusted, and the banner's Trust Folder trusts the repository
     /// again.</summary>
-    [AvaloniaFact]
-    public void A_folder_in_a_Git_repository_is_trusted_with_the_repository_whose_build_files_its_project_then_evaluates_with()
+    private void A_folder_in_a_Git_repository_is_trusted_with_the_repository_whose_build_files_its_project_then_evaluates_with()
     {
         string repository = PathNames.Canonical(TestFolders.Create("trusted-repository-"));
         TestGit.Run(repository, "init", "-q");
@@ -199,8 +235,7 @@ public sealed class WorkspaceTrustTests
     /// <summary>A trust kept from before of a folder below the top of its Git repository, given before trusting it named the
     /// repository, is forgotten as the window takes in what it keeps: the folder opens untrusted and asks again, naming the
     /// repository, whose Trust trusts the repository, kept in the folder's place.</summary>
-    [AvaloniaFact]
-    public void A_trust_kept_of_a_folder_below_its_repositorys_top_is_asked_again_naming_the_repository()
+    private void A_trust_kept_of_a_folder_below_its_repositorys_top_is_asked_again_naming_the_repository()
     {
         string repository = PathNames.Canonical(TestFolders.Create("kept-repository-"));
         TestGit.Run(repository, "init", "-q");
@@ -232,8 +267,7 @@ public sealed class WorkspaceTrustTests
     /// <summary>A new solution made in a Git repository the person has not trusted is not trusted as it is made, as its
     /// projects would take in the repository's build files: it is made without its restore, and opens asking of the
     /// repository.</summary>
-    [AvaloniaFact]
-    public void A_new_solution_made_in_a_Git_repository_not_trusted_is_not_trusted_and_opens_asking_of_the_repository()
+    private void A_new_solution_made_in_a_Git_repository_not_trusted_is_not_trusted_and_opens_asking_of_the_repository()
     {
         string repository = PathNames.Canonical(TestFolders.Create("new-in-repository-"));
         TestGit.Run(repository, "init", "-q");
@@ -264,8 +298,7 @@ public sealed class WorkspaceTrustTests
         }
     }
 
-    [AvaloniaFact]
-    public void An_untrusted_folder_is_served_by_the_carried_TypeScript_until_trusted_then_by_its_own()
+    private void An_untrusted_folder_is_served_by_the_carried_TypeScript_until_trusted_then_by_its_own()
     {
         WebLanguagesTests.SkipWithoutNode(typescript: true);
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-typescript-"));
@@ -295,8 +328,7 @@ public sealed class WorkspaceTrustTests
         }
     }
 
-    [AvaloniaFact]
-    public void Trust_taken_back_in_Settings_ends_the_language_server_says_what_runs_on_and_forgotten_asks_again_at_the_next_open()
+    private void Trust_taken_back_in_Settings_ends_the_language_server_says_what_runs_on_and_forgotten_asks_again_at_the_next_open()
     {
         string folder = PathNames.Canonical(TestFolders.Create("taken-back-"));
         string elsewhere = PathNames.Canonical(TestFolders.Create("taken-back-elsewhere-"));
@@ -360,8 +392,7 @@ public sealed class WorkspaceTrustTests
         Assert.Equal([elsewhere, folder], kept.RootElement.GetProperty("untrusted").EnumerateArray().Select(f => f.GetString()));
     }
 
-    [AvaloniaFact]
-    public void A_project_added_to_a_solution_not_trusted_is_made_without_its_restore_which_would_run_the_folders_MSBuild_files()
+    private void A_project_added_to_a_solution_not_trusted_is_made_without_its_restore_which_would_run_the_folders_MSBuild_files()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-new-project-"));
         string marks = PathNames.Canonical(TestFolders.Create("untrusted-new-project-marks-"));
@@ -398,8 +429,7 @@ public sealed class WorkspaceTrustTests
     /// without the person trusting it, and asks MSBuild nothing: the workload's question the window asks of a mobile
     /// project (a stand-in target marking that it ran) never runs, and Choose Where It Runs, whose listing restores the
     /// project, is refused saying why; trusted, the question runs.</summary>
-    [AvaloniaFact]
-    public void A_mobile_project_kept_from_before_is_shown_in_a_folder_not_trusted_and_none_of_its_targets_run_until_trusted()
+    private void A_mobile_project_kept_from_before_is_shown_in_a_folder_not_trusted_and_none_of_its_targets_run_until_trusted()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-kept-"));
         string marks = PathNames.Canonical(TestFolders.Create("untrusted-kept-marks-"));
@@ -471,8 +501,7 @@ public sealed class WorkspaceTrustTests
     /// on the runtime of the .NET the run takes) never has it run: New Project reads the templates and makes a class library
     /// there with the SDK Passenger takes everywhere else, the folder's dotnet run outside it; trusted, New Project's read of
     /// the templates takes the SDK its global.json names, which runs.</summary>
-    [AvaloniaFact]
-    public void A_folder_not_trusted_never_runs_the_sdk_its_global_json_names_until_trusted()
+    private void A_folder_not_trusted_never_runs_the_sdk_its_global_json_names_until_trusted()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-sdk-"));
         string marks = PathNames.Canonical(TestFolders.Create("untrusted-sdk-marks-"));
@@ -512,8 +541,7 @@ public sealed class WorkspaceTrustTests
     /// marking that it ran), never has it run: New Project's read of the templates takes the SDK Passenger takes everywhere
     /// else, the folder's dotnet run outside it; once the folder holding the global.json is trusted too, the read takes the
     /// SDK it names, which runs.</summary>
-    [AvaloniaFact]
-    public void A_trusted_folder_never_runs_the_sdk_a_global_json_above_it_names_until_that_folder_is_trusted_too()
+    private void A_trusted_folder_never_runs_the_sdk_a_global_json_above_it_names_until_that_folder_is_trusted_too()
     {
         string repository = PathNames.Canonical(TestFolders.Create("untrusted-above-"));
         string app = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(repository, "src", "App")).FullName);
@@ -588,8 +616,7 @@ public sealed class WorkspaceTrustTests
     /// <summary>In a folder not trusted, a file Git stores through a filter (git-lfs's, here the repository's own) would go
     /// into a commit as the disk has it, its filter not running: the Commit window lists it with no box, saying why, and a
     /// commit of it is refused, the file beside it offered as ever; once the folder is trusted it is offered too.</summary>
-    [AvaloniaFact]
-    public void A_file_stored_through_a_git_filter_is_offered_for_commit_only_once_the_folder_is_trusted()
+    private void A_file_stored_through_a_git_filter_is_offered_for_commit_only_once_the_folder_is_trusted()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-filter-"));
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\n");
@@ -630,8 +657,7 @@ public sealed class WorkspaceTrustTests
     /// repository's own) as it keeps it, and a stash would keep the file whole: Rollback of it, Stash Changes and Checkout
     /// of a branch changing it are greyed, saying why, and refused, the file's bytes as they were, the file beside it
     /// rolled back as ever; once the folder is trusted each is offered.</summary>
-    [AvaloniaFact]
-    public void Rollback_stash_and_checkout_writing_out_a_file_stored_through_a_git_filter_are_offered_only_once_the_folder_is_trusted()
+    private void Rollback_stash_and_checkout_writing_out_a_file_stored_through_a_git_filter_are_offered_only_once_the_folder_is_trusted()
     {
         string folder = PathNames.Canonical(TestFolders.Create("untrusted-filter-writes-"));
         string picture = Path.Combine(folder, "Picture.bin");

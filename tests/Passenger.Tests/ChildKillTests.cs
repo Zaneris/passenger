@@ -11,8 +11,7 @@ public sealed class ChildKillTests
     /// <summary>The child's process is disposed the moment the child has ended, while what it started is still being
     /// ended; twenty rounds, so a kill that read the process as it went would have been cut short in one of them. What
     /// the test ends itself it ends through the processes it holds, never by an id another process may have been given.</summary>
-    [Fact]
-    public async Task A_child_disposed_on_another_thread_as_it_is_killed_has_what_it_started_ended_too()
+    internal async Task A_child_disposed_on_another_thread_as_it_is_killed_has_what_it_started_ended_too()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         string waiter = OperatingSystem.IsWindows() ? "PING.EXE" : "sleep";
