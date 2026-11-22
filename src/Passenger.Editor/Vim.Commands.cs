@@ -374,11 +374,18 @@ public sealed partial class Vim
                 return new VimTarget(VimMotions.OffsetAtColumn(text, text.GetLineFromOffset(caret), n - 1, view.Indent.TabWidth), VimMotionKind.Exclusive);
             case "w" or "W":
                 // Under an operator, w from an empty last line takes nothing rather than fail.
-                return VimMotions.WordStart(text, caret, n, command.Name == "W", operating)
+                return VimMotions.WordStart(text, caret, n, command.Name == "W", operating, breakEnds)
                     ?? (operating && VimMotions.LineOf(text, caret) is { Length: 0 } empty && empty.Line == VimMotions.LastLine(text, breakEnds)
                         ? new VimTarget(caret, VimMotionKind.Exclusive) : null);
             case "b" or "B":
-                return VimMotions.WordBack(text, caret, n, command.Name == "B");
+                VimTarget? before = VimMotions.WordBack(text, caret, n, command.Name == "B", out bool startedOut);
+                if (operating && startedOut)
+                {
+                    // A count the text's empty first line cuts short fails the operator, the caret left where it ran out.
+                    ranOutAt = before?.Offset ?? caret;
+                    return null;
+                }
+                return before;
             case "e" or "E":
                 return VimMotions.WordEnd(text, caret, n, command.Name == "E", breakEnds, operating);
             case "ge" or "gE":
@@ -531,7 +538,8 @@ public sealed partial class Vim
                     end = VimMotions.WordEnd(text, end, 1, big, breakEnds)?.Offset ?? end;
                 }
             }
-            return (new VimSpan(caret, TextNavigation.NextGrapheme(text, end), false), caret, false);
+            // An end on an empty line takes nothing of it.
+            return (new VimSpan(caret, end < VimMotions.LineOf(text, end).End ? TextNavigation.NextGrapheme(text, end) : end, false), caret, false);
         }
         if (Target(command, text, caret, operating: true, view) is not { } target)
         {

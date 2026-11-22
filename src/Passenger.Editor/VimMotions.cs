@@ -159,8 +159,9 @@ public static class VimMotions
     }
 
     /// <summary>w and W: the start of the next word, an empty line counting as one. Under an operator its last step stops
-    /// at the line's end rather than go on to the next line's first word.</summary>
-    public static VimTarget? WordStart(TextSnapshot text, int caret, int n, bool bigWord, bool operating)
+    /// at the line's end rather than go on to the next line's first word, and a count reaching past the last line stops
+    /// at that line's end (its start where it is empty).</summary>
+    public static VimTarget? WordStart(TextSnapshot text, int caret, int n, bool bigWord, bool operating, bool breakEnds = true)
     {
         int at = caret;
         for (int i = 0; i < n; i++)
@@ -172,6 +173,10 @@ public static class VimMotions
                 break;
             }
             at = next;
+        }
+        if (operating && text.GetLine(LastLine(text, breakEnds)) is var end && at > (end.Length == 0 ? end.Start : end.End))
+        {
+            at = Math.Max(caret, end.Length == 0 ? end.Start : end.End);
         }
         if (at == caret)
         {
@@ -240,10 +245,17 @@ public static class VimMotions
         return LastOfRun(text, p);
     }
 
-    /// <summary>b and B: the start of this word if the caret is past it, else of the one before; an empty line stops it.</summary>
-    public static VimTarget? WordBack(TextSnapshot text, int caret, int n, bool bigWord)
+    /// <summary>b and B: the start of this word if the caret is past it, else of the one before; an empty line stops it.
+    /// <paramref name="ranOut"/> says a step was left to take from the empty line that begins the text.</summary>
+    public static VimTarget? WordBack(TextSnapshot text, int caret, int n, bool bigWord, out bool ranOut)
     {
-        int to = Repeated(n, caret, p => PreviousWordStart(text, p, bigWord));
+        int to = caret;
+        int steps = 0;
+        for (; steps < n && to > 0; steps++)
+        {
+            to = PreviousWordStart(text, to, bigWord);
+        }
+        ranOut = steps < n && EmptyLineAt(text, 0);
         return to == caret ? null : new VimTarget(to, VimMotionKind.Exclusive);
     }
 

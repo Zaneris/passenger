@@ -200,15 +200,10 @@ public sealed partial class VimTests
             + $"takes nothing, dw and cw on an empty line take its break, and a linewise stretch over the last line takes the place after it; {ToFix}",
             (_, vim, passenger) => passenger.Seen.Contains(LoneEmptyLine) || Unbroken(vim.Lines) == Unbroken(passenger.Lines) && (Registers.All(name => OnlyBreaksApart(vim.Registers[name].Text,
                 passenger.Registers[name].Text)) || TookAnEmptyLine(vim, passenger))),
-        ($"dw, dW and cw on the text's last line, empty, take the line break before it; {ToFix}",
-            (vimCase, vim, passenger) => vimCase.Keys.Zip(vimCase.Keys.Skip(1)).Any(pair => pair is ("d" or "c", "w" or "W"))
-                && Registers.Any(name => passenger.Registers[name].Text == "\n" && vim.Registers[name].Text != "\n")),
         ($"A J that joins nothing is the change . makes again; {ToFix}",
             (vimCase, _, _) => vimCase.Keys.SkipWhile(key => key != "J").Contains(".")),
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
-        ($"An operator over words with a count reaching the text's end takes whole lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedWords)),
-        ($"A line command with a count past the text's last line does what it can where Vim does nothing; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedLines)),
         ($"is and as on an empty or one-word line take the line whole; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
         ($"( and ) at the text's ends stay where they are; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceMotion)),
         ($"Visual mode's cursor goes past the last line; {ToFix}", (_, _, passenger) => passenger.Seen.Contains(VisualPastEnd)),
@@ -230,8 +225,6 @@ public sealed partial class VimTests
             && Enumerable.Range('2', 8).All(name => vim.Registers[(char)name].Text == passenger.Registers[(char)(name - 1)].Text)
             && "0-abz".All(name => vim.Registers[name].Text == passenger.Registers[name].Text);
 
-    private const string CountedWords = "an operator over words with a count";
-    private const string CountedLines = "a line command with a count";
     private const string Block = "visual block mode";
     private const string VisualInsert = "I or A in visual mode";
     private const string MarkChange = "a change to a mark";
@@ -341,11 +334,10 @@ public sealed partial class VimTests
         HashSet<string> uses = [];
         string count = Counted(random);
         string register = random.Next(8) == 0 ? "\"" + Pick(random, ["a", "b", "A"]) : string.Empty;
-        void Moved((IEnumerable<string> Keys, string Motion) motion, string? by = null)
+        void Moved((IEnumerable<string> Keys, string Motion) motion)
         {
             keys.AddRange(motion.Keys);
             uses.UnionWith(motion.Motion is "(" or ")" ? [SentenceMotion] : []);
-            uses.UnionWith(by is not null && count.Length > 0 && motion.Motion is "w" or "W" or "b" or "B" or "e" or "E" or "ge" ? [CountedWords] : []);
         }
         switch (random.Next(15))
         {
@@ -359,7 +351,7 @@ public sealed partial class VimTests
                 keys.AddRange(Each(register + count + op));
                 if (random.Next(2) == 0)
                 {
-                    Moved(Motion(random, text), op);
+                    Moved(Motion(random, text));
                 }
                 else
                 {
@@ -375,13 +367,11 @@ public sealed partial class VimTests
             case 4:
                 string acts = Pick(random, ["dd", "yy", ">>", "<<", "x", "X", "D", "Y", "J", "gJ", "~", "p", "P", "gp", "gP"]);
                 keys.AddRange(Each(register + count + acts));
-                uses.UnionWith(count.Length > 0 && acts is "dd" or "yy" or ">>" or "<<" or "J" or "gJ" or "D" or "Y" ? [CountedLines] : []);
                 break;
             case 5:
                 string inserts = Pick(random, ["i", "a", "I", "A", "o", "O", "cc", "C", "s", "S", "cw"]);
                 keys.AddRange(Each(count + inserts));
                 keys.AddRange(Typing(random));
-                uses.UnionWith(count.Length > 0 && inserts is "cc" or "C" or "S" ? [CountedLines] : count.Length > 0 && inserts == "cw" ? [CountedWords] : []);
                 uses.UnionWith(inserts is "o" or "O" ? [OpensLine] : []);
                 break;
             case 6:
@@ -454,7 +444,6 @@ public sealed partial class VimTests
                 string[] change = Pick(random, Changes);
                 keys.AddRange(change);
                 keys.AddRange(Each(count + "."));
-                uses.UnionWith(change.Contains("w") && count.Length > 0 ? [CountedWords] : []);
                 uses.UnionWith(change[0] == "o" ? [OpensLine] : []);
                 break;
         }
