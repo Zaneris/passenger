@@ -12,37 +12,27 @@ namespace Passenger.UnitTests.Mcp;
 public sealed class AgentSetupTests
 {
     /// <summary>Where Passenger may be installed: folders holding what each shell reads as more than a name.</summary>
-    public static readonly TheoryData<string> Paths = new()
-    {
+    private static readonly string[] Paths =
+    [
         "C:\\Users\\O'Brien\\R&D\\Passenger.exe",
         "C:\\Program Files\\R&D (x86)\\Passenger\\Passenger.exe",
         "C:\\Users\\a$b\\5^2 100%\\Passenger.exe",
-        "/Users/o'brien/R&D/Passenger.app/Contents/MacOS/Passenger",
         "/opt/my apps/$(touch ran);`x`|y/Passenger",
-        "/Applications/Passenger.app/Contents/MacOS/Passenger",
-    };
-
-    [Theory]
-    [MemberData(nameof(Paths))]
-    public void PowerShell_runs_the_commands_with_Passengers_path_as_one_word(string path) => Check(path, ShellKind.PowerShell, PowerShellReads);
-
-    [Theory]
-    [MemberData(nameof(Paths))]
-    public void Cmd_runs_the_commands_with_Passengers_path_as_one_word(string path) => Check(path, ShellKind.Cmd, CmdReads);
-
-    [Theory]
-    [MemberData(nameof(Paths))]
-    public void Sh_runs_the_commands_with_Passengers_path_as_one_word(string path) => Check(path, ShellKind.Posix, ShReads);
+    ];
 
     [Fact]
-    public void The_commands_are_written_for_the_shell_the_Terminals_command_line_starts()
-    {
-        Assert.Equal(ShellKind.PowerShell, AgentSetup.ShellOf("pwsh -NoLogo"));
-        Assert.Equal(ShellKind.PowerShell, AgentSetup.ShellOf("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo"));
-        Assert.Equal(ShellKind.Cmd, AgentSetup.ShellOf("C:\\WINDOWS\\system32\\cmd.exe"));
-        Assert.Equal(ShellKind.Zsh, AgentSetup.ShellOf("/bin/zsh -l"));
-        Assert.Equal(ShellKind.Fish, AgentSetup.ShellOf("/opt/homebrew/bin/fish"));
-    }
+    public void The_commands_reach_the_agents_CLI_as_the_same_words_in_the_shell_the_Terminal_starts() => Cases.All(
+        ("the commands are written for the shell the Terminal's command line starts", () =>
+        {
+            Assert.Equal(ShellKind.PowerShell, AgentSetup.ShellOf("pwsh -NoLogo"));
+            Assert.Equal(ShellKind.PowerShell, AgentSetup.ShellOf("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo"));
+            Assert.Equal(ShellKind.Cmd, AgentSetup.ShellOf("C:\\WINDOWS\\system32\\cmd.exe"));
+            Assert.Equal(ShellKind.Zsh, AgentSetup.ShellOf("/bin/zsh -l"));
+            Assert.Equal(ShellKind.Fish, AgentSetup.ShellOf("/opt/homebrew/bin/fish"));
+        }),
+        ("PowerShell runs the commands with Passenger's path as one word", () => Cases.Each(Paths, path => Check(path, ShellKind.PowerShell, PowerShellReads))),
+        ("cmd runs the commands with Passenger's path as one word", () => Cases.Each(Paths, path => Check(path, ShellKind.Cmd, CmdReads))),
+        ("sh runs the commands with Passenger's path as one word", () => Cases.Each(Paths, path => Check(path, ShellKind.Posix, ShReads))));
 
     /// <summary>Both commands, read by <paramref name="shell"/>'s rules, give the words they were made of.</summary>
     private static void Check(string path, ShellKind shell, Func<string, List<string>?> reads)

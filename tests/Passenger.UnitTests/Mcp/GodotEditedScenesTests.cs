@@ -23,7 +23,12 @@ public class GodotEditedScenesTests
         """;
 
     [Fact]
-    public void A_Godot_that_says_whether_the_scene_is_saved_is_taken_at_its_word()
+    public void Godot_editors_scene_is_read_with_its_nodes_connections_selection_and_whether_it_is_saved_where_Godot_says() => Cases.All(
+        ("a Godot that says whether the scene is saved is taken at its word", A_Godot_that_says_whether_the_scene_is_saved_is_taken_at_its_word),
+        ("a Godot that gives no word of it is said not to", A_Godot_that_gives_no_word_of_it_is_said_not_to),
+        ("its nodes connections and selection are given as the editor holds them", Its_nodes_connections_and_selection_are_given_as_the_editor_holds_them));
+
+    private void A_Godot_that_says_whether_the_scene_is_saved_is_taken_at_its_word()
     {
         GodotEditorAnswer unsaved = Read($$"""{ {{Nodes}}, "unsaved": true }""");
         Assert.True(unsaved.Unsaved);
@@ -31,16 +36,14 @@ public class GodotEditedScenesTests
         Assert.Equal("res://main.tscn as Godot's editor holds it, saved", Read($$"""{ {{Nodes}}, "unsaved": false }""").Said);
     }
 
-    [Fact]
-    public void A_Godot_that_gives_no_word_of_it_is_said_not_to()
+    private void A_Godot_that_gives_no_word_of_it_is_said_not_to()
     {
         GodotEditorAnswer read = Read($$"""{ {{Nodes}} }""");
         Assert.Null(read.Unsaved);
         Assert.Equal("res://main.tscn as Godot's editor holds it (this Godot does not say whether it is saved)", read.Said);
     }
 
-    [Fact]
-    public void Its_nodes_connections_and_selection_are_given_as_the_editor_holds_them()
+    private void Its_nodes_connections_and_selection_are_given_as_the_editor_holds_them()
     {
         GodotEditorAnswer read = Read($$"""{ {{Nodes}} }""");
         Assert.Equal([".", "Ui/Press"], read.Nodes!.Select(n => n.Path));
