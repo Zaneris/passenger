@@ -496,6 +496,9 @@ public static class VimMotions
             int end = Settled(text, text.Length, breakEnds);
             // Past a closing '.', '!' or '?' that ends the text, its end is one more sentence's start.
             bool endStops = EndsWithSentence(text);
+            // An empty last line has no character to take: the motion ends at its start, exclusive.
+            bool emptyEnd = LineOf(text, end).Length == 0;
+            VimMotionKind toEnd = emptyEnd ? VimMotionKind.Exclusive : VimMotionKind.Inclusive;
             for (int i = 0; i < n; i++)
             {
                 int next = i == 0 ? SentenceStartAfter(text, caret) : NextSentenceStart(text, at);
@@ -509,14 +512,20 @@ public static class VimMotions
                     at = text.Length;
                     continue;
                 }
+                if (emptyEnd && at < end)
+                {
+                    // A run of empty lines ending the text ends at its last, one more sentence's start.
+                    at = end;
+                    continue;
+                }
                 // The text's last character is one more place after the last sentence's start, even where it is that start.
                 if (i < n - 1 || (end < at && at < text.Length))
                 {
                     return null;
                 }
-                return new VimTarget(end, VimMotionKind.Inclusive);
+                return new VimTarget(end, toEnd);
             }
-            return at >= text.Length ? new VimTarget(end, VimMotionKind.Inclusive) : new VimTarget(at, VimMotionKind.Exclusive);
+            return at >= text.Length ? new VimTarget(end, toEnd) : new VimTarget(at, VimMotionKind.Exclusive);
         }
         if (text.Length > 0 && text[0] is '.' or '!' or '?' && EndsSentence(text, 0, out _) && NextSentenceStart(text, 0) is var first && first < text.Length)
         {

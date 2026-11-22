@@ -677,12 +677,13 @@ public sealed partial class Vim
             any |= got is not null;
             taken.Add(got ?? r);
         }
+        // Found or not, the column the cursor aims at is its own again.
+        visualAims = [.. regions.Select(_ => -1)];
         if (!any)
         {
             return VimResult.Held;
         }
         regions = taken;
-        visualAims = [.. regions.Select(_ => -1)];
         int tab = view.Indent.TabWidth;
         if (lines)
         {

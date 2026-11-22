@@ -200,8 +200,6 @@ public sealed partial class VimTests
             + $"takes nothing, dw and cw on an empty line take its break, and a linewise stretch over the last line takes the place after it; {ToFix}",
             (_, vim, passenger) => passenger.Seen.Contains(LoneEmptyLine) || Unbroken(vim.Lines) == Unbroken(passenger.Lines) && (Registers.All(name => OnlyBreaksApart(vim.Registers[name].Text,
                 passenger.Registers[name].Text)) || TookAnEmptyLine(vim, passenger))),
-        ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
-            (vimCase, _, _) => vimCase.Uses(VisualObject)),
         ($"is and as from an empty line ending the text, from blanks before or after its last sentence, and about a paragraph opened "
             + $"by a sentence's end, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
         ($"( and ) about a paragraph opened by a sentence's end; {ToFix}",
@@ -231,7 +229,6 @@ public sealed partial class VimTests
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
     private const string LoneEmptyLine = "a text of one empty line";
-    private const string VisualObject = "a text object in visual mode";
     private const string SentenceObject = "is or as";
     private const string OpenedByAnEnd = "a paragraph opened by a sentence's end";
 
@@ -383,7 +380,6 @@ public sealed partial class VimTests
                     {
                         string inVisual = Pick(random, ["o", "iw", "ip", "a("]);
                         keys.AddRange(Each(inVisual));
-                        uses.UnionWith(inVisual != "o" ? [VisualObject] : []);
                     }
                     else
                     {
