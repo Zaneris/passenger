@@ -30,6 +30,25 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `BindingValuesTests`' `A_debugged_apps_bindings_show_their_values_and_a_window_shown_is_collected_once_it_closes`,
+  CI 45009557197 (Linux report shard 3), as `GDScriptTypesTests` (CI 44995132904, macOS gate), `AvaloniaListsTests` (CI
+  44989932645) and `TestingPlatformDebuggingTests` (CI 44970786971, both Linux report shard 3): "The IDE caught 1 error
+  during the test: TimeoutException: The operation has timed out." with no stack. **A race in the IDE, its place not yet
+  named**: an exception never thrown, a timed wait's, reached `IdeErrors` and failed whichever window test it landed in,
+  each time 10 to 40 s after `GodotCopiesTests` in the same process; it said nothing of where it came from, and neither
+  the Mac nor the probe of that class held a minute after it reproduced it. Such an error now ends at the place its
+  task was observed, or says it was found as its task was collected, and the three waits that handed `WaitAsync`'s own
+  task to `Ended`, leaving its timeout for the finalizer (`LiveSession`'s stop, `SessionStarts`' check of an unanswered
+  port, a NuGet credential provider's end), wait through `UnawaitedWork.EndedWithin`, which IdeErrorsTests' IL rule now
+  holds (028f29fa3, #2104).
+- `McpGDScriptFixTests`' `An_agent_lists_and_applies_a_gdscripts_fixes_as_show_context_actions_offers_them_the_persons_undo_taking_each_back`,
+  CI 45009557197 (Linux report shard 2): "left programs' runtime files … dotnet-diagnostic-82563-188521-socket".
+  **Another program's doing**: by its start (1,885 s after boot, against `McpAspireTests`' own files later in that job)
+  the program began between 10:22:28 and 10:22:55, while `AspirePackageAppHostTests`' starter ran through the window just
+  before it in the run's one process of classes alone, and it ended before this test's check, which comes before the
+  test's own Passenger is ended; the class passed in every other run, none of which ran it after that one. The
+  orchestrator ends the starter's services as their AppHost goes, after that test's own check, leaving their sockets for
+  the next test's: #2095's batch 6 takes the runtime files DCP leaves (#2092).
 - `UnitTestsDebuggingTests`' `Debug_tests_stops_at_a_breakpoint_…` and `Stop_unit_tests_ends_a_debugged_run_…`, CI
   44968934038 to 44995132904 (macOS and Linux), `DebuggerTests`'
   `Debugged_in_the_terminal_a_program_stops_on_Mains_first_line_…`, CI 44968934038, 44970786971 and 44984656678 (macOS
