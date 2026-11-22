@@ -36,10 +36,16 @@ public sealed class PathsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(root);
 
-    [AvaloniaTheory]
-    [InlineData(Spelling.LowerCase)]
-    [InlineData(Spelling.ShortNames)]
-    public void A_repository_opened_by_another_spelling_of_its_path_colours_diffs_debugs_and_commits_its_changed_file(Spelling spelling)
+    /// <summary>A repository opened by another spelling of its path, in other letter case or by short names, colours,
+    /// diffs, debugs and commits its changed file, as one table of the spellings a system takes, each row in an
+    /// instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_repository_opened_by_another_spelling_of_its_path_works_as_by_its_own()
+    {
+        Flow.Step("a repository opened by another spelling of its path colours diffs debugs and commits its changed file", () => Cases.Each<Spelling>([Spelling.LowerCase, Spelling.ShortNames], row => Flow.StepApart($"a repository opened by another spelling of its path colours diffs debugs and commits its changed file ({row})", () => new PathsTests(), t => t.A_repository_opened_by_another_spelling_of_its_path_colours_diffs_debugs_and_commits_its_changed_file(row))));
+    }
+
+    private void A_repository_opened_by_another_spelling_of_its_path_colours_diffs_debugs_and_commits_its_changed_file(Spelling spelling)
     {
         Assert.SkipWhen(spelling == Spelling.LowerCase && PathNames.Comparison == StringComparison.Ordinal, CaseTold);
         // A name with a space, which Windows gives an 8.3 name of its own.
@@ -127,12 +133,21 @@ public sealed class ProjectPathsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(root);
 
+    /// <summary>A folder the command line names, or a project the solution names, in other letter case than the disk's
+    /// is built, run and handed on as the disk names it, its new classes taking its namespace, as one flow of the steps
+    /// of a file system that ignores case, each in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_folder_or_project_named_in_other_letter_case_is_used_as_the_disk_names_it()
+    {
+        Flow.StepApart<ProjectPathsTests>("a folder the command line names in other letter case is built run and given to the terminal and language server as the disk names it", t => t.A_folder_the_command_line_names_in_other_letter_case_is_built_run_and_given_to_the_terminal_and_language_server_as_the_disk_names_it());
+        Flow.StepApart<ProjectPathsTests>("a project the solution names in other letter case than its folder builds from its file and gives new classes its namespace", t => t.A_project_the_solution_names_in_other_letter_case_than_its_folder_builds_from_its_file_and_gives_new_classes_its_namespace());
+    }
+
     /// <summary>Passenger started on a folder in lower case from a shell whose PWD spells it so: the window, its projects and
     /// the file the command line names, the restore and build it makes and a step of that build, the program it runs, the
     /// terminal's shell and the language server all have the folder as the disk names it, so no later build through the
     /// disk's spelling restores, compiles or deletes what this one wrote.</summary>
-    [AvaloniaFact]
-    public void A_folder_the_command_line_names_in_other_letter_case_is_built_run_and_given_to_the_terminal_and_language_server_as_the_disk_names_it()
+    private void A_folder_the_command_line_names_in_other_letter_case_is_built_run_and_given_to_the_terminal_and_language_server_as_the_disk_names_it()
     {
         Assert.SkipWhen(PathNames.Comparison == StringComparison.Ordinal, PathsTests.CaseTold);
         string folder = Path.Combine(root, "Shop Front");
@@ -182,8 +197,7 @@ public sealed class ProjectPathsTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_project_the_solution_names_in_other_letter_case_than_its_folder_builds_from_its_file_and_gives_new_classes_its_namespace()
+    private void A_project_the_solution_names_in_other_letter_case_than_its_folder_builds_from_its_file_and_gives_new_classes_its_namespace()
     {
         Assert.SkipWhen(PathNames.Comparison == StringComparison.Ordinal, PathsTests.CaseTold);
         string folder = Path.Combine(root, "Store");
