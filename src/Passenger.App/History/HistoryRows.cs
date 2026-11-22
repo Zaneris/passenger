@@ -173,7 +173,7 @@ public static class HistoryRows
         List<HistoryEvent> changes = [.. all.Where(e => e.Kind != HistoryKind.Seen)];
         if (changes.Count > 1)
         {
-            return $"Change {FileName(changes[^1])} + {changes.Count - 1} more";
+            return $"Change {FileName(changes[^1])} + {Numbers.Said(changes.Count - 1)} more";
         }
         return first.Kind switch
         {

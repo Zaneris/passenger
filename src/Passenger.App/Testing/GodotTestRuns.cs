@@ -144,7 +144,7 @@ public static class GodotTestRuns
             return null;
         }
         IEnumerable<string> failed = others.Where(o => o.State == TestState.Failed).Select(o => $"\n  {o.Test.FullyQualifiedName} failed{(o.Message is { } why ? $": {why}" : string.Empty)}");
-        return $"{framework} also ran {Plural.Of(others.Count, "test")} no row shows, {others.Count(o => o.State == TestState.Failed)} failed{string.Concat(failed)}";
+        return $"{framework} also ran {Plural.Of(others.Count, "test")} no row shows, {Numbers.Said(others.Count(o => o.State == TestState.Failed))} failed{string.Concat(failed)}";
     }
 
     /// <summary>A file a run wrote let go of; one Godot still holds (Windows) is left for the system's temporary folder.</summary>

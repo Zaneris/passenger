@@ -158,7 +158,7 @@ public sealed class CdpConnection : IAsyncDisposable
             {
                 if (message.Written.Length >= MostMessage)
                 {
-                    throw new IOException($"A DevTools message ran past the {MostMessage} bytes the connection reads of one");
+                    throw new IOException($"A DevTools message ran past the {Numbers.Said(MostMessage)} bytes the connection reads of one");
                 }
                 ValueWebSocketReceiveResult read = await socket.ReceiveAsync(message.GetMemory(), stopping.Token).ConfigureAwait(false);
                 if (read.MessageType == WebSocketMessageType.Close)

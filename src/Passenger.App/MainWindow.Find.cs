@@ -191,7 +191,7 @@ public partial class MainWindow
     private static string Found(string title, IReadOnlyList<Usage> usages, string? note)
     {
         int generated = usages.Count(u => u.Generated);
-        return $"{title}: {usages.Count} found{(generated > 0 ? $", {generated} in generated code" : string.Empty)}"
+        return $"{title}: {Numbers.Said(usages.Count)} found{(generated > 0 ? $", {Numbers.Said(generated)} in generated code" : string.Empty)}"
             + (note is null ? string.Empty : $"; {char.ToLowerInvariant(note[0])}{note[1..]}");
     }
 }

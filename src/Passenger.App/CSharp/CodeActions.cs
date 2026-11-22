@@ -773,7 +773,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         List<RefactoredFile> changed = [.. edited.Where(f => !(context.Editors.Find(f.Path) is { } open && dropped.Contains(open.Name)))];
         string movedSaid = applied.Moved.Count > 0 ? $"; {string.Join(", ", applied.Moved.Select(m => $"{Path.GetFileName(m.From)} to {Path.GetFileName(m.To)}"))}" : string.Empty;
         string said = dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
-            : (changed.Count > 1 ? $"Renamed in {changed.Count} files" : "Renamed") + movedSaid;
+            : (changed.Count > 1 ? $"Renamed in {Numbers.Said(changed.Count)} files" : "Renamed") + movedSaid;
         if (applied.Unmoved is { } unmoved)
         {
             said += $"{(dropped.Count > 0 ? "; and" : ", but")} {unmoved}";

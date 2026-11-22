@@ -287,8 +287,8 @@ public sealed class ProfilerView : DockPanel
         keptFolder = folder;
         kept.ItemsSource = files;
         keptSummary.Text = files.Count == 0
-            ? $"No snapshots yet. Each run's is kept in {folder}, the newest {Snapshots.Kept}."
-            : $"{Plural.Of(files.Count, "snapshot")}, the newest first, kept in {folder}. Past {Snapshots.Kept}, the oldest go.";
+            ? $"No snapshots yet. Each run's is kept in {folder}, the newest {Numbers.Said(Snapshots.Kept)}."
+            : $"{Plural.Of(files.Count, "snapshot")}, the newest first, kept in {folder}. Past {Numbers.Said(Snapshots.Kept)}, the oldest go.";
         pages[ProfilerPage.Snapshots].IsEnabled = true;
         ShowPage(Snapshot is null && Memory is null && !ticking.IsEnabled && files.Count > 0 ? ProfilerPage.Snapshots : pages.Choice);
     }
@@ -544,7 +544,7 @@ public sealed class ProfilerView : DockPanel
         collections.ItemsSource = gcs;
         collectionsSummary.Text = gcs.Count == 0
             ? "No garbage collections ran"
-            : $"{gcs.Count} collections ({string.Join(", ", gcs.GroupBy(c => c.Generation).OrderBy(g => g.Key).Select(g => $"{g.Count()} of generation {g.Key}"))}), "
+            : $"{Numbers.Said(gcs.Count)} collections ({string.Join(", ", gcs.GroupBy(c => c.Generation).OrderBy(g => g.Key).Select(g => $"{Numbers.Said(g.Count())} of generation {g.Key}"))}), "
               + $"the program paused {Numbers.Fixed(gcs.Sum(c => c.PauseMs), 1)} ms in all, {Numbers.Fixed(gcs.Max(c => c.PauseMs), 1)} ms at the longest";
         ShowPage(shownPage);
     }

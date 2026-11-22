@@ -443,7 +443,7 @@ public sealed class TestFinder
                 if (timed && latest.Count > 0)
                 {
                     int tests = latest.Sum(p => told.TryGetValue(p.Path, out ToldTests was) ? was.Tests.Tests.Count : 0);
-                    IdeErrors.Write($"Unit tests: {tests} found in the code of {Core.Plural.Of(latest.Count, "test project")} in {Durations.Said(Stopwatch.GetElapsedTime(began))}, "
+                    IdeErrors.Write($"Unit tests: {Numbers.Said(tests)} found in the code of {Core.Plural.Of(latest.Count, "test project")} in {Durations.Said(Stopwatch.GetElapsedTime(began))}, "
                         + $"{Core.Plural.Of(Parsed - parsedBefore, "file")} parsed");
                 }
             }

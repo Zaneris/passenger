@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Syntax;
 
@@ -63,7 +64,7 @@ public static class XamlSetValues
             {
                 [] => "(empty)",
                 [XmlElement only] => $"<{only.Name}>",
-                [XmlElement first, ..] => $"<{first.Name}> and {held.Children.Count - 1} more",
+                [XmlElement first, ..] => $"<{first.Name}> and {Numbers.Said(held.Children.Count - 1)} more",
             };
             set.Add(new XamlSetValue(property, value, XamlValueKind.Element, null));
         }

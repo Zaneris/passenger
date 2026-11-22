@@ -415,7 +415,7 @@ public sealed class XamlService : IDisposable
         {
             if (await loading.Loaded is { } project && !disposed)
             {
-                IdeErrors.Write($"XAML for {Path.GetFileName(loading.ProjectPath)} read: {project.Types.All.Count()} types, {project.Files.Count} XAML files");
+                IdeErrors.Write($"XAML for {Path.GetFileName(loading.ProjectPath)} read: {Numbers.Said(project.Types.All.Count())} types, {Numbers.Said(project.Files.Count)} XAML files");
                 ProjectChanged?.Invoke(this, project);
                 if (projects.GetValueOrDefault(loading.ProjectPath) == loading)
                 {

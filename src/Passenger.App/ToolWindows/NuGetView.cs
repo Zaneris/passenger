@@ -313,7 +313,7 @@ public sealed partial class NuGetView : DockPanel
     private void EnableActions()
     {
         updateAll.IsEnabled = CanUpdateAll;
-        ToolTip.SetTip(updateAll, $"Update all {updateRows.Count} packages across their projects, including results hidden by search");
+        ToolTip.SetTip(updateAll, $"Update all {Numbers.Said(updateRows.Count)} packages across their projects, including results hidden by search");
         foreach ((Button button, bool putsIn, string? tip) in lineActions)
         {
             ToolButtons.Grey(button, WhyNot(putsIn), tip);
@@ -664,15 +664,15 @@ public sealed partial class NuGetView : DockPanel
         string text = $"{Plural.Of(found.Count, "package")} installed";
         if (found.Count(r => r.IsTransitive) is int brought and > 0)
         {
-            text += $", {brought} transitive";
+            text += $", {Numbers.Said(brought)} transitive";
         }
         if (found.Count(r => r.IsVulnerable) is int vulnerable and > 0)
         {
-            text += $", {vulnerable} vulnerable";
+            text += $", {Numbers.Said(vulnerable)} vulnerable";
         }
         if (found.Count(r => r.IsDeprecated) is int deprecated and > 0)
         {
-            text += $", {deprecated} deprecated";
+            text += $", {Numbers.Said(deprecated)} deprecated";
         }
         if (known?.Failed is { Count: > 0 } failed)
         {
@@ -1113,7 +1113,7 @@ public sealed partial class NuGetView : DockPanel
         (projectsHeader.Parent as Panel)?.Children.Remove(projectsHeader);
         panel.Children.Add(projectsHeader);
         IReadOnlyList<(ProjectModel Project, IReadOnlyList<InstalledVersion> At, IReadOnlyList<TransitiveUse> Brought)> listed = ProjectsListed(row, out int all);
-        projectCount.Text = listed.Count == all ? string.Empty : $"{listed.Count} of {all}";
+        projectCount.Text = listed.Count == all ? string.Empty : $"{Numbers.Said(listed.Count)} of {Numbers.Said(all)}";
         foreach ((ProjectModel project, IReadOnlyList<InstalledVersion> at, IReadOnlyList<TransitiveUse> brought) in listed)
         {
             bool has = at.Count > 0;

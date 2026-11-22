@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -68,7 +69,7 @@ public sealed class ErrorsPopup : UserControl
                         TextWrapping = TextWrapping.Wrap,
                         Text = unlisted == 0
                             ? "Passenger caught these and kept running. Each is in the log with its details."
-                            : $"Passenger caught these and kept running. Each is in the log with its details, as are {unlisted} more that came after the first {IdeErrors.Limit}.",
+                            : $"Passenger caught these and kept running. Each is in the log with its details, as are {Numbers.Said(unlisted)} more that came after the first {Numbers.Said(IdeErrors.Limit)}.",
                     },
                     list,
                     occurred,
@@ -105,7 +106,7 @@ public sealed class ErrorsPopup : UserControl
         };
         return new DockPanel { Children = { count, what } }.Showing<IdeError>(error =>
         {
-            count.Text = error.Count == 1 ? string.Empty : $"{error.Count} times";
+            count.Text = error.Count == 1 ? string.Empty : $"{Numbers.Said(error.Count)} times";
             what.Text = $"{error.At:HH:mm:ss}  {error.Kind}: {error.Message.ReplaceLineEndings(" ")}";
         });
     }
@@ -113,7 +114,7 @@ public sealed class ErrorsPopup : UserControl
     /// <summary>The line over an error's details: how often it came, and when.</summary>
     private static string Occurred(IdeError error) => error.Count == 1
         ? $"Occurred once, at {error.At:HH:mm:ss}"
-        : $"Occurred {error.Count} times, from {error.At:HH:mm:ss} to {error.Last:HH:mm:ss}";
+        : $"Occurred {Numbers.Said(error.Count)} times, from {error.At:HH:mm:ss} to {error.Last:HH:mm:ss}";
 
     /// <summary>Show Log in Finder (Explorer on Windows) clicked.</summary>
     public event EventHandler? LogAsked;

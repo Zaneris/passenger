@@ -160,7 +160,7 @@ internal sealed class TestsCache(string path)
     private static int Count(BinaryReader reader)
     {
         int count = reader.Read7BitEncodedInt();
-        return count >= 0 && count <= reader.BaseStream.Length ? count : throw new InvalidDataException($"A count of {count} in the cache of tests");
+        return count >= 0 && count <= reader.BaseStream.Length ? count : throw new InvalidDataException($"A count of {Numbers.Said(count)} in the cache of tests");
     }
 
     /// <summary>The table of strings a file holds, and the reader taking each by its number.</summary>
@@ -169,7 +169,7 @@ internal sealed class TestsCache(string path)
         public string Next()
         {
             int number = Reader.Read7BitEncodedInt();
-            return number >= 0 && number < All.Length ? All[number] : throw new InvalidDataException($"String {number} of {All.Length} in the cache of tests");
+            return number >= 0 && number < All.Length ? All[number] : throw new InvalidDataException($"String {number} of {Numbers.Said(All.Length)} in the cache of tests");
         }
     }
 

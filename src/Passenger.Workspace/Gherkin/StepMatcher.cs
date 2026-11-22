@@ -162,7 +162,7 @@ public sealed class StepMatcher
             int? fit = Fit(binding, context);
             if (arguments != binding.Parameters.Count)
             {
-                refused.Add($"{binding.Shown} takes {binding.Parameters.Count} parameters, and the step gives {arguments}");
+                refused.Add($"{binding.Shown} takes {Numbers.Said(binding.Parameters.Count)} parameters, and the step gives {Numbers.Said(arguments)}");
                 if (fit is not null)
                 {
                     unconverted.Add((binding, match, []));

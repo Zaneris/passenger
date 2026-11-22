@@ -166,7 +166,7 @@ public static class IdeErrors
                 }
             }
         }
-        Write(reported.Count == 1 ? $"Error: {error.Details}" : $"Error, occurred {reported.Count} times: {reported.Kind}: {reported.Message}");
+        Write(reported.Count == 1 ? $"Error: {error.Details}" : $"Error, occurred {Core.Numbers.Said(reported.Count)} times: {reported.Kind}: {reported.Message}");
         Dispatcher.UIThread.Post(() => Raised?.Invoke(null, reported));
     }
 

@@ -463,7 +463,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return Done(Migrations.Count == 0 ? $"{Context} has no migrations"
                 : Migrations.All(m => m.Applied is null) ? $"{Context}: {Plural.Of(Migrations.Count, "migration")}; the database could not be read"
                 : pending == 0 ? $"{Context}: {Plural.Of(Migrations.Count, "migration")}, all applied"
-                : $"{Context}: {Plural.Of(Migrations.Count, "migration")}, {pending} pending");
+                : $"{Context}: {Plural.Of(Migrations.Count, "migration")}, {Numbers.Said(pending)} pending");
         }, build: build);
 
     /// <summary>Why a migration cannot take a name, as dotnet ef makes it a C# class of that name; null where it can.</summary>

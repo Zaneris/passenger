@@ -95,7 +95,7 @@ public partial class ManagedDebugger
                     Note(callbackEvent);
                 }
                 int still = held.Count(h => h.Value is { } place && PlaceOf(process, h.Key) == place);
-                _logger?.Invoke($"Letting go: after {Durations.Said(running)} running, {held.Count - still} of {held.Count} held threads have moved on");
+                _logger?.Invoke($"Letting go: after {Durations.Said(running)} running, {Numbers.Said(held.Count - still)} of {Numbers.Said(held.Count)} held threads have moved on");
                 if (still == 0)
                 {
                     return;

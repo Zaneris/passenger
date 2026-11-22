@@ -370,7 +370,7 @@ public partial class MainWindow
         AgentText.Text = asking ? agentQuestions[^1]
             : agentWork.Count > 0 ? $"Agent: {agentWork[^1]}"
             : agents == 1 ? "Agent connected"
-            : $"{agents} agents connected";
+            : $"{Numbers.Said(agents)} agents connected";
         ToolTip.SetTip(AgentButton, asking
             ? "An agent's call waits for your answer to the question this window asks: click to see it. Unanswered, the agent is told so once the time is up"
             : "An agent is using this window through Passenger's MCP server");

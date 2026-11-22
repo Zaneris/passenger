@@ -349,7 +349,7 @@ public sealed class AspireInteractionDialog : IdeWindow
         Changed(latest, JsonSerializer.Serialize(references));
         if (controls[latest.Name] is Button currentFile)
         {
-            currentFile.Content = $"{files.Count} file(s) uploaded";
+            currentFile.Content = $"{Numbers.Said(files.Count)} file(s) uploaded";
         }
     }
 

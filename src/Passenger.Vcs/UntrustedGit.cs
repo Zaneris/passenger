@@ -53,7 +53,7 @@ internal static partial class UntrustedGit
             }
             if (read.Count > MostSubmodules + 1)
             {
-                return $"git was not run: the folder is not trusted, and it has more than {MostSubmodules} submodules checked out, whose configurations are each read first";
+                return $"git was not run: the folder is not trusted, and it has more than {Numbers.Said(MostSubmodules)} submodules checked out, whose configurations are each read first";
             }
             ChildResult listed;
             ChildResult staged;

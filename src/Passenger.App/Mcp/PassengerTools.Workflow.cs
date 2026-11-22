@@ -312,7 +312,7 @@ public sealed partial class PassengerTools
         Git repository = Session.Vcs.Repository ?? throw new InvalidOperationException(Session.Vcs.NoRepository);
         if (count < 1)
         {
-            throw new ArgumentException($"count is {count}: vcs_log lists 1 or more", nameof(count));
+            throw new ArgumentException($"count is {Numbers.Said(count)}: vcs_log lists 1 or more", nameof(count));
         }
         int most = Math.Min(count, 500);
         (int, int)? lines = (startLine, endLine) switch
@@ -446,7 +446,7 @@ public sealed partial class PassengerTools
             {
                 throw new InvalidOperationException(byCommit
                     ? $"No stash in the list has commit {commit}: it was popped or dropped since the list was read, or never was a stash"
-                    : $"No stash {index}; there are {before.Count}");
+                    : $"No stash {index}; there are {Numbers.Said(before.Count)}");
             }
             // Refused before anything is saved: a stash or unstash of a file stored through a filter that cannot run here.
             if (action == "push")
@@ -857,7 +857,7 @@ public sealed partial class PassengerTools
             [{ } only] => only,
             [] when there.Count > 0 => throw new InvalidOperationException($"No program in {container} can be profiled: {there[0].WhyNot}"),
             [] => throw new InvalidOperationException($"No .NET program runs in a container named {container}; debug_state of processes lists those there are"),
-            _ => throw new InvalidOperationException($"{reachable.Count} .NET programs run in {container} ({string.Join(", ", reachable.Select(p => p.Program))}): "
+            _ => throw new InvalidOperationException($"{Numbers.Said(reachable.Count)} .NET programs run in {container} ({string.Join(", ", reachable.Select(p => p.Program))}): "
                 + "attach the debugger to the one to profile (debug_attach), then profile with attach alone"),
         };
     }

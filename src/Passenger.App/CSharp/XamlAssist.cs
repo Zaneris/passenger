@@ -944,7 +944,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             return RefactorOutcome.Refused($"Rename failed: {failed.Message}");
         }
         return new RefactorOutcome(dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
-            : files > 1 ? $"Renamed in {files} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
+            : files > 1 ? $"Renamed in {Numbers.Said(files)} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
                 .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, RefactoredChange.Changed, []))], dropped);
     }
 

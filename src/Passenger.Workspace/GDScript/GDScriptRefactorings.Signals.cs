@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Workspace.GDScript;
@@ -187,7 +188,7 @@ public static partial class GDScriptRefactorings
             IReadOnlyList<GDScriptParameterChange> takes = ParametersOf(declaring, function);
             if (takes.Count != was.Count)
             {
-                return GDScriptRefactored.No($"{function.Named} takes {takes.Count} parameters, but the signal gives {was.Count}",
+                return GDScriptRefactored.No($"{function.Named} takes {Numbers.Said(takes.Count)} parameters, but the signal gives {Numbers.Said(was.Count)}",
                     [new GDScriptPlace(function.Script, function.Start, function.Start + function.Named.Length, "handles it")]);
             }
             List<GDScriptParameterChange> following = [.. parameters.Select(p => p.From >= 0 ? takes[p.From] with { CallValue = string.Empty }

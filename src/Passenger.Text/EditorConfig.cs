@@ -346,7 +346,7 @@ public sealed class EditorConfig
     {
         if (depth > DeepestBraces)
         {
-            translation.Refused ??= $"its braces nest more than {DeepestBraces} deep";
+            translation.Refused ??= $"its braces nest more than {Numbers.Said(DeepestBraces)} deep";
             return string.Empty;
         }
         StringBuilder regex = new();

@@ -307,7 +307,7 @@ public sealed class DapConnection : IAsyncDisposable
             int headerEnd = rest.IndexOf(ContentLengthHeader.End);
             if (headerEnd < 0 ? rest.Length >= MostHeader : headerEnd > MostHeader)
             {
-                throw new IOException($"A DAP message's header ran past {MostHeader} bytes without the blank line that ends it");
+                throw new IOException($"A DAP message's header ran past {Numbers.Said(MostHeader)} bytes without the blank line that ends it");
             }
             if (headerEnd < 0)
             {
@@ -316,7 +316,7 @@ public sealed class DapConnection : IAsyncDisposable
             long length = ContentLengthHeader.Read(rest[..headerEnd]) ?? throw NoLength(rest[..headerEnd]);
             if (length > MostBody)
             {
-                throw new IOException($"A DAP message of {length} bytes is over the {MostBody} bytes the connection reads of one");
+                throw new IOException($"A DAP message of {Numbers.Said(length)} bytes is over the {Numbers.Said(MostBody)} bytes the connection reads of one");
             }
             int start = headerEnd + ContentLengthHeader.End.Length;
             if (rest.Length - start < length)

@@ -617,7 +617,7 @@ public partial class MainWindow
         {
             0 when !buildRun.IsRunningConfiguration(configuration.Name) => configuration.Name,
             0 or 1 => $"{configuration.Name} (running)",
-            _ => $"{configuration.Name} ({running} apps running)",
+            _ => $"{configuration.Name} ({Numbers.Said(running)} apps running)",
         };
     }
 

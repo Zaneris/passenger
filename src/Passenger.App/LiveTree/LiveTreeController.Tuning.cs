@@ -65,7 +65,7 @@ public sealed partial class LiveTreeController : IGodotTuner
         }
         if (app is GodotGame game && details.Details is { } shown && game.Tuning.UnkeptOf((ulong)shown.Id) is { Count: > 0 } values)
         {
-            view.ShowHeadingLink($"Keep All ({values.Count})…", () =>
+            view.ShowHeadingLink($"Keep All ({Numbers.Said(values.Count)})…", () =>
             {
                 if (view.HeadingLink is { } link)
                 {

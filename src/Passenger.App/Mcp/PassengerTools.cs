@@ -306,7 +306,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             string names = string.Join(", ", left.Select(d => FileText.IsReadOnly(d.Path) ? $"{Relative(d.Path)} (read-only)"
                 : Editors.HeldElsewhere(d.Path) is { } held ? $"{Relative(d.Path)} ({Refusals.HeldInGodot(held)})" : Relative(d.Path)));
-            throw new InvalidOperationException($"Saved {unsaved - left.Count} of {unsaved} files; not saved: {names}");
+            throw new InvalidOperationException($"Saved {Numbers.Said(unsaved - left.Count)} of {Numbers.Said(unsaved)} files; not saved: {names}");
         }
         return unsaved == 0 ? "Nothing to save" : $"Saved {Plural.Of(unsaved, "file")}";
     });
@@ -1369,7 +1369,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         SymbolsNamed named = await NamedAsync(await Server(cancel), symbol, null, 10, cancel);
         return named.Symbols.Count == 1 ? new CodePlace(named.Symbols[0].Path, named.Symbols[0].Line, named.Symbols[0].Column)
             : throw new InvalidOperationException($"{symbol} names {Plural.Of(named.Symbols.Count + named.More, "symbol")} of the solution's own code: "
-                + $"{string.Join("; ", named.Symbols.Select(n => n.ToString()))}{(named.More > 0 ? $"; and {named.More} more" : string.Empty)}. Name one by its container, "
+                + $"{string.Join("; ", named.Symbols.Select(n => n.ToString()))}{(named.More > 0 ? $"; and {Numbers.Said(named.More)} more" : string.Empty)}. Name one by its container, "
                 + "its parameters' types or its documentation id");
     }
 
@@ -1423,7 +1423,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             (OpenDocument document, _) = await CodeOrCopy(place.Path, cancel);
             each.Add($"{place}\n{await CardAsync(document, Offset(document, place.Line, place.Column), cancel)}".TrimEnd());
         }
-        return string.Join("\n\n", each) + (named.More > 0 ? $"\n\nAnd {named.More} more: name one by its container, its parameters' types or its documentation id" : string.Empty);
+        return string.Join("\n\n", each) + (named.More > 0 ? $"\n\nAnd {Numbers.Said(named.More)} more: name one by its container, its parameters' types or its documentation id" : string.Empty);
     }
 
     /// <summary>What the hover card says of an offset of a file, as the languages' one order says it (<see
@@ -2318,7 +2318,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             ?? throw new ArgumentException($"A column names a lambda's breakpoint in a C# file, which {Relative(path)} is not");
         if (line >= parsed.Text.LineCount)
         {
-            throw new ArgumentException($"{Relative(path)} has {parsed.Text.LineCount} lines");
+            throw new ArgumentException($"{Relative(path)} has {Numbers.Said(parsed.Text.LineCount)} lines");
         }
         LineSpan span = parsed.Text.GetLine(line);
         if ((column >= 1 ? LambdaBreakpoints.Of(parsed, line, column - 1) : null) is not { } lambda)
@@ -2481,7 +2481,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         IEnumerable<string> lines = errors.Take(10).Select(p =>
             $"{(p.Path is { } at ? $"{Relative(at)}:{p.Position.Line + 1}:{p.Position.Column + 1}" : p.Project)}: {p.Code} {p.Message}");
-        return $"{refused}:\n{string.Join('\n', lines)}{(errors.Count > 10 ? $"\n… {errors.Count - 10} more: problems lists them" : "")}";
+        return $"{refused}:\n{string.Join('\n', lines)}{(errors.Count > 10 ? $"\n… {Numbers.Said(errors.Count - 10)} more: problems lists them" : "")}";
     }
 
     /// <summary>What an answer says of an app whose UI is up: where it draws, where nobody sees it, and what looks at it.</summary>
@@ -2636,7 +2636,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             0 => null,
             1 => $"its breakpoint at {Relative(set[0].Path)}:{set[0].Line + 1}",
             <= 3 => $"its breakpoints at {Plural.Listed([.. set.Select(b => $"{Relative(b.Path)}:{b.Line + 1}")])}",
-            _ => $"its {set.Count} breakpoints",
+            _ => $"its {Numbers.Said(set.Count)} breakpoints",
         };
     }
 
@@ -2748,7 +2748,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             [{ } only] => only,
             [] => throw new InvalidOperationException($"No .NET program {(processId is int pid ? $"with process id {pid}" : $"named {program}")} is running for the debugger to attach to; debug_state of processes lists those there are"),
-            _ => throw new InvalidOperationException($"{named.Count} running programs are named {program}: name one by its processId ({string.Join(", ", named.Select(p => p.Id))})"),
+            _ => throw new InvalidOperationException($"{Numbers.Said(named.Count)} running programs are named {program}: name one by its processId ({string.Join(", ", named.Select(p => p.Id))})"),
         };
         if (await window.AttachAsync(chosen) is { } problem)
         {
@@ -3218,7 +3218,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         return paused is [var stopped] ? stopped
             : programs is [var only] ? only
             : live.Count == 0 ? debugger.Chosen
-            : throw new InvalidOperationException($"{live.Count} programs are debugged ({Listed()}), {(paused.Count == 0 ? "none" : $"{paused.Count}")} paused: name the one meant with session");
+            : throw new InvalidOperationException($"{Numbers.Said(live.Count)} programs are debugged ({Listed()}), {(paused.Count == 0 ? "none" : Numbers.Said(paused.Count))} paused: name the one meant with session");
     }
 
     /// <summary>The programs debugged and each one's state, as debug_state lists them.</summary>
@@ -3357,7 +3357,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             string[] modules = [.. frames.Skip(i).Take(last - i + 1).Select(f => f.Name.IndexOf('!', StringComparison.Ordinal) is > 0 and int bang ? f.Name[..bang] : null)
                 .OfType<string>().Distinct()];
-            lines.Add($"{i}-{last}: {last - i + 1} frames outside the folder's code{(modules.Length > 0 ? $" ({string.Join(", ", modules.Take(4))}{(modules.Length > 4 ? ", …" : "")})" : "")}");
+            lines.Add($"{i}-{last}: {Numbers.Said(last - i + 1)} frames outside the folder's code{(modules.Length > 0 ? $" ({string.Join(", ", modules.Take(4))}{(modules.Length > 4 ? ", …" : "")})" : "")}");
             i = last;
         }
         return lines;
@@ -3417,7 +3417,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 0 => $"There is no frame {frame}: the stopped thread has no frames",
                 1 => $"There is no frame {frame}: the stopped thread has 1 frame, 0",
-                _ => $"There is no frame {frame}: the stopped thread has {frames.Count} frames, 0 (the top) to {frames.Count - 1}, as debug_state numbers them",
+                _ => $"There is no frame {frame}: the stopped thread has {Numbers.Said(frames.Count)} frames, 0 (the top) to {frames.Count - 1}, as debug_state numbers them",
             });
     }
 
@@ -4006,8 +4006,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>A line an agent names (from one) as a line of a file's text (from zero); one below the first or past the
     /// last refused, saying the file's lines.</summary>
-    private int LineIn(TextSnapshot text, string path, int line) => line >= 1 && line <= text.LineCount ? line - 1
-        : throw new ArgumentException($"Line {line} is outside {Relative(path)}, whose lines are 1 to {text.LineCount}");
+    private int LineIn(TextSnapshot text, string path, int line)
+    {
+        int last = text.LineCount;
+        return line >= 1 && line <= last ? line - 1 : throw new ArgumentException($"Line {line} is outside {Relative(path)}, whose lines are 1 to {last}");
+    }
 
     /// <summary>The places the language server names, in its lines, as an agent reads them (<see cref="Lines"/>).</summary>
     private async Task<IReadOnlyList<Place>> Places(IReadOnlyList<LspLocation> locations, CancellationToken cancel)

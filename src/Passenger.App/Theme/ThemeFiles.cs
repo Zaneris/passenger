@@ -427,7 +427,7 @@ public static partial class ThemeFiles
         if (value is not { ValueKind: JsonValueKind.String } text || text.GetString() is not { } words || words.Trim().Length == 0
             || words.Length > longest || words.Any(char.IsControl))
         {
-            throw new FormatException($"gives {(value is null ? "no " + member : $"{member} as {ThemeJson.Shown(value.Value)}")}: its {member} is words on one line, at most {longest} characters");
+            throw new FormatException($"gives {(value is null ? "no " + member : $"{member} as {ThemeJson.Shown(value.Value)}")}: its {member} is words on one line, at most {Numbers.Said(longest)} characters");
         }
         return words;
     }
@@ -441,7 +441,7 @@ public static partial class ThemeFiles
         }
         if (value.Value.ValueKind != JsonValueKind.Array || value.Value.GetArrayLength() > MostEntries)
         {
-            throw new FormatException($"gives {member} as {ThemeJson.Shown(value.Value)}: {member} is a list of paths inside the source, at most {MostEntries}");
+            throw new FormatException($"gives {member} as {ThemeJson.Shown(value.Value)}: {member} is a list of paths inside the source, at most {Numbers.Said(MostEntries)}");
         }
         List<string> paths = [];
         foreach (JsonElement item in value.Value.EnumerateArray())
@@ -474,8 +474,8 @@ public static partial class ThemeFiles
     {
         ThemeTokenKind.Colour => "a colour: \"#RRGGBB\", \"#AARRGGBB\" or {\"colour\": \"#RRGGBB\", \"opacity\": 0 to 1}",
         ThemeTokenKind.Gradient => $"a gradient, {{\"start\": [x, y], \"end\": [x, y], \"stops\": [{{\"offset\": 0, \"colour\": \"#RRGGBB\"}}, …]}} "
-            + $"with 2 to {MostStops} stops in order from 0 to 1, or a colour: \"#RRGGBB\", \"#AARRGGBB\" or {{\"colour\": \"#RRGGBB\", \"opacity\": 0 to 1}}",
-        ThemeTokenKind.Shadow => $"shadows: \"X Y BLUR SPREAD #AARRGGBB\" each (BLUR and SPREAD may be left out, \"inset\" may lead), up to {MostShadows} joined by commas, or \"none\"",
+            + $"with 2 to {Numbers.Said(MostStops)} stops in order from 0 to 1, or a colour: \"#RRGGBB\", \"#AARRGGBB\" or {{\"colour\": \"#RRGGBB\", \"opacity\": 0 to 1}}",
+        ThemeTokenKind.Shadow => $"shadows: \"X Y BLUR SPREAD #AARRGGBB\" each (BLUR and SPREAD may be left out, \"inset\" may lead), up to {Numbers.Said(MostShadows)} joined by commas, or \"none\"",
         ThemeTokenKind.Radius => string.Create(CultureInfo.InvariantCulture, $"a radius: a number for every corner, or four [top left, top right, bottom right, bottom left], each 0 to {Farthest}"),
         ThemeTokenKind.Thickness => string.Create(CultureInfo.InvariantCulture, $"a thickness: a number for every side, or four [left, top, right, bottom], each -{Farthest} to {Farthest}"),
         ThemeTokenKind.Number => string.Create(CultureInfo.InvariantCulture, $"a number, 0 to {Farthest}"),

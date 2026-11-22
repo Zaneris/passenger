@@ -368,7 +368,7 @@ public sealed class GodotLiveValues
         }
         if (answer.Count > 1)
         {
-            hints.Add((new LineAnnotation(script.ClassLine, $"{answer.NodeName}, chosen of {answer.Count} nodes", LineAnnotationLook.Muted), string.Empty, default));
+            hints.Add((new LineAnnotation(script.ClassLine, $"{answer.NodeName}, chosen of {Numbers.Said(answer.Count)} nodes", LineAnnotationLook.Muted), string.Empty, default));
         }
         foreach (GodotScriptMember member in seen)
         {

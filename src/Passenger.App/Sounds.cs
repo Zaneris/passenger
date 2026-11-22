@@ -71,7 +71,7 @@ public static partial class Sounds
     {
         if (channels is < 1 or > 8 || rate <= 0)
         {
-            throw new InvalidDataException($"its stream says {channels} channels at {rate} Hz");
+            throw new InvalidDataException($"its stream says {Numbers.Said(channels)} channels at {Numbers.Said(rate)} Hz");
         }
         Span<byte> header = stackalloc byte[44];
         "RIFF"u8.CopyTo(header);

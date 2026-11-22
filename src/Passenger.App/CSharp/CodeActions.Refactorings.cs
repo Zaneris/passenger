@@ -200,7 +200,7 @@ internal sealed partial class CodeActions
         IReadOnlyList<LspLocation> declared = await lsp.DefinitionAsync(caret);
         if (declared.Count != 1)
         {
-            return (null, declared.Count == 0 ? "Nothing to delete here: put the caret on a name" : $"Safe Delete cannot delete a symbol declared in {declared.Count} places");
+            return (null, declared.Count == 0 ? "Nothing to delete here: put the caret on a name" : $"Safe Delete cannot delete a symbol declared in {Numbers.Said(declared.Count)} places");
         }
         string path = DocumentUris.ToPath(declared[0].Uri);
         string? root = context.CSharp?.Session?.Folder;

@@ -708,7 +708,7 @@ public partial class MainWindow
                 return FileHolders.Itself;
             }
             List<string> under = [.. held.Paths.Where(p => !PathNames.Same(p, path)).Select(p => PathNames.Shown(p, path))];
-            string inside = under.Count <= 3 ? Plural.Listed(under) : $"{string.Join(", ", under.Take(2))} and {under.Count - 2} more";
+            string inside = under.Count <= 3 ? Plural.Listed(under) : $"{string.Join(", ", under.Take(2))} and {Numbers.Said(under.Count - 2)} more";
             return DotnetProcesses.Describe(held.Process) is { } process
                 ? $"{process.Program} (process {held.Process}{(inside.Length == 0 ? string.Empty : $": {inside}")})"
                 : $"process {held.Process}{(inside.Length == 0 ? string.Empty : $" ({inside})")}";

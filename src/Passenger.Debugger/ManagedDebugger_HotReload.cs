@@ -366,7 +366,7 @@ public partial class ManagedDebugger
             _logger?.Invoke($"  0x{method:X8}: {string.Join(", ", module.MetadataReader.Points(method).Select(p => $"IL_{p.Offset:X4} {p.StartLine}:{p.StartColumn}"))}");
         }
         Rebind(module, [.. update.UpdatedMethods]);
-        _logger?.Invoke($"Applied an update to {module.ModuleName}: {update.UpdatedMethods.Count} methods, {update.UpdatedTypes.Count} types, generation {module.MetadataReader.Generations}");
+        _logger?.Invoke($"Applied an update to {module.ModuleName}: {Numbers.Said(update.UpdatedMethods.Count)} methods, {Numbers.Said(update.UpdatedTypes.Count)} types, generation {module.MetadataReader.Generations}");
         return new ModuleApplied(update.Module, update.Name, true, null);
     }
 

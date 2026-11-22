@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.Interop;
 
@@ -44,7 +45,7 @@ public partial class ManagedDebugger
             {
                 if (IsAsyncMain(module, moveNext))
                 {
-                    _logger?.Invoke($"An exception caught to fault a task on thread {thread.Id} goes on unhandled through {followed} awaiting method(s) to the program's async Main");
+                    _logger?.Invoke($"An exception caught to fault a task on thread {thread.Id} goes on unhandled through {Numbers.Said(followed)} awaiting method(s) to the program's async Main");
                     return ExceptionScenarios.Unhandled;
                 }
                 if ((AwaiterOf(stateMachine) ?? (running is null ? null : CallerAwaiting(stack, running, module, moveNext))) is not { } next

@@ -199,7 +199,7 @@ public static class MSBuildNavigation
             : null;
         if (made is not null)
         {
-            card.AppendLine($"{type} {string.Join(";", made.Includes.Take(3))}{(made.Count > 3 ? $" (and {made.Count - 3} more)" : string.Empty)}");
+            card.AppendLine($"{type} {string.Join(";", made.Includes.Take(3))}{(made.Count > 3 ? $" (and {Numbers.Said(made.Count - 3)} more)" : string.Empty)}");
             foreach ((string name, string value) in made.Metadata.Take(8))
             {
                 card.AppendLine($"{name} = {Shown(value)}");

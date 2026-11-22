@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Reflection.Metadata;
 using System.Text;
+using Passenger.Core;
 
 namespace Passenger.Debugger.Relay;
 
@@ -58,7 +59,7 @@ internal static class DeviceMetadata
             int taken = 8 + ((end + 4) & ~3);
             if (end < 0 || taken > header.Length)
             {
-                return $"its stream header {i + 1} of {streams} runs past its end";
+                return $"its stream header {i + 1} of {Numbers.Said(streams)} runs past its end";
             }
             string said = Encoding.Latin1.GetString(header.Slice(8, end));
             ulong offset = BinaryPrimitives.ReadUInt32LittleEndian(header);

@@ -150,7 +150,7 @@ public sealed class CommandHistory
         Turn first = turns[0];
         List<string> left = [.. first.Left.Select(Path.GetFileName).OfType<string>()];
         string stage = left.Count == 0 ? $"{first.What}: writing…"
-            : $"{first.What}: writing {string.Join(", ", left.Take(3))}{(left.Count > 3 ? $" and {left.Count - 3} more" : string.Empty)}…";
+            : $"{first.What}: writing {string.Join(", ", left.Take(3))}{(left.Count > 3 ? $" and {Numbers.Said(left.Count - 3)} more" : string.Empty)}…";
         if (writing is null)
         {
             writing = Work?.Begin(WritingFiles, stage, stoppable: false);

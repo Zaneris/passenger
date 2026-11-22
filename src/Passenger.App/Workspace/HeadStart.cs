@@ -133,7 +133,7 @@ public sealed class HeadStart
                     }
                 }
             });
-            IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {projects.Count} projects of {Folder} ahead of its window in {Numbers.Fixed(done.Seconds, 2)} s");
+            IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {Numbers.Said(projects.Count)} projects of {Folder} ahead of its window in {Numbers.Fixed(done.Seconds, 2)} s");
             lock (complete)
             {
                 return new ProjectModelCache { Sdk = host.Sdk, Projects = new(complete, StringComparer.Ordinal) };
@@ -168,7 +168,7 @@ public sealed class HeadStart
                     }
                 }
             });
-            IdeErrors.Write($"Project host (process {host.ProcessId}) built {done.Built} projects of {Folder} at design time ahead of its window in {Numbers.Fixed(done.Seconds, 2)} s");
+            IdeErrors.Write($"Project host (process {host.ProcessId}) built {Numbers.Said(done.Built)} projects of {Folder} at design time ahead of its window in {Numbers.Fixed(done.Seconds, 2)} s");
             lock (built)
             {
                 return new ProjectBuildCache { Sdk = host.Sdk, Solution = read.Solution?.Path, Projects = new(built, StringComparer.Ordinal) };

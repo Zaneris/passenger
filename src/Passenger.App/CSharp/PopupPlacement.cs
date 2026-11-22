@@ -91,7 +91,7 @@ internal sealed class PopupPlacement
 
     /// <summary>A list's choice as it is said: its words, its kind where it has one, and where it stands in the list.</summary>
     public static string Chosen(string words, string? kind, int at, int count) =>
-        string.IsNullOrEmpty(kind) ? $"{words}, item {at + 1} of {count}" : $"{words}, {kind}, item {at + 1} of {count}";
+        string.IsNullOrEmpty(kind) ? $"{words}, item {at + 1} of {Numbers.Said(count)}" : $"{words}, {kind}, item {at + 1} of {Numbers.Said(count)}";
 
     /// <summary>Whether the modal last asked for was refused to an agent's action, answered as dismissed without showing.</summary>
     private bool refused;

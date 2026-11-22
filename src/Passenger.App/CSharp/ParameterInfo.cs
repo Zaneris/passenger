@@ -235,7 +235,7 @@ internal sealed class ParameterInfo
                 bool fits = each.Fits != false;
                 card.AddOverload(each.Label, each.Code, language, fits, fits ? each.ActiveParameter ?? help.ActiveParameter ?? -1 : -1, chosen: i == overload);
             }
-            card.AddText($"Overload {overload + 1} of {count}");
+            card.AddText($"Overload {overload + 1} of {Numbers.Said(count)}");
         }
         else
         {
@@ -253,7 +253,7 @@ internal sealed class ParameterInfo
             card.AddText(SentencesApart(documentation, names));
         }
         card.IsVisible = true;
-        Tell(signature.Label, count > 1 ? $"overload {overload + 1} of {count}" : null, ParameterLabel(signature, active));
+        Tell(signature.Label, count > 1 ? $"overload {overload + 1} of {Numbers.Said(count)}" : null, ParameterLabel(signature, active));
     }
 
     /// <summary>Tells a screen reader the card shown: the whole signature (with which of its overloads, and the parameter

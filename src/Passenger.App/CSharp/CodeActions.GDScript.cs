@@ -302,7 +302,7 @@ internal sealed partial class CodeActions
             return RefactorOutcome.Refused($"{title} was not applied: {failed}");
         }
         string said = done ?? $"{title} done";
-        return new RefactorOutcome(files.Count > 1 ? $"{said} in {files.Count} files" : said, null, files, []);
+        return new RefactorOutcome(files.Count > 1 ? $"{said} in {Numbers.Said(files.Count)} files" : said, null, files, []);
     }
 
 

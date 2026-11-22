@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Workspace;
+using Passenger.Core;
 
 namespace Passenger.App.Editors;
 
@@ -51,7 +52,7 @@ public sealed class AssetPreviewControl : DockPanel, IDisposable, IOwnKeys
         if (asset.Bitmap is { } bitmap)
         {
             TextBlock dimensions = MutedText.Caption($"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} pixels"
-                + (asset.Frames > 1 ? $" · the first of its {asset.Frames} frames" : ""));
+                + (asset.Frames > 1 ? $" · the first of its {Numbers.Said(asset.Frames)} frames" : ""));
             dimensions.Margin = new Thickness(Gaps.Normal, 0);
             dimensions.HorizontalAlignment = HorizontalAlignment.Right;
             picture = new ZoomedPicture { Picture = bitmap };

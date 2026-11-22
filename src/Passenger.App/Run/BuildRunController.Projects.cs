@@ -150,7 +150,7 @@ public sealed partial class BuildRunController
                 (RunConfiguration configuration, LaunchPlan plan, bool underDebugger) = starts[i];
                 // Each program follows its own copy of the edits since the build: the last takes the first's.
                 BuiltEdits? its = edits is null ? null : i == starts.Count - 1 ? Take(ref edits) : session.Debug.Copied(edits);
-                work.Say($"Starting {plan.Name}, {i + 1} of {starts.Count}…");
+                work.Say($"Starting {plan.Name}, {i + 1} of {Numbers.Said(starts.Count)}…");
                 string? notStarted;
                 if (underDebugger)
                 {

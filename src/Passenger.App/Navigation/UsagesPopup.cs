@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 
@@ -20,7 +21,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     private readonly string? note;
 
     public UsagesPopup(string title, IReadOnlyList<Usage> usages, string? note)
-        : base($"{title}  {Core.Plural.Of(usages.Count, "usage")}{(usages.Count(u => u.Generated) is > 0 and int made ? $", {made} in generated code" : string.Empty)}",
+        : base($"{title}  {Core.Plural.Of(usages.Count, "usage")}{(usages.Count(u => u.Generated) is > 0 and int made ? $", {Numbers.Said(made)} in generated code" : string.Empty)}",
             "A file's name or code", PopupFrame.Wide)
     {
         all = [.. usages.OrderBy(u => u.Generated).ThenBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];

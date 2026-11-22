@@ -786,7 +786,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             case Wire.Untold when reply.Untold is { } untold && untold != Untold:
                 if (untold.Messages > Untold.Messages)
                 {
-                    IdeErrors.Write($"{Name}'s inspector left out {untold.Messages - Untold.Messages} of its own messages, too many waiting to be sent at once");
+                    IdeErrors.Write($"{Name}'s inspector left out {Numbers.Said(untold.Messages - Untold.Messages)} of its own messages, too many waiting to be sent at once");
                 }
                 Untold = untold;
                 UntoldChanged?.Invoke(this, EventArgs.Empty);

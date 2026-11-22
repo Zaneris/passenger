@@ -710,7 +710,7 @@ public sealed class LocalHistory
         }
         if (bad > 0)
         {
-            IdeErrors.Write($"Local History: {bad} lines of {log} did not read and were passed over");
+            IdeErrors.Write($"Local History: {Numbers.Said(bad)} lines of {log} did not read and were passed over");
         }
         lock (gate)
         {

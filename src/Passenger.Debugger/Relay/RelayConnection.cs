@@ -219,7 +219,7 @@ internal sealed class RelayConnection : IDisposable, IRelayLink
                 int count = Counted(answer, at);
                 if (count < 0 || count > arg.Size || (answer.Length - at - 4) / 16 < count)
                 {
-                    throw Refused($"it answered {count} objects, in {answer.Length - at - 4} bytes left of its answer, where room was made for {arg.Size}");
+                    throw Refused($"it answered {Numbers.Said(count)} objects, in {Numbers.Said(answer.Length - at - 4)} bytes left of its answer, where room was made for {Numbers.Said(arg.Size)}");
                 }
                 at += 4;
                 RemotePointer[] pointers = new RemotePointer[count];

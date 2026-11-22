@@ -194,7 +194,7 @@ public sealed partial class PassengerTools
         {
             throw new ArgumentException(found.Count == 1
                 ? $"{AppQuery.Short(found[0].Element)} runs no script of {game.Name}'s whose code declares a member"
-                : $"None of the {found.Count} nodes {control} finds runs a script of {game.Name}'s whose code declares a member");
+                : $"None of the {Numbers.Said(found.Count)} nodes {control} finds runs a script of {game.Name}'s whose code declares a member");
         }
         IReadOnlyList<GodotScriptRead> answers = await game.ScriptValuesAsync(
             [.. read.Select(r => new GodotScriptAsk(r.Script, (ulong)r.Node.Element.Id, [.. r.Members.Members.Select(m => m.Name)]))]);

@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Roslyn.Extension;
 using Passenger.Workspace;
 
@@ -1504,7 +1505,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             string? whyNot = row.WhyNotHere(projects);
             int running = Math.Max(IsRunning(row.Name) ? 1 : 0, runningAppHosts.Count(path => Core.PathNames.Same(path, row.Project)
                 || row.LinkedAppHosts.Any(linked => Core.PathNames.Same(linked, path))));
-            name.Text = running switch { 0 => row.Name, 1 => $"{row.Name} (running)", _ => $"{row.Name} ({running} apps running)" };
+            name.Text = running switch { 0 => row.Name, 1 => $"{row.Name} (running)", _ => $"{row.Name} ({Numbers.Said(running)} apps running)" };
             bool changed = whyNot is null && entry.IsChanged;
             name.Classes.Set(StyleClasses.Muted, whyNot is not null);
             name.Classes.Set(StyleClasses.Changed, changed);

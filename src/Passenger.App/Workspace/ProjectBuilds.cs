@@ -246,7 +246,7 @@ public sealed class ProjectBuilds
         Pump();
         if (first.Count > 0)
         {
-            IdeErrors.Write($"C# language server loads {string.Join(", ", first.Select(Path.GetFileNameWithoutExtension))} first, for the file shown ({first.Count(standing.ContainsKey)} of them as built before)");
+            IdeErrors.Write($"C# language server loads {string.Join(", ", first.Select(Path.GetFileNameWithoutExtension))} first, for the file shown ({Numbers.Said(first.Count(standing.ContainsKey))} of them as built before)");
         }
         return new FedProjects([.. first.Select(Open)], [.. rest.Select(Open)], standing.Count > 0 ? looked : null,
             standing.Keys.ToDictionary(p => p, p => (IReadOnlyList<InputRead>)AsRead(held[p].Inputs), StringComparer.Ordinal));
@@ -514,7 +514,7 @@ public sealed class ProjectBuilds
             {
                 // Every window shares the host, which another folder's build may have ended: a host started anew builds the rest once.
                 List<string> left = Left();
-                IdeErrors.Write($"Project host (process {host.ProcessId}) building the projects of {following} at design time: {ended.Reason}. The {left.Count} not yet built are asked of a host started anew");
+                IdeErrors.Write($"Project host (process {host.ProcessId}) building the projects of {following} at design time: {ended.Reason}. The {Numbers.Said(left.Count)} not yet built are asked of a host started anew");
                 // A project whose folder has gone holds no host: it finds no project file there, and fails at once.
                 (host, List<string> standing) = await BackgroundWork.Run(async () =>
                     (await ProjectHosts.ForAsync(following), left.Where(p => Directory.Exists(Path.GetDirectoryName(p))).ToList()));
@@ -522,7 +522,7 @@ public sealed class ProjectBuilds
             }
             if (mine == generation)
             {
-                IdeErrors.Write($"Project host (process {host.ProcessId}) built {done.Built} projects of {following} at design time in {Durations.Said(TimeSpan.FromSeconds(done.Seconds))}, {Durations.Said(Stopwatch.GetElapsedTime(began))} after they were asked for");
+                IdeErrors.Write($"Project host (process {host.ProcessId}) built {Numbers.Said(done.Built)} projects of {following} at design time in {Durations.Said(TimeSpan.FromSeconds(done.Seconds))}, {Durations.Said(Stopwatch.GetElapsedTime(began))} after they were asked for");
                 Keep();
             }
         }

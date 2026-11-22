@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Endpoints;
@@ -216,7 +217,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         int[] counts = [Params.Enabled.Count, Headers.Enabled.Count, 0, Lines(Criteria.Text).Count()];
         for (int i = 0; i < TabNames.Length; i++)
         {
-            tabs[i].Content = counts[i] > 0 ? $"{TabNames[i]} ({counts[i]})" : TabNames[i];
+            tabs[i].Content = counts[i] > 0 ? $"{TabNames[i]} ({Numbers.Said(counts[i])})" : TabNames[i];
         }
     }
 

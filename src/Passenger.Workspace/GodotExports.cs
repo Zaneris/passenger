@@ -185,7 +185,7 @@ public static class GodotExports
         foreach ((string name, long size) in chosen.OrderBy(c => c.Name == VersionFile ? 1 : 0))
         {
             cancel.ThrowIfCancellationRequested();
-            stage($"Installing {name} ({Sizes.Said(size)}), {++done} of {chosen.Count}");
+            stage($"Installing {name} ({Sizes.Said(size)}), {++done} of {Numbers.Said(chosen.Count)}");
             ZipArchiveEntry entry = zip.GetEntry(Inside + name)!;
             AtomicFile.Write(Path.Combine(folder, name), stream => Copy(entry, stream, cancel), null, AtomicFile.Temporary, AtomicFile.Move);
         }

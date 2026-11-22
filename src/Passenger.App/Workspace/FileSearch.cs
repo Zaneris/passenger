@@ -83,7 +83,7 @@ public sealed record FilesReplaced(IReadOnlyList<string> Converted, IReadOnlyLis
     public IReadOnlyList<SearchMatch> Replaced(IEnumerable<SearchMatch> matches) => [.. matches.Where(m => !Refused.Any(r => r.Path == m.Path))];
 
     /// <summary>How many matches in how many files, as the window and an agent are told.</summary>
-    public static string Count(IReadOnlyCollection<SearchMatch> matches)
+    public static string Said(IReadOnlyCollection<SearchMatch> matches)
     {
         int files = matches.Select(m => m.Path).Distinct().Count();
         return $"{Plural.Of(matches.Count, "match", "matches")} in {Plural.Of(files, "file")}";

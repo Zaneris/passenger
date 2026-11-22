@@ -407,7 +407,7 @@ public sealed class HotReload
     {
         List<string> said = [.. problems.Select(p => p.Message.TrimEnd('.')).Distinct(StringComparer.Ordinal)];
         return said.Count == 0 ? "No managed code changes to apply."
-            : $"No managed code changes to apply: {string.Join("; ", said.Take(2))}{(said.Count > 2 ? $"; and {said.Count - 2} more" : string.Empty)}.";
+            : $"No managed code changes to apply: {string.Join("; ", said.Take(2))}{(said.Count > 2 ? $"; and {Numbers.Said(said.Count - 2)} more" : string.Empty)}.";
     }
 
     /// <summary>The first edits named, each with its file and line, as the status bar says them.</summary>
@@ -415,7 +415,7 @@ public sealed class HotReload
     {
         List<Problem> named = [.. problems];
         string first = string.Join("; ", named.Take(2).Select(p => $"{p.Message} ({p.Where})"));
-        return named.Count > 2 ? $"{first}; and {named.Count - 2} more" : first;
+        return named.Count > 2 ? $"{first}; and {Numbers.Said(named.Count - 2)} more" : first;
     }
 
     /// <summary>An edit Roslyn could not take, as Problems lists it: its id (ENC0020) the code, its place from zero as the

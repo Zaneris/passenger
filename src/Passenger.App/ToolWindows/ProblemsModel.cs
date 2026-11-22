@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Passenger.App.LiveTree;
 using Passenger.App.Run;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.ToolWindows;
@@ -304,7 +305,7 @@ public sealed class ProblemsModel
         };
         // A filter counts what it shows.
         count = tab == ProblemsTab.Solution ? solutionShown : CountShown(ProblemsOf(tab), count);
-        return count == 0 ? title : $"{title}  {count}";
+        return count == 0 ? title : $"{title}  {Numbers.Said(count)}";
     }
 
     /// <summary>Whether a tab's button shows: the Solution tab with solution-wide analysis on, Hot Reload's after one, the

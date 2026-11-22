@@ -203,7 +203,7 @@ public static class OpenApiSchemas
                 }
             }
             return options.Count == 0 || held.Count == 1 ? null
-                : held.Count == 0 ? $"{Describe(value)} is none of the {options.Count} kinds its schema's {choice} allows"
+                : held.Count == 0 ? $"{Describe(value)} is none of the {Numbers.Said(options.Count)} kinds its schema's {choice} allows"
                 : $"{Describe(value)} fits both {Option(options, held[0])} and {Option(options, held[1])} of its schema's oneOf, which allows one alone";
         }
 

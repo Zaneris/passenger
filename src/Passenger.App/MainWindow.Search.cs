@@ -246,14 +246,14 @@ public partial class MainWindow
             status.Text = $"Nothing replaced; not replaced: {left}";
             return;
         }
-        string what = FilesReplaced.Count(replacing);
+        string what = FilesReplaced.Said(replacing);
         string leaving = left is null ? string.Empty : $" Not replaced: {left}.";
         if (await Confirm("Replace in Files", $"Replace {what} with '{asked.Replacement}'? A closed file is written; one Undo takes back every file's change.{leaving}", "Replace All"))
         {
             FilesReplaced done = await ReplaceInFilesAsync(asked.Query, asked.Replacement, found);
             IReadOnlyList<SearchMatch> replaced = done.Replaced(found.Matches);
             string? refused = done.NotReplaced(Path.GetFileName);
-            status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Count(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
+            status.Text = string.Join("; ", [replaced.Count > 0 ? $"Replaced {FilesReplaced.Said(replaced)}" : "Nothing replaced", .. done.Converted, .. refused is null ? [] : new[] { refused }]);
             await popup.SearchAsync();
         }
     }

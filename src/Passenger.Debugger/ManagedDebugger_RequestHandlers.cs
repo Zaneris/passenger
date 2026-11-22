@@ -559,7 +559,7 @@ public partial class ManagedDebugger
         {
             if (matched[i].Kept is { } same)
             {
-                _logger?.Invoke($"Breakpoint {same.Id} at {filePath}:{breakpoints[i].Line} kept as it was, {same.HitCount} hits in");
+                _logger?.Invoke($"Breakpoint {same.Id} at {filePath}:{breakpoints[i].Line} kept as it was, {Numbers.Said(same.HitCount)} hits in");
                 result.Add(same);
                 continue;
             }
@@ -602,7 +602,7 @@ public partial class ManagedDebugger
         {
             if (matched[i].Kept is { } same)
             {
-                _logger?.Invoke($"Function breakpoint {same.Id} on {same.FunctionName} kept as it was, {same.HitCount} hits in");
+                _logger?.Invoke($"Function breakpoint {same.Id} on {same.FunctionName} kept as it was, {Numbers.Said(same.HitCount)} hits in");
                 result.Add(same);
                 continue;
             }

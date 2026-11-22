@@ -607,7 +607,7 @@ public sealed partial class AspireInteractions
             }
             if (consoleWatches.Keys.Count(watch => !watch.IsCancellationRequested) >= AspireClient.ResourceLimit)
             {
-                throw new InvalidOperationException($"The AppHost already has {AspireClient.ResourceLimit} active console subscriptions.");
+                throw new InvalidOperationException($"The AppHost already has {Numbers.Said(AspireClient.ResourceLimit)} active console subscriptions.");
             }
             consoleWatches.Add(request, (resource.Name, resource.Generation));
         }

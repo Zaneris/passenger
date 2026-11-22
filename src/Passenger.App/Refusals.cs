@@ -209,7 +209,7 @@ public static class Refusals
 
     /// <summary>The first three names, and how many more.</summary>
     private static string FirstNamed(IReadOnlyList<string> names) =>
-        $"{string.Join(", ", names.Take(3))}{(names.Count > 3 ? $" and {names.Count - 3} more" : string.Empty)}";
+        $"{string.Join(", ", names.Take(3))}{(names.Count > 3 ? $" and {Numbers.Said(names.Count - 3)} more" : string.Empty)}";
 
     /// <summary>The folder's projects have no .NET SDK to load, build and run them with: the one its global.json asks
     /// for (named from <paramref name="folder"/>) is not installed, none is, or dotnet found none for another reason it
@@ -768,7 +768,7 @@ public static class Refusals
     /// <summary>An agent's act in Godot's editor naming no scene by its path in the folder, which holds several Godot projects
     /// whose editors each take such an act: the project is told by the scene's path alone.</summary>
     public static string GodotProjectUnnamed(IReadOnlyList<string> projects) =>
-        $"The folder holds {projects.Count} Godot projects ({Plural.Listed(projects)}): name the scene by its path in the folder, such as {projects[0]}/main.tscn, so the act goes to that project's Godot editor";
+        $"The folder holds {Numbers.Said(projects.Count)} Godot projects ({Plural.Listed(projects)}): name the scene by its path in the folder, such as {projects[0]}/main.tscn, so the act goes to that project's Godot editor";
 
     /// <summary>An agent's act in Godot's editor whose addon is older than one that takes it.</summary>
     public static string GodotAddonOlder(string project, int version) =>

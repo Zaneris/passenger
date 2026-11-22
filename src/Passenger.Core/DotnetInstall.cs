@@ -268,10 +268,10 @@ public static class DotnetInstall
         {
             string each = string.Join(", ", took.Select(t => string.Create(CultureInfo.InvariantCulture, $"{t.Step} {Durations.Said(t.Took)}")));
             string waits = merge.HeldSteps > 0
-                ? string.Create(CultureInfo.InvariantCulture, $"; the moves waited {Durations.Said(merge.Held)} in all for Windows to let go of {merge.HeldSteps} held entries")
+                ? string.Create(CultureInfo.InvariantCulture, $"; the moves waited {Durations.Said(merge.Held)} in all for Windows to let go of {Numbers.Said(merge.HeldSteps)} held entries")
                 : string.Empty;
             string pieces = merge.Piecemeal > 0
-                ? string.Create(CultureInfo.InvariantCulture, $"; {merge.Piecemeal} folders came in entry by entry, a file under them being open")
+                ? string.Create(CultureInfo.InvariantCulture, $"; {Numbers.Said(merge.Piecemeal)} folders came in entry by entry, a file under them being open")
                 : string.Empty;
             PassengerLog.Write($"Install .NET SDK {version}: {(installed ? "installed" : "not installed")}; {each}{waits}{pieces}");
         }

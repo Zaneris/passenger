@@ -527,7 +527,7 @@ public sealed partial class PassengerTools
                 throw new InvalidOperationException($"{what} was not applied: {refused}");
             }
             await SaveLandedAsync(CancellationToken.None);
-            return $"Extracted resource '{key}' to {place.Title}{(value.Uses.Count > 1 ? $", used in {value.Uses.Count} places" : string.Empty)}";
+            return $"Extracted resource '{key}' to {place.Title}{(value.Uses.Count > 1 ? $", used in {Numbers.Said(value.Uses.Count)} places" : string.Empty)}";
         }
         StyleSource source = (StyleSource)chosen.Made;
         ResourcePlace into = PlaceChosen(await BackgroundWork.Run(() => XamlRefactorings.Places(xaml.File, styles: source.ByClass, texts)));

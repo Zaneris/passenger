@@ -1,5 +1,6 @@
 using Passenger.App.Godot;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Workspace.GDScript;
 
 namespace Passenger.App.CSharp;
@@ -35,7 +36,7 @@ internal sealed partial class GDScriptAssist : IOwnSignatures
         IReadOnlyList<string> shown = signature.Shown;
         if (shown.Count > 0)
         {
-            card.AddText(call.Argument < shown.Count ? shown[call.Argument] : signature.Varargs ? "..." : $"{call.Argument + 1} arguments given, of {shown.Count}");
+            card.AddText(call.Argument < shown.Count ? shown[call.Argument] : signature.Varargs ? "..." : $"{Numbers.Said(call.Argument + 1)} arguments given, of {Numbers.Said(shown.Count)}");
         }
         if (named is not null && WordsOf(typed, named, ReferenceRead(types)) is { } words && GodotDocText.Parts(words, 1) is [{ Code: false } first, ..])
         {

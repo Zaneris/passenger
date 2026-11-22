@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Passenger.App.Aspire;
 using Passenger.App.Containers;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Telemetry;
@@ -261,7 +262,7 @@ public sealed class TelemetryView : IDisposable
                     {
                         ShowTrace(again: true);
                     }
-                    tracesStatus.Text = $"Live · {traces.Count} retained traces";
+                    tracesStatus.Text = $"Live · {Numbers.Said(traces.Count)} retained traces";
                     if (wantedTrace is { } wanted && traces.FirstOrDefault(trace => trace.TraceId == wanted.TraceId) is { } listed)
                     {
                         wantedTrace = null;
@@ -395,7 +396,7 @@ public sealed class TelemetryView : IDisposable
         {
             return;
         }
-        logsStatus.Text = $"Live · {logItems.Count} retained structured logs";
+        logsStatus.Text = $"Live · {Numbers.Said(logItems.Count)} retained structured logs";
         if (wantedLogs is { } wanted && Correlated(wanted.TraceId, wanted.SpanId) is { } found)
         {
             wantedLogs = null;

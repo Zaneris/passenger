@@ -411,7 +411,7 @@ public partial class MainWindow
         }
         status.Text = removed.Count == 1
             ? $"Removed {Path.GetFileName(removed[0])}, Inspect's copy written before Passenger masked the secrets in it"
-            : $"Removed {removed.Count} of Inspect's copies written before Passenger masked the secrets in them";
+            : $"Removed {Numbers.Said(removed.Count)} of Inspect's copies written before Passenger masked the secrets in them";
     }
 
     /// <summary>Inspect's JSON as it reads: indented, its characters (a masked secret's dots, an image's names) as they are.</summary>

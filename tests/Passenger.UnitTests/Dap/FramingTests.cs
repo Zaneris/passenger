@@ -146,9 +146,9 @@ public class FramingTests
     /// <summary>A header that never ends, a length past the most a message may be or past any number, or no length at all: the
     /// reader ends the conversation saying why, never taking its memory for it or waiting on.</summary>
     [Theory]
-    [InlineData("header", "ran past 65536 bytes")]
-    [InlineData("Content-Length: 268435457\r\n\r\n", "over the 268435456 bytes")]
-    [InlineData("Content-Length: 99999999999999999999\r\n\r\n", "over the 268435456 bytes")]
+    [InlineData("header", "ran past 65,536 bytes")]
+    [InlineData("Content-Length: 268435457\r\n\r\n", "over the 268,435,456 bytes")]
+    [InlineData("Content-Length: 99999999999999999999\r\n\r\n", "over the 268,435,456 bytes")]
     [InlineData("Content-Type: text/plain\r\n\r\n{}", "no Content-Length")]
     [InlineData("Content-Length: 12\r\n\r\n{\"cut\":", null)]
     public async Task What_is_no_message_ends_the_conversation_saying_why_and_fails_the_request_waiting(string sent, string? logged)

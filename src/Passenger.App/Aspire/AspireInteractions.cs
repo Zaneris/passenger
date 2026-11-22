@@ -239,7 +239,7 @@ public sealed partial class AspireInteractions : IDisposable, IAsyncDisposable
         long limit = input.MaxFileSize > 0 ? Math.Min(input.MaxFileSize, FileLimit) : FileLimit;
         if (new FileInfo(file).Length > limit)
         {
-            throw new InvalidDataException($"The selected file exceeds the {limit} byte upload limit.");
+            throw new InvalidDataException($"The selected file exceeds the {Numbers.Said(limit)} byte upload limit.");
         }
         using AsyncClientStreamingCall<UploadFileChunk, UploadFileResponse> upload = client.UploadFile(headers, cancellationToken: cancel);
         await using FileStream stream = new(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);

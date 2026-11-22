@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Passenger.App.CSharp;
+using Passenger.Core;
 using Passenger.Xaml.Features;
 
 namespace Passenger.App.Xaml;
@@ -23,7 +24,7 @@ public sealed class ExtractResourceDialog : RefactoringDialog
         NameBox = Field(value.Suggested);
         NameBox.TextChanged += (_, _) => Changed();
         PlaceBox = new FormDropDown { ItemsSource = places.Select(p => p.Title).ToList(), SelectedIndex = 0 };
-        EveryUse = new CheckBox { Content = $"Replace all {value.Uses.Count} occurrences in this file", IsChecked = true, IsVisible = value.Others > 0 };
+        EveryUse = new CheckBox { Content = $"Replace all {Numbers.Said(value.Uses.Count)} occurrences in this file", IsChecked = true, IsVisible = value.Others > 0 };
         Options = new StackPanel
         {
             Spacing = FormRows.Between,

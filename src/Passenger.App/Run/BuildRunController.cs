@@ -641,7 +641,7 @@ public sealed partial class BuildRunController
     {
         if (session.Builder.IsRunning)
         {
-            string which = running.Count == 1 ? $"build of {Path.GetFileNameWithoutExtension(running[0])}" : $"builds of {running.Count} projects";
+            string which = running.Count == 1 ? $"build of {Path.GetFileNameWithoutExtension(running[0])}" : $"builds of {Numbers.Said(running.Count)} projects";
             parts.Views.Build.Append($"Waiting for the design-time {which} to end\n");
             buildWork?.Say($"Waiting for the design-time {which} to end…");
         }
@@ -835,7 +835,7 @@ public sealed partial class BuildRunController
         parts.Views.Problems.Show(problems);
         if (parts.Dock[ToolWindowIds.Problems] is { } problemsWindow)
         {
-            problemsWindow.Title = problems.Count == 0 ? "Problems" : $"Problems {problems.Count}";
+            problemsWindow.Title = problems.Count == 0 ? "Problems" : $"Problems {Numbers.Said(problems.Count)}";
         }
     }
 
@@ -1546,7 +1546,7 @@ public sealed partial class BuildRunController
             List<string> started = [];
             for (int copy = 1; copy <= count; copy++)
             {
-                work.Say($"Starting {CopyName(chosen, copy)}, {copy} of {count}…");
+                work.Say($"Starting {CopyName(chosen, copy)}, {copy} of {Numbers.Said(count)}…");
                 BuiltEdits? its = each[copy - 1];
                 each[copy - 1] = null;
                 if (await RunCopyAsync(chosen, plan, copy, reloaded, work, its) is { } refused)
@@ -1555,7 +1555,7 @@ public sealed partial class BuildRunController
                 }
                 started.Add(CopyName(chosen, copy));
             }
-            parts.Say($"Running {count} copies of {chosen.Name}{(reloaded && !plan.ScriptsAlone ? " with Hot Reload: a save applies its changes in each" : string.Empty)}, each in a tab of the Terminal window",
+            parts.Say($"Running {Numbers.Said(count)} copies of {chosen.Name}{(reloaded && !plan.ScriptsAlone ? " with Hot Reload: a save applies its changes in each" : string.Empty)}, each in a tab of the Terminal window",
                 StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
             return null;
         }
@@ -1690,7 +1690,7 @@ public sealed partial class BuildRunController
         }
         int running = CopiesRun(chosen.Name) + (RunsOwnProgram(chosen.Name) ? 1 : 0);
         return running == 0 ? $"Run runs no copy of {chosen.Name}: Run starts it, then Run Another Copy one more beside it"
-            : running >= GameCopies.Most ? $"{chosen.Name} runs {GameCopies.Most} copies, the most one configuration runs"
+            : running >= GameCopies.Most ? $"{chosen.Name} runs {Numbers.Said(GameCopies.Most)} copies, the most one configuration runs"
             : null;
     }
 
@@ -2641,7 +2641,7 @@ public sealed partial class BuildRunController
         }
         IReadOnlyList<(ToolWindows.DebugTab Tab, int Copy)> running = session.Debug.CopiesOf(chosen.Name);
         return running.Count == 0 ? $"No copy of {chosen.Name} is debugged: Debug starts it, then Debug Another Copy one more beside it"
-            : running.Count >= GameCopies.Most ? $"{chosen.Name} runs {GameCopies.Most} copies, the most one configuration runs"
+            : running.Count >= GameCopies.Most ? $"{chosen.Name} runs {Numbers.Said(GameCopies.Most)} copies, the most one configuration runs"
             : null;
     }
 

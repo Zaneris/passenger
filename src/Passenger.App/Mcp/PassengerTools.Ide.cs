@@ -322,7 +322,7 @@ public sealed partial class PassengerTools
         {
             throw new InvalidOperationException($"Nothing was replaced; {string.Join("; ", said)}");
         }
-        string replaced = $"Replaced {FilesReplaced.Count(changed)}: {AgentAnswers.Named([.. changed.Select(m => m.Path).Distinct().Select(Relative)], "file", FilesOfTheChange)}";
+        string replaced = $"Replaced {FilesReplaced.Said(changed)}: {AgentAnswers.Named([.. changed.Select(m => m.Path).Distinct().Select(Relative)], "file", FilesOfTheChange)}";
         return said.Count == 0 ? replaced : $"{replaced}; {string.Join("; ", said)}";
     });
 
@@ -365,7 +365,7 @@ public sealed partial class PassengerTools
         if (found.Count > 1 && !all)
         {
             int[] lines = [.. found.Select(o => text.GetLineFromOffset(o) + 1).Distinct()];
-            throw new InvalidOperationException($"{name} has \"{Shorter(oldText)}\" {found.Count} times (lines {string.Join(", ", lines.Take(10))}{(lines.Length > 10 ? ", …" : "")}), so nothing changed: give more of the text around the one to change, or all true for every one");
+            throw new InvalidOperationException($"{name} has \"{Shorter(oldText)}\" {Numbers.Said(found.Count)} times (lines {string.Join(", ", lines.Take(10))}{(lines.Length > 10 ? ", …" : "")}), so nothing changed: give more of the text around the one to change, or all true for every one");
         }
         string written = LineEndings.In(newText ?? string.Empty, eol);
         List<TextEdit> edits = [.. found.Select(o => new TextEdit(o, needle.Length, written))];
@@ -405,7 +405,7 @@ public sealed partial class PassengerTools
             int last = after.GetLineFromOffset(Math.Min(after.Length, start + written.Length));
             spans.Add((first, last));
         }
-        System.Text.StringBuilder said = new($"Changed {name} {(edits.Count == 1 ? $"at line {spans[0].First + 1}" : $"in {edits.Count} places")}, {saved}:");
+        System.Text.StringBuilder said = new($"Changed {name} {(edits.Count == 1 ? $"at line {spans[0].First + 1}" : $"in {Numbers.Said(edits.Count)} places")}, {saved}:");
         int shown = 0;
         int lastShown = -1;
         foreach ((int first, int last) in spans)

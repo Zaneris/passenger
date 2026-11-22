@@ -486,7 +486,7 @@ public sealed class ContainersView : DockPanel
                         bool serviceOpen = !collapsed.Contains(serviceKey) && containers.Count > 1;
                         rows.Add(new ContainerRow(ContainerRowKind.Service, 2, serviceKey, service)
                         {
-                            Detail = containers.Count == 1 ? containers[0].Image : $"{containers.Count} containers",
+                            Detail = containers.Count == 1 ? containers[0].Image : $"{Numbers.Said(containers.Count)} containers",
                             Project = project,
                             Service = service,
                             Container = containers.Count == 1 ? containers[0] : null,
@@ -540,7 +540,7 @@ public sealed class ContainersView : DockPanel
         others.RemoveAll(c => orchestrated.Contains(c) || hosts.Any(h => h.Containers.Contains(c)));
         if (hosts.Count + orchestrated.Count > 0)
         {
-            Group("Aspire", hosts.Count > 0 ? Core.Plural.Of(hosts.Count, "AppHost") : $"{orchestrated.Count}", () =>
+            Group("Aspire", hosts.Count > 0 ? Core.Plural.Of(hosts.Count, "AppHost") : Numbers.Said(orchestrated.Count), () =>
             {
                 foreach ((string hostKey, string name, List<ContainerInfo> containers) in hosts.OrderBy(h => h.Name, StringComparer.Ordinal))
                 {
@@ -548,7 +548,7 @@ public sealed class ContainersView : DockPanel
                     bool open = !collapsed.Contains(key);
                     rows.Add(new ContainerRow(ContainerRowKind.AppHost, 1, key, name)
                     {
-                        Detail = string.Join(", ", containers.GroupBy(c => c.State).Select(g => $"{g.Key}({g.Count()})")),
+                        Detail = string.Join(", ", containers.GroupBy(c => c.State).Select(g => $"{g.Key}({Numbers.Said(g.Count())})")),
                         Grouped = containers,
                         Expands = true,
                         Expanded = open,
@@ -563,19 +563,19 @@ public sealed class ContainersView : DockPanel
         }
         if (others.Count > 0)
         {
-            Group("Containers", $"{others.Count}", () => rows.AddRange(others.Select(c => ContainerRowOf(c, 1))));
+            Group("Containers", Numbers.Said(others.Count), () => rows.AddRange(others.Select(c => ContainerRowOf(c, 1))));
         }
         List<ContainerInfo> tested = [.. snapshot.Containers.Where(c => c.IsTestcontainers)];
         if (tested.Count > 0)
         {
-            Group("Testcontainers", $"{tested.Count}", () => rows.AddRange(tested.Select(c => ContainerRowOf(c, 1))));
+            Group("Testcontainers", Numbers.Said(tested.Count), () => rows.AddRange(tested.Select(c => ContainerRowOf(c, 1))));
         }
         foreach ((string name, ContainerRowKind kind, IReadOnlyList<EngineObject> objects) in (ReadOnlySpan<(string, ContainerRowKind, IReadOnlyList<EngineObject>)>)[
             ("Images", ContainerRowKind.Image, snapshot.Images), ("Volumes", ContainerRowKind.Volume, snapshot.Volumes), ("Networks", ContainerRowKind.Network, snapshot.Networks)])
         {
             if (objects.Count > 0)
             {
-                Group(name, $"{objects.Count}", () => rows.AddRange(objects.Select(o =>
+                Group(name, Numbers.Said(objects.Count), () => rows.AddRange(objects.Select(o =>
                     new ContainerRow(kind, 1, $"{o.Kind}:{o.Id}", o.Name) { Detail = o.Detail, Object = o })));
             }
         }

@@ -99,7 +99,7 @@ public sealed partial class NuGetView
                 found.AddRange(answers.Select(a => a.Row).OfType<PackageRow>());
                 problems.AddRange(answers.SelectMany(a => a.Problems));
                 checkedCount += batch.Length;
-                Tell($"Checking for updates… {checkedCount}/{installed.Count}");
+                Tell($"Checking for updates… {Numbers.Said(checkedCount)}/{Numbers.Said(installed.Count)}");
             }
             Dictionary<string, Dictionary<string, IReadOnlyList<TransitiveUse>>> transitive = await folder.TransitiveAsync();
             VulnerabilityData known = await folder.VulnerabilitiesAsync();

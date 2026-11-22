@@ -352,7 +352,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
                     {
                         failed = 0;
                     }
-                    StateFile.Log($"{Path} was written after {tries} tries failed");
+                    StateFile.Log($"{Path} was written after {Numbers.Said(tries)} tries failed");
                 }
                 return true;
             }
@@ -416,7 +416,7 @@ public sealed class StateDocument<T> where T : class, IStateDocument<T>, new()
         }
         else if (tries == 1)
         {
-            StateFile.Log($"{Path} could not be written ({error.Message}): it is tried again, {Again.Length} times over {Durations.Said(Again.Aggregate(TimeSpan.Zero, (all, one) => all + one))} at most");
+            StateFile.Log($"{Path} could not be written ({error.Message}): it is tried again, {Numbers.Said(Again.Length)} times over {Durations.Said(Again.Aggregate(TimeSpan.Zero, (all, one) => all + one))} at most");
         }
         else if (tries == Again.Length + 1)
         {

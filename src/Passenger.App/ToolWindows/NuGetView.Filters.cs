@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Passenger.Core;
 using Passenger.Workspace;
 
 namespace Passenger.App.ToolWindows;
@@ -158,7 +159,7 @@ public sealed partial class NuGetView
         {
             by.Add("transitive");
         }
-        return $"{rows.Count} of {all.Count} shown{(by.Count > 0 ? $": {string.Join(", ", by)}" : string.Empty)}";
+        return $"{Numbers.Said(rows.Count)} of {Numbers.Said(all.Count)} shown{(by.Count > 0 ? $": {string.Join(", ", by)}" : string.Empty)}";
     }
 
     /// <summary>The Sort and Filter menu as the list now stands: the order, the kinds (the Updates tab's being the

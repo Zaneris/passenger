@@ -128,7 +128,7 @@ public sealed class UsedCache(string folder, UsedEntries entries, UsedLimits lim
             }
             if (removed > 0)
             {
-                log?.Invoke(limits.MostBytes is null ? $"{removed} entries pruned from {Folder}" : $"{removed} entries pruned, {Sizes.Said(total)} kept in {Folder}");
+                log?.Invoke(limits.MostBytes is null ? $"{Numbers.Said(removed)} entries pruned from {Folder}" : $"{Numbers.Said(removed)} entries pruned, {Sizes.Said(total)} kept in {Folder}");
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

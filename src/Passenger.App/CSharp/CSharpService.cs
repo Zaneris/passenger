@@ -2099,7 +2099,7 @@ public sealed partial class CSharpService : IAsyncDisposable
         saidProject = first.Project;
         int more = batch.Distinct().Count() - 1;
         string kind = first.Severity == ProblemSeverity.Error ? "Error" : "Warning";
-        string rest = more == 0 ? string.Empty : $"{(first.Message.EndsWith('.') ? " " : "; ")}Problems lists {more} more";
+        string rest = more == 0 ? string.Empty : $"{(first.Message.EndsWith('.') ? " " : "; ")}Problems lists {Numbers.Said(more)} more";
         Said?.Invoke(this, new ServerSaid($"{kind} while loading {Shown(first.Project)}: {first.Message}{rest}", first.Severity, first));
     }
 
@@ -2662,7 +2662,7 @@ public readonly record struct AnalysisStep(long At, AnalysisStepKind Kind, strin
         string source = Source ?? "every source";
         return Kind switch
         {
-            AnalysisStepKind.Asked => $"{source} asked (its pull {Count})",
+            AnalysisStepKind.Asked => $"{source} asked (its pull {Numbers.Said(Count)})",
             AnalysisStepKind.Analysed => $"{source} said every file analysed{(Count > 0 ? ", its first round over" : string.Empty)}",
             AnalysisStepKind.Answered => $"{source} answered, {Plural.Of(Count, "report")} changed",
             AnalysisStepKind.LetGo => $"{source} let go",
@@ -2670,8 +2670,8 @@ public readonly record struct AnalysisStep(long At, AnalysisStepKind Kind, strin
             AnalysisStepKind.Resting => $"{source} answered at once with nothing new: asks again in 2 s",
             AnalysisStepKind.Waiting => $"{source} waits for {Plural.Of(Count, "file pull")}",
             AnalysisStepKind.Refreshed => $"the server's refresh, {Plural.Of(Count, "pull")} let go",
-            AnalysisStepKind.FilePullBegun => $"a file pull begun, {Count} under way",
-            AnalysisStepKind.FilePullEnded => $"a file pull ended, {Count} under way",
+            AnalysisStepKind.FilePullBegun => $"a file pull begun, {Numbers.Said(Count)} under way",
+            AnalysisStepKind.FilePullEnded => $"a file pull ended, {Numbers.Said(Count)} under way",
             _ => Kind.ToString(),
         };
     }

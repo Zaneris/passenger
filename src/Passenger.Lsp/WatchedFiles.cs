@@ -357,7 +357,7 @@ public sealed class WatchedFiles
             if (!changesOverflowed)
             {
                 changesOverflowed = true;
-                server.Note($"Files changed on disk were let go past {KeptLimit}: commands find those changed since only by the time they were written");
+                server.Note($"Files changed on disk were let go past {Numbers.Said(KeptLimit)}: commands find those changed since only by the time they were written");
             }
             return;
         }
@@ -392,7 +392,7 @@ public sealed class WatchedFiles
                 else if (!overflowed)
                 {
                     overflowed = true;
-                    server.Note($"Changes on disk no registration covered yet were let go past {KeptLimit}");
+                    server.Note($"Changes on disk no registration covered yet were let go past {Numbers.Said(KeptLimit)}");
                 }
             }
             covered = Send(covered, why, heard);
@@ -509,7 +509,7 @@ public sealed class WatchedFiles
             server.Notify(ProjectMethods.Deleted, Notified(gone));
         }
         server.Note($"Told the server of {Plural.Of(changes.Count, "file")} changed on disk{(why is null ? string.Empty : ", " + why)}, {changes[0].Path} first"
-            + (gone.Count > 0 ? $", {gone.Count} of them gone, taken once the projects holding them have let go of them" : string.Empty));
+            + (gone.Count > 0 ? $", {Numbers.Said(gone.Count)} of them gone, taken once the projects holding them have let go of them" : string.Empty));
         return changes;
     }
 

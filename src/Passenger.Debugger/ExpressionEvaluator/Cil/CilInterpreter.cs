@@ -1777,7 +1777,7 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
             int size = element.Size;
             if (offset + size > data.Length)
             {
-                throw new InvalidOperationException($"The expression's constants fill {data.Length} bytes, fewer than the array's {array.Count} elements hold");
+                throw new InvalidOperationException($"The expression's constants fill {Numbers.Said(data.Length)} bytes, fewer than the array's {Numbers.Said(array.Count)} elements hold");
             }
             element.SetValue(data.AsSpan(offset, size));
             offset += size;

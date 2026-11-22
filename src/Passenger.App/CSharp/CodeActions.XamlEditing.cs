@@ -43,7 +43,7 @@ internal sealed partial class CodeActions
                 if (refused is null)
                 {
                     int replaced = everywhere ? value.Uses.Count : 1;
-                    context.Say($"Extracted resource '{key}' to {place.Title}{(replaced > 1 ? $", used in {replaced} places" : string.Empty)}");
+                    context.Say($"Extracted resource '{key}' to {place.Title}{(replaced > 1 ? $", used in {Numbers.Said(replaced)} places" : string.Empty)}");
                 }
                 return refused;
             });

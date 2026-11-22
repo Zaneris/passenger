@@ -426,11 +426,11 @@ public static partial class GDScriptRefactorings
         }
         if (calls && uses.Count != 1)
         {
-            return GDScriptRefactored.No(uses.Count == 0 ? $"'{own.Name}' is never read, and its value calls" : $"its value calls, and would be called {uses.Count} times");
+            return GDScriptRefactored.No(uses.Count == 0 ? $"'{own.Name}' is never read, and its value calls" : $"its value calls, and would be called {Numbers.Said(uses.Count)} times");
         }
         if (uses.Count > 1 && effects.Makes(value))
         {
-            return GDScriptRefactored.No($"its value makes a new one each time, and its {uses.Count} reads share one");
+            return GDScriptRefactored.No($"its value makes a new one each time, and its {Numbers.Said(uses.Count)} reads share one");
         }
         // A value read anew may give another answer: each time in a loop, sometimes under a branch, changed by what runs before.
         foreach (GDScriptIdentifier use in uses)

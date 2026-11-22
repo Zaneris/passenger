@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App.CSharp;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 
@@ -189,7 +190,7 @@ public sealed class LiveTemplatesPane : ListPane
         {
             0 => "nowhere",
             <= 3 => string.Join(", ", names),
-            _ => $"{names[0]}, {names[1]}, and {names.Length - 2} more…",
+            _ => $"{names[0]}, {names[1]}, and {Numbers.Said(names.Length - 2)} more…",
         };
     }
 

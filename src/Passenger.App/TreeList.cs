@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -216,7 +217,7 @@ public class TreeList : ListBox
                 return words;
             }
             string level = $"level {place.Level}";
-            string said = PlaceToldApart ? level : $"{level}, {place.Position} of {place.Size}";
+            string said = PlaceToldApart ? level : $"{level}, {place.Position} of {Numbers.Said(place.Size)}";
             return string.IsNullOrWhiteSpace(words) ? said : $"{words}, {said}";
         }
 

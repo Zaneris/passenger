@@ -477,7 +477,7 @@ public sealed partial class PassengerTools
         string? title = JsonMembers.Text(options, "action");
         string? choice = JsonMembers.Text(options, "choice");
         CodeAction action = title is null
-            ? offered.Count == 1 ? offered[0] : throw new ArgumentException($"{refactoring.Name} offers {offered.Count} actions here; name one as action: {string.Join("; ", offered.Select(a => a.Title))}")
+            ? offered.Count == 1 ? offered[0] : throw new ArgumentException($"{refactoring.Name} offers {Numbers.Said(offered.Count)} actions here; name one as action: {string.Join("; ", offered.Select(a => a.Title))}")
             : offered.FirstOrDefault(a => a.Title == title) ?? throw new ArgumentException($"{refactoring.Name} offers no '{title}' here; it offers {string.Join("; ", offered.Select(a => a.Title))}");
         IReadOnlyList<ActionChoice> all = ClientCommands.Choices(action);
         IReadOnlyList<ActionChoice> choices = CSharp.CodeActions.ChoicesOf(action, refactoring);
@@ -590,7 +590,7 @@ public sealed partial class PassengerTools
             }
         }
         await LandedAsync(cancel);
-        return new RefactorAnswer(kind, $"{name} changed {tidied.Count} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);
+        return new RefactorAnswer(kind, $"{name} changed {Numbers.Said(tidied.Count)} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);
 
         async Task Tidied(OpenDocument document, LspDocument? lsp)
         {
@@ -703,7 +703,7 @@ public sealed partial class PassengerTools
         {
             1 => named[0].Id,
             0 => throw new ArgumentException($"'{given}' is none of the {what}: {string.Join("; ", members.Select(m => m.Text))}"),
-            _ => throw new ArgumentException($"'{given}' names {named.Count} of the {what}; give the one meant as it reads: {string.Join("; ", named.Select(m => m.Text))}"),
+            _ => throw new ArgumentException($"'{given}' names {Numbers.Said(named.Count)} of the {what}; give the one meant as it reads: {string.Join("; ", named.Select(m => m.Text))}"),
         };
 
         static string NameOf(string text) => text.Split('(', ':', '<', '[')[0].Trim();

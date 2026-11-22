@@ -7,6 +7,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Inspector;
 using Passenger.App.ToolWindows;
@@ -890,7 +891,7 @@ public sealed class LiveTreeView : DockPanel
         TextBlock name = Colored(new TextBlock { Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }, TokenKeys.Syntax_Field);
         TextBlock classes = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock deeper = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Text = "… more inside, not read" };
-        ToolTip.SetTip(deeper, $"The tree is read {Element.DeepestNesting} levels deep");
+        ToolTip.SetTip(deeper, $"The tree is read {Numbers.Said(Element.DeepestNesting)} levels deep");
         StackPanel line = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { chevron, type, name, classes, deeper } };
         return line.Showing<LiveTreeRow>(row =>
         {

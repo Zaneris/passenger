@@ -155,7 +155,7 @@ public class VsCodeThemesTests
         Assert.Null(VsCodeThemes.Vsix(Vsix(("extension/readme.md", "hi")), out string? noManifest));
         Assert.Contains("holds no extension/package.json", noManifest, StringComparison.Ordinal);
         Assert.Null(VsCodeThemes.Vsix(Vsix([.. Enumerable.Range(0, VsCodeThemes.MostEntries + 1).Select(i => ($"extension/{i}.txt", string.Empty))]), out string? many));
-        Assert.Contains($"more than the {VsCodeThemes.MostEntries} Passenger reads", many, StringComparison.Ordinal);
+        Assert.Contains($"more than the {Passenger.Core.Numbers.Said(VsCodeThemes.MostEntries)} Passenger reads", many, StringComparison.Ordinal);
         VsCodeThemes.ExtensionFile files = VsCodeThemes.Vsix(Vsix(("extension/package.json", "{}"), ("extension/big.json", new string(' ', 1_300_000))), out _)!;
         Assert.Equal("the .vsix's big.json is 1.2 MB, more than the 1 MB a theme file may hold", files("big.json").Why);
         Assert.Contains("holds no gone.json", files("gone.json").Why, StringComparison.Ordinal);

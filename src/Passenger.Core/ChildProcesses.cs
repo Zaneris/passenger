@@ -494,7 +494,7 @@ public static class ChildProcesses
             ending, cancel);
         if (output.Overran || errors.Overran)
         {
-            throw new ChildOutputException($"{Shown(start)} wrote more than the {mostOutput} characters read of it{(ran ? string.Empty : ", and was ended")}");
+            throw new ChildOutputException($"{Shown(start)} wrote more than the {Numbers.Said(mostOutput ?? 0)} characters read of it{(ran ? string.Empty : ", and was ended")}");
         }
         if (!ran)
         {

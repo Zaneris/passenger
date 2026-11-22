@@ -1719,7 +1719,7 @@ public sealed class ProjectSession : IAsyncDisposable
     {
         if (openedAt != 0 && Workspace is { } shown && shown.Projects.Where(p => p.Exists).All(p => p.Evaluated is { Complete: true }))
         {
-            IdeErrors.Write($"Solution view shows the {shown.Projects.Count} projects of {shown.Name} as MSBuild evaluates them {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(openedAt))} after the folder opened ({Models.Evaluations} evaluated)");
+            IdeErrors.Write($"Solution view shows the {Numbers.Said(shown.Projects.Count)} projects of {shown.Name} as MSBuild evaluates them {Durations.Said(System.Diagnostics.Stopwatch.GetElapsedTime(openedAt))} after the folder opened ({Numbers.Said(Models.Evaluations)} evaluated)");
             openedAt = 0;
         }
     }

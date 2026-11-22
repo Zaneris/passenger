@@ -106,7 +106,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
         {
             if (await IdsAsync(["ps", "-aq", .. each]) is { Length: > 0 } made)
             {
-                IdeLog.Write(IdeLog.Ide, $"Containers: {made.Length} of {compose[named + 1]}'s containers removed {when}");
+                IdeLog.Write(IdeLog.Ide, $"Containers: {Numbers.Said(made.Length)} of {compose[named + 1]}'s containers removed {when}");
                 await Quietly(engine, ["rm", "-f", .. made], when);
             }
         }

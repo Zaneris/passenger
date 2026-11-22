@@ -280,7 +280,7 @@ public sealed class TestsView : DockPanel
         if (failed.Count > GroupDetailsLimit)
         {
             int more = failing.Count() - GroupDetailsLimit;
-            shown += $"\n\n…and {more} more failed";
+            shown += $"\n\n…and {Numbers.Said(more)} more failed";
         }
         Show(shown);
     }

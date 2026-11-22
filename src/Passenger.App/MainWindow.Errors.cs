@@ -1,4 +1,5 @@
 using Avalonia.Interactivity;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -33,7 +34,7 @@ public partial class MainWindow
     {
         int count = IdeErrors.Errors.Count;
         ErrorsButton.IsVisible = count > 0;
-        ErrorsCount.Text = IdeErrors.Unlisted > 0 ? $"{count}+" : count.ToString();
+        ErrorsCount.Text = IdeErrors.Unlisted > 0 ? $"{Numbers.Said(count)}+" : Numbers.Said(count);
     }
 
     private void OnErrorsClicked(object? sender, RoutedEventArgs e) => ShowErrors();

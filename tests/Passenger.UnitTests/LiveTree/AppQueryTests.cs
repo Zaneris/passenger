@@ -43,7 +43,7 @@ public sealed class AppQueryTests
         string[] lines = written.Split('\n');
         Assert.Equal(AppQuery.MostLines + 1, lines.Length);
         Assert.Equal($"{new string(' ', 2 * (AppQuery.MostLines - 1))}Border#Link{AppQuery.MostLines - 1} @{AppQuery.MostLines - 1}", lines[^2]);
-        Assert.Equal($"... and {Deep - AppQuery.MostLines} more elements: narrow it with control, filter or depth", lines[^1]);
+        Assert.Equal($"... and {Passenger.Core.Numbers.Said(Deep - AppQuery.MostLines)} more elements: narrow it with control, filter or depth", lines[^1]);
     }
 
     [Fact]

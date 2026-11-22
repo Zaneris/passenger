@@ -248,7 +248,7 @@ public partial class MainWindow
         }
         status.Text = candidates.Count == 0
             ? $"Reattach to Process: no .NET process named {last.Program} is running{(last.Container is { } container ? $" in {container}" : string.Empty)}"
-            : $"Reattach to Process: {candidates.Count} programs are named {last.Program}; choose one";
+            : $"Reattach to Process: {Numbers.Said(candidates.Count)} programs are named {last.Program}; choose one";
         ShowAttachToProcess(last.Program);
     }
 

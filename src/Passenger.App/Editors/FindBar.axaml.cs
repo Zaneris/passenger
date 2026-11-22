@@ -449,7 +449,7 @@ public partial class FindBar : UserControl
             return;
         }
         shown.ApplyEdits(edits);
-        Count.Text = $"Replaced {edits.Count}";
+        Count.Text = $"Replaced {Numbers.Said(edits.Count)}";
     }
 
     private void Show()
@@ -469,7 +469,7 @@ public partial class FindBar : UserControl
     private string Counted(string? problem, int count, bool truncated) =>
         problem ?? (string.IsNullOrEmpty(Query.Text) ? string.Empty
             : count == 0 ? "0 results"
-            : $"{current + 1}/{count}{(truncated ? "+" : string.Empty)}");
+            : $"{current + 1}/{Numbers.Said(count)}{(truncated ? "+" : string.Empty)}");
 
     /// <summary>The text changed under an open bar: its matches move with the edit (the editor's highlights are carried by
     /// the text), and the text as it stands is searched off the UI thread, since a search reads the whole file and a key

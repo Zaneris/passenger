@@ -955,7 +955,7 @@ public sealed class VcsController : IDisposable
             {
                 0 => "Committed",
                 1 => "1 file committed",
-                _ => $"{count} files committed",
+                _ => $"{Numbers.Said(count)} files committed",
             };
             if (moved.Count > 0)
             {
@@ -1063,7 +1063,7 @@ public sealed class VcsController : IDisposable
         }
         if (!ask || ChooseRemote is not { } choose)
         {
-            return (null, $"{branch} tracks no remote's branch, and there are {remotes.Count} remotes to push it to ({string.Join(", ", remotes)}): Push… in the window asks which");
+            return (null, $"{branch} tracks no remote's branch, and there are {Numbers.Said(remotes.Count)} remotes to push it to ({string.Join(", ", remotes)}): Push… in the window asks which");
         }
         return await choose(branch, remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
     }

@@ -444,7 +444,7 @@ public sealed class BindingValuesController
             {
                 if (element.Instances > 1 && counted.Add(spot))
                 {
-                    shown.Add(new LineAnnotation(binding.EndLine, $"{label}: made {element.Instances} times, choose one in the Live Visual Tree", LineAnnotationLook.Muted));
+                    shown.Add(new LineAnnotation(binding.EndLine, $"{label}: made {Numbers.Said(element.Instances)} times, choose one in the Live Visual Tree", LineAnnotationLook.Muted));
                 }
                 continue;
             }
@@ -485,7 +485,7 @@ public sealed class BindingValuesController
         if (element.Bindings.FirstOrDefault(b => b.Property == binding.Property) is not { } bound)
         {
             return element.Instances > 1
-                ? new DebuggerHover(string.Empty, $"This element is made {element.Instances} times: choose one of them in the Live Visual Tree to see its values")
+                ? new DebuggerHover(string.Empty, $"This element is made {Numbers.Said(element.Instances)} times: choose one of them in the Live Visual Tree to see its values")
                 : null;
         }
         List<string> lines = [$"{element.Control}.{label} = {Typed(bound.Value)}"];

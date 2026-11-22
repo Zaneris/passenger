@@ -138,7 +138,7 @@ internal sealed class DiscordConnection : IAsyncDisposable
                 int length = BinaryPrimitives.ReadInt32LittleEndian(head.AsSpan(4));
                 if (length is < 0 or > LargestFrame)
                 {
-                    why = $"{Where} sent a frame of {length} bytes, which Discord never sends";
+                    why = $"{Where} sent a frame of {Numbers.Said(length)} bytes, which Discord never sends";
                     break;
                 }
                 byte[] body = new byte[length];

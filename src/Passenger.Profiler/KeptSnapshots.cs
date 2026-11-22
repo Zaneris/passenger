@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Profiler;
 
 /// <summary>A run's memory snapshots that keep their objects, the run's only ones to compare within: those of the newest
@@ -34,7 +36,7 @@ internal sealed class KeptSnapshots(Action<int>? removed = null)
             foreach (MemorySnapshot old in held.Where(s => s.Number <= taken.Number - Count).ToList())
             {
                 held.Remove(old);
-                old.LetGo($"{old.Name}'s objects were let go as {taken.Name} was taken: a run keeps those of its newest {Count} snapshots");
+                old.LetGo($"{old.Name}'s objects were let go as {taken.Name} was taken: a run keeps those of its newest {Numbers.Said(Count)} snapshots");
                 Forget(old.Number);
             }
         }

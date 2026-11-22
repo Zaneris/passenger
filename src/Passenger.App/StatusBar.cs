@@ -4,6 +4,7 @@ using Passenger.App.Docking;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -288,7 +289,7 @@ public sealed class StatusBar
         }
         shownCaret = (at, carets, selected);
         string position = $"{at.Line + 1}:{at.Column + 1}";
-        caret.Text = carets > 1 ? $"{carets} carets" : selected > 0 ? $"{position} ({selected} chars)" : position;
+        caret.Text = carets > 1 ? $"{Numbers.Said(carets)} carets" : selected > 0 ? $"{position} ({Numbers.Said(selected)} chars)" : position;
     }
 
     /// <summary>Vim's mode in the editor shown, with the keys of a command typed so far ("NORMAL 2d"); nothing with Vim mode

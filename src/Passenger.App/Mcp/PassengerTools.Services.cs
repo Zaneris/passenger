@@ -96,7 +96,7 @@ public sealed partial class PassengerTools
             [{ } only] => only,
             [] when named is not null => throw new ArgumentException($"{named.Name}'s compose files have no service {resource}"),
             [] => throw new InvalidOperationException($"{NoRunHas(resource)}, and no Compose configuration's files have a service of that name"),
-            _ => throw new InvalidOperationException($"{resource} is a service of {having.Count} configurations: name one by configuration ("
+            _ => throw new InvalidOperationException($"{resource} is a service of {Numbers.Said(having.Count)} configurations: name one by configuration ("
                 + string.Join(", ", having.Select(h => h.Start!.Name)) + ")"),
         };
     }

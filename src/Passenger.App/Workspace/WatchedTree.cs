@@ -1063,7 +1063,7 @@ public abstract class WatchedTree : IDisposable
             return;
         }
         IdeErrors.Write($"{Shown} listed {Plural.Of(listing.Count, "folder")} again after a burst of changes at risk of some lost unsaid: "
-            + $"{Plural.Of(found.Found, "change")} found, {found.Unheard} at a path neither heard nor found in its last moments ({Plural.Of(heard.Count, "path")})");
+            + $"{Plural.Of(found.Found, "change")} found, {Numbers.Said(found.Unheard)} at a path neither heard nor found in its last moments ({Plural.Of(heard.Count, "path")})");
     }
 
     /// <summary>Lists again, after the changes already asked for, each recorded folder whose stamp moved since it was listed:

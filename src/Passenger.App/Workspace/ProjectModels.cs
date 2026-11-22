@@ -501,7 +501,7 @@ public sealed class ProjectModels
                 {
                     left = [.. stale.Where(p => !evaluated.Contains(p))];
                 }
-                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluating the projects of {following}: {ended.Reason}. The {left.Count} not yet evaluated are asked of a host started anew");
+                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluating the projects of {following}: {ended.Reason}. The {Numbers.Said(left.Count)} not yet evaluated are asked of a host started anew");
                 host = await BackgroundWork.Run(() => ProjectHosts.ForAsync(following));
                 done = await EvaluateAsync(host, left);
             }
@@ -510,7 +510,7 @@ public sealed class ProjectModels
                 // What the round evaluated may still wait in a posted landing, which this continuation can come before.
                 Land();
                 Keep(projects);
-                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {stale.Count} of the {projects.Count} projects of {following} in {Durations.Said(TimeSpan.FromSeconds(done.Seconds))}, {Durations.Said(Stopwatch.GetElapsedTime(began))} after they were checked");
+                IdeErrors.Write($"Project host (process {host.ProcessId}) evaluated {Numbers.Said(stale.Count)} of the {Numbers.Said(projects.Count)} projects of {following} in {Durations.Said(TimeSpan.FromSeconds(done.Seconds))}, {Durations.Said(Stopwatch.GetElapsedTime(began))} after they were checked");
             }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)

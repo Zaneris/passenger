@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Roslyn.Extension;
 using Passenger.Workspace;
 using Passenger.Workspace.GDScript;
@@ -648,13 +649,13 @@ internal static class GodotChecks
         return null;
     }
 
-    private static string Gives(int given, IEnumerable<string> types) => given == 0 ? "gives no arguments" : $"gives {given} ({string.Join(", ", types.Take(given))})";
+    private static string Gives(int given, IEnumerable<string> types) => given == 0 ? "gives no arguments" : $"gives {Numbers.Said(given)} ({string.Join(", ", types.Take(given))})";
 
-    private static string Takes(IReadOnlyList<string> parameters) => parameters.Count == 0 ? "takes none" : $"takes {parameters.Count} ({string.Join(", ", parameters)})";
+    private static string Takes(IReadOnlyList<string> parameters) => parameters.Count == 0 ? "takes none" : $"takes {Numbers.Said(parameters.Count)} ({string.Join(", ", parameters)})";
 
     /// <summary>What a GDScript function takes in words: its count, at least its required one past a rest parameter.</summary>
     private static string Takes(GodotScriptDeclared function) => function.Most is null
-        ? $"takes at least {function.Required} ({string.Join(", ", function.Parameters ?? [])})"
+        ? $"takes at least {Numbers.Said(function.Required)} ({string.Join(", ", function.Parameters ?? [])})"
         : Takes(function.Parameters ?? []);
 
     private static int IndexOf(IReadOnlyList<GodotMemberAsked> asked, GodotMemberAsked one)

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.Interop;
 
@@ -239,7 +240,7 @@ public partial class ManagedDebugger
         int size = member.Size;
         if (size > MostWatched)
         {
-            return new DataBreakpointAnswer(null, $"The breakpoint cannot be set. The hardware does not support monitoring of the requested number of bytes ({size}). The maximum number of bytes to track is {MostWatched}.");
+            return new DataBreakpointAnswer(null, $"The breakpoint cannot be set. The hardware does not support monitoring of the requested number of bytes ({Numbers.Said(size)}). The maximum number of bytes to track is {Numbers.Said(MostWatched)}.");
         }
         if (size is not (1 or 2 or 4 or 8) || address % (ulong)size != 0)
         {

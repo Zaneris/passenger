@@ -310,9 +310,9 @@ public partial class MainWindow
             {
                 said.Append("\n  ").Append(string.Join(' ', command.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)))
                     .Append(string.Create(CultureInfo.InvariantCulture, $" ({command.Milliseconds:0.#} ms"))
-                    .Append(command.Rows is { } rows and >= 0 ? $", {rows} rows changed" : command.Reads is { } reads ? $", {reads} reads" : string.Empty)
+                    .Append(command.Rows is { } rows and >= 0 ? $", {Numbers.Said(rows)} rows changed" : command.Reads is { } reads ? $", {Numbers.Said(reads)} reads" : string.Empty)
                     .Append(command.Parameters is { Length: > 0 } parameters ? $", {parameters}" : string.Empty)
-                    .Append(command.Repeated ? $", run {command.Runs} times in this request" : string.Empty)
+                    .Append(command.Repeated ? $", run {Numbers.Said(command.Runs)} times in this request" : string.Empty)
                     .Append(command.Slow ? ", slow" : string.Empty)
                     .Append(command.Error is { } failed ? $", failed: {failed}" : string.Empty).Append(')');
             }

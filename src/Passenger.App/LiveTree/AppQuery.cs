@@ -180,8 +180,8 @@ public static class AppQuery
         {
             [AppNode only] => only,
             [] => throw new ArgumentException($"Nothing in the app matches {query}; app_tree shows what there is"),
-            _ => throw new ArgumentException($"{found.Count} elements match {query}: {string.Join("; ", listed.Take(10).Select(Where))}"
-                + $"{(found.Count > 10 ? $"; and {found.Count - 10} more" : "")}. Name one by its id (@N) or by [n] after the query"),
+            _ => throw new ArgumentException($"{Numbers.Said(found.Count)} elements match {query}: {string.Join("; ", listed.Take(10).Select(Where))}"
+                + $"{(found.Count > 10 ? $"; and {Numbers.Said(found.Count - 10)} more" : "")}. Name one by its id (@N) or by [n] after the query"),
         };
     }
 
@@ -311,7 +311,7 @@ public static class AppQuery
             if (element.Deeper == true && lines < MostLines)
             {
                 text.Append(' ', (written ? level + 1 : level) * 2)
-                    .Append(CultureInfo.InvariantCulture, $"... more inside, not read: the tree is read {Element.DeepestNesting} levels deep\n");
+                    .Append(CultureInfo.InvariantCulture, $"... more inside, not read: the tree is read {Numbers.Said(Element.DeepestNesting)} levels deep\n");
                 lines++;
             }
             for (int i = element.Children.Count - 1; i >= 0; i--)
@@ -341,7 +341,7 @@ public static class AppQuery
 
     /// <summary>A count of elements, "at least" where some hold more than was read.</summary>
     private static string Counted((int Count, bool Deeper) counted) =>
-        counted.Deeper ? $"at least {counted.Count.ToString(CultureInfo.InvariantCulture)}" : counted.Count.ToString(CultureInfo.InvariantCulture);
+        counted.Deeper ? $"at least {Numbers.Said(counted.Count)}" : Numbers.Said(counted.Count);
 
     private static List<Step> Parse(string query)
     {

@@ -81,7 +81,7 @@ public static partial class VsCodeThemes
         IReadOnlyList<JsonElement> contributed = JsonMembers.Items(JsonMembers.Value(root, "contributes"), "themes");
         if (contributed.Count > MostThemes)
         {
-            throw new FormatException($"contributes {contributed.Count} colour themes, more than the {MostThemes} Passenger reads of one extension");
+            throw new FormatException($"contributes {Numbers.Said(contributed.Count)} colour themes, more than the {Numbers.Said(MostThemes)} Passenger reads of one extension");
         }
         foreach (JsonElement theme in contributed)
         {
@@ -121,7 +121,7 @@ public static partial class VsCodeThemes
         {
             if (++read > MostIncludes)
             {
-                return $"{path} includes more than the {MostIncludes} files Passenger reads of one theme";
+                return $"{path} includes more than the {Numbers.Said(MostIncludes)} files Passenger reads of one theme";
             }
             (byte[]? bytes, string? why) = files(file);
             if (bytes is null)
@@ -172,7 +172,7 @@ public static partial class VsCodeThemes
             {
                 if (rules.Count == MostRules)
                 {
-                    return $"{file} gives more than the {MostRules} token colours Passenger reads of one theme";
+                    return $"{file} gives more than the {Numbers.Said(MostRules)} token colours Passenger reads of one theme";
                 }
                 if (Rule(rule) is { } taken)
                 {
@@ -254,7 +254,7 @@ public static partial class VsCodeThemes
             ZipArchive zip = new(new MemoryStream(bytes, writable: false), ZipArchiveMode.Read);
             if (zip.Entries.Count > MostEntries)
             {
-                why = $"the .vsix holds {zip.Entries.Count} files, more than the {MostEntries} Passenger reads";
+                why = $"the .vsix holds {Numbers.Said(zip.Entries.Count)} files, more than the {Numbers.Said(MostEntries)} Passenger reads";
                 return null;
             }
             foreach (ZipArchiveEntry entry in zip.Entries)

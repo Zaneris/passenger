@@ -20,7 +20,7 @@ public sealed record PackageUpdate(string Id, string Version, IReadOnlyList<stri
 public sealed record PackageUpdateResult(int Updated, IReadOnlyList<string> Skipped, int Remaining, string? Failure)
 {
     public string Message => $"Updated {Plural.Of(Updated, "package reference")}" + (Skipped.Count > 0 ? $"; skipped: {string.Join("; ", Skipped)}" : string.Empty)
-        + (Failure is not null ? $"; {Failure}; {Remaining} remaining" : string.Empty);
+        + (Failure is not null ? $"; {Failure}; {Numbers.Said(Remaining)} remaining" : string.Empty);
 }
 
 public sealed partial class FolderPackages

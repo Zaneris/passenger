@@ -236,7 +236,7 @@ public static class EndpointClient
                 bool asGet = status == 303 ? method != "HEAD" : status is 301 or 302 && method == "POST";
                 // By origin, as what a request reads is allowed to one server: another port of the same host is another server.
                 bool sameOrigin = next.Scheme == first.Scheme && next.Port == first.Port && string.Equals(next.Host, first.Host, StringComparison.OrdinalIgnoreCase);
-                string? stop = redirects == MostRedirects ? $"Not followed to {next}: {MostRedirects} redirects were followed already"
+                string? stop = redirects == MostRedirects ? $"Not followed to {next}: {Numbers.Said(MostRedirects)} redirects were followed already"
                     : at.Scheme == Uri.UriSchemeHttps && next.Scheme != Uri.UriSchemeHttps ? $"Not followed to {next}: it leaves HTTPS"
                     : !sameOrigin && !asGet && body.Length > 0 ? $"Not followed to {Origin(next)}: a {status} would send the request's body there"
                     : null;

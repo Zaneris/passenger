@@ -10,12 +10,12 @@ namespace Passenger.App.Navigation;
 /// current position as its starting text.</summary>
 public partial class GoToLinePopup : UserControl, IAnswers<TextPosition?>
 {
-    private readonly int lineCount;
+    private readonly int lastLine;
 
     public GoToLinePopup(TextPosition current, int lineCount)
     {
         InitializeComponent();
-        this.lineCount = lineCount;
+        this.lastLine = lineCount;
         Query.Text = $"{current.Line + 1}:{current.Column + 1}";
         Query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         Dispatcher.UIThread.Post(() =>
@@ -48,7 +48,7 @@ public partial class GoToLinePopup : UserControl, IAnswers<TextPosition?>
             }
             else
             {
-                Problem.Text = $"A line from 1 to {lineCount}, and a column after a colon if wanted";
+                Problem.Text = $"A line from 1 to {lastLine}, and a column after a colon if wanted";
                 Problem.IsVisible = true;
             }
             e.Handled = true;
@@ -58,7 +58,7 @@ public partial class GoToLinePopup : UserControl, IAnswers<TextPosition?>
     private TextPosition? Parse(string text)
     {
         string[] parts = text.Trim().Split(':', ',');
-        if (parts.Length is < 1 or > 2 || !int.TryParse(parts[0], out int line) || line < 1 || line > lineCount)
+        if (parts.Length is < 1 or > 2 || !int.TryParse(parts[0], out int line) || line < 1 || line > lastLine)
         {
             return null;
         }

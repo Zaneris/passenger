@@ -685,7 +685,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
         {
             0 => "No differences",
             1 => "1 difference",
-            _ => $"{Hunks.Count} differences",
+            _ => $"{Numbers.Said(Hunks.Count)} differences",
         };
         string[] besides = [.. new[] { separators, note }.OfType<string>()];
         count.Text = besides.Length == 0 ? lines : string.Join("; ", Hunks.Count == 0 && highlighting != DiffHighlighting.None ? besides : [lines, .. besides]);

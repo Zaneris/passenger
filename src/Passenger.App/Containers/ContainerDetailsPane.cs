@@ -246,7 +246,7 @@ public sealed class ContainerDetailsPane : DetailsTables
         [
             ("Image", Words(details.Image)),
             ("State", State(details.State, details.Health)),
-            ("Restarts", Words(details.RestartPolicy is { } policy ? $"{details.RestartCount} (restarted {Policy(policy)})" : $"{details.RestartCount}")),
+            ("Restarts", Words(details.RestartPolicy is { } policy ? $"{Numbers.Said(details.RestartCount)} (restarted {Policy(policy)})" : Numbers.Said(details.RestartCount))),
         ];
         if (details.LastExit is { } exit)
         {

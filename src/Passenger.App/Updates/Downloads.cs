@@ -66,7 +66,7 @@ public static partial class Releases
             long length = response.Content.Headers.ContentLength ?? file.Size;
             if (length > limit)
             {
-                throw new UpdateRefusedException($"{file.Name} is {length} bytes, far more than such a file is");
+                throw new UpdateRefusedException($"{file.Name} is {Numbers.Said(length)} bytes, far more than such a file is");
             }
             await using Stream body = await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);
             byte[] buffer = new byte[81920];
@@ -82,7 +82,7 @@ public static partial class Releases
                 done += read;
                 if (done > limit)
                 {
-                    throw new UpdateRefusedException($"{file.Name} goes on past {limit} bytes, far more than such a file is");
+                    throw new UpdateRefusedException($"{file.Name} goes on past {Numbers.Said(limit)} bytes, far more than such a file is");
                 }
                 sha256.AppendData(buffer, 0, read);
                 await into.WriteAsync(buffer.AsMemory(0, read), cancel).ConfigureAwait(false);

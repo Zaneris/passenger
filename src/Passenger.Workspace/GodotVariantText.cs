@@ -333,7 +333,7 @@ public static class GodotVariantText
             if (Counted.TryGetValue(id, out int wanted))
             {
                 (int count, string? why) = NumbersIn();
-                return why ?? (count == wanted ? null : $"{id} takes {wanted} numbers");
+                return why ?? (count == wanted ? null : $"{id} takes {Core.Numbers.Said(wanted)} numbers");
             }
             if (Numbers.Contains(id))
             {

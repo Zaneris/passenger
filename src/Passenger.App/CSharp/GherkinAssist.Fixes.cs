@@ -43,7 +43,7 @@ internal sealed partial class GherkinAssist
         FeatureStep[] missing = [.. analysis.Reading.Steps.Where(s => Undefined(analysis, s))];
         if (missing.Length > 1)
         {
-            fixes.Add(new EditorFix($"Define all {missing.Length} missing steps of the feature", $"Writes their step definitions {target.Shown}", range, string.Empty)
+            fixes.Add(new EditorFix($"Define all {Numbers.Said(missing.Length)} missing steps of the feature", $"Writes their step definitions {target.Shown}", range, string.Empty)
             {
                 Elsewhere = (_, _) => DefineAsync(analysis, missing, target),
             });
@@ -122,7 +122,7 @@ internal sealed partial class GherkinAssist
             int line = snapshot.GetLineFromOffset(at);
             context.Navigate((target.Path, new TextPosition(line, at - snapshot.GetLineStart(line))));
         }
-        string said = snippets.Count == 1 ? $"Defined {snippets[0].Method} {target.Shown}" : $"Defined {snippets.Count} steps {target.Shown}";
+        string said = snippets.Count == 1 ? $"Defined {snippets[0].Method} {target.Shown}" : $"Defined {Numbers.Said(snippets.Count)} steps {target.Shown}";
         return new RefactorOutcome(said, null, [new RefactoredFile(target.Path, target.Class is null ? RefactoredChange.Created : RefactoredChange.Changed, [])], []);
     }
 

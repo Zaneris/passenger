@@ -91,7 +91,7 @@ internal static class HeapWire
         if (length > largest)
         {
             throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
-                $"The container tools' answer is {length} bytes long, more than the {largest} the IDE reads of one"));
+                $"The container tools' answer is {Numbers.Said(length)} bytes long, more than the {Numbers.Said(largest)} the IDE reads of one"));
         }
         byte[] body = new byte[Math.Min(length, Chunk)];
         int filled = 0;
@@ -160,7 +160,7 @@ internal static class HeapWire
             {
                 inflated.Dispose();
                 throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
-                    $"The container tools' heap snapshot inflates to more than the {LargestInflated} bytes the IDE reads of one"));
+                    $"The container tools' heap snapshot inflates to more than the {Numbers.Said(LargestInflated)} bytes the IDE reads of one"));
             }
             inflated.Write(buffer, 0, read);
         }

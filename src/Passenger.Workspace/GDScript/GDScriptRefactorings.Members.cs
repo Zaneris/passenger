@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 
 namespace Passenger.Workspace.GDScript;
@@ -372,7 +373,7 @@ public static partial class GDScriptRefactorings
 
     /// <summary>A short list of places, by script and line.</summary>
     public static string Places(IReadOnlyList<GDScriptPlace> places) =>
-        string.Join("; ", places.Take(4).Select(p => $"{p.Script}: {p.What}")) + (places.Count > 4 ? $"; and {places.Count - 4} more" : string.Empty);
+        string.Join("; ", places.Take(4).Select(p => $"{p.Script}: {p.What}")) + (places.Count > 4 ? $"; and {Numbers.Said(places.Count - 4)} more" : string.Empty);
 
     /// <summary>Inline Function: each call of a function whose body is one statement given that statement, its parameters
     /// read as the arguments passed (a default where none is), the function then taken out. Refused where it is used other
@@ -453,7 +454,7 @@ public static partial class GDScriptRefactorings
                 bool simple = argument is GDScriptIdentifier or GDScriptLiteral or GDScriptSelf || argument is null && effect != GDScriptEffect.Acts && !inBody.Makes(value!);
                 if (!simple && read.Count != 1)
                 {
-                    return GDScriptRefactored.No($"'{given}' would be read {read.Count} times", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
+                    return GDScriptRefactored.No($"'{given}' would be read {Numbers.Said(read.Count)} times", [GDScriptUses.Place(use.Script, use.Offset, call, "calls it")]);
                 }
                 if (effect == GDScriptEffect.Acts && read.FirstOrDefault(r => Conditional(r, only, bodyParents) is not null) is { } sometimes)
                 {

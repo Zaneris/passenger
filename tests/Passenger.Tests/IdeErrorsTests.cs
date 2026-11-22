@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -288,11 +289,11 @@ public sealed class IdeErrorsTests : IDisposable
             ListBoxItem row = Assert.Single(popup.GetVisualDescendants().OfType<ListBoxItem>());
             string?[] shown = [.. row.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)];
             Assert.Contains(shown, t => t?.EndsWith("  InvalidOperationException: The timer went wrong", StringComparison.Ordinal) == true);
-            Assert.Contains("3000 times", shown);
-            Assert.Contains(popup.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.StartsWith("Occurred 3000 times, from ", StringComparison.Ordinal) == true);
+            Assert.Contains($"{Numbers.Said(3000)} times", shown);
+            Assert.Contains(popup.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.StartsWith($"Occurred {Numbers.Said(3000)} times, from ", StringComparison.Ordinal) == true);
 
             // The log's own thread writes the last repeat unasked, a line of its own: the details are the first time's.
-            Ui.WaitFor(() => Ui.Shared(IdeErrors.LogPath).Contains("Error, occurred 3000 times: InvalidOperationException: The timer went wrong", StringComparison.Ordinal),
+            Ui.WaitFor(() => Ui.Shared(IdeErrors.LogPath).Contains($"Error, occurred {Numbers.Said(3000)} times: InvalidOperationException: The timer went wrong", StringComparison.Ordinal),
                 "the log's thread to write the last repeat");
             IdeErrors.Flush();
             string[] logs = Directory.GetFiles(IdeErrors.LogFolder, "passenger*.log");

@@ -555,7 +555,7 @@ internal sealed unsafe partial class RelaySession
         (int trips, double waited) = _link.TakeTally();
         KeyValuePair<string, int>[] most = [.. _tally.OrderByDescending(each => each.Value).Take(8)];
         _tally.Clear();
-        _log($"Relay since the last Continue: {trips} round trips, {Numbers.Fixed(waited, 0)} ms waiting, {ObjectsHeld} objects held; most carried: {string.Join(", ", most.Select(each => $"{each.Key} {each.Value}"))}");
+        _log($"Relay since the last Continue: {Numbers.Said(trips)} round trips, {Numbers.Fixed(waited, 0)} ms waiting, {Numbers.Said(ObjectsHeld)} objects held; most carried: {string.Join(", ", most.Select(each => $"{each.Key} {each.Value}"))}");
     }
 
     // ---- Callbacks ------------------------------------------------------------------------------------------------

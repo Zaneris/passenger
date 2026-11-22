@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Passenger.Core;
 
 namespace Passenger.App.Templates;
 
@@ -90,7 +91,7 @@ public sealed class TemplateOptions
             shown.Add((option, row, editor));
         }
         Folded.IsVisible = more.Rows.Children.Count > 0;
-        more.Title = $"More options ({more.Rows.Children.Count})";
+        more.Title = $"More options ({Numbers.Said(more.Rows.Children.Count)})";
         // A value the person set among them stays in sight, as it goes to the command line.
         more.IsOpen |= shown.Any(s => s.Option.More && !string.Equals(values[s.Option.Name], s.Option.Default, StringComparison.OrdinalIgnoreCase));
         Enable();

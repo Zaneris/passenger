@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Containers;
 
 /// <summary>What a row of the Containers window stands for.</summary>
@@ -72,7 +74,7 @@ public sealed class ContainerRow(ContainerRowKind kind, int depth, string key, s
         ContainerInfo? named = snapshot.AllContainers.FirstOrDefault(c => c.Name == name || c.Name == name.TrimStart('/'));
         if (named is null && begun.Length > 1)
         {
-            throw new ArgumentException($"{name} begins the ids of {begun.Length} containers ({string.Join(", ", begun.Select(c => c.Name))}): name one by its name or more of its id");
+            throw new ArgumentException($"{name} begins the ids of {Numbers.Said(begun.Length)} containers ({string.Join(", ", begun.Select(c => c.Name))}): name one by its name or more of its id");
         }
         if ((named ?? begun.FirstOrDefault()) is { } container)
         {

@@ -231,7 +231,7 @@ public sealed class AspireClient(string? program = null)
     {
         if (count > limit)
         {
-            throw new InvalidDataException($"Aspire returned more than {limit} {kind}. Nothing was silently truncated.");
+            throw new InvalidDataException($"Aspire returned more than {Numbers.Said(limit)} {kind}. Nothing was silently truncated.");
         }
     }
 

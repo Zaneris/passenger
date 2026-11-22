@@ -87,6 +87,40 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The find bar says its counts in the IDE's digits whatever the system's language: under a German culture, which
+    /// writes a thousand as 1.234, a file of 1,234 matches counts "1/1,000+" as far as the bar lists, and Replace All says
+    /// "Replaced 1,234".</summary>
+    [AvaloniaFact]
+    public void The_find_bars_counts_read_in_the_ides_digits_under_a_German_culture()
+    {
+        System.Globalization.CultureInfo was = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("de-DE");
+        try
+        {
+            (MainWindow window, CodeEditor editor) = Open(string.Concat(Enumerable.Repeat("tally\n", 1234)));
+            Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+            window.KeyTextInput("tally");
+            Ui.Settle();
+            FindBar bar = window.EditorArea.FindBar;
+            Assert.True(bar.CountText == "1/1,000+", $"Under a German culture the find bar counted {bar.CountText}, where the IDE's digits read 1/1,000+");
+            bar.FindControl<TextBox>("ReplaceWith")!.Text = "sum";
+            // The bar searches the text again once it is replaced in, so what Replace All said is read as it was shown.
+            List<string> said = [];
+            using (AvaloniaObjectExtensions.GetObservable(bar.FindControl<TextBlock>("Count")!, TextBlock.TextProperty)
+                .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty))))
+            {
+                Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+            }
+            Assert.True(said.Contains("Replaced 1,234"), $"Under a German culture Replace All said '{string.Join("', '", said)}', where the IDE's digits read 'Replaced 1,234'");
+            Assert.DoesNotContain("tally", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = was;
+        }
+    }
+
     /// <summary>Shift+Enter in the Replace box puts a line break into it, as its tooltip says, where Enter replaces; Replace
     /// All writes it in a "\r\n" file as "\r\n", and with Regex on a \n typed in the box makes one too.</summary>
     [AvaloniaFact]
