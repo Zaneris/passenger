@@ -37,12 +37,22 @@ public sealed class StagingTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Staging as one flow, each step the check one test made in an instance of its own: changes staged from
+    /// the diff by key and button being what git holds and the commit takes, files staged from the Commit window listed
+    /// apart, undone there and committed alone, and lines chosen in a change staged and unstaged alone.</summary>
+    [AvaloniaFact]
+    public void Changes_files_and_lines_staged_and_unstaged_are_what_git_holds_and_what_the_commit_takes()
+    {
+        Flow.StepApart<StagingTests>("changes staged from the diff by key and button are what git holds and what the commit takes", t => t.Changes_staged_from_the_diff_by_key_and_button_are_what_git_holds_and_what_the_commit_takes());
+        Flow.StepApart<StagingTests>("files staged from the commit window are listed apart undone there and committed alone", t => t.Files_staged_from_the_commit_window_are_listed_apart_undone_there_and_committed_alone());
+        Flow.StepApart<StagingTests>("lines selected in a change stage and unstage alone", t => t.Lines_selected_in_a_change_stage_and_unstage_alone());
+    }
+
     /// <summary>In the Commit window's diff of a file not open, Stage's keys at a change put it into git's index alone, and
     /// the window lists the file under Staged and Unstaged, the diff's boxes for ticked changes gone; the next change's plus
     /// button stages it too, its tip naming the keys; the keys on a change the index holds whole take it out again; and
     /// Commit takes what the index holds alone, leaving the working tree as it was.</summary>
-    [AvaloniaFact]
-    public void Changes_staged_from_the_diff_by_key_and_button_are_what_git_holds_and_what_the_commit_takes()
+    private void Changes_staged_from_the_diff_by_key_and_button_are_what_git_holds_and_what_the_commit_takes()
     {
         MainWindow window = Open();
         try
@@ -87,8 +97,7 @@ public sealed class StagingTests : IDisposable
 
     /// <summary>A file staged by Stage's keys in the Commit window puts the window in Staged and Unstaged, a box under Unstaged
     /// stages its file, the Commit window's Undo takes the last stage back, and Commit takes the staged file alone.</summary>
-    [AvaloniaFact]
-    public void Files_staged_from_the_commit_window_are_listed_apart_undone_there_and_committed_alone()
+    private void Files_staged_from_the_commit_window_are_listed_apart_undone_there_and_committed_alone()
     {
         MainWindow window = Open();
         try
@@ -134,8 +143,7 @@ public sealed class StagingTests : IDisposable
 
     /// <summary>Lines selected in a change of several stage those lines alone, the change's other lines left out of git's
     /// index, one command of Undo named for the lines; Unstage over one of them takes that line alone back out.</summary>
-    [AvaloniaFact]
-    public void Lines_selected_in_a_change_stage_and_unstage_alone()
+    private void Lines_selected_in_a_change_stage_and_unstage_alone()
     {
         string lines = Path.Combine(folder, "Lines.txt");
         File.WriteAllText(lines, "one\ntwo\nthree\nfour\n");

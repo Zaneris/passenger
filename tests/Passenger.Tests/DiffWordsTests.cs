@@ -31,8 +31,21 @@ public sealed class DiffWordsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Words marked in a diff as one flow, each step the check one test made in an instance of its own: one
+    /// word changed marked alone on both sides and in the change popup, a word added and punctuation changed marked as
+    /// themselves with the settings choosing lines, characters or nothing, the merge window marking each side's words
+    /// in a conflict and in the base, and a 20,000-line file changed every twelfth line opening its diff with every
+    /// word marked.</summary>
     [AvaloniaFact]
-    public void A_line_with_one_word_changed_marks_only_that_word_on_both_sides_of_the_diff_and_in_the_change_popup()
+    public void A_diff_and_the_merge_window_mark_the_words_each_side_changed_as_the_settings_choose()
+    {
+        Flow.StepApart<DiffWordsTests>("a line with one word changed marks only that word on both sides of the diff and in the change popup", t => t.A_line_with_one_word_changed_marks_only_that_word_on_both_sides_of_the_diff_and_in_the_change_popup());
+        Flow.StepApart<DiffWordsTests>("a word added and punctuation changed are marked as themselves and the diffs settings choose lines characters or nothing", t => t.A_word_added_and_punctuation_changed_are_marked_as_themselves_and_the_diffs_settings_choose_lines_characters_or_nothing());
+        Flow.StepApart<DiffWordsTests>("the merge window marks the words each side changed in a conflict and in the base it shows as the result", t => t.The_merge_window_marks_the_words_each_side_changed_in_a_conflict_and_in_the_base_it_shows_as_the_result());
+        Flow.StepApart<DiffWordsTests>("a 20000 line file changed on every twelfth line opens its diff with every word marked", t => t.A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked());
+    }
+
+    private void A_line_with_one_word_changed_marks_only_that_word_on_both_sides_of_the_diff_and_in_the_change_popup()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -75,8 +88,7 @@ public sealed class DiffWordsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_word_added_and_punctuation_changed_are_marked_as_themselves_and_the_diffs_settings_choose_lines_characters_or_nothing()
+    private void A_word_added_and_punctuation_changed_are_marked_as_themselves_and_the_diffs_settings_choose_lines_characters_or_nothing()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -122,8 +134,7 @@ public sealed class DiffWordsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_merge_window_marks_the_words_each_side_changed_in_a_conflict_and_in_the_base_it_shows_as_the_result()
+    private void The_merge_window_marks_the_words_each_side_changed_in_a_conflict_and_in_the_base_it_shows_as_the_result()
     {
         Git("switch", "-q", "-c", "feature");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "short count", StringComparison.Ordinal));
@@ -157,8 +168,7 @@ public sealed class DiffWordsTests : IDisposable
 
     /// <summary>A 20,000-line file changed on every twelfth line opens its diff with every word changed marked; and a rewrite
     /// of every line opens with no words marked.</summary>
-    [AvaloniaFact]
-    public void A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked()
+    private void A_20000_line_file_changed_on_every_twelfth_line_opens_its_diff_with_every_word_marked()
     {
         string generated = Path.Combine(folder, "Generated.txt");
         string[] lines = [.. Enumerable.Range(0, 20000).Select(i => $"    int value{i} = Compute({i}, \"label {i}\");")];

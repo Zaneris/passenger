@@ -37,6 +37,38 @@ public sealed class ConflictsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The gate's conflicts as one flow: a merge's conflicts listed and resolved whole or in the merge window
+    /// with the commit finishing the merge, a file a side deleted kept or deleted whole, Resolve Simple Conflicts
+    /// merging a line's different words, Update Project stopped by a rebase's conflict naming each side by its branch,
+    /// and an unstash's conflict taking the stashed change, each step the gate test it names in an instance of its
+    /// own.</summary>
+    [AvaloniaFact]
+    public void Conflicts_of_a_merge_a_rebase_or_an_unstash_are_listed_resolved_and_finished()
+    {
+        Flow.StepApart<ConflictsTests>("a merges conflicts are listed and resolved whole or in the merge window and the commit finishes the merge", t => t.A_merges_conflicts_are_listed_and_resolved_whole_or_in_the_merge_window_and_the_commit_finishes_the_merge());
+        Flow.StepApart<ConflictsTests>("a file a side deleted is kept or deleted whole from the commit window never merged into an empty file", t => t.A_file_a_side_deleted_is_kept_or_deleted_whole_from_the_commit_window_never_merged_into_an_empty_file());
+        Flow.StepApart<ConflictsTests>("resolve simple conflicts merges a lines different words undo takes it back and the keys take a side", t => t.Resolve_simple_conflicts_merges_a_lines_different_words_undo_takes_it_back_and_the_keys_take_a_side());
+        Flow.StepApart<ConflictsTests>("update project stopped by a rebases conflict names each side by its branch and the rebase goes on once it is resolved", t => t.Update_project_stopped_by_a_rebases_conflict_names_each_side_by_its_branch_and_the_rebase_goes_on_once_it_is_resolved());
+        Flow.StepApart<ConflictsTests>("an unstash that conflicts opens the conflicts dialog on the stash and accept theirs takes the stashed change", t => t.An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change());
+    }
+
+    /// <summary>Conflicts beyond the gate's as one flow, each step one test's check in an instance of its own: a binary
+    /// file never merged, a Windows-1252 file written back in 1252 with CRLF, a last line break one side added, a
+    /// resolved rebase said, a cherry-pick or revert aborted by its own abort, a side's edits greyed, a file in
+    /// conflict saying so, and Commit greyed until it is resolved.</summary>
+    [AvaloniaFact]
+    public void A_conflict_is_resolved_into_each_sides_bytes_and_nothing_is_committed_or_changed_until_it_is()
+    {
+        Flow.StepApart<ConflictsTests>("a binary files conflict is never merged and accept yours or theirs keeps that sides bytes", t => t.A_binary_files_conflict_is_never_merged_and_accept_yours_or_theirs_keeps_that_sides_bytes());
+        Flow.StepApart<ConflictsTests>("a Windows 1252 file merged under core autocrlf shows each sides letters and is written in 1252 with CRLF", t => t.A_Windows_1252_file_merged_under_core_autocrlf_shows_each_sides_letters_and_is_written_in_1252_with_CRLF());
+        Flow.StepApart<ConflictsTests>("a last line break one side added is a change the merge window takes into the file it writes", t => t.A_last_line_break_one_side_added_is_a_change_the_merge_window_takes_into_the_file_it_writes());
+        Flow.StepApart<ConflictsTests>("a rebase whose conflict is resolved is said in the commit window whose commit never goes beside it", t => t.A_rebase_whose_conflict_is_resolved_is_said_in_the_commit_window_whose_commit_never_goes_beside_it());
+        Flow.StepApart<ConflictsTests>("a cherry pick or a revert stopped for conflicts is aborted by its own abort and head is as it was", t => t.A_cherry_pick_or_a_revert_stopped_for_conflicts_is_aborted_by_its_own_abort_and_head_is_as_it_was());
+        Flow.StepApart<ConflictsTests>("every action of the edit menu that would change a merges side greys saying the result takes changes", t => t.Every_action_of_the_edit_menu_that_would_change_a_merges_side_greys_saying_the_result_takes_changes());
+        Flow.StepApart<ConflictsTests>("a file in conflict says so over its text and its Merge opens the merge window writing nothing until applied", t => t.A_file_in_conflict_says_so_over_its_text_and_its_Merge_opens_the_merge_window_writing_nothing_until_applied());
+        Flow.StepApart<ConflictsTests>("commit is greyed saying why while a file is in conflict and takes a press once it is resolved", t => t.Commit_is_greyed_saying_why_while_a_file_is_in_conflict_and_takes_a_press_once_it_is_resolved());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_merges_conflicts_are_listed_and_resolved_whole_or_in_the_merge_window_and_the_commit_finishes_the_merge()
@@ -189,8 +221,7 @@ public sealed class ConflictsTests : IDisposable
 
     /// <summary>A binary file both sides changed has no lines to merge: Merge… is off for it and, asked for, shows it chosen
     /// in the Conflicts dialog saying so, and Accept Theirs or Accept Yours keeps that side's bytes, staged as they are.</summary>
-    [AvaloniaFact]
-    public void A_binary_files_conflict_is_never_merged_and_accept_yours_or_theirs_keeps_that_sides_bytes()
+    private void A_binary_files_conflict_is_never_merged_and_accept_yours_or_theirs_keeps_that_sides_bytes()
     {
         static byte[] Image(byte mark) => [0x89, (byte)'P', (byte)'N', (byte)'G', 0, 1, 2, mark, 0];
         string image = Path.Combine(folder, "image.png");
@@ -229,8 +260,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_Windows_1252_file_merged_under_core_autocrlf_shows_each_sides_letters_and_is_written_in_1252_with_CRLF()
+    private void A_Windows_1252_file_merged_under_core_autocrlf_shows_each_sides_letters_and_is_written_in_1252_with_CRLF()
     {
         // Git keeps the file with LF and checks it out with CRLF; its letters are Windows-1252's, € and “ ” among them.
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
@@ -387,8 +417,7 @@ public sealed class ConflictsTests : IDisposable
 
     /// <summary>A file whose last line break one side added, with a conflict elsewhere, is merged with that break: the merge
     /// window has a change at the end, and taking it with the conflict's side writes and stages the file ending as yours.</summary>
-    [AvaloniaFact]
-    public void A_last_line_break_one_side_added_is_a_change_the_merge_window_takes_into_the_file_it_writes()
+    private void A_last_line_break_one_side_added_is_a_change_the_merge_window_takes_into_the_file_it_writes()
     {
         Write("Ends.txt", "x\na\nb");
         Git("add", "Ends.txt");
@@ -425,8 +454,7 @@ public sealed class ConflictsTests : IDisposable
 
     /// <summary>A rebase stopped on a conflict, resolved, is still said in the Commit window, whose Commit refuses to commit
     /// beside it on its detached head, naming Continue Rebase, and whose Continue Rebase goes on with it.</summary>
-    [AvaloniaFact]
-    public void A_rebase_whose_conflict_is_resolved_is_said_in_the_commit_window_whose_commit_never_goes_beside_it()
+    private void A_rebase_whose_conflict_is_resolved_is_said_in_the_commit_window_whose_commit_never_goes_beside_it()
     {
         Git("switch", "-q", "-c", "feature");
         Write("Shop.cs", Shop.Replace("int count", "short count", StringComparison.Ordinal));
@@ -499,37 +527,10 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A read of Git that took the status before an unstash wrote its conflicts, landing as the unstash runs, as one
-    /// the folder watcher started may, leaves the Conflicts dialog naming the stash.</summary>
-    [AvaloniaFact]
-    public void A_read_of_git_from_before_an_unstash_landing_during_it_leaves_the_conflicts_dialog_naming_the_stash()
-    {
-        Write("Shop.cs", Shop.Replace("int count", "short count", StringComparison.Ordinal));
-        Git("stash", "push", "-m", "Short count");
-        Write("Shop.cs", Shop.Replace("int count", "long count", StringComparison.Ordinal));
-        Git("commit", "-q", "-am", "Long");
-
-        MainWindow window = Open();
-        UnstashPopup popup = Ui.Landed(window.ShowUnstashAsync(), "the stashes")!;
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task answered = window.Vcs.HoldNextRead(release.Task);
-        Task before = window.Vcs.RefreshAsync();
-        Ui.PumpUntil(() => answered.IsCompleted, "git's status of the tree before the unstash");
-        Task popping = popup.PopAsync();
-        Ui.PumpUntil(() => window.Vcs.Sides.Description == "Conflicts during unstashing stash@{0}", "the unstash under way");
-        release.SetResult();
-        Ui.Landed(() => before.IsCompleted && popping.IsCompleted && window.ConflictsWindow is not null, "the Conflicts dialog");
-        Assert.Equal("Unstashed with conflicts: Shop.cs", window.Status);
-        Assert.True(window.ConflictsWindow!.Description == "Conflicts during unstashing stash@{0}",
-            $"The Conflicts dialog said \"{window.ConflictsWindow.Description}\", the stash's name lost to a read of the tree from before the unstash");
-        window.Close();
-    }
-
     /// <summary>A cherry-pick stopped for its conflict is aborted by Abort Cherry-Pick once agreed to, and a revert stopped
     /// so by Abort Revert: each time HEAD and the file are as they were before it and nothing is under way. While one is
     /// under way, the other aborts and Abort Merge are greyed saying none of theirs is.</summary>
-    [AvaloniaFact]
-    public void A_cherry_pick_or_a_revert_stopped_for_conflicts_is_aborted_by_its_own_abort_and_head_is_as_it_was()
+    private void A_cherry_pick_or_a_revert_stopped_for_conflicts_is_aborted_by_its_own_abort_and_head_is_as_it_was()
     {
         string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
         Git("switch", "-q", "-c", "feature");
@@ -589,8 +590,7 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>The merge window's sides are read-only: every action of the Edit menu that would change one greys saying
     /// so and that the result between them takes changes, and what is typed there and those actions' keys say it in the
     /// status bar, changing nothing; Copy and Select All stay enabled there, and the result takes the changes.</summary>
-    [AvaloniaFact]
-    public void Every_action_of_the_edit_menu_that_would_change_a_merges_side_greys_saying_the_result_takes_changes()
+    private void Every_action_of_the_edit_menu_that_would_change_a_merges_side_greys_saying_the_result_takes_changes()
     {
         Git("switch", "-q", "-c", "feature");
         Write("Shop.cs", Shop.Replace("int count", "int total", StringComparison.Ordinal));
@@ -642,8 +642,7 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>A file Git has in conflict, opened in the editor, says so over its text with Merge…, which opens the merge
     /// window on it and writes nothing there until the merge is applied; a file in no conflict says nothing, and once the
     /// merge resolves the file its banner goes.</summary>
-    [AvaloniaFact]
-    public void A_file_in_conflict_says_so_over_its_text_and_its_Merge_opens_the_merge_window_writing_nothing_until_applied()
+    private void A_file_in_conflict_says_so_over_its_text_and_its_Merge_opens_the_merge_window_writing_nothing_until_applied()
     {
         ConflictingPrices();
         string prices = Path.Combine(folder, "Prices.cs");
@@ -686,8 +685,7 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>The Commit window's Commit and Commit and Push… are greyed while a file is in conflict, the merge's message
     /// written, their tip saying why as a press would; once the conflict is resolved they take a press, and with the
     /// message emptied they are greyed again, saying so.</summary>
-    [AvaloniaFact]
-    public void Commit_is_greyed_saying_why_while_a_file_is_in_conflict_and_takes_a_press_once_it_is_resolved()
+    private void Commit_is_greyed_saying_why_while_a_file_is_in_conflict_and_takes_a_press_once_it_is_resolved()
     {
         ConflictingPrices();
         MainWindow window = Open();

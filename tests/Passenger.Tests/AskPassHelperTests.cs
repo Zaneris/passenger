@@ -15,8 +15,18 @@ public sealed class AskPassHelperTests
 {
     private static readonly TimeSpan Answering = TimeSpan.FromSeconds(30);
 
+    /// <summary>Git's askpass helper and the IDE as one flow, each step the check one test made in an instance of its
+    /// own: a question no server takes given up at the helper's limit saying so, and the helper and the IDE each taking
+    /// an answer or a question once whole though the other never ends its side.</summary>
     [Fact]
-    public void A_question_no_server_takes_is_given_up_at_the_helpers_limit_saying_so()
+    public async Task Gits_helper_and_the_IDE_take_a_question_and_its_answer_once_whole_and_give_up_one_nobody_takes()
+    {
+        Flow.StepApart<AskPassHelperTests>("a question no server takes is given up at the helpers limit saying so", t => t.A_question_no_server_takes_is_given_up_at_the_helpers_limit_saying_so());
+        await Flow.StepApartAsync("the helper takes an answer once whole though the IDE never ends its side", () => new AskPassHelperTests(), t => t.The_helper_takes_an_answer_once_whole_though_the_IDE_never_ends_its_side());
+        await Flow.StepApartAsync("the IDE answers a question once whole though the helper never ends its side", () => new AskPassHelperTests(), t => t.The_IDE_answers_a_question_once_whole_though_the_helper_never_ends_its_side());
+    }
+
+    private void A_question_no_server_takes_is_given_up_at_the_helpers_limit_saying_so()
     {
         string socket = Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), $"{Environment.ProcessId}-untaken");
         File.Delete(socket);
@@ -35,8 +45,7 @@ public sealed class AskPassHelperTests
         }
     }
 
-    [Fact]
-    public async Task The_helper_takes_an_answer_once_whole_though_the_IDE_never_ends_its_side()
+    private async Task The_helper_takes_an_answer_once_whole_though_the_IDE_never_ends_its_side()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         string socket = Path.Combine(SocketFolders.Own(StateStore.DefaultRoot), $"{Environment.ProcessId}-unended");
@@ -62,8 +71,7 @@ public sealed class AskPassHelperTests
         }
     }
 
-    [Fact]
-    public async Task The_IDE_answers_a_question_once_whole_though_the_helper_never_ends_its_side()
+    private async Task The_IDE_answers_a_question_once_whole_though_the_helper_never_ends_its_side()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         // A clone held at its first request: git runs on asking nothing, while the test asks as its helper would.

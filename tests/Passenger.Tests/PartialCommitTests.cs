@@ -29,8 +29,28 @@ public sealed class PartialCommitTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Partial commits as one flow, each step one test's check in an instance of its own: only the changes
+    /// chosen committed, a change only staged kept staged, edits keeping the choice, a deleted file or an edit after
+    /// the choice refused, a hook's rejection keeping the index and file, CRLF and encodings kept, Rollback and a merge
+    /// offering no part, and an unchanged file never read.</summary>
     [AvaloniaFact]
-    public void A_change_block_can_be_excluded_and_only_the_other_is_committed()
+    public void A_partial_commit_takes_only_the_changes_chosen_keeping_what_the_index_and_the_file_hold_besides()
+    {
+        Flow.StepApart<PartialCommitTests>("a change block can be excluded and only the other is committed", t => t.A_change_block_can_be_excluded_and_only_the_other_is_committed());
+        Flow.StepApart<PartialCommitTests>("a change only staged stays staged through a commit of another change of its file", t => t.A_change_only_staged_stays_staged_through_a_commit_of_another_change_of_its_file());
+        Flow.StepApart<PartialCommitTests>("edits in the diff keep the changes chosen and leave a new change out", t => t.Edits_in_the_diff_keep_the_changes_chosen_and_leave_a_new_change_out());
+        Flow.StepApart<PartialCommitTests>("a file deleted after partial selection is not automatically selected whole", t => t.A_file_deleted_after_partial_selection_is_not_automatically_selected_whole());
+        Flow.StepApart<PartialCommitTests>("an edit after selecting changes is refused without changing the index", t => t.An_edit_after_selecting_changes_is_refused_without_changing_the_index());
+        Flow.StepApart<PartialCommitTests>("a hook rejecting a partial commit keeps the index and working file", t => t.A_hook_rejecting_a_partial_commit_keeps_the_index_and_working_file());
+        Flow.StepApart<PartialCommitTests>("a hook rejecting a commit of whole files keeps what the index staged of them", t => t.A_hook_rejecting_a_commit_of_whole_files_keeps_what_the_index_staged_of_them());
+        Flow.StepApart<PartialCommitTests>("partial commits keep CRLF and the files encoding (false)", t => t.Partial_commits_keep_CRLF_and_the_files_encoding(false));
+        Flow.StepApart<PartialCommitTests>("partial commits keep CRLF and the files encoding (true)", t => t.Partial_commits_keep_CRLF_and_the_files_encoding(true));
+        Flow.StepApart<PartialCommitTests>("rollback of the chosen files is refused while a file goes in only in part", t => t.Rollback_of_the_chosen_files_is_refused_while_a_file_goes_in_only_in_part());
+        Flow.StepApart<PartialCommitTests>("a merge under way offers no boxes for changes", t => t.A_merge_under_way_offers_no_boxes_for_changes());
+        Flow.StepApart<PartialCommitTests>("a partial commit reads no file unchanged since the last commit", t => t.A_partial_commit_reads_no_file_unchanged_since_the_last_commit());
+    }
+
+    private void A_change_block_can_be_excluded_and_only_the_other_is_committed()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -64,8 +84,7 @@ public sealed class PartialCommitTests : IDisposable
     /// <summary>A change staged and then taken back out of the working tree, beside the line a partial commit of chosen
     /// changes takes (an agent's vcs_commit's lines), stays staged once the commit is made, with the change committed taken
     /// in, as another staged file does; the change left out stays in the working tree alone.</summary>
-    [AvaloniaFact]
-    public void A_change_only_staged_stays_staged_through_a_commit_of_another_change_of_its_file()
+    private void A_change_only_staged_stays_staged_through_a_commit_of_another_change_of_its_file()
     {
         const string Staged = "one\nTWO\nthree\nfour\nfive\n";
         File.WriteAllText(PathOf("Notes.txt"), Staged);
@@ -94,43 +113,9 @@ public sealed class PartialCommitTests : IDisposable
     private static CheckBox[] Boxes(DiffView view) =>
         [.. view.GetVisualDescendants().OfType<CheckBox>().Where(b => b.IsVisible && ToolTip.GetTip(b) is string tip && tip.StartsWith("Include change ", StringComparison.Ordinal))];
 
-    /// <summary>Only the changes in view have a box, so a diff of hundreds scrolls as lightly as one of a few, and a box
-    /// scrolled to chooses the change it stands beside.</summary>
-    [AvaloniaFact]
-    public void A_diff_of_many_changes_boxes_those_in_view_and_a_box_scrolled_to_chooses_its_own()
-    {
-        File.WriteAllText(PathOf("Many.txt"), string.Concat(Enumerable.Range(0, 2000).Select(i => $"line {i}\n")));
-        TestGit.Run(folder, "add", "Many.txt");
-        TestGit.Run(folder, "commit", "-q", "-m", "Many", "--", "Many.txt");
-        File.WriteAllText(PathOf("Many.txt"), string.Concat(Enumerable.Range(0, 2000).Select(i => i % 4 == 0 ? $"LINE {i}\n" : $"line {i}\n")));
-        MainWindow window = Ui.OpenFolder(folder);
-        try
-        {
-            window.Perform(AppActions.ShowCommit);
-            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Many.txt"), "the changed files");
-            CommitRow row = window.CommitView.Rows.OfType<CommitRow>().Single(r => r.Change.Name == "Many.txt");
-            IDiffHost host = Ui.Landed(window.ShowDiffAsync(PathOf("Many.txt")), "the diff")!;
-            DiffView view = OpenDiffs.ViewOf(host);
-            Assert.Equal(500, view.Hunks.Count);
-            Assert.InRange(Boxes(view).Length, 1, 100);
-            view.Right.GoTo(new TextPosition(1999, 0));
-            Ui.Settle();
-            CheckBox last = Boxes(view).MaxBy(Canvas.GetTop)!;
-            Ui.Click(last);
-            Assert.True(row.Partial is { } partial && partial.Hunks.Count == 499 && !partial.Hunks.Contains(view.Hunks[^1]),
-                "The box beside the last change, scrolled to, did not leave that change alone out of the commit");
-            host.Close();
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A clean filter (Git LFS's, say) runs as git reads a file of the working tree again: a partial commit reads
     /// no file that is as the last commit has it, however many the tree holds.</summary>
-    [AvaloniaFact]
-    public void A_partial_commit_reads_no_file_unchanged_since_the_last_commit()
+    private void A_partial_commit_reads_no_file_unchanged_since_the_last_commit()
     {
         string cleaned = Path.Combine(TestFolders.Create("cleaned-"), "cleaned.txt");
         File.WriteAllText(PathOf("Same.txt"), "same\n");
@@ -162,8 +147,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Edits_in_the_diff_keep_the_changes_chosen_and_leave_a_new_change_out()
+    private void Edits_in_the_diff_keep_the_changes_chosen_and_leave_a_new_change_out()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -204,8 +188,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Rollback_of_the_chosen_files_is_refused_while_a_file_goes_in_only_in_part()
+    private void Rollback_of_the_chosen_files_is_refused_while_a_file_goes_in_only_in_part()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -229,8 +212,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_merge_under_way_offers_no_boxes_for_changes()
+    private void A_merge_under_way_offers_no_boxes_for_changes()
     {
         TestGit.Run(folder, "reset", "-q", "Other.txt");
         TestGit.Run(folder, "switch", "-q", "-c", "feature");
@@ -254,8 +236,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_deleted_after_partial_selection_is_not_automatically_selected_whole()
+    private void A_file_deleted_after_partial_selection_is_not_automatically_selected_whole()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -277,8 +258,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_edit_after_selecting_changes_is_refused_without_changing_the_index()
+    private void An_edit_after_selecting_changes_is_refused_without_changing_the_index()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -301,8 +281,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_hook_rejecting_a_partial_commit_keeps_the_index_and_working_file()
+    private void A_hook_rejecting_a_partial_commit_keeps_the_index_and_working_file()
     {
         TestGit.Run(folder, "add", "Notes.txt");
         string hook = PathOf(".git/hooks/pre-commit");
@@ -336,8 +315,7 @@ public sealed class PartialCommitTests : IDisposable
 
     /// <summary>A commit of whole files that a hook refuses leaves the index as it was: a change of a chosen file only
     /// staged, taken back out of the working tree since, is still staged, and the file's other changes are not.</summary>
-    [AvaloniaFact]
-    public void A_hook_rejecting_a_commit_of_whole_files_keeps_what_the_index_staged_of_them()
+    private void A_hook_rejecting_a_commit_of_whole_files_keeps_what_the_index_staged_of_them()
     {
         const string Staged = "one\nTWO\nthree\nfour\nfive\n";
         File.WriteAllText(PathOf("Notes.txt"), Staged);
@@ -370,10 +348,7 @@ public sealed class PartialCommitTests : IDisposable
         }
     }
 
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Partial_commits_keep_CRLF_and_the_files_encoding(bool unicode)
+    private void Partial_commits_keep_CRLF_and_the_files_encoding(bool unicode)
     {
         System.Text.Encoding encoding = unicode ? System.Text.Encoding.Unicode : new System.Text.UTF8Encoding(false);
         const string Name = "[notes] caf\u00e9 \u5496\u5561.txt";

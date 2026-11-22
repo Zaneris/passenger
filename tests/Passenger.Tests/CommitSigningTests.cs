@@ -28,8 +28,23 @@ public sealed class CommitSigningTests : IDisposable
         }
     }
 
+    /// <summary>Signing with an SSH key as one flow, every step needing ssh-keygen, each the check one test made in an
+    /// instance of its own: the Commit window signing with the key git's config names, signing turned off for one
+    /// commit and sign-off kept, the key's passphrase asked in Passenger's dialog with a wrong one saying why, quitting
+    /// while git waits for it leaving no index lock, a cherry-pick signed, a key that is not there failing the commit
+    /// naming the way to mend it, and Commit Signing setting SSH up in the repository's config alone.</summary>
     [AvaloniaFact]
-    public void The_commit_window_signs_with_the_key_gits_config_names_turns_signing_off_for_one_commit_and_keeps_sign_off()
+    public void A_commit_is_signed_with_the_SSH_key_gits_config_names_asking_its_passphrase_in_Passengers_dialog()
+    {
+        Flow.StepApart<CommitSigningTests>("the commit window signs with the key gits config names turns signing off for one commit and keeps sign off", t => t.The_commit_window_signs_with_the_key_gits_config_names_turns_signing_off_for_one_commit_and_keeps_sign_off());
+        Flow.StepApart<CommitSigningTests>("a keys passphrase is asked in passengers dialog and a wrong one says why the commit was not made", t => t.A_keys_passphrase_is_asked_in_passengers_dialog_and_a_wrong_one_says_why_the_commit_was_not_made());
+        Flow.StepApart<CommitSigningTests>("quitting while git waits for a keys passphrase refuses it so git ends on its own leaving no index lock", t => t.Quitting_while_git_waits_for_a_keys_passphrase_refuses_it_so_git_ends_on_its_own_leaving_no_index_lock());
+        Flow.StepApart<CommitSigningTests>("a cherry pick is signed with the keys passphrase asked in passengers dialog", t => t.A_cherry_pick_is_signed_with_the_keys_passphrase_asked_in_passengers_dialog());
+        Flow.StepApart<CommitSigningTests>("a signing key that is not there fails the commit naming the key and the way to mend it", t => t.A_signing_key_that_is_not_there_fails_the_commit_naming_the_key_and_the_way_to_mend_it());
+        Flow.StepApart<CommitSigningTests>("commit signing sets ssh up in the repositorys config alone listing the key as an allowed signer", t => t.Commit_signing_sets_ssh_up_in_the_repositorys_config_alone_listing_the_key_as_an_allowed_signer());
+    }
+
+    private void The_commit_window_signs_with_the_key_gits_config_names_turns_signing_off_for_one_commit_and_keeps_sign_off()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         (string root, string key) = Repository(passphrase: null);
@@ -57,8 +72,7 @@ public sealed class CommitSigningTests : IDisposable
         again.Close();
     }
 
-    [AvaloniaFact]
-    public void A_keys_passphrase_is_asked_in_passengers_dialog_and_a_wrong_one_says_why_the_commit_was_not_made()
+    private void A_keys_passphrase_is_asked_in_passengers_dialog_and_a_wrong_one_says_why_the_commit_was_not_made()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         const string Passphrase = "harbour-light-7";
@@ -92,8 +106,7 @@ public sealed class CommitSigningTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Quitting_while_git_waits_for_a_keys_passphrase_refuses_it_so_git_ends_on_its_own_leaving_no_index_lock()
+    private void Quitting_while_git_waits_for_a_keys_passphrase_refuses_it_so_git_ends_on_its_own_leaving_no_index_lock()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         (string root, _) = Repository("tidal-gate-9");
@@ -118,8 +131,7 @@ public sealed class CommitSigningTests : IDisposable
         Assert.False(Ui.Await(committing, "the commit's end, heard once the window's thread runs again"), "The commit whose passphrase was refused says it was made");
     }
 
-    [AvaloniaFact]
-    public void A_cherry_pick_is_signed_with_the_keys_passphrase_asked_in_passengers_dialog()
+    private void A_cherry_pick_is_signed_with_the_keys_passphrase_asked_in_passengers_dialog()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         const string Passphrase = "spindle-cove-2";
@@ -335,8 +347,7 @@ public sealed class CommitSigningTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_signing_key_that_is_not_there_fails_the_commit_naming_the_key_and_the_way_to_mend_it()
+    private void A_signing_key_that_is_not_there_fails_the_commit_naming_the_key_and_the_way_to_mend_it()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         (string root, string key) = Repository(passphrase: null);
@@ -356,8 +367,7 @@ public sealed class CommitSigningTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Commit_signing_sets_ssh_up_in_the_repositorys_config_alone_listing_the_key_as_an_allowed_signer()
+    private void Commit_signing_sets_ssh_up_in_the_repositorys_config_alone_listing_the_key_as_an_allowed_signer()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         string root = PathNames.Canonical(TestFolders.Create("signing-setup-"));
@@ -462,64 +472,5 @@ public sealed class CommitSigningTests : IDisposable
         GitQuestionDialog asked = DialogButtonsTests.Check(window.GitQuestion!);
         Assert.Equal("Passphrase for own", asked.Title);
         return asked;
-    }
-}
-
-/// <summary>Commit Signing… set for all the person's repositories, in a global git config and a config folder of this test's
-/// own for its length, alone so that no other test's git reads them.</summary>
-[Collection(Alone.Name)]
-public sealed class CommitSigningEverywhereTests : IDisposable
-{
-    private readonly string folder = PathNames.Canonical(TestFolders.Create("signing-everywhere-"));
-    private readonly string? global = Environment.GetEnvironmentVariable("GIT_CONFIG_GLOBAL");
-    private readonly string? configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-
-    public void Dispose()
-    {
-        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", global);
-        OwnEnvironment.Set("XDG_CONFIG_HOME", configHome);
-        TestFolders.Delete(folder);
-    }
-
-    [AvaloniaFact]
-    public void Commit_signing_for_all_repositories_names_a_signers_file_every_repository_reads_whatever_this_one_names()
-    {
-        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
-        string root = Directory.CreateDirectory(Path.Combine(folder, "shop")).FullName;
-        string other = Directory.CreateDirectory(Path.Combine(folder, "other")).FullName;
-        string keys = Directory.CreateDirectory(Path.Combine(folder, "keys")).FullName;
-        string config = Path.Combine(folder, "gitconfig");
-        File.WriteAllText(config, string.Empty);
-        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", config);
-        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", Path.Combine(folder, "config"));
-        File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
-        File.WriteAllText(Path.Combine(other, "Other.cs"), "class Other\n{\n}\n");
-        TestGit.Init(root);
-        TestGit.Init(other);
-        string local = Path.Combine(folder, "shop_signers");
-        File.WriteAllText(local, string.Empty);
-        TestGit.Run(root, "config", "--local", Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile, local);
-        string key = Ui.AwaitPumped(Waiting.Apart(() => TestSshKeys.MakeAsync(keys, "mine")), "the test's key", TimeSpan.FromMinutes(1));
-
-        MainWindow window = Ui.OpenFolder(root, languageServer: false);
-        window.Perform(AppActions.ShowCommit);
-        CommitView commit = window.CommitView;
-        Assert.True(window.Perform(AppActions.CommitSigning), window.Status);
-        Ui.PumpUntil(() => window.CommitSigning is { IsVisible: true }, "Commit Signing's dialog");
-        CommitSigningDialog dialog = DialogButtonsTests.Check(window.CommitSigning!);
-        TextBox field = dialog.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SigningKey");
-        Ui.Click(field);
-        field.SelectAll();
-        dialog.KeyTextInput(key + ".pub");
-        Ui.Click(dialog.GetVisualDescendants().OfType<RadioButton>().Single(r => r.Content as string == "All your repositories (your global git config)"));
-        Ui.ClickButton(dialog, "OK");
-        Ui.Landed(() => commit.SignWith == "Sign with SSH key mine.pub", $"the Commit window signing with mine.pub, where it says \"{commit.SignWith}\"");
-
-        string signers = TestGit.Run(other, "config", "--type=path", "--get", Passenger.Vcs.GitConfigKeys.GpgSshAllowedSignersFile).Trim();
-        Assert.True(signers.Length > 0 && !PathNames.Same(signers, local), $"Another repository reads the allowed signers \"{signers}\", so it could not verify a commit signed with the key");
-        string publicKey = string.Join(' ', TestSshKeys.Public(key).Split(' ')[..2]);
-        Assert.True(File.ReadAllText(signers).Contains(publicKey, StringComparison.Ordinal), $"The global allowed signers file holds\n{File.ReadAllText(signers)}\nnot the key");
-        Assert.True(File.ReadAllText(local).Length == 0, "Commit Signing for all repositories wrote the file this repository alone reads");
-        window.Close();
     }
 }

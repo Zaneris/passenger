@@ -41,8 +41,25 @@ public sealed class DiffTabsTests : IDisposable
         TestFolders.Delete(state);
     }
 
+    /// <summary>Diff tabs as one flow, each step one test's check in an instance of its own: a tab from the Commit
+    /// window titled as its window, following the file chosen until kept, its edits saved, Rollback Lines at its caret,
+    /// split, moved to a window and left out of the kept tabs, moved by Settings' Open Diffs In, searched by Find,
+    /// brought back by Back and Reopen, and let go once closed.</summary>
     [AvaloniaFact]
-    public void Show_Diff_from_the_Commit_window_opens_a_tab_of_the_editors_titled_as_its_window_and_no_window()
+    public void A_diff_opens_in_a_tab_that_follows_the_Commit_window_saves_its_edits_and_lets_go_once_closed()
+    {
+        Flow.StepApart<DiffTabsTests>("show Diff from the Commit window opens a tab of the editors titled as its window and no window", t => t.Show_Diff_from_the_Commit_window_opens_a_tab_of_the_editors_titled_as_its_window_and_no_window());
+        Flow.StepApart<DiffTabsTests>("the Commit windows diff tab follows the file chosen there until it is kept", t => t.The_Commit_windows_diff_tab_follows_the_file_chosen_there_until_it_is_kept());
+        Flow.StepApart<DiffTabsTests>("an edit in a diff tab is saved to the file from the tab and closing the files tab closes the diff", t => t.An_edit_in_a_diff_tab_is_saved_to_the_file_from_the_tab_and_closing_the_files_tab_closes_the_diff());
+        Flow.StepApart<DiffTabsTests>("rollback lines in the commit windows diff puts back the change at the caret and the arrows tip names its keys", t => t.Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys());
+        Flow.StepApart<DiffTabsTests>("a diff tab splits moves to a window of its own jumps to its file and is left out of the folders kept tabs", t => t.A_diff_tab_splits_moves_to_a_window_of_its_own_jumps_to_its_file_and_is_left_out_of_the_folders_kept_tabs());
+        Flow.StepApart<DiffTabsTests>("open diffs in on Settings Version Control page moves the diffs open between a window and a tab", t => t.Open_diffs_in_on_Settings_Version_Control_page_moves_the_diffs_open_between_a_window_and_a_tab());
+        Flow.StepApart<DiffTabsTests>("find in a diff tab searches the side with the caret marking the other and find next steps through it", t => t.Find_in_a_diff_tab_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it());
+        Flow.StepApart<DiffTabsTests>("back returns to the diff tab a file was opened from and reopen closed tab brings a closed diff tab back", t => t.Back_returns_to_the_diff_tab_a_file_was_opened_from_and_reopen_closed_tab_brings_a_closed_diff_tab_back());
+        Flow.StepApart<DiffTabsTests>("a closed diff tab kept to open again holds none of its texts nor its closed file", t => t.A_closed_diff_tab_kept_to_open_again_holds_none_of_its_texts_nor_its_closed_file());
+    }
+
+    private void Show_Diff_from_the_Commit_window_opens_a_tab_of_the_editors_titled_as_its_window_and_no_window()
     {
         MainWindow window = Open();
         string shop = window.EditorArea.Active!.Path;
@@ -98,8 +115,7 @@ public sealed class DiffTabsTests : IDisposable
     /// that file's diff in the same tab, named for it and drawn aslant, and a row chosen by a click or the keys does too, the
     /// keys staying in the list. Pinned, or its file edited in it, the tab is kept, showing its own file, and the next file's
     /// diff the Commit window opens comes in a tab of its own, which follows from then on; one a kept tab shows brings it forward.</summary>
-    [AvaloniaFact]
-    public void The_Commit_windows_diff_tab_follows_the_file_chosen_there_until_it_is_kept()
+    private void The_Commit_windows_diff_tab_follows_the_file_chosen_there_until_it_is_kept()
     {
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes, edited\n");
         File.WriteAllText(Path.Combine(folder, "Draft.txt"), "draft\n");
@@ -159,8 +175,7 @@ public sealed class DiffTabsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_edit_in_a_diff_tab_is_saved_to_the_file_from_the_tab_and_closing_the_files_tab_closes_the_diff()
+    private void An_edit_in_a_diff_tab_is_saved_to_the_file_from_the_tab_and_closing_the_files_tab_closes_the_diff()
     {
         MainWindow window = Open();
         OpenDocument file = window.EditorArea.Active!;
@@ -194,8 +209,7 @@ public sealed class DiffTabsTests : IDisposable
     /// whose tip names those keys: from the file's side, then from the last commit's, each an edit of the file Undo takes
     /// back. Where the file is not open, the diff's copy of it puts the change back on disk, one command its copy's Undo
     /// takes back, the copy following the file each way.</summary>
-    [AvaloniaFact]
-    public void Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys()
+    private void Rollback_lines_in_the_commit_windows_diff_puts_back_the_change_at_the_caret_and_the_arrows_tip_names_its_keys()
     {
         MainWindow window = Open();
         OpenDocument file = window.EditorArea.Active!;
@@ -260,8 +274,7 @@ public sealed class DiffTabsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_diff_tab_splits_moves_to_a_window_of_its_own_jumps_to_its_file_and_is_left_out_of_the_folders_kept_tabs()
+    private void A_diff_tab_splits_moves_to_a_window_of_its_own_jumps_to_its_file_and_is_left_out_of_the_folders_kept_tabs()
     {
         MainWindow first = Keeping();
         EditorArea area = first.EditorArea;
@@ -304,8 +317,7 @@ public sealed class DiffTabsTests : IDisposable
         second.Close();
     }
 
-    [AvaloniaFact]
-    public void Open_diffs_in_on_Settings_Version_Control_page_moves_the_diffs_open_between_a_window_and_a_tab()
+    private void Open_diffs_in_on_Settings_Version_Control_page_moves_the_diffs_open_between_a_window_and_a_tab()
     {
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { OpenDiffsIn = DiffPlace.Window });
@@ -341,8 +353,7 @@ public sealed class DiffTabsTests : IDisposable
     /// <summary>Find in a diff's tab searches the side with the caret, its matches marked there and the other side's matches
     /// of the same words marked too, Find Next stepping through those of the side searched; with the last commit's side
     /// chosen, Find searches that side.</summary>
-    [AvaloniaFact]
-    public void Find_in_a_diff_tab_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it()
+    private void Find_in_a_diff_tab_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it()
     {
         MainWindow window = Open();
         DiffView view = Assert.IsType<DiffView>(DiffFromCommit(window, byEnter: true).View);
@@ -351,24 +362,9 @@ public sealed class DiffTabsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Find in a diff's window searches it as in its tab: the window's own Find, the IDE's editor left as it was.</summary>
-    [AvaloniaFact]
-    public void Find_in_a_diff_window_searches_the_side_with_the_caret_marking_the_other_and_find_next_steps_through_it()
-    {
-        MainWindow window = Open();
-        window.ApplySettings(window.Settings with { OpenDiffsIn = DiffPlace.Window });
-        DiffWindow shown = Assert.IsType<DiffWindow>(DiffFromCommit(window, byEnter: true));
-        Ui.Landed(() => shown.View.Right.IsKeyboardFocusWithin, "the diff window's side of the file to have the keys");
-        FindIn(shown, shown.View, shown.View.Right, shown.View.Left);
-        Assert.False(window.EditorArea.FindBar.IsVisible, "Find in the diff's window opened Find over the IDE's editor");
-        shown.Close();
-        window.Close();
-    }
-
     /// <summary>Back from a file goes to the diff's tab Jump to Source came from, at its caret, and Forward to the file again;
     /// a closed diff's tab opens again by Reopen Closed Tab, at the versions as they are now: the file's edit since in it.</summary>
-    [AvaloniaFact]
-    public void Back_returns_to_the_diff_tab_a_file_was_opened_from_and_reopen_closed_tab_brings_a_closed_diff_tab_back()
+    private void Back_returns_to_the_diff_tab_a_file_was_opened_from_and_reopen_closed_tab_brings_a_closed_diff_tab_back()
     {
         MainWindow window = Open();
         DiffTab tab = Assert.IsType<DiffTab>(DiffFromCommit(window, byEnter: true));
@@ -406,8 +402,7 @@ public sealed class DiffTabsTests : IDisposable
     /// <summary>A diff's tab closed, then its file's: what Reopen Closed Tab and Back keep of the diff is how it is asked for
     /// afresh, so the closed file goes, its text and colours, the last commit's text and the differences with it, and the diff
     /// still opens again.</summary>
-    [AvaloniaFact]
-    public void A_closed_diff_tab_kept_to_open_again_holds_none_of_its_texts_nor_its_closed_file()
+    private void A_closed_diff_tab_kept_to_open_again_holds_none_of_its_texts_nor_its_closed_file()
     {
         MainWindow window = Open();
         WeakReference<OpenDocument> closed = DiffThenFileClosed(window);

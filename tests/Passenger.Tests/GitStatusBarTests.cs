@@ -27,8 +27,19 @@ public sealed class GitStatusBarTests : IDisposable
         TestFolders.Delete(clone);
     }
 
+    /// <summary>The status bar's Git as one flow, each step the check one test made in an instance of its own: a branch
+    /// behind and ahead of its upstream saying both with its changed files each a click to their window, the branch
+    /// opening the branch popup whose New Branch checks one out, and a folder in no working tree saying no
+    /// Git.</summary>
     [AvaloniaFact]
-    public void A_branch_behind_and_ahead_of_its_upstream_says_both_and_its_changed_files_each_a_click_to_their_window()
+    public void The_status_bars_Git_says_the_branch_where_it_stands_against_its_upstream_and_opens_what_it_names()
+    {
+        Flow.StepApart<GitStatusBarTests>("a branch behind and ahead of its upstream says both and its changed files each a click to their window", t => t.A_branch_behind_and_ahead_of_its_upstream_says_both_and_its_changed_files_each_a_click_to_their_window());
+        Flow.StepApart<GitStatusBarTests>("the status bars branch opens the branch popup whose New Branch checks one out and goes whole at the least width", t => t.The_status_bars_branch_opens_the_branch_popup_whose_New_Branch_checks_one_out_and_goes_whole_at_the_least_width());
+        Flow.StepApart<GitStatusBarTests>("a folder in no working tree says no Git in the status bar", t => t.A_folder_in_no_working_tree_says_no_Git_in_the_status_bar());
+    }
+
+    private void A_branch_behind_and_ahead_of_its_upstream_says_both_and_its_changed_files_each_a_click_to_their_window()
     {
         File.WriteAllText(Path.Combine(origin, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(origin);
@@ -94,8 +105,7 @@ public sealed class GitStatusBarTests : IDisposable
     /// <summary>The status bar's branch says the branch checked out, and a click on it opens the branch popup the toolbar's
     /// Git widget opens, over the bar, whose New Branch… makes a branch and checks it out, which both then say; at the
     /// window's least width it goes whole, nothing in the bar cut or laid over another, and comes back as the window widens.</summary>
-    [AvaloniaFact]
-    public void The_status_bars_branch_opens_the_branch_popup_whose_New_Branch_checks_one_out_and_goes_whole_at_the_least_width()
+    private void The_status_bars_branch_opens_the_branch_popup_whose_New_Branch_checks_one_out_and_goes_whole_at_the_least_width()
     {
         File.WriteAllText(Path.Combine(origin, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(origin);
@@ -142,8 +152,7 @@ public sealed class GitStatusBarTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_folder_in_no_working_tree_says_no_Git_in_the_status_bar()
+    private void A_folder_in_no_working_tree_says_no_Git_in_the_status_bar()
     {
         File.WriteAllText(Path.Combine(origin, "Shop.cs"), "class Shop\n{\n}\n");
         MainWindow window = Ui.OpenFolder(origin, languageServer: false);

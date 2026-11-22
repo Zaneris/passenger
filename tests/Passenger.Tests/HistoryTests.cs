@@ -27,8 +27,22 @@ public sealed class HistoryTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Git history as one flow, each step the check one test made in an instance of its own: a file's history
+    /// following it through a rename, a double click showing what a commit did, a folder's history from the Explorer
+    /// listing only its commits and files, Show History for Selection listing the commits that changed the chosen lines
+    /// past an unsaved edit, Compare with Branch or Tag putting the other branch's text beside, and a file renamed and
+    /// not yet committed found where the last commit has it.</summary>
     [AvaloniaFact]
-    public void A_files_history_follows_it_through_a_rename_and_a_double_click_on_a_commit_shows_what_it_did_to_the_file()
+    public void A_files_or_a_folders_history_lists_the_commits_that_touched_it_as_git_names_it_and_shows_what_each_did()
+    {
+        Flow.StepApart<HistoryTests>("a files history follows it through a rename and a double click on a commit shows what it did to the file", t => t.A_files_history_follows_it_through_a_rename_and_a_double_click_on_a_commit_shows_what_it_did_to_the_file());
+        Flow.StepApart<HistoryTests>("a folders history from the explorer lists only the commits that touched it and only its files", t => t.A_folders_history_from_the_explorer_lists_only_the_commits_that_touched_it_and_only_its_files());
+        Flow.StepApart<HistoryTests>("show history for selection lists only the commits that changed the chosen lines counted past an unsaved edit", t => t.Show_history_for_selection_lists_only_the_commits_that_changed_the_chosen_lines_counted_past_an_unsaved_edit());
+        Flow.StepApart<HistoryTests>("compare with branch or tag puts the other branchs text beside the files as it is now", t => t.Compare_with_branch_or_tag_puts_the_other_branchs_text_beside_the_files_as_it_is_now());
+        Flow.StepApart<HistoryTests>("a file renamed and not committed yet has its history line history and branches where the last commit has it", t => t.A_file_renamed_and_not_committed_yet_has_its_history_line_history_and_branches_where_the_last_commit_has_it());
+    }
+
+    private void A_files_history_follows_it_through_a_rename_and_a_double_click_on_a_commit_shows_what_it_did_to_the_file()
     {
         Write("src/Shop.cs", Shop);
         Write("Notes.txt", "notes\n");
@@ -72,8 +86,7 @@ public sealed class HistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_folders_history_from_the_explorer_lists_only_the_commits_that_touched_it_and_only_its_files()
+    private void A_folders_history_from_the_explorer_lists_only_the_commits_that_touched_it_and_only_its_files()
     {
         Write("src/A.cs", "class A { }\n");
         Write("docs/Read.md", "read\n");
@@ -116,8 +129,7 @@ public sealed class HistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Show_history_for_selection_lists_only_the_commits_that_changed_the_chosen_lines_counted_past_an_unsaved_edit()
+    private void Show_history_for_selection_lists_only_the_commits_that_changed_the_chosen_lines_counted_past_an_unsaved_edit()
     {
         string[] lines = [.. Enumerable.Range(1, 10).Select(i => $"line {i}")];
         Write("Lines.txt", Joined(lines));
@@ -161,8 +173,7 @@ public sealed class HistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Compare_with_branch_or_tag_puts_the_other_branchs_text_beside_the_files_as_it_is_now()
+    private void Compare_with_branch_or_tag_puts_the_other_branchs_text_beside_the_files_as_it_is_now()
     {
         Write("Shop.cs", Shop);
         TestGit.Init(folder);
@@ -210,8 +221,7 @@ public sealed class HistoryTests : IDisposable
     /// <summary>A file renamed in the IDE and not committed yet has its history where the last commit has it: Show History
     /// lists its commits, Show History for Selection those of its lines, and Compare with Branch finds it on a branch
     /// under the name it had.</summary>
-    [AvaloniaFact]
-    public void A_file_renamed_and_not_committed_yet_has_its_history_line_history_and_branches_where_the_last_commit_has_it()
+    private void A_file_renamed_and_not_committed_yet_has_its_history_line_history_and_branches_where_the_last_commit_has_it()
     {
         Write("Shop.cs", Shop);
         TestGit.Init(folder);

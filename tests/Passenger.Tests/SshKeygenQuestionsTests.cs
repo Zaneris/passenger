@@ -14,8 +14,17 @@ public sealed class SshKeygenQuestionsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(keys);
 
+    /// <summary>The tests' own ssh-keygen as one flow, every step needing ssh-keygen, each in an instance of its own: a
+    /// key made with a passphrase asked for it twice through the tests' askpass and opening with it, and one asking
+    /// more than the test gives ended at once naming what it asked.</summary>
     [Fact]
-    public async Task A_key_made_with_a_passphrase_is_asked_for_it_twice_through_the_tests_askpass_and_opens_with_it()
+    public async Task An_ssh_keygen_the_tests_run_asks_only_through_their_askpass_and_ends_at_once_on_a_question_they_do_not_answer()
+    {
+        await Flow.StepApartAsync("a key made with a passphrase is asked for it twice through the tests askpass and opens with it", () => new SshKeygenQuestionsTests(), t => t.A_key_made_with_a_passphrase_is_asked_for_it_twice_through_the_tests_askpass_and_opens_with_it());
+        await Flow.StepApartAsync("an ssh keygen making a key that asks more than the test gives is ended at once naming what it asked", () => new SshKeygenQuestionsTests(), t => t.An_ssh_keygen_making_a_key_that_asks_more_than_the_test_gives_is_ended_at_once_naming_what_it_asked());
+    }
+
+    private async Task A_key_made_with_a_passphrase_is_asked_for_it_twice_through_the_tests_askpass_and_opens_with_it()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         string key = await TestSshKeys.MakeAsync(keys, "guarded", Passphrase);
@@ -29,8 +38,7 @@ public sealed class SshKeygenQuestionsTests : IDisposable
 
     /// <summary>Given the passphrase once, ssh-keygen making a key asks for it again, which nothing answers: left to itself it
     /// would ask both again for as long as its answers differ, or wait for good on an answer that never comes.</summary>
-    [Fact]
-    public async Task An_ssh_keygen_making_a_key_that_asks_more_than_the_test_gives_is_ended_at_once_naming_what_it_asked()
+    private async Task An_ssh_keygen_making_a_key_that_asks_more_than_the_test_gives_is_ended_at_once_naming_what_it_asked()
     {
         Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
         string key = Path.Combine(keys, "half");

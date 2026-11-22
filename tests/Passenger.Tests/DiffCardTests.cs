@@ -32,8 +32,17 @@ public sealed class DiffCardTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>C# help on a diff's side of the file as one flow, each step the check one test made in an instance of
+    /// its own: resting on a name showing its card there and none on the last commit's side, and Go to Declaration by
+    /// click and keys landing at the declaration.</summary>
     [AvaloniaFact]
-    public void Resting_on_a_name_in_a_diffs_side_of_the_file_shows_its_card_and_on_the_last_commits_side_none()
+    public void A_diffs_side_of_the_file_shows_a_names_card_and_goes_to_its_declaration_as_the_editor_does()
+    {
+        Flow.StepApart<DiffCardTests>("resting on a name in a diffs side of the file shows its card and on the last commits side none", t => t.Resting_on_a_name_in_a_diffs_side_of_the_file_shows_its_card_and_on_the_last_commits_side_none());
+        Flow.StepApart<DiffCardTests>("go to declaration on a diffs side of the file by click and keys lands at the declaration", t => t.Go_to_declaration_on_a_diffs_side_of_the_file_by_click_and_keys_lands_at_the_declaration());
+    }
+
+    private void Resting_on_a_name_in_a_diffs_side_of_the_file_shows_its_card_and_on_the_last_commits_side_none()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -78,8 +87,7 @@ public sealed class DiffCardTests : IDisposable
     /// <summary>On a diff's side that is the open file's own text, Go to Declaration goes from where it is asked as from the
     /// file's editor: its gesture's keys held over a name underline it, and Cmd-click (Ctrl-click off the Mac) on it and its
     /// keys at the caret each land at the name's declaration in the file, the diff's tab left open behind.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_on_a_diffs_side_of_the_file_by_click_and_keys_lands_at_the_declaration()
+    private void Go_to_declaration_on_a_diffs_side_of_the_file_by_click_and_keys_lands_at_the_declaration()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try

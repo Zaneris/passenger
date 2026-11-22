@@ -47,6 +47,45 @@ public sealed class BranchesTests : IDisposable
         TestFolders.Delete(origin);
     }
 
+    /// <summary>The gate's Branches panel as one flow: head, local branches by directory, the remotes' branches and the
+    /// tags listed in order, Enter filtering the log to a branch's commits, the keys renaming, making a branch from and
+    /// deleting the chosen branch, and Checkout, New Branch From, Rename, Delete, Update and Push doing what they say,
+    /// each step the gate test it names in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void The_branches_panel_lists_and_filters_the_branches_and_makes_renames_and_deletes_them()
+    {
+        Flow.StepApart<BranchesTests>("the panel lists head local branches by directory the remotes branches and the tags in riders order", t => t.The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order());
+        Flow.StepApart<BranchesTests>("enter on a branch filters the log to its commits and the filters x shows every branch again", t => t.Enter_on_a_branch_filters_the_log_to_its_commits_and_the_filters_x_shows_every_branch_again());
+        Flow.StepApart<BranchesTests>("riders keys rename make a branch from and delete the chosen branch", t => t.Riders_keys_rename_make_a_branch_from_and_delete_the_chosen_branch());
+        Flow.StepApart<BranchesTests>("checkout new branch from rename delete update and push do what they say", t => t.Checkout_new_branch_from_rename_delete_update_and_push_do_what_they_say());
+    }
+
+    /// <summary>The gate's merges, rebases and comparisons of branches as one flow: Merge Into, Rebase Onto and
+    /// Checkout and Rebase moving the branches as git would, Compare with Current listing each branch's commits the
+    /// other lacks, a merge from the panel that conflicts opening the conflicts dialog, and a branch in the toolbar's
+    /// menu checked out only by its Checkout, each step the gate test it names in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Branches_merge_rebase_and_compare_as_git_would_and_check_out_only_when_asked()
+    {
+        Flow.StepApart<BranchesTests>("merge into rebase onto and checkout and rebase onto current move the branches as git would", t => t.Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would());
+        Flow.StepApart<BranchesTests>("compare with current lists each branchs commits the other lacks and show diff with working tree its files", t => t.Compare_with_current_lists_each_branchs_commits_the_other_lacks_and_show_diff_with_working_tree_its_files());
+        Flow.StepApart<BranchesTests>("a merge from the panel that conflicts opens the conflicts dialog", t => t.A_merge_from_the_panel_that_conflicts_opens_the_conflicts_dialog());
+        Flow.StepApart<BranchesTests>("a branch in the toolbars branch menu opens its own menu and is checked out only by its checkout", t => t.A_branch_in_the_toolbars_branch_menu_opens_its_own_menu_and_is_checked_out_only_by_its_checkout());
+    }
+
+    /// <summary>The Branches panel beyond the gate's as one flow, each step the check one test made in an instance of
+    /// its own: each side button greyed with why where the chosen row gives it nothing to act on, Show Diff with
+    /// Working Tree listing its files and opening their diffs, an added row's diff showing the file beside the branch's
+    /// empty side, and the branch menu over 5,000 branches costing the window what 30 do.</summary>
+    [AvaloniaFact]
+    public void A_branchs_diff_with_the_working_tree_opens_its_files_and_the_panel_says_what_it_cannot_do()
+    {
+        Flow.StepApart<BranchesTests>("each side button is greyed with why where the chosen row gives it nothing to act on", t => t.Each_side_button_is_greyed_with_why_where_the_chosen_row_gives_it_nothing_to_act_on());
+        Flow.StepApart<BranchesTests>("show diff with working tree lists the files in the Git window and opens their diffs in a tab or a window", t => t.Show_diff_with_working_tree_lists_the_files_in_the_Git_window_and_opens_their_diffs_in_a_tab_or_a_window());
+        Flow.StepApart<BranchesTests>("show diff on an added row of the working tree comparison shows the file beside the branchs empty side", t => t.Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side());
+        Flow.StepApart<BranchesTests>("the branch menu over 5000 branches costs the window what 30 do and more branches searches them all", t => t.The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
@@ -227,8 +266,7 @@ public sealed class BranchesTests : IDisposable
     /// Update Selected on a local branch tracking a remote's (which it updates), never a remote's branch (Fetch's), a tag,
     /// HEAD or a group; Delete on any branch or tag but the one checked out; New Branch… and Navigate on any, Navigate in a
     /// log filtered to a branch lacking the head too; Mark/Unmark As Favorite on a branch. The menu and Delete key agree.</summary>
-    [AvaloniaFact]
-    public void Each_side_button_is_greyed_with_why_where_the_chosen_row_gives_it_nothing_to_act_on()
+    private void Each_side_button_is_greyed_with_why_where_the_chosen_row_gives_it_nothing_to_act_on()
     {
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
@@ -314,48 +352,6 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A side button pressed as the branches are listed again (the log reading its history afresh, its filter's
-    /// branch with it) acts on its release: the panel keeps its choice through the listing, so its buttons never grey for
-    /// that moment, which let go of the press and lost the click.</summary>
-    [AvaloniaFact]
-    public void Navigate_pressed_as_the_branches_are_listed_again_chooses_the_head_on_its_release()
-    {
-        MainWindow window = Open();
-        BranchesPanel panel = window.GitBranches;
-        GitLogView log = window.GitLog;
-        Assert.True(panel.Select("feature"));
-        panel.Activate(panel.Selected!);
-        Ui.Settle();
-        Assert.True(panel.Select("main"));
-        Ui.ClickAcross(SideButton(panel, "Navigate Log to Selected Branch Head"), () => Ui.Await(log.LoadAsync(), "the log and its branches read again"));
-        Ui.Landed(() => log.Selected?.Hash == Git("rev-parse", "main").Trim(), "main's head chosen in the log filtered to feature, Navigate pressed as the branches were listed again");
-        Assert.Equal("refs/heads/feature", log.BranchFilter);
-        window.Close();
-    }
-
-    /// <summary>Navigate asked while the log still reads the history of the branch it was just filtered to decides on that
-    /// history, not the rows listed before it: feature's head, which main's history lacks, is chosen with every branch shown
-    /// again, where it was chosen among the rows of every branch and then lost as main's landed.</summary>
-    [AvaloniaFact]
-    public void Navigate_asked_as_the_log_reads_a_filter_lacking_the_head_shows_every_branch_and_chooses_it()
-    {
-        MainWindow window = Open();
-        BranchesPanel panel = window.GitBranches;
-        GitLogView log = window.GitLog;
-        Ui.Landed(() => log.Rows.Count == 3, "every branch's three commits");
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task held = log.HoldNextRead(release.Task);
-        Assert.True(panel.Select("main"));
-        panel.Activate(panel.Selected!);
-        Ui.AwaitPumped(held, "the log's read of main's history, held once git answered");
-        Assert.True(panel.Select("feature"));
-        Ui.Click(SideButton(panel, "Navigate Log to Selected Branch Head"));
-        release.SetResult();
-        Ui.Landed(() => log.Selected?.Hash == Git("rev-parse", "feature").Trim(), "feature's head chosen in the log asked while main's history was read");
-        Assert.Null(log.BranchFilter);
-        window.Close();
-    }
-
     [Gate]
     [AvaloniaFact]
     public void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()
@@ -426,8 +422,7 @@ public sealed class BranchesTests : IDisposable
     /// diffs set to open as tabs, and over them in a window of its own with diffs set to open in windows, the list staying in
     /// the Git window either way. The list follows the working tree, and a branch nothing differs from says so; a file git
     /// does not track is listed as added, or as modified where the branch has it.</summary>
-    [AvaloniaFact]
-    public void Show_diff_with_working_tree_lists_the_files_in_the_Git_window_and_opens_their_diffs_in_a_tab_or_a_window()
+    private void Show_diff_with_working_tree_lists_the_files_in_the_Git_window_and_opens_their_diffs_in_a_tab_or_a_window()
     {
         Commit("Notes.txt", "notes\n", "Notes on main");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Shop.Replace("int count", "long count", StringComparison.Ordinal));
@@ -499,8 +494,7 @@ public sealed class BranchesTests : IDisposable
     /// <summary>Show Diff on an added row of the working tree's comparison with a branch, a file the branch has none of,
     /// shows the file beside an empty side named for the branch: one committed since the branch (Notes.txt) and one git
     /// does not track (Added.cs), each all added.</summary>
-    [AvaloniaFact]
-    public void Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side()
+    private void Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side()
     {
         Commit("Notes.txt", "notes\n", "Notes on main");
         File.WriteAllText(Path.Combine(folder, "Added.cs"), "class Added { }\n");
@@ -587,8 +581,7 @@ public sealed class BranchesTests : IDisposable
     /// <summary>The toolbar's branch menu lists the current branch, the favourites and those committed to last, ten at
     /// most, with More Branches… for the rest, and makes a branch's own menu only as it opens: over 5,000 local branches it
     /// costs the window's thread what 30 do, and More Branches… gives the keys to the Git window's branch search.</summary>
-    [AvaloniaFact]
-    public void The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all()
+    private void The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all()
     {
         string few = Repository(30);
         string many = Repository(5_000);

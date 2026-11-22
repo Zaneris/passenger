@@ -128,10 +128,19 @@ public sealed class GitCommandLineTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Names Windows takes no file by as one flow, every step off Windows alone, each in an instance of its
+    /// own: a folder whose name ends in a space its own repository beside one named without it, and a rollback of a
+    /// file whose name holds a backslash putting back that file and not one in a folder.</summary>
+    [AvaloniaFact]
+    public void A_name_only_macOS_and_Linux_take_reaches_git_as_that_name()
+    {
+        Flow.StepApart<GitCommandLineTests>("a folder whose name ends in a space is its own repository beside one named without it", t => t.A_folder_whose_name_ends_in_a_space_is_its_own_repository_beside_one_named_without_it());
+        Flow.StepApart<GitCommandLineTests>("rollback of a file whose name holds a backslash puts back that file and not the one in a folder", t => t.Rollback_of_a_file_whose_name_holds_a_backslash_puts_back_that_file_and_not_the_one_in_a_folder());
+    }
+
     /// <summary>A folder "repo " opened beside a repository "repo" is the repository git names, never its sibling: a stash
     /// puts away its own change and leaves the sibling's.</summary>
-    [AvaloniaFact]
-    public void A_folder_whose_name_ends_in_a_space_is_its_own_repository_beside_one_named_without_it()
+    private void A_folder_whose_name_ends_in_a_space_is_its_own_repository_beside_one_named_without_it()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows takes no file name that ends in a space");
         string spaced = Path.Combine(folder, "repo ");
@@ -160,8 +169,7 @@ public sealed class GitCommandLineTests : IDisposable
 
     /// <summary>Off Windows a backslash is a letter of a file's name: with a\b.txt and a/b.txt both changed, Rollback of
     /// a\b.txt puts it back alone, and a/b.txt keeps its change.</summary>
-    [AvaloniaFact]
-    public void Rollback_of_a_file_whose_name_holds_a_backslash_puts_back_that_file_and_not_the_one_in_a_folder()
+    private void Rollback_of_a_file_whose_name_holds_a_backslash_puts_back_that_file_and_not_the_one_in_a_folder()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows takes a backslash for a separator, never a letter of a name");
         string backslashed = Path.Combine(folder, "a\\b.txt");

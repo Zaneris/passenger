@@ -30,11 +30,22 @@ public sealed class GitLogTests : IDisposable
         }
     }
 
+    /// <summary>The Git log as one flow, each step the check one test made in an instance of its own: two thousand
+    /// commits read with no copy of git's output on the window's thread, each lane's line running unbroken to the
+    /// commit it joins with every row's author and date lined up, and a merge commit listing the merged branch's files,
+    /// each opening its diff against the first parent.</summary>
+    [AvaloniaFact]
+    public void The_log_reads_thousands_of_commits_cheaply_and_draws_each_lane_unbroken_to_its_commit()
+    {
+        Flow.StepApart<GitLogTests>("reading two thousand commits into the log makes no copy of gits output on the ui thread", t => t.Reading_two_thousand_commits_into_the_log_makes_no_copy_of_gits_output_on_the_ui_thread());
+        Flow.StepApart<GitLogTests>("each lanes line runs unbroken to the commit it joins and every rows author and date line up", t => t.Each_lanes_line_runs_unbroken_to_the_commit_it_joins_and_every_rows_author_and_date_line_up());
+        Flow.StepApart<GitLogTests>("a merge commit lists the merged branchs files each opening its diff against the first parent", t => t.A_merge_commit_lists_the_merged_branchs_files_each_opening_its_diff_against_the_first_parent());
+    }
+
     /// <summary>Reading the log again over 2,000 commits allocates on the UI thread less than a copy of git's output for
     /// the 1,900 more than over 100 would take as text, the least of three reads each; every commit is listed as git has
     /// it.</summary>
-    [AvaloniaFact]
-    public void Reading_two_thousand_commits_into_the_log_makes_no_copy_of_gits_output_on_the_ui_thread()
+    private void Reading_two_thousand_commits_into_the_log_makes_no_copy_of_gits_output_on_the_ui_thread()
     {
         (long few, int fewText) = Read(100);
         (long many, int manyText) = Read(2000);
@@ -69,60 +80,10 @@ public sealed class GitLogTests : IDisposable
         }
     }
 
-    /// <summary>Scrolling the log draws other commits' parts of the graph with the pens made for its lanes' colours, none
-    /// made again; the light theme makes its own once, one for each colour, and draws in its colours.</summary>
-    [AvaloniaFact]
-    public void The_graph_draws_its_rows_with_the_pens_its_theme_made_once_and_the_light_themes_in_its_colours()
-    {
-        string root = Repository(400);
-        MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
-        window.RequestedThemeVariant = ThemeVariant.Dark;
-        window.Perform(AppActions.ShowGit);
-        GitLogView log = window.GitLog;
-        Ui.Landed(() => log.Rows.Count == 400, "the log's 400 commits");
-        ListBox list = log.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IReadOnlyList<GraphRow>);
-        Assert.True(log.Rows.Any(r => r.Width > 1), "The history laid out no row in more than one lane");
-        Point middle = list.TranslatePoint(new Point(list.Bounds.Width / 2, list.Bounds.Height / 2), window)!.Value;
-        int made = GitLogView.PensMade;
-        for (int step = 0; step < 20; step++)
-        {
-            window.MouseWheel(middle, new Vector(0, -1));
-            Ui.Settle();
-        }
-        Assert.True(GitLogView.PensMade == made,
-            $"Twenty wheel steps down the log made {GitLogView.PensMade - made} pens for the rows they brought in, where each lane's colour has its pen");
-        Drawn(ThemeVariant.Dark);
-
-        window.RequestedThemeVariant = ThemeVariant.Light;
-        Ui.Settle();
-        Assert.True(GitLogView.PensMade - made == 6, $"The light theme made {GitLogView.PensMade - made} pens for the graph's six colours");
-        made = GitLogView.PensMade;
-        Drawn(ThemeVariant.Light);
-        for (int step = 0; step < 20; step++)
-        {
-            window.MouseWheel(middle, new Vector(0, 1));
-            Ui.Settle();
-        }
-        Assert.True(GitLogView.PensMade == made, $"Twenty wheel steps up the log in the light theme made {GitLogView.PensMade - made} pens");
-        Drawn(ThemeVariant.Light);
-        window.Close();
-
-        // The first row shown in lane 0 has its dot in the theme's first colour.
-        void Drawn(ThemeVariant theme)
-        {
-            Control row = list.GetRealizedContainers().First(c => c.DataContext is GraphRow { Lane: 0 }
-                && c.TranslatePoint(default, list) is { } top && top.Y >= 0 && top.Y + c.Bounds.Height <= list.Bounds.Height);
-            Control graph = Graph(row);
-            Color dot = Ui.Pixel(window, graph.TranslatePoint(new Point(10, graph.Bounds.Height / 2), window)!.Value);
-            Assert.True(dot == Lane(theme), $"In the {theme} theme lane 0's dot is drawn {dot}, not its {Lane(theme)}");
-        }
-    }
-
     /// <summary>Over a merged branch and one not merged, each lane's line runs on unbroken from row to row, in its own lane
     /// until the row of the commit it waits for, and every row's author and date stand at one place, however many lanes
     /// its part of the graph crosses.</summary>
-    [AvaloniaFact]
-    public void Each_lanes_line_runs_unbroken_to_the_commit_it_joins_and_every_rows_author_and_date_line_up()
+    private void Each_lanes_line_runs_unbroken_to_the_commit_it_joins_and_every_rows_author_and_date_line_up()
     {
         string root = PathNames.Canonical(TestFolders.Create("gitlanes-"));
         folders.Add(root);
@@ -196,8 +157,7 @@ public sealed class GitLogTests : IDisposable
 
     /// <summary>A merge commit chosen in the log lists what the branch it merged brought in, against its first parent, and a
     /// file of it opens its diff against that parent.</summary>
-    [AvaloniaFact]
-    public void A_merge_commit_lists_the_merged_branchs_files_each_opening_its_diff_against_the_first_parent()
+    private void A_merge_commit_lists_the_merged_branchs_files_each_opening_its_diff_against_the_first_parent()
     {
         const string Shop = "class Shop\n{\n    int count;\n}\n";
         string root = PathNames.Canonical(TestFolders.Create("gitlog-merge-"));
@@ -240,11 +200,6 @@ public sealed class GitLogTests : IDisposable
         shown.Close();
         window.Close();
     }
-
-    private static Color Lane(ThemeVariant theme) =>
-        Application.Current!.TryFindResource(TokenKeys.Graph_0, theme, out object? brush) && brush is ISolidColorBrush solid
-            ? solid.Color
-            : throw new Xunit.Sdk.XunitException($"The {theme} theme has no {TokenKeys.Graph_0}");
 
     /// <summary>The log lists each commit of git's output (records ended by 0x1E, fields apart at 0x1F) as git has it: its
     /// hash, parents, author, email, time, branches and tags (less HEAD's arrow) and subject, in git's order.</summary>

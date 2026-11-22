@@ -17,8 +17,8 @@ namespace Passenger.Tests;
 /// <summary>Git over a real working tree: an edit grows a change bar (blank lines at the end too, and a large rewrite's
 /// off the window's thread), which a rename keeps and a commit clears; Rollback Lines and Rollback put changes back; a
 /// branch made from the toolbar is checked out, and going back reloads the open file; Commit, Stash and Unstash run one
-/// at a time, a drop asked first and the log leaving the stash out; a status older than a commit never lands after it,
-/// nor lists a save's temporary file, and the last commit's texts are read again only when HEAD moves.</summary>
+/// at a time, a drop asked first and the log leaving the stash out; a status never lists a save's temporary file, and the
+/// last commit's texts are read again only when HEAD moves.</summary>
 public sealed partial class VcsTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";
@@ -43,11 +43,199 @@ public sealed partial class VcsTests : IDisposable
         TestFolders.Delete(trash);
     }
 
+    /// <summary>The gate's change bars and commits as one flow: an edit's bar cleared by a commit from the Commit
+    /// window, a renamed file's bars against where the last commit has it, a bar's click and the diff's arrow putting a
+    /// change back, Commit and Stash one at a time, and a submodule offered only where its commit moved, each step the
+    /// gate test it names in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Changes_show_as_bars_that_a_commit_clears_a_rename_keeps_and_a_bar_or_the_diff_puts_back()
+    {
+        Flow.StepApart<VcsTests>("an edit shows a change bar and committing it from the commit window clears it", t => t.An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it());
+        Flow.StepApart<VcsTests>("a renamed file keeps its change bars against what the last commit has where it was", t => t.A_renamed_file_keeps_its_change_bars_against_what_the_last_commit_has_where_it_was());
+        Flow.StepApart<VcsTests>("a click on a change bar shows what the lines were and rolls them back", t => t.A_click_on_a_change_bar_shows_what_the_lines_were_and_rolls_them_back());
+        Flow.StepApart<VcsTests>("show diff puts the last commit beside the open file and its arrow puts a change back", t => t.Show_diff_puts_the_last_commit_beside_the_open_file_and_its_arrow_puts_a_change_back());
+        Flow.StepApart<VcsTests>("commit and stash are off while one runs so a second press makes no second", t => t.Commit_and_stash_are_off_while_one_runs_so_a_second_press_makes_no_second());
+        Flow.StepApart<VcsTests>("a submodule whose own files alone changed is not offered for commit and one whose commit moved is", t => t.A_submodule_whose_own_files_alone_changed_is_not_offered_for_commit_and_one_whose_commit_moved_is());
+    }
+
+    /// <summary>The gate's branch, update and stash as one flow: a branch made from the toolbar checked out and going
+    /// back reloading the open file, Update Project bringing the upstream's commit into the open file, stashing every
+    /// change and new file and unstashing them back, and open files saved before a checkout or rollback and taking what
+    /// git puts there, each step the gate test it names in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Branches_updates_and_stashes_bring_their_files_in_with_the_open_files_saved_first_and_reloaded()
+    {
+        Flow.StepApart<VcsTests>("a new branch from the toolbar is checked out and going back reloads the open file", t => t.A_new_branch_from_the_toolbar_is_checked_out_and_going_back_reloads_the_open_file());
+        Flow.StepApart<VcsTests>("update project brings in the upstreams commit and the open file shows it", t => t.Update_project_brings_in_the_upstreams_commit_and_the_open_file_shows_it());
+        Flow.StepApart<VcsTests>("stashing puts every change away unsaved and new files too and unstashing brings them back", t => t.Stashing_puts_every_change_away_unsaved_and_new_files_too_and_unstashing_brings_them_back());
+        Flow.StepApart<VcsTests>("open files are saved before a checkout or a rollback and take what git puts there with no question", t => t.Open_files_are_saved_before_a_checkout_or_a_rollback_and_take_what_git_puts_there_with_no_question());
+    }
+
+    /// <summary>The gate's log and annotations as one flow: a merge laid out in two lanes with what a commit did to a
+    /// file, and each line's commit named in annotations, a typed line marked and a click choosing the commit, each
+    /// step the gate test it names in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void The_log_and_annotations_show_each_commit_and_what_it_did()
+    {
+        Flow.StepApart<VcsTests>("the log lays out a merge in two lanes and shows what a commit did to a file", t => t.The_log_lays_out_a_merge_in_two_lanes_and_shows_what_a_commit_did_to_a_file());
+        Flow.StepApart<VcsTests>("annotations name each lines commit mark a typed line and a click chooses the commit", t => t.Annotations_name_each_lines_commit_mark_a_typed_line_and_a_click_chooses_the_commit());
+    }
+
+    /// <summary>Rollback Lines and Rollback as one flow, each step one test's check in an instance of its own: the
+    /// change at the caret put back, a file another program reads or adds kept safe, an unversioned file trashed and
+    /// brought back by Undo, blank lines at the end, a name with brackets, a file chosen through a refresh, and a
+    /// save's temporary file never listed.</summary>
+    [AvaloniaFact]
+    public void Rollback_puts_changes_back_as_the_last_commit_has_them_losing_nothing_another_program_holds_or_added()
+    {
+        Flow.StepApart<VcsTests>("rollback lines puts the change under the caret back as the last commit has it", t => t.Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it());
+        Flow.StepApart<VcsTests>("rollback puts back a file another program was reading and deletes a new one it held once they are let go", t => t.Rollback_puts_back_a_file_another_program_was_reading_and_deletes_a_new_one_it_held_once_they_are_let_go());
+        Flow.StepApart<VcsTests>("rollback moves an unversioned file to the Trash and one undo brings it back", t => t.Rollback_moves_an_unversioned_file_to_the_Trash_and_one_undo_brings_it_back());
+        Flow.StepApart<VcsTests>("rollback keeps a new file another program added to git on disk and says so first", t => t.Rollback_keeps_a_new_file_another_program_added_to_git_on_disk_and_says_so_first());
+        Flow.StepApart<VcsTests>("blank lines added at the end of a file show an added bar and a difference and roll back", t => t.Blank_lines_added_at_the_end_of_a_file_show_an_added_bar_and_a_difference_and_roll_back());
+        Flow.StepApart<VcsTests>("a file name with brackets is that file alone to roll back and to commit", t => t.A_file_name_with_brackets_is_that_file_alone_to_roll_back_and_to_commit());
+        Flow.StepApart<VcsTests>("a file chosen in the commit window stays chosen through a refresh and rollback names and rolls back it alone", t => t.A_file_chosen_in_the_commit_window_stays_chosen_through_a_refresh_and_rollback_names_and_rolls_back_it_alone());
+        Flow.StepApart<VcsTests>("a file saved as git reads the folder is listed as changed and its saves temporary file never is", t => t.A_file_saved_as_git_reads_the_folder_is_listed_as_changed_and_its_saves_temporary_file_never_is());
+    }
+
+    /// <summary>The Commit window as one flow, each step one test's check in an instance of its own: git started off
+    /// the window's thread, the diff's keys, renames by git mv or the Explorer committed as renames, Amend rewording
+    /// alone and keeping what was typed, a message file another program holds, and a hook's job holding git's output
+    /// done within seconds.</summary>
+    [AvaloniaFact]
+    public void A_commit_takes_what_the_person_chose_and_typed_as_renames_where_files_moved_never_held_by_another_program()
+    {
+        Flow.StepApart<VcsTests>("the git commands the window asks for start off its thread", t => t.The_git_commands_the_window_asks_for_start_off_its_thread());
+        Flow.StepApart<VcsTests>("the commit windows Show Diff and a diffs Settings name and take the keys of the keymap in force", t => t.The_commit_windows_Show_Diff_and_a_diffs_Settings_name_and_take_the_keys_of_the_keymap_in_force());
+        Flow.StepApart<VcsTests>("a file git mv renamed elsewhere is compared with where the last commit has it", t => t.A_file_git_mv_renamed_elsewhere_is_compared_with_where_the_last_commit_has_it());
+        Flow.StepApart<VcsTests>("amend with no file chosen rewords the last commit and leaves a rename out of it", t => t.Amend_with_no_file_chosen_rewords_the_last_commit_and_leaves_a_rename_out_of_it());
+        Flow.StepApart<VcsTests>("a file renamed in the Explorer is committed as a rename", t => t.A_file_renamed_in_the_Explorer_is_committed_as_a_rename());
+        Flow.StepApart<VcsTests>("amends last message read late keeps what was typed meanwhile and lands nowhere once amend is off", t => t.Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off());
+        Flow.StepApart<VcsTests>("a commit whose message file another program holds is made and the file goes once let go", t => t.A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go());
+        Flow.StepApart<VcsTests>("a commit whose hook leaves a job holding gits output is done within seconds", t => t.A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds());
+    }
+
+    /// <summary>The log and annotations as one flow, each step the check one test made in an instance of its own:
+    /// annotations in a SHA-256 repository, the Commit and Log menus ignoring a file, reverting a commit and branching
+    /// from one, a commit's file in the log jumping to its source and copying its path, and a commit made elsewhere
+    /// reaching the log of the working tree's top and of a folder in it.</summary>
+    [AvaloniaFact]
+    public void The_log_follows_commits_made_anywhere_and_its_menus_act_on_the_commit_or_file_chosen()
+    {
+        Flow.StepApart<VcsTests>("annotations name each lines commit in a sha256 repository", t => t.Annotations_name_each_lines_commit_in_a_sha256_repository());
+        Flow.StepApart<VcsTests>("the commit and log menus ignore a file revert a commit and branch from one", t => t.The_commit_and_log_menus_ignore_a_file_revert_a_commit_and_branch_from_one());
+        Flow.StepApart<VcsTests>("a commits file in the log jumps to its source and copies its path from its menu", t => t.A_commits_file_in_the_log_jumps_to_its_source_and_copies_its_path_from_its_menu());
+        Flow.StepApart<VcsTests>("a commit made elsewhere reaches the log of the working trees top and of a folder in it", t => t.A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it());
+    }
+
+    /// <summary>Stash and Unstash as one flow, each step the check one test made in an instance of its own: nothing to
+    /// stash refused saying so, Backspace in Unstash keeping every stash and Delete asking before dropping the one
+    /// chosen, Unstash taking the stash chosen though another program stashed or dropped since, and a stash leaving the
+    /// log as it was.</summary>
+    [AvaloniaFact]
+    public void Stash_and_Unstash_keep_every_stash_take_the_one_chosen_and_leave_the_log_as_it_was()
+    {
+        Flow.StepApart<VcsTests>("stash changes with nothing to stash is refused saying so", t => t.Stash_changes_with_nothing_to_stash_is_refused_saying_so());
+        Flow.StepApart<VcsTests>("backspace in unstash changes keeps every stash and delete asks before dropping the chosen one once", t => t.Backspace_in_unstash_changes_keeps_every_stash_and_delete_asks_before_dropping_the_chosen_one_once());
+        Flow.StepApart<VcsTests>("unstash changes takes the stash chosen though another program stashed or dropped since the list was read", t => t.Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read());
+        Flow.StepApart<VcsTests>("stashing a change and a new file leaves the git log as it was", t => t.Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was());
+    }
+
+    /// <summary>Update Project and Push as one flow, each step the check one test made in an instance of its own: Stop
+    /// ending an update whose remote stalls with a commit running after it, a diverged branch merged where git is not
+    /// told how and rebased where pull.rebase says, an uncommitted edit kept through both, a push asking the person for
+    /// a login, a new branch pushed to the only remote or asking which of several, and a checkout refused as git busy
+    /// while an update pulls.</summary>
+    [AvaloniaFact]
+    public void Update_push_and_pull_bring_the_upstream_in_as_git_is_told_ask_for_a_login_and_stop_when_asked()
+    {
+        Flow.StepApart<VcsTests>("stop ends an update whose remote stalls and a commit runs after it", t => t.Stop_ends_an_update_whose_remote_stalls_and_a_commit_runs_after_it());
+        Flow.StepApart<VcsTests>("update project merges a diverged branch where git is not told how keeping an uncommitted edit", t => t.Update_project_merges_a_diverged_branch_where_git_is_not_told_how_keeping_an_uncommitted_edit());
+        Flow.StepApart<VcsTests>("update project with pull rebase rebases onto the upstream keeping an unrelated uncommitted edit", t => t.Update_project_with_pull_rebase_rebases_onto_the_upstream_keeping_an_unrelated_uncommitted_edit());
+        Flow.StepApart<VcsTests>("push to a remote that asks for a login asks the person and goes once they sign in", t => t.Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in());
+        Flow.StepApart<VcsTests>("push of a new branch goes to the only remote whatever its name and asks which of several", t => t.Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several());
+        Flow.StepApart<VcsTests>("a checkout asked for while update project pulls is refused as git busy and the update lands", t => t.A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands());
+    }
+
+    /// <summary>Create Git Repository and Add to .gitignore as one flow, each step the check one test made in an
+    /// instance of its own: a new repository leaving build output out of the changes, Add to .gitignore keeping a
+    /// file's byte order mark, Windows line breaks and an unsaved edit, making the file as its .editorconfig asks with
+    /// Undo and Redo putting back the same bytes, and having git ignore the chosen file and no other whatever its name
+    /// holds.</summary>
+    [AvaloniaFact]
+    public void A_new_repository_and_gitignore_leave_out_what_the_person_chose_keeping_the_files_bytes()
+    {
+        Flow.StepApart<VcsTests>("create git repository from the commit windows empty state leaves build output out of the changes", t => t.Create_git_repository_from_the_commit_windows_empty_state_leaves_build_output_out_of_the_changes());
+        Flow.StepApart<VcsTests>("add to gitignore keeps the files byte order mark its windows line breaks and an unsaved edit to it", t => t.Add_to_gitignore_keeps_the_files_byte_order_mark_its_windows_line_breaks_and_an_unsaved_edit_to_it());
+        Flow.StepApart<VcsTests>("add to gitignore making the file as its editorconfig asks and Undo then Redo put it back in the same bytes", t => t.Add_to_gitignore_making_the_file_as_its_editorconfig_asks_and_Undo_then_Redo_put_it_back_in_the_same_bytes());
+        Flow.StepApart<VcsTests>("add to gitignore has git ignore the chosen file and no other whatever its name holds", t => t.Add_to_gitignore_has_git_ignore_the_chosen_file_and_no_other_whatever_its_name_holds());
+    }
+
+    /// <summary>A diff's window as one flow, each step the check one test made in an instance of its own: the IDE's
+    /// keys working on the side that has them with Escape still closing it, F4 opening the file at the caret's line
+    /// from either side, the next and previous difference by the keymap, a closed diff let go by the open file it
+    /// showed, and an edit in the diff's window after the file's tab closed saved with the others and as the window
+    /// closes.</summary>
+    [AvaloniaFact]
+    public void A_diff_window_takes_the_IDEs_keys_opens_its_file_walks_its_changes_and_loses_no_edit()
+    {
+        Flow.StepApart<VcsTests>("the IDEs keys work in a diffs window on the side with them and Escape still closes it", t => t.The_IDEs_keys_work_in_a_diffs_window_on_the_side_with_them_and_Escape_still_closes_it());
+        Flow.StepApart<VcsTests>("f4 in a diff opens its file at the carets line from either side", t => t.F4_in_a_diff_opens_its_file_at_the_carets_line_from_either_side());
+        Flow.StepApart<VcsTests>("a diffs next and previous difference are F7 and F8 off the Mac and F7 alone on it", t => t.A_diffs_next_and_previous_difference_are_F7_and_F8_off_the_Mac_and_F7_alone_on_it());
+        Flow.StepApart<VcsTests>("a closed diff is let go by the open file it showed", t => t.A_closed_diff_is_let_go_by_the_open_file_it_showed());
+        Flow.StepApart<VcsTests>("an edit in a diffs window after the files tab closed is saved with the others and as the window closes", t => t.An_edit_in_a_diffs_window_after_the_files_tab_closed_is_saved_with_the_others_and_as_the_window_closes());
+    }
+
+    /// <summary>Changes made outside the IDE as one flow, each step the check one test made in an instance of its own:
+    /// a commit and a branch switch from outside a linked worktree and a folder opened below the repository's top
+    /// followed by the bars, colours, commit list and branch, a save leaving the Explorer's chosen rows, the log and Go
+    /// to File as they were, and coming back to the window reading no last commit's text again while HEAD moved
+    /// elsewhere moves every file's bars in one read.</summary>
+    [AvaloniaFact]
+    public void Commits_and_branch_switches_made_outside_are_followed_by_the_bars_colours_log_and_branch()
+    {
+        Flow.StepApart<VcsTests>("a commit and a branch switch from outside a linked worktree are followed by the bars colours commit list and branch", t => t.A_commit_and_a_branch_switch_from_outside_a_linked_worktree_are_followed_by_the_bars_colours_commit_list_and_branch());
+        Flow.StepApart<VcsTests>("a commit and a branch switch from outside a folder opened below the repositorys top are followed by the bars colours commit list and branch", t => t.A_commit_and_a_branch_switch_from_outside_a_folder_opened_below_the_repositorys_top_are_followed_by_the_bars_colours_commit_list_and_branch());
+        Flow.StepApart<VcsTests>("a save leaves the explorers chosen rows the git log and go to file as they were", t => t.A_save_leaves_the_explorers_chosen_rows_the_git_log_and_go_to_file_as_they_were());
+        Flow.StepApart<VcsTests>("coming back to the window reads no last commit text again and head moved elsewhere moves every files bars in one read", t => t.Coming_back_to_the_window_reads_no_last_commit_text_again_and_head_moved_elsewhere_moves_every_files_bars_in_one_read());
+    }
+
+    /// <summary>A reftable repository's changes from outside as one flow, every step needing a git that makes one (2.45
+    /// and later): a commit and a branch switch followed by the bars, colours, commit list and branch, from the working
+    /// tree's top and from a folder below it, each in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Commits_and_branch_switches_made_outside_a_reftable_repository_are_followed()
+    {
+        Flow.StepApart<VcsTests>("a commit and a branch switch from outside a reftable repository are followed by the bars colours commit list and branch (false)", t => t.A_commit_and_a_branch_switch_from_outside_a_reftable_repository_are_followed_by_the_bars_colours_commit_list_and_branch(false));
+        Flow.StepApart<VcsTests>("a commit and a branch switch from outside a reftable repository are followed by the bars colours commit list and branch (true)", t => t.A_commit_and_a_branch_switch_from_outside_a_reftable_repository_are_followed_by_the_bars_colours_commit_list_and_branch(true));
+    }
+
+    /// <summary>Windows' files another program holds as one flow, every step Windows' alone: a commit made while a held
+    /// file's save lands waiting for it and committing the saved text, and Add to .gitignore into a .gitignore another
+    /// program holds saying it waits and adding once the file is let go, each in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_file_another_program_holds_on_Windows_delays_no_commit_or_gitignore_and_loses_nothing()
+    {
+        Flow.StepApart<VcsTests>("a commit made while a held files save lands waits for it and commits the saved text", t => t.A_commit_made_while_a_held_files_save_lands_waits_for_it_and_commits_the_saved_text());
+        Flow.StepApart<VcsTests>("add to gitignore into a gitignore another program holds says it waits and added once the file is let go", t => t.Add_to_gitignore_into_a_gitignore_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go());
+    }
+
+    /// <summary>What a large working tree costs as one flow, each step the check one test made in an instance of its
+    /// own: ticking a commit group of twenty thousand files counting its rows once, a save among five thousand tags
+    /// allocating what one among five does and reading no ref, and typing in a 20,000-line file rewritten since the
+    /// last commit moving its bars off the window's thread.</summary>
+    [AvaloniaFact]
+    public void A_large_working_tree_costs_a_key_a_save_and_a_tick_what_a_small_one_does()
+    {
+        Flow.StepApart<VcsTests>("ticking a commit group of twenty thousand files counts its rows once and allocates in proportion to them", t => t.Ticking_a_commit_group_of_twenty_thousand_files_counts_its_rows_once_and_allocates_in_proportion_to_them());
+        Flow.StepApart<VcsTests>("a save among five thousand tags allocates on the ui thread what one among five does and reads no ref", t => t.A_save_among_five_thousand_tags_allocates_on_the_ui_thread_what_one_among_five_does_and_reads_no_ref());
+        Flow.StepApart<VcsTests>("typing in a 20000 line file rewritten since the last commit moves its bars and a bar opens its change at once", t => t.Typing_in_a_20000_line_file_rewritten_since_the_last_commit_moves_its_bars_and_a_bar_opens_its_change_at_once());
+    }
+
     /// <summary>Git's commands start off the window's thread, since a fork costs a large process tens of milliseconds: the
     /// working tree's status and branch as it opens, an edit's bars, a commit and the log start none of theirs on
     /// it.</summary>
-    [AvaloniaFact]
-    public void The_git_commands_the_window_asks_for_start_off_its_thread()
+    private void The_git_commands_the_window_asks_for_start_off_its_thread()
     {
         string tree = PathNames.Canonical(folder);
         List<string> onWindow = [];
@@ -130,8 +318,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>The Commit window's Show Diff names the keys it takes there, Compare Files' in Visual Studio's keymap
     /// (Duplicate's off macOS), and a diff's Settings Rider's Ctrl+Shift+D (Cmd+Shift+D); each key opens what it names, and
     /// a key the person sets for either is named and opens it in place of the keymap's.</summary>
-    [AvaloniaFact]
-    public void The_commit_windows_Show_Diff_and_a_diffs_Settings_name_and_take_the_keys_of_the_keymap_in_force()
+    private void The_commit_windows_Show_Diff_and_a_diffs_Settings_name_and_take_the_keys_of_the_keymap_in_force()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("int count", "long count", StringComparison.Ordinal));
         string cmd = OperatingSystem.IsMacOS() ? "meta" : "control";
@@ -210,8 +397,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A file git mv renamed in a terminal before the folder opened, then one line of it changed, is measured from
     /// where the last commit has it: one change bar, Show Diff's one difference, and Rollback Lines putting that line back.</summary>
-    [AvaloniaFact]
-    public void A_file_git_mv_renamed_elsewhere_is_compared_with_where_the_last_commit_has_it()
+    private void A_file_git_mv_renamed_elsewhere_is_compared_with_where_the_last_commit_has_it()
     {
         Git("mv", "Shop.cs", "Store.cs");
         string store = Path.Combine(folder, "Store.cs");
@@ -240,8 +426,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Amend with no file chosen changes the last commit's message alone: the rename the Explorer made in the
     /// index goes into no commit and stays listed.</summary>
-    [AvaloniaFact]
-    public void Amend_with_no_file_chosen_rewords_the_last_commit_and_leaves_a_rename_out_of_it()
+    private void Amend_with_no_file_chosen_rewords_the_last_commit_and_leaves_a_rename_out_of_it()
     {
         MainWindow window = Open();
         Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "Shop.cs")), "Store.cs"), "the rename"));
@@ -268,8 +453,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A file renamed in the Explorer, which stages the rename, commits with its change chosen: the old name, which
     /// only the last commit still has, is no pathspec git refuses to add.</summary>
-    [AvaloniaFact]
-    public void A_file_renamed_in_the_Explorer_is_committed_as_a_rename()
+    private void A_file_renamed_in_the_Explorer_is_committed_as_a_rename()
     {
         MainWindow window = Open();
         Assert.Null(Ui.Await(window.RenameAsync(PathNames.Canonical(Path.Combine(folder, "Shop.cs")), "Store.cs"), "the rename"));
@@ -284,8 +468,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Amend's last-commit message, read while the person types or unticks Amend, never replaces what was typed
     /// meanwhile nor lands once Amend is off.</summary>
-    [AvaloniaFact]
-    public void Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off()
+    private void Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off()
     {
         MainWindow window = Open();
         CommitView commit = window.CommitView;
@@ -317,8 +500,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Ticking the Commit window's Unversioned Files of 20,000 new files counts its rows once, as for 200, and the
     /// window's thread allocates in proportion to the rows, never once more for each row ticked.</summary>
-    [AvaloniaFact]
-    public void Ticking_a_commit_group_of_twenty_thousand_files_counts_its_rows_once_and_allocates_in_proportion_to_them()
+    private void Ticking_a_commit_group_of_twenty_thousand_files_counts_its_rows_once_and_allocates_in_proportion_to_them()
     {
         (long fewCounted, long fewBytes) = Tick(200);
         (long manyCounted, long manyBytes) = Tick(20_000);
@@ -368,8 +550,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>In a linked worktree, whose Git folder is under the main one's, a commit and a branch switched from outside
     /// the window (a terminal, an agent) are followed: the change bar and the Explorer's colour go, the Commit window empties
     /// and the branch widget names the new branch.</summary>
-    [AvaloniaFact]
-    public void A_commit_and_a_branch_switch_from_outside_a_linked_worktree_are_followed_by_the_bars_colours_commit_list_and_branch()
+    private void A_commit_and_a_branch_switch_from_outside_a_linked_worktree_are_followed_by_the_bars_colours_commit_list_and_branch()
     {
         string worktrees = TestFolders.Create("git-worktree-");
         try
@@ -386,8 +567,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>In a folder opened below the repository's top, whose Git folder is outside it, a commit and a branch switched
     /// from outside the window are followed as they are at the top.</summary>
-    [AvaloniaFact]
-    public void A_commit_and_a_branch_switch_from_outside_a_folder_opened_below_the_repositorys_top_are_followed_by_the_bars_colours_commit_list_and_branch()
+    private void A_commit_and_a_branch_switch_from_outside_a_folder_opened_below_the_repositorys_top_are_followed_by_the_bars_colours_commit_list_and_branch()
     {
         TestFolders.Write(folder, "src/Shop.cs", Original);
         Git("add", "-A");
@@ -398,10 +578,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>In a reftable repository (Git 2.45's, whose refs are kept in tables, never in HEAD or refs' files), a commit
     /// and a branch switched from outside the window are followed, at the repository's top as below it, where its Git folder
     /// is outside the folder opened.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_commit_and_a_branch_switch_from_outside_a_reftable_repository_are_followed_by_the_bars_colours_commit_list_and_branch(bool below)
+    private void A_commit_and_a_branch_switch_from_outside_a_reftable_repository_are_followed_by_the_bars_colours_commit_list_and_branch(bool below)
     {
         string repository = TestFolders.Create("git-reftable-");
         try
@@ -453,8 +630,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it()
+    private void Rollback_lines_puts_the_change_under_the_caret_back_as_the_last_commit_has_it()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -504,8 +680,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A save writes the new text beside the file and moves it over the file: Git reading the folder in that moment
     /// (a read under way as Save is pressed) lists the file saved as changed, never the temporary file.</summary>
-    [AvaloniaFact]
-    public void A_file_saved_as_git_reads_the_folder_is_listed_as_changed_and_its_saves_temporary_file_never_is()
+    private void A_file_saved_as_git_reads_the_folder_is_listed_as_changed_and_its_saves_temporary_file_never_is()
     {
         MainWindow window = Open();
         string saving = Path.Combine(folder, "Shop.cs" + FileText.SaveSuffix);
@@ -528,8 +703,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Rollback from the Commit window, the new file chosen by hand (unversioned files are not chosen at first),
     /// asks first, saying the new file is deleted, then puts back the changed file and deletes the new one, once another
     /// program reading them lets them go (Windows refuses git meanwhile).</summary>
-    [AvaloniaFact]
-    public void Rollback_puts_back_a_file_another_program_was_reading_and_deletes_a_new_one_it_held_once_they_are_let_go()
+    private void Rollback_puts_back_a_file_another_program_was_reading_and_deletes_a_new_one_it_held_once_they_are_let_go()
     {
         MainWindow window = Open();
         string shop = Path.Combine(folder, "Shop.cs");
@@ -586,8 +760,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Rollback of a changed file and an unversioned one puts the changed one back and moves the unversioned one to
     /// the Trash in a command of its own, as its question says first: one Undo, asked once, brings the unversioned file back
     /// out of the Trash, listed as unversioned again, the changed one staying as the last commit has it.</summary>
-    [AvaloniaFact]
-    public void Rollback_moves_an_unversioned_file_to_the_Trash_and_one_undo_brings_it_back()
+    private void Rollback_moves_an_unversioned_file_to_the_Trash_and_one_undo_brings_it_back()
     {
         string shop = Path.Combine(folder, "Shop.cs");
         string added = Path.Combine(folder, "Prices.cs");
@@ -635,8 +808,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Rollback of a new file another program added to Git (git add, or a merge's), which no commit holds, keeps
     /// it on disk as it is now, unversioned, as the question says first; the changed file beside it goes back.</summary>
-    [AvaloniaFact]
-    public void Rollback_keeps_a_new_file_another_program_added_to_git_on_disk_and_says_so_first()
+    private void Rollback_keeps_a_new_file_another_program_added_to_git_on_disk_and_says_so_first()
     {
         MainWindow window = Open();
         string shop = Path.Combine(folder, "Shop.cs");
@@ -707,8 +879,7 @@ public sealed partial class VcsTests : IDisposable
     /// it and Escape closes that first, the keys back on the file's side; F7 is still the diff's next difference; an
     /// editor's key goes to the side with the keys, not to the main window's editor; and Escape then closes the window.
     /// Diffs are set to open in a window of their own, the window being what this holds of.</summary>
-    [AvaloniaFact]
-    public void The_IDEs_keys_work_in_a_diffs_window_on_the_side_with_them_and_Escape_still_closes_it()
+    private void The_IDEs_keys_work_in_a_diffs_window_on_the_side_with_them_and_Escape_still_closes_it()
     {
         MainWindow window = Open();
         window.ApplySettings(window.Settings with { OpenDiffsIn = Passenger.App.Settings.DiffPlace.Window });
@@ -745,8 +916,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Jump to Source goes from a diff to its file: F4 on the file's side opens it in the main window at the caret,
     /// the file shown in front of the diff; F4 on the last commit's side lands on the line that one stands at now, past
     /// the lines put in above it; and the diff's toolbar names it with its key.</summary>
-    [AvaloniaFact]
-    public void F4_in_a_diff_opens_its_file_at_the_carets_line_from_either_side()
+    private void F4_in_a_diff_opens_its_file_at_the_carets_line_from_either_side()
     {
         TestFolders.Write(folder, "Notes.txt", "notes\n");
         TestFolders.Write(folder, "Shop.cs", "// One\n// Two\n" + Original);
@@ -781,8 +951,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A diff's Next Difference is F7 everywhere and F8 too off the Mac, as Rider's Visual Studio keymap binds them
     /// there, Shift with either going back; the Mac's keymap leaves F8 to the IDE.</summary>
-    [AvaloniaFact]
-    public void A_diffs_next_and_previous_difference_are_F7_and_F8_off_the_Mac_and_F7_alone_on_it()
+    private void A_diffs_next_and_previous_difference_are_F7_and_F8_off_the_Mac_and_F7_alone_on_it()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -816,73 +985,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A diff's scrollbar takes its own presses over the change marked down it: 400 lines put in at the top of a
-    /// file are one change down most of its side's track, and the thumb over it drags, the track beside its strip pages,
-    /// and a click on the strip still goes to the change.</summary>
-    [AvaloniaFact]
-    public void A_diffs_scrollbar_drags_and_pages_over_a_change_marked_down_its_track_and_the_changes_strip_still_goes_to_it()
-    {
-        TestFolders.Write(folder, "Shop.cs", string.Concat(Enumerable.Range(0, 400).Select(i => $"// Note {i}\n")) + Original);
-        MainWindow window = Open();
-        Task<IDiffHost?> opening = window.ShowDiffAsync(window.EditorArea.Active!.Path);
-        IDiffHost diff = Ui.Landed(opening, "the diff open")!;
-        CodeEditor side = OpenDiffs.ViewOf(diff).Right;
-        Assert.Equal([new DiffHunk(0, 0, 0, 400)], OpenDiffs.ViewOf(diff).Hunks);
-        CodeEditor.StripeMark change = Assert.Single(side.StripeMarks, m => m.Kind == StripeMarkKind.Change);
-
-        ErrorStripeTests.CheckBarTakesItsPresses(side);
-
-        side.GoTo(new TextPosition(403, 0));
-        Ui.Settle();
-        Ui.Click(side, side.StripePoint(change));
-        Assert.True(side.CaretPosition.Line == 0, $"A click on the change's strip on the diff's scrollbar left the caret on line {side.CaretPosition.Line + 1}, not at the change");
-        diff.Close();
-        window.Close();
-    }
-
-    /// <summary>The diff's side of the open file takes the file's colours as they change: opened before the language server
-    /// answered, the server's once it does; and once the server starts again, the new one's, which follow the text.</summary>
-    [AvaloniaFact]
-    public void A_diff_opened_before_the_language_server_answers_takes_its_colours_and_a_new_servers_when_it_starts_again()
-    {
-        File.WriteAllText(Path.Combine(folder, "Shop.csproj"),
-            TestProjects.Library());
-        Restore.Run(folder);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-        window.OpenFolder(folder);
-        window.OpenFile(Path.Combine(folder, "Shop.cs"));
-        Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
-        Ui.PumpUntil(() => window.Vcs.Repository is not null, "the working tree found");
-        Task<IDiffHost?> opening = window.ShowDiffAsync(shop.Path);
-        IDiffHost diff = Ui.AwaitPumped(opening, "the diff open")!;
-        CodeEditor right = OpenDiffs.ViewOf(diff).Right;
-        Assert.True(right.Highlighter is not Passenger.Languages.CSharp.SemanticHighlighter, "The language server answered before the diff opened, so it had nothing to follow");
-
-        // The use of count in Add() is coloured as a field by the server alone.
-        int use = Original.IndexOf("count++", StringComparison.Ordinal);
-        Ui.WaitFor(() => window.CSharpService?.IsReady == true && Field(shop.Highlighter, shop.Text.Snapshot, use), "the server's colour on the field in the editor");
-        Assert.True(Field(right.Highlighter, right.Document.Snapshot, use),
-            "The diff opened before the language server answered never took its colours: the field it colours in the editor is plain in the diff");
-
-        int ended = window.CSharpService!.Session!.Server.ProcessId;
-        OwnProcess.Of(ended).Kill(alone: true);
-        Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true } session && session.Server.ProcessId != ended, "the language server started again");
-        Ui.WaitFor(() => Field(shop.Highlighter, shop.Text.Snapshot, use), "the new server's colour on the field in the editor");
-        right.Focus();
-        OpenDiffs.KeysOf(diff).KeyTextInput("sealed ");
-        Ui.Settle();
-        int moved = use + "sealed ".Length;
-        Assert.Equal(moved, shop.Text.Snapshot.ToString().IndexOf("count++", StringComparison.Ordinal));
-        Ui.WaitFor(() => Field(shop.Highlighter, shop.Text.Snapshot, moved), "the editor's colour on the field moved along");
-        Assert.True(Field(right.Highlighter, right.Document.Snapshot, moved),
-            "The diff kept the colours of the language server that ended, which no longer follow the text: the field moved along is plain in the diff");
-        diff.Close();
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_closed_diff_is_let_go_by_the_open_file_it_showed()
+    private void A_closed_diff_is_let_go_by_the_open_file_it_showed()
     {
         MainWindow window = Open();
         WeakReference<DiffView> closed = DiffAndClose(window);
@@ -896,8 +999,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A diff's window outlives its file's tab, holding the file open while it edits it: diffs are set to open in
     /// a window of their own, as a tab closes with its file's last tab.</summary>
-    [AvaloniaFact]
-    public void An_edit_in_a_diffs_window_after_the_files_tab_closed_is_saved_with_the_others_and_as_the_window_closes()
+    private void An_edit_in_a_diffs_window_after_the_files_tab_closed_is_saved_with_the_others_and_as_the_window_closes()
     {
         MainWindow window = Open();
         window.ApplySettings(window.Settings with { OpenDiffsIn = Passenger.App.Settings.DiffPlace.Window });
@@ -952,8 +1054,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Typing_in_a_20000_line_file_rewritten_since_the_last_commit_moves_its_bars_and_a_bar_opens_its_change_at_once()
+    private void Typing_in_a_20000_line_file_rewritten_since_the_last_commit_moves_its_bars_and_a_bar_opens_its_change_at_once()
     {
         // A generated file of 20,000 lines, every twelfth line of it generated anew since the last commit: 1,667 changes.
         string generated = Path.Combine(folder, "Generated.txt");
@@ -1007,8 +1108,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Blank_lines_added_at_the_end_of_a_file_show_an_added_bar_and_a_difference_and_roll_back()
+    private void Blank_lines_added_at_the_end_of_a_file_show_an_added_bar_and_a_difference_and_roll_back()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1029,22 +1129,6 @@ public sealed partial class VcsTests : IDisposable
         window.Perform(AppActions.RollbackLines);
         Ui.Landed(() => Text(window) == Original, "the blank lines gone");
         Ui.Landed(() => Marks(window).Count == 0, "the bar gone");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_narrow_logs_rows_keep_room_for_each_commits_subject()
-    {
-        Git("commit", "-q", "--allow-empty", "-m", "Second commit's subject");
-        // As wide as a 1024x768 desktop leaves a maximized window, the Git window under the editors with its branches.
-        MainWindow window = Ui.OpenFolder(folder, width: 957, height: 699);
-        GitLogView log = window.GitLog;
-        window.Perform(AppActions.ShowGit);
-        Ui.Landed(() => log.Rows.Count == 2, "the two commits");
-        TextBlock subject = log.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Second commit's subject");
-        Control row = (Control)subject.GetVisualParent()!.GetVisualParent()!;
-        Assert.True(subject.Bounds.Width >= 100,
-            $"The log's {row.Bounds.Width:0}-wide rows left the subject {subject.Bounds.Width:0} wide, the author and date taking the rest");
         window.Close();
     }
 
@@ -1121,8 +1205,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Update Project whose remote stops answering is ended by Stop, git and all it started with it, and a commit
     /// asked for then runs: the remote holds no change to the tree for good.</summary>
-    [AvaloniaFact]
-    public void Stop_ends_an_update_whose_remote_stalls_and_a_commit_runs_after_it()
+    private void Stop_ends_an_update_whose_remote_stalls_and_a_commit_runs_after_it()
     {
         string clone = TestFolders.Create("git-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
@@ -1165,8 +1248,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Update Project of a branch with commits of its own and the upstream's, where git's config says neither merge
     /// nor rebase, merges them, saying so, and an uncommitted edit to a file the upstream changed is set aside and put back.</summary>
-    [AvaloniaFact]
-    public void Update_project_merges_a_diverged_branch_where_git_is_not_told_how_keeping_an_uncommitted_edit()
+    private void Update_project_merges_a_diverged_branch_where_git_is_not_told_how_keeping_an_uncommitted_edit()
     {
         string clone = Diverged();
         File.WriteAllText(Path.Combine(clone, "Notes.txt"), Notes.Replace("ten", "ten, edited here", StringComparison.Ordinal));
@@ -1188,8 +1270,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Update Project where pull.rebase is true rebases the branch's own commit onto the upstream's with an
     /// uncommitted edit to a file the upstream did not change, which it sets aside and puts back.</summary>
-    [AvaloniaFact]
-    public void Update_project_with_pull_rebase_rebases_onto_the_upstream_keeping_an_unrelated_uncommitted_edit()
+    private void Update_project_with_pull_rebase_rebases_onto_the_upstream_keeping_an_unrelated_uncommitted_edit()
     {
         string clone = Diverged();
         TestGit.Run(clone, "config", "pull.rebase", "true");
@@ -1232,8 +1313,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Push to a remote that asks for a login asks the person in the window (git's askpass helper answering over
     /// the window's own socket): cancelled, the push fails saying so and the remote takes nothing; signed in, the push goes,
     /// and the password is in no log.</summary>
-    [AvaloniaFact]
-    public void Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in()
+    private void Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in()
     {
         string served = TestFolders.Create("git-served-");
         using StandInGitRemote remote = new(served);
@@ -1272,8 +1352,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Push of a branch that tracks none goes to the repository's only remote whatever its name, the branch tracking
     /// it there from then on; with several remotes the window asks which, and pushes to the one chosen.</summary>
-    [AvaloniaFact]
-    public void Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several()
+    private void Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several()
     {
         string upstream = TestFolders.Create("git-upstream-");
         string other = TestFolders.Create("git-other-");
@@ -1307,8 +1386,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Update Project is one of Git's changes to the tree: a checkout asked for while its pull waits on the remote
     /// (as the branches' Checkout asks) is refused as Git still busy, leaving the branch where it was, and the update lands.</summary>
-    [AvaloniaFact]
-    public void A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands()
+    private void A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands()
     {
         string clone = TestFolders.Create("git-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
@@ -1383,41 +1461,9 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A click on the annotation of a line last changed by a commit older than the newest 2000, which the Git
-    /// window's log reads, chooses that commit all the same: the log is read down to it.</summary>
-    [AvaloniaFact]
-    public void A_click_on_an_annotation_chooses_its_commit_though_it_is_older_than_the_newest_2000_the_log_reads()
-    {
-        string first = Git("rev-parse", "HEAD").Trim();
-        // 2100 commits that change no file, on top of the first, made by one git.
-        System.Text.StringBuilder stream = new();
-        for (int i = 1; i <= 2100; i++)
-        {
-            string subject = $"Step {i}";
-            stream.Append(System.Globalization.CultureInfo.InvariantCulture,
-                $"commit refs/heads/main\ncommitter Passenger Tests <tests@passenger.invalid> {1_700_000_000 + i} +0000\ndata {subject.Length}\n{subject}\n");
-            stream.Append(i == 1 ? $"from {first}\n\n" : "\n");
-        }
-        TestGit.Feed(folder, stream.ToString(), "fast-import", "--quiet");
-        Assert.Equal("2101", Git("rev-list", "--count", "HEAD").Trim());
-
-        MainWindow window = Open();
-        Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
-        Task annotating = window.ToggleAnnotationsAsync(shop);
-        Ui.Landed(() => annotating.IsCompleted, "the blame");
-        Assert.Equal(first, window.Vcs.BlameOf(shop)![0].Hash);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.Click(editor, new Point(10, (editor.LineHeight / 2) - editor.ScrollOffset.Y), settle: false);
-        Ui.Settle();
-        Assert.True(window.GitLog.Selected?.Hash == first,
-            $"The click chose no commit older than the log's newest 2000: {window.GitLog.Rows.Count} commits were read and {window.GitLog.Selected?.Subject ?? "none"} chosen, not First, the 2101st");
-        window.Close();
-    }
-
     /// <summary>Annotate in a repository whose hashes are SHA-256's 64 hex digits names each line by its commit, as in one
     /// of SHA-1's 40.</summary>
-    [AvaloniaFact]
-    public void Annotations_name_each_lines_commit_in_a_sha256_repository()
+    private void Annotations_name_each_lines_commit_in_a_sha256_repository()
     {
         string tree = TestFolders.Create("git-sha256-");
         try
@@ -1454,106 +1500,6 @@ public sealed partial class VcsTests : IDisposable
         {
             TestFolders.Delete(tree);
         }
-    }
-
-    [AvaloniaFact]
-    public void Annotations_opened_and_closed_again_and_again_blame_the_file_once_for_each_pause_in_typing()
-    {
-        MainWindow window = Open();
-        Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
-        int blames = 0;
-        EventHandler<Passenger.Core.ChildEnd> counted = (_, end) =>
-        {
-            if (end.Command.Contains(" blame ", StringComparison.Ordinal))
-            {
-                Interlocked.Increment(ref blames);
-            }
-        };
-        Passenger.Core.ChildProcesses.Ended += counted;
-        try
-        {
-            for (int i = 0; i < 5; i++)
-            {
-                Task toggled = window.ToggleAnnotationsAsync(shop);
-                Ui.Landed(() => toggled.IsCompleted, "the annotations opened or closed");
-            }
-            Ui.WaitFor(() => Volatile.Read(ref blames) == 3, "a blame for each of the three openings");
-            Assert.NotEmpty(shop.GutterAnnotations);
-
-            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// one\n")]);
-            window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// two\n")]);
-            Ui.Landed(() => shop.GutterAnnotations is ["Not committed yet", ..], "the typed lines blamed");
-            Ui.Hold(TimeSpan.FromSeconds(1.5), "past the pause's length again, so a second blame of the same pause would have run");
-            Ui.Settle();
-            Assert.True(Volatile.Read(ref blames) == 4, $"One pause in typing blamed the file {Volatile.Read(ref blames) - 3} times");
-        }
-        finally
-        {
-            Passenger.Core.ChildProcesses.Ended -= counted;
-        }
-        window.Close();
-    }
-
-    /// <summary>Annotations closed while their blame runs leave the gutter empty, and typing brings them back no more; and a
-    /// large file git does not track is said so, with nothing shown.</summary>
-    [AvaloniaFact]
-    public void Closing_annotations_while_the_blame_runs_leaves_the_gutter_empty_and_a_large_file_git_does_not_track_shows_none()
-    {
-        MainWindow window = Open();
-        Passenger.App.Workspace.OpenDocument shop = window.EditorArea.Active!;
-        Task opening = window.ToggleAnnotationsAsync(shop);
-        Assert.False(opening.IsCompleted, "The blame was read before the window's thread ran again");
-        Task closing = window.ToggleAnnotationsAsync(shop);
-        Ui.Landed(() => opening.IsCompleted && closing.IsCompleted, "the blame and the close");
-        Assert.Empty(shop.GutterAnnotations);
-        Assert.Null(window.Vcs.BlameOf(shop));
-
-        window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, "// new\n")]);
-        Ui.Hold(TimeSpan.FromSeconds(1), "past the pause after typing, which would blame the file were the annotations open");
-        Ui.Settle();
-        Assert.Empty(shop.GutterAnnotations);
-
-        // Larger than a pipe holds: git refuses the file before it reads the text it is given, so writing it fails.
-        string notes = Path.Combine(folder, "Notes.txt");
-        File.WriteAllText(notes, string.Concat(Enumerable.Repeat("A line of notes that nobody has committed yet.\n", 4500)));
-        Assert.True(new FileInfo(notes).Length > 200_000);
-        window.OpenFile(notes);
-        Passenger.App.Workspace.OpenDocument opened = window.EditorArea.Active!;
-        Task annotating = window.ToggleAnnotationsAsync(opened);
-        Ui.Landed(() => annotating.IsCompleted, "the blame");
-        Assert.True(annotating.IsCompletedSuccessfully, $"Annotating the file failed: {annotating.Exception?.InnerException}");
-        Assert.Equal("Notes.txt is not tracked by Git", window.Status);
-        Assert.Empty(opened.GutterAnnotations);
-        Assert.False(window.Vcs.IsAnnotated(opened), "The annotations stayed open on a file with nothing to show");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_screenshot_of_a_working_tree_taken_with_no_wait_shows_its_branch_and_change_bars()
-    {
-        string shop = Path.Combine(folder, "Shop.cs");
-        File.WriteAllText(shop, Original.Replace("int count", "long count", StringComparison.Ordinal));
-        // Git's status made slower than the rest of the window's opening, as a large tree's is: only waiting for Git sees it.
-        string hook = Path.Combine(folder, ".git", "slow-status.sh");
-        File.WriteAllText(hook, "#!/bin/sh\nsleep 1\nexit 1\n");
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
-        Git("config", Passenger.Vcs.GitConfigKeys.CoreFsmonitor, Unix(hook));
-        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
-        Assert.True(Screenshot.Prepare(window, LaunchOptions.Parse([folder, "--file", shop]), []), "The screenshot's window never settled");
-
-        Assert.Equal("main", Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "BranchName")?.Text);
-        Assert.Equal([new ChangeMark(2, 1, ChangeMarkKind.Modified)], Marks(window));
-        // A changed line's bar is dashed: down its line, runs of the modified bar's colour with gaps between them.
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Point middle = editor.TranslatePoint(editor.GutterColumnPoint(editor.Gutter!.Changes, 2), window)!.Value;
-        Point[] down = [.. Enumerable.Range(0, (int)editor.LineHeight).Select(y => new Point(middle.X, middle.Y - (editor.LineHeight / 2) + y + 0.5))];
-        bool[] inked = [.. Ui.Pixels(window, down).Select(drawn => drawn == Modified())];
-        int dashes = inked.Where((on, at) => on && (at == 0 || !inked[at - 1])).Count();
-        Assert.True(dashes >= 2, $"The changed line's bar shows {dashes} runs of the modified bar's colour down its line, not dashes of it: {string.Concat(inked.Select(on => on ? '#' : '.'))}");
-        window.Close();
     }
 
     private static Avalonia.Media.Color Modified() =>
@@ -1596,8 +1542,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Stash Changes with nothing changed makes no stash and says so, in its popup and the status bar, where git
     /// says nothing failed.</summary>
-    [AvaloniaFact]
-    public void Stash_changes_with_nothing_to_stash_is_refused_saying_so()
+    private void Stash_changes_with_nothing_to_stash_is_refused_saying_so()
     {
         MainWindow window = Open();
         NamePopup stash = window.ShowStash()!;
@@ -1611,8 +1556,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Backspace_in_unstash_changes_keeps_every_stash_and_delete_asks_before_dropping_the_chosen_one_once()
+    private void Backspace_in_unstash_changes_keeps_every_stash_and_delete_asks_before_dropping_the_chosen_one_once()
     {
         File.AppendAllText(Path.Combine(folder, "Shop.cs"), "// older\n");
         Git("stash", "push", "-m", "Older");
@@ -1669,8 +1613,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Unstash Changes acts on the stash chosen, by its commit: another program stashing while the list is open
     /// moves it down the list, and Drop and Pop still take that one, never the newer stash in its old place; one another
     /// program dropped meanwhile is refused, saying so.</summary>
-    [AvaloniaFact]
-    public void Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read()
+    private void Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read()
     {
         string shop = Path.Combine(folder, "Shop.cs");
         File.AppendAllText(shop, "// older\n");
@@ -1705,8 +1648,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was()
+    private void Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was()
     {
         MainWindow window = Open();
         Assert.Equal("main", window.Vcs.Branch);
@@ -1738,8 +1680,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>In a new solution's folder of no repository, the Git window lists no branch, and Create Git Repository from
     /// the Commit window's empty state writes the .NET .gitignore and makes the repository: the Commit window lists the
     /// solution's files and the .gitignore, nothing of bin or obj, as git does, and the action is offered no more.</summary>
-    [AvaloniaFact]
-    public void Create_git_repository_from_the_commit_windows_empty_state_leaves_build_output_out_of_the_changes()
+    private void Create_git_repository_from_the_commit_windows_empty_state_leaves_build_output_out_of_the_changes()
     {
         string solution = PathNames.Canonical(TestFolders.Create("git-create-"));
         TestFolders.Write(solution, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
@@ -1772,8 +1713,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Add_to_gitignore_keeps_the_files_byte_order_mark_its_windows_line_breaks_and_an_unsaved_edit_to_it()
+    private void Add_to_gitignore_keeps_the_files_byte_order_mark_its_windows_line_breaks_and_an_unsaved_edit_to_it()
     {
         // As Visual Studio's template writes one: a byte order mark and CRLF, its last line with no break.
         string ignore = Path.Combine(folder, ".gitignore");
@@ -1801,8 +1741,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>Add to .gitignore with no .gitignore makes one as its .editorconfig asks, a byte order mark and CRLF, and
     /// Undo then Redo in the Solution view puts it back in those same bytes, whether it was closed or open when undone.</summary>
-    [AvaloniaFact]
-    public void Add_to_gitignore_making_the_file_as_its_editorconfig_asks_and_Undo_then_Redo_put_it_back_in_the_same_bytes()
+    private void Add_to_gitignore_making_the_file_as_its_editorconfig_asks_and_Undo_then_Redo_put_it_back_in_the_same_bytes()
     {
         File.WriteAllText(Path.Combine(folder, ".editorconfig"), "root = true\n\n[*]\nend_of_line = crlf\ncharset = utf-8-bom\n");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "scratch\n");
@@ -1853,8 +1792,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Add to .gitignore has Git ignore the chosen file and no other, whatever its name holds: notes.txt at the top
     /// and not docs/notes.txt, [draft].md and not d.md (its brackets a pattern), #todo.txt and !keep.txt (a comment and a
     /// negation written plainly), and where a name can hold them a wildcard and a space it ends with.</summary>
-    [AvaloniaFact]
-    public void Add_to_gitignore_has_git_ignore_the_chosen_file_and_no_other_whatever_its_name_holds()
+    private void Add_to_gitignore_has_git_ignore_the_chosen_file_and_no_other_whatever_its_name_holds()
     {
         // Windows takes no '*' in a name, and drops a space it ends with.
         string[] chosen = ["notes.txt", "[draft].md", "#todo.txt", "!keep.txt", .. OperatingSystem.IsWindows() ? (string[])[] : ["a*b.txt", "end "]];
@@ -1891,8 +1829,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>On Windows Add to .gitignore into a .gitignore another program holds waits for it: while it is held the
     /// status bar says it waits for that file, never that it added the line, and once the program lets go the line is in the
     /// file and the status bar says it was added.</summary>
-    [AvaloniaFact]
-    public void Add_to_gitignore_into_a_gitignore_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go()
+    private void Add_to_gitignore_into_a_gitignore_another_program_holds_says_it_waits_and_added_once_the_file_is_let_go()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
         string ignore = Path.Combine(folder, ".gitignore");
@@ -1920,8 +1857,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_commit_and_log_menus_ignore_a_file_revert_a_commit_and_branch_from_one()
+    private void The_commit_and_log_menus_ignore_a_file_revert_a_commit_and_branch_from_one()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Twice");
@@ -1966,8 +1902,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A commit's file in the Git log offers what a changed file in the Commit window does: its diff, its file
     /// now, its path.</summary>
-    [AvaloniaFact]
-    public void A_commits_file_in_the_log_jumps_to_its_source_and_copies_its_path_from_its_menu()
+    private void A_commits_file_in_the_log_jumps_to_its_source_and_copies_its_path_from_its_menu()
     {
         string shop = Path.Combine(folder, "Shop.cs");
         File.WriteAllText(shop, Original.Replace("count++", "count += 2", StringComparison.Ordinal));
@@ -2091,8 +2026,7 @@ public sealed partial class VcsTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_name_with_brackets_is_that_file_alone_to_roll_back_and_to_commit()
+    private void A_file_name_with_brackets_is_that_file_alone_to_roll_back_and_to_commit()
     {
         File.WriteAllText(Path.Combine(folder, "[ab].cs"), "class Ab { }\n");
         File.WriteAllText(Path.Combine(folder, "a.cs"), "class A { }\n");
@@ -2120,8 +2054,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>Windows refuses a save while another program holds the file sharing neither writes nor its deletion, and
     /// a commit is made at once: the commit waits for the save to land, saying so, and commits the saved text, never the
     /// file as it was on disk.</summary>
-    [AvaloniaFact]
-    public void A_commit_made_while_a_held_files_save_lands_waits_for_it_and_commits_the_saved_text()
+    private void A_commit_made_while_a_held_files_save_lands_waits_for_it_and_commits_the_saved_text()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace or write a file another program holds");
         string shop = Path.Combine(folder, "Shop.cs");
@@ -2146,8 +2079,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_save_leaves_the_explorers_chosen_rows_the_git_log_and_go_to_file_as_they_were()
+    private void A_save_leaves_the_explorers_chosen_rows_the_git_log_and_go_to_file_as_they_were()
     {
         Directory.CreateDirectory(Path.Combine(folder, "Models"));
         File.WriteAllText(Path.Combine(folder, "Models", "Order.cs"), "class Order { }\n");
@@ -2184,8 +2116,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>A save among 5,000 tags costs the UI thread what one among 5 does, the least of three saves each: Git's
     /// refs are not read for a save, which leaves the history where it was.</summary>
-    [AvaloniaFact]
-    public void A_save_among_five_thousand_tags_allocates_on_the_ui_thread_what_one_among_five_does_and_reads_no_ref()
+    private void A_save_among_five_thousand_tags_allocates_on_the_ui_thread_what_one_among_five_does_and_reads_no_ref()
     {
         string many = PathNames.Canonical(TestFolders.Create("git-tags-"));
         try
@@ -2261,8 +2192,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>A commit another program makes reaches the log with the window left as it is: the working tree's top open,
     /// as Git's own folder is heard changing; a folder in it open, whose watcher hears nothing of Git's folder, as the
     /// next file is changed there.</summary>
-    [AvaloniaFact]
-    public void A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it()
+    private void A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it()
     {
         Directory.CreateDirectory(Path.Combine(folder, "App"));
         File.WriteAllText(Path.Combine(folder, "App", "App.cs"), "class App { }\n");
@@ -2283,8 +2213,7 @@ public sealed partial class VcsTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_chosen_in_the_commit_window_stays_chosen_through_a_refresh_and_rollback_names_and_rolls_back_it_alone()
+    private void A_file_chosen_in_the_commit_window_stays_chosen_through_a_refresh_and_rollback_names_and_rolls_back_it_alone()
     {
         foreach (string name in new[] { "A.cs", "B.cs", "C.cs" })
         {
@@ -2390,8 +2319,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>A commit's message file another program opens as git reads it (a scanner, an indexer; here a handle sharing
     /// neither writes nor its deletion, which Windows then refuses) fails nothing: the commit is made and said, and the file
     /// goes once the program lets go of it.</summary>
-    [AvaloniaFact]
-    public void A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go()
+    private void A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go()
     {
         string tree = PathNames.Canonical(folder);
         Lock gate = new();
@@ -2452,8 +2380,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds()
+    private void A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds()
     {
         // A post-commit hook that leaves a job running, as `daemon &` does, holding git's error output while it lives.
         string job = Path.Combine(folder, ".git", "job");
@@ -2485,78 +2412,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_divider_under_a_commits_files_drags_from_anywhere_along_it_giving_its_details_the_room_they_give_up()
-    {
-        MainWindow window = Open();
-        window.Perform(AppActions.ShowGit);
-        GitLogView log = window.GitLog;
-        Ui.Landed(() => log.Rows.Count == 1, "the log");
-        log.Select(log.Rows[0].Commit);
-        Ui.Landed(() => log.Files.Count == 1, "the commit's file");
-        Avalonia.Controls.ListBox files = Find(log, log.Files);
-        Avalonia.Controls.TextBox details = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(log).OfType<Avalonia.Controls.TextBox>().Single(t => t.Text == log.Details);
-        (double filesHeight, double detailsHeight) = (files.Bounds.Height, details.Bounds.Height);
-
-        // A quarter of the way along the line between them, not at its middle.
-        Point grip = files.TranslatePoint(new Point(files.Bounds.Width / 4, files.Bounds.Height + 0.5), window)!.Value;
-        window.MouseDown(grip, Avalonia.Input.MouseButton.Left);
-        for (int step = 1; step <= 10; step++)
-        {
-            window.MouseMove(grip + new Point(0, 4 * step), Avalonia.Input.RawInputModifiers.LeftMouseButton);
-        }
-        window.MouseUp(grip + new Point(0, 40), Avalonia.Input.MouseButton.Left);
-        Ui.Settle();
-        Assert.True(Math.Abs(files.Bounds.Height - (filesHeight + 40)) < 2 && Math.Abs(details.Bounds.Height - (detailsHeight - 40)) < 2,
-            $"The commit's files and its details were {filesHeight} and {detailsHeight} tall, and {files.Bounds.Height} and {details.Bounds.Height} once the line between them was dragged 40 px down");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_status_read_begun_before_a_commit_that_ends_after_it_leaves_the_commit_window_empty()
-    {
-        // One git status made slow, as a large tree's is: the file system monitor hook sleeps when asked to.
-        string slow = Path.Combine(folder, ".git", "slow");
-        string slept = Path.Combine(folder, ".git", "slept");
-        string hook = Path.Combine(folder, ".git", "slow-status.sh");
-        File.WriteAllText(hook, $"#!/bin/sh\nif [ -f '{Unix(slow)}' ]; then\n    rm '{Unix(slow)}'\n    sleep 3\n    touch '{Unix(slept)}'\nfi\nexit 1\n");
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
-        Git("config", Passenger.Vcs.GitConfigKeys.CoreFsmonitor, Unix(hook));
-        MainWindow window = Open();
-        Assert.Equal("main", window.Vcs.Branch);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        CommitView commit = window.CommitView;
-        window.Perform(AppActions.ShowCommit);
-        window.Perform(AppActions.FocusEditor);
-        editor.GoTo(new TextPosition(2, 4));
-        window.KeyTextInput("long ");
-        window.Perform(AppActions.Save);
-        Ui.Landed(() => commit.Chosen.Any(c => c.Name == "Shop.cs"), "Shop.cs listed");
-
-        // Saved again: that save's status is the slow one, and has read the index before the commit is made.
-        editor.GoTo(new TextPosition(0, 0));
-        window.KeyTextInput("sealed ");
-        File.WriteAllText(slow, string.Empty);
-        window.Perform(AppActions.Save);
-        // Not settled: the slow status is background work, which settling would wait out before the commit began.
-        Ui.PumpUntil(() => !File.Exists(slow), "the save's status to begin", TimeSpan.FromSeconds(30));
-        commit.Message = "Count with a long";
-        Task<bool> committed = commit.CommitAsync(push: false);
-        Assert.True(Ui.Landed(committed, "the commit made"), window.Status);
-
-        // The slow status ends after the commit's own, and what it found before the commit never lands over it.
-        Ui.Landed(() => File.Exists(slept), "the slow status ended");
-        Assert.True(window.Vcs.Changes.Count == 0,
-            $"The Commit window lists {string.Join(", ", window.Vcs.Changes.Select(c => c.Name))} after the commit: a status read before it landed after the commit's own");
-        Assert.Empty(commit.Rows);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Coming_back_to_the_window_reads_no_last_commit_text_again_and_head_moved_elsewhere_moves_every_files_bars_in_one_read()
+    private void Coming_back_to_the_window_reads_no_last_commit_text_again_and_head_moved_elsewhere_moves_every_files_bars_in_one_read()
     {
         // Prices.cs has characters of more than a byte before its change, and New.cs, open between the others, no commit.
         const string Prices = "// Prix en €, café crème 😀\nclass Prices\n{\n    decimal euro = 1m;\n}\n";

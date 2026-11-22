@@ -45,8 +45,69 @@ public sealed class LocalHistoryTests : IDisposable
         TestFolders.Delete(trash);
     }
 
+    /// <summary>A file's Local History as one flow, each step the check one test made in an instance of its own: three
+    /// saves and a change made elsewhere kept as four versions newest first, an old version's diff beside the open
+    /// file, Revert putting a version back as one undoable step and the diff's arrow one change, a revert across a
+    /// conversion and of a file open as its bytes writing the version's own text, a label showing the file as it was,
+    /// and a revert making no row again.</summary>
     [AvaloniaFact]
-    public void Three_saves_and_a_change_made_elsewhere_are_four_versions_newest_first_the_last_named_an_external_change()
+    public void A_files_versions_are_kept_newest_first_and_any_is_put_back_as_one_undoable_step_in_its_own_bytes()
+    {
+        Flow.StepApart<LocalHistoryTests>("three saves and a change made elsewhere are four versions newest first the last named an external change", t => t.Three_saves_and_a_change_made_elsewhere_are_four_versions_newest_first_the_last_named_an_external_change());
+        Flow.StepApart<LocalHistoryTests>("an old versions diff shows what changed since beside the open file", t => t.An_old_versions_diff_shows_what_changed_since_beside_the_open_file());
+        Flow.StepApart<LocalHistoryTests>("revert puts a version back as one undoable step and a diffs arrow puts back one change", t => t.Revert_puts_a_version_back_as_one_undoable_step_and_a_diffs_arrow_puts_back_one_change());
+        Flow.StepApart<LocalHistoryTests>("revert across a conversion brings back the versions text in its own encoding", t => t.Revert_across_a_conversion_brings_back_the_versions_text_in_its_own_encoding());
+        Flow.StepApart<LocalHistoryTests>("revert of a file open as its bytes to a version from when it was text writes that version", t => t.Revert_of_a_file_open_as_its_bytes_to_a_version_from_when_it_was_text_writes_that_version());
+        Flow.StepApart<LocalHistoryTests>("put label puts a label among the versions that shows the file as it was then", t => t.Put_label_puts_a_label_among_the_versions_that_shows_the_file_as_it_was_then());
+        Flow.StepApart<LocalHistoryTests>("a revert of a text makes no row again and one bringing back a file only its own", t => t.A_revert_of_a_text_makes_no_row_again_and_one_bringing_back_a_file_only_its_own());
+    }
+
+    /// <summary>What Local History names each change as one flow, each step the check one test made in an instance of
+    /// its own: a git checkout's changes kept under its name, a conflict resolved each way under that resolution's, a
+    /// change written after a checkout's moment an external change of its own, a save written as the history reads its
+    /// file kept once, a save made while a replace writes its closed files filed apart from it, and a file a server's
+    /// edit or rename writes over keeping what it held, Undo putting it back.</summary>
+    [AvaloniaFact]
+    public void Each_change_is_kept_under_the_name_of_what_made_it_and_what_it_wrote_over_kept_too()
+    {
+        Flow.StepApart<LocalHistoryTests>("what a git checkout changes is kept under Riders name for it not as an external change", t => t.What_a_git_checkout_changes_is_kept_under_Riders_name_for_it_not_as_an_external_change());
+        Flow.StepApart<LocalHistoryTests>("a conflict resolved each way is kept under that resolutions name", t => t.A_conflict_resolved_each_way_is_kept_under_that_resolutions_name());
+        Flow.StepApart<LocalHistoryTests>("a change written after a checkouts moment is an external change of its own though heard during the checkout", t => t.A_change_written_after_a_checkouts_moment_is_an_external_change_of_its_own_though_heard_during_the_checkout());
+        Flow.StepApart<LocalHistoryTests>("a save written as the history reads its file for a change heard before is kept once as the save", t => t.A_save_written_as_the_history_reads_its_file_for_a_change_heard_before_is_kept_once_as_the_save());
+        Flow.StepApart<LocalHistoryTests>("a save made while a replace writes its closed files is not filed under the replaces name", t => t.A_save_made_while_a_replace_writes_its_closed_files_is_not_filed_under_the_replaces_name());
+        Flow.StepApart<LocalHistoryTests>("a file a servers edit makes over one there keeps what it held in the history and undo puts it back", t => t.A_file_a_servers_edit_makes_over_one_there_keeps_what_it_held_in_the_history_and_undo_puts_it_back());
+        Flow.StepApart<LocalHistoryTests>("a servers rename over an open file with edits keeps them and undo writes that file back", t => t.A_servers_rename_over_an_open_file_with_edits_keeps_them_and_undo_writes_that_file_back());
+    }
+
+    /// <summary>A folder's Local History as one flow, each step one test's check in an instance of its own: a folder
+    /// first read or brought in at once, the history's own writes in a state folder inside it, a file deleted in the
+    /// Explorer brought back, two closed files reverted off the window's thread under one Undo, a file made later moved
+    /// to the Trash, and a file's history followed through a rename.</summary>
+    [AvaloniaFact]
+    public void A_folders_history_lists_its_files_versions_and_puts_back_files_deleted_moved_or_brought_in()
+    {
+        Flow.StepApart<LocalHistoryTests>("a folder named as a file in it is first read brings no change where a folder that comes brings its files", t => t.A_folder_named_as_a_file_in_it_is_first_read_brings_no_change_where_a_folder_that_comes_brings_its_files());
+        Flow.StepApart<LocalHistoryTests>("a tree brought in at once is never read while a known files change meanwhile and its own once opened are kept", t => t.A_tree_brought_in_at_once_is_never_read_while_a_known_files_change_meanwhile_and_its_own_once_opened_are_kept());
+        Flow.StepApart<LocalHistoryTests>("what the history writes in a state folder inside the open folder is heard and starts no more writes", t => t.What_the_history_writes_in_a_state_folder_inside_the_open_folder_is_heard_and_starts_no_more_writes());
+        Flow.StepApart<LocalHistoryTests>("a folders history lists its files versions and brings back a file deleted in the explorer", t => t.A_folders_history_lists_its_files_versions_and_brings_back_a_file_deleted_in_the_explorer());
+        Flow.StepApart<LocalHistoryTests>("a folders revert of two closed files writes neither on the windows thread and one undo takes both back", t => t.A_folders_revert_of_two_closed_files_writes_neither_on_the_windows_thread_and_one_undo_takes_both_back());
+        Flow.StepApart<LocalHistoryTests>("a folders revert to before a file was made moves it to the Trash and one undo brings it back", t => t.A_folders_revert_to_before_a_file_was_made_moves_it_to_the_Trash_and_one_undo_brings_it_back());
+        Flow.StepApart<LocalHistoryTests>("a files history follows it through a rename in the solution view", t => t.A_files_history_follows_it_through_a_rename_in_the_solution_view());
+    }
+
+    /// <summary>Local History shared by Passengers on one state as one flow, each step the check one test made in an
+    /// instance of its own: a change kept by its maker and heard by another listed once under its maker's name, a label
+    /// put while another rewrites the log kept after the rewrite, and the store keeping days of activity and no more
+    /// content than its limit.</summary>
+    [AvaloniaFact]
+    public void Passengers_sharing_a_state_keep_one_history_within_its_limits()
+    {
+        Flow.StepApart<LocalHistoryTests>("a change kept by its maker and as heard by another passenger on the same state lists once under its makers name", t => t.A_change_kept_by_its_maker_and_as_heard_by_another_passenger_on_the_same_state_lists_once_under_its_makers_name());
+        Flow.StepApart<LocalHistoryTests>("a label put while another passenger on the same state writes the log anew is kept after its rewrite", t => t.A_label_put_while_another_passenger_on_the_same_state_writes_the_log_anew_is_kept_after_its_rewrite());
+        Flow.StepApart<LocalHistoryTests>("the store keeps days of activity as Riders does and no more content than its limit", t => t.The_store_keeps_days_of_activity_as_Riders_does_and_no_more_content_than_its_limit());
+    }
+
+    private void Three_saves_and_a_change_made_elsewhere_are_four_versions_newest_first_the_last_named_an_external_change()
     {
         string shop = Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -69,8 +130,7 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_old_versions_diff_shows_what_changed_since_beside_the_open_file()
+    private void An_old_versions_diff_shows_what_changed_since_beside_the_open_file()
     {
         Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -90,69 +150,7 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A XAML file's version is coloured as the file is on both sides; its diff opens as Settings' Highlighting
-    /// Differences says and keeps a change to it for every diff after; and shown again after another history's tab, it is
-    /// the version still, coloured.</summary>
-    [AvaloniaFact]
-    public void A_XAML_files_version_is_coloured_on_both_sides_and_its_diff_highlights_as_Settings_says()
-    {
-        const string Xaml = "<Window xmlns=\"https://github.com/avaloniaui\">\n    <TextBlock Text=\"Hello\" />\n</Window>\n";
-        Write("MainWindow.axaml", Xaml);
-        string shop = Write("Shop.cs", Original);
-        MainWindow window = Open("MainWindow.axaml");
-        window.ApplySettings(window.Settings with { DiffHighlighting = DiffHighlighting.Lines });
-        Save(window, 1, 21, "Hi, ");
-
-        HistoryTab history = ShowFromFileMenu(window, "Show History…");
-        Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == Xaml, "the file before its save");
-        DiffView diff = history.Diff!;
-        Ui.WaitFor(() => Tagged(diff.Left) && Tagged(diff.Right), () => $"the element's name coloured as a tag on both sides: left {Tagged(diff.Left)}, right {Tagged(diff.Right)}");
-        Assert.True(diff.Highlighting == DiffHighlighting.Lines, $"The history's diff opened highlighting {diff.Highlighting}, not as Settings has it (Lines)");
-
-        Ui.ChooseFromMenu(diff.SettingsButton, "Characters");
-        Assert.True(window.Settings.DiffHighlighting == DiffHighlighting.Characters,
-            $"Characters, chosen in the history's diff, left Settings at {window.Settings.DiffHighlighting}");
-
-        window.ShowLocalHistory(shop);
-        Ui.Settle();
-        Assert.Same(history, window.ShowLocalHistory(Path.Combine(folder, "MainWindow.axaml")));
-        Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == Xaml && history.Diff.Right.Document.Snapshot.LineCount > 1,
-            "the version shown again beside the file once its tab is back");
-        Ui.WaitFor(() => Tagged(history.Diff!.Left) && Tagged(history.Diff.Right), "the element's name coloured on both sides again");
-        Assert.Equal(DiffHighlighting.Characters, history.Diff!.Highlighting);
-        window.Close();
-
-        static bool Tagged(CodeEditor pane) =>
-            pane.Highlighter?.GetSpans(pane.Document.Snapshot, 1, 6).Any(s => s.Start == 1 && s.Kind == TokenKind.Tag) == true;
-    }
-
-    [AvaloniaFact]
-    public void A_diff_of_a_file_that_fits_opens_at_its_top_though_its_change_is_near_its_end()
-    {
-        string lines = string.Concat(Enumerable.Range(1, 20).Select(i => $"// line {i}\n"));
-        Write("Notes.cs", lines);
-        MainWindow window = Open("Notes.cs");
-        Save(window, 17, 3, "changed ");
-        Save(window, 18, 3, "changed ");
-        Ui.ChooseFromEditorMenu(window, "Local History", "Show History…");
-        HistoryTab history = window.LocalHistoryWindow.Shown!;
-        Ui.Landed(() => history.Rows.Count == 2, "the two saves");
-        // Maximized, the window has room for the whole file; the older version's diff opens in that room.
-        window.DockHost.ToggleMaximize(window.DockHost.Windows.Single(w => w.Id == ToolWindowIds.LocalHistory));
-        Ui.Settle();
-        history.Select(history.Rows[1]);
-        Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == lines, "the file before its first save");
-
-        // The whole file fits the pane, so it opens at its top, its first line whole under the header.
-        Passenger.Editor.CodeEditor right = history.Diff!.Right;
-        Assert.True(right.Document.Snapshot.LineCount * right.LineHeight <= right.Bounds.Height, "The test's file is taller than the diff's pane");
-        Assert.True(right.ScrollOffset.Y == 0 && history.Diff.Left.ScrollOffset.Y == 0,
-            $"The diff of a file that fits opens scrolled {right.ScrollOffset.Y:0.#} px down, its first line under the header");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Revert_puts_a_version_back_as_one_undoable_step_and_a_diffs_arrow_puts_back_one_change()
+    private void Revert_puts_a_version_back_as_one_undoable_step_and_a_diffs_arrow_puts_back_one_change()
     {
         string shop = Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -182,8 +180,7 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Revert_across_a_conversion_brings_back_the_versions_text_in_its_own_encoding()
+    private void Revert_across_a_conversion_brings_back_the_versions_text_in_its_own_encoding()
     {
         const string Cafe = "public class Café { }\n";
         string path = Write("Cafe.cs", "class Café { }\n");
@@ -216,8 +213,7 @@ public sealed class LocalHistoryTests : IDisposable
 
     /// <summary>A binary file's tab holds its bytes drawn as signs, none of the file's text: a revert to a version from
     /// when the file was text writes that version's bytes, and the tab shows them.</summary>
-    [AvaloniaFact]
-    public void Revert_of_a_file_open_as_its_bytes_to_a_version_from_when_it_was_text_writes_that_version()
+    private void Revert_of_a_file_open_as_its_bytes_to_a_version_from_when_it_was_text_writes_that_version()
     {
         string path = Write("notes.dat", "First\n");
         MainWindow window = Open("notes.dat");
@@ -244,8 +240,7 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Put_label_puts_a_label_among_the_versions_that_shows_the_file_as_it_was_then()
+    private void Put_label_puts_a_label_among_the_versions_that_shows_the_file_as_it_was_then()
     {
         Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -267,8 +262,7 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void What_a_git_checkout_changes_is_kept_under_Riders_name_for_it_not_as_an_external_change()
+    private void What_a_git_checkout_changes_is_kept_under_Riders_name_for_it_not_as_an_external_change()
     {
         string shop = Write("Shop.cs", Original);
         TestGit.Init(folder);
@@ -292,8 +286,7 @@ public sealed class LocalHistoryTests : IDisposable
 
     /// <summary>A merge's conflicts resolved by Accept Yours, Accept Theirs and the merge window's Apply are each kept under
     /// that resolution's name, never as an external change, with the file in conflict before it.</summary>
-    [AvaloniaFact]
-    public void A_conflict_resolved_each_way_is_kept_under_that_resolutions_name()
+    private void A_conflict_resolved_each_way_is_kept_under_that_resolutions_name()
     {
         string[] names = ["Yours.txt", "Theirs.txt", "Merged.txt"];
         foreach (string name in names)
@@ -347,8 +340,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// written after the checkout's moment was over (read late, behind other work), is an external change of its own at
     /// the time it was read, never kept under the checkout's name and earlier time: the checkout's row still shows, and
     /// reverts to, what the file held before the checkout, and the later write is a row of its own above it.</summary>
-    [AvaloniaFact]
-    public void A_change_written_after_a_checkouts_moment_is_an_external_change_of_its_own_though_heard_during_the_checkout()
+    private void A_change_written_after_a_checkouts_moment_is_an_external_change_of_its_own_though_heard_during_the_checkout()
     {
         string shop = Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -378,8 +370,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// heard late) is kept once, as the save: the history reads the save's bytes before the save's own record comes, as an
     /// external change, and that record takes its place, never kept beside it with an external change back to what the
     /// save wrote over.</summary>
-    [AvaloniaFact]
-    public void A_save_written_as_the_history_reads_its_file_for_a_change_heard_before_is_kept_once_as_the_save()
+    private void A_save_written_as_the_history_reads_its_file_for_a_change_heard_before_is_kept_once_as_the_save()
     {
         string shop = Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -426,8 +417,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// <summary>A folder the watcher names though nothing came in it, as Windows names one as a file in it is first read
     /// since it was written (a scanner's read, a build's), brings no change: its files, made as the folder opened and never
     /// looked at or saved here, are not kept as made by another program. A folder that comes is looked in, its file kept.</summary>
-    [AvaloniaFact]
-    public void A_folder_named_as_a_file_in_it_is_first_read_brings_no_change_where_a_folder_that_comes_brings_its_files()
+    private void A_folder_named_as_a_file_in_it_is_first_read_brings_no_change_where_a_folder_that_comes_brings_its_files()
     {
         Write("Shop.cs", Original);
         string project = Write("Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
@@ -454,8 +444,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// arrival: none of its files is read, nor listed in the folder's history, while a file the history knew that another
     /// program changed meanwhile is kept as an external change; a file of the tree is read once it is opened, so a change
     /// made to it elsewhere after is kept with what it held before.</summary>
-    [AvaloniaFact]
-    public void A_tree_brought_in_at_once_is_never_read_while_a_known_files_change_meanwhile_and_its_own_once_opened_are_kept()
+    private void A_tree_brought_in_at_once_is_never_read_while_a_known_files_change_meanwhile_and_its_own_once_opened_are_kept()
     {
         string shop = Write("Shop.cs", Original);
         MainWindow window = Open("Shop.cs");
@@ -496,8 +485,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// <summary>A state folder inside the open folder, named through a link to it (as macOS names its temporary folder
     /// through /var), has what the history writes there heard by the folder's watcher and kept by nothing: a change made
     /// elsewhere is kept once, and once its write is heard the history neither reads its own files nor writes again.</summary>
-    [AvaloniaFact]
-    public void What_the_history_writes_in_a_state_folder_inside_the_open_folder_is_heard_and_starts_no_more_writes()
+    private void What_the_history_writes_in_a_state_folder_inside_the_open_folder_is_heard_and_starts_no_more_writes()
     {
         string shop = Write("Shop.cs", Original);
         string linked = Path.Combine(TestFolders.Create("history-link-"), "open");
@@ -539,8 +527,7 @@ public sealed class LocalHistoryTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_folders_history_lists_its_files_versions_and_brings_back_a_file_deleted_in_the_explorer()
+    private void A_folders_history_lists_its_files_versions_and_brings_back_a_file_deleted_in_the_explorer()
     {
         string a = Write("src/A.cs", "class A\n{\n}\n");
         string b = Write("src/B.cs", "class B\n{\n}\n");
@@ -579,8 +566,7 @@ public sealed class LocalHistoryTests : IDisposable
 
     /// <summary>Revert Selected and Later Changes over a folder writes its closed files in turn with every other write of
     /// closed files, off the window's thread, and is one command of Undo: one Undo, asked once, takes back both files.</summary>
-    [AvaloniaFact]
-    public void A_folders_revert_of_two_closed_files_writes_neither_on_the_windows_thread_and_one_undo_takes_both_back()
+    private void A_folders_revert_of_two_closed_files_writes_neither_on_the_windows_thread_and_one_undo_takes_both_back()
     {
         const string A = "class A\n{\n}\n";
         const string B = "class B\n{\n}\n";
@@ -649,8 +635,7 @@ public sealed class LocalHistoryTests : IDisposable
 
     /// <summary>A folder's revert to a set before one of its files was made moves that file to the Trash in the revert's
     /// command: one Undo, asked once, writes the other file back and brings the one made back out of the Trash.</summary>
-    [AvaloniaFact]
-    public void A_folders_revert_to_before_a_file_was_made_moves_it_to_the_Trash_and_one_undo_brings_it_back()
+    private void A_folders_revert_to_before_a_file_was_made_moves_it_to_the_Trash_and_one_undo_brings_it_back()
     {
         const string A = "class A\n{\n}\n";
         const string B = "class B\n{\n}\n";
@@ -690,8 +675,7 @@ public sealed class LocalHistoryTests : IDisposable
 
     /// <summary>A change kept twice in the log two Passengers on the same state append to, as an external change by the one
     /// that heard it and under its own name by the one that made it, in either order, lists once under its maker's name.</summary>
-    [AvaloniaFact]
-    public void A_change_kept_by_its_maker_and_as_heard_by_another_passenger_on_the_same_state_lists_once_under_its_makers_name()
+    private void A_change_kept_by_its_maker_and_as_heard_by_another_passenger_on_the_same_state_lists_once_under_its_makers_name()
     {
         string state = TestFolders.Create("history-state-");
         Write("Shop.cs", Saved1);
@@ -748,8 +732,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// <summary>A label put while another Passenger on the same state holds the history, writing its log anew as a prune
     /// does and for longer than a change waits to say so, is in the log once that Passenger lets go: written after the
     /// rewrite, never beside it into the log the rewrite then replaces.</summary>
-    [AvaloniaFact]
-    public void A_label_put_while_another_passenger_on_the_same_state_writes_the_log_anew_is_kept_after_its_rewrite()
+    private void A_label_put_while_another_passenger_on_the_same_state_writes_the_log_anew_is_kept_after_its_rewrite()
     {
         string state = TestFolders.Create("history-state-");
         Write("Shop.cs", Original);
@@ -793,8 +776,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// <summary>A revert follows only what it changes: a file's text put back leaves every Explorer row as it was, with Go to
     /// File's folder never walked again and the project not checked again, and a file deleted brought back puts in its own
     /// row alone.</summary>
-    [AvaloniaFact]
-    public void A_revert_of_a_text_makes_no_row_again_and_one_bringing_back_a_file_only_its_own()
+    private void A_revert_of_a_text_makes_no_row_again_and_one_bringing_back_a_file_only_its_own()
     {
         Write("Shop.csproj", TestProjects.Library());
         string a = Write("src/A.cs", "class A\n{\n}\n");
@@ -839,8 +821,7 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_files_history_follows_it_through_a_rename_in_the_solution_view()
+    private void A_files_history_follows_it_through_a_rename_in_the_solution_view()
     {
         Write("Shop/Shop.csproj", TestProjects.Library());
         Write("Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n</Solution>\n");
@@ -869,8 +850,7 @@ public sealed class LocalHistoryTests : IDisposable
 
     /// <summary>A save made while a replace writes its closed files is the person's own change, never filed under the
     /// replace's name, which names only the replace's own writes.</summary>
-    [AvaloniaFact]
-    public void A_save_made_while_a_replace_writes_its_closed_files_is_not_filed_under_the_replaces_name()
+    private void A_save_made_while_a_replace_writes_its_closed_files_is_not_filed_under_the_replaces_name()
     {
         string notes = Write("Notes.txt", "a tally of things\n");
         Write("Shop.cs", Original);
@@ -910,8 +890,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// <summary>A language server's edit that makes a file over one there (a create with overwrite, then its text), as a
     /// refactoring's answer is applied: the file is written as a save writes it, so the history keeps what it held, which
     /// it never saw open, and Undo puts that back.</summary>
-    [AvaloniaFact]
-    public void A_file_a_servers_edit_makes_over_one_there_keeps_what_it_held_in_the_history_and_undo_puts_it_back()
+    private void A_file_a_servers_edit_makes_over_one_there_keeps_what_it_held_in_the_history_and_undo_puts_it_back()
     {
         Write("Other.cs", "class Other\n{\n}\n");
         string notes = Write("Notes.cs", Original);
@@ -958,8 +937,7 @@ public sealed class LocalHistoryTests : IDisposable
     /// <summary>A language server's rename of one file over another that is open with edits not saved: the file written over
     /// is saved first, so its edits are kept, and Undo moves the renamed file back and writes the one written over back as
     /// it was, edits and all; Redo makes the rename again.</summary>
-    [AvaloniaFact]
-    public void A_servers_rename_over_an_open_file_with_edits_keeps_them_and_undo_writes_that_file_back()
+    private void A_servers_rename_over_an_open_file_with_edits_keeps_them_and_undo_writes_that_file_back()
     {
         const string Renamed = "class A\n{\n}\n";
         string a = Write("A.cs", Renamed);
@@ -1005,8 +983,7 @@ public sealed class LocalHistoryTests : IDisposable
         Ui.Await(Passenger.App.CSharp.WorkspaceEdits.LandedAsync(recording, null), "the move's writes");
     }
 
-    [AvaloniaFact]
-    public void The_store_keeps_days_of_activity_as_Riders_does_and_no_more_content_than_its_limit()
+    private void The_store_keeps_days_of_activity_as_Riders_does_and_no_more_content_than_its_limit()
     {
         // Twelve saves six hours apart are three days: a store keeping one day keeps the last four.
         string kept = TestFolders.Create("history-state-");

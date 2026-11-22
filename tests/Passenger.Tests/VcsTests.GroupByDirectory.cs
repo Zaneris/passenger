@@ -13,8 +13,7 @@ public sealed partial class VcsTests
     /// as one row with it; a folder's box, at any depth, takes every file under it out of the commit or puts it in, a
     /// folder holding some chosen files partly ticked; a folder closed hides its files and keeps them chosen; Group By
     /// again lists them flat, and the folder keeps the grouping once it is opened again.</summary>
-    [AvaloniaFact]
-    public void Group_by_directory_lists_changes_under_their_folders_and_a_folders_box_chooses_every_file_under_it()
+    private void Group_by_directory_lists_changes_under_their_folders_and_a_folders_box_chooses_every_file_under_it()
     {
         string[] files = ["src/App/Main.cs", "src/App/View.cs", "src/Lib/Deep/Util.cs", "docs/guide/intro.md"];
         foreach (string file in files)
