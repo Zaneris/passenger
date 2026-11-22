@@ -28,6 +28,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-22
+
+- `AndroidTargetChoiceTests`' `After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered`,
+  CI 45000646248 (Linux, report shard 1): "Only Passenger Relisted is listed, so a run's listing has nothing else to
+  keep". **The test held a Mac's or Windows' targets**, as on 2026-11-21: on Linux, which runs no head of its own and no
+  simulator, Android's stand-in is the only target, and the test now skips there saying so (156281110, #2095).
+
 ## 2026-11-21
 
 - `MauiAndroidTests`' `A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree`,
