@@ -38,6 +38,7 @@ public sealed class KeymapTests : IDisposable
     /// begun by another action's key is a conflict and Cancel keeps the keymap, Find Actions by Shortcut keeps a
     /// keystroke's actions then a chord's, a shortcut set is kept after a restart and Reset gives the action its own
     /// back, and the keypad's slash is its own key.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_shortcut_recorded_or_reset_runs_its_action_and_says_its_conflicts()
     {
@@ -50,9 +51,7 @@ public sealed class KeymapTests : IDisposable
         Flow.StepApart<KeymapTests>("the comment actions run from the keypad's slash as from the main keys one each shown as its own key", t => t.The_comment_actions_run_from_the_keypads_slash_as_from_the_main_keys_one_each_shown_as_its_own_key());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_chord_recorded_in_the_Keyboard_Shortcut_dialog_shows_as_Rider_shows_it_and_runs_its_action_from_the_editor()
+    private void A_chord_recorded_in_the_Keyboard_Shortcut_dialog_shows_as_Rider_shows_it_and_runs_its_action_from_the_editor()
     {
         MainWindow window = Open();
         try
@@ -121,9 +120,7 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_chord_another_action_has_is_listed_and_warned_of_and_Remove_takes_it_from_that_action()
+    private void A_chord_another_action_has_is_listed_and_warned_of_and_Remove_takes_it_from_that_action()
     {
         MainWindow window = Open();
         try
@@ -162,9 +159,7 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_chord_begun_by_another_actions_key_is_a_conflict_as_in_Rider_and_Cancel_keeps_the_keymap()
+    private void A_chord_begun_by_another_actions_key_is_a_conflict_as_in_Rider_and_Cancel_keeps_the_keymap()
     {
         MainWindow window = Open();
         try
@@ -212,9 +207,7 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Find_Actions_by_Shortcut_keeps_the_actions_a_keystroke_starts_and_then_the_one_a_chord_runs()
+    private void Find_Actions_by_Shortcut_keeps_the_actions_a_keystroke_starts_and_then_the_one_a_chord_runs()
     {
         MainWindow window = Open();
         try
@@ -263,9 +256,7 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_shortcut_set_is_kept_after_a_restart_and_Reset_Shortcuts_gives_an_action_its_own_back()
+    private void A_shortcut_set_is_kept_after_a_restart_and_Reset_Shortcuts_gives_an_action_its_own_back()
     {
         string chord = Shortcut.Parse($"{Cmd} K , {Cmd} C").Display();
         MainWindow window = Open(keeps: true);
@@ -320,9 +311,7 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_shortcut_recorded_on_the_keypads_slash_is_named_as_the_keypads_kept_and_run_by_it_alone()
+    private void A_shortcut_recorded_on_the_keypads_slash_is_named_as_the_keypads_kept_and_run_by_it_alone()
     {
         string keypad = OperatingSystem.IsMacOS() ? "⌘⌨/" : "Ctrl+NumPad /";
         MainWindow window = Open(keeps: true);
@@ -372,9 +361,7 @@ public sealed class KeymapTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_comment_actions_run_from_the_keypads_slash_as_from_the_main_keys_one_each_shown_as_its_own_key()
+    private void The_comment_actions_run_from_the_keypads_slash_as_from_the_main_keys_one_each_shown_as_its_own_key()
     {
         bool mac = OperatingSystem.IsMacOS();
         MainWindow window = Open();

@@ -38,6 +38,7 @@ public sealed class FindInFilesTests : IDisposable
     /// regex that never ends and a text grown too long, saying why, and keeping an open file's caret, folds and
     /// breakpoints; a regex's groups and each line's start replaced as written; and the Explorer dims what the search
     /// passes over.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Find_in_files_finds_and_replaces_across_the_folder_as_asked()
     {
@@ -56,6 +57,7 @@ public sealed class FindInFilesTests : IDisposable
     /// behind the one in front and opens one where it was left, bookmarks toggle, move with their lines and Next goes
     /// round the files, a file left open as a folder opens is carried by nothing of the session left, and keys typed
     /// above two thousand breakpoints carry them without costing each.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Recent_files_bookmarks_and_breakpoints_follow_the_files_and_hold_nothing_once_let_go()
     {
@@ -96,9 +98,7 @@ public sealed class FindInFilesTests : IDisposable
         Flow.StepApart<FindInFilesTests>("Find in Files closed is let go with its preview and the file it showed", t => t.Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched()
+    private void The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched()
     {
         MainWindow window = Open();
         // Unsaved: Beta.cs open with another count typed in.
@@ -126,9 +126,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Choosing_a_match_goes_to_it_and_replace_all_changes_open_and_closed_files()
+    private void Choosing_a_match_goes_to_it_and_replace_all_changes_open_and_closed_files()
     {
         MainWindow window = Open();
         window.OpenFile(Path.Combine(folder, "Beta.cs"));
@@ -337,9 +335,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Replace_all_across_a_read_only_file_replaces_in_the_rest_and_says_which_file_it_left_and_why()
+    private void Replace_all_across_a_read_only_file_replaces_in_the_rest_and_says_which_file_it_left_and_why()
     {
         // As Perforce or TFVC leave a file not checked out; first by name, so the files after it show the replace went on.
         string locked = Path.Combine(folder, "Aardvark.cs");
@@ -594,9 +590,7 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
+    private void A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file()
     {
         string runs = Path.Combine(folder, "Runs.txt");
         string text = "ab\n" + new string('a', 3000) + "\n";
@@ -662,9 +656,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>Replace in Files of every word's edge (\b) with the whole text ($_) in a file of 12,000 characters would
     /// make it 144 million long: the file is named as left as it was, with how long its text would be.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Replace_all_that_would_make_a_files_text_too_long_leaves_it_and_says_so()
+    private void Replace_all_that_would_make_a_files_text_too_long_leaves_it_and_says_so()
     {
         string words = Path.Combine(folder, "Words.txt");
         string text = string.Concat(Enumerable.Repeat("a a a a a a a a a a\n", 600));
@@ -684,9 +676,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints()
+    private void Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints()
     {
         const string Source = "class Gamma\n{\n    int Count()\n    {\n        int count = 0;\n        return count;\n    }\n\n"
             + "    void Other()\n    {\n        Log(count);\n    }\n\n    void Last() { }\n}\n";
@@ -730,9 +720,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Replace_in_files_fills_a_regexs_groups_from_each_match_where_it_stands_and_words_take_an_alternation_whole()
+    private void Replace_in_files_fills_a_regexs_groups_from_each_match_where_it_stands_and_words_take_an_alternation_whole()
     {
         string calls = Path.Combine(folder, "Calls.cs");
         File.WriteAllText(calls, "// catalog cat hotdog dog\nfoo(1); bar (2);\n");
@@ -762,9 +750,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Replacing_every_lines_start_in_files_comments_each_line_and_leaves_each_files_end_alone()
+    private void Replacing_every_lines_start_in_files_comments_each_line_and_leaves_each_files_end_alone()
     {
         string gamma = Path.Combine(folder, "Gamma.cs");
         File.WriteAllText(gamma, "class Gamma\r\n{\r\n\r\n}\r\n");
@@ -788,9 +774,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Recent_files_offers_the_files_behind_the_one_in_front_and_opens_one_where_it_was_left()
+    private void Recent_files_offers_the_files_behind_the_one_in_front_and_opens_one_where_it_was_left()
     {
         MainWindow window = Open();
         window.OpenFile(Path.Combine(folder, "Alpha.cs"));
@@ -808,9 +792,7 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Bookmarks_toggle_move_with_their_lines_and_next_goes_round_the_files()
+    private void Bookmarks_toggle_move_with_their_lines_and_next_goes_round_the_files()
     {
         MainWindow window = Open();
         window.OpenFile(Path.Combine(folder, "Alpha.cs"));
@@ -850,9 +832,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>A file open with no folder stays open as a folder opens, and the session left lets go of all it carried in
     /// the file's text (its bookmark, breakpoint and places), so the text carries no more than it did before them.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_file_left_open_as_a_folder_opens_is_carried_by_nothing_of_the_session_left()
+    private void A_file_left_open_as_a_folder_opens_is_carried_by_nothing_of_the_session_left()
     {
         string other = TestFolders.Create("other-");
         try
@@ -889,9 +869,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>A breakpoint is an anchor its file's text carries, so a key moves those below it without touching each: the
     /// least of twenty keys typed above 2,000 breakpoints allocates on the UI thread under 2 bytes for each more than above
     /// none, and a line broken above them takes each one down with its line.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Keys_typed_above_two_thousand_breakpoints_carry_them_on_the_UI_thread_without_costing_each()
+    private void Keys_typed_above_two_thousand_breakpoints_carry_them_on_the_UI_thread_without_costing_each()
     {
         long none = UiBytesPerKey(0);
         long many = UiBytesPerKey(2000);
@@ -947,9 +925,7 @@ public sealed class FindInFilesTests : IDisposable
     /// names, and a packages folder NuGet restored into, in packages.config's layout or the global folder's; Git's
     /// store is not listed at all. A JavaScript monorepo's packages of source are searched, offered and shown as
     /// code.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void The_explorer_dims_what_find_in_files_and_go_to_file_pass_over_and_a_monorepos_packages_of_source_are_searched_and_shown_as_code()
+    private void The_explorer_dims_what_find_in_files_and_go_to_file_pass_over_and_a_monorepos_packages_of_source_are_searched_and_shown_as_code()
     {
         string root = PathNames.Canonical(folder);
         string[] passed = [.. IgnoredFolders.Names.Where(name => name != ".git").Append("packages")];

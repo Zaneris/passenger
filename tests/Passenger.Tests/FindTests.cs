@@ -22,6 +22,7 @@ public sealed class FindTests : IDisposable
     /// Shift+Enter walk them, Replace All is one step of Undo, a regex reads a CRLF file's breaks and fills its groups
     /// where each match stands, whole words take an alternation whole, every line's start is replaced, a regex that
     /// never ends leaves the window free, and a key costs the same over twenty thousand lines as two hundred.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_find_bar_finds_walks_and_replaces_as_written_never_holding_the_window()
     {
@@ -47,9 +48,7 @@ public sealed class FindTests : IDisposable
         Flow.StepApart<FindTests>("Replace All that would make the text too long is refused before any of it is made", t => t.Replace_all_that_would_make_the_text_too_long_is_refused_before_any_of_it_is_made());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Typing_a_query_selects_the_nearest_match_and_enter_and_shift_enter_walk_them()
+    private void Typing_a_query_selects_the_nearest_match_and_enter_and_shift_enter_walk_them()
     {
         (MainWindow window, CodeEditor editor) = Open("alpha beta\nbeta gamma\nbeta");
         Ui.Press(window, Ui.Shortcut(AppActions.Find));
@@ -71,9 +70,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Replace_all_changes_every_match_in_one_undoable_step()
+    private void Replace_all_changes_every_match_in_one_undoable_step()
     {
         (MainWindow window, CodeEditor editor) = Open("total + total * total");
         Ui.Press(window, Ui.Shortcut(AppActions.Replace));
@@ -152,9 +149,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_regex_sees_a_crlf_files_line_ends_and_stripping_trailing_space_keeps_its_breaks()
+    private void A_regex_sees_a_crlf_files_line_ends_and_stripping_trailing_space_keeps_its_breaks()
     {
         (MainWindow window, CodeEditor editor) = Open("int foo  \r\nfoo bar\t\r\nbar foo\r\nend");
         Ui.Press(window, Ui.Shortcut(AppActions.Replace));
@@ -176,9 +171,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_regex_replacement_fills_its_groups_from_the_match_where_it_stands_lookahead_and_all()
+    private void A_regex_replacement_fills_its_groups_from_the_match_where_it_stands_lookahead_and_all()
     {
         (MainWindow window, CodeEditor editor) = Open("foo(1); bar (2); baz(3);");
         Ui.Press(window, Ui.Shortcut(AppActions.Replace));
@@ -200,9 +193,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void With_words_on_a_regex_alternation_finds_whole_words_on_both_sides()
+    private void With_words_on_a_regex_alternation_finds_whole_words_on_both_sides()
     {
         (MainWindow window, CodeEditor editor) = Open("catalog cat hotdog dog");
         Ui.Press(window, Ui.Shortcut(AppActions.Replace));
@@ -224,9 +215,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Replacing_every_lines_start_comments_each_line_and_leaves_the_end_after_the_last_break_alone()
+    private void Replacing_every_lines_start_comments_each_line_and_leaves_the_end_after_the_last_break_alone()
     {
         (MainWindow window, CodeEditor editor) = Open("one\n\ntwo\n");
         Ui.Press(window, Ui.Shortcut(AppActions.Replace));
@@ -250,9 +239,7 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_regex_that_backtracks_without_end_leaves_the_window_free_stops_saying_so_and_replaces_nothing()
+    private void A_regex_that_backtracks_without_end_leaves_the_window_free_stops_saying_so_and_replaces_nothing()
     {
         string text = "ab\n" + new string('a', 3000) + "\n";
         (MainWindow window, CodeEditor editor) = Open(text);
@@ -307,9 +294,7 @@ public sealed class FindTests : IDisposable
     /// <summary>Replace All with a regex whose replacement takes the whole text ($_), what stands before and after each
     /// match ($`, $') and its groups, with '$'s that stand for nothing, gives what .NET's Regex.Replace gives; in a file
     /// of "\r\n" lines, with each break it carries over the file's own.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Replace_all_taking_the_whole_text_or_what_stands_around_each_match_gives_what_dotnet_gives()
+    private void Replace_all_taking_the_whole_text_or_what_stands_around_each_match_gives_what_dotnet_gives()
     {
         const string Text = "ab cd\nef\n";
         (string Pattern, string Replacement)[] cases =
@@ -351,9 +336,7 @@ public sealed class FindTests : IDisposable
     /// <summary>Each key typed into the query over a file of 20,000 lines allocates on the UI thread what it does over one
     /// of 200, plain over "\n" lines and as a regex over "\r\n" ones: the search reads the text where it lies, or reads it
     /// as lines once for the keys typed over it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Typing_a_query_costs_a_key_over_twenty_thousand_lines_what_it_does_over_two_hundred()
+    private void Typing_a_query_costs_a_key_over_twenty_thousand_lines_what_it_does_over_two_hundred()
     {
         List<(string What, long Few, long Many)> measured = [];
         foreach ((bool regex, string end) in new[] { (false, "\n"), (true, "\r\n") })
