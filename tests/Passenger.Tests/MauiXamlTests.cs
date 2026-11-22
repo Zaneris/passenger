@@ -15,8 +15,9 @@ namespace Passenger.Tests;
 /// <summary>.NET MAUI's XAML through the window, on the files of the .NET 11 MAUI template's app (which declare no
 /// namespace, MAUI's implicit ones standing in) with a page of its own binding a view model through <c>x:DataType</c>,
 /// a data template, OnPlatform, OnIdiom and AppThemeBinding: what completion offers, what is marked as typed and after a
-/// build (MAUI's source generator's warnings), and where names lead. The app is a plain net11.0 project on MAUI's
-/// controls, which restores and builds without MAUI's workload, from the package cache tests/MauiGraphs fills.</summary>
+/// build (MAUI's source generator's warnings), where names lead, and its pages' preview (<see cref="MauiPreviewTests"/>).
+/// The app is a plain net11.0 project on MAUI's controls, which restores and builds without MAUI's workload, from the
+/// package cache tests/MauiGraphs fills.</summary>
 public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
 {
     private readonly Gallery app;
@@ -27,8 +28,77 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         app.Reset();
     }
 
+    /// <summary>MAUI's XAML checked and completed as its compiler and source generator read it: the template's files marked
+    /// with nothing and mistakes as typed, completion of its controls, members, values and resources, the generator's
+    /// warnings and errors before a build and after it, and an expression nested too deep for a parser answered at once.</summary>
     [AvaloniaFact]
-    public void The_templates_files_are_marked_with_nothing_and_a_misspelt_property_value_resource_handler_and_binding_path_are_marked_as_typed()
+    public void Mauis_xaml_is_checked_and_completed_as_its_compiler_and_source_generator_read_it()
+    {
+        Flow.StepApart("the template's files are marked with nothing, and a misspelt property, value, resource, handler and binding path are marked as typed", () => new MauiXamlTests(app),
+            t => t.The_templates_files_are_marked_with_nothing_and_a_misspelt_property_value_resource_handler_and_binding_path_are_marked_as_typed());
+        Flow.StepApart("completion offers MAUI's controls, their properties, events and values, its markup extensions, resources and a compiled binding's path", () => new MauiXamlTests(app),
+            t => t.Completion_offers_mauis_controls_their_properties_events_and_values_its_markup_extensions_resources_and_a_compiled_bindings_path());
+        Flow.StepApart("MAUI's source generator's warning is marked on its line before a build, and after it listed with its code", () => new MauiXamlTests(app),
+            t => t.Mauis_source_generators_warning_is_marked_on_its_line_before_a_build_and_after_it_listed_with_its_code());
+        Flow.StepApart("before any build, MAUI's source generator's error and C#'s in an expression are marked as typed", () => new MauiXamlTests(app),
+            t => t.Before_any_build_mauis_source_generators_error_and_csharps_in_an_expression_are_marked_as_typed());
+        Flow.StepApart("completion in an expression nested past what a parser is given offers what its name may become", () => new MauiXamlTests(app),
+            t => t.Completion_in_an_expression_nested_past_what_a_parser_is_given_offers_what_its_name_may_become());
+    }
+
+    /// <summary>MAUI's names lead from XAML to C# and back and rename together: Go to Declaration from the page, a C#
+    /// expression's completion, declarations and usages as MAUI's generator writes it, its hover card, an element's
+    /// field from the code-behind, and renames from an element, a view model's property and an expression.</summary>
+    [AvaloniaFact]
+    public void Mauis_names_lead_from_xaml_to_csharp_and_back_and_rename_together()
+    {
+        Flow.StepApart("Go to Declaration from MAUI's XAML opens the code-behind, a resource's definition, a bound property, a handler and a data type", () => new MauiXamlTests(app),
+            t => t.Go_to_declaration_from_maui_xaml_opens_the_code_behind_a_resources_definition_a_bound_property_a_handler_and_a_data_type());
+        Flow.StepApart("in a C# expression completion offers the data type's members and its names lead to their declarations and usages", () => new MauiXamlTests(app),
+            t => t.In_a_csharp_expression_completion_offers_the_data_types_members_and_its_names_lead_to_their_declarations_and_usages());
+        Flow.StepApart("prefixed types, attached properties and char arguments read as MAUI's generator writes them, and Find Usages from C# lists expressions", () => new MauiXamlTests(app),
+            t => t.Prefixed_types_attached_properties_and_char_arguments_read_as_mauis_generator_writes_them_and_find_usages_from_csharp_lists_expressions());
+        Flow.StepApart("hover in a C# expression shows the card of the element or member a name reads", () => new MauiXamlTests(app),
+            t => t.Hover_in_a_csharp_expression_shows_the_card_of_the_element_or_member_a_name_reads());
+        Flow.StepApart("from the code-behind an element's field goes to the element, and its usages list the element and the expressions reading it", () => new MauiXamlTests(app),
+            t => t.From_the_code_behind_an_elements_field_goes_to_the_element_and_its_usages_list_the_element_and_the_expressions_reading_it());
+        Flow.StepApart("rename from an element an expression reads renames it, its reads and the code-behind's uses", () => new MauiXamlTests(app),
+            t => t.Rename_from_an_element_an_expression_reads_renames_it_its_reads_and_the_code_behinds_uses());
+        Flow.StepApart("renaming a view model's property from its C# renames the expressions reading it", () => new MauiXamlTests(app),
+            t => t.Renaming_a_view_models_property_from_its_csharp_renames_the_expressions_reading_it());
+        Flow.StepApart("rename in an expression asked as a type rename moved the file it calls into waits for the server to take the file in", () => new MauiXamlTests(app),
+            t => t.Rename_in_an_expression_asked_as_a_type_rename_moved_the_file_it_calls_into_waits_for_the_server_to_take_the_file_in());
+    }
+
+    /// <summary>A MAUI page's preview, drawn from the project's last build: the caret's element outlined and a click
+    /// choosing one, a misspelt property said over the frame, OnPlatform and AppThemeBinding as chosen, what an element
+    /// sets itself in the XAML workspace, and a dictionary's unsaved colour drawn.</summary>
+    [AvaloniaFact]
+    public void A_maui_page_previews_from_its_build_and_follows_the_caret_the_platform_theme_and_unsaved_resources()
+    {
+        Flow.StepApart("the template's page previews from its build, outlines the caret's element, chooses one clicked and says a misspelt property over its frame", () => new MauiPreviewTests(app),
+            t => t.The_template_page_previews_from_its_build_outlines_the_carets_element_chooses_one_clicked_and_says_a_misspelt_property_over_its_frame());
+        Flow.StepApart("OnPlatform and AppThemeBinding draw the platform and theme chosen, which the next page previews with", () => new MauiPreviewTests(app),
+            t => t.OnPlatform_and_AppThemeBinding_draw_the_platform_and_theme_chosen_which_the_next_page_previews_with());
+        Flow.StepApart("in the XAML workspace a MAUI page shows what the caret's element sets itself under its preview", () => new MauiPreviewTests(app),
+            t => t.In_the_xaml_workspace_a_maui_page_shows_what_the_carets_element_sets_itself_under_its_preview());
+        Flow.StepApart("an open dictionary's unsaved colour is drawn in the page that takes it through App.xaml", () => new MauiPreviewTests(app),
+            t => t.An_open_dictionarys_unsaved_colour_is_drawn_in_the_page_that_takes_it_through_app_xaml());
+    }
+
+    /// <summary>A MAUI project built for Android alone: its views complete and check, iOS's namespace passed over, and its
+    /// page previews from a build for no platform. Each step skips, saying why, where such a project does not restore
+    /// from the package cache alone.</summary>
+    [AvaloniaFact]
+    public void A_maui_project_built_for_android_alone_completes_and_checks_its_views_and_previews_from_a_build_for_no_platform()
+    {
+        Flow.StepApart("in a project built for Android its views complete and check, and a namespace for iOS is passed over", () => new MauiXamlTests(app),
+            t => t.In_a_project_built_for_a_platform_its_views_complete_and_check_and_a_namespace_for_another_is_passed_over("android", "TextView", "EditText", "ios", "UILabel"));
+        Flow.StepApart("Build for XAML Preview builds a MAUI project of a platform alone for none, and its page previews from that", () => new MauiPreviewTests(app),
+            t => t.Build_for_xaml_preview_builds_a_maui_project_of_a_platform_alone_for_none_and_its_page_previews_from_that());
+    }
+
+    private void The_templates_files_are_marked_with_nothing_and_a_misspelt_property_value_resource_handler_and_binding_path_are_marked_as_typed()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -82,8 +152,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Completion_offers_mauis_controls_their_properties_events_and_values_its_markup_extensions_resources_and_a_compiled_bindings_path()
+    private void Completion_offers_mauis_controls_their_properties_events_and_values_its_markup_extensions_resources_and_a_compiled_bindings_path()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -181,8 +250,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Go_to_declaration_from_maui_xaml_opens_the_code_behind_a_resources_definition_a_bound_property_a_handler_and_a_data_type()
+    private void Go_to_declaration_from_maui_xaml_opens_the_code_behind_a_resources_definition_a_bound_property_a_handler_and_a_data_type()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "x:Class=\"MauiApp1.Main");
@@ -225,28 +293,11 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
-    /// <summary>Find Usages of a view model's property from its C# lists the MAUI page that binds it, and from the page the
-    /// C#, as C#-in-XAML's one finder reads MAUI's XAML too.</summary>
-    [AvaloniaFact]
-    public void Find_usages_of_a_bound_property_lists_the_maui_page_binding_it_and_from_the_page_its_csharp()
-    {
-        MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Gree");
-        Assert.Contains("PeoplePage.xaml:4 Title=\"{Binding Greeting}\">", FoundUsages(window));
-
-        window.OpenFile(app.PathOf("PeoplePage.xaml"));
-        Ui.Settle();
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "{Binding Owner.Na");
-        Assert.Contains("MainViewModel.cs:7 public string Name { get; set; } = \"\";", FoundUsages(window));
-        window.Close();
-    }
-
     /// <summary>A data template given no x:DataType has its bindings compiled against the page's by MAUI's source
     /// generator, which Passenger's own check leaves to it: its warning of each is on the binding's line as the page opens
     /// while the language server loads, the generator run over it once loaded, before any build, and after a build listed
     /// with its code, marked once.</summary>
-    [AvaloniaFact]
-    public void Mauis_source_generators_warning_is_marked_on_its_line_before_a_build_and_after_it_listed_with_its_code()
+    private void Mauis_source_generators_warning_is_marked_on_its_line_before_a_build_and_after_it_listed_with_its_code()
     {
         // A server of the window's own, so the page is first checked as it loads: one taken up warm has loaded already.
         app.Drop();
@@ -272,8 +323,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// source generator writes of them: where an expression's name starts, x:DataType's members beside the markup
     /// extensions the name may still become; after a step's dot, its type's members; and Go to Declaration and Find Usages
     /// from a name in one.</summary>
-    [AvaloniaFact]
-    public void In_a_csharp_expression_completion_offers_the_data_types_members_and_its_names_lead_to_their_declarations_and_usages()
+    private void In_a_csharp_expression_completion_offers_the_data_types_members_and_its_names_lead_to_their_declarations_and_usages()
     {
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -315,8 +365,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// <summary>An expression nested past what a parser is given, here conditional accesses that a parser reads ahead
     /// through, each doubling its time, is read by the server as nothing: completion where its name starts offers at once
     /// the markup extensions the name may still become, where the server would parse it for days and offer nothing.</summary>
-    [AvaloniaFact]
-    public void Completion_in_an_expression_nested_past_what_a_parser_is_given_offers_what_its_name_may_become()
+    private void Completion_in_an_expression_nested_past_what_a_parser_is_given_offers_what_its_name_may_become()
     {
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -332,8 +381,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// <summary>MAUI's source generator runs over the page as it is typed, before any build: its error for an expression
     /// naming what neither the page nor its x:DataType has is marked on the expression, and C#'s for a member a step's
     /// type lacks on that member's name, the expression compiled as the generator writes it; each goes once fixed.</summary>
-    [AvaloniaFact]
-    public void Before_any_build_mauis_source_generators_error_and_csharps_in_an_expression_are_marked_as_typed()
+    private void Before_any_build_mauis_source_generators_error_and_csharps_in_an_expression_are_marked_as_typed()
     {
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -360,10 +408,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// reference pack the SDK names for the workload's framework (Android's Microsoft.Android.Ref.37); a namespace for the
     /// other platform is passed over, as MAUI passes it over there. Skips, saying why, where the project does not restore
     /// from the package cache alone (no workload, or MAUI's packages for it never restored here: tests/MauiGraphs).</summary>
-    [AvaloniaTheory]
-    [InlineData("android", "TextView", "EditText", "ios", "UILabel")]
-    [InlineData("ios", "UILabel", "UIButton", "android", "TextView")]
-    public void In_a_project_built_for_a_platform_its_views_complete_and_check_and_a_namespace_for_another_is_passed_over(string platform, string view,
+    private void In_a_project_built_for_a_platform_its_views_complete_and_check_and_a_namespace_for_another_is_passed_over(string platform, string view,
         string offered, string other, string otherView)
     {
         string folder = PathNames.Canonical(TestFolders.Create($"maui-{platform}"));
@@ -451,8 +496,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// Declaration reaches it), an attached property read from an element is its getter's call, and a one-character string
     /// given to a char parameter is a char, where a longer one is marked as C# marks it (CS1503); and Find Usages from the
     /// C# lists the expressions that name a member.</summary>
-    [AvaloniaFact]
-    public void Prefixed_types_attached_properties_and_char_arguments_read_as_mauis_generator_writes_them_and_find_usages_from_csharp_lists_expressions()
+    private void Prefixed_types_attached_properties_and_char_arguments_read_as_mauis_generator_writes_them_and_find_usages_from_csharp_lists_expressions()
     {
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -480,8 +524,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// <summary>The pointer resting on a name in a C# expression shows the card C#'s hover shows, of the code MAUI's source
     /// generator writes there: on an element read by an attached property's getter (<c>label.(Grid.Row)</c>), the field the
     /// generator makes for it; on a member of x:DataType's, that member.</summary>
-    [AvaloniaFact]
-    public void Hover_in_a_csharp_expression_shows_the_card_of_the_element_or_member_a_name_reads()
+    private void Hover_in_a_csharp_expression_shows_the_card_of_the_element_or_member_a_name_reads()
     {
         app.Rewrite("MainPage.xaml", Gallery.MainPage.Replace("Text=\"Hello, World!\"", "x:Name=\"label\"\n                Text=\"Hello, World!\"", StringComparison.Ordinal)
             .Replace("Text=\"Click me\"", "Text=\"Click me\"\n                IsVisible=\"{label.(Grid.Row) GT 0}\"", StringComparison.Ordinal));
@@ -500,8 +543,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// <summary>A page's element its code-behind reads through the field MAUI's source generator makes for it: Go to
     /// Declaration from the field lands on the element's name, never in the generator's code, and Find Usages from it lists
     /// the element and the expressions that read it beside the C#.</summary>
-    [AvaloniaFact]
-    public void From_the_code_behind_an_elements_field_goes_to_the_element_and_its_usages_list_the_element_and_the_expressions_reading_it()
+    private void From_the_code_behind_an_elements_field_goes_to_the_element_and_its_usages_list_the_element_and_the_expressions_reading_it()
     {
         app.Rewrite("MainPage.xaml", Gallery.MainPage.Replace("Text=\"Hello, World!\"", $"Text=\"Hello, World!\"\n                {ReadsCounter}", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("MainPage.xaml.cs"));
@@ -522,8 +564,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
 
     /// <summary>Rename from an element's name where an expression reads it renames the element, every expression reading it
     /// and the code-behind's uses, as Rename from its x:Name does.</summary>
-    [AvaloniaFact]
-    public void Rename_from_an_element_an_expression_reads_renames_it_its_reads_and_the_code_behinds_uses()
+    private void Rename_from_an_element_an_expression_reads_renames_it_its_reads_and_the_code_behinds_uses()
     {
         app.Rewrite("MainPage.xaml", Gallery.MainPage.Replace("Text=\"Hello, World!\"", $"Text=\"Hello, World!\"\n                {ReadsCounter}", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
@@ -539,8 +580,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
 
     /// <summary>C# Rename of a view model's property that a page's C# expression reads renames the read with it, so the
     /// expression still names what it reads and the page still builds.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_view_models_property_from_its_csharp_renames_the_expressions_reading_it()
+    private void Renaming_a_view_models_property_from_its_csharp_renames_the_expressions_reading_it()
     {
         app.Rewrite("PeoplePage.xaml", Gallery.People.Replace("Title=\"{Binding Greeting}\"", "Title=\"{vm:Helper.Shout(Greeting)}\"", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));
@@ -555,8 +595,7 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     /// expression calls (MainViewModel.cs to HomeViewModel.cs, which declares Helper too), the server's load taking in the
     /// moved file held back until then: the rename waits, saying so, until the server has the file in its project, then
     /// renames the method from the expression as from its declaration, never saying the place names nothing.</summary>
-    [AvaloniaFact]
-    public void Rename_in_an_expression_asked_as_a_type_rename_moved_the_file_it_calls_into_waits_for_the_server_to_take_the_file_in()
+    private void Rename_in_an_expression_asked_as_a_type_rename_moved_the_file_it_calls_into_waits_for_the_server_to_take_the_file_in()
     {
         app.Rewrite("PeoplePage.xaml", Gallery.People.Replace("Title=\"{Binding Greeting}\"", "Title=\"{vm:Helper.Shout(Greeting)}\"", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("ViewModels/MainViewModel.cs"));

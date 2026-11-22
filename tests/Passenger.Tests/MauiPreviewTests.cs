@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Media;
 using Passenger.App;
@@ -18,8 +17,9 @@ namespace Passenger.Tests;
 /// on the .NET 11 MAUI template's files (<see cref="MauiXamlTests.Gallery"/>, a plain net11.0 project that builds without
 /// MAUI's workload): the page on a phone's screen with App.xaml's styles, the element at the caret outlined, a click on one
 /// choosing its tag, a misspelt property said over the last frame, and OnPlatform and AppThemeBinding drawn as the platform
-/// and theme chosen, which the window keeps for the next page.</summary>
-public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
+/// and theme chosen, which the window keeps for the next page. Steps of <see cref="MauiXamlTests"/>' flows, on its
+/// app.</summary>
+public sealed class MauiPreviewTests
 {
     /// <summary>How long a previewer may take to start and draw its first frame.</summary>
     private static readonly TimeSpan FirstFrame = TimeSpan.FromSeconds(60);
@@ -35,8 +35,7 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
         app.Reset();
     }
 
-    [AvaloniaFact]
-    public void The_template_page_previews_from_its_build_outlines_the_carets_element_chooses_one_clicked_and_says_a_misspelt_property_over_its_frame()
+    internal void The_template_page_previews_from_its_build_outlines_the_carets_element_chooses_one_clicked_and_says_a_misspelt_property_over_its_frame()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -83,8 +82,7 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void OnPlatform_and_AppThemeBinding_draw_the_platform_and_theme_chosen_which_the_next_page_previews_with()
+    internal void OnPlatform_and_AppThemeBinding_draw_the_platform_and_theme_chosen_which_the_next_page_previews_with()
     {
         MainWindow window = app.Open(app.PathOf("PeoplePage.xaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -134,8 +132,7 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
 
     /// <summary>In the XAML workspace a MAUI page opens beside its preview, which shows under its frame what the caret's
     /// element sets itself, as its XAML says it.</summary>
-    [AvaloniaFact]
-    public void In_the_xaml_workspace_a_maui_page_shows_what_the_carets_element_sets_itself_under_its_preview()
+    internal void In_the_xaml_workspace_a_maui_page_shows_what_the_carets_element_sets_itself_under_its_preview()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
         OpenDocument document = window.EditorArea.Active!;
@@ -161,8 +158,7 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
 
     /// <summary>A colour edited in Colors.xaml and not saved is drawn in the page that takes it through App.xaml's merged
     /// dictionaries, which the build's compiled dictionary would otherwise give the previewer as it was built.</summary>
-    [AvaloniaFact]
-    public void An_open_dictionarys_unsaved_colour_is_drawn_in_the_page_that_takes_it_through_app_xaml()
+    internal void An_open_dictionarys_unsaved_colour_is_drawn_in_the_page_that_takes_it_through_app_xaml()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
         OpenDocument page = window.EditorArea.Active!;
@@ -190,8 +186,7 @@ public sealed class MauiPreviewTests : IClassFixture<MauiXamlTests.Gallery>
     /// by Build for XAML Preview for no platform into a folder of Passenger's own, its own bin left as it was, and its page
     /// previews from that build. Skips, saying why, where the project does not restore from the package cache alone (no
     /// Android workload, or MAUI's packages for it never restored here: tests/MauiGraphs).</summary>
-    [AvaloniaFact]
-    public void Build_for_xaml_preview_builds_a_maui_project_of_a_platform_alone_for_none_and_its_page_previews_from_that()
+    internal void Build_for_xaml_preview_builds_a_maui_project_of_a_platform_alone_for_none_and_its_page_previews_from_that()
     {
         string folder = PathNames.Canonical(TestFolders.Create("maui-plain"));
         string version = AvaloniaApp.Metadata("MauiVersion");

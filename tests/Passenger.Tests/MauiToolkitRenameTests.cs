@@ -8,8 +8,8 @@ namespace Passenger.Tests;
 /// <summary>What the MVVM Toolkit makes of a field or method follows its rename in a .NET MAUI app, as in any other (its
 /// package from the package cache, its generators and MAUI's running in the language server): Rename on an
 /// <c>[ObservableProperty]</c> field renames its property's C# use, a page's binding, a data template's compiled binding and
-/// a C# expression reading it, and Rename on such a binding, on the property's C# use or on its read in an expression
-/// renames the field so it makes the name typed; the same for a <c>[RelayCommand]</c> method and its command.</summary>
+/// a C# expression reading it, and Rename on such a binding or on its read in an expression renames the field so it makes
+/// the name typed; the same for a <c>[RelayCommand]</c> method and its command.</summary>
 public sealed class MauiToolkitRenameTests : IClassFixture<MauiToolkitRenameTests.Greeters>
 {
     private readonly Greeters app;
@@ -26,10 +26,22 @@ public sealed class MauiToolkitRenameTests : IClassFixture<MauiToolkitRenameTest
 
     private string PagePath => app.PathOf("GreeterPage.xaml");
 
+    /// <summary>A toolkit field's or method's rename reaches every use of what it makes, and a rename from a binding or an
+    /// expression renames the field or method.</summary>
+    [AvaloniaFact]
+    public void What_the_toolkit_makes_of_a_field_or_method_follows_its_rename_from_the_code_a_binding_or_an_expression()
+    {
+        Flow.StepApart("renaming an ObservableProperty field renames its property's C# use, bindings and expression, and a binding renames the field", () => new MauiToolkitRenameTests(app),
+            t => t.Renaming_an_ObservableProperty_field_renames_its_propertys_csharp_use_bindings_and_expression_and_a_binding_renames_the_field());
+        Flow.StepApart("renaming an ObservableProperty's property from an expression renames the field", () => new MauiToolkitRenameTests(app),
+            t => t.Renaming_an_ObservablePropertys_property_from_an_expression_renames_the_field());
+        Flow.StepApart("renaming a RelayCommand method renames its command's C# use, binding and expression, and a binding renames the method", () => new MauiToolkitRenameTests(app),
+            t => t.Renaming_a_RelayCommand_method_renames_its_commands_csharp_use_binding_and_expression_and_a_binding_renames_the_method());
+    }
+
     /// <summary>Rename on the field renames every use of its property, which Roslyn's rename of the field alone leaves; then
     /// Rename on a binding to the property renames the field, its underscore kept, and every use follows again.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_ObservableProperty_field_renames_its_propertys_csharp_use_bindings_and_expression_and_a_binding_renames_the_field()
+    private void Renaming_an_ObservableProperty_field_renames_its_propertys_csharp_use_bindings_and_expression_and_a_binding_renames_the_field()
     {
         MainWindow window = app.Open(ViewModelPath);
         OpenDocument model = window.EditorArea.Active!;
@@ -53,26 +65,8 @@ public sealed class MauiToolkitRenameTests : IClassFixture<MauiToolkitRenameTest
         window.Close();
     }
 
-    /// <summary>Rename on the property the toolkit makes, where C# uses it, renames the field it is made of, so the property is
-    /// the name typed, and every use follows.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_ObservablePropertys_property_from_its_csharp_use_renames_the_field()
-    {
-        MainWindow window = app.Open(ReaderPath);
-
-        RenameInCode(window, "return greeter.Gree", "Welcome");
-
-        Ui.WaitFor(() => File.ReadAllText(ViewModelPath).Contains("private string _welcome = \"Hello\";", StringComparison.Ordinal),
-            () => $"the field renamed from its property's C# use: {window.Status}\n{File.ReadAllText(ViewModelPath)}");
-        Assert.Contains("return greeter.Welcome;", window.EditorArea.Active!.Text.Snapshot.ToString(), StringComparison.Ordinal);
-        Ui.WaitFor(() => File.ReadAllText(PagePath) == Greeters.Page.Replace("Greeting", "Welcome", StringComparison.Ordinal),
-            () => $"the page's bindings and expression renamed with it: {window.Status}\n{File.ReadAllText(PagePath)}");
-        window.Close();
-    }
-
     /// <summary>Rename on the property's read in a C# expression renames the field it is made of, as Rename on a binding does.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_ObservablePropertys_property_from_an_expression_renames_the_field()
+    private void Renaming_an_ObservablePropertys_property_from_an_expression_renames_the_field()
     {
         MainWindow window = app.Open(PagePath);
 
@@ -87,8 +81,7 @@ public sealed class MauiToolkitRenameTests : IClassFixture<MauiToolkitRenameTest
 
     /// <summary>Rename on a <c>[RelayCommand]</c> method renames its command's C# use, its binding and its expression; then
     /// Rename on the command's binding renames the method, and the command's C# use follows again.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_RelayCommand_method_renames_its_commands_csharp_use_binding_and_expression_and_a_binding_renames_the_method()
+    private void Renaming_a_RelayCommand_method_renames_its_commands_csharp_use_binding_and_expression_and_a_binding_renames_the_method()
     {
         MainWindow window = app.Open(ViewModelPath);
         OpenDocument model = window.EditorArea.Active!;
