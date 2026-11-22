@@ -623,9 +623,16 @@ public sealed partial class Vim(VimRegisters registers)
             lastChange = change with { Keys = keys };
         }
         int times = count > 0 ? count : change.Count;
+        ChangeMade kept = lastChange!;
+        if (count > 0 && change.Visual is null)
+        {
+            // A count given replaces the change's own for each . after it too, where the change is made.
+            lastChange = kept with { Count = count };
+        }
         List<EditPlan> plans = [];
         SelectionSet carets = selections;
         VimRequest? asked = null;
+        IReadOnlyList<string>? pressedAfter = null;
         replaying = true;
         try
         {
@@ -651,6 +658,12 @@ public sealed partial class Vim(VimRegisters registers)
             foreach (string key in typed.Concat(keys))
             {
                 Follow(Press(key, text, carets, view));
+            }
+            if (plans.Count == 0 && Mode == VimMode.Normal && change.Visual is null)
+            {
+                // A change failing again keeps its count, and what it typed is pressed as normal mode's keys, as Vim's are.
+                lastChange = kept;
+                pressedAfter = change.Inserted.Length > 0 ? [.. VimKeys.Pressed(change.Inserted), VimKeys.Escape] : null;
             }
             if (Mode == VimMode.Replace)
             {
@@ -683,7 +696,7 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (plans.Count == 0)
         {
-            return new VimResult(true, carets) { Request = asked };
+            return new VimResult(true, carets) { Request = asked, Replay = pressedAfter };
         }
         plans[^1] = plans[^1] with { Selections = carets };
         return new VimResult(true, Edits: [.. plans.Select(p => p with { Kind = EditKind.Joined })]) { Request = asked };

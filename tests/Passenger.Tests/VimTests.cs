@@ -200,8 +200,6 @@ public sealed partial class VimTests
             + $"takes nothing, dw and cw on an empty line take its break, and a linewise stretch over the last line takes the place after it; {ToFix}",
             (_, vim, passenger) => passenger.Seen.Contains(LoneEmptyLine) || Unbroken(vim.Lines) == Unbroken(passenger.Lines) && (Registers.All(name => OnlyBreaksApart(vim.Registers[name].Text,
                 passenger.Registers[name].Text)) || TookAnEmptyLine(vim, passenger))),
-        ($"A J that joins nothing is the change . makes again; {ToFix}",
-            (vimCase, _, _) => vimCase.Keys.SkipWhile(key => key != "J").Contains(".")),
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
         ($"is and as on an empty or one-word line take the line whole; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
