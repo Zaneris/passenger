@@ -718,25 +718,29 @@ public static class VimMotions
                 int sentence = next;
                 int textUntil = SentenceEnd(text, last, sentence);
                 int after = Math.Max(textUntil, Forward(text, last, sentence));
-                if (textUntil < after || after < textEnd && EndsWithMark(text, sentence, textUntil))
+                bool marked = EndsWithMark(text, sentence, textUntil);
+                LineSpan until = LineOf(text, textUntil);
+                bool closes = (textUntil == after && after >= textEnd) || (until.Length == 0 && until.Line > LineOf(text, sentence).Line)
+                    || (textUntil == until.End && until.Line < text.LineCount - 1 && text.GetLine(until.Line + 1).Length == 0);
+                if (!(closes && !marked) && (textUntil < after || after < textEnd && marked))
                 {
                     (to, next) = (textUntil, after);
                     continue;
                 }
-                // With no white after it: taken at the text's end but for a last word after a blank, else not taken.
-                if (after < textEnd || text.GetLine(last).Length == 0)
+                if (!closes)
                 {
                     return new VimSpan(from, i == 0 ? from : to, false);
                 }
-                int lastChar = textEnd - 1;
+                // Ending the text or its paragraph with no mark: taken but for a last word after a blank.
+                int lastChar = Dec(text, textUntil);
                 int cut = Dec(text, lastChar);
                 bool blanks = cut > sentence && CharAt(text, cut) is ' ' or '\t';
                 while (cut > sentence && CharAt(text, cut) is ' ' or '\t')
                 {
                     cut = Dec(text, cut);
                 }
-                int until = blanks ? cut + 1 : lastChar > sentence ? textEnd : sentence;
-                return new VimSpan(from, until > sentence ? until : i == 0 ? from : to, false);
+                int kept = blanks ? cut + 1 : lastChar > sentence ? lastChar + 1 : sentence;
+                return new VimSpan(from, kept > sentence ? kept : i == 0 ? from : to, false);
             }
             return new VimSpan(from, to, false);
         }
@@ -744,17 +748,16 @@ public static class VimMotions
         bool lastWhiteEmpty = false;
         // Each unit is a sentence or the white after it; is takes n of them, as n sentences with their white.
         bool onWhite = white;
+        int sentenceTo = to;
         for (int i = 0; i < (inner ? n : 2 * n); i++)
         {
             if (i > 0 && !onWhite && start >= textEnd)
             {
-                // A count of is running past the text's end fails; of as, it takes what there is.
-                if (inner)
-                {
-                    return null;
-                }
+                // Past the text's end a count takes what there is, is ending by turns at its last sentence and white.
+                to = inner && (n - i) % 2 == 1 ? sentenceTo : to;
                 break;
             }
+            sentenceTo = onWhite ? sentenceTo : end;
             to = onWhite ? next : end;
             lastWhiteEmpty = onWhite && next == end;
             if (onWhite)

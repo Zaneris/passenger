@@ -196,8 +196,8 @@ public sealed partial class VimTests
             + "on a line left blank and the blanks after the caret carried down, where Vim's autoindent copies the line's own and "
             + "drops the rest: in insert mode the editor types",
             (vimCase, _, _) => vimCase.Uses(TypedEnter) || vimCase.Uses(OpensLine)),
-        ($"is and as in visual mode, as on the text's last empty line, and as from white before a paragraph's last sentence "
-            + $"when that has no end mark, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
+        ($"is and as in visual mode, on the text's last empty line, from an end mark or closer opening the text, and on a text "
+            + $"of white alone, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
         (") over two lines in a row that each hold one sentence's end mark or closer alone, which Vim's ) takes each in a way of "
             + "its own: from the first '.' of \"x!\", \".\", \".\" it goes to the text's end, passing the second as no sentence's "
             + "start, where from the first '.' of \"x.\", \".\", \".\", \"a\" it passes the second '.' and the \"a\" after it alike, and "
