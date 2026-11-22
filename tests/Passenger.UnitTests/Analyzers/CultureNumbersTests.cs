@@ -13,29 +13,32 @@ namespace Passenger.UnitTests.Analyzers;
 /// no culture changes, or whose provider the code chose, is passed over.</summary>
 public class CultureNumbersTests
 {
-    [Theory]
-    [InlineData("string s = $\"{d} ms\";", "{d}")]
-    [InlineData("string s = $\"{n:N0} objects\";", "{n:N0}")]
-    [InlineData("string s = $\"{n,7:#,0}\";", "{n,7:#,0}")]
-    [InlineData("string s = $\"{maybe}\";", "{maybe}")]
-    [InlineData("string s = d.ToString();", "d.ToString()")]
-    [InlineData("string s = n.ToString(\"N0\");", "n.ToString(\"N0\")")]
-    [InlineData("string s = d.ToString(\"0.0\", null);", "d.ToString(\"0.0\", null)")]
-    [InlineData("string s = n.ToString(CultureInfo.CurrentCulture);", "n.ToString(CultureInfo.CurrentCulture)")]
-    [InlineData("string s = string.Create(CultureInfo.CurrentCulture, $\"{n}\");", "{n}")]
-    [InlineData("string s = \"took \" + d;", "\"took \" + d")]
-    [InlineData("string s = \"\"; s += d;", "s += d")]
-    [InlineData("new StringBuilder().Append(d);", "new StringBuilder().Append(d)")]
-    [InlineData("new StringBuilder().Append($\"{d}\");", "{d}")]
-    [InlineData("Console.WriteLine(d);", "Console.WriteLine(d)")]
-    [InlineData("string s = string.Create(CultureInfo.InvariantCulture, $\"{(n > 0 ? $\"{d}\" : \"\")}\");", "{d}")]
-    public async Task A_number_written_in_the_machines_culture_is_flagged_where_it_is_written(string code, string written)
+    [Fact]
+    public Task A_number_written_in_the_machines_culture_is_flagged_where_it_is_written() => Cases.EachAsync<(string code, string written)>(
+    [
+        ("string s = $\"{d} ms\";", "{d}"),
+        ("string s = $\"{n:N0} objects\";", "{n:N0}"),
+        ("string s = $\"{n,7:#,0}\";", "{n,7:#,0}"),
+        ("string s = $\"{maybe}\";", "{maybe}"),
+        ("string s = d.ToString();", "d.ToString()"),
+        ("string s = n.ToString(\"N0\");", "n.ToString(\"N0\")"),
+        ("string s = d.ToString(\"0.0\", null);", "d.ToString(\"0.0\", null)"),
+        ("string s = n.ToString(CultureInfo.CurrentCulture);", "n.ToString(CultureInfo.CurrentCulture)"),
+        ("string s = string.Create(CultureInfo.CurrentCulture, $\"{n}\");", "{n}"),
+        ("string s = \"took \" + d;", "\"took \" + d"),
+        ("string s = \"\"; s += d;", "s += d"),
+        ("new StringBuilder().Append(d);", "new StringBuilder().Append(d)"),
+        ("new StringBuilder().Append($\"{d}\");", "{d}"),
+        ("Console.WriteLine(d);", "Console.WriteLine(d)"),
+        ("string s = string.Create(CultureInfo.InvariantCulture, $\"{(n > 0 ? $\"{d}\" : \"\")}\");", "{d}"),
+    ], async row =>
     {
+        (string code, string written) = row;
         List<string> flagged = await FlaggedAsync(Home + Within("Writer", code));
 
         Assert.True(flagged.SequenceEqual(["Writer: " + written]), $"PSG0011 flagged [{string.Join(", ", flagged)}] in\n{code}\nwhere [{written}] "
             + "is written in the machine's culture, so a German one reads 1,5 for 1.5");
-    }
+    });
 
     [Fact]
     public async Task A_number_no_culture_changes_or_one_written_with_a_chosen_provider_is_passed_over()

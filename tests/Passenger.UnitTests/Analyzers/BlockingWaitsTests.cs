@@ -13,36 +13,41 @@ namespace Passenger.UnitTests.Analyzers;
 /// libraries' one home for a synchronous wait, Core's Blocking.</summary>
 public class BlockingWaitsTests
 {
-    [Theory]
-    [InlineData("((IAsyncResult)task).AsyncWaitHandle.WaitOne();", "((IAsyncResult)task).AsyncWaitHandle")]
-    [InlineData("((IAsyncResult)task).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));", "((IAsyncResult)task).AsyncWaitHandle")]
-    [InlineData("WaitHandle.WaitAll([((IAsyncResult)task).AsyncWaitHandle]);", "((IAsyncResult)task).AsyncWaitHandle")]
-    [InlineData("IAsyncResult asked = task; asked.AsyncWaitHandle.WaitOne();", "asked.AsyncWaitHandle")]
-    [InlineData("task.Wait();", "task.Wait()")]
-    [InlineData("Task.WaitAny(task);", "Task.WaitAny(task)")]
-    [InlineData("_ = task.Result;", "task.Result")]
-    [InlineData("_ = task.ConfigureAwait(false).GetAwaiter().GetResult();", "task.ConfigureAwait(false).GetAwaiter().GetResult()")]
-    public async Task A_thread_waiting_on_a_task_is_flagged_where_it_waits(string code, string wait)
+    [Fact]
+    public Task A_thread_waiting_on_a_task_is_flagged_where_it_waits() => Cases.EachAsync<(string code, string wait)>(
+    [
+        ("((IAsyncResult)task).AsyncWaitHandle.WaitOne();", "((IAsyncResult)task).AsyncWaitHandle"),
+        ("((IAsyncResult)task).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));", "((IAsyncResult)task).AsyncWaitHandle"),
+        ("WaitHandle.WaitAll([((IAsyncResult)task).AsyncWaitHandle]);", "((IAsyncResult)task).AsyncWaitHandle"),
+        ("IAsyncResult asked = task; asked.AsyncWaitHandle.WaitOne();", "asked.AsyncWaitHandle"),
+        ("task.Wait();", "task.Wait()"),
+        ("Task.WaitAny(task);", "Task.WaitAny(task)"),
+        ("_ = task.Result;", "task.Result"),
+        ("_ = task.ConfigureAwait(false).GetAwaiter().GetResult();", "task.ConfigureAwait(false).GetAwaiter().GetResult()"),
+    ], async row =>
     {
+        (string code, string wait) = row;
         List<string> flagged = await FlaggedAsync(Within("Asker", code));
 
         Assert.True(flagged.SequenceEqual([wait]), $"PSG0004 flagged [{string.Join(", ", flagged)}] in\n{code}\nwhere [{wait}] holds a thread "
             + "until the task ends, so a wait that ties up the thread its task needs builds unseen");
-    }
+    });
 
-    [Theory]
-    [InlineData("if (task.IsCompleted) { ((IAsyncResult)task).AsyncWaitHandle.WaitOne(); }")]
-    [InlineData("if (!task.IsCompleted) { return 0; } ((IAsyncResult)task).AsyncWaitHandle.WaitOne();")]
-    [InlineData("await task; _ = task.Result;")]
-    [InlineData("_ = task.IsCompletedSuccessfully ? task.Result : 0;")]
-    [InlineData("_ = ((IAsyncResult)task).IsCompleted;")]
-    public async Task A_read_of_a_task_known_to_have_ended_or_not_waiting_is_passed_over(string code)
+    [Fact]
+    public Task A_read_of_a_task_known_to_have_ended_or_not_waiting_is_passed_over() => Cases.EachAsync<string>(
+    [
+        "if (task.IsCompleted) { ((IAsyncResult)task).AsyncWaitHandle.WaitOne(); }",
+        "if (!task.IsCompleted) { return 0; } ((IAsyncResult)task).AsyncWaitHandle.WaitOne();",
+        "await task; _ = task.Result;",
+        "_ = task.IsCompletedSuccessfully ? task.Result : 0;",
+        "_ = ((IAsyncResult)task).IsCompleted;",
+    ], async code =>
     {
         List<string> flagged = await FlaggedAsync(Within("Asker", code));
 
         Assert.True(flagged.Count == 0, $"PSG0004 flagged [{string.Join(", ", flagged)}] in\n{code}\nwhich waits for nothing, so code "
             + "written as it should be fails the build");
-    }
+    });
 
     [Fact]
     public async Task A_wait_inside_the_libraries_home_is_passed_over_and_the_same_wait_beside_it_flagged()

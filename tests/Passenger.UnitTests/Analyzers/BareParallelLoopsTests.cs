@@ -13,18 +13,21 @@ namespace Passenger.UnitTests.Analyzers;
 /// threads back at each wait, is passed over.</summary>
 public class BareParallelLoopsTests
 {
-    [Theory]
-    [InlineData("Parallel.For(0, 4, i => { });", "Parallel.For(0, 4, i => { })")]
-    [InlineData("Parallel.ForEach(new[] { 1, 2 }, i => { });", "Parallel.ForEach(new[] { 1, 2 }, i => { })")]
-    [InlineData("Parallel.Invoke(() => { }, () => { });", "Parallel.Invoke(() => { }, () => { })")]
-    [InlineData("Action<Action[]> invoke = Parallel.Invoke; invoke([]);", "Parallel.Invoke")]
-    public async Task A_synchronous_parallel_loop_is_flagged_where_it_is_written(string code, string loop)
+    [Fact]
+    public Task A_synchronous_parallel_loop_is_flagged_where_it_is_written() => Cases.EachAsync<(string code, string loop)>(
+    [
+        ("Parallel.For(0, 4, i => { });", "Parallel.For(0, 4, i => { })"),
+        ("Parallel.ForEach(new[] { 1, 2 }, i => { });", "Parallel.ForEach(new[] { 1, 2 }, i => { })"),
+        ("Parallel.Invoke(() => { }, () => { });", "Parallel.Invoke(() => { }, () => { })"),
+        ("Action<Action[]> invoke = Parallel.Invoke; invoke([]);", "Parallel.Invoke"),
+    ], async row =>
     {
+        (string code, string loop) = row;
         List<string> flagged = await FlaggedAsync(Home + Within("Looper", code));
 
         Assert.True(flagged.SequenceEqual(["Looper: " + loop]), $"PSG0010 flagged [{string.Join(", ", flagged)}] in\n{code}\nwhere [{loop}] runs "
             + "on the thread pool, every thread of which it may take until it ends");
-    }
+    });
 
     [Fact]
     public async Task A_loop_inside_the_home_or_an_async_one_or_one_where_the_home_cannot_be_reached_is_passed_over()

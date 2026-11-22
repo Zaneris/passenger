@@ -2647,24 +2647,22 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
 
     /// <summary>Passenger's own theme, every theme it carries, every theme of its themes repository and the VS Code colour
     /// themes the tests carry as Passenger makes them, for a rule held of its tokens alone, which costs no window.</summary>
-    public static TheoryData<string> EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames, .. CarriedThemes.VsCodeNames];
+    private static string[] EveryLook => [CarriedThemes.Own, .. CarriedThemes.BuiltInNames, .. CarriedThemes.ThemeNames, .. CarriedThemes.VsCodeNames];
 
     /// <summary>Holds what each colour is drawn on to WCAG AA, and the words of the theme of high contrast to AAA's 7:1.</summary>
     [Gate]
-    [AvaloniaTheory]
-    [MemberData(nameof(EveryLook))]
-    public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light(string look) => MeetsWcag(look);
+    [AvaloniaFact]
+    public void Text_icons_and_focus_rings_meet_WCAG_AA_on_what_they_are_drawn_on_dark_and_light() => Cases.Each(EveryLook, MeetsWcag);
 
     /// <summary>The colour-blind safe palette laid over every look keeps what each state's colour is drawn on as readable as
     /// the look's own colours must be.</summary>
-    [AvaloniaTheory]
-    [MemberData(nameof(EveryLook))]
-    public void The_colour_blind_safe_palette_over_every_look_meets_WCAG_on_what_it_is_drawn_on_dark_and_light(string look)
+    [AvaloniaFact]
+    public void The_colour_blind_safe_palette_over_every_look_meets_WCAG_on_what_it_is_drawn_on_dark_and_light()
     {
         Themes.UseStates(Application.Current!, StatePalette.ColourBlindSafe);
         try
         {
-            MeetsWcag(look);
+            Cases.Each(EveryLook, MeetsWcag);
         }
         finally
         {
@@ -2676,9 +2674,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// conflict, and a good and a bad signature stay plainly apart to eyes without red cones or green ones (protanopia,
     /// deuteranopia), as Machado's model sees them, and apart to eyes without blue ones (tritanopia), where Passenger's own
     /// colours for these come as close as 0.02.</summary>
-    [AvaloniaTheory]
-    [MemberData(nameof(EveryLook))]
-    public void The_colour_blind_safe_palette_over_every_look_keeps_states_apart_to_eyes_without_red_or_green(string look)
+    [AvaloniaFact]
+    public void The_colour_blind_safe_palette_over_every_look_keeps_states_apart_to_eyes_without_red_or_green() => Cases.Each(EveryLook, look =>
     {
         (string, string)[] pairs =
         [
@@ -2713,7 +2710,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Themes.UseStates(Application.Current!, StatePalette.Theme);
         }
         Assert.True(close.Count == 0, $"Over {look}, the colour-blind safe palette leaves states a colour-blind eye can hardly tell apart:\n" + string.Join("\n", close));
-    }
+    });
 
     private static void MeetsWcag(string look)
     {
