@@ -281,6 +281,12 @@ public sealed class VcsController : IDisposable
     /// Rollback, Update from VCS): what it changes is kept under that name until the hold is disposed.</summary>
     public Func<string, IDisposable?>? Activity { get; set; }
 
+    /// <summary>Has Local History read the files an operation is about to write (a resolution's conflicts, a rollback's
+    /// changes) as they stand, so what it writes over each is kept as a change from that, under its activity's name.</summary>
+    public Func<IReadOnlyList<string>, Task>? LookFirst { get; set; }
+
+    private Task LookedFirstAsync(IReadOnlyList<string> paths) => LookFirst?.Invoke(paths) ?? Task.CompletedTask;
+
     /// <summary>Moves the files an operation takes away that git has nothing of (a rollback's unversioned files) to the
     /// Trash, as one command of Undo named as the operation, which brings them back: each that stayed, saying why. With
     /// none, they stay, said so.</summary>
@@ -1730,6 +1736,7 @@ public sealed class VcsController : IDisposable
                 return Report(false, unsaved);
             }
             using IDisposable? named = Activity?.Invoke("Rollback");
+            await LookedFirstAsync([.. changes.Where(c => c.Kind is not ChangeKind.Unversioned).Select(c => c.Path)]);
             GitResult rolled = await repository.RollbackAsync(changes);
             List<string> unversioned = [.. changes.Where(c => c.Kind is ChangeKind.Unversioned).Select(c => c.Path)];
             IReadOnlyList<string> stayed = unversioned.Count == 0 ? []
@@ -1856,6 +1863,7 @@ public sealed class VcsController : IDisposable
                 return Report(false, unsaved);
             }
             using IDisposable? named = Activity?.Invoke(yours ? "Accept Yours" : "Accept Theirs");
+            await LookedFirstAsync([.. conflicts.Select(c => c.Path)]);
             GitResult accepted = await repository.AcceptAsync(conflicts, theirs);
             ReloadOpenFiles();
             await RefreshAsync();

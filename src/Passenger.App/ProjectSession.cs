@@ -211,6 +211,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Bookmarks.Changed += (_, _) => State?.Bookmarks.Set(Bookmarks.Capture());
         // What a Git operation changes in the files is one change set of the folder's Local History, under its name.
         Vcs.Activity = name => LocalHistory?.During(name);
+        Vcs.LookFirst = paths => LocalHistory?.LookBeforeAsync(paths) ?? Task.CompletedTask;
         Models.Changed += (_, changed) => OnEvaluated(changed);
         Packages = new FolderPackages(() => Projects, () => Solution?.Path is { } solution ? Path.GetDirectoryName(solution) : Folder)
         {

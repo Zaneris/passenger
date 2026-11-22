@@ -375,6 +375,30 @@ public sealed class LocalHistory
         });
     }
 
+    /// <summary>Reads, off the UI thread, files another program is about to write for an action of the IDE's (a Git
+    /// resolution, a rollback), and knows each as it stands: what the action writes over it is then kept as a change from
+    /// that under the action's name, whether the history had seen the file or not.</summary>
+    public async Task LookBeforeAsync(IReadOnlyList<string> paths)
+    {
+        List<(string Path, byte[] Bytes)> read = await BackgroundWork.Run(() =>
+        {
+            List<(string, byte[])> files = [];
+            foreach (string path in paths.Select(PathNames.Canonical).Where(Keeps))
+            {
+                if (ReadKept(path) is { } bytes)
+                {
+                    files.Add((path, bytes));
+                }
+            }
+            return files;
+        });
+        DateTimeOffset time = Keeping.Clock();
+        foreach ((string path, byte[] bytes) in read)
+        {
+            Enqueue(() => RecordLook(path, bytes, time));
+        }
+    }
+
     /// <summary>What a delete takes, with the files named read again from disk as saved since it was taken.</summary>
     public HistoryDeletion Retaken(HistoryDeletion taken, IReadOnlyCollection<string> saved) => taken with
     {
