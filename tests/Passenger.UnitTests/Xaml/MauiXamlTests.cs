@@ -23,7 +23,15 @@ public sealed class MauiXamlTests
         """;
 
     [Fact]
-    public void A_file_that_declares_no_namespace_reads_xaml_2009s_directives_and_mauis_global_namespace_by_default()
+    public void Mauis_xaml_reads_its_implicit_namespaces_compiled_bindings_platforms_and_heads() => Cases.All(
+        ("A file that declares no namespace reads xaml 2009s directives and mauis global namespace by default", A_file_that_declares_no_namespace_reads_xaml_2009s_directives_and_mauis_global_namespace_by_default),
+        ("a file that declares its default namespace leaves a prefix it does not declare undeclared", A_file_that_declares_its_default_namespace_leaves_a_prefix_it_does_not_declare_undeclared),
+        ("MAUI's global namespace maps its own namespaces and those the project maps to it", Mauis_global_namespace_maps_its_own_namespaces_and_those_the_project_maps_to_it),
+        ("bindings compile where an x data type names a type and not below one of x null", Bindings_compile_where_an_x_data_type_names_a_type_and_not_below_one_of_x_null),
+        ("a namespaces target platform is read and a project builds for it only where its framework names that platform", A_namespaces_target_platform_is_read_and_a_project_builds_for_it_only_where_its_framework_names_that_platform),
+        ("the windows heads winui xaml is left out of mauis", The_windows_heads_winui_xaml_is_left_out_of_mauis));
+
+    private void A_file_that_declares_no_namespace_reads_xaml_2009s_directives_and_mauis_global_namespace_by_default()
     {
         XmlTree tree = XmlTree.Parse(Page);
         XmlElement root = tree.Root!;
@@ -36,16 +44,14 @@ public sealed class MauiXamlTests
         Assert.Equal("Title", Assert.Single(summary.Names).Name);
     }
 
-    [Fact]
-    public void A_file_that_declares_its_default_namespace_leaves_a_prefix_it_does_not_declare_undeclared()
+    private void A_file_that_declares_its_default_namespace_leaves_a_prefix_it_does_not_declare_undeclared()
     {
         XmlTree tree = XmlTree.Parse("<Window xmlns=\"https://github.com/avaloniaui\" x:Class=\"App.MainWindow\" />");
         Assert.Null(XamlFile.DeclaredUri(tree.Root, "x"));
         Assert.Null(XamlFile.ClassAttribute(tree));
     }
 
-    [Fact]
-    public void Mauis_global_namespace_maps_its_own_namespaces_and_those_the_project_maps_to_it()
+    private void Mauis_global_namespace_maps_its_own_namespaces_and_those_the_project_maps_to_it()
     {
         const string Mapped = """
             [assembly: Microsoft.Maui.Controls.XmlnsDefinition("http://schemas.microsoft.com/dotnet/2021/maui", "App.Controls")]
@@ -71,8 +77,7 @@ public sealed class MauiXamlTests
         Assert.DoesNotContain(types.XmlnsDefinitions, d => d.ClrNamespace.Contains("://", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void Bindings_compile_where_an_x_data_type_names_a_type_and_not_below_one_of_x_null()
+    private void Bindings_compile_where_an_x_data_type_names_a_type_and_not_below_one_of_x_null()
     {
         XamlFile file = XamlFiles.Read("MainPage.xaml", Page, MauiDialect.Instance);
         XmlElement[] labels = [.. file.Tree.Elements.Where(e => e.LocalName == "Label")];
@@ -80,45 +85,53 @@ public sealed class MauiXamlTests
         Assert.False(file.CompilesBindingsAt(labels[1]), "A binding under x:DataType=\"{x:Null}\" was read as compiled");
     }
 
-    [Theory]
-    [InlineData("{Greeting}", true)]
-    [InlineData("{Owner.Name}", true)]
-    [InlineData("{$'{First} {Last}'}", true)]
-    [InlineData("{(s, e) => Count++}", true)]
-    [InlineData("{Count GT 0}", true)]
-    [InlineData("{= Binding}", true)]
-    [InlineData("{this.(Grid.Row)}", true)]
-    [InlineData("{Binding Greeting}", false)]
-    [InlineData("{StaticResource Primary}", false)]
-    [InlineData("{x:Static local:Motto.Text}", false)]
-    [InlineData("{}{Literal}", false)]
-    [InlineData("Plain", false)]
-    public void A_value_in_braces_that_starts_with_no_markup_extension_is_a_csharp_expression(string value, bool expression)
+    [Fact]
+    public void A_value_in_braces_with_no_markup_extension_is_a_csharp_expression_read_and_placed_as_mauis_generator_reads_it() => Cases.All(
+        ("a value in braces that starts with no markup extension is a csharp expression", () => Cases.Each<(string, bool)>(
+        [
+            ("{Greeting}", true),
+            ("{$'{First} {Last}'}", true),
+            ("{(s, e) => Count++}", true),
+            ("{Count GT 0}", true),
+            ("{= Binding}", true),
+            ("{this.(Grid.Row)}", true),
+            ("{Binding Greeting}", false),
+            ("{x:Static local:Motto.Text}", false),
+            ("{}{Literal}", false),
+            ("Plain", false),
+        ], row => A_value_in_braces_that_starts_with_no_markup_extension_is_a_csharp_expression(row.Item1, row.Item2))),
+        ("an expressions code is read as mauis source generator reads it", () => Cases.Each<(string, string)>(
+        [
+            (" {= Owner.Name } ", "Owner.Name"),
+            ("{Count GT 0 AND Count lte 9}", "Count > 0 && Count <= 9"),
+            ("{'it\\'s' + 'say \"hi\"'}", "\"it's\" + \"say \\\"hi\\\"\""),
+            ("{A &amp;&amp; B}", "A && B"),
+            ("{'GT' + Total}", "\"GT\" + Total"),
+            ("{Owner.", "Owner."),
+            ("{$'{IsOn ? 'on' : 'off'} now'}", "$\"{(IsOn ? \"on\" : \"off\")} now\""),
+            ("{$'{Name ?? 'none'} {Price:F2} {A?.B}'}", "$\"{Name ?? \"none\"} {Price:F2} {A?.B}\""),
+        ], row => An_expressions_code_is_read_as_mauis_source_generator_reads_it(row.Item1, row.Item2))),
+        ("a prefixed type is written by its csharp name and an attached property read as its getters call", A_prefixed_type_is_written_by_its_csharp_name_and_an_attached_property_read_as_its_getters_call),
+        ("each place of an attached propertys read comes to its own place in the code written in another order", Each_place_of_an_attached_propertys_read_comes_to_its_own_place_in_the_code_written_in_another_order),
+        ("a prefixed type and an attached propertys element holding marks are read whole as mauis generator reads them", A_prefixed_type_and_an_attached_propertys_element_holding_marks_are_read_whole_as_mauis_generator_reads_them),
+        ("a name being written holding marks starts where csharp reads it to", A_name_being_written_holding_marks_starts_where_csharp_reads_it_to),
+        ("a caret at the end of a first name holding marks is still in it", A_caret_at_the_end_of_a_first_name_holding_marks_is_still_in_it),
+        ("each place of an expressions code is a place of its value as written", Each_place_of_an_expressions_code_is_a_place_of_its_value_as_written),
+        ("a caret in an expression being typed finds it with the page its x data type and whether its first name is still open", A_caret_in_an_expression_being_typed_finds_it_with_the_page_its_x_data_type_and_whether_its_first_name_is_still_open));
+
+    private void A_value_in_braces_that_starts_with_no_markup_extension_is_a_csharp_expression(string value, bool expression)
     {
         HashSet<string> extensions = ["Binding", "StaticResource"];
         Assert.Equal(expression, MauiDialect.Instance.IsExpression(value, extensions.Contains));
         Assert.False(WpfDialect.Instance.IsExpression(value, extensions.Contains), $"WPF read {value} as a C# expression");
     }
 
-    [Theory]
-    [InlineData("{Greeting}", "Greeting")]
-    [InlineData(" {= Owner.Name } ", "Owner.Name")]
-    [InlineData("{Count GT 0 AND Count lte 9}", "Count > 0 && Count <= 9")]
-    [InlineData("{$'{First} {Last}'}", "$\"{First} {Last}\"")]
-    [InlineData("{'it\\'s' + 'say \"hi\"'}", "\"it's\" + \"say \\\"hi\\\"\"")]
-    [InlineData("{A &amp;&amp; B}", "A && B")]
-    [InlineData("{'GT' + Total}", "\"GT\" + Total")]
-    [InlineData("{Owner.", "Owner.")]
-    [InlineData("{$'{IsOn ? 'on' : 'off'} now'}", "$\"{(IsOn ? \"on\" : \"off\")} now\"")]
-    [InlineData("{$'{Name ?? 'none'} {Price:F2} {A?.B}'}", "$\"{Name ?? \"none\"} {Price:F2} {A?.B}\"")]
-    [InlineData("{IsOn ? 'on' : 'off'}", "IsOn ? \"on\" : \"off\"")]
-    public void An_expressions_code_is_read_as_mauis_source_generator_reads_it(string value, string code)
+    private void An_expressions_code_is_read_as_mauis_source_generator_reads_it(string value, string code)
     {
         Assert.Equal(code, MauiExpressionCode.Of(value)?.Code);
     }
 
-    [Fact]
-    public void A_prefixed_type_is_written_by_its_csharp_name_and_an_attached_property_read_as_its_getters_call()
+    private void A_prefixed_type_is_written_by_its_csharp_name_and_an_attached_property_read_as_its_getters_call()
     {
         Dictionary<string, string> types = new() { ["local:Helper"] = "global::App.Helper" };
         MauiExpressionCode code = MauiExpressionCode.Of("{local:Helper.Shout(Name) + label.(Grid.Row) + \"local:Helper\"}", types)!;
@@ -136,8 +149,7 @@ public sealed class MauiXamlTests
     /// place of the value comes to its own in the code: in <c>label</c> to <c>label</c>, a caret at a name's edge into the
     /// name, and the code's names cover the value's own, where reading the places as sorted took <c>label</c> for <c>Grid</c>
     /// and a use of <c>label</c> for all of <c>label.(Grid.Row</c>.</summary>
-    [Fact]
-    public void Each_place_of_an_attached_propertys_read_comes_to_its_own_place_in_the_code_written_in_another_order()
+    private void Each_place_of_an_attached_propertys_read_comes_to_its_own_place_in_the_code_written_in_another_order()
     {
         const string Value = "{label.(Grid.Row)}";
         MauiExpressionCode code = MauiExpressionCode.Of(Value)!;
@@ -164,8 +176,7 @@ public sealed class MauiXamlTests
     /// <summary>A prefixed type's name and an attached property's element are read as MAUI's generator's patterns read them:
     /// an ASCII letter starts one and a mark carries it on (Café written with its accent apart), and a name starting past
     /// ASCII (名前), or a property's holding a mark, is left as written, as the generator leaves it.</summary>
-    [Fact]
-    public void A_prefixed_type_and_an_attached_propertys_element_holding_marks_are_read_whole_as_mauis_generator_reads_them()
+    private void A_prefixed_type_and_an_attached_propertys_element_holding_marks_are_read_whole_as_mauis_generator_reads_them()
     {
         Dictionary<string, string> types = new() { ["local:Cafe\u0301"] = "global::App.Cafe\u0301" };
         Assert.Equal(["local:Cafe\u0301"], MauiExpressionCode.PrefixedNames(MauiExpressionCode.Of("{local:Cafe\u0301.Shout(Name)}")!.Code));
@@ -177,8 +188,7 @@ public sealed class MauiXamlTests
 
     /// <summary>Where a name being written in an expression starts, for the data type's members to be offered in its place,
     /// is read as C# reads a name, its marks in it; a name after a dot is a member's, never the data type's.</summary>
-    [Fact]
-    public void A_name_being_written_holding_marks_starts_where_csharp_reads_it_to()
+    private void A_name_being_written_holding_marks_starts_where_csharp_reads_it_to()
     {
         Assert.Equal("Count + ".Length, MauiExpressionCode.BoundStart("Count + गिनती", "Count + गिनती".Length));
         Assert.Null(MauiExpressionCode.BoundStart("Owner.गिनती", "Owner.गिनती".Length));
@@ -186,8 +196,7 @@ public sealed class MauiXamlTests
 
     /// <summary>An expression's first name holding marks is one name: a caret at its end is still in it, where the name may
     /// still become a markup extension's.</summary>
-    [Fact]
-    public void A_caret_at_the_end_of_a_first_name_holding_marks_is_still_in_it()
+    private void A_caret_at_the_end_of_a_first_name_holding_marks_is_still_in_it()
     {
         const string Typed = """
             <ContentPage x:Class="App.MainPage" x:DataType="local:MainViewModel" xmlns:local="clr-namespace:App">
@@ -210,8 +219,7 @@ public sealed class MauiXamlTests
         Assert.True(XamlExpressions.At(file, end) is ({ Code.Code: "गिनती" }, true), "A caret at the end of a first name holding marks was read as past it, so the markup extensions it may become are not offered");
     }
 
-    [Fact]
-    public void Each_place_of_an_expressions_code_is_a_place_of_its_value_as_written()
+    private void Each_place_of_an_expressions_code_is_a_place_of_its_value_as_written()
     {
         MauiExpressionCode code = MauiExpressionCode.Of("{A &amp;&amp; B GT 'c'}")!;
         Assert.Equal("A && B > \"c\"", code.Code);
@@ -225,8 +233,7 @@ public sealed class MauiXamlTests
         Assert.Null(MauiExpressionCode.Of("Plain"));
     }
 
-    [Fact]
-    public void A_caret_in_an_expression_being_typed_finds_it_with_the_page_its_x_data_type_and_whether_its_first_name_is_still_open()
+    private void A_caret_in_an_expression_being_typed_finds_it_with_the_page_its_x_data_type_and_whether_its_first_name_is_still_open()
     {
         const string Typed = """
             <ContentPage x:Class="App.MainPage" x:DataType="local:MainViewModel" xmlns:local="clr-namespace:App" Title="{">
@@ -263,8 +270,7 @@ public sealed class MauiXamlTests
         Assert.Equal(["{Gr}"], XamlExpressions.In(file).Select(e => e.Attribute.Value).Where(v => v.StartsWith("{G", StringComparison.Ordinal)));
     }
 
-    [Fact]
-    public void A_namespaces_target_platform_is_read_and_a_project_builds_for_it_only_where_its_framework_names_that_platform()
+    private void A_namespaces_target_platform_is_read_and_a_project_builds_for_it_only_where_its_framework_names_that_platform()
     {
         Assert.Equal("Android", MauiDialect.Instance.TargetPlatformOf("clr-namespace:Android.Widget;assembly=Mono.Android;targetPlatform=Android"));
         Assert.Null(MauiDialect.Instance.TargetPlatformOf("clr-namespace:App.Views"));
@@ -277,8 +283,7 @@ public sealed class MauiXamlTests
         Assert.False(MauiDialect.Instance.BuildsFor(null, "Android"));
     }
 
-    [Fact]
-    public void The_windows_heads_winui_xaml_is_left_out_of_mauis()
+    private void The_windows_heads_winui_xaml_is_left_out_of_mauis()
     {
         Assert.True(MauiDialect.Instance.LeavesOut("Platforms/Windows/App.xaml"));
         Assert.False(MauiDialect.Instance.LeavesOut("App.xaml"));

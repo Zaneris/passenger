@@ -32,15 +32,22 @@ public sealed class MauiPlacingTests
         Placing.Deepest(root, part => part.Held, part => part.Box, part => part.Reached, x, y)?.Name;
 
     [Fact]
-    public void A_view_laid_out_in_pixels_is_a_box_in_the_windows_units_to_a_hundredth()
+    public void A_MAUI_apps_views_are_placed_and_tapped_in_the_windows_units_and_a_deep_tree_walked_on_a_small_stack() => Cases.All(
+        ("a view laid out in pixels is a box in the windows units to a hundredth", A_view_laid_out_in_pixels_is_a_box_in_the_windows_units_to_a_hundredth),
+        ("a tap on the screen is a point of the window less where the window is on the screen", A_tap_on_the_screen_is_a_point_of_the_window_less_where_the_window_is_on_the_screen),
+        ("a point of the window is tapped at its pixel", A_point_of_the_window_is_tapped_at_its_pixel),
+        ("a finger reaches the last drawn deepest element holding the point passing a shells items through", A_finger_reaches_the_last_drawn_deepest_element_holding_the_point_passing_a_shells_items_through),
+        ("an element taking no input is passed over with what it holds and an edge goes to the element after it", An_element_taking_no_input_is_passed_over_with_what_it_holds_and_an_edge_goes_to_the_element_after_it),
+        ("a tree nested past what a stack holds is walked to its deepest element on a small stack", A_tree_nested_past_what_a_stack_holds_is_walked_to_its_deepest_element_on_a_small_stack));
+
+    private void A_view_laid_out_in_pixels_is_a_box_in_the_windows_units_to_a_hundredth()
     {
         Assert.Equal(new Box(30.1, 468.95, 351.62, 44.19), Placing.InUnits(79, 1231, 923, 116, 2.625));
         Assert.Equal(new Box(0, 0, 411.43, 731.43), Placing.InUnits(0, 0, 1080, 1920, 2.625));
         Assert.Equal(new Box(5, 6, 7, 8), Placing.InUnits(5, 6, 7, 8, 0));
     }
 
-    [Fact]
-    public void A_tap_on_the_screen_is_a_point_of_the_window_less_where_the_window_is_on_the_screen()
+    private void A_tap_on_the_screen_is_a_point_of_the_window_less_where_the_window_is_on_the_screen()
     {
         // The overlay's view is 63 pixels down the screen and 0 down its window: the window starts below the status bar.
         (double x, double y) = Placing.InWindow(100, 200, (0, 63), (0, 0), 2.625);
@@ -48,15 +55,13 @@ public sealed class MauiPlacingTests
         Assert.Equal((100.0, 200.0), Placing.InWindow(100, 200, (10, 20), (10, 20), 2.625));
     }
 
-    [Fact]
-    public void A_point_of_the_window_is_tapped_at_its_pixel()
+    private void A_point_of_the_window_is_tapped_at_its_pixel()
     {
         Assert.Equal((540.49f, 1287.56f), Placing.Pixel(205.9, 490.5, 2.625), new FloatsNear(0.01f));
         Assert.Equal((3f, 4f), Placing.Pixel(3, 4, 0));
     }
 
-    [Fact]
-    public void A_finger_reaches_the_last_drawn_deepest_element_holding_the_point_passing_a_shells_items_through()
+    private void A_finger_reaches_the_last_drawn_deepest_element_holding_the_point_passing_a_shells_items_through()
     {
         Part root = new Part("Window", new Box(0, 0, 400, 800)).With(
             new Part("Shell", new Box(0, 0, 400, 800)).With(
@@ -75,8 +80,7 @@ public sealed class MauiPlacingTests
         Assert.Null(At(root, 500, 40));
     }
 
-    [Fact]
-    public void An_element_taking_no_input_is_passed_over_with_what_it_holds_and_an_edge_goes_to_the_element_after_it()
+    private void An_element_taking_no_input_is_passed_over_with_what_it_holds_and_an_edge_goes_to_the_element_after_it()
     {
         Part root = new Part("Page", new Box(0, 0, 400, 800)).With(
             new Part("Covering", new Box(0, 0, 400, 800), reached: false).With(new Part("Inside", new Box(0, 0, 100, 100))),
@@ -88,8 +92,7 @@ public sealed class MauiPlacingTests
         Assert.Equal("Page", At(root, 50, 250));
     }
 
-    [Fact]
-    public void A_tree_nested_past_what_a_stack_holds_is_walked_to_its_deepest_element_on_a_small_stack()
+    private void A_tree_nested_past_what_a_stack_holds_is_walked_to_its_deepest_element_on_a_small_stack()
     {
         Part root = new("Link0", new Box(0, 0, 100, 100));
         Part at = root;

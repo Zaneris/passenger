@@ -16,23 +16,32 @@ public class MacCatalystAppsTests
     };
 
     [Fact]
-    public void An_app_nobody_sees_opens_hidden_behind_every_window_none_it_kept_reopened_with_its_own_arguments_after_opens()
+    public void A_Mac_Catalyst_app_opens_as_the_system_opens_one_its_start_carried_into_its_own_container_folder() => Cases.All(
+        ("an app nobody sees opens hidden behind every window none it kept reopened with its own arguments after opens", An_app_nobody_sees_opens_hidden_behind_every_window_none_it_kept_reopened_with_its_own_arguments_after_opens),
+        ("an app a person sees opens in front as it last ended with its own arguments after opens", An_app_a_person_sees_opens_in_front_as_it_last_ended_with_its_own_arguments_after_opens),
+        ("a sandboxed app is one whose entitlements give the app sandbox true", A_sandboxed_app_is_one_whose_entitlements_give_the_app_sandbox_true),
+        ("a sandboxed apps start carries into a folder of its own in the containers temporary folder", A_sandboxed_apps_start_carries_into_a_folder_of_its_own_in_the_containers_temporary_folder),
+        ("each start hands the opener a folder of its own for its pipes named for its process first", Each_start_hands_the_opener_a_folder_of_its_own_for_its_pipes_named_for_its_process_first),
+        ("the sockets in a containers folder fit a sockets address for a long home and the templates bundle identifier", The_sockets_in_a_containers_folder_fit_a_sockets_address_for_a_long_home_and_the_templates_bundle_identifier),
+        ("a debugged apps relay is loaded from its container and listens at a socket there for the sessions token", A_debugged_apps_relay_is_loaded_from_its_container_and_listens_at_a_socket_there_for_the_sessions_token),
+        ("a start of an app whose build trims dotnets assemblies says what stays out and how to keep them whole", A_start_of_an_app_whose_build_trims_dotnets_assemblies_says_what_stays_out_and_how_to_keep_them_whole),
+        ("an app a person runs opens in front as the system opens an app", An_app_a_person_runs_opens_in_front_as_the_system_opens_an_app));
+
+    private void An_app_nobody_sees_opens_hidden_behind_every_window_none_it_kept_reopened_with_its_own_arguments_after_opens()
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: true, ["--verbose", "a b"]);
 
         Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-g", "-j", "-a", App.Bundle, "--args", "-ApplePersistenceIgnoreState", "YES", "--verbose", "a b"], opening);
     }
 
-    [Fact]
-    public void An_app_a_person_sees_opens_in_front_as_it_last_ended_with_its_own_arguments_after_opens()
+    private void An_app_a_person_sees_opens_in_front_as_it_last_ended_with_its_own_arguments_after_opens()
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: false, ["--verbose"]);
 
         Assert.Equal(["-c", MacCatalystApps.Opener, "sh", App.Pipes, "-n", "-W", "-a", App.Bundle, "--args", "--verbose"], opening);
     }
 
-    [Fact]
-    public void A_sandboxed_app_is_one_whose_entitlements_give_the_app_sandbox_true()
+    private void A_sandboxed_app_is_one_whose_entitlements_give_the_app_sandbox_true()
     {
         Assert.True(MacCatalystApp.Sandboxed(Entitlements("<key>com.apple.security.app-sandbox</key>\n\t<true/>")));
         Assert.False(MacCatalystApp.Sandboxed(Entitlements("<key>com.apple.security.app-sandbox</key><false/>")));
@@ -40,8 +49,7 @@ public class MacCatalystAppsTests
         Assert.False(MacCatalystApp.Sandboxed(string.Empty));
     }
 
-    [Fact]
-    public void A_sandboxed_apps_start_carries_into_a_folder_of_its_own_in_the_containers_temporary_folder()
+    private void A_sandboxed_apps_start_carries_into_a_folder_of_its_own_in_the_containers_temporary_folder()
     {
         string home = Path.Combine("/Users", "someone");
 
@@ -49,15 +57,13 @@ public class MacCatalystAppsTests
         Assert.Equal("passenger-4321-2", MacCatalystApp.CarriedName(4321, 2));
     }
 
-    [Fact]
-    public void Each_start_hands_the_opener_a_folder_of_its_own_for_its_pipes_named_for_its_process_first()
+    private void Each_start_hands_the_opener_a_folder_of_its_own_for_its_pipes_named_for_its_process_first()
     {
         Assert.Equal("4321-2.pipes", MacCatalystApp.PipesName(4321, 2));
         Assert.NotEqual(MacCatalystApp.PipesName(4321, 2), MacCatalystApp.PipesName(4321, 3));
     }
 
-    [Fact]
-    public void The_sockets_in_a_containers_folder_fit_a_sockets_address_for_a_long_home_and_the_templates_bundle_identifier()
+    private void The_sockets_in_a_containers_folder_fit_a_sockets_address_for_a_long_home_and_the_templates_bundle_identifier()
     {
         MacCatalystApp app = App with
         {
@@ -67,8 +73,7 @@ public class MacCatalystAppsTests
         Assert.All([app.RelaySocket, app.InspectorSocket, app.HandlersSocket], socket => Assert.True(SocketFolders.Fits(socket), SocketFolders.TooLong(socket)));
     }
 
-    [Fact]
-    public void A_debugged_apps_relay_is_loaded_from_its_container_and_listens_at_a_socket_there_for_the_sessions_token()
+    private void A_debugged_apps_relay_is_loaded_from_its_container_and_listens_at_a_socket_there_for_the_sessions_token()
     {
         MacCatalystApp app = App with { Carried = Path.Combine(MacCatalystApp.ContainerTemporary(Path.Combine("/Users", "a"), "com.shop"), MacCatalystApp.CarriedName(1, 1)) };
 
@@ -82,8 +87,7 @@ public class MacCatalystAppsTests
         Assert.Equal(Path.Combine(App.Bundle, "Contents", "MonoBundle"), app.Assemblies);
     }
 
-    [Fact]
-    public void A_start_of_an_app_whose_build_trims_dotnets_assemblies_says_what_stays_out_and_how_to_keep_them_whole()
+    private void A_start_of_an_app_whose_build_trims_dotnets_assemblies_says_what_stays_out_and_how_to_keep_them_whole()
     {
         string said = MacCatalystApp.Trimmed("Shop");
 
@@ -96,8 +100,7 @@ public class MacCatalystAppsTests
     private static string Entitlements(string entries) =>
         $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"https://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict>{entries}</dict></plist>";
 
-    [Fact]
-    public void An_app_a_person_runs_opens_in_front_as_the_system_opens_an_app()
+    private void An_app_a_person_runs_opens_in_front_as_the_system_opens_an_app()
     {
         IReadOnlyList<string> opening = MacCatalystApps.Opening(App, unseen: false, []);
 

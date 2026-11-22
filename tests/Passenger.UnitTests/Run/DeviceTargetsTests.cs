@@ -33,7 +33,22 @@ public class DeviceTargetsTests
     private static MSBuildAnswer Answer(string output) => new(new ChildResult(0, output, string.Empty));
 
     [Fact]
-    public void The_workloads_devices_are_listed_an_emulator_kept_by_its_avd_and_one_not_running_said_so()
+    public void Android_devices_are_listed_from_the_workload_and_an_app_run_and_debugged_on_one_leaves_its_build_as_it_was() => Cases.All(
+        ("the workloads devices are listed an emulator kept by its avd and one not running said so", The_workloads_devices_are_listed_an_emulator_kept_by_its_avd_and_one_not_running_said_so),
+        ("a listing is read past the lines written before and after its answer", A_listing_is_read_past_the_lines_written_before_and_after_its_answer),
+        ("an answer with no devices lists none", An_answer_with_no_devices_lists_none),
+        ("a listing that fails for want of the platforms android jar names the sdk package to install", A_listing_that_fails_for_want_of_the_platforms_android_jar_names_the_sdk_package_to_install),
+        ("a listing of one platform replaces that platforms targets alone", A_listing_of_one_platform_replaces_that_platforms_targets_alone),
+        ("a choice is found again by its avd under a new serial and said once gone", A_choice_is_found_again_by_its_avd_under_a_new_serial_and_said_once_gone),
+        ("Run starts the app afresh and writes its processes log until it ends", Run_starts_the_app_afresh_and_writes_its_processes_log_until_it_ends),
+        ("Debug puts the relay in the apps own folder and takes it out putting back the builds link", Debug_puts_the_relay_in_the_apps_own_folder_and_takes_it_out_putting_back_the_builds_link),
+        ("what an end that never reached the device left is taken out the builds environment linked back where a start left its own", What_an_end_that_never_reached_the_device_left_is_taken_out_the_builds_environment_linked_back_where_a_start_left_its_own),
+        ("the debug environment keeps the builds variables and adds the relays profiler and token", The_debug_environment_keeps_the_builds_variables_and_adds_the_relays_profiler_and_token),
+        ("a variable the build already names takes its new value in its place", A_variable_the_build_already_names_takes_its_new_value_in_its_place),
+        ("the apps start is read from the workloads properties and one without an activity is refused", The_apps_start_is_read_from_the_workloads_properties_and_one_without_an_activity_is_refused),
+        ("an android app is runnable though its sdk makes its output a library", An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library));
+
+    private void The_workloads_devices_are_listed_an_emulator_kept_by_its_avd_and_one_not_running_said_so()
     {
         IReadOnlyList<DeviceTarget> targets = DeviceTargets.Parse(TargetPlatform.Android, Answer(Listed));
 
@@ -43,8 +58,7 @@ public class DeviceTargetsTests
         Assert.Equal([TargetKind.Emulator, TargetKind.Emulator, TargetKind.Device], targets.Select(t => t.Kind));
     }
 
-    [Fact]
-    public void A_listing_is_read_past_the_lines_written_before_and_after_its_answer()
+    private void A_listing_is_read_past_the_lines_written_before_and_after_its_answer()
     {
         const string Before = "/src/App/App.csproj(12,5): warning PS0001: A warning before the answer, with braces { and } in it [/src/App/App.csproj]";
         const string After = "said on the console by a task after the answer";
@@ -54,15 +68,13 @@ public class DeviceTargetsTests
         Assert.Equal(["Pixel 9", "Tablet (not running)", "Galaxy S24"], targets.Select(t => t.Shown));
     }
 
-    [Fact]
-    public void An_answer_with_no_devices_lists_none()
+    private void An_answer_with_no_devices_lists_none()
     {
         Assert.Empty(DeviceTargets.Parse(TargetPlatform.Android, Answer("""{ "Items": { } }""")));
         Assert.Empty(DeviceTargets.Parse(TargetPlatform.Android, Answer("""{ "Properties": { } }""")));
     }
 
-    [Fact]
-    public void A_listing_that_fails_for_want_of_the_platforms_android_jar_names_the_sdk_package_to_install()
+    private void A_listing_that_fails_for_want_of_the_platforms_android_jar_names_the_sdk_package_to_install()
     {
         const string Unix = "/sdk/packs/Microsoft.Android.Sdk.Darwin/37.2.31/tools/Xamarin.Android.Tooling.targets(85,5): error XA5207: Could not find android.jar "
             + "for API level 37.0. This means the Android SDK platform for API level 37.0 is not installed; it was expected to be in "
@@ -76,7 +88,16 @@ public class DeviceTargetsTests
     }
 
     [Fact]
-    public void A_targets_platform_decides_the_framework_built()
+    public void A_target_decides_the_framework_built_and_the_profile_tied_to_its_platform_and_nothing_chosen_runs_this_machines_head() => Cases.All(
+        ("a targets platform decides the framework built", A_targets_platform_decides_the_framework_built),
+        ("a profile running the project and naming one platform is tied to it", A_profile_running_the_project_and_naming_one_platform_is_tied_to_it),
+        ("the maui templates windows profile makes no configuration of its own so its one is named for the project", The_maui_templates_windows_profile_makes_no_configuration_of_its_own_so_its_one_is_named_for_the_project),
+        ("where its platform is the target the profile tied to it is found", Where_its_platform_is_the_target_the_profile_tied_to_it_is_found),
+        ("with nothing chosen a head of this machines platform runs here and any other project waits for a choice", With_nothing_chosen_a_head_of_this_machines_platform_runs_here_and_any_other_project_waits_for_a_choice),
+        ("on a mac a projects mac catalyst head is this machine and runs here with nothing chosen", On_a_mac_a_projects_mac_catalyst_head_is_this_machine_and_runs_here_with_nothing_chosen),
+        ("a heads framework of no platform carrying avalonias desktop is this machine and runs here with nothing chosen", A_heads_framework_of_no_platform_carrying_avalonias_desktop_is_this_machine_and_runs_here_with_nothing_chosen));
+
+    private void A_targets_platform_decides_the_framework_built()
     {
         string[] maui = ["net11.0-android", "net11.0-ios", "net11.0-maccatalyst", "net11.0-windows10.0.19041.0"];
 
@@ -90,8 +111,7 @@ public class DeviceTargetsTests
         Assert.False(DeviceTargets.RunsOnlyElsewhere(["net11.0"]));
     }
 
-    [Fact]
-    public void A_choice_is_found_again_by_its_avd_under_a_new_serial_and_said_once_gone()
+    private void A_choice_is_found_again_by_its_avd_under_a_new_serial_and_said_once_gone()
     {
         KeptTarget chosen = KeptTarget.Of(new DeviceTarget(TargetPlatform.Android, "emulator-5554", "Pixel 9", TargetKind.Emulator, true) { Avd = "pixel" });
         IReadOnlyList<DeviceTarget> restarted = [new DeviceTarget(TargetPlatform.Android, "emulator-5556", "Pixel 9", TargetKind.Emulator, true) { Avd = "pixel" }];
@@ -107,8 +127,7 @@ public class DeviceTargetsTests
 
     /// <summary>A run on an Android emulator lists Android's targets again on its way: this machine and the iOS simulators
     /// stay listed where they stood, Android's put in place of its own, and a platform the listing lacked comes after.</summary>
-    [Fact]
-    public void A_listing_of_one_platform_replaces_that_platforms_targets_alone()
+    private void A_listing_of_one_platform_replaces_that_platforms_targets_alone()
     {
         DeviceTarget here = DeviceTargets.Here(TargetPlatform.MacCatalyst);
         DeviceTarget pixel = new(TargetPlatform.Android, "pixel", "Pixel 9", TargetKind.Emulator, false) { Avd = "pixel" };
@@ -124,8 +143,7 @@ public class DeviceTargetsTests
         Assert.Equal([started], DeviceTargets.Relisted([], TargetPlatform.Android, [started]));
     }
 
-    [Fact]
-    public void Run_starts_the_app_afresh_and_writes_its_processes_log_until_it_ends()
+    private void Run_starts_the_app_afresh_and_writes_its_processes_log_until_it_ends()
     {
         AndroidApp app = new("emulator-5554", "/sdk/platform-tools/adb", "com.shop", "crc64.MainActivity", "/src/Shop/obj/Debug/net11.0-android");
 
@@ -144,8 +162,7 @@ public class DeviceTargetsTests
             app.ClearDebugApp());
     }
 
-    [Fact]
-    public void Debug_puts_the_relay_in_the_apps_own_folder_and_takes_it_out_putting_back_the_builds_link()
+    private void Debug_puts_the_relay_in_the_apps_own_folder_and_takes_it_out_putting_back_the_builds_link()
     {
         AndroidApp app = new("emulator-5554", "adb", "com.shop", "crc64.MainActivity", "/src/Shop/obj/Debug/net11.0-android");
 
@@ -165,8 +182,7 @@ public class DeviceTargetsTests
         Assert.Null(AndroidApp.RelayRuntime("armeabi-v7a"));
     }
 
-    [Fact]
-    public void What_an_end_that_never_reached_the_device_left_is_taken_out_the_builds_environment_linked_back_where_a_start_left_its_own()
+    private void What_an_end_that_never_reached_the_device_left_is_taken_out_the_builds_environment_linked_back_where_a_start_left_its_own()
     {
         AndroidApp app = new("emulator-5554", "adb", "com.shop", "crc64.MainActivity", "/obj");
 
@@ -182,8 +198,7 @@ public class DeviceTargetsTests
             unleft[3], StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void The_debug_environment_keeps_the_builds_variables_and_adds_the_relays_profiler_and_token()
+    private void The_debug_environment_keeps_the_builds_variables_and_adds_the_relays_profiler_and_token()
     {
         AndroidApp app = new("emulator-5554", "adb", "com.shop", "crc64.MainActivity", "/obj");
         byte[] built = AndroidEnvironment.Write([new("mono.enable_assembly_preload", "0"), new(RuntimeVariables.ModifiableAssemblies, "Debug")]);
@@ -200,8 +215,7 @@ public class DeviceTargetsTests
         Assert.Equal(AndroidApp.RelayProfiler, read.Single(v => v.Key == RuntimeVariables.Profiler).Value);
     }
 
-    [Fact]
-    public void A_variable_the_build_already_names_takes_its_new_value_in_its_place()
+    private void A_variable_the_build_already_names_takes_its_new_value_in_its_place()
     {
         IReadOnlyList<KeyValuePair<string, string>> merged = AndroidEnvironment.With([new("A", "1"), new("B", "2")], [new("B", "3"), new("C", "4")]);
 
@@ -210,8 +224,7 @@ public class DeviceTargetsTests
         Assert.Throws<FormatException>(() => AndroidEnvironment.Read(Encoding.ASCII.GetBytes("0xzzzzzzzz\00x00000001\0AB")));
     }
 
-    [Fact]
-    public void The_apps_start_is_read_from_the_workloads_properties_and_one_without_an_activity_is_refused()
+    private void The_apps_start_is_read_from_the_workloads_properties_and_one_without_an_activity_is_refused()
     {
         (AndroidApp? app, string? problem) = AndroidApp.Read(Answer("""
             { "Properties": { "AndroidLaunchActivity": "crc64.MainActivity", "_AndroidPackage": "com.shop", "IntermediateOutputPath": "obj/Debug/net11.0-android/" } }
@@ -241,8 +254,7 @@ public class DeviceTargetsTests
         }
         """;
 
-    [Fact]
-    public void A_profile_running_the_project_and_naming_one_platform_is_tied_to_it()
+    private void A_profile_running_the_project_and_naming_one_platform_is_tied_to_it()
     {
         TargetPlatform? Tied(string name, string command = "Project") =>
             DeviceTargets.TiedTo(new LaunchProfile(name, command, null, null, null, new Dictionary<string, string>(), null, false, null));
@@ -258,8 +270,7 @@ public class DeviceTargetsTests
         Assert.Null(Tied("Windows Machine", "Executable"));
     }
 
-    [Fact]
-    public void The_maui_templates_windows_profile_makes_no_configuration_of_its_own_so_its_one_is_named_for_the_project()
+    private void The_maui_templates_windows_profile_makes_no_configuration_of_its_own_so_its_one_is_named_for_the_project()
     {
         IReadOnlyList<LaunchProfile> profiles = LaunchProfile.Parse(MauiSettings);
         IReadOnlyList<LaunchProfile> withHttp = LaunchProfile.Parse(MauiSettings.Replace("\"profiles\": {", "\"profiles\": {\n\"http\": { \"commandName\": \"Project\" },", StringComparison.Ordinal));
@@ -274,8 +285,7 @@ public class DeviceTargetsTests
         Assert.Equal(["Windows Machine"], Own(["net11.0"], profiles));
     }
 
-    [Fact]
-    public void Where_its_platform_is_the_target_the_profile_tied_to_it_is_found()
+    private void Where_its_platform_is_the_target_the_profile_tied_to_it_is_found()
     {
         IReadOnlyList<LaunchProfile> profiles = LaunchProfile.Parse("""
             {
@@ -291,8 +301,7 @@ public class DeviceTargetsTests
         Assert.Equal(TargetKind.ThisMachine, DeviceTargets.Here(TargetPlatform.Windows).Kind);
     }
 
-    [Fact]
-    public void With_nothing_chosen_a_head_of_this_machines_platform_runs_here_and_any_other_project_waits_for_a_choice()
+    private void With_nothing_chosen_a_head_of_this_machines_platform_runs_here_and_any_other_project_waits_for_a_choice()
     {
         string[] maui = ["net11.0-android", "net11.0-ios", "net11.0-maccatalyst", "net11.0-windows10.0.19041.0"];
 
@@ -302,8 +311,7 @@ public class DeviceTargetsTests
         Assert.Null(DeviceTargets.Unchosen(["net11.0-windows"], TargetPlatform.Windows));
     }
 
-    [Fact]
-    public void On_a_mac_a_projects_mac_catalyst_head_is_this_machine_and_runs_here_with_nothing_chosen()
+    private void On_a_mac_a_projects_mac_catalyst_head_is_this_machine_and_runs_here_with_nothing_chosen()
     {
         string[] maui = ["net11.0-android", "net11.0-ios", "net11.0-maccatalyst"];
 
@@ -316,8 +324,7 @@ public class DeviceTargetsTests
         Assert.Null(DeviceTargets.Unchosen(["net11.0-android", "net11.0-ios"], TargetPlatform.MacCatalyst));
     }
 
-    [Fact]
-    public void A_heads_framework_of_no_platform_carrying_avalonias_desktop_is_this_machine_and_runs_here_with_nothing_chosen()
+    private void A_heads_framework_of_no_platform_carrying_avalonias_desktop_is_this_machine_and_runs_here_with_nothing_chosen()
     {
         ProjectModel App(string[] frameworks, params (string Framework, string[] Packages)[] dependencies) => new("/src/Shop/Shop.csproj", "Shop", "Exe", frameworks, [], [], true)
         {
@@ -351,8 +358,7 @@ public class DeviceTargetsTests
         Assert.Equal("net11.0-android", DeviceTargets.FrameworkFor(maui, TargetPlatform.Android));
     }
 
-    [Fact]
-    public void An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library()
+    private void An_android_app_is_runnable_though_its_sdk_makes_its_output_a_library()
     {
         ProjectModel Evaluated(string output, string? android) => new("/src/Shop/Shop.csproj", "Shop", output, ["net11.0-android"], [], [], true)
         {
