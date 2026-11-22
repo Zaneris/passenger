@@ -25,27 +25,20 @@ public sealed class GodotGamesTests : IDisposable
     /// <summary>A project.godot is a game of its own only where no C# project builds it and no Godot project holds
     /// it.</summary>
     [Fact]
-    public void A_project_godot_is_a_game_of_its_own_only_where_no_project_builds_it() => Cases.All(
+    public void A_project_godot_is_a_game_of_its_own_only_where_no_project_builds_it() => Cases.AllApart<GodotGamesTests>(
         (nameof(A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not),
-            () => Apart(test => test.A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not())),
+            test => test.A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not()),
         (nameof(A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own),
-            () => Apart(test => test.A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own())),
+            test => test.A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own()),
         (nameof(A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot),
-            () => Apart(test => test.A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot())));
+            test => test.A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot()));
 
     /// <summary>A project naming its Godot folder is told what its scripts and build miss, and nothing where they reach
     /// it.</summary>
     [Fact]
-    public void A_project_is_told_what_its_godot_folder_leaves_its_build_missing() => Cases.All(
+    public void A_project_is_told_what_its_godot_folder_leaves_its_build_missing() => Cases.AllApart<GodotGamesTests>(
         (nameof(A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss),
-            A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<GodotGamesTests> check)
-    {
-        using GodotGamesTests test = new();
-        check(test);
-    }
+            _ => A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss()));
 
     private void A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not()
     {
@@ -115,11 +108,11 @@ public sealed class GodotGamesTests : IDisposable
 
     /// <summary>A project above its Godot folder setting GodotProjectDir in its body, full or relative, has
     /// [ScriptPath("res://game/Main.cs")] and its build beside the project, and Godot finds no class for res://Main.cs.</summary>
-    private static void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss() => Cases.Each<string>(
+    private static void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss() => Cases.EachApart<GodotGamesTests, string>(
     [
         "{root}/game/",
         "game",
-    ], row => Apart(test => test.A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(row)));
+    ], (test, row) => test.A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(row));
 
     private void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(string written)
     {

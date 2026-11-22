@@ -14,45 +14,37 @@ public sealed class GodotExecutablesTests : IDisposable
     /// <summary>Godot is found by the choice, GODOT, GODOT4 and the PATH in turn, and its version read from its
     /// answer.</summary>
     [Fact]
-    public void Godot_is_found_and_its_version_read_as_the_choice_and_variables_say() => Cases.All(
+    public void Godot_is_found_and_its_version_read_as_the_choice_and_variables_say() => Cases.AllApart<GodotExecutablesTests>(
         (nameof(The_newest_dotnet_bundle_in_Applications_is_taken_over_a_newer_one_without_dotnet),
-            () => Apart(test => test.The_newest_dotnet_bundle_in_Applications_is_taken_over_a_newer_one_without_dotnet())),
+            test => test.The_newest_dotnet_bundle_in_Applications_is_taken_over_a_newer_one_without_dotnet()),
         (nameof(A_Godot_without_dotnet_is_found_saying_it_cannot_run_CSharp),
-            () => Apart(test => test.A_Godot_without_dotnet_is_found_saying_it_cannot_run_CSharp())),
+            test => test.A_Godot_without_dotnet_is_found_saying_it_cannot_run_CSharp()),
         (nameof(The_choice_comes_before_GODOT_and_GODOT_before_the_PATH_and_a_choice_not_there_says_so),
-            () => Apart(test => test.The_choice_comes_before_GODOT_and_GODOT_before_the_PATH_and_a_choice_not_there_says_so())),
-        (nameof(GODOT_names_Godot_over_GODOT4_and_neither_set_names_none),
-            () => Apart(test => test.GODOT_names_Godot_over_GODOT4_and_neither_set_names_none())),
+            test => test.The_choice_comes_before_GODOT_and_GODOT_before_the_PATH_and_a_choice_not_there_says_so()),
+        (nameof(GODOT_names_Godot_over_GODOT4_and_neither_set_names_none), test => test.GODOT_names_Godot_over_GODOT4_and_neither_set_names_none()),
         (nameof(The_Windows_console_wrapper_is_taken_for_the_Godot_it_starts),
-            () => Apart(test => test.The_Windows_console_wrapper_is_taken_for_the_Godot_it_starts())),
-        (nameof(Godot_3_is_refused_for_running_its_CSharp_on_Mono), () => Apart(test => test.Godot_3_is_refused_for_running_its_CSharp_on_Mono())),
+            test => test.The_Windows_console_wrapper_is_taken_for_the_Godot_it_starts()),
+        (nameof(Godot_3_is_refused_for_running_its_CSharp_on_Mono), test => test.Godot_3_is_refused_for_running_its_CSharp_on_Mono()),
         (nameof(Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp),
-            Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp),
+            _ => Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp()),
         (nameof(A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both),
-            A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both));
+            _ => A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both()));
 
     /// <summary>A launch profile runs Godot where it names it, on the project its path names, its game's arguments its
     /// own.</summary>
     [Fact]
-    public void A_launch_profile_names_godot_and_its_project_as_godot_reads_them() => Cases.All(
+    public void A_launch_profile_names_godot_and_its_project_as_godot_reads_them() => Cases.AllApart<GodotExecutablesTests>(
         (nameof(A_link_on_the_PATH_is_the_Godot_it_links_to_with_its_GodotSharp),
-            () => Apart(test => test.A_link_on_the_PATH_is_the_Godot_it_links_to_with_its_GodotSharp())),
+            test => test.A_link_on_the_PATH_is_the_Godot_it_links_to_with_its_GodotSharp()),
         (nameof(A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot),
-            A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot),
-        (nameof(A_launch_profiles_other_program_is_not_Godot), A_launch_profiles_other_program_is_not_Godot),
+            _ => A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot()),
+        (nameof(A_launch_profiles_other_program_is_not_Godot), _ => A_launch_profiles_other_program_is_not_Godot()),
         (nameof(A_path_naming_the_project_is_left_to_the_launch_and_one_naming_another_folder_refused),
-            () => Apart(test => test.A_path_naming_the_project_is_left_to_the_launch_and_one_naming_another_folder_refused())),
+            test => test.A_path_naming_the_project_is_left_to_the_launch_and_one_naming_another_folder_refused()),
         (nameof(An_editor_is_on_the_project_its_path_names_whole_never_one_whose_path_begins_with_it),
-            () => Apart(test => test.An_editor_is_on_the_project_its_path_names_whole_never_one_whose_path_begins_with_it())),
+            test => test.An_editor_is_on_the_project_its_path_names_whole_never_one_whose_path_begins_with_it()),
         (nameof(A_games_arguments_after_godots_separator_are_never_read_as_godots_flags),
-            A_games_arguments_after_godots_separator_are_never_read_as_godots_flags));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<GodotExecutablesTests> check)
-    {
-        using GodotExecutablesTests test = new();
-        check(test);
-    }
+            _ => A_games_arguments_after_godots_separator_are_never_read_as_godots_flags()));
 
     private void The_newest_dotnet_bundle_in_Applications_is_taken_over_a_newer_one_without_dotnet()
     {
@@ -127,53 +119,53 @@ public sealed class GodotExecutablesTests : IDisposable
         Assert.Equal($"{godot} is Godot 3, whose C# runs on Mono: Passenger runs C# on Godot 4's .NET build", found.WhyNot);
     }
 
-    private static void Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp() => Cases.Each<(string Answer, string Version, bool Dotnet)>(
+    private static void Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp() => Cases.EachApart<GodotExecutablesTests, (string Answer, string Version, bool Dotnet)>(
     [
         ("4.7.2.stable.mono.official.ed1daf0bf", "4.7.2", true),
         ("4.3.stable.official.77dcf97d8", "4.3", false),
         ("4.5.beta2.mono.custom_build.1a2b3c", "4.5", true),
         ("  4.7.2.stable.mono.official.ed1daf0bf\r", "4.7.2", true),
-    ], row => Apart(test => test.Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp(row.Answer, row.Version, row.Dotnet)));
+    ], (test, row) => test.Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp(row.Answer, row.Version, row.Dotnet));
 
     private void Godots_answer_to_version_gives_its_version_and_whether_it_runs_CSharp(string answer, string version, bool dotnet)
     {
         Assert.Equal((version, dotnet), GodotExecutables.ReadVersion(answer));
     }
 
-    private static void A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both() => Cases.Each<(string Sdk, string Godot, string? Said)>(
+    private static void A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both() => Cases.EachApart<GodotExecutablesTests, (string Sdk, string Godot, string? Said)>(
     [
         ("4.7.2", "4.7.2", null),
         ("4.6", "4.7.2", null),
         ("3.6.0", "4.7.2", "it builds with Godot.NET.Sdk 3.6.0, for Godot 3, and the Godot that runs it is 4.7.2"),
         ("unknown", "4.7.2", null),
-    ], row => Apart(test => test.A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both(row.Sdk, row.Godot, row.Said)));
+    ], (test, row) => test.A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both(row.Sdk, row.Godot, row.Said));
 
     private void A_projects_Godot_NET_Sdk_newer_than_its_Godot_or_of_another_major_version_says_both(string sdk, string godot, string? said)
     {
         Assert.Equal(said, GodotExecutables.Mismatch(sdk, godot));
     }
 
-    private static void A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot() => Cases.Each<(string Program, bool Windows)>(
+    private static void A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot() => Cases.EachApart<GodotExecutablesTests, (string Program, bool Windows)>(
     [
         ("%GODOT%", false),
         (" \"%GODOT%\" ", false),
         ("${GODOT4}", false),
         ("/Applications/Godot_v4.7.2-stable_mono.app", false),
         (@"C:\Tools\godot.exe", true),
-    ], row => Apart(test => test.A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot(row.Program, row.Windows)));
+    ], (test, row) => test.A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot(row.Program, row.Windows));
 
     private void A_launch_profiles_program_naming_GODOT_or_a_Godot_executable_is_Godot(string program, bool windows)
     {
         Assert.True(GodotExecutables.NamesGodot(program, windows), $"{program} was not taken for Godot, so its launch profile would run the game as a plain program: no remote debugger, no Live Tree, a window for an agent's game");
     }
 
-    private static void A_launch_profiles_other_program_is_not_Godot() => Cases.Each<(string Program, bool Windows)>(
+    private static void A_launch_profiles_other_program_is_not_Godot() => Cases.EachApart<GodotExecutablesTests, (string Program, bool Windows)>(
     [
         ("%GODOT_HOME%", false),
         ("$GODOT45", false),
         ("/Applications/Blender.app/Contents/MacOS/Godot", false),
         ("", false),
-    ], row => Apart(test => test.A_launch_profiles_other_program_is_not_Godot(row.Program, row.Windows)));
+    ], (test, row) => test.A_launch_profiles_other_program_is_not_Godot(row.Program, row.Windows));
 
     private void A_launch_profiles_other_program_is_not_Godot(string program, bool windows)
     {
@@ -212,11 +204,11 @@ public sealed class GodotExecutablesTests : IDisposable
         }
     }
 
-    private static void A_games_arguments_after_godots_separator_are_never_read_as_godots_flags() => Cases.Each<string>(
+    private static void A_games_arguments_after_godots_separator_are_never_read_as_godots_flags() => Cases.EachApart<GodotExecutablesTests, string>(
     [
         "--",
         "++",
-    ], row => Apart(test => test.A_games_arguments_after_godots_separator_are_never_read_as_godots_flags(row)));
+    ], (test, row) => test.A_games_arguments_after_godots_separator_are_never_read_as_godots_flags(row));
 
     private void A_games_arguments_after_godots_separator_are_never_read_as_godots_flags(string separator)
     {

@@ -22,42 +22,34 @@ public sealed class ServedPageTests : IDisposable
 
     /// <summary>A page is served with the editor's text, and its folder's files as they are on disk now.</summary>
     [Fact]
-    public void A_page_and_its_folder_are_served_as_the_editor_holds_them() => Cases.All(
+    public void A_page_and_its_folder_are_served_as_the_editor_holds_them() => Cases.AllApart<ServedPageTests>(
         (nameof(The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks),
-            () => Apart(test => test.The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks())),
-        (nameof(A_page_never_saved_is_served_with_nothing_on_the_disk),
-            () => Apart(test => test.A_page_never_saved_is_served_with_nothing_on_the_disk())),
-        (nameof(A_page_of_any_name_is_found_at_its_own_address), A_page_of_any_name_is_found_at_its_own_address),
+            test => test.The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks()),
+        (nameof(A_page_never_saved_is_served_with_nothing_on_the_disk), test => test.A_page_never_saved_is_served_with_nothing_on_the_disk()),
+        (nameof(A_page_of_any_name_is_found_at_its_own_address), _ => A_page_of_any_name_is_found_at_its_own_address()),
         (nameof(A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type),
-            () => Apart(test => test.A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type())),
+            test => test.A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type()),
         (nameof(A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds),
-            () => Apart(test => test.A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds())),
-        (nameof(A_file_changed_on_disk_is_served_as_it_is_now), () => Apart(test => test.A_file_changed_on_disk_is_served_as_it_is_now())),
+            test => test.A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds()),
+        (nameof(A_file_changed_on_disk_is_served_as_it_is_now), test => test.A_file_changed_on_disk_is_served_as_it_is_now()),
         (nameof(A_file_being_served_can_be_written_moved_or_deleted_meanwhile),
-            () => Apart(test => test.A_file_being_served_can_be_written_moved_or_deleted_meanwhile())),
-        (nameof(Every_answer_says_it_is_not_to_be_kept), () => Apart(test => test.Every_answer_says_it_is_not_to_be_kept())),
-        (nameof(A_link_staying_inside_the_folder_is_followed), () => Apart(test => test.A_link_staying_inside_the_folder_is_followed())));
+            test => test.A_file_being_served_can_be_written_moved_or_deleted_meanwhile()),
+        (nameof(Every_answer_says_it_is_not_to_be_kept), test => test.Every_answer_says_it_is_not_to_be_kept()),
+        (nameof(A_link_staying_inside_the_folder_is_followed), test => test.A_link_staying_inside_the_folder_is_followed()));
 
     /// <summary>Nothing outside the page's folder, hidden in it or left out by Git is served, however it is asked
     /// for.</summary>
     [Fact]
-    public void Nothing_outside_the_folder_or_hidden_in_it_is_served() => Cases.All(
+    public void Nothing_outside_the_folder_or_hidden_in_it_is_served() => Cases.AllApart<ServedPageTests>(
         (nameof(A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why),
-            A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why),
+            _ => A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why()),
         (nameof(A_file_or_folder_gitignore_leaves_out_is_refused_saying_why),
-            () => Apart(test => test.A_file_or_folder_gitignore_leaves_out_is_refused_saying_why())),
+            test => test.A_file_or_folder_gitignore_leaves_out_is_refused_saying_why()),
         (nameof(A_file_beside_the_folder_is_not_served_however_its_address_is_spelled),
-            A_file_beside_the_folder_is_not_served_however_its_address_is_spelled),
+            _ => A_file_beside_the_folder_is_not_served_however_its_address_is_spelled()),
         (nameof(A_link_inside_the_folder_leading_out_of_it_is_not_followed),
-            () => Apart(test => test.A_link_inside_the_folder_leading_out_of_it_is_not_followed())),
-        (nameof(An_address_of_anywhere_else_names_no_file), An_address_of_anywhere_else_names_no_file));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<ServedPageTests> check)
-    {
-        using ServedPageTests test = new();
-        check(test);
-    }
+            test => test.A_link_inside_the_folder_leading_out_of_it_is_not_followed()),
+        (nameof(An_address_of_anywhere_else_names_no_file), _ => An_address_of_anywhere_else_names_no_file()));
 
     private void The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks()
     {
@@ -78,12 +70,12 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal(Html, Read(served.Answer(served.Address)));
     }
 
-    private static void A_page_of_any_name_is_found_at_its_own_address() => Cases.Each<string>(
+    private static void A_page_of_any_name_is_found_at_its_own_address() => Cases.EachApart<ServedPageTests, string>(
     [
         "my page.html",
         "été #1.html",
         "50% off?.html",
-    ], row => Apart(test => test.A_page_of_any_name_is_found_at_its_own_address(row)));
+    ], (test, row) => test.A_page_of_any_name_is_found_at_its_own_address(row));
 
     private void A_page_of_any_name_is_found_at_its_own_address(string name)
     {
@@ -133,13 +125,13 @@ public sealed class ServedPageTests : IDisposable
         }
     }
 
-    private static void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why() => Cases.Each<(string Below, string Said)>(
+    private static void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why() => Cases.EachApart<ServedPageTests, (string Below, string Said)>(
     [
         (".env", ".env as its name begins with a dot"),
         (".git/config", ".git/config as it is in .git, whose name begins with a dot"),
         ("assets/.secret/key.json", "assets/.secret/key.json as it is in assets/.secret, whose name begins with a dot"),
         ("%2Eenv", ".env as its name begins with a dot"),
-    ], row => Apart(test => test.A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(row.Below, row.Said)));
+    ], (test, row) => test.A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(row.Below, row.Said));
 
     private void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(string below, string said)
     {
@@ -180,7 +172,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal("h1 { color: teal; }\n", Read(served.Answer(At("site.css"))));
     }
 
-    private static void A_file_beside_the_folder_is_not_served_however_its_address_is_spelled() => Cases.Each<string>(
+    private static void A_file_beside_the_folder_is_not_served_however_its_address_is_spelled() => Cases.EachApart<ServedPageTests, string>(
     [
         "../outside.css",
         "..%2Foutside.css",
@@ -189,7 +181,7 @@ public sealed class ServedPageTests : IDisposable
         "%2e%2e%2foutside.css",
         "img/..%2F..%2Foutside.css",
         "sub/../../outside.css",
-    ], row => Apart(test => test.A_file_beside_the_folder_is_not_served_however_its_address_is_spelled(row)));
+    ], (test, row) => test.A_file_beside_the_folder_is_not_served_however_its_address_is_spelled(row));
 
     private void A_file_beside_the_folder_is_not_served_however_its_address_is_spelled(string below)
     {
@@ -224,14 +216,14 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal("h1 { color: green; }\n", Read(served.Answer(At("site.css"))));
     }
 
-    private static void An_address_of_anywhere_else_names_no_file() => Cases.Each<string>(
+    private static void An_address_of_anywhere_else_names_no_file() => Cases.EachApart<ServedPageTests, string>(
     [
         "https://example.com/index.html",
         "http://preview.passenger.invalid/index.html",
         "https://preview.passenger.invalid:8443/index.html",
         "https://preview.passenger.invalid.example.com/index.html",
         "file:///index.html",
-    ], row => Apart(test => test.An_address_of_anywhere_else_names_no_file(row)));
+    ], (test, row) => test.An_address_of_anywhere_else_names_no_file(row));
 
     private void An_address_of_anywhere_else_names_no_file(string address)
     {

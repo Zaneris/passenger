@@ -15,33 +15,26 @@ public sealed class NodeProjectsTests : IDisposable
     /// <summary>A folder's packages take their manager, scripts and workspace from their manifests, lockfiles and
     /// workspace files.</summary>
     [Fact]
-    public void A_folders_packages_are_read_from_their_manifests_lockfiles_and_workspaces() => Cases.All(
+    public void A_folders_packages_are_read_from_their_manifests_lockfiles_and_workspaces() => Cases.AllApart<NodeProjectsTests>(
         (nameof(A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces),
-            () => Apart(test => test.A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces())),
+            test => test.A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces()),
         (nameof(A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms),
-            () => Apart(test => test.A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms())),
+            test => test.A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms()),
         (nameof(Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out),
-            Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out),
+            _ => Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out()),
         (nameof(Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves),
-            () => Apart(test => test.Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves())),
+            test => test.Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves()),
         (nameof(A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root),
-            () => Apart(test => test.A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root())),
+            test => test.A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root()),
         (nameof(A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing),
-            () => Apart(test => test.A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing())));
+            test => test.A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing()));
 
     /// <summary>Pre and post scripts are listed apart only where the package's manager, by its version and settings,
     /// runs none.</summary>
     [Fact]
-    public void Pre_and_post_scripts_are_listed_as_each_package_manager_runs_them() => Cases.All(
+    public void Pre_and_post_scripts_are_listed_as_each_package_manager_runs_them() => Cases.AllApart<NodeProjectsTests>(
         (nameof(Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script),
-            Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<NodeProjectsTests> check)
-    {
-        using NodeProjectsTests test = new();
-        check(test);
-    }
+            _ => Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script()));
 
     private void A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces()
     {
@@ -71,13 +64,13 @@ public sealed class NodeProjectsTests : IDisposable
         Assert.Null(NodeProjects.OfLockfiles(["package.json", "README.md"]));
     }
 
-    private static void Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out() => Cases.Each<(string Folder, bool Taken)>(
+    private static void Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out() => Cases.EachApart<NodeProjectsTests, (string Folder, bool Taken)>(
     [
         ("packages/web", true),
         ("packages/web/inner", false),
         ("packages/legacy", false),
         ("tools", false),
-    ], row => Apart(test => test.Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out(row.Folder, row.Taken)));
+    ], (test, row) => test.Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out(row.Folder, row.Taken));
 
     private void Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out(string folder, bool taken) =>
         Assert.Equal(taken, NodeProjects.Covers(["packages/*", "./apps/**", "!packages/legacy"], folder));
@@ -96,7 +89,7 @@ public sealed class NodeProjectsTests : IDisposable
     /// as its version and its settings say: npm and Bun, Yarn 1 and pnpm with enablePrePostScripts on (its default from 9)
     /// run them; Yarn 2 and later never do, nor pnpm with the setting off (its default from 6 to 8), nor npm told to
     /// ignore scripts, and a script of theirs alone is a script of its own.</summary>
-    private static void Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script() => Cases.Each<(string Manager, string Files, bool Listed)>(
+    private static void Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script() => Cases.EachApart<NodeProjectsTests, (string Manager, string Files, bool Listed)>(
     [
         ("npm", "package-lock.json={}", false),
         ("npm, told to ignore scripts", "package-lock.json={}|.npmrc=ignore-scripts=true", true),
@@ -105,7 +98,7 @@ public sealed class NodeProjectsTests : IDisposable
         ("pnpm 9 and later by default", "pnpm-lock.yaml=lockfileVersion: '9.0'\n", false),
         ("pnpm 11, which reads no such setting from .npmrc", "pnpm-lock.yaml=lockfileVersion: '9.0'\n|.npmrc=enable-pre-post-scripts=false\n|field=pnpm@11.2.0", false),
         ("pnpm 8 by default", "pnpm-lock.yaml=lockfileVersion: '6.0'\n", true),
-    ], row => Apart(test => test.Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script(row.Manager, row.Files, row.Listed)));
+    ], (test, row) => test.Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script(row.Manager, row.Files, row.Listed));
 
     private void Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script(string manager, string files, bool listed)
     {

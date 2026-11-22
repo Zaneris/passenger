@@ -93,6 +93,11 @@ public sealed class TablesAndFlowsTests
         Flow.StepApart("the next another, made by its constructor, the one before disposed", () => new Apart(), made => apart.Add(made.Number + (made.Disposed ? 100 : 0)));
         Assert.True(apart.Count == 2 && apart[1] == apart[0] + 1 && Apart.Disposals >= 2,
             $"Steps apart did not each have an instance of their own disposed after it: {string.Join(", ", apart)}, {Apart.Disposals} disposed");
+        List<Apart> rows = [];
+        Cases.AllApart<Apart>(("a check apart has an instance of its own", rows.Add), ("so has the next", rows.Add));
+        Cases.EachApart<Apart, int>([1, 2], (made, _) => rows.Add(made));
+        Assert.True(rows.Count == 4 && rows.Distinct().Count() == 4 && rows.All(made => made.Disposed),
+            $"Checks and rows apart did not each have an instance of their own disposed after it: {string.Join(", ", rows.Select(made => $"{made.Number} {made.Disposed}"))}");
 
         // Each step and row in a context of its own: what one sets of an AsyncLocal, as an agent's call marks its flow, the next never sees.
         List<string?> seen = [];

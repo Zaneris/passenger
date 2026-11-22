@@ -13,18 +13,10 @@ public sealed class ToldFilesTests : IDisposable
 
     /// <summary>A file is news once for each writing, a deleted sheet once, a file gone none.</summary>
     [Fact]
-    public void A_written_or_deleted_file_is_news_once() => Cases.All(
-        (nameof(A_file_is_news_once_for_each_writing), () => Apart(test => test.A_file_is_news_once_for_each_writing())),
-        (nameof(A_sheet_deleted_is_news_once_though_its_writing_never_was),
-            () => Apart(test => test.A_sheet_deleted_is_news_once_though_its_writing_never_was())),
-        (nameof(A_file_gone_is_no_writing), () => Apart(test => test.A_file_gone_is_no_writing())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<ToldFilesTests> check)
-    {
-        using ToldFilesTests test = new();
-        check(test);
-    }
+    public void A_written_or_deleted_file_is_news_once() => Cases.AllApart<ToldFilesTests>(
+        (nameof(A_file_is_news_once_for_each_writing), test => test.A_file_is_news_once_for_each_writing()),
+        (nameof(A_sheet_deleted_is_news_once_though_its_writing_never_was), test => test.A_sheet_deleted_is_news_once_though_its_writing_never_was()),
+        (nameof(A_file_gone_is_no_writing), test => test.A_file_gone_is_no_writing()));
 
     private void A_file_is_news_once_for_each_writing()
     {

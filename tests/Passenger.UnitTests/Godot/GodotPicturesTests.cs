@@ -13,21 +13,13 @@ public sealed class GodotPicturesTests : IDisposable
 
     /// <summary>A game's picture is read only as a PNG Godot wrote in its own temporary folder.</summary>
     [Fact]
-    public void A_games_picture_is_read_only_from_godots_own_temporary_folder() => Cases.All(
+    public void A_games_picture_is_read_only_from_godots_own_temporary_folder() => Cases.AllApart<GodotPicturesTests>(
         (nameof(The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says),
-            () => Apart(test => test.The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says())),
-        (nameof(A_png_godot_wrote_in_the_games_temporary_folder_is_read),
-            () => Apart(test => test.A_png_godot_wrote_in_the_games_temporary_folder_is_read())),
+            test => test.The_folder_a_games_picture_is_read_from_is_godots_own_temporary_folder_whatever_tmpdir_says()),
+        (nameof(A_png_godot_wrote_in_the_games_temporary_folder_is_read), test => test.A_png_godot_wrote_in_the_games_temporary_folder_is_read()),
         (nameof(A_file_of_another_kind_or_place_or_one_not_there_is_left_alone),
-            () => Apart(test => test.A_file_of_another_kind_or_place_or_one_not_there_is_left_alone())),
-        (nameof(A_link_named_as_a_png_in_the_folder_is_left_alone), () => Apart(test => test.A_link_named_as_a_png_in_the_folder_is_left_alone())));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<GodotPicturesTests> check)
-    {
-        using GodotPicturesTests test = new();
-        check(test);
-    }
+            test => test.A_file_of_another_kind_or_place_or_one_not_there_is_left_alone()),
+        (nameof(A_link_named_as_a_png_in_the_folder_is_left_alone), test => test.A_link_named_as_a_png_in_the_folder_is_left_alone()));
 
     /// <summary>Godot writes a picture where it takes its temporary folder: on macOS the user's own whatever TMPDIR says,
     /// on Linux /tmp, on Windows the TMP it was given, else Passenger's own.</summary>

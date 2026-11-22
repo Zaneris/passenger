@@ -52,21 +52,14 @@ public sealed class BrowserProxyTests : IDisposable
 
     /// <summary>A launch takes the browser debug proxy its framework restored, else none.</summary>
     [Fact]
-    public void A_launch_takes_the_browser_proxy_its_framework_restored() => Cases.All(
+    public void A_launch_takes_the_browser_proxy_its_framework_restored() => Cases.AllApart<BrowserProxyTests>(
         (nameof(A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored),
-            () => Apart(test => test.A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored())),
+            test => test.A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored()),
         (nameof(A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy),
-            () => Apart(test => test.A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy())),
+            test => test.A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy()),
         (nameof(A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says),
-            () => Apart(test => test.A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says())),
-        (nameof(A_launch_builds_the_framework_a_reference_would_take), A_launch_builds_the_framework_a_reference_would_take));
-
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<BrowserProxyTests> check)
-    {
-        using BrowserProxyTests test = new();
-        check(test);
-    }
+            test => test.A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says()),
+        (nameof(A_launch_builds_the_framework_a_reference_would_take), _ => A_launch_builds_the_framework_a_reference_would_take()));
 
     private void A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored()
     {
@@ -94,14 +87,14 @@ public sealed class BrowserProxyTests : IDisposable
         Assert.True(BrowserProxy.Of(project, "net11.0", [Pack], Tools) == ten, "A project of one framework found no proxy under a server's newer framework");
     }
 
-    private static void A_launch_builds_the_framework_a_reference_would_take() => Cases.Each<(string? Launched, string? Built)>(
+    private static void A_launch_builds_the_framework_a_reference_would_take() => Cases.EachApart<BrowserProxyTests, (string? Launched, string? Built)>(
     [
         ("net10.0", "net10.0"),
         ("NET10.0", "net10.0"),
         ("net9.0", "net8.0"),
         ("net7.0", null),
         (null, "net8.0"),
-    ], row => Apart(test => test.A_launch_builds_the_framework_a_reference_would_take(row.Launched, row.Built)));
+    ], (test, row) => test.A_launch_builds_the_framework_a_reference_would_take(row.Launched, row.Built));
 
     private void A_launch_builds_the_framework_a_reference_would_take(string? launched, string? built)
     {

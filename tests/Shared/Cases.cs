@@ -43,6 +43,35 @@ public static class Cases
     public static Task AllAsync(params (string Holds, Func<Task> Check)[] checks) =>
         EachAsync(checks, check => check.Check(), check => check.Holds);
 
+    /// <summary><see cref="All"/> with each check on an instance of its own of the test's class, made by
+    /// <paramref name="make"/> and disposed after it, as each ran once as a test of its own: for a class whose checks set
+    /// up, and put back, state of their own (a folder, fields).</summary>
+    public static void AllApart<TTest>(Func<TTest> make, params (string Holds, Action<TTest> Check)[] checks) =>
+        Each(checks, check => Apart(make, check.Check), check => check.Holds);
+
+    /// <summary><see cref="AllApart{TTest}(Func{TTest}, ValueTuple{string, Action{TTest}}[])"/> for a class made with no
+    /// arguments.</summary>
+    public static void AllApart<TTest>(params (string Holds, Action<TTest> Check)[] checks) where TTest : new() =>
+        AllApart(() => new TTest(), checks);
+
+    /// <summary><see cref="Each{T}"/> with each row checked on an instance of its own of the test's class, as
+    /// <see cref="AllApart{TTest}(Func{TTest}, ValueTuple{string, Action{TTest}}[])"/> runs a check.</summary>
+    public static void EachApart<TTest, T>(IEnumerable<T> rows, Action<TTest, T> check, Func<T, string>? name = null) where TTest : new() =>
+        Each(rows, row => Apart(() => new TTest(), test => check(test, row)), name);
+
+    private static void Apart<TTest>(Func<TTest> make, Action<TTest> check)
+    {
+        TTest apart = make();
+        try
+        {
+            check(apart);
+        }
+        finally
+        {
+            (apart as IDisposable)?.Dispose();
+        }
+    }
+
     private static void Run<T>(T row, Func<T, string>? name, Action check, List<string> skipped)
     {
         try

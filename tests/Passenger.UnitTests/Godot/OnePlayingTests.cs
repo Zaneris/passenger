@@ -12,25 +12,17 @@ public sealed class OnePlayingTests
 
     /// <summary>One sound plays at a time, the latest asked for in reach.</summary>
     [Fact]
-    public void One_sound_plays_at_a_time() => Cases.All(
+    public void One_sound_plays_at_a_time() => Cases.AllApart<OnePlayingTests>(
         (nameof(Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach),
-            Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach),
-        (nameof(A_sound_running_ends_as_the_next_is_asked_for), () => Apart(test => test.A_sound_running_ends_as_the_next_is_asked_for())),
-        (nameof(A_sound_starting_as_Stop_is_pressed_ends_as_it_lands),
-            () => Apart(test => test.A_sound_starting_as_Stop_is_pressed_ends_as_it_lands())));
+            _ => Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach()),
+        (nameof(A_sound_running_ends_as_the_next_is_asked_for), test => test.A_sound_running_ends_as_the_next_is_asked_for()),
+        (nameof(A_sound_starting_as_Stop_is_pressed_ends_as_it_lands), test => test.A_sound_starting_as_Stop_is_pressed_ends_as_it_lands()));
 
-    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
-    private static void Apart(Action<OnePlayingTests> check)
-    {
-        OnePlayingTests test = new();
-        check(test);
-    }
-
-    private static void Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach() => Cases.Each<bool>(
+    private static void Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach() => Cases.EachApart<OnePlayingTests, bool>(
     [
         true,
         false,
-    ], row => Apart(test => test.Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach(row)));
+    ], (test, row) => test.Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach(row));
 
     private void Two_sounds_asked_before_either_started_leave_the_second_running_and_in_reach(bool firstLandsFirst)
     {
