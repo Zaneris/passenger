@@ -62,21 +62,24 @@ jobs:
             os: macos-latest
             time_scale: 2
             processes: 2
+            mobile_shards: '1 3'
           - system: Windows
             name: Windows (x64)
             os: windows-latest
             time_scale: 2.5
             processes: 3
+            mobile_shards: ''
           - system: Linux
             name: Linux (x64)
             os: ubuntu-26.04
             time_scale: 2
             processes: 2
-    # The report lane's first shard on macOS, which runs the classes needing iOS's simulators and Mac Catalyst, is on the
-    # image with Xcode 27, whose SDKs .NET 11's iOS workload builds with; its minutes of set-up before the tests (MOBILE)
-    # come on top of the others' 80.
-    runs-on: ${{ matrix.system == 'macOS' && matrix.lane == 'report' && matrix.shard == 1 && 'xcode-27' || matrix.os }}
-    timeout-minutes: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' && 95 || 80 }}
+            mobile_shards: '1'
+    # The report lane's shards on macOS that run the classes needing iOS's simulators and Mac Catalyst (mobile_shards)
+    # are on the image with Xcode 27, whose SDKs .NET 11's iOS workload builds with; their minutes of set-up before the
+    # tests (MOBILE) come on top of the others' 80.
+    runs-on: ${{ matrix.system == 'macOS' && matrix.lane == 'report' && contains(format(' {0} ', matrix.mobile_shards), format(' {0} ', matrix.shard)) && 'xcode-27' || matrix.os }}
+    timeout-minutes: ${{ matrix.lane == 'report' && contains(format(' {0} ', matrix.mobile_shards), format(' {0} ', matrix.shard)) && 95 || 80 }}
     env:
       LANE: ${{ matrix.lane }}
       SHARDS: ${{ matrix.lane == 'gate' && matrix.gate_shards || matrix.report_shards }}
@@ -84,10 +87,12 @@ jobs:
       # The job's tests' time, whichever lanes they are of.
       TEST_MINUTES: 60
       # Whether this job sets up what the report lane's classes needing a set-up of minutes need (test-shards.py's
-      # SET_UPS), each in one job on macOS and Linux: the mobile workloads and devices in the first shard's, which runs
-      # those classes first, apart from the rest dealt to it, Aspire's own runtime in the second's. Windows sets up neither: no Android emulator runs on its
-      # runner (no nested virtualization), no iOS app builds there, and its tests of a real AppHost skip by design.
-      MOBILE: ${{ matrix.lane == 'report' && matrix.shard == 1 && matrix.system != 'Windows' }}
+      # SET_UPS): the mobile workloads and devices in the shards mobile_shards names, which run those classes first,
+      # dealt among them, apart from the rest dealt to them (two on macOS, whose simulator classes take about 50
+      # minutes, one on Linux, whose emulator's take 13), and Aspire's own runtime in the second's. Windows sets up
+      # neither: no Android emulator runs on its runner (no nested virtualization), no iOS app builds there, and its
+      # tests of a real AppHost skip by design.
+      MOBILE: ${{ matrix.lane == 'report' && contains(format(' {0} ', matrix.mobile_shards), format(' {0} ', matrix.shard)) }}
       ASPIRE: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system != 'Windows' }}
       # Aspire's dashboard and orchestrator, and the run's own aspire CLI, downloaded by the restore and named in the
       # tests' build (Passenger.Tests.csproj) where the job sets up for them.
@@ -373,6 +378,7 @@ jobs:
           GATE_SHARDS: ${{ matrix.gate_shards }}
           REPORT_SHARDS: ${{ matrix.report_shards }}
           PROCESSES: ${{ matrix.processes }}
+          MOBILE_SHARDS: ${{ matrix.mobile_shards }}
         run: |
           python=python3
           [ "$RUNNER_OS" != Windows ] || python=python
@@ -388,7 +394,7 @@ jobs:
           check=
           [ "$number" != 1 ] || check=--check
           apart=
-          [ "$SYSTEM" = Windows ] || apart="--apart mobile --second aspire"
+          [ "$SYSTEM" = Windows ] || apart="--apart mobile --apart-shards $MOBILE_SHARDS --second aspire"
           "$python" -I tools/test-shards.py split "$results/suite.txt" --lane report --whole "$results/whole.txt" \
             --system "$SYSTEM" --of "$REPORT_SHARDS" --after artifacts/test-lists/gate.txt --after-of "$GATE_SHARDS" \
             --processes "$PROCESSES" --checks-first --out "$results/shards" $check $apart
