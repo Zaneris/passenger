@@ -32,14 +32,16 @@ public sealed class GitLogTests : IDisposable
 
     /// <summary>The Git log as one flow, each step the check one test made in an instance of its own: two thousand
     /// commits read with no copy of git's output on the window's thread, each lane's line running unbroken to the
-    /// commit it joins with every row's author and date lined up, and a merge commit listing the merged branch's files,
-    /// each opening its diff against the first parent.</summary>
+    /// commit it joins with every row's author and date lined up, a merge commit listing the merged branch's files,
+    /// each opening its diff against the first parent, and a wheel step down the log costing what it does down a short
+    /// one.</summary>
     [AvaloniaFact]
     public void The_log_reads_thousands_of_commits_cheaply_and_draws_each_lane_unbroken_to_its_commit()
     {
         Flow.StepApart<GitLogTests>("reading two thousand commits into the log makes no copy of gits output on the ui thread", t => t.Reading_two_thousand_commits_into_the_log_makes_no_copy_of_gits_output_on_the_ui_thread());
         Flow.StepApart<GitLogTests>("each lanes line runs unbroken to the commit it joins and every rows author and date line up", t => t.Each_lanes_line_runs_unbroken_to_the_commit_it_joins_and_every_rows_author_and_date_line_up());
         Flow.StepApart<GitLogTests>("a merge commit lists the merged branchs files each opening its diff against the first parent", t => t.A_merge_commit_lists_the_merged_branchs_files_each_opening_its_diff_against_the_first_parent());
+        Flow.StepApart<GitLogTests>("a scroll step down two thousand commits hands the rows other commits never making one again", t => t.A_scroll_step_down_two_thousand_commits_hands_the_rows_other_commits_never_making_one_again());
     }
 
     /// <summary>Reading the log again over 2,000 commits allocates on the UI thread less than a copy of git's output for
@@ -201,6 +203,20 @@ public sealed class GitLogTests : IDisposable
         window.Close();
     }
 
+    /// <summary>A wheel step down a log of 2,000 commits allocates on the UI thread what one down 100 does, and the rows
+    /// on screen are handed other commits as it scrolls, none made again.</summary>
+    private void A_scroll_step_down_two_thousand_commits_hands_the_rows_other_commits_never_making_one_again()
+    {
+        LongListsTests.Holds("The Git log", "commits", 100, 2000, commits =>
+        {
+            string root = Linear(commits);
+            MainWindow window = Ui.OpenFolder(root, languageServer: false, width: 1300, height: 900);
+            window.Perform(AppActions.ShowGit);
+            Ui.Landed(() => window.GitLog.Rows.Count == commits, $"the log's {commits} commits");
+            return (window.GitLog.GetVisualDescendants().OfType<ListBox>().Single(l => l.ItemsSource is IReadOnlyList<GraphRow>), window.Close);
+        });
+    }
+
     /// <summary>The log lists each commit of git's output (records ended by 0x1E, fields apart at 0x1F) as git has it: its
     /// hash, parents, author, email, time, branches and tags (less HEAD's arrow) and subject, in git's order.</summary>
     private static void Listed(string output, GitLogView log)
@@ -277,5 +293,29 @@ public sealed class GitLogTests : IDisposable
             }
             made++;
         }
+    }
+
+    /// <summary>A repository of this many commits on main, one after another, each adding a file: its history alone,
+    /// which is all the log reads, none of its files checked out (a sparse checkout of nothing).</summary>
+    private string Linear(int commits)
+    {
+        string root = PathNames.Canonical(TestFolders.Create("gitlog-"));
+        folders.Add(root);
+        TestGit.Run(root, "init", "-q", "-b", "main");
+        StringBuilder stream = new();
+        for (int commit = 0; commit < commits; commit++)
+        {
+            string subject = $"Commit {commit}";
+            string text = $"class C{commit}x0 {{ }}\n";
+            stream.Append(CultureInfo.InvariantCulture, $"commit refs/heads/main\ncommitter Passenger Tests <tests@passenger.invalid> {1_700_000_000 + (commit * 60)} +0000\n");
+            stream.Append(CultureInfo.InvariantCulture, $"data {Encoding.UTF8.GetByteCount(subject)}\n{subject}\n");
+            stream.Append(CultureInfo.InvariantCulture, $"M 644 inline src/Area0/C{commit}x0.cs\ndata {Encoding.UTF8.GetByteCount(text)}\n{text}\n");
+        }
+        ChildResult imported = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command("git", ["fast-import", "--quiet"], root), stream.ToString(),
+            TimeSpan.FromMinutes(1).Scaled())), "git fast-import", TimeSpan.FromMinutes(1) + TestFolders.Spare);
+        Assert.True(imported.Succeeded, $"git fast-import made no repository of {commits} commits: {imported.Error}");
+        TestGit.Run(root, "sparse-checkout", "set", "--no-cone", "/none");
+        TestGit.Run(root, "reset", "-q", "--hard");
+        return root;
     }
 }
