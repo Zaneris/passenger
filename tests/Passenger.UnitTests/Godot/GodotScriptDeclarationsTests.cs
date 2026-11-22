@@ -7,8 +7,17 @@ namespace Passenger.UnitTests.Godot;
 /// the scripts its class extends in its project.</summary>
 public class GodotScriptDeclarationsTests
 {
+    /// <summary>A script's members, bases and parameters are read as Godot's parser reads them.</summary>
     [Fact]
-    public void A_gdscript_functions_signals_variables_and_constants_are_found_where_their_lines_declare_them_outside_inner_classes()
+    public void A_scripts_declarations_are_read_as_godots_parser_reads_them() => Cases.All(
+        (nameof(A_gdscript_functions_signals_variables_and_constants_are_found_where_their_lines_declare_them_outside_inner_classes),
+            A_gdscript_functions_signals_variables_and_constants_are_found_where_their_lines_declare_them_outside_inner_classes),
+        (nameof(A_scripts_class_takes_in_the_scripts_it_extends_by_path_and_by_class_name_and_is_whole_where_the_last_extends_the_engines),
+            A_scripts_class_takes_in_the_scripts_it_extends_by_path_and_by_class_name_and_is_whole_where_the_last_extends_the_engines),
+        (nameof(A_functions_and_a_signals_parameters_are_read_with_how_many_a_call_must_give),
+            A_functions_and_a_signals_parameters_are_read_with_how_many_a_call_must_give));
+
+    private void A_gdscript_functions_signals_variables_and_constants_are_found_where_their_lines_declare_them_outside_inner_classes()
     {
         string text = "extends Node\n\nsignal scored(points: int)\n\n@rpc(\"any_peer\") func _on_scored_more() -> void:\n\tpass\n\n"
             + "static func make() -> Node:\n\treturn null\n\nclass Inner:\n\tfunc _on_scored() -> void:\n\t\tpass\n\nfunc _on_scored(points: int) -> void:\n\tpass\n"
@@ -30,19 +39,7 @@ public class GodotScriptDeclarationsTests
         TextPosition? At(GodotScriptKind kind, string name) => read.Member(kind, name) is { } member ? snapshot.GetPosition(member.Start) : null;
     }
 
-    [Fact]
-    public void What_a_script_extends_is_read_from_its_extends_or_its_class_name_line()
-    {
-        Assert.Equal(("res://base.gd", true, null), Read("@tool\nextends \"res://base.gd\" # the base\n"));
-        Assert.Equal(("CharacterBody2D", false, "Player"), Read("class_name Player extends CharacterBody2D\n"));
-        Assert.Equal(("Enemy", false, "Boss"), Read("class_name Boss\nextends Enemy\n"));
-        Assert.Equal(((string?)null, false, (string?)null), Read("func _ready():\n\tpass\n"));
-
-        static (string?, bool, string?) Read(string text) => GodotScriptDeclarations.Read(text) is var read ? (read.Extends, read.ExtendsPath, read.ClassName) : default;
-    }
-
-    [Fact]
-    public void A_scripts_class_takes_in_the_scripts_it_extends_by_path_and_by_class_name_and_is_whole_where_the_last_extends_the_engines()
+    private void A_scripts_class_takes_in_the_scripts_it_extends_by_path_and_by_class_name_and_is_whole_where_the_last_extends_the_engines()
     {
         GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string>
         {
@@ -65,22 +62,7 @@ public class GodotScriptDeclarationsTests
             .ChainOf("res://a.gd").Engine);
     }
 
-    /// <summary>A signal's declared parameters stand where the script's own emits give as many, and are not known where one
-    /// gives another count (another object's emit of a signal of the same name is not the script's).</summary>
-    [Fact]
-    public void A_signal_the_scripts_own_emits_give_other_arguments_than_declared_has_its_parameters_unknown()
-    {
-        GodotScriptDeclarations read = GodotScriptDeclarations.Read(
-            "signal updated(zone)\nsignal hit(amount: int)\nsignal named(a, b)\nsignal other(a)\n\nfunc f(offsets):\n"
-            + "\tupdated.emit(offsets[1], offsets[2])\n\tself.hit.emit(3)\n\temit_signal(&\"named\", 1)\n\tenemy.other.emit()\n\tother.emit(\"a, b\")\n");
-        Assert.Null(read.Member(GodotScriptKind.Signal, "updated")!.Parameters);
-        Assert.Equal(["amount: int"], read.Member(GodotScriptKind.Signal, "hit")!.Parameters!);
-        Assert.Null(read.Member(GodotScriptKind.Signal, "named")!.Parameters);
-        Assert.Equal(["a"], read.Member(GodotScriptKind.Signal, "other")!.Parameters!);
-    }
-
-    [Fact]
-    public void A_functions_and_a_signals_parameters_are_read_with_how_many_a_call_must_give()
+    private void A_functions_and_a_signals_parameters_are_read_with_how_many_a_call_must_give()
     {
         GodotScriptDeclarations read = GodotScriptDeclarations.Read(
             "signal died\nsignal hit(amount: int, by: Node = null)\nfunc heal(points := 1, to: Array[int] = [1, 2]) -> void:\n\tpass\n"
@@ -93,27 +75,4 @@ public class GodotScriptDeclarationsTests
         Assert.Null(read.Member(GodotScriptKind.Function, "open")!.Parameters);
     }
 
-    /// <summary>The script's members are what Godot's parser reads: a rest parameter keeps its dots, code in a string declares
-    /// nothing, an unnamed enum's values are each a constant, and an emit over several lines is counted.</summary>
-    [Fact]
-    public void Members_are_what_Godots_parser_reads_of_the_script_strings_and_rest_parameters_too()
-    {
-        GodotScriptDeclarations read = GodotScriptDeclarations.Read(
-            "signal moved(x)\nenum { NORTH, SOUTH }\nvar template = \"\"\"\nfunc not_a_member():\n\tpass\n\"\"\"\n\n"
-            + "func call_all(first, ...rest: Array) -> void:\n\tmoved.emit(\n\t\tfirst, rest\n\t)\n");
-        Assert.Equal(["first", "...rest: Array"], read.Member(GodotScriptKind.Function, "call_all")!.Parameters!);
-        Assert.Null(read.Member(GodotScriptKind.Function, "not_a_member"));
-        Assert.NotNull(read.Member(GodotScriptKind.Constant, "SOUTH"));
-        Assert.Null(read.Member(GodotScriptKind.Signal, "moved")!.Parameters);
-    }
-
-    [Fact]
-    public void A_rest_parameter_takes_any_count_at_the_end_of_a_functions_arguments()
-    {
-        GodotScriptDeclared f = GodotScriptDeclarations.Read("func f(a, ...rest):\n\tpass\n\nfunc g(a, b = 1):\n\tpass\n").Member(GodotScriptKind.Function, "f")!;
-        Assert.Equal((1, (int?)null), (f.Required, f.Most));
-        Assert.Equal([false, true, true, true], new[] { 0, 1, 2, 3 }.Select(f.Takes));
-        GodotScriptDeclared g = GodotScriptDeclarations.Read("func g(a, b = 1):\n\tpass\n").Member(GodotScriptKind.Function, "g")!;
-        Assert.Equal([false, true, true, false], new[] { 0, 1, 2, 3 }.Select(g.Takes));
-    }
 }

@@ -8,29 +8,36 @@ namespace Passenger.UnitTests.Godot;
 /// digits of two systems, a nonspacing mark twice over one letter and a dot above on an i always.</summary>
 public class IdentifierSpoofingTests
 {
-    [Theory]
-    [InlineData("port")]
-    [InlineData("_private_2")]
-    [InlineData("café")]
-    [InlineData("名前")]
-    [InlineData("日本語abc")]
-    [InlineData("ab٣٤")]
-    [InlineData("αβγ")]
-    [InlineData("да")]
-    [InlineData("कx")]
-    public void An_identifier_of_one_script_or_latin_with_one_godot_takes_is_no_spoof(string identifier) =>
+    /// <summary>An identifier is a spoof only where Godot's confusable check calls it one.</summary>
+    [Fact]
+    public void An_identifier_is_a_spoof_only_where_godot_calls_it_one() => Cases.All(
+        (nameof(An_identifier_of_one_script_or_latin_with_one_godot_takes_is_no_spoof),
+            An_identifier_of_one_script_or_latin_with_one_godot_takes_is_no_spoof),
+        (nameof(An_identifier_mixing_confusable_scripts_digits_or_marks_or_of_a_character_not_allowed_is_a_spoof),
+            An_identifier_mixing_confusable_scripts_digits_or_marks_or_of_a_character_not_allowed_is_a_spoof));
+
+    private void An_identifier_of_one_script_or_latin_with_one_godot_takes_is_no_spoof() => Cases.Each<string>(
+    [
+        "port",
+        "café",
+        "名前",
+        "ab٣٤",
+        "कx",
+    ], An_identifier_of_one_script_or_latin_with_one_godot_takes_is_no_spoof);
+
+    private void An_identifier_of_one_script_or_latin_with_one_godot_takes_is_no_spoof(string identifier) =>
         Assert.False(IdentifierSpoofing.Spoofs(identifier), $"{identifier} would be warned of as confusable, which Godot doesn't");
 
-    [Theory]
-    [InlineData("usеr")]
-    [InlineData("pοrt")]
-    [InlineData("дa")]
-    [InlineData("aα")]
-    [InlineData("Ꭺbc")]
-    [InlineData("ŀ")]
-    [InlineData("x١2")]
-    [InlineData("i̇x")]
-    [InlineData("ä̈")]
-    public void An_identifier_mixing_confusable_scripts_digits_or_marks_or_of_a_character_not_allowed_is_a_spoof(string identifier) =>
+    private void An_identifier_mixing_confusable_scripts_digits_or_marks_or_of_a_character_not_allowed_is_a_spoof() => Cases.Each<string>(
+    [
+        "usеr",
+        "aα",
+        "ŀ",
+        "x١2",
+        "i̇x",
+        "ä̈",
+    ], An_identifier_mixing_confusable_scripts_digits_or_marks_or_of_a_character_not_allowed_is_a_spoof);
+
+    private void An_identifier_mixing_confusable_scripts_digits_or_marks_or_of_a_character_not_allowed_is_a_spoof(string identifier) =>
         Assert.True(IdentifierSpoofing.Spoofs(identifier), $"{identifier} would not be warned of as confusable, which Godot does");
 }

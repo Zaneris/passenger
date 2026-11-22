@@ -73,15 +73,71 @@ public class GDScriptAnalyzerTests
         return (analyzer.Analyze(trees["res://main.gd"], "res://main.gd"), analyzer);
     }
 
+    /// <summary>A script's members and expressions are typed as Godot's server types them, through its bases, scenes
+    /// and the engine.</summary>
+    [Fact]
+    public void Members_and_expressions_are_typed_as_godots_server_types_them() => Cases.All(
+        (nameof(A_chain_of_members_thousands_long_comes_to_an_end_with_no_error), A_chain_of_members_thousands_long_comes_to_an_end_with_no_error),
+        (nameof(A_classs_base_by_a_relative_path_is_the_script_Godot_loads), A_classs_base_by_a_relative_path_is_the_script_Godot_loads),
+        (nameof(A_script_read_in_part_has_a_note_where_reading_stopped_and_nothing_called_wrong),
+            A_script_read_in_part_has_a_note_where_reading_stopped_and_nothing_called_wrong),
+        (nameof(A_node_path_is_typed_as_the_scenes_running_the_script_give_its_node_else_as_a_node),
+            A_node_path_is_typed_as_the_scenes_running_the_script_give_its_node_else_as_a_node),
+        (nameof(A_scripts_members_are_typed_as_godots_server_writes_them), A_scripts_members_are_typed_as_godots_server_writes_them),
+        (nameof(An_expressions_type_is_read_through_the_engines_classes_built_in_types_and_operators),
+            An_expressions_type_is_read_through_the_engines_classes_built_in_types_and_operators),
+        (nameof(A_class_takes_its_members_through_extends_by_path_and_class_name_across_the_projects_scripts_and_its_autoloads),
+            A_class_takes_its_members_through_extends_by_path_and_class_name_across_the_projects_scripts_and_its_autoloads));
+
+    /// <summary>A name leads to where Godot declares it, its card says what it declares, and it is coloured as what it
+    /// is.</summary>
+    [Fact]
+    public void A_name_is_declared_and_coloured_where_godot_declares_it() => Cases.All(
+        (nameof(A_name_is_declared_where_its_script_or_another_declares_it), A_name_is_declared_where_its_script_or_another_declares_it),
+        (nameof(Changes_one_after_another_join_into_the_one_edit_of_the_text_before_them),
+            Changes_one_after_another_join_into_the_one_edit_of_the_text_before_them),
+        (nameof(Each_name_is_coloured_as_what_it_is_where_it_is_declared_and_where_it_is_read),
+            Each_name_is_coloured_as_what_it_is_where_it_is_declared_and_where_it_is_read));
+
+    /// <summary>After a dot, completion lists the members of what stands before it, read through brackets and
+    /// calls.</summary>
+    [Fact]
+    public void A_dot_lists_the_members_of_what_stands_before_it() => Cases.All(
+        (nameof(A_member_read_off_a_member_lists_its_own_members_after_its_dot), A_member_read_off_a_member_lists_its_own_members_after_its_dot),
+        (nameof(A_dot_after_a_closing_bracket_reads_what_the_bracket_closes), A_dot_after_a_closing_bracket_reads_what_the_bracket_closes));
+
+    /// <summary>New follows the classes Godot lets one make, and an enum's values follow what Godot finds them
+    /// on.</summary>
+    [Fact]
+    public void New_and_enums_list_what_godot_finds_on_them() => Cases.All(
+        (nameof(New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made), New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made));
+
+    /// <summary>Completion offers the locals whose scope holds the caret, an inner class's code what its classes
+    /// declare.</summary>
+    [Fact]
+    public void Locals_in_scope_are_those_whose_scope_holds_the_caret() => Cases.All(
+        (nameof(Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there), Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there));
+
+    /// <summary>A static place, a constant, an enum value and a node path find only what Godot compiles
+    /// there.</summary>
+    [Fact]
+    public void A_static_or_constant_place_finds_only_what_godot_allows_there() => Cases.All(
+        (nameof(A_static_place_finds_only_what_needs_no_instance), A_static_place_finds_only_what_needs_no_instance),
+        (nameof(A_constants_value_finds_what_godot_folds), A_constants_value_finds_what_godot_folds),
+        (nameof(A_node_path_is_asked_for_only_where_godot_compiles_one), A_node_path_is_asked_for_only_where_godot_compiles_one));
+
     /// <summary>Members whose values read one another, however long the chain and however each reads the next, are read to
     /// an end with no error said of them, where a stack that ran out would end the IDE.</summary>
-    [Theory]
-    [InlineData("var x{0} = x{1}\n", "var x{0} = 1\n")]
-    [InlineData("var x{0} := x{1}\n", "var x{0} := 1\n")]
-    [InlineData("const X{0} = X{1}\n", "const X{0} = 1\n")]
-    [InlineData("var x{0} = x{1} + 1\n", "var x{0} = 1\n")]
-    [InlineData("var x{0} = [x{1}]\n", "var x{0} = 1\n")]
-    public void A_chain_of_members_thousands_long_comes_to_an_end_with_no_error(string link, string last)
+    private void A_chain_of_members_thousands_long_comes_to_an_end_with_no_error() => Cases.Each<(string Link, string Last)>(
+    [
+        ("var x{0} = x{1}\n", "var x{0} = 1\n"),
+        ("var x{0} := x{1}\n", "var x{0} := 1\n"),
+        ("const X{0} = X{1}\n", "const X{0} = 1\n"),
+        ("var x{0} = x{1} + 1\n", "var x{0} = 1\n"),
+        ("var x{0} = [x{1}]\n", "var x{0} = 1\n"),
+    ], row => A_chain_of_members_thousands_long_comes_to_an_end_with_no_error(row.Link, row.Last));
+
+    private void A_chain_of_members_thousands_long_comes_to_an_end_with_no_error(string link, string last)
     {
         const int Links = 3_000;
         string script = "extends Node\n\n" + string.Concat(Enumerable.Range(0, Links).Select(i => string.Format(CultureInfo.InvariantCulture, link, i, i + 1)))
@@ -92,8 +148,7 @@ public class GDScriptAnalyzerTests
 
     /// <summary>Godot takes an extends path from the script's folder, a '..' past res:// kept, so a script at the top
     /// extending "../base.gd" extends a file outside the project, never res://base.gd.</summary>
-    [Fact]
-    public void A_classs_base_by_a_relative_path_is_the_script_Godot_loads()
+    private void A_classs_base_by_a_relative_path_is_the_script_Godot_loads()
     {
         Dictionary<string, GDScriptTree> trees = new(StringComparer.Ordinal)
         {
@@ -111,8 +166,7 @@ public class GDScriptAnalyzerTests
 
     /// <summary>A valid script nested past what Passenger reads is marked only where reading stopped, with a note: a name
     /// declared after it and a mistake past it say nothing, as nothing can be said of what went unread.</summary>
-    [Fact]
-    public void A_script_read_in_part_has_a_note_where_reading_stopped_and_nothing_called_wrong()
+    private void A_script_read_in_part_has_a_note_where_reading_stopped_and_nothing_called_wrong()
     {
         string deep = "var deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\n";
         (GDScriptAnalysis analysis, _) = Analyze($"extends Node\n\nvar early: int = later\n{deep}var later := 1\nvar wrong: String = 1 +\n");
@@ -121,17 +175,7 @@ public class GDScriptAnalyzerTests
         Assert.Equal(analysis.Tree!.Stopped!.Value.Start, only.Start);
     }
 
-    /// <summary>An error the parser met before reading stopped is the script's own and stays, the note after it.</summary>
-    [Fact]
-    public void A_parse_error_before_reading_stopped_stands_beside_its_note()
-    {
-        string deep = "var deep = " + new string('(', 2_000) + "1" + new string(')', 2_000) + "\n";
-        (GDScriptAnalysis analysis, _) = Analyze($"extends Node\n\nvar = 1\n{deep}");
-        Assert.Equal([true, false], analysis.Findings(GDScriptWarningSettings.Of(null)).Select(f => f.IsError));
-    }
-
-    [Fact]
-    public void A_node_path_is_typed_as_the_scenes_running_the_script_give_its_node_else_as_a_node()
+    private void A_node_path_is_typed_as_the_scenes_running_the_script_give_its_node_else_as_a_node()
     {
         GDScriptTree main = GDScriptTree.Parse("extends Node\n\nfunc f():\n\tvar a := $Body\n\tvar b := get_node(\"Body\")\n\tvar c := $Gone\n\tvar d := $Mover\n");
         GDScriptTree mover = GDScriptTree.Parse("class_name Mover\nextends Node2D\n");
@@ -149,8 +193,7 @@ public class GDScriptAnalyzerTests
 
     private static string[] Details(GDScriptAnalysis analysis) => [.. analysis.Tree!.Members.Select(m => analysis.Detail(m.Node)).OfType<string>()];
 
-    [Fact]
-    public void A_scripts_members_are_typed_as_godots_server_writes_them()
+    private void A_scripts_members_are_typed_as_godots_server_writes_them()
     {
         (GDScriptAnalysis analysis, _) = Analyze("extends Node2D\n\nconst LIMIT = 3\nvar speed: float = 2.0\nvar count := 0\nvar loose = 1\n"
             + "@export var label := \"hi\"\nvar where := position\nvar tree := get_tree()\nvar kids := get_children()\n\n"
@@ -160,19 +203,7 @@ public class GDScriptAnalyzerTests
             "func untyped(a)"], Details(analysis));
     }
 
-    /// <summary>The member types Passenger and Godot's server once told apart: an unnamed enum's value is of Godot's
-    /// anonymous enum, a preload of a constant's path is the script it loads, and _static_init says no return.</summary>
-    [Fact]
-    public void An_unnamed_enums_value_a_preload_of_a_constants_path_and_static_init_are_typed_as_godots_server_types_them()
-    {
-        (GDScriptAnalysis analysis, _) = Analyze("extends Node\n\nenum { PAST, FUTURE }\nconst OTHER_PATH := \"res://other.gd\"\nconst OTHER := preload(OTHER_PATH)\n"
-            + "var type := PAST\n\nstatic func _static_init() -> void:\n\tpass\n", new Dictionary<string, string> { ["res://other.gd"] = "extends Node\n" });
-        Assert.Equal(["const OTHER_PATH: String", "const OTHER: res://other.gd", "var type: main.gd.<anonymous enum>", "func _static_init()"],
-            Details(analysis).Where(d => !d.StartsWith("enum", StringComparison.Ordinal)));
-    }
-
-    [Fact]
-    public void An_expressions_type_is_read_through_the_engines_classes_built_in_types_and_operators()
+    private void An_expressions_type_is_read_through_the_engines_classes_built_in_types_and_operators()
     {
         (GDScriptAnalysis analysis, _) = Analyze("extends Node2D\n\nvar items: Array[int] = []\nvar state := State.IDLE\nenum State { IDLE, RUN }\n\n"
             + "func f():\n\tvar a := 2 * 3\n\tvar b := 2 * 1.5\n\tvar c := position.x\n\tvar d := position * 2.0\n\tvar e := items[0]\n\tvar g := $Child\n"
@@ -197,8 +228,7 @@ public class GDScriptAnalyzerTests
         Assert.Equal("var state: main.gd.State", analysis.Detail(analysis.Tree!.Members[1].Node));
     }
 
-    [Fact]
-    public void A_class_takes_its_members_through_extends_by_path_and_class_name_across_the_projects_scripts_and_its_autoloads()
+    private void A_class_takes_its_members_through_extends_by_path_and_class_name_across_the_projects_scripts_and_its_autoloads()
     {
         (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(
             "extends \"res://enemy.gd\"\n\nvar boss := Boss.new()\nvar loot := Game.score\nvar inner := Shape.new()\nvar hp := health\n\nclass Shape:\n\tvar sides := 3\n\n"
@@ -215,19 +245,7 @@ public class GDScriptAnalyzerTests
         Assert.Contains(members, m => m.Name == "get_tree" && m.Declaration?.EngineClass == "Node");
     }
 
-    [Fact]
-    public void The_types_inferred_where_none_is_written_are_given_after_their_names()
-    {
-        string text = "extends Node\n\nvar count := 0\nvar named: String = \"x\"\n\nfunc f(by = 1.5, times := 2, plain):\n\tvar total := count * times\n\tvar loose = 3\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        Assert.Equal([("count", ": int"), ("by", ": float"), ("times", ": int"), ("total", ": int")],
-            analysis.Inferred().Select(i => (Before(text, i.Offset), $": {i.Type}")));
-
-        static string Before(string text, int offset) => text[..offset].Split([' ', '\t', '(', ','])[^1];
-    }
-
-    [Fact]
-    public void A_name_is_declared_where_its_script_or_another_declares_it()
+    private void A_name_is_declared_where_its_script_or_another_declares_it()
     {
         string text = "extends Node\n\nvar count := 0\n\nfunc f(by := 1):\n\tvar local := by\n\treturn count + local + helper()\n\nfunc helper() -> int:\n\treturn 1\n";
         (GDScriptAnalysis analysis, _) = Analyze(text);
@@ -240,77 +258,8 @@ public class GDScriptAnalyzerTests
         int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
     }
 
-    [Fact]
-    public void A_declarations_card_names_what_it_declares_a_class_name_a_class_and_an_enums_value_a_constant()
-    {
-        string text = "class_name Hero\nextends Node\n\nenum Mood { CALM }\nvar count := 0\n\n\nfunc f() -> void:\n\tpass\n\n\nclass Inner:\n\tenum Kind { ONE }\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        GDScriptTree tree = analysis.Tree!;
-        Assert.Equal("class", GDScriptSignature.KindAt(tree, text.IndexOf("Hero", StringComparison.Ordinal), GDScriptType.Native("Node") with { Kind = GDScriptTypeKind.Class, Meta = true }));
-        Assert.Equal("const", GDScriptSignature.KindAt(tree, text.IndexOf("CALM", StringComparison.Ordinal), new GDScriptType(GDScriptTypeKind.Enum, "Mood")));
-        Assert.Equal("const", GDScriptSignature.KindAt(tree, text.IndexOf("ONE", StringComparison.Ordinal), new GDScriptType(GDScriptTypeKind.Enum, "Kind")));
-        Assert.Equal("var", GDScriptSignature.KindAt(tree, text.IndexOf("count", StringComparison.Ordinal), GDScriptType.Builtin("int")));
-        Assert.Equal("func", GDScriptSignature.KindAt(tree, text.IndexOf("f()", StringComparison.Ordinal), GDScriptType.Builtin("Callable")));
-        Assert.Equal("enum", GDScriptSignature.KindAt(tree, text.IndexOf("Mood", StringComparison.Ordinal), new GDScriptType(GDScriptTypeKind.Enum, "Mood") { Meta = true }));
-    }
-
-    [Fact]
-    public void A_scripts_own_class_name_and_its_base_by_name_are_declared_where_their_classes_are()
-    {
-        string text = "class_name Hero\nextends Base\n\n\nfunc f() -> void:\n\tpass\n";
-        const string Base = "class_name Base\nextends Node\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text, new Dictionary<string, string> { ["res://base.gd"] = Base });
-        int hero = text.IndexOf("Hero", StringComparison.Ordinal);
-        Assert.True(DeclaredAt(hero) is (var at, "res://main.gd") && at == hero, "Hero, the script's own class_name, is not declared where it stands");
-        Assert.True(DeclaredAt(text.IndexOf("Base", StringComparison.Ordinal)) is (var based, "res://base.gd") && based == Base.IndexOf("Base", StringComparison.Ordinal),
-            "The script's base by name, Base, is not declared at base.gd's class_name");
-
-        (int, string?)? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name && analysis.DeclarationOf(name) is { } declared
-            ? (declared.Start, declared.Script) : null;
-    }
-
-    [Fact]
-    public void An_enums_value_read_off_its_enum_is_declared_where_the_enum_gives_it()
-    {
-        string text = "extends Node\n\nenum Mood { CALM, ANGRY }\n\n\nfunc f() -> int:\n\treturn Mood.ANGRY + Inner.Kind.TWO\n\n\nclass Inner:\n\tenum Kind { ONE, TWO }\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        Assert.Equal(text.IndexOf("ANGRY }", StringComparison.Ordinal), DeclaredAt(text.IndexOf("ANGRY +", StringComparison.Ordinal)));
-        Assert.Equal(text.IndexOf("TWO }", StringComparison.Ordinal), DeclaredAt(text.IndexOf("TWO\n", StringComparison.Ordinal)));
-
-        int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
-    }
-
-    [Fact]
-    public void A_loop_variables_and_a_pattern_binds_name_is_declared_where_it_stands_as_a_locals_is()
-    {
-        string text = "extends Node\n\n\nfunc f(items: Array) -> void:\n\tfor item in items:\n\t\tmatch item:\n\t\t\t[var first, ..]:\n\t\t\t\tprint(first, item)\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        foreach (string name in new[] { "item in", "first," })
-        {
-            int at = text.IndexOf(name, StringComparison.Ordinal);
-            Assert.True(DeclaredAt(at) == at, $"{name.Split(' ', ',')[0]} is not declared where it stands, so Go to Declaration on it goes nowhere");
-        }
-
-        int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
-    }
-
-    [Fact]
-    public void A_signals_classs_enums_and_enum_values_name_is_declared_where_it_stands_as_a_variables_is()
-    {
-        string text = "extends Node\n\nsignal hit(amount: int)\nenum Mood { CALM, ANGRY }\nenum { LOOSE }\n\n\nclass Inner:\n\tsignal inner_hit\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        foreach (string name in new[] { "hit(", "Mood", "CALM", "ANGRY", "LOOSE", "Inner", "inner_hit" })
-        {
-            int at = text.IndexOf(name, StringComparison.Ordinal);
-            Assert.True(DeclaredAt(at) == at, $"{name.TrimEnd('(')} is not declared where it stands, so Go to Declaration on it goes nowhere");
-        }
-
-        int? DeclaredAt(int offset) => analysis.NodeAt(offset + 1) is ({ } node, _) && node is GDScriptIdentifier name ? analysis.DeclarationOf(name)?.Start : null;
-    }
-
     /// <summary>Changes one after another join into one span of the text before them, the same edit a whole comparison finds.</summary>
-    [Fact]
-    public void Changes_one_after_another_join_into_the_one_edit_of_the_text_before_them()
+    private void Changes_one_after_another_join_into_the_one_edit_of_the_text_before_them()
     {
         Random random = new(1196);
         string text = "func f():\n\tvar a := 1\n\tvar b := a * 2\n";
@@ -336,8 +285,7 @@ public class GDScriptAnalyzerTests
         static string Shape(GDScriptTree tree) => string.Join("\n", tree.Members.Select(m => $"{m.Start}-{m.End}").Concat(tree.Errors.Select(e => $"{e.Start} {e.Message}")));
     }
 
-    [Fact]
-    public void Each_name_is_coloured_as_what_it_is_where_it_is_declared_and_where_it_is_read()
+    private void Each_name_is_coloured_as_what_it_is_where_it_is_declared_and_where_it_is_read()
     {
         string script = "class_name Hero\nextends Node2D\n\nsignal hit(amount)\nenum Mood { CALM, ANGRY }\nconst LIMIT = 3\nvar health := 10\n\n\n"
             + "func heal(by: int) -> void:\n\tvar gained := by * LIMIT\n\thealth += gained\n\thit.emit(gained)\n\tvar mood := Mood.ANGRY\n\tposition.x = sin(1.0)\n\tprint(mood, Hero, get_tree(), Vector2(1, 2))\n";
@@ -355,55 +303,18 @@ public class GDScriptAnalyzerTests
         ], colours.Where(c => c.Key is not ("emit" or "print")).OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => $"{c.Key} {string.Join("/", c.Value)}"));
     }
 
-    /// <summary>What Godot 4.7.2 accepts read off a class by its name: its static variables and functions, constants, enums,
-    /// an unnamed enum's values and inner classes; it rejects a variable, a function or a signal only an instance has. Its
-    /// list says the same, a class built on it inheriting the same, and an instance's holds all of them.</summary>
-    [Fact]
-    public void A_class_read_by_its_name_lists_what_it_has_itself_and_nothing_only_an_instance_has()
-    {
-        const string Worker = "class_name Worker\nextends Node\n\nsignal hit\nenum Mood { CALM }\nenum { LOOSE }\nconst LIMIT := 3\nstatic var shared := 2\nvar field := 1\n\n"
-            + "class Inner:\n\tvar held := 1\n\tstatic func make() -> int:\n\t\treturn 1\n\n"
-            + "func work() -> int:\n\treturn 1\n\nstatic func count() -> int:\n\treturn 2\n";
-        const string Boss = "class_name Boss\nextends Worker\n\nfunc manage() -> int:\n\treturn 4\n\nstatic func lead() -> int:\n\treturn 5\n";
-        string text = "extends Node\n\nfunc f():\n\tprint(Worker.LIMIT, Boss.LIMIT)\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, new() { ["res://worker.gd"] = Worker, ["res://boss.gd"] = Boss });
-
-        HashSet<string> worker = Names(TypeBefore(".LIMIT"));
-        Assert.Superset(new HashSet<string> { "count", "shared", "LIMIT", "Mood", "LOOSE", "Inner" }, worker);
-        Assert.Empty(worker.Intersect(["field", "work", "hit", "get_tree", "name", "ready", "get_class"]));
-        HashSet<string> inner = Names(analyzer.Member(TypeBefore(".LIMIT"), "Inner")!.Type);
-        Assert.Contains("make", inner);
-        Assert.DoesNotContain("held", inner);
-        HashSet<string> boss = Names(TypeBefore(".LIMIT", last: true));
-        Assert.Superset(new HashSet<string> { "lead", "count", "LIMIT" }, boss);
-        Assert.Empty(boss.Intersect(["manage", "work"]));
-        Assert.Superset(new HashSet<string> { "field", "work", "hit", "count", "LIMIT", "get_tree", "name" }, Names(TypeBefore(".LIMIT").Instance));
-
-        HashSet<string> Names(GDScriptType type) => [.. analyzer.Members(type).Select(m => m.Name)];
-
-        GDScriptType TypeBefore(string after, bool last = false)
-        {
-            int dot = last ? text.LastIndexOf(after, StringComparison.Ordinal) : text.IndexOf(after, StringComparison.Ordinal);
-            GDScriptType type = TypeBeforeDot(analysis, dot);
-            Assert.True(type.Meta, $"What comes before {after} read as {type}, no class");
-            return type;
-        }
-    }
-
     /// <summary>What stands before a dot reads as the member it is however many dots came first, as a list opened there needs:
     /// typed on the dot alone, with nothing after it yet, or before a name already written. Godot 4.7.2 compiled each name
     /// listed there, and of a class read by its name rejected those left out.</summary>
-    [Theory]
-    [InlineData("print(Worker.Inner.|)", "Inner", "make DEEP Deepest", "held work field")]
-    [InlineData("print(Worker.Inner.Deepest.|)", "Deepest", "low BOTTOM", "make DEEP held")]
-    [InlineData("print(buddy.buddy.|)", "Worker", "field work hit LIMIT count Mood", "held make")]
-    [InlineData("print(self.buddy.|)", "Worker", "field work hit LIMIT count", "held make")]
-    [InlineData("print(buddy.inner_held.|)", "Inner", "held make DEEP", "field work")]
-    [InlineData("print(buddy.buddy.inner_held.|)", "Inner", "held make DEEP", "field work")]
-    [InlineData("print(self.spot.|)", "Vector2", "x y length", "field")]
-    [InlineData("print(get_tree().root.|)", "Node", "name get_tree ready", "field")]
-    [InlineData("print(Worker.Mood.|)", "Mood", "CALM", "LIMIT")]
-    public void A_member_read_off_a_member_lists_its_own_members_after_its_dot(string written, string type, string listed, string left)
+    private void A_member_read_off_a_member_lists_its_own_members_after_its_dot() => Cases.Each<(string Written, string Type, string Listed, string Left)>(
+    [
+        ("print(Worker.Inner.|)", "Inner", "make DEEP Deepest", "held work field"),
+        ("print(self.buddy.|)", "Worker", "field work hit LIMIT count", "held make"),
+        ("print(self.spot.|)", "Vector2", "x y length", "field"),
+        ("print(Worker.Mood.|)", "Mood", "CALM", "LIMIT"),
+    ], row => A_member_read_off_a_member_lists_its_own_members_after_its_dot(row.Written, row.Type, row.Listed, row.Left));
+
+    private void A_member_read_off_a_member_lists_its_own_members_after_its_dot(string written, string type, string listed, string left)
     {
         const string Worker = "class_name Worker\nextends Node\n\nsignal hit\nenum Mood { CALM }\nconst LIMIT := 3\nvar field := 1\nvar buddy: Worker\nvar inner_held: Inner\n\n"
             + "class Inner:\n\tvar held := 1\n\tconst DEEP := 2\n\tstatic func make() -> int:\n\t\treturn 1\n\tclass Deepest:\n\t\tconst BOTTOM := 3\n\t\tstatic func low() -> int:\n\t\t\treturn 2\n\n"
@@ -424,24 +335,15 @@ public class GDScriptAnalyzerTests
 
     /// <summary>A dot after a closing bracket reads what the bracket closes, never the last thing written inside it, and a group's
     /// parentheses read as what they hold; with nothing after the dot yet, or a name. Godot 4.7.2 compiled each name listed.</summary>
-    [Theory]
-    [InlineData("get_node(\"Body\").|", "Node", "name get_tree", "length")]
-    [InlineData("buddy.twin(spot).|", "Worker", "field work", "x length")]
-    [InlineData("buddy.twin(spot).spot.|", "Vector2", "x length", "field")]
-    [InlineData("get_node(\"Body\").get_node(\"Other\").|", "Node", "name get_tree", "length")]
-    [InlineData("twin(buddy.twin(spot)).|", "Worker", "field work", "x")]
-    [InlineData("arr[index].|", "Node", "name get_tree", "length")]
-    [InlineData("arr[0].|", "Node", "name get_tree", "length")]
-    [InlineData("get_children()[0].|", "Node", "name get_tree", "length")]
-    [InlineData("table[spot].|", "Node", "name get_tree", "length x")]
-    [InlineData("Vector2(1, 2).|", "Vector2", "x y length", "name")]
-    [InlineData("[1].|", "Array", "size front", "length")]
-    [InlineData("(Worker.Inner).|", "Inner", "make", "field held")]
-    [InlineData("(buddy).|", "Worker", "field work", "x")]
-    [InlineData("(buddy.spot).|", "Vector2", "x length", "field")]
-    [InlineData("(buddy.twin(spot)).|", "Worker", "field work", "x")]
-    [InlineData("((buddy)).spot.|", "Vector2", "x length", "field")]
-    public void A_dot_after_a_closing_bracket_reads_what_the_bracket_closes(string written, string type, string listed, string left)
+    private void A_dot_after_a_closing_bracket_reads_what_the_bracket_closes() => Cases.Each<(string Written, string Type, string Listed, string Left)>(
+    [
+        ("get_node(\"Body\").|", "Node", "name get_tree", "length"),
+        ("arr[index].|", "Node", "name get_tree", "length"),
+        ("[1].|", "Array", "size front", "length"),
+        ("((buddy)).spot.|", "Vector2", "x length", "field"),
+    ], row => A_dot_after_a_closing_bracket_reads_what_the_bracket_closes(row.Written, row.Type, row.Listed, row.Left));
+
+    private void A_dot_after_a_closing_bracket_reads_what_the_bracket_closes(string written, string type, string listed, string left)
     {
         const string Worker = "class_name Worker\nextends Node\n\nvar field := 1\nvar spot: Vector2\n\nclass Inner:\n\tvar held := 1\n\tstatic func make() -> int:\n\t\treturn 1\n\n"
             + "func work() -> int:\n\treturn 1\n\nfunc twin(_with) -> Worker:\n\treturn self\n";
@@ -464,107 +366,21 @@ public class GDScriptAnalyzerTests
         }
     }
 
-    /// <summary>What a call is made on reads through the brackets before its dot, its own parenthesis open or closed, as Parameter
-    /// Info and the strings a call takes read it; a signal read off a value keeps the name <c>emit</c> is called on.</summary>
-    [Theory]
-    [InlineData("get_node(\"Body\").get_node(|", "Node")]
-    [InlineData("buddy.twin(spot).twin(|)", "Worker")]
-    [InlineData("arr[0].get_node(|)", "Node")]
-    [InlineData("(buddy).twin(|)", "Worker")]
-    [InlineData("buddy.hit.emit(|)", "Signal")]
-    public void What_a_call_is_made_on_reads_through_the_brackets_before_its_dot(string written, string type)
-    {
-        const string Head = "extends Node\n\nvar buddy: Worker\nvar spot: Vector2\nvar arr: Array[Node]\n\nfunc f():\n\t";
-        string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text, new() { ["res://worker.gd"] = "class_name Worker\nextends Node\n\nsignal hit\n\nfunc twin(_with) -> Worker:\n\treturn self\n" });
-        GDScriptCallAt? call = GDScriptAsked.At(text, Head.Length + written.IndexOf('|', StringComparison.Ordinal)).Call;
-        Assert.NotNull(call);
-        Assert.Equal(type, TypeBeforeDot(analysis, call.NameStart - 1).Name);
-    }
-
-    /// <summary>A function read off a member is a Callable before its dot, and a name a type gives nothing stays no type.</summary>
-    [Theory]
-    [InlineData("print(self.work.|)", "Callable")]
-    [InlineData("print(self.buddy.work.|)", "Callable")]
-    [InlineData("print(self.buddy.gone.|)", "Variant")]
-    public void What_a_member_read_off_a_member_is_stands_before_its_dot(string written, string type)
-    {
-        const string Head = "class_name Worker\nextends Node\n\nvar buddy: Worker\n\nfunc work():\n\tpass\n\nfunc f():\n\t";
-        string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        int dot = Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1;
-        Assert.Equal(type, TypeBeforeDot(analysis, dot).Name);
-    }
-
-    /// <summary>A member the engine's API types as several classes reads as their nearest common class, and a class after a
-    /// minus is one its hint leaves out, never one it takes: Godot 4.8 beta 4 writes Shortcut's events as
-    /// <c>typedarray::24/17:InputEvent,-InputEventShortcut</c>, and every Godot 4 some textures as <c>Texture2D,-AnimatedTexture</c>.</summary>
-    [Theory]
-    [InlineData("shortcut.events[0].|", "InputEvent", "is_pressed", "get_width")]
-    [InlineData("light.texture.|", "Texture2D", "get_width", "is_pressed")]
-    [InlineData("shape.material_override.|", "Material", "render_priority", "get_width")]
-    public void A_member_typed_as_several_classes_reads_as_those_it_takes_never_one_its_hint_leaves_out(string written, string type, string listed, string left)
-    {
-        const string HintedApi = """
-            {
-              "builtin_classes": [{ "name": "Nil" }, { "name": "bool" }, { "name": "int" }, { "name": "Array", "indexing_return_type": "Variant" }],
-              "classes": [
-                { "name": "Object" }, { "name": "RefCounted", "inherits": "Object" }, { "name": "Resource", "inherits": "RefCounted" },
-                { "name": "Node", "inherits": "Object" }, { "name": "Node2D", "inherits": "Node" }, { "name": "Node3D", "inherits": "Node" },
-                { "name": "InputEvent", "inherits": "Resource", "methods": [{ "name": "is_pressed", "return_value": { "type": "bool" } }] },
-                { "name": "InputEventShortcut", "inherits": "InputEvent" },
-                { "name": "Shortcut", "inherits": "Resource", "properties": [{ "name": "events", "type": "typedarray::24/17:InputEvent,-InputEventShortcut" }] },
-                { "name": "Texture2D", "inherits": "Resource", "methods": [{ "name": "get_width", "return_value": { "type": "int" } }] },
-                { "name": "AnimatedTexture", "inherits": "Texture2D" }, { "name": "AtlasTexture", "inherits": "Texture2D" },
-                { "name": "PointLight2D", "inherits": "Node2D", "properties": [{ "name": "texture", "type": "Texture2D,-AnimatedTexture,-AtlasTexture" }] },
-                { "name": "Material", "inherits": "Resource", "properties": [{ "name": "render_priority", "type": "int" }] },
-                { "name": "BaseMaterial3D", "inherits": "Material" }, { "name": "ShaderMaterial", "inherits": "Material" },
-                { "name": "GeometryInstance3D", "inherits": "Node3D", "properties": [{ "name": "material_override", "type": "BaseMaterial3D,ShaderMaterial" }] }
-              ]
-            }
-            """;
-        const string Head = "extends Node\n\nvar shortcut: Shortcut\nvar light: PointLight2D\nvar shape: GeometryInstance3D\n\nfunc f():\n\t";
-        GodotEngineApi engine = GodotEngineApi.Read(Encoding.UTF8.GetBytes(HintedApi));
-        string text = Head + written.Replace("|", string.Empty, StringComparison.Ordinal) + "\n";
-        GDScriptTree tree = GDScriptTree.Parse(text);
-        GDScriptAnalyzer analyzer = new(new GDScriptProject(engine, path => path == "res://main.gd" ? tree : null, new Dictionary<string, string>(), new Dictionary<string, string>()));
-        GDScriptAnalysis analysis = analyzer.Analyze(tree, "res://main.gd");
-        GDScriptType owner = TypeBeforeDot(analysis, Head.Length + written.IndexOf('|', StringComparison.Ordinal) - 1);
-        Assert.True(owner.Name == type, $"{written} read as {owner}, not {type}: the list after its dot offers {owner}'s members in place of {type}'s");
-        HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
-        Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
-        Assert.Empty(names.Intersect(left.Split(' ')));
-    }
-
     /// <summary><c>new</c> follows a class read by its name, by any path to it, wherever Godot 4.7.2 compiled that call, and
     /// nowhere it refused one: an abstract class, one built on an abstract engine class, a singleton, an enum, a built-in type.
     /// A value of a class makes nothing, though Godot leaves that to the running game.</summary>
-    [Theory]
-    [InlineData("Worker", true)]
-    [InlineData("Worker.Inner", true)]
-    [InlineData("Worker.Inner.Deepest", true)]
-    [InlineData("Boss", true)]
-    [InlineData("Heir", true)]
-    [InlineData("Next", true)]
-    [InlineData("Loaded", true)]
-    [InlineData("Loaded.Inner", true)]
-    [InlineData("kept", true)]
-    [InlineData("Node", true)]
-    [InlineData("Node2D", true)]
-    [InlineData("Shape.Whole", true)]
-    [InlineData("Shape", false)]
-    [InlineData("Shape.Part", false)]
-    [InlineData("CanvasItem", false)]
-    [InlineData("Drawn", false)]
-    [InlineData("Input", false)]
-    [InlineData("Mood", false)]
-    [InlineData("Worker.Mood", false)]
-    [InlineData("Vector2", false)]
-    [InlineData("int", false)]
-    [InlineData("self", false)]
-    [InlineData("buddy", false)]
-    [InlineData("Worker.new()", false)]
-    public void New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made(string written, bool listed)
+    private void New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made() => Cases.Each<(string Written, bool Listed)>(
+    [
+        ("Worker", true),
+        ("Worker.Inner.Deepest", true),
+        ("Loaded.Inner", true),
+        ("Shape.Whole", true),
+        ("Shape", false),
+        ("CanvasItem", false),
+        ("Worker.new()", false),
+    ], row => New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made(row.Written, row.Listed));
+
+    private void New_follows_a_class_by_its_name_wherever_godot_lets_one_be_made(string written, bool listed)
     {
         const string Head = "extends Node\n\nenum Mood { CALM }\nconst Loaded = preload(\"res://worker.gd\")\nvar buddy: Worker\n\nclass Next:\n\tpass\n\nfunc f():\n\tvar kept := Worker\n\t";
         foreach (string after in (string[])[string.Empty, "zz"])
@@ -574,103 +390,6 @@ public class GDScriptAnalyzerTests
             GDScriptType owner = TypeBeforeDot(analysis, Head.Length + "print(".Length + written.Length);
             Assert.True(analyzer.Members(owner).Any(m => m.Name == "new") == listed, $"new {(listed ? "missing from" : "offered on")} {written}, read as {owner}");
         }
-    }
-
-    /// <summary>A class's <c>new</c> gives a value of the class, the <c>_init</c> of the nearest class writing one saying what it takes.</summary>
-    [Fact]
-    public void New_gives_an_instance_and_is_declared_by_the_constructor_its_classes_write()
-    {
-        string text = "extends Node\n\nfunc f():\n\tprint(Worker.LIMIT, Boss.LIMIT, Heir.LIMIT, Node.LIMIT)\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
-        GDScriptMemberInfo NewOf(string name) => analyzer.Members(TypeBeforeDot(analysis, text.IndexOf($"{name}.LIMIT", StringComparison.Ordinal) + name.Length)).Single(m => m.Name == "new");
-
-        GDScriptMemberInfo plain = NewOf("Worker");
-        Assert.Equal(("func", "Worker", false, null), (plain.Kind, plain.Type.ToString(), plain.Type.Meta, plain.Declaration));
-        Assert.Equal(("Node", (GDScriptDeclaration?)null), (NewOf("Node").Type.ToString(), NewOf("Node").Declaration));
-        foreach (string name in (string[])["Boss", "Heir"])
-        {
-            GDScriptDeclaration? written = NewOf(name).Declaration;
-            Assert.Equal(("res://boss.gd", Classes["res://boss.gd"].IndexOf("_init", StringComparison.Ordinal)), (written?.Script, written?.Start));
-        }
-    }
-
-    /// <summary>An engine class's enum values come after a class by its name, a value of it and a singleton, and in the scope of a
-    /// class built on it, static places too; a built-in type's after its name alone. Godot 4.7.2 compiled each name listed and
-    /// rejected each left out, but the enum by its bare name, which it takes only before a further dot.</summary>
-    [Theory]
-    [InlineData("Node.|", "PROCESS_MODE_INHERIT ProcessMode", "AXIS_X")]
-    [InlineData("Node2D.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
-    [InlineData("Worker.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
-    [InlineData("self.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
-    [InlineData("buddy.|", "PROCESS_MODE_INHERIT ProcessMode", "")]
-    [InlineData("Input.|", "MOUSE_MODE_VISIBLE MouseMode", "")]
-    [InlineData("Node.ProcessMode.|", "PROCESS_MODE_INHERIT", "ProcessMode")]
-    [InlineData("Vector2.|", "AXIS_X Axis ZERO", "PROCESS_MODE_INHERIT")]
-    [InlineData("Vector2.Axis.|", "AXIS_X", "ZERO")]
-    [InlineData("spot.|", "x", "AXIS_X Axis ZERO")]
-    public void An_engine_enums_values_follow_what_godot_finds_them_on(string written, string listed, string left)
-    {
-        const string Head = "extends Node\n\nvar buddy: Worker\nvar spot: Vector2\n\nfunc f():\n\t";
-        string text = $"{Head}print({written.Replace("|", string.Empty, StringComparison.Ordinal)})\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
-        GDScriptType owner = TypeBeforeDot(analysis, Head.Length + "print(".Length + written.Length - 2);
-        HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
-        Assert.Superset(new HashSet<string>(listed.Split(' ')), names);
-        Assert.Empty(names.Intersect(left.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
-    }
-
-    /// <summary>An enum value says the enum it is of, and in a class built on the engine's it is in scope wherever Godot 4.7.2
-    /// compiled it: static places too, though not in an inner class, which is built on no node.</summary>
-    [Fact]
-    public void An_engine_enums_values_are_in_the_scope_of_a_class_built_on_it()
-    {
-        string text = "extends Node\n\nfunc f():\n\tzz\n\nstatic func g():\n\tyy\n\nclass In:\n\tfunc h():\n\t\txx\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
-        IReadOnlyList<GDScriptMemberInfo> Scope(string mark)
-        {
-            int at = text.IndexOf(mark, StringComparison.Ordinal) + mark.Length;
-            return analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at), analysis.StaticAt(at));
-        }
-
-        GDScriptMemberInfo value = Scope("zz").Single(m => m.Name == "PROCESS_MODE_INHERIT");
-        Assert.Equal(("const", "Node.ProcessMode", "Node"), (value.Kind, value.Type.ToString(), value.Declaration?.EngineClass));
-        Assert.Contains("PROCESS_MODE_INHERIT", Scope("yy").Select(m => m.Name));
-        Assert.DoesNotContain("PROCESS_MODE_INHERIT", Scope("xx").Select(m => m.Name));
-
-        GDScriptMemberInfo axis = analyzer.Members(GDScriptType.Builtin("Vector2") with { Meta = true }).Single(m => m.Name == "AXIS_X");
-        Assert.Equal(("const", "Vector2.Axis"), (axis.Kind, axis.Type.ToString()));
-    }
-
-    /// <summary>A script's enum by its name has a Dictionary's functions that change nothing, beside its values; an engine's enum
-    /// has none, nor has a value of an enum. Godot 4.7.2 compiled each call listed and rejected each left out.</summary>
-    [Theory]
-    [InlineData("Mood.|", "CALM keys size has", "clear")]
-    [InlineData("self.Mood.|", "CALM keys size has", "clear")]
-    [InlineData("Worker.Mood.|", "CALM keys size has", "clear")]
-    [InlineData("Node.ProcessMode.|", "PROCESS_MODE_INHERIT", "keys size has")]
-    [InlineData("Vector2.Axis.|", "AXIS_X", "keys size has")]
-    [InlineData("Mood.CALM.|", "", "keys size has")]
-    [InlineData("held.|", "", "keys size has")]
-    public void A_scripts_enum_by_its_name_has_what_a_constant_dictionary_has(string written, string listed, string left)
-    {
-        const string Head = "extends Node\n\nenum Mood { CALM }\nvar held: Mood\n\nfunc f():\n\t";
-        string text = $"{Head}print({written.Replace("|", string.Empty, StringComparison.Ordinal)})\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text, Classes);
-        GDScriptType owner = TypeBeforeDot(analysis, Head.Length + "print(".Length + written.Length - 2);
-        HashSet<string> names = [.. analyzer.Members(owner).Select(m => m.Name)];
-        Assert.Superset(new HashSet<string>(listed.Split(' ', StringSplitOptions.RemoveEmptyEntries)), names);
-        Assert.Empty(names.Intersect(left.Split(' ')));
-    }
-
-    /// <summary>An enum's Dictionary function lists as the function it is, with what it returns.</summary>
-    [Fact]
-    public void An_enums_dictionary_function_says_what_it_returns()
-    {
-        string text = "extends Node\n\nenum Mood { CALM }\n\nfunc f():\n\tprint(Mood.CALM)\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
-        IReadOnlyList<GDScriptMemberInfo> members = analyzer.Members(TypeBeforeDot(analysis, text.IndexOf(".CALM", StringComparison.Ordinal)));
-        Assert.Equal(("func", "Array"), (members.Single(m => m.Name == "keys").Kind, members.Single(m => m.Name == "keys").Type.ToString()));
-        Assert.Equal(("const", "Mood"), (members.Single(m => m.Name == "CALM").Kind, members.Single(m => m.Name == "CALM").Type.Name));
     }
 
     /// <summary>A small project's classes to make: plain, with inner classes, with a constructor, inheriting one, abstract, and
@@ -690,41 +409,20 @@ public class GDScriptAnalyzerTests
     /// <summary>The locals in scope where a name is typed (the bar), the nearest first, whether the name is typed yet or, on a line
     /// of its own, the caret only stands at its indentation. Each was compiled by Godot 4.7.2 with every name of its script
     /// typed there: it accepted those listed and rejected the rest.</summary>
-    [Theory]
-    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t|\n", "a")]
-    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t\t|\n", "hidden a")]
-    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t|\n\tprint(a)\n", "a")]
-    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\telse:\n\t\t|\n", "a")]
-    [InlineData("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\telif |:\n\t\tpass\n", "a")]
-    [InlineData("func f(a, b):\n\tif a:\n\t\tvar hidden := 1\n\telif b:\n\t\tvar shown := 2\n\t\t|\n", "shown b a")]
-    [InlineData("func f(a, b):\n\tif a:\n\t\tpass\n\telif b:\n\t\tvar shown := 2\n\t|\n", "b a")]
-    [InlineData("func f(a):\n\twhile a:\n\t\tvar hidden := 1\n\t|\n", "a")]
-    [InlineData("func f(a):\n\tvar top := 1\n\tif a:\n\t\tvar mid := 2\n\t\tif a:\n\t\t\tvar low := 3\n\t\t|\n", "mid top a")]
-    [InlineData("func f():\n\t|\n\tvar later := 1\n", "")]
-    [InlineData("func f():\n\tvar me := |\n", "")]
-    [InlineData("func f():\n\tconst ME = |\n", "")]
-    [InlineData("func f():\n\tvar me = func(): return |\n", "")]
-    [InlineData("func f(a):\n\tif a:\n\t\tconst KEPT = 1\n\t\t|\n", "KEPT a")]
-    [InlineData("func f():\n\tfor i in 3:\n\t\t|\n", "i")]
-    [InlineData("func f():\n\tfor i in 3:\n\t\tpass\n\t|\n", "")]
-    [InlineData("func f():\n\tfor i in |:\n\t\tpass\n", "")]
-    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\t|\n", "b x")]
-    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b when |:\n\t\t\tpass\n", "b x")]
-    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\tpass\n\t\t2:\n\t\t\t|\n", "x")]
-    [InlineData("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\tpass\n\t|\n", "x")]
-    [InlineData("func f():\n\tvar a := 1\n\tvar g = func(p):\n\t\tvar inner = p\n\t\t|\n\tvar later := 2\n", "inner p a")]
-    [InlineData("func f():\n\tvar g = func(p):\n\t\tvar inner = p\n\t|\n", "g")]
-    [InlineData("func f():\n\tprint(func(p): return p, |)\n", "")]
-    [InlineData("func f(a, b = |):\n\tpass\n", "a")]
-    [InlineData("var v: int:\n\tset(value):\n\t\t|\n\tget:\n\t\treturn 1\n", "value")]
-    [InlineData("var v: int:\n\tset(value):\n\t\tpass\n\tget:\n\t\treturn |\n", "")]
-    [InlineData("func f(a):\n\tvar x = a\n\n\nfunc g(b):\n\t|\n", "b")]
-    [InlineData("class In:\n\tfunc f(a):\n\t\tvar x = a\n\tfunc g(b):\n\t\t|\n", "b")]
-    [InlineData("func f(a):\n\tif a: var hidden := 1\n\t|\n", "a")]
-    [InlineData("func f(a):\n\tpass\n\n\n|\n", "")]
-    [InlineData("func f():\n\tvar a := 1; print(|)\n", "a")]
+    private void Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there() => Cases.Each<(string Written, string Expected)>(
+    [
+        ("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t|\n", "a"),
+        ("func f(a):\n\tif a:\n\t\tvar hidden := 1\n\t\t|\n", "hidden a"),
+        ("func f(a, b):\n\tif a:\n\t\tvar hidden := 1\n\telif b:\n\t\tvar shown := 2\n\t\t|\n", "shown b a"),
+        ("func f():\n\tvar me := |\n", ""),
+        ("func f():\n\tfor i in 3:\n\t\t|\n", "i"),
+        ("func f(x):\n\tmatch x:\n\t\tvar b:\n\t\t\t|\n", "b x"),
+        ("func f():\n\tvar a := 1\n\tvar g = func(p):\n\t\tvar inner = p\n\t\t|\n\tvar later := 2\n", "inner p a"),
+        ("var v: int:\n\tset(value):\n\t\t|\n\tget:\n\t\treturn 1\n", "value"),
+        ("func f():\n\tvar a := 1; print(|)\n", "a"),
+    ], row => Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there(row.Written, row.Expected));
 
-    public void Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there(string written, string expected)
+    private void Only_the_locals_whose_scope_holds_the_caret_are_in_scope_there(string written, string expected)
     {
         string[] names = expected.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         const string Head = "extends Node\n\n";
@@ -741,87 +439,20 @@ public class GDScriptAnalyzerTests
         }
     }
 
-    /// <summary>A name the script's own text gives a type carries it to the list: a loop's variable its element's, a pattern's
-    /// bind none, a local its value's.</summary>
-    [Fact]
-    public void A_local_in_scope_says_its_type_and_where_it_is_declared()
-    {
-        string text = "extends Node\n\nfunc f(items: Array[Node], x):\n\tfor item in items:\n\t\tvar count := 1\n\t\tmatch x:\n\t\t\tvar b:\n\t\t\t\tzz\n";
-        (GDScriptAnalysis analysis, _) = Analyze(text);
-        IReadOnlyList<GDScriptMemberInfo> locals = analysis.LocalsAt(text.IndexOf("zz", StringComparison.Ordinal) + 2);
-        Assert.Equal(["b Variant", "count int", "item Node", "x Variant", "items Array[Node]"], locals.Select(l => $"{l.Name} {l.Type}"));
-        Assert.Equal(text.IndexOf("item in", StringComparison.Ordinal), locals.Single(l => l.Name == "item").Declaration!.Start);
-        Assert.Equal(text.IndexOf("count :=", StringComparison.Ordinal), locals.Single(l => l.Name == "count").Declaration!.Start);
-    }
-
-    /// <summary>A function an edit above it moved, its nodes kept by the tree parsed again, has the same locals in scope.</summary>
-    [Fact]
-    public void A_function_an_edit_moved_keeps_its_scopes()
-    {
-        string text = "extends Node\n\nvar a := 1\n\nfunc f(p):\n\tif p:\n\t\tvar hidden = 1\n\t\tyy\n\tzz\n";
-        TextEdit edit = new(text.IndexOf('1', StringComparison.Ordinal), 1, "2000");
-        string moved = TextSnapshot.From(text).Apply([edit]).ToString();
-        GDScriptTree tree = GDScriptTree.Parse(text).Reparse(moved, edit);
-        GDScriptAnalysis analysis = new GDScriptAnalyzer(new GDScriptProject(Engine, _ => tree, new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal))).Analyze(tree, "res://main.gd");
-        Assert.Equal(["hidden", "p"], analysis.LocalsAt(moved.IndexOf("yy", StringComparison.Ordinal) + 2).Select(l => l.Name));
-        Assert.Equal(["p"], analysis.LocalsAt(moved.IndexOf("zz", StringComparison.Ordinal) + 2).Select(l => l.Name));
-    }
-
-    /// <summary>Godot 4.7.2 lets an inner class's code name its own members, wherever declared, and the constants, enums and
-    /// classes of the classes around it, and rejects their variables, functions and signals, static ones too.</summary>
-    [Fact]
-    public void An_inner_classs_code_finds_its_own_members_and_what_the_classes_around_it_declare_for_all()
-    {
-        string text = "extends Node\n\nsignal rung\nenum Mood { CALM }\nconst LIMIT := 3\nstatic var shared := 2\nvar outer_field := 1\n\n"
-            + "func outer_work():\n\tpass\n\nstatic func outer_static():\n\tpass\n\nclass Next:\n\tpass\n\n"
-            + "class Inner:\n\tvar own := 1\n\n\tclass Deep:\n\t\tconst DEEP := 1\n\t\tfunc deep_work():\n\t\t\tzz\n\n\tfunc work():\n\t\tyy\n\n\tvar later := 2\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
-        HashSet<string> Names(int at) => [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at), analysis.StaticAt(at)).Select(m => m.Name)];
-
-        int work = text.IndexOf("yy", StringComparison.Ordinal);
-        Assert.Equal("Inner", analysis.ClassAt(work)?.Identifier?.Name);
-        HashSet<string> inner = Names(work);
-        Assert.Superset(new HashSet<string> { "own", "later", "work", "Deep", "LIMIT", "Mood", "Next", "Inner" }, inner);
-        Assert.Empty(inner.Intersect(["rung", "shared", "outer_field", "outer_work", "outer_static", "name", "get_tree", "DEEP"]));
-
-        int deep = text.IndexOf("zz", StringComparison.Ordinal);
-        Assert.Equal("Deep", analysis.ClassAt(deep)?.Identifier?.Name);
-        HashSet<string> deepest = Names(deep);
-        Assert.Superset(new HashSet<string> { "DEEP", "deep_work", "LIMIT", "Deep", "Inner" }, deepest);
-        Assert.Empty(deepest.Intersect(["own", "later", "work", "outer_field"]));
-
-        int outer = text.IndexOf("pass", StringComparison.Ordinal);
-        Assert.Null(analysis.ClassAt(outer));
-        Assert.Superset(new HashSet<string> { "outer_field", "outer_work", "rung", "shared", "LIMIT", "name", "get_tree" }, Names(outer));
-    }
-
     /// <summary>The class's names a place finds, whether a name is typed there, nothing yet, or, on a line of its own, only its
     /// indentation. Godot 4.7.2 compiled every name of the script at each: in a static place only what needs no instance, and
     /// <c>new()</c>; a member variable's value takes all of them, as Godot's analyzer does, though its completion shows it none.</summary>
-    [Theory]
-    [InlineData("static func f():\n\t|\n", true)]
-    [InlineData("static func f():\n\tprint(|)\n", true)]
-    [InlineData("static func f(a):\n\tif a:\n\t\t|\n", true)]
-    [InlineData("static func f(a):\n\tif a:\n\t\tpass\n\t|\n", true)]
-    [InlineData("static func f():\n\tvar g = func(): print(|)\n", true)]
-    [InlineData("static func f():\n\tvar g = func():\n\t\tvar h = func():\n\t\t\t|\n", true)]
-    [InlineData("static func f():\n\tvar local = |\n", true)]
-    [InlineData("static func f(a = |):\n\tpass\n", true)]
-    [InlineData("static func _static_init():\n\t|\n", true)]
-    [InlineData("static var v = |\n", true)]
-    [InlineData("static var v = func(): print(|)\n", true)]
-    [InlineData("static var v: int:\n\tset(value):\n\t\t|\n", true)]
-    [InlineData("static var v: int:\n\tget:\n\t\tprint(|)\n\t\treturn 1\n", true)]
-    [InlineData("func f():\n\t|\n", false)]
-    [InlineData("func f():\n\tvar g = func(): print(|)\n", false)]
-    [InlineData("func f(a = |):\n\tpass\n", false)]
-    [InlineData("var v = |\n", false)]
-    [InlineData("var v = func(): print(|)\n", false)]
-    [InlineData("var v: int:\n\tset(value):\n\t\t|\n", false)]
-    [InlineData("var v: int:\n\tget:\n\t\tprint(|)\n\t\treturn 1\n", false)]
-    [InlineData("static func g():\n\tpass\n\n\nfunc f():\n\t|\n", false)]
-    [InlineData("static var w = 1\n\n\nfunc f():\n\t|\n", false)]
-    public void A_static_place_finds_only_what_needs_no_instance(string written, bool isStatic)
+    private void A_static_place_finds_only_what_needs_no_instance() => Cases.Each<(string Written, bool IsStatic)>(
+    [
+        ("static func f():\n\t|\n", true),
+        ("static func f():\n\tvar g = func(): print(|)\n", true),
+        ("static var v = |\n", true),
+        ("func f():\n\t|\n", false),
+        ("var v = func(): print(|)\n", false),
+        ("static var w = 1\n\n\nfunc f():\n\t|\n", false),
+    ], row => A_static_place_finds_only_what_needs_no_instance(row.Written, row.IsStatic));
+
+    private void A_static_place_finds_only_what_needs_no_instance(string written, bool isStatic)
     {
         const string Head = "extends Node\n\nsignal rung\nenum Mood { CALM }\nenum { LOOSE }\nconst LIMIT := 3\nstatic var shared := 2\nvar field := 1\n\n"
             + "func work():\n\tpass\n\nstatic func tool_fn():\n\tpass\n\nclass Next:\n\tpass\n\n";
@@ -840,61 +471,21 @@ public class GDScriptAnalyzerTests
         }
     }
 
-    /// <summary>An inner class's static function finds what its own class has as a class and what the classes around it declare
-    /// for all, as Godot 4.7.2 compiled them, and a static function of a class Godot refuses to make has no <c>new</c>.</summary>
-    [Fact]
-    public void An_inner_classs_static_function_finds_what_needs_no_instance_of_it()
-    {
-        string text = "extends Node\n\nconst LIMIT := 3\nvar field := 1\nstatic var shared := 2\n\nclass In:\n\tvar own := 1\n\tstatic var own_shared := 2\n\tconst OWN := 3\n\tsignal own_rung\n"
-            + "\tfunc own_work():\n\t\tpass\n\tstatic func own_tool():\n\t\tpass\n\tstatic func f():\n\t\tzz\n\tfunc g():\n\t\tyy\n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(text);
-        HashSet<string> Names(string mark)
-        {
-            int at = text.IndexOf(mark, StringComparison.Ordinal) + mark.Length;
-            return [.. analyzer.MembersInScope(analysis.Tree!, analysis.Path, analysis.ClassAt(at), analysis.StaticAt(at)).Select(m => m.Name)];
-        }
-
-        HashSet<string> inStatic = Names("zz");
-        Assert.Superset(new HashSet<string> { "own_shared", "OWN", "own_tool", "LIMIT", "In", "new" }, inStatic);
-        Assert.Empty(inStatic.Intersect(["own", "own_rung", "own_work", "field", "shared"]));
-        Assert.Superset(new HashSet<string> { "own", "own_rung", "own_work", "own_shared", "own_tool", "OWN", "LIMIT" }, Names("yy"));
-
-        foreach (string head in (string[])["@abstract\nextends Node\n", "extends CanvasItem\n"])
-        {
-            string made = $"{head}\nstatic func f():\n\tzz\n";
-            (GDScriptAnalysis held, GDScriptAnalyzer holder) = Analyze(made);
-            int caret = made.IndexOf("zz", StringComparison.Ordinal) + 2;
-            Assert.DoesNotContain("new", holder.MembersInScope(held.Tree!, held.Path, held.ClassAt(caret), held.StaticAt(caret)).Select(m => m.Name));
-        }
-    }
-
     /// <summary>A constant's value and an enum's take what Godot folds: whether a name is typed there or nothing yet, none of the
     /// script's variables, functions and signals, nor the engine's, and of the locals only constants, an enum's value only what
     /// holds an integer. Godot 4.7.2 compiled every name of the script at each (gen9), a class or enum before a further dot.</summary>
-    [Theory]
-    [InlineData("const C = |\n", GDScriptConstantPlace.Value)]
-    [InlineData("const C := |\n", GDScriptConstantPlace.Value)]
-    [InlineData("const C: int = |\n", GDScriptConstantPlace.Value)]
-    [InlineData("const C = [|]\n", GDScriptConstantPlace.Value)]
-    [InlineData("const C = LIMIT + |\n", GDScriptConstantPlace.Value)]
-    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tconst C = |\n", GDScriptConstantPlace.Value)]
-    [InlineData("static func f(p):\n\tvar v := 1\n\tconst K := 2\n\tconst C = |\n", GDScriptConstantPlace.Value)]
-    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tif p:\n\t\tconst C = |\n", GDScriptConstantPlace.Value)]
-    [InlineData("enum { X = | }\n", GDScriptConstantPlace.Integer)]
-    [InlineData("enum Named { X = | }\n", GDScriptConstantPlace.Integer)]
-    [InlineData("enum Named {\n\tA,\n\tX = |,\n}\n", GDScriptConstantPlace.Integer)]
-    [InlineData("enum Named {\n\tX = |\n", GDScriptConstantPlace.Integer)]
-    [InlineData("enum { X = (|) }\n", GDScriptConstantPlace.Integer)]
-    [InlineData("enum { X = int(1) + | }\n", GDScriptConstantPlace.Integer)]
-    [InlineData("enum { X = int(|) }\n", GDScriptConstantPlace.Value)]
-    [InlineData("enum Named { X = absi(|) + 1 }\n", GDScriptConstantPlace.Value)]
-    [InlineData("enum Named {\n\tA,\n\tX = Vector2i(1, |).x,\n}\n", GDScriptConstantPlace.Value)]
-    [InlineData("var v = |\n", GDScriptConstantPlace.None)]
-    [InlineData("const C = 1\nvar v = |\n", GDScriptConstantPlace.None)]
-    [InlineData("enum { X = 1 }\nvar v = |\n", GDScriptConstantPlace.None)]
-    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tprint(|)\n", GDScriptConstantPlace.None)]
-    [InlineData("func f(p):\n\tvar v := 1\n\tconst K := 2\n\t|\n", GDScriptConstantPlace.None)]
-    public void A_constants_value_finds_what_godot_folds(string written, GDScriptConstantPlace place)
+    private void A_constants_value_finds_what_godot_folds() => Cases.Each<(string Written, GDScriptConstantPlace Place)>(
+    [
+        ("const C = |\n", GDScriptConstantPlace.Value),
+        ("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tconst C = |\n", GDScriptConstantPlace.Value),
+        ("enum { X = | }\n", GDScriptConstantPlace.Integer),
+        ("enum { X = int(1) + | }\n", GDScriptConstantPlace.Integer),
+        ("enum { X = int(|) }\n", GDScriptConstantPlace.Value),
+        ("var v = |\n", GDScriptConstantPlace.None),
+        ("func f(p):\n\tvar v := 1\n\tconst K := 2\n\tprint(|)\n", GDScriptConstantPlace.None),
+    ], row => A_constants_value_finds_what_godot_folds(row.Written, row.Place));
+
+    private void A_constants_value_finds_what_godot_folds(string written, GDScriptConstantPlace place)
     {
         const string Head = "extends Node\n\nsignal rung\nenum Mood { CALM }\nenum { LOOSE }\nconst LIMIT := 3\nconst TEXT := \"x\"\nconst Klass = preload(\"res://worker.gd\")\nstatic var shared := 2\nvar field := 1\n\n"
             + "func work():\n\treturn 1\n\nstatic func tool_fn():\n\treturn 1\n\nclass Next:\n\tconst K := 1\n\n";
@@ -925,55 +516,17 @@ public class GDScriptAnalyzerTests
         }
     }
 
-    /// <summary>A constant's value holds only the keywords and utility functions Godot folds, an enum's only functions that may give
-    /// an integer, as Godot 4.7.2 compiled them; a place that asks nothing takes every one.</summary>
-    [Fact]
-    public void A_constant_place_takes_the_keywords_and_functions_godot_folds()
-    {
-        string[] kept = ["true", "false", "null", "not", "and", "or", "in", "is", "as", "preload", "PI", "TAU", "INF", "NAN"];
-        string[] running = ["self", "super", "await", "func"];
-        Assert.All(kept.Concat(running), k => Assert.True(GDScriptConstantPlace.None.TakesKeyword(k)));
-        Assert.All(kept, k => Assert.True(GDScriptConstantPlace.Value.TakesKeyword(k), $"{k} left out of a constant's value"));
-        Assert.All(running, k => Assert.False(GDScriptConstantPlace.Value.TakesKeyword(k), $"{k} offered in a constant's value"));
-        Assert.All(kept.Concat(running).Where(k => k != "as"), k => Assert.False(GDScriptConstantPlace.Integer.TakesKeyword(k), $"{k} offered in an enum's value"));
-        Assert.True(GDScriptConstantPlace.Integer.TakesKeyword("as"), "as left out of an enum's value, where `1 as int` compiles");
-
-        Dictionary<string, (bool Value, bool Integer)> functions = new(StringComparer.Ordinal)
-        {
-            ["sin"] = (true, false), ["absi"] = (true, true), ["abs"] = (true, true), ["randi"] = (false, false), ["str"] = (false, false), ["ord"] = (true, true), ["len"] = (true, true),
-            ["char"] = (true, false), ["Color8"] = (true, false), ["is_instance_of"] = (true, false), ["type_exists"] = (true, false), ["range"] = (false, false), ["load"] = (false, false),
-            ["print_debug"] = (false, false), ["get_stack"] = (false, false),
-        };
-        foreach ((string name, (bool value, bool integer)) in functions)
-        {
-            Assert.True(GDScriptConstantPlace.None.TakesFunction(Engine.Functions[name]));
-            Assert.True(GDScriptConstantPlace.Value.TakesFunction(Engine.Functions[name]) == value, $"{name} in a constant's value: Godot says {value}");
-            Assert.True(GDScriptConstantPlace.Integer.TakesFunction(Engine.Functions[name]) == integer, $"{name} in an enum's value: Godot says {integer}");
-        }
-    }
-
     /// <summary>A node path is asked for only where Godot 4.7.2 compiled <c>$</c> and <c>%</c>, as each is typed: never in a static
     /// place, whose names are still asked for.</summary>
-    [Theory]
-    [InlineData("static func f():\n\t|\n", true)]
-    [InlineData("static func f():\n\tprint(|)\n", true)]
-    [InlineData("static func f():\n\tvar kept = |\n", true)]
-    [InlineData("static func f(a):\n\tif a:\n\t\tprint(|)\n", true)]
-    [InlineData("static func f():\n\tvar g = func(): print(|)\n", true)]
-    [InlineData("static func f(a = |):\n\tpass\n", true)]
-    [InlineData("static func _static_init():\n\t|\n", true)]
-    [InlineData("static var v = |\n", true)]
-    [InlineData("static var v = func(): print(|)\n", true)]
-    [InlineData("static var v: int:\n\tset(value):\n\t\tprint(|)\n", true)]
-    [InlineData("static var v: int:\n\tget:\n\t\tprint(|)\n\t\treturn 1\n", true)]
-    [InlineData("func f():\n\t|\n", false)]
-    [InlineData("func f():\n\tprint(|)\n", false)]
-    [InlineData("func f():\n\tvar g = func(): print(|)\n", false)]
-    [InlineData("func f(a = |):\n\tpass\n", false)]
-    [InlineData("@onready var v = |\n", false)]
-    [InlineData("var v: int:\n\tset(value):\n\t\tprint(|)\n", false)]
-    [InlineData("static func g():\n\tpass\n\n\nfunc f():\n\t|\n", false)]
-    public void A_node_path_is_asked_for_only_where_godot_compiles_one(string written, bool isStatic)
+    private void A_node_path_is_asked_for_only_where_godot_compiles_one() => Cases.Each<(string Written, bool IsStatic)>(
+    [
+        ("static func f():\n\t|\n", true),
+        ("static func _static_init():\n\t|\n", true),
+        ("func f():\n\tprint(|)\n", false),
+        ("static func g():\n\tpass\n\n\nfunc f():\n\t|\n", false),
+    ], row => A_node_path_is_asked_for_only_where_godot_compiles_one(row.Written, row.IsStatic));
+
+    private void A_node_path_is_asked_for_only_where_godot_compiles_one(string written, bool isStatic)
     {
         const string Head = "extends Node\n\n";
         int mark = written.IndexOf('|', StringComparison.Ordinal);
@@ -990,87 +543,6 @@ public class GDScriptAnalyzerTests
             (GDScriptAnalysis analysis, _) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal));
             return analysis.AskedAt(Head.Length + mark + typed.Length);
         }
-    }
-
-    /// <summary>A raw string's backslash before another backslash leaves its quote to close it, so what is typed after it is a
-    /// name, and a caret inside it is in the string.</summary>
-    [Fact]
-    public void A_name_typed_after_a_raw_string_ending_in_a_backslash_is_asked_for_as_a_name()
-    {
-        const string Text = "extends Node\n\nfunc f(named):\n\tvar p = r\"C:\\\\\" + na\n";
-        int caret = Text.IndexOf(" + na", StringComparison.Ordinal) + " + na".Length;
-        GDScriptAsked asked = GDScriptAsked.At(Text, caret);
-        Assert.True(asked is { Kind: GDScriptAskedKind.Name } && asked.Start == caret - 2, $"The caret after r\"C:\\\\\" read as {asked.Kind} from {asked.Start}");
-        int inside = Text.IndexOf("C:", StringComparison.Ordinal) + 2;
-        Assert.True(GDScriptAsked.At(Text, inside) is { Kind: GDScriptAskedKind.String } within && within.End == inside + 2, "A caret inside the raw string read as outside it");
-    }
-
-    /// <summary>A name is read as Godot's tokenizer reads one, its marks (नमस्ते's virama and vowel sign, घटना's spacing
-    /// vowel) carrying it on and a letter past the first plane one of it: completion narrows by and replaces the whole name,
-    /// and a call of it holds its arguments.</summary>
-    [Theory]
-    [InlineData("नमस्त")]
-    [InlineData("घटना")]
-    [InlineData("\U0002000B\U0002000B")]
-    public void A_name_holding_marks_or_a_letter_past_the_first_plane_is_read_from_its_first_letter(string name)
-    {
-        string typed = $"extends Node\n\nfunc f():\n\tprint({name}";
-        GDScriptAsked asked = GDScriptAsked.At(typed, typed.Length);
-        Assert.True(asked is { Kind: GDScriptAskedKind.Name } && asked.Start == typed.Length - name.Length,
-            $"{name} typed is narrowed by and replaced from {typed[asked.Start..]} ({asked.Kind}), not the whole name");
-        string called = $"extends Node\n\nfunc {name}(a, b):\n\tpass\n\nfunc f():\n\t{name}(1, ";
-        GDScriptCallAt? call = GDScriptAsked.At(called, called.Length).Call;
-        Assert.True(call is { Argument: 1 } && call.Name == name, $"The call of {name} read as {call?.Name ?? "none"} at argument {call?.Argument}: its parameters go unshown");
-    }
-
-    /// <summary>A comment between a call's parenthesis and a string leaves the string given straight to the call, as the
-    /// strings Godot's calls take are read (<see cref="Passenger.Workspace.GodotScriptStrings"/>).</summary>
-    [Fact]
-    public void A_string_after_a_comment_in_a_calls_parentheses_is_given_to_the_call()
-    {
-        const string Text = "extends Node\n\nfunc f():\n\tInput.is_action_pressed( # the jump\n\t\t\"ju";
-        GDScriptAsked asked = GDScriptAsked.At(Text, Text.Length);
-        Assert.True(asked is { Kind: GDScriptAskedKind.String, Argument: true, Call.Name: "is_action_pressed" },
-            $"The string after the comment read as {asked.Kind}, given {asked.Argument} to {asked.Call?.Name ?? "no call"}: the input actions go unoffered");
-    }
-
-    /// <summary>An enum's value finds the values before it by their names, a named enum's too, and neither itself, those after it
-    /// nor its enum, whatever the class calls the same: what's listed compiled at each under Godot 4.7.2 and what's left out didn't.</summary>
-    [Theory]
-    [InlineData("enum N { A = 1, B = | }\n", "A", "B N")]
-    [InlineData("enum N { A, B, C = int(|) }\n", "A B", "C N")]
-    [InlineData("enum N { A = 1, B = 2, C = 1 + | }\n", "A B", "C N")]
-    [InlineData("enum N {\n\tA = 1,\n\tB = |,\n\tC,\n}\n", "A", "B C N")]
-    [InlineData("enum N { A = |, B = 1 }\n", "", "A B N")]
-    [InlineData("enum { A = 1, B = |, C }\n", "A", "B C")]
-    [InlineData("enum { A = |, B = 1 }\n", "", "A B")]
-    [InlineData("const B := 1\nenum N { A = 1, B = |, C }\n", "A", "B C N")]
-    [InlineData("enum M { Z = 1 }\nenum N { A = 1, B = | }\n", "A M", "B N Z")]
-    [InlineData("class In:\n\tenum N { A = 1, B = | }\n", "A", "B N")]
-    public void An_enums_value_finds_the_values_before_it(string written, string found, string missed)
-    {
-        const string Head = "extends Node\n\nconst LIMIT := 3\n\n";
-        int mark = written.IndexOf('|', StringComparison.Ordinal);
-        foreach (string typed in (string[])["zz", string.Empty])
-        {
-            (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(Head + written.Replace("|", typed, StringComparison.Ordinal), Classes);
-            int caret = Head.Length + mark + typed.Length;
-            HashSet<string> names = [.. analyzer.MembersAt(analysis, caret).Where(m => analysis.ConstantAt(caret).Takes(m)).Select(m => m.Name)];
-            Assert.Contains("LIMIT", names);
-            Assert.All(found.Split(' ', StringSplitOptions.RemoveEmptyEntries), n => Assert.True(names.Contains(n), $"{n} left out of \"{written}\" with \"{typed}\" typed: {string.Join(' ', names)}"));
-            Assert.All(missed.Split(' '), n => Assert.False(names.Contains(n), $"{n} offered in \"{written}\" with \"{typed}\" typed"));
-        }
-    }
-
-    /// <summary>Away from an enum's value, what a place finds is what its scope holds.</summary>
-    [Fact]
-    public void A_place_outside_an_enum_finds_the_classs_members_alone()
-    {
-        const string Script = "extends Node\n\nenum N { A = 1, B = 2 }\nenum { C, D }\nvar v = \n";
-        (GDScriptAnalysis analysis, GDScriptAnalyzer analyzer) = Analyze(Script, Classes);
-        int caret = Script.Length - 1;
-        Assert.Null(analysis.EnumNamesAt(caret));
-        Assert.Equal(analyzer.MembersInScope(analysis.Tree!, analysis.Path, null, false).Select(m => m.Name), analyzer.MembersAt(analysis, caret).Select(m => m.Name));
     }
 
     private static Dictionary<string, string> Locals(GDScriptAnalysis analysis) =>

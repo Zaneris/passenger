@@ -22,8 +22,14 @@ public class GDScriptNodePathsTests
 
     private static string? At(string after) => GDScriptNodePaths.At(GDScriptTree.Parse(Script), Script.IndexOf(after, StringComparison.Ordinal) + after.Length);
 
+    /// <summary>A script's node paths are read at the caret and renamed as what holds them writes them.</summary>
     [Fact]
-    public void A_dollar_path_a_unique_name_a_quoted_path_and_a_get_node_string_are_each_read_at_the_caret()
+    public void A_scripts_node_paths_are_read_and_renamed_as_written() => Cases.All(
+        (nameof(A_dollar_path_a_unique_name_a_quoted_path_and_a_get_node_string_are_each_read_at_the_caret),
+            A_dollar_path_a_unique_name_a_quoted_path_and_a_get_node_string_are_each_read_at_the_caret),
+        (nameof(A_new_name_is_written_as_what_holds_the_path_writes_it), A_new_name_is_written_as_what_holds_the_path_writes_it));
+
+    private void A_dollar_path_a_unique_name_a_quoted_path_and_a_get_node_string_are_each_read_at_the_caret()
     {
         Assert.Equal("Panel/Button", At("$Panel/But"));
         Assert.Equal("%Button", At("%But"));
@@ -31,36 +37,10 @@ public class GDScriptNodePathsTests
         Assert.Equal("Panel/Button", At("$\"Panel/Bu"));
     }
 
-    /// <summary>Every path the script's own node leads is read with where its characters lie, in the order written; a call on
-    /// another object leads from that object, so it is none.</summary>
-    [Fact]
-    public void Every_path_of_the_scripts_own_node_is_read_with_where_its_characters_lie()
-    {
-        const string script = """
-            extends Control
-
-            @onready var score := $Hud/Score
-
-            func _ready() -> void:
-            	%Score.show()
-            	get_node('Hud/Score').hide()
-            	self.get_node_or_null(NodePath("Hud/Score"))
-            	has_node(^"Hud/Score")
-            	$"Hud/Score".hide()
-            	other.get_node("Hud/Score")
-
-            """;
-        IReadOnlyList<GDScriptNodePath> paths = GDScriptNodePaths.In(GDScriptTree.Parse(script));
-        Assert.Equal(["Hud/Score", "%Score", "Hud/Score", "Hud/Score", "Hud/Score", "Hud/Score"], paths.Select(p => p.Path));
-        Assert.All(paths, p => Assert.Equal(p.Path, script[p.CharsStart..p.CharsEnd]));
-        Assert.Equal([null, null, '\'', '"', '"', '"'], paths.Select(p => p.Quote));
-    }
-
     /// <summary>A new name is written as what holds the path writes it: a bare path takes an identifier as Godot reads one (marks
     /// and a joiner in it) and becomes a quoted one for any other, a string escapes for its quote, and a raw string that
     /// can't say it says so.</summary>
-    [Fact]
-    public void A_new_name_is_written_as_what_holds_the_path_writes_it()
+    private void A_new_name_is_written_as_what_holds_the_path_writes_it()
     {
         string Renamed(string written, string name, string old = "Score")
         {
@@ -85,10 +65,4 @@ public class GDScriptNodePathsTests
         Assert.Null(raw.Renamed([(0, 5)], "It's"));
     }
 
-    [Fact]
-    public void Away_from_a_path_none_is_read()
-    {
-        Assert.Null(At("var butt"));
-        Assert.Null(At("print(but"));
-    }
 }

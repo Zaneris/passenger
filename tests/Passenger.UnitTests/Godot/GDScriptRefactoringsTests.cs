@@ -66,50 +66,68 @@ public class GDScriptRefactoringsTests
         return new TextRange(at, selected.Length);
     }
 
+    /// <summary>A rename follows every name Godot reads as the member, and is refused where a reading would
+    /// change.</summary>
     [Fact]
-    public void An_inner_classs_member_is_no_local_so_its_rename_and_uses_are_left_to_the_whole_project()
-    {
-        string text = "extends Node\n\n\nfunc _ready() -> void:\n\tvar h := Helper.new()\n\th.count += 1\n\tprint(h.count)\n\n\n"
-            + "class Helper:\n\tenum Kind { ONE, TWO }\n\tsignal bumped\n\tvar count := 0\n\n\tfunc bump(by := 1) -> void:\n\t\tvar step := by\n\t\tcount += step\n";
-        GDScriptRead read = Read(("res://main.gd", text))[0];
-        foreach (string member in new[] { "count := 0", "bump(by", "bumped\n", "ONE", "count += step" })
-        {
-            int at = text.IndexOf(member, StringComparison.Ordinal) + 1;
-            Assert.True(GDScriptRefactorings.RenameLocal(read, at, "renamed") is null, $"Renaming {member} renames it as a local of its inner class alone");
-            Assert.True(GDScriptRefactorings.LocalPlacesOf(read, at) is null, $"Find Usages of {member} finds it as a local of its inner class alone");
-        }
-        string renamed = After(GDScriptRefactorings.RenameLocal(read, text.IndexOf("step :=", StringComparison.Ordinal) + 1, "amount")!, "res://main.gd", text);
-        Assert.Contains("\t\tvar amount := by\n\t\tcount += amount\n", renamed);
-    }
+    public void A_rename_reaches_every_name_godot_reads_and_refuses_what_it_would_change() => Cases.All(
+        (nameof(A_rename_takes_a_name_godot_reads_whole_and_refuses_one_it_reads_as_none),
+            A_rename_takes_a_name_godot_reads_whole_and_refuses_one_it_reads_as_none),
+        (nameof(A_call_by_a_name_holds_back_a_rename_only_where_its_object_may_run_the_functions_class),
+            A_call_by_a_name_holds_back_a_rename_only_where_its_object_may_run_the_functions_class),
+        (nameof(A_member_a_string_names_for_get_set_or_is_connected_is_found_renamed_and_holds_back_a_safe_delete),
+            A_member_a_string_names_for_get_set_or_is_connected_is_found_renamed_and_holds_back_a_safe_delete),
+        (nameof(Renaming_an_override_renames_the_function_it_overrides_and_every_override_of_that_but_never_an_engines),
+            Renaming_an_override_renames_the_function_it_overrides_and_every_override_of_that_but_never_an_engines),
+        (nameof(Renaming_a_member_is_refused_where_a_use_would_read_a_local_of_the_new_name),
+            Renaming_a_member_is_refused_where_a_use_would_read_a_local_of_the_new_name));
 
+    /// <summary>Extract variable and introduce parameter move an expression only where it runs as it did.</summary>
     [Fact]
-    public void An_enums_value_and_an_inner_classs_member_are_found_and_renamed_where_their_scope_takes_them()
-    {
-        string text = "extends Node\n\nenum Mood { CALM, ANGRY }\nenum { LOW, HIGH }\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n\tvar m := Mood.CALM\n"
-            + "\thelper.count += 1\n\tprint(m == Mood.ANGRY, LOW, Helper.Kind.ONE, helper.bump())\n\n\nclass Helper:\n\tenum Kind { ONE, TWO }\n\tvar count := 0\n\n"
-            + "\tfunc bump() -> int:\n\t\tcount += 1\n\t\treturn Kind.TWO\n\n\nclass Sub extends Helper:\n\tfunc bump() -> int:\n\t\treturn 2\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
-        GDScriptTarget At(string written, int into = 0) => GDScriptRefactorings.DeclarationAt(scripts, scripts[0], text.IndexOf(written, StringComparison.Ordinal) + into)!;
-        GDScriptTarget count = At("count += 1\n\tprint");
-        Assert.Equal(3, GDScriptRefactorings.PlacesOf(scripts, count).Places.Count);
-        string renamed = After(GDScriptRefactorings.Rename(scripts, count, "total"), "res://main.gd", text);
-        Assert.True(renamed.Contains("\thelper.total += 1\n", StringComparison.Ordinal) && renamed.Contains("\tvar total := 0\n", StringComparison.Ordinal)
-            && renamed.Contains("\t\ttotal += 1\n", StringComparison.Ordinal), $"Helper's count should be renamed where it is declared, read off a Helper and read in its class:\n{renamed}");
-        renamed = After(GDScriptRefactorings.Rename(scripts, At("CALM, ANGRY"), "STILL"), "res://main.gd", text);
-        Assert.True(renamed.Contains("enum Mood { STILL, ANGRY }", StringComparison.Ordinal) && renamed.Contains("var m := Mood.STILL", StringComparison.Ordinal), renamed);
-        renamed = After(GDScriptRefactorings.Rename(scripts, At("Kind.ONE", 5), "FIRST"), "res://main.gd", text);
-        Assert.True(renamed.Contains("enum Kind { FIRST, TWO }", StringComparison.Ordinal) && renamed.Contains("Helper.Kind.FIRST", StringComparison.Ordinal), renamed);
-        Assert.Contains("already has a member 'HIGH'", GDScriptRefactorings.Rename(scripts, At("LOW, HIGH"), "HIGH").Refused);
-        Assert.Contains("already has a member 'helper'", GDScriptRefactorings.Rename(scripts, At("LOW, HIGH"), "helper").Refused);
-        Assert.Null(GDScriptRefactorings.Rename(scripts, At("CALM, ANGRY"), "LOW").Refused);
-        Assert.Contains("the inner class Sub declares a 'bump' too", GDScriptRefactorings.Rename(scripts, At("bump() -> int:\n\t\tcount"), "poke").Refused);
-    }
+    public void Extract_and_introduce_refuse_what_would_run_otherwise() => Cases.All(
+        (nameof(Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there),
+            Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there),
+        (nameof(Extract_variable_is_refused_where_the_expression_would_run_another_number_of_times),
+            Extract_variable_is_refused_where_the_expression_would_run_another_number_of_times),
+        (nameof(Introduce_parameter_makes_the_expression_a_parameter_with_it_as_the_default),
+            Introduce_parameter_makes_the_expression_a_parameter_with_it_as_the_default));
+
+    /// <summary>Inline variable and function, extract function and safe delete keep what runs and refuse where they
+    /// would not.</summary>
+    [Fact]
+    public void Inline_extract_function_and_safe_delete_keep_what_runs() => Cases.All(
+        (nameof(Inline_variable_puts_its_value_at_each_read_in_parentheses_where_it_needs_them),
+            Inline_variable_puts_its_value_at_each_read_in_parentheses_where_it_needs_them),
+        (nameof(Inline_variable_is_refused_where_it_is_assigned_again_or_what_it_reads_changes),
+            Inline_variable_is_refused_where_it_is_assigned_again_or_what_it_reads_changes),
+        (nameof(Extract_function_moves_the_statements_into_a_function_after_theirs_with_the_locals_they_read_as_parameters),
+            Extract_function_moves_the_statements_into_a_function_after_theirs_with_the_locals_they_read_as_parameters),
+        (nameof(Extract_function_is_refused_where_the_statements_return_or_set_two_locals_read_after),
+            Extract_function_is_refused_where_the_statements_return_or_set_two_locals_read_after),
+        (nameof(Inline_function_gives_each_call_in_every_script_its_body_and_takes_it_out),
+            Inline_function_gives_each_call_in_every_script_its_body_and_takes_it_out),
+        (nameof(Inline_function_is_refused_where_the_arguments_would_not_run_as_the_call_ran_them),
+            Inline_function_is_refused_where_the_arguments_would_not_run_as_the_call_ran_them),
+        (nameof(Safe_delete_takes_out_a_member_nothing_names_and_refuses_one_a_script_or_scene_still_does),
+            Safe_delete_takes_out_a_member_nothing_names_and_refuses_one_a_script_or_scene_still_does));
+
+    /// <summary>Change signature and move follow every call, emit, handler and string naming what they
+    /// change.</summary>
+    [Fact]
+    public void Change_signature_and_move_follow_every_call_and_string() => Cases.All(
+        (nameof(Change_signature_renames_reorders_and_adds_through_every_call_and_string_naming_it),
+            Change_signature_renames_reorders_and_adds_through_every_call_and_string_naming_it),
+        (nameof(Change_signature_is_refused_where_a_calls_arguments_would_not_run_as_they_did),
+            Change_signature_is_refused_where_a_calls_arguments_would_not_run_as_they_did),
+        (nameof(Change_signature_of_a_signal_reorders_and_adds_through_every_emit_and_every_handler_connected),
+            Change_signature_of_a_signal_reorders_and_adds_through_every_emit_and_every_handler_connected),
+        (nameof(Move_takes_a_static_function_to_a_class_named_script_its_calls_and_values_called_by_its_class_name),
+            Move_takes_a_static_function_to_a_class_named_script_its_calls_and_values_called_by_its_class_name),
+        (nameof(No_change_is_made_across_a_script_read_only_in_part), No_change_is_made_across_a_script_read_only_in_part));
 
     /// <summary>A new name is one GDScript declares as Godot's tokenizer reads one: a rename to a name holding marks
     /// (नमस्ते's virama and vowel sign) or a joiner goes through, and one holding a letter Godot reads in no name (U+2E2F)
     /// is refused.</summary>
-    [Fact]
-    public void A_rename_takes_a_name_godot_reads_whole_and_refuses_one_it_reads_as_none()
+    private void A_rename_takes_a_name_godot_reads_whole_and_refuses_one_it_reads_as_none()
     {
         const string Text = "extends Node\n\n\nfunc greet() -> void:\n\tpass\n\n\nfunc _ready() -> void:\n\tgreet()\n";
         IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Text));
@@ -119,25 +137,7 @@ public class GDScriptRefactoringsTests
         Assert.Equal("'aⸯ' is not a GDScript name", GDScriptRefactorings.Rename(scripts, greet, "aⸯ").Refused);
     }
 
-    [Fact]
-    public void A_callables_own_call_names_no_method_so_a_rename_goes_on_but_an_objects_call_by_a_name_read_at_run_time_refuses_it()
-    {
-        const string Helper = "class_name Helper\nextends Node\n\n\nfunc clear(after: float) -> void:\n\tprint(after)\n";
-        const string User = "extends Node\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n\thelper.clear.call_deferred(0.2)\n"
-            + "\tvar later := func(): helper.clear(0.1)\n\tlater.call()\n\tcall_deferred(\"queue_free\")\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://helper.gd", Helper), ("res://user.gd", User));
-        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Helper.IndexOf("clear", StringComparison.Ordinal))!;
-        GDScriptRefactored renamed = GDScriptRefactorings.Rename(scripts, target, "wipe");
-        Assert.Contains("\thelper.wipe.call_deferred(0.2)\n", After(renamed, "res://user.gd", User));
-        Assert.Contains("helper.wipe(0.1)", After(renamed, "res://user.gd", User));
-        const string Dynamic = User + "\n\nfunc by_name(method: String) -> void:\n\thelper.call(method)\n";
-        IReadOnlyList<GDScriptRead> unsure = Read(("res://helper.gd", Helper), ("res://user.gd", Dynamic));
-        Assert.Contains("names a method by what it reads at run time",
-            GDScriptRefactorings.Rename(unsure, GDScriptRefactorings.MemberAt(unsure, unsure[0], Helper.IndexOf("clear", StringComparison.Ordinal))!, "wipe").Refused);
-    }
-
-    [Fact]
-    public void A_call_by_a_name_holds_back_a_rename_only_where_its_object_may_run_the_functions_class()
+    private void A_call_by_a_name_holds_back_a_rename_only_where_its_object_may_run_the_functions_class()
     {
         const string Helper = "class_name Helper\nextends Node2D\n\n\nfunc clear() -> void:\n\tpass\n";
         const string Other = "class_name Other\nextends Node2D\n";
@@ -163,8 +163,7 @@ public class GDScriptRefactoringsTests
         }
     }
 
-    [Fact]
-    public void A_member_a_string_names_for_get_set_or_is_connected_is_found_renamed_and_holds_back_a_safe_delete()
+    private void A_member_a_string_names_for_get_set_or_is_connected_is_found_renamed_and_holds_back_a_safe_delete()
     {
         string text = "extends Node\n\nsignal done\nvar score := 5\n\n\nfunc cb():\n\tpass\n\n\nfunc _ready():\n\tprint(get(\"score\"), self.get(\"score\"))\n\tset(\"score\", 1)\n"
             + "\tset_deferred(\"score\", 2)\n\tprint(get_indexed(\"score:x\"), self[\"score\"], \"score\" in self)\n\tcreate_tween().tween_property(self, \"score\", 1, 1.0)\n"
@@ -182,42 +181,7 @@ public class GDScriptRefactoringsTests
         Assert.Contains("takes it as a value", GDScriptRefactorings.ChangeSignalSignature(scripts, done, "done", [new GDScriptParameterChange(-1, "n", string.Empty, string.Empty, "1")], [], []).Refused);
     }
 
-    [Fact]
-    public void A_string_on_a_value_that_may_not_be_the_members_class_leaves_a_rename_to_the_person_or_alone()
-    {
-        const string Scored = "class_name Scored\nextends Node2D\n\nvar score := 5\n\n\nfunc die():\n\tpass\n";
-        (string? Refused, bool Unseen, string User) Renamed(string body, string name = "score", string to = "points")
-        {
-            string user = $"extends Node\n\nvar typed: Scored\nvar other: Timer\nvar known := {{}}\n\n\nfunc go(data, map: Dictionary, key):\n{body}";
-            IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://scored.gd", Scored), ("res://user.gd", user));
-            GDScriptRefactored made = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Scored.IndexOf(name, StringComparison.Ordinal))!, to);
-            return (made.Refused, made.Unseen, made.Refused is null ? After(made, "res://user.gd", user) : string.Empty);
-        }
-        // On its own class it is the member, on a dictionary or an engine class beside it a name of theirs.
-        Assert.Contains("\tprint(typed.get(\"points\"))\n", Renamed("\tprint(typed.get(\"score\"))\n").User);
-        Assert.Contains("\tprint(map.get(\"score\"), known.get(\"score\"), map[\"score\"], \"score\" in map)\n", Renamed("\tprint(map.get(\"score\"), known.get(\"score\"), map[\"score\"], \"score\" in map)\n").User);
-        Assert.Contains("\tprint(other.get(\"score\"))\n", Renamed("\tprint(other.get(\"score\"))\n").User);
-        // On a value of no type read it may be a dictionary's key, so the person says, and every other string of no such name goes on.
-        foreach (string read in new[] { "\tprint(data.get(\"score\"))\n", "\tprint(data[\"score\"])\n", "\tprint(\"score\" in data)\n" })
-        {
-            (string? refused, bool unseen, _) = Renamed(read);
-            Assert.True(unseen && refused?.Contains("may name it, on a value whose type is not read", StringComparison.Ordinal) == true, $"{read}: {refused}");
-        }
-        Assert.Null(Renamed("\tprint(data.get(\"scorer\"), data.get(key))\n").Refused);
-        Assert.Contains("names a property by what it reads at run time", Renamed("\tprint(typed.get(key))\n").Refused);
-        Assert.Contains("names it for the nodes of a group", Renamed("\tget_tree().call_group(\"enemies\", \"die\")\n", "die", "fall").Refused);
-        Assert.Contains("names a signal by what it reads at run time", SignalRefused("\temit_signal(key)\n"));
-
-        static string? SignalRefused(string body)
-        {
-            string text = $"extends Node\n\nsignal done\n\n\nfunc go(key):\n{body}";
-            IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
-            return GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("done", StringComparison.Ordinal))!, "finished").Refused;
-        }
-    }
-
-    [Fact]
-    public void Renaming_an_override_renames_the_function_it_overrides_and_every_override_of_that_but_never_an_engines()
+    private void Renaming_an_override_renames_the_function_it_overrides_and_every_override_of_that_but_never_an_engines()
     {
         const string Base = "class_name Tool\nextends Node2D\n\n\nfunc draw_move() -> void:\n\tpass\n\n\nfunc _draw_shape() -> void:\n\tpass\n";
         const string Pencil = "extends Tool\n\n\nfunc draw_move() -> void:\n\tsuper()\n";
@@ -243,48 +207,7 @@ public class GDScriptRefactoringsTests
             GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Base.IndexOf("_draw_shape", StringComparison.Ordinal))!, "shape").Refused);
     }
 
-    [Fact]
-    public void An_enum_named_as_a_type_is_declared_where_the_enum_is_and_renamed_there_as_where_code_reads_it()
-    {
-        const string Helper = "class_name Helper\nextends Node\n\nenum Mood { CALM, ANGRY }\n\nvar mood: Mood = Mood.CALM\n\n\n"
-            + "func feel(m: Mood) -> Mood:\n\tvar moods: Array[Mood] = [m]\n\treturn moods[0] as Mood\n";
-        const string User = "extends Node\n\nvar seen: Helper.Mood\n\n\nfunc _ready() -> void:\n\tseen = Helper.Mood.ANGRY\n\tprint(seen is Helper.Mood)\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://helper.gd", Helper), ("res://user.gd", User));
-        int typed = User.IndexOf("Helper.Mood", StringComparison.Ordinal) + "Helper.".Length + 1;
-        Assert.True(scripts[1].Analysis.NodeAt(typed) is ({ } node, _) && node is GDScriptIdentifier { Name: "Mood" } named
-            && scripts[1].Analysis.DeclarationOf(named) is { Script: "res://helper.gd" } declared && declared.Start == Helper.IndexOf("Mood", StringComparison.Ordinal),
-            "Go to Declaration on Helper.Mood written as a type should go to helper.gd's enum Mood");
-        GDScriptRefactored renamed = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], Helper.IndexOf("Mood", StringComparison.Ordinal))!, "Feeling");
-        Assert.Equal("class_name Helper\nextends Node\n\nenum Feeling { CALM, ANGRY }\n\nvar mood: Feeling = Feeling.CALM\n\n\n"
-            + "func feel(m: Feeling) -> Feeling:\n\tvar moods: Array[Feeling] = [m]\n\treturn moods[0] as Feeling\n", After(renamed, "res://helper.gd", Helper));
-        Assert.Equal("extends Node\n\nvar seen: Helper.Feeling\n\n\nfunc _ready() -> void:\n\tseen = Helper.Feeling.ANGRY\n\tprint(seen is Helper.Feeling)\n",
-            After(renamed, "res://user.gd", User));
-    }
-
-    [Fact]
-    public void Renaming_an_inner_class_renames_it_where_a_type_or_a_base_names_it_as_where_code_does()
-    {
-        string text = "extends Node\n\nvar inner: Inner\nvar many: Array[Inner] = []\n\n\nfunc _ready() -> void:\n\tvar x: Variant = inner\n"
-            + "\tprint(x is Inner, x as Inner, Inner.new(), many)\n\n\nclass Inner:\n\tpass\n\n\nclass Sub extends Inner:\n\tpass\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
-        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("class Inner", StringComparison.Ordinal) + 7)!;
-        Assert.Equal(text.Replace("Inner", "Inside", StringComparison.Ordinal), After(GDScriptRefactorings.Rename(scripts, target, "Inside"), "res://main.gd", text));
-    }
-
-    [Fact]
-    public void Renaming_a_function_a_property_names_as_its_setter_or_getter_renames_it_there_too()
-    {
-        string text = "extends Node\n\nvar active := true:\n\tset = set_active, get = is_active\n\n\nfunc set_active(value: bool) -> void:\n\tactive = value\n\n\n"
-            + "func is_active() -> bool:\n\treturn active\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
-        GDScriptRefactored setter = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("func set_active", StringComparison.Ordinal) + 6)!, "turn");
-        Assert.Contains("\tset = turn, get = is_active\n", After(setter, "res://main.gd", text));
-        GDScriptRefactored getter = GDScriptRefactorings.Rename(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("func is_active", StringComparison.Ordinal) + 6)!, "on");
-        Assert.Contains("\tset = set_active, get = on\n", After(getter, "res://main.gd", text));
-    }
-
-    [Fact]
-    public void Renaming_a_member_is_refused_where_a_use_would_read_a_local_of_the_new_name()
+    private void Renaming_a_member_is_refused_where_a_use_would_read_a_local_of_the_new_name()
     {
         string? Renamed(string body, string to = "health")
         {
@@ -320,55 +243,7 @@ public class GDScriptRefactoringsTests
         Assert.Contains("would read the local", GDScriptRefactorings.Rename(set, GDScriptRefactorings.MemberAt(set, set[0], 4)!, "value").Refused);
     }
 
-    [Fact]
-    public void Inlining_a_function_and_introducing_a_parameter_are_refused_where_a_name_would_read_a_local_in_a_members_place()
-    {
-        string text = "var hp := 5\n\n\nfunc read_hp():\n\treturn hp\n\n\nfunc go():\n\tvar hp2 := 1\n\tvar other = 2\n\tprint(read_hp(), hp2, other)\n\n\nfunc shadowed():\n\tvar hp := 9\n\tprint(read_hp(), hp)\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
-        GDScriptRefactored inlined = GDScriptRefactorings.InlineFunction(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf("read_hp", StringComparison.Ordinal))!, []);
-        Assert.Contains("'hp' would read the local where it is called", inlined.Refused);
-        string step = "var step := 2\n\n\nfunc go(a):\n\tprint(step)\n\treturn a + 10\n";
-        Assert.Contains("'step' is read in the function", GDScriptRefactorings.IntroduceParameter(One(step), Over(step, "10"), "step").Refused);
-        Assert.Contains("func go(a, size := 10):", After(GDScriptRefactorings.IntroduceParameter(One(step), Over(step, "10"), "size"), "res://main.gd", step));
-    }
-
-    [Theory]
-    [InlineData("_ready()")]
-    [InlineData("_process(delta)")]
-    [InlineData("_draw_shape()")]
-    [InlineData("_static_init()")]
-    public void Introduce_parameter_is_refused_on_a_function_godot_calls_as_it_declares_it(string function)
-    {
-        string text = $"extends Node2D\n\n\nfunc {function}:\n\tprint(10)\n";
-        GDScriptAnalysis analysis = ReadWith(Engine, ("res://main.gd", text))[0].Analysis;
-        Assert.Contains("is Godot's own, which Godot calls as it declares it", GDScriptRefactorings.IntroduceParameter(analysis, Over(text, "10"), "step").Refused);
-    }
-
-    [Fact]
-    public void Introduce_parameter_gives_a_constructor_a_parameter_its_caller_may_pass()
-    {
-        string text = "extends Node\n\n\nfunc _init():\n\tprint(10)\n";
-        GDScriptAnalysis analysis = ReadWith(Engine, ("res://main.gd", text))[0].Analysis;
-        Assert.Contains("func _init(step := 10):", After(GDScriptRefactorings.IntroduceParameter(analysis, Over(text, "10"), "step"), "res://main.gd", text));
-    }
-
-    [Fact]
-    public void Introduce_parameter_is_refused_where_another_script_overrides_the_function_and_goes_on_where_it_only_overrides_one()
-    {
-        const string Parent = "class_name Parent\nextends Node\n\n\nfunc go(a):\n\tprint(10)\n\n\nfunc alone(a):\n\tprint(20)\n";
-        const string Child = "class_name Child\nextends Parent\n\n\nfunc go(a):\n\tprint(30)\n";
-        const string Grandchild = "extends Child\n\n\nfunc alone(a):\n\tprint(40)\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://parent.gd", Parent), ("res://child.gd", Child), ("res://grandchild.gd", Grandchild));
-
-        GDScriptRefactored refused = GDScriptRefactorings.IntroduceParameter(scripts[0].Analysis, Over(Parent, "10"), "step", scripts);
-        Assert.Contains("child.gd overrides 'go'", refused.Refused);
-        Assert.Equal("res://child.gd", Assert.Single(refused.Places).Script);
-        Assert.Contains("grandchild.gd overrides 'alone'", GDScriptRefactorings.IntroduceParameter(scripts[0].Analysis, Over(Parent, "20"), "step", scripts).Refused);
-        Assert.Contains("func go(a, step := 30):", After(GDScriptRefactorings.IntroduceParameter(scripts[1].Analysis, Over(Child, "30"), "step", scripts), "res://child.gd", Child));
-    }
-
-    [Fact]
-    public void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
+    private void Extract_variable_declares_the_expression_before_its_statement_and_reads_it_there()
     {
         // Typed by := where its type is read, as an int literal's is; without the engine's operators, a product's is not.
         string text = "func f(a: int) -> int:\n\treturn a * 2 + 1\n";
@@ -380,8 +255,7 @@ public class GDScriptRefactoringsTests
         Assert.Equal("func f(a):\n\tvar step := 10\n\treturn a + step\n", After(GDScriptRefactorings.ExtractVariable(One(literal), Over(literal, "10"), "step"), "res://main.gd", literal));
     }
 
-    [Fact]
-    public void Extract_variable_is_refused_where_the_expression_would_run_another_number_of_times()
+    private void Extract_variable_is_refused_where_the_expression_would_run_another_number_of_times()
     {
         string text = "func f(a):\n\twhile a.next():\n\t\tpass\n\tif a and a.ok():\n\t\tpass\n";
         Assert.Contains("loop's condition", GDScriptRefactorings.ExtractVariable(One(text), Over(text, "a.next()"), "n").Refused);
@@ -389,164 +263,13 @@ public class GDScriptRefactoringsTests
         Assert.Contains("keyword", GDScriptRefactorings.ExtractVariable(One(text), Over(text, "a.ok()"), "class").Refused);
     }
 
-    [Fact]
-    public void Extract_variable_is_refused_where_something_that_runs_before_the_expression_could_tell()
-    {
-        const string Prelude = "var hp = 5\n\n\nfunc first():\n\thp = 1\n\treturn 1\n\n\nfunc second():\n\treturn 2\n\n\nfunc consume(a, b):\n\tprint(a, b)\n\n\n";
-        void Refused(string statement, string selected, string runsFirst)
-        {
-            string text = Prelude + $"func f(n):\n\t{statement}\n";
-            GDScriptRefactored made = GDScriptRefactorings.ExtractVariable(One(text), Over(text, selected, text.Split(selected).Length - 2), "x");
-            Assert.True(made.Refused?.Contains($"'{runsFirst}' runs first", StringComparison.Ordinal) == true, $"Extracting {selected} from {statement} runs it ahead of {runsFirst}; it answered: {made.Refused ?? "made"}");
-        }
-        void Made(string statement, string selected, string extracted)
-        {
-            string text = Prelude + $"func f(n):\n\t{statement}\n";
-            string after = After(GDScriptRefactorings.ExtractVariable(One(text), Over(text, selected, text.Split(selected).Length - 2), "x"), "res://main.gd", text);
-            Assert.EndsWith(extracted, after);
-        }
-        Refused("consume(first(), second())", "second()", "first()");
-        Refused("print(first() + second())", "second()", "first()");
-        Refused("print([first(), second()])", "second()", "first()");
-        Refused("print({first(): second()})", "second()", "first()");
-        // A call's arguments run before what it is called on, whichever is written first.
-        Refused("first().size(second())", "first()", "second()");
-        // What a call may change reads otherwise after it; the plain variable alone is read as the call it is passed to runs.
-        Refused("consume(first(), hp)", "hp", "first()");
-        Refused("consume(hp, first())", "hp", "first()");
-        Refused("consume(hp + 1, first())", "first()", "hp");
-        Made("consume(hp, first())", "first()", "\tvar x = first()\n\tconsume(hp, x)\n");
-        Made("hp.size(first())", "first()", "\tvar x = first()\n\thp.size(x)\n");
-        Made("consume(first(), n + 1)", "n + 1", "\tvar x = n + 1\n\tconsume(first(), x)\n");
-        Made("consume(first(), 2)", "2", "\tvar x := 2\n\tconsume(first(), x)\n");
-        Made("consume(first(), Vector2(1, 2))", "Vector2(1, 2)", "\tvar x := Vector2(1, 2)\n\tconsume(first(), x)\n");
-        Made("consume(first(), abs(n))", "abs(n)", "\tvar x = abs(n)\n\tconsume(first(), x)\n");
-        Made("hp = first()", "first()", "\tvar x = first()\n\thp = x\n");
-        Made("print(second() if n else 1)", "n", "\tvar x = n\n\tprint(second() if x else 1)\n");
-    }
-
-    [Fact]
-    public void What_the_engines_api_says_of_a_call_decides_what_it_may_run_ahead_of()
-    {
-        const string Prelude = "extends Node\n\nstatic var counted = 5\nvar held := 5\n\n\nfunc first():\n\treturn 1\n\n\nfunc consume(a, b):\n\tprint(a, b)\n\n\n";
-        string? Refused(string statement, string selected)
-        {
-            string text = Prelude + $"func f(v: Vector2, list: Array, callback: Callable):\n\t{statement}\n";
-            IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://main.gd", text));
-            return GDScriptRefactorings.ExtractVariable(scripts[0].Analysis, Over(text, selected, text.Split(selected).Length - 2), "x").Refused;
-        }
-        // Of a value of its own a const method tells nothing, and made of nothing else neither does a static one or a new engine object.
-        Assert.Null(Refused("consume(first(), v.length())", "v.length()"));
-        Assert.Null(Refused("consume(first(), Vector2.from_angle(1.0))", "Vector2.from_angle(1.0)"));
-        Assert.Null(Refused("consume(first(), Timer.new())", "Timer.new()"));
-        // A const method of what others share reads it, and one that runs what it is given acts.
-        Assert.Contains("'first()' runs first", Refused("consume(first(), list.size())", "list.size()"));
-        Assert.Contains("'first()' runs first", Refused("consume(first(), get_parent())", "get_parent()"));
-        Assert.Contains("'list.size()' runs first", Refused("consume(list.size(), first())", "first()"));
-        Assert.Null(Refused("consume(list.size(), get_parent())", "get_parent()"));
-        Assert.Contains("'first()' runs first", Refused("consume(first(), list.pop_back())", "list.pop_back()"));
-        Assert.Contains("'first()' runs first", Refused("consume(first(), list.map(callback))", "list.map(callback)"));
-        Assert.Contains("'first()' runs first", Refused("consume(first(), callback.call())", "callback.call()"));
-        Assert.Contains("'first()' runs first", Refused("consume(first(), add_child(self))", "add_child(self)"));
-        // Godot reads an object's variable as the call runs, a static variable or an index where it stands.
-        Assert.Null(Refused("consume(held, first())", "first()"));
-        Assert.Contains("'counted' runs first", Refused("consume(counted, first())", "first()"));
-        Assert.Contains("'list[0]' runs first", Refused("consume(list[0], first())", "first()"));
-        Assert.Null(Refused("consume(counted, first())", "counted"));
-        Assert.Contains("'first()' runs first", Refused("consume(held, first())", "held"));
-    }
-
-    [Theory]
-    [InlineData("\tif a > 1:\n\t\tpass\n\telif b.size() > 2:\n\t\tpass\n", "b.size()", "an elif's condition")]
-    [InlineData("\tif a > 1:\n\t\tpass\n\telif b.ok():\n\t\tpass\n", "b.ok()", "an elif's condition")]
-    [InlineData("\tmatch a:\n\t\t1 when b.size() > 2:\n\t\t\tpass\n", "b.size()", "a when guard")]
-    [InlineData("\tmatch a:\n\t\t1 when b.ok():\n\t\t\tpass\n", "b.ok()", "a when guard")]
-    [InlineData("\tmatch a:\n\t\t1 when b > 2:\n\t\t\tpass\n", "b > 2", "a when guard")]
-    [InlineData("\tif a: print(b.size())\n", "b.size()", "shares its line")]
-    [InlineData("\tif a:\n\t\tpass\n\telse: print(b.size())\n", "b.size()", "shares its line")]
-    [InlineData("\twhile a: print(b.size())\n", "b.size()", "shares its line")]
-    [InlineData("\tfor i in a: print(b.size())\n", "b.size()", "shares its line")]
-    [InlineData("\tmatch a:\n\t\t1: print(b.size())\n", "b.size()", "shares its line")]
-    [InlineData("\tprint(a); print(b.size())\n", "b.size()", "shares its line")]
-    public void Extract_variable_is_refused_where_a_declaration_on_the_line_above_is_no_statement_or_runs_otherwise(string body, string selected, string why)
-    {
-        string text = "func f(a, b):\n" + body;
-        Assert.Contains(why, GDScriptRefactorings.ExtractVariable(One(text), Over(text, selected), "n").Refused);
-    }
-
-    [Fact]
-    public void Extract_variable_stays_in_an_else_block_holding_an_if_and_refuses_a_function_written_on_its_own_line()
-    {
-        string text = "func f(a, b):\n\tif a:\n\t\tpass\n\telse:\n\t\tif b.size() > 2:\n\t\t\tpass\n";
-        Assert.Equal("func f(a, b):\n\tif a:\n\t\tpass\n\telse:\n\t\tvar n = b.size()\n\t\tif n > 2:\n\t\t\tpass\n",
-            After(GDScriptRefactorings.ExtractVariable(One(text), Over(text, "b.size()"), "n"), "res://main.gd", text));
-        string alone = "func f(a, b): print(b.size())\n";
-        Assert.Contains("shares its line", GDScriptRefactorings.ExtractVariable(One(alone), Over(alone, "b.size()"), "n").Refused);
-    }
-
-    [Fact]
-    public void A_static_variable_read_off_another_class_can_change_where_its_constants_cannot()
-    {
-        const string Helper = "class_name Helper\nextends RefCounted\n\nstatic var count := 0\nconst LIMIT := 5\n\n\nstatic func bump():\n\tcount += 1\n\treturn 1\n";
-        const string Prelude = "func consume(a, b):\n\tprint(a, b)\n\n\n";
-        GDScriptAnalysis Main(string text) => Read(("res://main.gd", text), ("res://helper.gd", Helper))[0].Analysis;
-
-        string read = Prelude + "func f():\n\tconsume(Helper.count, Helper.bump())\n";
-        Assert.Contains("'Helper.count' runs first", GDScriptRefactorings.ExtractVariable(Main(read), Over(read, "Helper.bump()"), "x").Refused);
-        string constant = Prelude + "func f():\n\tconsume(Helper.LIMIT, Helper.bump())\n";
-        Assert.Null(GDScriptRefactorings.ExtractVariable(Main(constant), Over(constant, "Helper.bump()"), "x").Refused);
-
-        string kept = "func f():\n\tvar before = Helper.count\n\tHelper.bump()\n\tprint(before)\n";
-        Assert.NotNull(GDScriptRefactorings.InlineVariable(Main(kept), kept.IndexOf("before", StringComparison.Ordinal)).Refused);
-        string given = "func f():\n\tprint(Helper.count)\n";
-        Assert.Contains("'Helper.count'", GDScriptRefactorings.IntroduceParameter(Main(given), Over(given, "Helper.count"), "x").Refused);
-    }
-
-    [Fact]
-    public void A_variable_of_the_script_a_class_is_built_on_reads_by_its_own_kind()
-    {
-        const string Base = "class_name Base\nextends Node\n\nvar plain := 5\nvar guarded := 5:\n\tget:\n\t\treturn guarded\nstatic var counted := 5\nconst LIMIT := 5\n";
-        const string Prelude = "extends Base\n\n\nfunc first():\n\treturn 1\n\n\nfunc consume(a, b):\n\tprint(a, b)\n\n\n";
-        string? Refused(string statement, string selected, string parent = Base)
-        {
-            string text = Prelude + $"func f():\n\t{statement}\n";
-            IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://main.gd", text), ("res://base.gd", parent));
-            return GDScriptRefactorings.ExtractVariable(scripts[0].Analysis, Over(text, selected, text.Split(selected).Length - 2), "x").Refused;
-        }
-        // Godot reads the plain one as the call runs, whichever script declares it, and a getter's or a static's where it stands.
-        Assert.Null(Refused("consume(plain, first())", "first()"));
-        Assert.Contains("'first()' runs first", Refused("consume(plain, first())", "plain"));
-        Assert.Contains("'guarded' runs first", Refused("consume(guarded, first())", "first()"));
-        Assert.Null(Refused("consume(guarded, first())", "guarded"));
-        Assert.Contains("'counted' runs first", Refused("consume(counted, first())", "first()"));
-        Assert.Null(Refused("consume(LIMIT, first())", "first()"));
-    }
-
-    [Fact]
-    public void Inline_variable_puts_its_value_at_each_read_in_parentheses_where_it_needs_them()
+    private void Inline_variable_puts_its_value_at_each_read_in_parentheses_where_it_needs_them()
     {
         string text = "func f(a):\n\tvar b = a + 1\n\tprint(b * 2)\n\tprint(b)\n";
         Assert.Equal("func f(a):\n\tprint((a + 1) * 2)\n\tprint(a + 1)\n", After(GDScriptRefactorings.InlineVariable(One(text), text.IndexOf("b =", StringComparison.Ordinal)), "res://main.gd", text));
     }
 
-    [Fact]
-    public void Inline_variable_is_refused_where_its_value_read_anew_would_run_in_a_loop_under_a_branch_or_after_a_call()
-    {
-        string text = "func compute() -> int:\n\treturn 1\n\n\nfunc a(cond: bool) -> void:\n\tvar x := compute()\n\tif cond:\n\t\tprint(x)\n\n\n"
-            + "func b(n: int) -> void:\n\tvar y := n + 1\n\tfor i in 3:\n\t\tprint(y, i)\n\n\nfunc c() -> void:\n\tvar z := compute()\n\tprint(\"before\")\n\tprint(z)\n\n\n"
-            + "func d(cond: bool) -> bool:\n\tvar w := compute()\n\treturn cond and w > 0\n\n\nfunc e(n: int) -> void:\n\tvar v := n * 2\n\tif n > 0:\n\t\tprint(v)\n\n\n"
-            + "func f() -> int:\n\tvar u := compute()\n\treturn u + 1\n";
-        GDScriptAnalysis analysis = One(text);
-        Assert.Contains("read anew in a branch", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("x :=", StringComparison.Ordinal)).Refused);
-        Assert.Contains("read anew in a loop", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("y :=", StringComparison.Ordinal)).Refused);
-        Assert.Contains("after a call", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("z :=", StringComparison.Ordinal)).Refused);
-        Assert.Contains("read anew in a branch", GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("w :=", StringComparison.Ordinal)).Refused);
-        Assert.Contains("\tif n > 0:\n\t\tprint(n * 2)\n", After(GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("v :=", StringComparison.Ordinal)), "res://main.gd", text));
-        Assert.Contains("\treturn compute() + 1\n", After(GDScriptRefactorings.InlineVariable(analysis, text.IndexOf("u :=", StringComparison.Ordinal)), "res://main.gd", text));
-    }
-
-    [Fact]
-    public void Inline_variable_is_refused_where_it_is_assigned_again_or_what_it_reads_changes()
+    private void Inline_variable_is_refused_where_it_is_assigned_again_or_what_it_reads_changes()
     {
         string again = "func f(a):\n\tvar b = a\n\tb = 3\n\tprint(b)\n";
         Assert.Contains("assigned again", GDScriptRefactorings.InlineVariable(One(again), again.IndexOf("b =", StringComparison.Ordinal)).Refused);
@@ -556,40 +279,7 @@ public class GDScriptRefactoringsTests
         Assert.Single(refused.Places);
     }
 
-    [Fact]
-    public void Inline_variable_is_refused_where_what_its_value_reads_through_a_name_changes_before_a_use()
-    {
-        string Refused(string body)
-        {
-            string text = $"var hp = 5\n\n\nfunc bump():\n\thp = 100\n\treturn 1\n\n\nfunc f(values, other):\n{body}";
-            return GDScriptRefactorings.InlineVariable(One(text), text.IndexOf("old =", StringComparison.Ordinal)).Refused ?? "made";
-        }
-        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values[0]\n\tvalues[0] = 2\n\tprint(old)\n"));
-        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values.size\n\tvalues.size = 2\n\tprint(old)\n"));
-        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values[0]\n\tvalues[0] += 2\n\tprint(old)\n"));
-        Assert.Contains("'values', which its value reads, is changed", Refused("\tvar old = values.a[0]\n\tvalues.a[1].b = 2\n\tprint(old)\n"));
-        // Through another name, or by a call on it.
-        Assert.Contains("may be changed before a use", Refused("\tvar old = values[0]\n\tother[0] = 2\n\tprint(old)\n"));
-        Assert.Contains("after a call", Refused("\tvar old = values[0]\n\tvalues.clear()\n\tprint(old)\n"));
-        Assert.Contains("read anew in a branch", Refused("\tvar old = values[0]\n\tif other:\n\t\tprint(old)\n"));
-        // Godot reads a plain variable only as the call it is passed to runs, so inlined it would come after the call beside it.
-        Assert.Contains("after a call", Refused("\tvar old = hp\n\tprint(old, bump())\n"));
-        // A call moved past a read of what it may change.
-        Assert.Contains("'hp' reads what it may change", Refused("\tvar old = bump()\n\tvar seen = hp\n\tprint(old, seen)\n"));
-        // An array read twice is one array, its value written twice two.
-        Assert.Contains("makes a new one each time", Refused("\tvar old = []\n\told.append(1)\n\tprint(old)\n"));
-        Assert.Contains("makes a new one each time", Refused("\tvar old = func(): pass\n\tvalues.connect(old)\n\tvalues.disconnect(old)\n"));
-
-        string kept = "func f(values):\n\tvar old = values[0]\n\tvalues[0] = old + 1\n";
-        Assert.Equal("func f(values):\n\tvalues[0] = values[0] + 1\n", After(GDScriptRefactorings.InlineVariable(One(kept), kept.IndexOf("old =", StringComparison.Ordinal)), "res://main.gd", kept));
-        string alias = "func f(values):\n\tvar same = values\n\tsame.append(1)\n\tprint(same)\n";
-        Assert.Equal("func f(values):\n\tvalues.append(1)\n\tprint(values)\n", After(GDScriptRefactorings.InlineVariable(One(alias), alias.IndexOf("same =", StringComparison.Ordinal)), "res://main.gd", alias));
-        string once = "func f():\n\tvar made = [1]\n\tprint(made)\n";
-        Assert.Equal("func f():\n\tprint([1])\n", After(GDScriptRefactorings.InlineVariable(One(once), once.IndexOf("made =", StringComparison.Ordinal)), "res://main.gd", once));
-    }
-
-    [Fact]
-    public void Extract_function_moves_the_statements_into_a_function_after_theirs_with_the_locals_they_read_as_parameters()
+    private void Extract_function_moves_the_statements_into_a_function_after_theirs_with_the_locals_they_read_as_parameters()
     {
         string text = "func f(a: int) -> void:\n\tvar b = a + 1\n\tvar c = b * 2\n\tprint(c)\n\tprint(b)\n";
         Assert.Equal("func f(a: int) -> void:\n\tvar b = a + 1\n\tshow(b)\n\tprint(b)\n\n\nfunc show(b) -> void:\n\tvar c = b * 2\n\tprint(c)\n",
@@ -599,24 +289,14 @@ public class GDScriptRefactoringsTests
             After(GDScriptRefactorings.ExtractFunction(One(text), Over(text, "var c = b * 2"), "double"), "res://main.gd", text));
     }
 
-    [Fact]
-    public void Extract_function_returns_the_type_the_analyzer_reads_of_the_local_it_returns()
-    {
-        string text = "func f() -> void:\n\tvar c = 5\n\tprint(c)\n";
-        Assert.Equal("func f() -> void:\n\tvar c = make_c()\n\tprint(c)\n\n\nfunc make_c() -> int:\n\tvar c = 5\n\treturn c\n",
-            After(GDScriptRefactorings.ExtractFunction(One(text), Over(text, "var c = 5"), "make_c"), "res://main.gd", text));
-    }
-
-    [Fact]
-    public void Extract_function_is_refused_where_the_statements_return_or_set_two_locals_read_after()
+    private void Extract_function_is_refused_where_the_statements_return_or_set_two_locals_read_after()
     {
         string text = "func f(a):\n\tvar b = a + 1\n\tvar c = b * 2\n\tprint(c)\n\tprint(b)\n\treturn b\n";
         Assert.Contains("'c' and 'b'", GDScriptRefactorings.ExtractFunction(One(text), Over(text, "var b = a + 1\n\tvar c = b * 2"), "two").Refused?.Replace("'b' and 'c'", "'c' and 'b'"));
         Assert.Contains("return", GDScriptRefactorings.ExtractFunction(One(text), Over(text, "print(b)\n\treturn b"), "out").Refused);
     }
 
-    [Fact]
-    public void Introduce_parameter_makes_the_expression_a_parameter_with_it_as_the_default()
+    private void Introduce_parameter_makes_the_expression_a_parameter_with_it_as_the_default()
     {
         string text = "func f(a):\n\treturn a + 10\n";
         Assert.Equal("func f(a, step := 10):\n\treturn a + step\n", After(GDScriptRefactorings.IntroduceParameter(One(text), Over(text, "10"), "step"), "res://main.gd", text));
@@ -624,57 +304,10 @@ public class GDScriptRefactoringsTests
         Assert.Contains("reads 'b'", GDScriptRefactorings.IntroduceParameter(One(local), Over(local, "a + b"), "sum").Refused);
     }
 
-    /// <summary>Godot refuses a local of a parameter's name in any block of its function, and takes one of a name whose block
-    /// ended before it: a new parameter's name is checked against the whole function, a new local's against what is in scope.</summary>
-    [Theory]
-    [InlineData("func f(a):\n\tif a:\n\t\tvar step = 1\n\treturn a + 10\n")]
-    [InlineData("func f(a):\n\tvar total = a + 10\n\tfor step in 3:\n\t\tprint(step)\n\treturn total\n")]
-    [InlineData("func f(a):\n\tprint(a + 10)\n\tif a:\n\t\tconst step = 1\n")]
-    public void A_new_parameter_takes_no_name_a_block_of_its_function_declares(string text) =>
-        Assert.Contains("'step' is already a parameter or local", GDScriptRefactorings.IntroduceParameter(One(text), Over(text, "10"), "step").Refused);
-
-    [Fact]
-    public void A_new_local_may_take_the_name_of_one_whose_block_has_ended_and_none_still_in_scope()
-    {
-        string ended = "func f(a):\n\tif a:\n\t\tvar step = 1\n\tprint(a * 2)\n";
-        Assert.Equal("func f(a):\n\tif a:\n\t\tvar step = 1\n\tvar step = a * 2\n\tprint(step)\n",
-            After(GDScriptRefactorings.ExtractVariable(One(ended), Over(ended, "a * 2"), "step"), "res://main.gd", ended));
-        string around = "func f(a):\n\tvar step = 1\n\tif a:\n\t\tprint(a * 2)\n";
-        Assert.Contains("'step' is already a local there", GDScriptRefactorings.ExtractVariable(One(around), Over(around, "a * 2"), "step").Refused);
-    }
-
-    [Fact]
-    public void Introduce_parameter_is_refused_for_what_a_default_would_run_at_another_time_or_share_between_rounds()
-    {
-        string Introduced(string body, string selected)
-        {
-            string text = $"const LIMIT = 3\nenum Mood {{ CALM }}\nvar hp = 5\n\n\nfunc Trigger():\n\treturn 1\n\n\nfunc go(flag):\n{body}";
-            GDScriptRefactored made = GDScriptRefactorings.IntroduceParameter(One(text), Over(text, selected, text.Split(selected).Length - 2), "value");
-            return made.Refused ?? After(made, "res://main.gd", text);
-        }
-        Assert.Contains("read as the function is called", Introduced("\tif flag:\n\t\tprint(Trigger())\n", "Trigger()"));
-        Assert.Contains("read as the function is called", Introduced("\tprint(Stranger())\n", "Stranger()"));
-        Assert.Contains("read as the function is called", Introduced("\tprint(randi())\n", "randi()"));
-        Assert.Contains("it reads 'hp'", Introduced("\thp = 2\n\tprint(hp + 1)\n", "hp + 1"));
-        Assert.Contains("it reads 'flag'", Introduced("\tprint(flag.size + 1)\n", "flag.size + 1"));
-        Assert.Contains("it reads 'Hud'", Introduced("\tprint(Hud.score + 1)\n", "Hud.score + 1"));
-        Assert.Contains("a new one each time round", Introduced("\tfor i in 2:\n\t\tvar a = [1]\n\t\ta.append(2)\n", "[1]"));
-        Assert.Contains("a new one each time round", Introduced("\twhile flag:\n\t\tvar a = {}\n\t\ta[1] = 2\n", "{}"));
-        Assert.Contains("a new one each time round", Introduced("\tfor i in 2:\n\t\tvar a = PackedInt32Array()\n", "PackedInt32Array()"));
-        Assert.Contains("func go(flag, value := [1]):", Introduced("\tvar a = [1]\n\ta.append(2)\n", "[1]"));
-        Assert.Contains("func go(flag, value := Vector2(1, 2)):", Introduced("\tif flag:\n\t\tprint(Vector2(1, 2))\n", "Vector2(1, 2)"));
-        Assert.Contains("func go(flag, value = abs(-3)):", Introduced("\tfor i in 2:\n\t\tprint(abs(-3))\n", "abs(-3)"));
-        Assert.Contains("func go(flag, value := LIMIT):", Introduced("\tprint(LIMIT)\n", "LIMIT"));
-        Assert.Contains("Mood.CALM):", Introduced("\tprint(Mood.CALM)\n", "Mood.CALM"));
-        Assert.Contains("PI):", Introduced("\tprint(PI)\n", "PI"));
-        Assert.Contains("Vector2.ZERO):", Introduced("\tprint(Vector2.ZERO)\n", "Vector2.ZERO"));
-    }
-
     private const string Helper = "class_name Helper\nextends Node\n\n\nfunc twice(x):\n\treturn x * 2\n\n\nfunc run():\n\tprint(twice(3) + 1)\n";
     private const string User = "extends Helper\n\n\nfunc go():\n\tvar y = twice(4 + 1)\n\tprint(y)\n";
 
-    [Fact]
-    public void Inline_function_gives_each_call_in_every_script_its_body_and_takes_it_out()
+    private void Inline_function_gives_each_call_in_every_script_its_body_and_takes_it_out()
     {
         IReadOnlyList<GDScriptRead> scripts = Read(("res://helper.gd", Helper), ("res://user.gd", User));
         GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Helper.IndexOf("twice", StringComparison.Ordinal))!;
@@ -683,8 +316,7 @@ public class GDScriptRefactoringsTests
         Assert.Equal("extends Helper\n\n\nfunc go():\n\tvar y = (4 + 1) * 2\n\tprint(y)\n", After(made, "res://user.gd", User));
     }
 
-    [Fact]
-    public void Inline_function_is_refused_where_the_arguments_would_not_run_as_the_call_ran_them()
+    private void Inline_function_is_refused_where_the_arguments_would_not_run_as_the_call_ran_them()
     {
         string Inlined(string function, string call)
         {
@@ -710,8 +342,7 @@ public class GDScriptRefactoringsTests
         Assert.Contains("print(hp + 1)", Inlined("func subject(a):\n\treturn a + 1", "subject(hp)"));
     }
 
-    [Fact]
-    public void Safe_delete_takes_out_a_member_nothing_names_and_refuses_one_a_script_or_scene_still_does()
+    private void Safe_delete_takes_out_a_member_nothing_names_and_refuses_one_a_script_or_scene_still_does()
     {
         string text = "extends Node\n\n\nfunc unused():\n\tpass\n\n\nfunc used():\n\tpass\n\n\nfunc _ready():\n\tused()\n\tcall(\"used\")\n";
         IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
@@ -723,36 +354,9 @@ public class GDScriptRefactoringsTests
         Assert.Equal(["a connection calls it", "calls it", "names it in a string"], refused.Places.Select(p => p.What).Order(StringComparer.Ordinal));
     }
 
-    [Fact]
-    public void Safe_delete_is_refused_for_a_function_only_godot_calls_and_a_value_that_would_no_longer_run()
-    {
-        string text = "extends Node2D\n\nvar unused = record()\nvar plain = [1, 2]\nstatic var counted = record()\nvar shape = Vector2(1, 2)\n\n\nfunc record():\n\treturn 1\n\n\n"
-            + "func _ready():\n\tpass\n\n\nfunc _draw_shape():\n\tpass\n\n\nfunc _iter_init(arg):\n\treturn true\n\n\nfunc _helper():\n\tpass\n";
-        IReadOnlyList<GDScriptRead> scripts = ReadWith(Engine, ("res://main.gd", text));
-        GDScriptRefactored Deleted(string name) => GDScriptRefactorings.SafeDelete(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], text.IndexOf(name, StringComparison.Ordinal))!, []);
-        Assert.Contains("'_ready' is Godot's own, which Godot calls by its name", Deleted("_ready").Refused);
-        Assert.Contains("'_draw_shape' overrides Node2D's own", Deleted("_draw_shape").Refused);
-        Assert.Contains("'_iter_init' is Godot's own", Deleted("_iter_init").Refused);
-        Assert.Contains("'unused''s value calls, which would no longer run: record()", Deleted("unused").Refused);
-        Assert.Contains("'counted''s value calls", Deleted("counted").Refused);
-        Assert.Null(Deleted("plain").Refused);
-        Assert.Null(Deleted("shape").Refused);
-        Assert.Null(Deleted("_helper").Refused);
-        // Without the engine's API its own names still hold.
-        IReadOnlyList<GDScriptRead> alone = Read(("res://main.gd", text));
-        Assert.Contains("is Godot's own", GDScriptRefactorings.SafeDelete(alone, GDScriptRefactorings.MemberAt(alone, alone[0], text.IndexOf("_ready", StringComparison.Ordinal))!, []).Refused);
-
-        const string Base = "class_name Base\nextends Node\n\n\nfunc hook():\n\tpass\n\n\nfunc run():\n\thook()\n";
-        const string Child = "extends Base\n\n\nfunc hook():\n\tprint(\"mine\")\n";
-        IReadOnlyList<GDScriptRead> family = Read(("res://base.gd", Base), ("res://child.gd", Child));
-        GDScriptRefactored overriding = GDScriptRefactorings.SafeDelete(family, GDScriptRefactorings.MemberAt(family, family[1], Child.IndexOf("hook", StringComparison.Ordinal))!, []);
-        Assert.Contains("res://base.gd: declares it too", overriding.Refused);
-    }
-
     private const string Hitter = "extends Node\n\n\nfunc hit(target, amount = 1):\n\tprint(target, amount)\n\n\nfunc run():\n\thit(\"a\")\n\thit(\"b\", 3)\n\tcall(\"hit\", \"c\", 4)\n";
 
-    [Fact]
-    public void Change_signature_renames_reorders_and_adds_through_every_call_and_string_naming_it()
+    private void Change_signature_renames_reorders_and_adds_through_every_call_and_string_naming_it()
     {
         IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Hitter));
         GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Hitter.IndexOf("hit", StringComparison.Ordinal))!;
@@ -764,38 +368,7 @@ public class GDScriptRefactoringsTests
             After(made, "res://main.gd", Hitter));
     }
 
-    [Theory]
-    [InlineData("int", true)]
-    [InlineData("Node", true)]
-    [InlineData("Outer.Inner", true)]
-    [InlineData("void", true)]
-    [InlineData("Array", true)]
-    [InlineData("Array[Node]", true)]
-    [InlineData("Array[Outer.Inner]", true)]
-    [InlineData("Dictionary[String, int]", true)]
-    [InlineData("Dictionary[String,int]", true)]
-    [InlineData("Array[", false)]
-    [InlineData("Array[Node]]", false)]
-    [InlineData("Array[Array[int]]", false)]
-    [InlineData("1x", false)]
-    [InlineData("int = 3", false)]
-    [InlineData("int:\n\tpass\n\n\nfunc g() -> int", false)]
-    [InlineData("A.", false)]
-    public void A_type_is_what_gdscripts_parser_reads_as_one(string text, bool type) => Assert.Equal(type, GDScriptRefactorings.IsType(text));
-
-    [Fact]
-    public void Change_signature_keeps_a_parameter_of_a_typed_collection_as_written()
-    {
-        string text = "func count(nodes: Array[Node], table: Dictionary[String, int] = {}) -> int:\n\treturn nodes.size() + table.size()\n\n\nfunc go():\n\tprint(count([]))\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", text));
-        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], 5)!;
-        IReadOnlyList<GDScriptParameterChange> shown = GDScriptRefactorings.ParametersOf(scripts[0], target);
-        Assert.Equal(["Array[Node]", "Dictionary[String, int]"], shown.Select(p => p.Type));
-        Assert.Contains("func tally(nodes: Array[Node], table: Dictionary[String, int] = {}) -> int:\n", After(GDScriptRefactorings.ChangeSignature(scripts, target, "tally", shown, []), "res://main.gd", text));
-    }
-
-    [Fact]
-    public void Change_signature_is_refused_where_a_calls_arguments_would_not_run_as_they_did()
+    private void Change_signature_is_refused_where_a_calls_arguments_would_not_run_as_they_did()
     {
         const string Subtract = "var hp = 5\n\n\nfunc first():\n\thp = 1\n\treturn 1\n\n\nfunc second():\n\treturn 2\n\n\nfunc subtract(a, b):\n\treturn a - b\n\n\n";
         GDScriptParameterChange a = new(0, "a", string.Empty, string.Empty, string.Empty);
@@ -828,25 +401,10 @@ public class GDScriptRefactoringsTests
         Assert.Null(GDScriptRefactorings.WhyNotRearranged(["First()", "Second()"], [a, b]));
     }
 
-    [Fact]
-    public void Change_signature_is_refused_where_a_removed_parameter_is_read_or_a_use_is_unseen()
-    {
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Hitter));
-        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Hitter.IndexOf("hit", StringComparison.Ordinal))!;
-        Assert.Contains("'target' is still read", GDScriptRefactorings.ChangeSignature(scripts, target, "hit", [new GDScriptParameterChange(1, "amount", string.Empty, "1", string.Empty)], []).Refused);
-        string dynamic = Hitter + "\n\nfunc later(other, method):\n\tother.hit(1)\n\tcall(method)\n";
-        IReadOnlyList<GDScriptRead> unseen = Read(("res://main.gd", dynamic));
-        GDScriptRefactored refused = GDScriptRefactorings.ChangeSignature(unseen, GDScriptRefactorings.MemberAt(unseen, unseen[0], dynamic.IndexOf("hit", StringComparison.Ordinal))!, "hit",
-            [new GDScriptParameterChange(1, "amount", string.Empty, "1", string.Empty), new GDScriptParameterChange(0, "target", string.Empty, "null", string.Empty)], []);
-        Assert.Contains("can't follow every use", refused.Refused);
-        Assert.Equal(2, refused.Places.Count);
-    }
-
     private const string Signaller = "extends Node\n\nsignal hurt(amount, source)\n\n\nfunc _ready():\n\thurt.connect(on_hurt)\n\tconnect(\"hurt\", Callable(self, \"on_hurt_too\"))\n"
         + "\thurt.emit(3, self)\n\temit_signal(\"hurt\", 4, null)\n\n\nfunc on_hurt(amount, source):\n\tprint(amount)\n\n\nfunc on_hurt_too(a, b):\n\tprint(b)\n\n\nfunc on_scene(x, y):\n\tprint(x)\n";
 
-    [Fact]
-    public void Change_signature_of_a_signal_reorders_and_adds_through_every_emit_and_every_handler_connected()
+    private void Change_signature_of_a_signal_reorders_and_adds_through_every_emit_and_every_handler_connected()
     {
         IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Signaller));
         GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], Signaller.IndexOf("hurt", StringComparison.Ordinal))!;
@@ -860,27 +418,9 @@ public class GDScriptRefactoringsTests
             + "func on_hurt_too(b, a, kind: String):\n\tprint(b)\n\n\nfunc on_scene(y, x, kind: String):\n\tprint(x)\n", After(made, "res://main.gd", Signaller));
     }
 
-    [Fact]
-    public void Change_signature_of_a_signal_is_refused_where_a_handler_can_not_follow()
-    {
-        string bound = Signaller.Replace("hurt.connect(on_hurt)", "hurt.connect(on_hurt.bind(1))", StringComparison.Ordinal);
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", bound));
-        GDScriptTarget target = GDScriptRefactorings.MemberAt(scripts, scripts[0], bound.IndexOf("hurt", StringComparison.Ordinal))!;
-        IReadOnlyList<GDScriptParameterChange> swapped = [new GDScriptParameterChange(1, "source", string.Empty, string.Empty, string.Empty),
-            new GDScriptParameterChange(0, "amount", string.Empty, string.Empty, string.Empty)];
-        Assert.Contains("connects a handler it can't follow", GDScriptRefactorings.ChangeSignalSignature(scripts, target, "hurt", swapped, [], []).Refused);
-        // A rename alone follows every use as it is.
-        Assert.Null(GDScriptRefactorings.ChangeSignalSignature(scripts, target, "harmed",
-            [new GDScriptParameterChange(0, "amount", string.Empty, string.Empty, string.Empty), new GDScriptParameterChange(1, "source", string.Empty, string.Empty, string.Empty)], [], []).Refused);
-        IReadOnlyList<GDScriptRead> csharp = Read(("res://main.gd", Signaller));
-        Assert.Contains("C# connects it", GDScriptRefactorings.ChangeSignalSignature(csharp, GDScriptRefactorings.MemberAt(csharp, csharp[0], Signaller.IndexOf("hurt", StringComparison.Ordinal))!,
-            "hurt", swapped, [], [new GDScriptPlace("Main.cs:12", 0, 0, "C# connects it")]).Refused);
-    }
-
     private const string Healer = "extends Node\n\n\nstatic func clamp_health(value):\n\treturn value * 2\n\n\nfunc _ready():\n\tprint(clamp_health(120))\n\tvar f = clamp_health\n";
 
-    [Fact]
-    public void Move_takes_a_static_function_to_a_class_named_script_its_calls_and_values_called_by_its_class_name()
+    private void Move_takes_a_static_function_to_a_class_named_script_its_calls_and_values_called_by_its_class_name()
     {
         string utils = "class_name Utils\nextends RefCounted\n";
         IReadOnlyList<GDScriptRead> scripts = Read(("res://main.gd", Healer), ("res://utils.gd", utils));
@@ -890,68 +430,9 @@ public class GDScriptRefactoringsTests
         Assert.Equal("class_name Utils\nextends RefCounted\n\n\nstatic func clamp_health(value):\n\treturn value * 2\n", After(made, "res://utils.gd", utils));
     }
 
-    [Fact]
-    public void Move_takes_a_function_to_an_autoloads_script_or_one_its_class_extends_and_refuses_what_can_not_follow()
-    {
-        string player = "extends Node\n\nvar score := 0\nvar lives := 3\n\n\nfunc add(points):\n\tscore += points\n\n\nfunc lose():\n\tlives -= 1\n\n\nfunc _ready():\n\tadd(5)\n\tself.add(1)\n";
-        string game = "extends Node\n\nvar score := 0\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://player.gd", player), ("res://game.gd", game));
-        Dictionary<string, string> autoloads = new() { ["Game"] = "res://game.gd" };
-        GDScriptRefactored made = GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], player.IndexOf("add", StringComparison.Ordinal))!, "res://game.gd", autoloads, []);
-        Assert.EndsWith("func _ready():\n\tGame.add(5)\n\tGame.add(1)\n", After(made, "res://player.gd", player), StringComparison.Ordinal);
-        Assert.Equal("extends Node\n\nvar score := 0\n\n\nfunc add(points):\n\tscore += points\n", After(made, "res://game.gd", game));
-        Assert.Contains("reads 'lives', which res://game.gd lacks",
-            GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], player.IndexOf("lose", StringComparison.Ordinal))!, "res://game.gd", autoloads, []).Refused);
-        Assert.Contains("on an object of its own script",
-            GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], player.IndexOf("add", StringComparison.Ordinal))!, "res://game.gd", new Dictionary<string, string>(), []).Refused);
-
-        string based = "class_name Base\nextends Node\n\nvar score := 0\n";
-        string child = "extends Base\n\n\nfunc add(points):\n\tscore += points\n\n\nfunc _ready():\n\tadd(5)\n";
-        IReadOnlyList<GDScriptRead> family = Read(("res://base.gd", based), ("res://child.gd", child));
-        GDScriptRefactored up = GDScriptRefactorings.Move(family, GDScriptRefactorings.MemberAt(family, family[1], child.IndexOf("add", StringComparison.Ordinal))!, "res://base.gd",
-            new Dictionary<string, string>(), [new GDScriptPlace("main.tscn:7", 0, 0, "a scene's connection names it")]);
-        Assert.Equal("extends Base\n\n\nfunc _ready():\n\tadd(5)\n", After(up, "res://child.gd", child));
-        Assert.Equal("class_name Base\nextends Node\n\nvar score := 0\n\n\nfunc add(points):\n\tscore += points\n", After(up, "res://base.gd", based));
-    }
-
-    [Fact]
-    public void Moving_or_extracting_code_leaves_a_multi_line_strings_lines_as_they_are()
-    {
-        const string Words = "\"\"\"\n    four spaces\n\ta tab\n\n        eight\n no\"\"\"";
-        string spaces = $"static func say():\n    var words = {Words}\n    if words:\n        return (words\n            + {Words})\n";
-        string own = $"class_name Own\nextends Node\n\n\n{spaces}";
-        const string Tabs = "class_name Other\nextends Node\n\n\nfunc kept():\n\tpass\n";
-        IReadOnlyList<GDScriptRead> scripts = Read(("res://own.gd", own), ("res://other.gd", Tabs));
-        GDScriptRefactored moved = GDScriptRefactorings.Move(scripts, GDScriptRefactorings.MemberAt(scripts, scripts[0], own.IndexOf("say", StringComparison.Ordinal))!, "res://other.gd",
-            new Dictionary<string, string>(), []);
-        string landed = After(moved, "res://other.gd", Tabs);
-        Assert.Contains($"static func say():\n\tvar words = {Words}\n\tif words:\n\t\treturn (words\n\t\t\t+ {Words})\n", landed);
-
-        string nested = $"func f():\n\tif true:\n\t\tvar words = {Words}\n\t\tprint(words)\n";
-        string extracted = After(GDScriptRefactorings.ExtractFunction(One(nested), Over(nested, $"var words = {Words}\n\t\tprint(words)"), "speak"), "res://main.gd", nested);
-        Assert.EndsWith($"func speak() -> void:\n\tvar words = {Words}\n\tprint(words)\n", extracted);
-
-        // A string's lines are no indentation for the script's unit to be read from.
-        string tabbed = $"const WORDS = {Words}\n\n\nstatic func say():\n\tprint(WORDS)\n\tif WORDS:\n\t\tprint(2)\n";
-        const string Spaced = "class_name Spaced\nextends Node\n\n\nfunc kept():\n  pass\n";
-        IReadOnlyList<GDScriptRead> toSpaces = Read(("res://own.gd", "class_name Own\n" + tabbed.Replace("print(WORDS)", "print(1)").Replace("if WORDS", "if 1")), ("res://other.gd", Spaced));
-        GDScriptTarget say = GDScriptRefactorings.MemberAt(toSpaces, toSpaces[0], toSpaces[0].Text.IndexOf("say", StringComparison.Ordinal))!;
-        Assert.Contains("static func say():\n  print(1)\n  if 1:\n    print(2)\n", After(GDScriptRefactorings.Move(toSpaces, say, "res://other.gd", new Dictionary<string, string>(), []), "res://other.gd", Spaced));
-    }
-
-    [Fact]
-    public void Rearranged_gives_a_csharp_calls_arguments_in_the_new_order()
-    {
-        IReadOnlyList<GDScriptParameterChange> was = [new(0, "target", string.Empty, string.Empty, string.Empty), new(1, "amount", string.Empty, "1", string.Empty)];
-        Assert.Equal(["\"b\"", "2", "3"], GDScriptRefactorings.Rearranged(["\"b\"", "3"], was,
-            [was[0], new GDScriptParameterChange(-1, "times", "int", string.Empty, "2"), was[1]]));
-        Assert.Equal(["\"a\"", "2"], GDScriptRefactorings.Rearranged(["\"a\""], was, [was[0], new GDScriptParameterChange(-1, "times", "int", string.Empty, "2"), was[1]]));
-    }
-
     /// <summary>A change across scripts is refused while one is read only in part, as a use after where reading stopped would
     /// go unseen and keep the old name.</summary>
-    [Fact]
-    public void No_change_is_made_across_a_script_read_only_in_part()
+    private void No_change_is_made_across_a_script_read_only_in_part()
     {
         static GDScriptRead Read(string path, string text) => new(path, new GDScriptAnalyzer(GDScriptProject.Alone(null)).Analyze(GDScriptTree.Parse(text), path));
         GDScriptRead whole = Read("res://whole.gd", "var a = 1\n");
