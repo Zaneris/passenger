@@ -15,11 +15,20 @@ namespace Passenger.Tests;
 /// made as the Explorer's are.</summary>
 public sealed class WorkspaceEditsTests
 {
+    /// <summary>A language server's edit judged against the files as they are on disk before any is written, an edit to
+    /// a file gone refused and one to a file the edit puts there not; and its deletes of a file and a folder moved to
+    /// the Trash, Undo putting each back.</summary>
+    [AvaloniaFact]
+    public void A_servers_edit_is_judged_against_the_disk_before_any_write_and_its_deletes_go_to_the_Trash_for_Undo()
+    {
+        Flow.Step("an edit to a file gone from the disk is refused saying the server held it, and one to a file the edit puts there is not", An_edit_to_a_file_gone_from_the_disk_is_refused_saying_the_server_held_it_and_one_to_a_file_the_edit_puts_there_is_not);
+        Flow.Step("a server's edit deleting a file and a folder moves both to the Trash and Undo puts each back, its command holding none of their bytes", A_servers_edit_deleting_a_file_and_a_folder_moves_both_to_the_Trash_and_Undo_puts_each_back_its_command_holding_none_of_their_bytes);
+    }
+
     /// <summary>An edit to a closed file gone from the disk, however long ago, is from a server still holding it as it was, so
     /// it is refused before anything is written, where it once failed partway at that file; an edit to a file its own create
     /// or rename puts there is not.</summary>
-    [AvaloniaFact]
-    public void An_edit_to_a_file_gone_from_the_disk_is_refused_saying_the_server_held_it_and_one_to_a_file_the_edit_puts_there_is_not()
+    private void An_edit_to_a_file_gone_from_the_disk_is_refused_saying_the_server_held_it_and_one_to_a_file_the_edit_puts_there_is_not()
     {
         string folder = TestFolders.Create("stale-gone-");
         TestFolders.Write(folder, "Shape.cs", "public class Shape\n{\n}\n");
@@ -49,8 +58,7 @@ public sealed class WorkspaceEditsTests
     /// <summary>A server's edit deleting a file and a folder moves both to the Trash as the Explorer's Delete does, its command
     /// keeping where they went, never their bytes: Undo puts each back as it was (a link as a link, a script's mode, an
     /// empty folder), Redo moves them there again; a folder holding anything goes only where the edit says recursively.</summary>
-    [AvaloniaFact]
-    public void A_servers_edit_deleting_a_file_and_a_folder_moves_both_to_the_Trash_and_Undo_puts_each_back_its_command_holding_none_of_their_bytes()
+    private void A_servers_edit_deleting_a_file_and_a_folder_moves_both_to_the_Trash_and_Undo_puts_each_back_its_command_holding_none_of_their_bytes()
     {
         const int Large = 8 << 20;
         string folder = PathNames.Canonical(TestFolders.Create("edit-delete-"));

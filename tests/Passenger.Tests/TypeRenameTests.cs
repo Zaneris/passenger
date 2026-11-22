@@ -33,9 +33,11 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     private const string Crate = "namespace Shop;\n\npublic class Crate\n{\n}\n";
 
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
-    public TypeRenameTests(RestoredFolders folders) => folder = PathNames.Canonical(folders.Take("type-rename-", made =>
+    public TypeRenameTests(RestoredFolders folders) => (this.folders, folder) = (folders, PathNames.Canonical(folders.Take("type-rename-", made =>
     {
         string project = PathNames.Canonical(made);
         TestFolders.Write(project, "Shop.csproj", TestProjects.Library());
@@ -55,13 +57,49 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         TestFolders.Write(project, "crate.cs", Crate);
         TestGit.Init(project);
         return project;
-    }));
+    })));
 
     public void Dispose() => TestFolders.Delete(folder);
 
     private string OrderPath => Path.Combine(folder, "Order.cs");
 
     private string PurchasePath => Path.Combine(folder, "Purchase.cs");
+
+    /// <summary>The gate's renames of a class with its file, as one flow: to take the place of its two tests once it has
+    /// its record on CI.</summary>
+    [AvaloniaFact]
+    public void A_class_and_its_partial_parts_are_renamed_with_their_files_as_one_command_of_undo()
+    {
+        Flow.StepApart("renaming a class named like its file renames the file, Git sees a rename, and Undo and Redo take it back whole", () => new TypeRenameTests(folders), t => t.Renaming_a_class_named_like_its_file_renames_the_file_Git_sees_a_rename_and_undo_and_redo_take_it_back_whole());
+        Flow.StepApart("each partial part named after its class is renamed with it, and with the file option turned off only the code is, and it stays off", () => new TypeRenameTests(folders), t => t.Each_partial_part_named_after_its_class_is_renamed_with_it_and_with_the_file_option_turned_off_only_the_code_is_and_it_stays_off());
+    }
+
+    /// <summary>A class renamed with its file, as the person, an agent, the solution view or a fix asks it: the file
+    /// and its nested files renamed with it, Git seeing renames, a file whose name differs only in letter case renamed
+    /// too, and Undo and Redo taking it back whole. The gate's two such tests are steps here until this flow takes
+    /// their place.</summary>
+    [AvaloniaFact]
+    public void A_class_renamed_with_its_file_is_one_command_of_undo_and_git_sees_renames_however_the_rename_was_asked()
+    {
+        Flow.StepApart("a class renamed with its file and one an agent renames commit as renames, the moves first where Git would lose one", () => new TypeRenameTests(folders), t => t.A_class_renamed_with_its_file_and_one_an_agent_renames_commit_as_renames_the_moves_first_where_git_would_lose_one());
+        Flow.StepApart("renaming a file in the solution view offers to rename its class, takes a form's nested files, and renames a file of other types alone", () => new TypeRenameTests(folders), t => t.Renaming_a_file_in_the_solution_view_offers_to_rename_its_class_takes_a_forms_nested_files_and_renames_a_file_of_other_types_alone());
+        Flow.StepApart("Fix Name Violation on a class named like its file renames the file in letter case, and Undo takes both back", () => new TypeRenameTests(folders), t => t.Fix_name_violation_on_a_class_named_like_its_file_renames_the_file_in_letter_case_and_undo_takes_both_back());
+        Flow.StepApart("the rename of a class whose file cannot be renamed is refused before anything changes, and made once the file is let go", () => new TypeRenameTests(folders), t => t.Rename_of_a_class_whose_file_cannot_be_renamed_is_refused_before_anything_changes_and_made_once_the_file_is_let_go());
+    }
+
+    /// <summary>A rename meeting what else goes on loses nothing: a line typed while it is out, Undo pressed while it
+    /// writes its closed files, a rename asked while an Undo's writes are held, a closed file gone partway; and one
+    /// across large closed files costs the window's thread what one across small ones does.</summary>
+    [AvaloniaFact]
+    public void A_rename_meeting_typing_an_undo_or_a_file_gone_loses_nothing_and_costs_the_window_what_a_small_one_does()
+    {
+        Flow.StepApart("a line typed in a class's file while its rename is out still renames the class and its file", () => new TypeRenameTests(folders), t => t.A_line_typed_in_a_classs_file_while_its_rename_is_out_still_renames_the_class_and_its_file());
+        Flow.StepApart("a line typed in a file the solution view renames with its class still takes the class's other part along", () => new TypeRenameTests(folders), t => t.A_line_typed_in_a_file_the_solution_view_renames_with_its_class_still_takes_the_classs_other_part_along());
+        Flow.StepApart("Undo pressed while a rename writes its closed files waits for it and takes the whole rename back", () => new TypeRenameTests(folders), t => t.Undo_pressed_while_a_rename_writes_its_closed_files_waits_for_it_and_takes_the_whole_rename_back());
+        Flow.StepApart("a rename asked for while an Undo's writes are held waits for them and renames every use as Undo left it", () => new TypeRenameTests(folders), t => t.A_rename_asked_for_while_an_undos_writes_are_held_waits_for_them_and_renames_every_use_as_undo_left_it());
+        Flow.StepApart("a rename refused partway by a closed file gone takes back every change and leaves nothing unsaved", () => new TypeRenameTests(folders), t => t.A_rename_refused_partway_by_a_closed_file_gone_takes_back_every_change_and_leaves_nothing_unsaved());
+        Flow.StepApart("a rename across large closed files costs the window's thread what one across small ones does, and Undo takes it back whole", () => new TypeRenameTests(folders), t => t.A_rename_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does_and_undo_takes_it_back_whole());
+    }
 
     /// <summary>Rename on a class named like its file renames the file with it, its tab, breakpoint and bookmark following,
     /// its uses changing and Git seeing a rename; then Undo in the editor takes back what was typed after it on its own,
@@ -128,8 +166,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>A class renamed with its file in the editor, and another an agent renames, each list as renamed, and the
     /// Commit window commits both as renames: Till.cs, whose class and uses of the first both changed, changed past what
     /// git finds alike, so the window offers the moves first, and they are a commit of their own before the edits.</summary>
-    [AvaloniaFact]
-    public void A_class_renamed_with_its_file_and_one_an_agent_renames_commit_as_renames_the_moves_first_where_git_would_lose_one()
+    private void A_class_renamed_with_its_file_and_one_an_agent_renames_commit_as_renames_the_moves_first_where_git_would_lose_one()
     {
         string till = Path.Combine(folder, "Till.cs");
         string register = Path.Combine(folder, "Register.cs");
@@ -210,8 +247,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// name the file's name going back too; a form's files nested under it go along; and a file holding types of other
     /// names keeps its name when one of them is renamed, is renamed alone in the Solution view, and named back by Undo
     /// there.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_file_in_the_solution_view_offers_to_rename_its_class_takes_a_forms_nested_files_and_renames_a_file_of_other_types_alone()
+    private void Renaming_a_file_in_the_solution_view_offers_to_rename_its_class_takes_a_forms_nested_files_and_renames_a_file_of_other_types_alone()
     {
         MainWindow window = Open("Till.cs");
         List<(string Title, string Text)> asked = Answer(window);
@@ -287,8 +323,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>A line typed at the top of a class's file while the class's rename is out goes in above it, and the rename
     /// still lands on the class: its declaration and uses renamed and its file renamed with it, where the place the rename
     /// was asked at, and the places the server named the class's files by, no longer named the class.</summary>
-    [AvaloniaFact]
-    public void A_line_typed_in_a_classs_file_while_its_rename_is_out_still_renames_the_class_and_its_file()
+    private void A_line_typed_in_a_classs_file_while_its_rename_is_out_still_renames_the_class_and_its_file()
     {
         MainWindow window = Open("Order.cs");
         OpenDocument document = window.EditorArea.Active!;
@@ -313,8 +348,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>A rename reads and writes the closed files it changes off the window's thread: renaming a method used in
     /// three closed files of 2 MB each costs that thread no more than renaming one used in three small ones, where a read of
     /// one of them there costs at least its bytes; and the rename is still one step of Undo, which puts every file back.</summary>
-    [AvaloniaFact]
-    public void A_rename_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does_and_undo_takes_it_back_whole()
+    private void A_rename_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does_and_undo_takes_it_back_whole()
     {
         const int Large = 2 * 1024 * 1024;
         const string Filler = "// a line of filler, with nothing in it to rename\n";
@@ -379,8 +413,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>Undo pressed in the open file as soon as a rename across closed files shows there, while those files are
     /// still being written, waits for the rename and then takes all of it back, asked once: the open file's change is
     /// never undone on its own, which would leave the rename's Undo refused and the solution half renamed.</summary>
-    [AvaloniaFact]
-    public void Undo_pressed_while_a_rename_writes_its_closed_files_waits_for_it_and_takes_the_whole_rename_back()
+    private void Undo_pressed_while_a_rename_writes_its_closed_files_waits_for_it_and_takes_the_whole_rename_back()
     {
         IReadOnlyList<string> uses = WriteTally(6);
         MainWindow window = Open("Tally.cs");
@@ -419,8 +452,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>A rename asked for while an Undo's writes of closed files are held waits for them, then is worked out on the
     /// files as Undo left them: never made on the text before the Undo, nor only in the open file while Undo puts the
     /// closed files back, either of which leaves the solution half renamed.</summary>
-    [AvaloniaFact]
-    public void A_rename_asked_for_while_an_undos_writes_are_held_waits_for_them_and_renames_every_use_as_undo_left_it()
+    private void A_rename_asked_for_while_an_undos_writes_are_held_waits_for_them_and_renames_every_use_as_undo_left_it()
     {
         IReadOnlyList<string> uses = WriteTally(4);
         MainWindow window = Open("Tally.cs");
@@ -458,8 +490,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     /// <summary>A rename refused partway, a closed file gone as its writes reach it, takes back all it did: the open files
     /// as they were with nothing left unsaved, the closed files it had written put back, and no command left for Undo.</summary>
-    [AvaloniaFact]
-    public void A_rename_refused_partway_by_a_closed_file_gone_takes_back_every_change_and_leaves_nothing_unsaved()
+    private void A_rename_refused_partway_by_a_closed_file_gone_takes_back_every_change_and_leaves_nothing_unsaved()
     {
         IReadOnlyList<string> uses = WriteTally(4);
         Dictionary<string, string> before = uses.ToDictionary(u => u, File.ReadAllText);
@@ -508,8 +539,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>Rename of a class whose file the disk will not rename (held open by another program on Windows, its folder
     /// read-only elsewhere) is refused before anything changes, naming the file: no file's code renamed, none written, no
     /// command left for Undo; asked again once the file is let go, it renames the code and the file.</summary>
-    [AvaloniaFact]
-    public void Rename_of_a_class_whose_file_cannot_be_renamed_is_refused_before_anything_changes_and_made_once_the_file_is_let_go()
+    private void Rename_of_a_class_whose_file_cannot_be_renamed_is_refused_before_anything_changes_and_made_once_the_file_is_let_go()
     {
         const string Declared = "namespace Shop;\n\npublic class Ledger\n{\n    public int Lines;\n}\n";
         string ledger = TestFolders.Write(folder, "Ledgers/Ledger.cs", Declared);
@@ -589,8 +619,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     /// <summary>A line typed at the top of a partial class's open file while the Solution view renames the file with its
     /// class goes in above it, and the class's other part named after it is renamed with it all the same.</summary>
-    [AvaloniaFact]
-    public void A_line_typed_in_a_file_the_solution_view_renames_with_its_class_still_takes_the_classs_other_part_along()
+    private void A_line_typed_in_a_file_the_solution_view_renames_with_its_class_still_takes_the_classs_other_part_along()
     {
         MainWindow window = Open("Basket.cs");
         OpenDocument document = window.EditorArea.Active!;
@@ -612,38 +641,11 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         window.Close();
     }
 
-    /// <summary>A line written above a class in its open file while the Solution view's Rename popup for the file is open, as
-    /// an agent's edit writes it: the rename still lands on the class, its uses and its file, the line kept above it, where
-    /// the place read as the popup opened was inside the new line and the rename was refused.</summary>
-    [AvaloniaFact]
-    public void A_line_written_above_a_class_while_the_solution_views_rename_popup_is_open_still_renames_the_class_and_its_file()
-    {
-        const string Written = "// written by an agent while the popup was open\n";
-        MainWindow window = Open("Order.cs");
-        OpenDocument document = window.EditorArea.Active!;
-        Choose(window, OrderPath);
-        Ui.Run(window, AppActions.Rename);
-        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
-        Assert.True(popup.Option?.IsChecked == true, "Renaming Order.cs did not offer to rename the class Order with it");
-        window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(0, 0, Written)]);
-        Ui.Settle();
-        Assert.True(window.Popup == popup, "The rename popup closed as its file was written");
-        window.KeyTextInput("Purchase");
-        Ui.Press(window, "ENTER");
-        Ui.WaitFor(() => !window.IsPopupOpen, $"the rename to finish: {popup.Problem}");
-
-        Assert.Equal(PurchasePath, document.Path);
-        Assert.Equal(Written + Order.Replace("Order", "Purchase", StringComparison.Ordinal), document.Text.Snapshot.ToString());
-        Assert.Equal(Till.Replace("Order", "Purchase", StringComparison.Ordinal), File.ReadAllText(Path.Combine(folder, "Till.cs")));
-        window.Close();
-    }
-
     /// <summary>Show Context Actions' Fix name violation on a class named like its file renames the file with it, in letter
     /// case alone, as Rename does: the tab follows, the language server takes the file under its new name, and one Undo takes
     /// the class, its use and the file's name back, asked first. With Also rename files to reflect this change turned off,
     /// the fix leaves the file's name as Rename does. Where the file kept its name, the server went on offering to rename it.</summary>
-    [AvaloniaFact]
-    public void Fix_name_violation_on_a_class_named_like_its_file_renames_the_file_in_letter_case_and_undo_takes_both_back()
+    private void Fix_name_violation_on_a_class_named_like_its_file_renames_the_file_in_letter_case_and_undo_takes_both_back()
     {
         string lower = Path.Combine(folder, "shelf.cs");
         string upper = Path.Combine(folder, "Shelf.cs");
@@ -680,32 +682,6 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Ui.WaitFor(() => document.Text.Snapshot.ToString().Contains("class Shelf", StringComparison.Ordinal), () => $"the fix with the file option off: {window.Status}");
         Assert.Contains("shelf.cs", Names());
         Assert.Equal(lower, document.Path);
-        window.Close();
-    }
-
-    /// <summary>Show Context Actions' Rename file to Crate.cs on a file named like its class in another letter case renames
-    /// the file, where it said nothing and left the name, and Undo in the Solution view names it back, as it does a file
-    /// renamed there.</summary>
-    [AvaloniaFact]
-    public void Rename_file_to_its_class_in_another_letter_case_renames_the_file_and_undo_names_it_back()
-    {
-        MainWindow window = Open("crate.cs");
-        Answer(window);
-        OpenDocument document = window.EditorArea.Active!;
-
-        ContextAction(window, "class Cra", "Rename file to Crate.cs");
-        Ui.WaitFor(() => Names().Contains("Crate.cs"), () => $"crate.cs to be renamed Crate.cs: {window.Status}; the folder holds {string.Join(", ", Names())}");
-
-        Assert.DoesNotContain("crate.cs", Names());
-        Assert.Equal(Path.Combine(folder, "Crate.cs"), document.Path);
-        Assert.Equal("Crate.cs", window.EditorArea.Active?.Name);
-        Assert.Equal(Crate, File.ReadAllText(Path.Combine(folder, "Crate.cs")));
-
-        Choose(window, Path.Combine(folder, "Crate.cs"));
-        Ui.Run(window, EditorActions.Undo);
-        Assert.Contains("crate.cs", Names());
-        Assert.DoesNotContain("Crate.cs", Names());
-        Assert.Equal(Path.Combine(folder, "crate.cs"), document.Path);
         window.Close();
     }
 

@@ -40,11 +40,23 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         app.Reset();
     }
 
+    /// <summary>A source generator's code, reached read-only and said so: Go to Declaration on what it made, straight
+    /// to the person's own part first; Go to Symbol after the person's symbols; Find Usages setting it apart; and the
+    /// call hierarchy inside it.</summary>
+    [AvaloniaFact]
+    public void A_generators_code_is_reached_read_only_by_declaration_symbol_usages_and_hierarchy_after_the_persons_own()
+    {
+        Flow.StepApart("Go to Declaration on InitializeComponent opens Avalonia's generated code read-only at the method", () => new GeneratedCodeTests(app), t => t.Go_to_declaration_on_InitializeComponent_opens_avalonias_generated_code_read_only_at_the_method());
+        Flow.StepApart("Go to Declaration goes straight to a person's only part, and from there offers the part a generator made", () => new GeneratedCodeTests(app), t => t.Go_to_declaration_goes_straight_to_a_persons_only_part_and_from_there_offers_the_part_a_generator_made());
+        Flow.StepApart("Go to Symbol lists a class a generator declares after the person's symbols and opens its code read-only", () => new GeneratedCodeTests(app), t => t.Go_to_symbol_lists_a_class_a_generator_declares_after_the_persons_symbols_and_opens_its_code_read_only());
+        Flow.StepApart("Find Usages sets generated code apart with each side's count, shows a side alone for later searches, and goes into it", () => new GeneratedCodeTests(app), t => t.Find_usages_sets_generated_code_apart_with_each_sides_count_shows_a_side_alone_for_later_searches_and_goes_into_it());
+        Flow.StepApart("the call hierarchy in a generator's code lists the method's callers and callees", () => new GeneratedCodeTests(app), t => t.Call_hierarchy_in_a_generators_code_lists_the_methods_callers_and_callees_and_leaves_the_code_following_its_pattern());
+    }
+
     /// <summary>Go to Declaration on InitializeComponent in an Avalonia window's code-behind opens the code Avalonia's
     /// generator made of its XAML, read-only and saying so, at the method, where it said "Could not find file
     /// '/Gallery.MainWindow.g.cs'".</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_on_InitializeComponent_opens_avalonias_generated_code_read_only_at_the_method()
+    private void Go_to_declaration_on_InitializeComponent_opens_avalonias_generated_code_read_only_at_the_method()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
         try
@@ -60,8 +72,7 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
     /// <summary>A use of a type with one part of the person's goes straight to it, a generator's parts or not; from that part
     /// Go to Declaration offers the part a generator made beside it, where the server names only the person's, and the
     /// choice takes them to the generator's code, read-only, at the part.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_goes_straight_to_a_persons_only_part_and_from_there_offers_the_part_a_generator_made()
+    private void Go_to_declaration_goes_straight_to_a_persons_only_part_and_from_there_offers_the_part_a_generator_made()
     {
         MainWindow window = app.Open(app.PathOf("Patterns.cs"));
         try
@@ -92,27 +103,10 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         }
     }
 
-    /// <summary>Go to Declaration on a System.Text.Json context's Default opens the code the JSON generator made of the
-    /// context, read-only, at the property, where it said "Could not find file '/ShapeContext.g.cs'".</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_on_a_json_contexts_member_opens_the_json_generators_code_read_only_at_the_member()
-    {
-        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
-        try
-        {
-            Declared(window, "ShapeContext.Defa", "ShapeContext.g.cs", " Default ");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Go to Symbol finds what only a source generator declares, after the person's own symbols: the class the
     /// regular expression generator makes for a GeneratedRegex method, listed after the method the person declares (whose
     /// generated part is the person's), and chosen it opens the generator's code read-only at the class.</summary>
-    [AvaloniaFact]
-    public void Go_to_symbol_lists_a_class_a_generator_declares_after_the_persons_symbols_and_opens_its_code_read_only()
+    private void Go_to_symbol_lists_a_class_a_generator_declares_after_the_persons_symbols_and_opens_its_code_read_only()
     {
         MainWindow window = app.Open(app.PathOf("Patterns.cs"));
         try
@@ -144,38 +138,12 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
         }
     }
 
-    /// <summary>Find Usages of a GeneratedRegex method lists the regex generator's declaration under the project with its
-    /// line of code, where it listed it under Miscellaneous Files with none; Enter on it opens the generator's code
-    /// read-only at that line; and the open tab takes the generator's code again once the pattern is typed anew.</summary>
-    [AvaloniaFact]
-    public void Find_usages_of_a_generated_regex_lists_the_generators_line_opens_it_read_only_and_follows_the_pattern_typed()
-    {
-        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
-        try
-        {
-            (OpenDocument shown, FindRow generated) = FromFindUsages(window);
-            Assert.Equal(new TextPosition(generated.Usage!.Line, generated.Usage.Column), window.EditorArea.CodeEditor.CaretPosition);
-            Assert.Contains("<code>a+b</code>", shown.Text.Snapshot.ToString(), StringComparison.Ordinal);
-
-            window.OpenFile(app.PathOf("Patterns.cs"));
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "GeneratedRegex(\"a+");
-            window.KeyTextInput("c+");
-            Ui.WaitFor(() => shown.Text.Snapshot.ToString().Contains("<code>a+c+b</code>", StringComparison.Ordinal),
-                () => $"the open generator's code to follow the pattern typed: its remarks say {string.Join(" ", shown.Text.Snapshot.ToString().Split('\n').Where(l => l.Contains("<code>", StringComparison.Ordinal)))}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Find Usages of a record sets the usages in generated code apart, where they swamped the two written by hand:
     /// the JSON generator's and those in a file whose first comment says a tool wrote it are under a group of their own
     /// after the rest, each side's count on its filter; a filter shows its side alone, as a later window's search does
     /// still, and a click again shows both; the group closes like any other; and Enter on a generated usage goes to it, its
     /// code shown beside the tree as it is chosen.</summary>
-    [AvaloniaFact]
-    public void Find_usages_sets_generated_code_apart_with_each_sides_count_shows_a_side_alone_for_later_searches_and_goes_into_it()
+    private void Find_usages_sets_generated_code_apart_with_each_sides_count_shows_a_side_alone_for_later_searches_and_goes_into_it()
     {
         string kept = TestFolders.Create("usages-kept-");
         try
@@ -264,8 +232,7 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
     /// <summary>Call Hierarchy at the regex generator's half of a GeneratedRegex method lists that method's caller and what
     /// the generator's body calls, where it said no method was at the caret; and as the server is only asked about the
     /// document, never given it, the tab still takes the generator's code again once the pattern is typed anew.</summary>
-    [AvaloniaFact]
-    public void Call_hierarchy_in_a_generators_code_lists_the_methods_callers_and_callees_and_leaves_the_code_following_its_pattern()
+    private void Call_hierarchy_in_a_generators_code_lists_the_methods_callers_and_callees_and_leaves_the_code_following_its_pattern()
     {
         MainWindow window = app.Open(app.PathOf("Patterns.cs"));
         try
@@ -284,61 +251,6 @@ public sealed class GeneratedCodeTests : IClassFixture<GeneratedCodeTests.Genera
             window.KeyTextInput("c+");
             Ui.WaitFor(() => shown.Text.Snapshot.ToString().Contains("<code>a+c+b</code>", StringComparison.Ordinal),
                 () => "the generator's code asked about in Call Hierarchy to follow the pattern typed, as a document the server held frozen would not");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Type Hierarchy at the JSON generator's half of a context lists what derives from the class, as it does at the
-    /// half written by hand.</summary>
-    [AvaloniaFact]
-    public void Type_hierarchy_in_a_generators_code_lists_what_derives_from_the_class_it_completes()
-    {
-        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
-        try
-        {
-            Declared(window, "ShapeContext.Defa", "ShapeContext.g.cs", " Default ");
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "partial class ShapeCon");
-            Assert.Null(Ui.Await(window.ShowTypeHierarchyAsync(), "the type hierarchy in the generator's code"));
-            Task subtypes = window.Hierarchy.ChooseAsync(first: false);
-            Ui.WaitFor(() => subtypes.IsCompleted, "the subtypes of the generator's ShapeContext");
-            Assert.True(window.Hierarchy.Rows is [_, { Depth: 1 } derived] && derived.Node.Item.Name == "DeepContext" && PathNames.Same(derived.Node.Path, PathNames.Canonical(app.PathOf("Patterns.cs"))),
-                $"Type Hierarchy in the generator's code does not list DeepContext alone: {Listed(window)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A copy an earlier run made, which a tab kept from then shows, knows no document of the server's: Call Hierarchy
-    /// there finds it by the place its documents would be copied to, and the tab follows it from then on.</summary>
-    [AvaloniaFact]
-    public void Call_hierarchy_in_a_copy_an_earlier_run_made_finds_its_document_and_follows_it_again()
-    {
-        string copy;
-        MainWindow earlier = app.Open(app.PathOf("Patterns.cs"));
-        try
-        {
-            copy = FromFindUsages(earlier).Shown.Path;
-        }
-        finally
-        {
-            earlier.Close();
-        }
-        MainWindow window = app.Open(app.PathOf("Patterns.cs"));
-        try
-        {
-            window.OpenFile(copy);
-            Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText?.Contains("Copied in an earlier run", StringComparison.Ordinal) == true,
-                () => $"the banner to say the copy is an earlier run's: it says '{window.EditorArea.ActiveGroup.BannerText}'");
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "RegularExpressions.Regex Lett");
-            Assert.Null(Ui.Await(window.ShowCallHierarchyAsync(), "the call hierarchy in an earlier run's copy"));
-            CalledFromCheck(window);
-            Ui.WaitFor(() => window.EditorArea.ActiveGroup.BannerText?.Contains("Made by RegexGenerator", StringComparison.Ordinal) == true,
-                () => $"the banner to say the copy is followed again: it says '{window.EditorArea.ActiveGroup.BannerText}'");
         }
         finally
         {

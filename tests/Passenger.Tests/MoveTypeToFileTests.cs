@@ -20,25 +20,34 @@ public sealed class MoveTypeToFileTests : IClassFixture<RestoredFolders>, IDispo
 
     private const string Garden = "namespace Shop;\n\npublic static class Garden\n{\n    public static double Pond() => new Circle().Radius;\n}\n";
 
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
-    public MoveTypeToFileTests(RestoredFolders folders) => folder = PathNames.Canonical(folders.Take("move-type-", made =>
+    public MoveTypeToFileTests(RestoredFolders folders) => (this.folders, folder) = (folders, PathNames.Canonical(folders.Take("move-type-", made =>
     {
         string project = PathNames.Canonical(made);
         TestFolders.Write(project, "Shop.csproj", TestProjects.Library());
         TestFolders.Write(project, "Shapes.cs", Shapes);
         TestFolders.Write(project, "Garden.cs", Garden);
         return project;
-    }));
+    })));
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A type the light bulb moves to a file of its own, or Move takes to another file, is in the Explorer and
+    /// the project, and Undo puts it back.</summary>
     [AvaloniaFact]
-    public void A_type_the_light_bulb_moves_to_its_own_file_is_in_the_explorer_and_the_project_and_undo_puts_it_back() =>
+    public void A_type_moved_to_a_file_of_its_own_or_another_is_in_the_explorer_and_the_project_and_undo_puts_it_back()
+    {
+        Flow.StepApart("a type the light bulb moves to its own file is in the Explorer and the project, and Undo puts it back", () => new MoveTypeToFileTests(folders), t => t.A_type_the_light_bulb_moves_to_its_own_file_is_in_the_explorer_and_the_project_and_undo_puts_it_back());
+        Flow.StepApart("a type Move takes to another file is in the Explorer and the project, and Undo puts it back", () => new MoveTypeToFileTests(folders), t => t.A_type_move_takes_to_another_file_is_in_the_explorer_and_the_project_and_undo_puts_it_back());
+    }
+
+    private void A_type_the_light_bulb_moves_to_its_own_file_is_in_the_explorer_and_the_project_and_undo_puts_it_back() =>
         Moves("Move type to Circle.cs", window => TypeRenameTests.ContextAction(window, "class Circ", "Move type to Circle.cs"));
 
-    [AvaloniaFact]
-    public void A_type_move_takes_to_another_file_is_in_the_explorer_and_the_project_and_undo_puts_it_back() =>
+    private void A_type_move_takes_to_another_file_is_in_the_explorer_and_the_project_and_undo_puts_it_back() =>
         Moves("Move to Another File", window =>
         {
             Ui.PlaceAfter(window.EditorArea.CodeEditor, "class Circ");
