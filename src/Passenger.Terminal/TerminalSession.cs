@@ -335,11 +335,13 @@ public sealed partial class TerminalSession : IAsyncDisposable
     /// <summary>Kills the shell and closes its pseudo-terminal once the shell has gone: a shell leading its session waits as
     /// it exits for the terminal to take what it wrote, and the close waits for a write still going (a paste the program
     /// never read), which only the shell's going ends. ConPTY keeps its output open until it closes, so Windows waits for
-    /// none of it.</summary>
+    /// none of it. A .NET shell (PowerShell) killed leaves its runtime's socket and pipes, taken once it has gone.</summary>
     private void End(IPseudoTerminal connection, bool running)
     {
+        RuntimeFiles? left = null;
         if (running)
         {
+            left = RuntimeFiles.Of(connection.Pid);
             try
             {
                 connection.Kill();
@@ -354,6 +356,11 @@ public sealed partial class TerminalSession : IAsyncDisposable
             readDone.Wait(Waits.Of(EndingLimit));
         }
         connection.Dispose();
+        if (left is not null)
+        {
+            // On the end's own thread, which nothing waits on and the removal's wait never needs.
+            Blocking.Until(RuntimeFiles.RemoveOnceGoneAsync([left], Waits.Of(EndingLimit)));
+        }
     }
 
     /// <summary>Takes out of a program's environment the variables of the terminal Passenger was started in, which the
