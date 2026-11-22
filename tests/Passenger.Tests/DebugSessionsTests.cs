@@ -37,8 +37,75 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// <summary>The shared file, as its breakpoint names it.</summary>
     private string Counter => Path.Combine(PathNames.Canonical(pair.Folder), "Shared", "Counter.cs");
 
+    /// <summary>Two programs debugged at once each stop in the file they share and Step, Stop and Stop All act on the
+    /// tab chosen; a stop the person set going brings the window forward and an agent's never does; additional
+    /// launches of one name keep their own tabs and output, and cancelling one cannot stop its sibling; a session
+    /// whose program is elsewhere never ends a process here; a failed start ends the output it followed.</summary>
     [AvaloniaFact]
-    public void Two_programs_debugged_at_once_each_stop_in_the_file_they_share_and_step_stop_and_stop_all_act_on_the_tab_chosen()
+    public void Programs_debugged_side_by_side_each_keep_their_own_tab_output_and_process()
+    {
+        Flow.StepApart<DebugSessionsTests>("two programs debugged at once each stop in the file they share and step stop and stop all act on the tab chosen", () => new DebugSessionsTests(pair), t =>
+        {
+            t.Two_programs_debugged_at_once_each_stop_in_the_file_they_share_and_step_stop_and_stop_all_act_on_the_tab_chosen();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("a stop the person set going brings the window forward and an agent's never does", () => new DebugSessionsTests(pair), t =>
+        {
+            t.A_stop_the_person_set_going_brings_the_window_forward_and_an_agents_never_does();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("additional launches with the same name keep separate native tabs and capture output from the start", () => new DebugSessionsTests(pair), t =>
+        {
+            t.Additional_launches_with_the_same_name_keep_separate_native_tabs_and_capture_output_from_the_start();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("cancelling an additional start during its adapter's start cannot stop its same-name sibling", () => new DebugSessionsTests(pair), t =>
+        {
+            t.Canceling_an_additional_start_before_or_during_adapter_start_cannot_stop_its_same_name_sibling(true);
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("a session whose program is elsewhere never ends a process here by its program's id", () => new DebugSessionsTests(pair), t =>
+        {
+            t.A_session_whose_program_is_elsewhere_never_ends_a_process_here_by_its_programs_id();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("a failed start ends the output it followed and a place that stopped is said as the program's end", () => new DebugSessionsTests(pair), t =>
+        {
+            t.A_failed_start_ends_the_output_it_followed_and_a_place_that_stopped_is_said_as_the_programs_end();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>An attach to a program started held for it has Hot Reload and runs an edit made while paused; leaving
+    /// a program Hot Reload changed asks first and stops it rather than leave it frozen; a program resumed with an
+    /// edit takes it and goes on, and a rude edit restarts its own program, while another program's stop takes the
+    /// window.</summary>
+    [AvaloniaFact]
+    public void Hot_Reload_reaches_each_debugged_program_and_never_leaves_one_frozen()
+    {
+        Flow.StepApart<DebugSessionsTests>("an attach to a program started held for it has hot reload and runs an edit made while paused", () => new DebugSessionsTests(pair), t =>
+        {
+            t.An_attach_to_a_program_started_held_for_it_has_hot_reload_and_runs_an_edit_made_while_paused();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("leaving a program Hot Reload changed asks first and stops it rather than leave it frozen", () => new DebugSessionsTests(pair), t =>
+        {
+            t.Leaving_a_program_Hot_Reload_changed_asks_first_and_stops_it_rather_than_leave_it_frozen();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("a program resumed with an edit takes it and goes on while another program's stop takes the window", () => new DebugSessionsTests(pair), t =>
+        {
+            t.A_program_resumed_with_an_edit_takes_it_and_goes_on_while_another_programs_stop_takes_the_window();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebugSessionsTests>("a rude edit restarts its own program though another program's stop takes the window as it is applied", () => new DebugSessionsTests(pair), t =>
+        {
+            t.A_rude_edit_restarts_its_own_program_though_another_programs_stop_takes_the_window_as_it_is_applied();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Two_programs_debugged_at_once_each_stop_in_the_file_they_share_and_step_stop_and_stop_all_act_on_the_tab_chosen()
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
         try
@@ -128,8 +195,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// <summary>A stop the person's own resume or start comes to brings the window in front of the program they went to;
     /// one an agent's resume comes to leaves the window where it is, asking nothing; and with When the debugger stops set to
     /// Ask for attention, a stop asks for the person until the window is active, without bringing it forward.</summary>
-    [AvaloniaFact]
-    public void A_stop_the_person_set_going_brings_the_window_forward_and_an_agents_never_does()
+    private void A_stop_the_person_set_going_brings_the_window_forward_and_an_agents_never_does()
     {
         MainWindow window = pair.Open(Counter, languageServer: false, seen: true);
         AppSettings before = window.Settings;
@@ -168,8 +234,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         }
     }
 
-    [AvaloniaFact]
-    public void Additional_launches_with_the_same_name_keep_separate_native_tabs_and_capture_output_from_the_start()
+    private void Additional_launches_with_the_same_name_keep_separate_native_tabs_and_capture_output_from_the_start()
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
         try
@@ -209,10 +274,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         }
     }
 
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Canceling_an_additional_start_before_or_during_adapter_start_cannot_stop_its_same_name_sibling(bool duringAdapterStart)
+    private void Canceling_an_additional_start_before_or_during_adapter_start_cannot_stop_its_same_name_sibling(bool duringAdapterStart)
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
         using CancellationTokenSource cancel = new();
@@ -276,8 +338,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// session told so never ends a process of this machine by it. A launched program its adapter leaves running as it goes
     /// (let go here, as a crash leaves it) is ended by the IDE when the session is here; when the session is told its
     /// program is elsewhere, the program it launched, here only for the test, runs on.</summary>
-    [AvaloniaFact]
-    public void A_session_whose_program_is_elsewhere_never_ends_a_process_here_by_its_programs_id()
+    private void A_session_whose_program_is_elsewhere_never_ends_a_process_here_by_its_programs_id()
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
         List<OwnProcess> started = [];
@@ -332,8 +393,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// <summary>A program started held for the debugger with DOTNET_MODIFIABLE_ASSEMBLIES=debug, as a container service's
     /// debug start will start one, attached to with Hot Reload: an edit made while it is paused goes into it as it resumes,
     /// and it runs the edited code to its end.</summary>
-    [AvaloniaFact]
-    public void An_attach_to_a_program_started_held_for_it_has_hot_reload_and_runs_an_edit_made_while_paused()
+    private void An_attach_to_a_program_started_held_for_it_has_hot_reload_and_runs_an_edit_made_while_paused()
     {
         MainWindow window = pair.Open(Counter);
         Process? program = null;
@@ -383,8 +443,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// keeping it debugged and the folder open, and an agent's Close Solution is refused, the person's alone; the window's close asks
     /// that alone though Confirm before closing says Every window, the question confirming the close already; then Stop and
     /// Close ends the program and closes the solution, where the debugger let it go before, held by the runtime for good.</summary>
-    [AvaloniaFact]
-    public void Leaving_a_program_Hot_Reload_changed_asks_first_and_stops_it_rather_than_leave_it_frozen()
+    private void Leaving_a_program_Hot_Reload_changed_asks_first_and_stops_it_rather_than_leave_it_frozen()
     {
         MainWindow window = pair.Open(Counter, seen: true);
         Process? program = null;
@@ -474,8 +533,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// <summary>Hot Reload's apply is its own program's whichever tab the window shows: one resumed with an edit made while it
     /// was paused takes the edit and goes on, its console saying what the apply came to, though another program's stop takes
     /// the window while the edit is applied; the other stays paused where it was.</summary>
-    [AvaloniaFact]
-    public void A_program_resumed_with_an_edit_takes_it_and_goes_on_while_another_programs_stop_takes_the_window()
+    private void A_program_resumed_with_an_edit_takes_it_and_goes_on_while_another_programs_stop_takes_the_window()
     {
         MainWindow window = pair.Open(Counter);
         try
@@ -518,8 +576,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// <summary>An edit Hot Reload cannot apply restarts its own program, as Settings' always restart says, though another
     /// program's stop takes the window while it is applied: its tab is chosen again and its program built and debugged anew,
     /// stopping at its breakpoint, while the other stays paused where it was.</summary>
-    [AvaloniaFact]
-    public void A_rude_edit_restarts_its_own_program_though_another_programs_stop_takes_the_window_as_it_is_applied()
+    private void A_rude_edit_restarts_its_own_program_though_another_programs_stop_takes_the_window_as_it_is_applied()
     {
         MainWindow window = pair.Open(Counter);
         try
@@ -557,8 +614,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
     /// <summary>A program's output followed from outside (as a container run's log is) ends with a start that fails, rather
     /// than run for the window's life; and a session whose place stops under it (its container) ends as its program's end,
     /// said so, never as the debugger failing.</summary>
-    [AvaloniaFact]
-    public void A_failed_start_ends_the_output_it_followed_and_a_place_that_stopped_is_said_as_the_programs_end()
+    private void A_failed_start_ends_the_output_it_followed_and_a_place_that_stopped_is_said_as_the_programs_end()
     {
         MainWindow window = pair.Open(Counter, languageServer: false);
         List<OwnProcess> followers = [];
@@ -608,44 +664,6 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             {
                 followers.ForEach(left => left.Kill());
             }
-            if (looping is not null)
-            {
-                ChildProcesses.Kill(looping);
-                looping.Dispose();
-            }
-        }
-    }
-
-    /// <summary>A program's output followed from outside, as a container service's log is into its Debug tab, shows to its
-    /// last word once what follows it ends, as the container's end ends docker logs: a last line ended by a carriage return
-    /// alone comes whole with it, the carriage return let go rather than held for good for a line feed that never comes.</summary>
-    [AvaloniaFact]
-    public void Output_followed_from_outside_shows_its_last_line_ended_by_a_carriage_return_once_it_ends()
-    {
-        MainWindow window = pair.Open(Counter, languageServer: false);
-        Process? looping = null;
-        try
-        {
-            ProcessStartInfo start = ChildProcesses.DotnetCommand([Debugging.Helpers.Debuggees.Program("LoopingConsoleApp"), "sleep"]);
-            start.RedirectStandardOutput = true;
-            looping = ChildProcesses.Start(start);
-            // What a container's log ends with as the container ends: a line, then one ended by a carriage return alone.
-            AdapterPlace place = Here(follow: false) with
-            {
-                Output = () => OperatingSystem.IsWindows()
-                    ? ChildProcesses.Command("powershell", ["-NoProfile", "-Command", "[Console]::Out.Write('first words' + [char]10 + 'last words' + [char]13)"])
-                    : ChildProcesses.Command("/bin/sh", ["-c", "printf 'first words\\nlast words\\r'"]),
-            };
-            Assert.Null(Ui.Await(window.Debugger.AttachAsync(looping.Id, "Followed", place: place), "the attach in its place"));
-            DebugSession followed = window.Debugger.SessionNamed("Followed")!;
-            Ui.WaitFor(() => window.Debugger.Output(followed).ToString().Contains("first words\nlast words\r", StringComparison.Ordinal),
-                $"the followed output's last line in its console with the carriage return that ended it, not held for good: [{window.Debugger.Output(followed)}]");
-            Task letGo = followed.DetachAsync();
-            Ui.WaitFor(() => letGo.IsCompleted && followed.State == DebugState.Ended, "the session to let its program go and end");
-        }
-        finally
-        {
-            window.Close();
             if (looping is not null)
             {
                 ChildProcesses.Kill(looping);

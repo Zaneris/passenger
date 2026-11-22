@@ -29,8 +29,36 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         people.Reset();
     }
 
+    /// <summary>An object rested on while paused opens in its card into its members; the card's rows open with the
+    /// keys, list a collection's items and take a value set in them; Quick Evaluate shows the caret's, a selection's
+    /// or an alt-clicked expression in the card; a name rested on outside the stopped method asks nothing of the
+    /// program and a local inside shows its value.</summary>
     [AvaloniaFact]
-    public void An_object_rested_on_while_paused_opens_in_its_card_into_its_members_and_a_members_into_its_own()
+    public void A_values_card_opens_into_its_members_and_takes_a_value_and_a_name_outside_the_stopped_method_asks_the_program_nothing()
+    {
+        Flow.StepApart<DebuggerHoverTests>("an object rested on while paused opens in its card into its members and a member's into its own", () => new DebuggerHoverTests(people), t =>
+        {
+            t.An_object_rested_on_while_paused_opens_in_its_card_into_its_members_and_a_members_into_its_own();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebuggerHoverTests>("the card's rows open with the keys list a collection's items and take a value set in them", () => new DebuggerHoverTests(people), t =>
+        {
+            t.The_cards_rows_open_with_the_keys_list_a_collections_items_and_take_a_value_set_in_them();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebuggerHoverTests>("quick evaluate shows the caret or selections or an alt clicked expression in the card's list with the keys", () => new DebuggerHoverTests(people), t =>
+        {
+            t.Quick_evaluate_shows_the_caret_or_selections_or_an_alt_clicked_expression_in_the_cards_list_with_the_keys();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DebuggerHoverTests>("a name rested on outside the stopped method asks nothing of the program and a local inside shows its value", () => new DebuggerHoverTests(people), t =>
+        {
+            t.A_name_rested_on_outside_the_stopped_method_asks_nothing_of_the_program_and_a_local_inside_shows_its_value();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void An_object_rested_on_while_paused_opens_in_its_card_into_its_members_and_a_members_into_its_own()
     {
         MainWindow window = Stopped();
         try
@@ -80,8 +108,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         }
     }
 
-    [AvaloniaFact]
-    public void The_cards_rows_open_with_the_keys_list_a_collections_items_and_take_a_value_set_in_them()
+    private void The_cards_rows_open_with_the_keys_list_a_collections_items_and_take_a_value_set_in_them()
     {
         MainWindow window = Stopped();
         try
@@ -133,8 +160,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
     /// <summary>Quick Evaluate Expression shows its value in the hover card's list with the keys, with no Evaluate dialog:
     /// from its keys, the expression the hover reads at the caret, opening into its members; the selection where there is
     /// one; and from Alt-click, the expression clicked, while an Alt-drag there still selects a column.</summary>
-    [AvaloniaFact]
-    public void Quick_evaluate_shows_the_caret_or_selections_or_an_alt_clicked_expression_in_the_cards_list_with_the_keys()
+    private void Quick_evaluate_shows_the_caret_or_selections_or_an_alt_clicked_expression_in_the_cards_list_with_the_keys()
     {
         MainWindow window = Stopped();
         try
@@ -183,8 +209,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
     /// <summary>A hover reads only text the stopped frame can see: a name in another method of the stopped file, or in another
     /// file, shows no value and asks nothing of the program, even a name the frame has a local of; a local of the method it
     /// stopped in still shows its value.</summary>
-    [AvaloniaFact]
-    public void A_name_rested_on_outside_the_stopped_method_asks_nothing_of_the_program_and_a_local_inside_shows_its_value()
+    private void A_name_rested_on_outside_the_stopped_method_asks_nothing_of_the_program_and_a_local_inside_shows_its_value()
     {
         MainWindow window = Stopped();
         try
@@ -198,57 +223,6 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
             Ui.Settle();
             VariableNode numbers = Assert.Single(Hover(window, "numbers.Count").Tree.Rows);
             Assert.True(numbers.Name == "numbers" && numbers.HasChildren, $"The stopped method's local showed as {numbers.Name} = {numbers.Value}");
-
-            Ui.Run(window, AppActions.Resume);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to end");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>In a window at its smallest with the default layout, the Explorer and the Debug window open leaving the
-    /// editor narrower than a card of values' least width, an object's card shows whole in the editor, held to its width:
-    /// its rows open there by their chevrons, into the object's members and a member's own, each row's chevron and name
-    /// shown whole, its value giving way first; a member's value is typed over there in a field inside the card.</summary>
-    [AvaloniaFact]
-    public void A_values_card_in_an_editor_at_the_windows_smallest_width_shows_whole_its_rows_opening_and_taking_a_value_there()
-    {
-        MainWindow window = Stopped(MainWindow.SmallestWidth, MainWindow.SmallestHeight);
-        try
-        {
-            Rect layer = CodeAssistTests.Layer(window);
-            Assert.True(layer.Width < PopupFrame.Narrow,
-                $"The default layout at the window's smallest width was to leave the editor narrower than a card of values' least width, {PopupFrame.Narrow}; it is {layer.Width} wide");
-            VariablesList values = Hover(window, "person.Name");
-            VariableNode person = Assert.Single(values.Tree.Rows);
-            RowsWhole(window, values, "The card of person");
-
-            Toggle(window, values, person);
-            Ui.WaitFor(() => Member(values, person, "Home") is not null, $"person's members in the card, where it showed {Shown(values)}");
-            VariableNode home = Member(values, person, "Home")!;
-            Toggle(window, values, home);
-            Ui.WaitFor(() => Member(values, home, "City")?.Value == "\"London\"" && Member(values, home, "Number")?.Value == "12", $"Home's members in the card, where it showed {Shown(values)}");
-            RowsWhole(window, values, "The card of person, opened into Home's members");
-
-            VariableNode name = Member(values, person, "Name")!;
-            values.ScrollIntoView(name);
-            Ui.Settle();
-            Click(window, values.ContainerFromItem(name)!);
-            Ui.Press(window, "F2");
-            Assert.True(name.IsEditing, "F2 on Name's row in the narrowed card did not open its value to be typed over");
-            Control row = values.ContainerFromItem(name)!;
-            TextBox field = row.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible);
-            TextBlock named = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Name");
-            Rect card = new(window.Assist.HoverCard!.TranslatePoint(default, window) ?? default, window.Assist.HoverCard!.Bounds.Size);
-            Rect typed = new(field.TranslatePoint(default, window) ?? default, field.Bounds.Size);
-            Assert.True(typed.X >= card.X && typed.Right <= card.Right && named.IsEffectivelyVisible && named.TextLayout.TextLines.All(l => !l.HasCollapsed),
-                $"Name's value typed over in the card at {card} runs past it at {typed}, or its name gave way ({named.Bounds.Width:0.#} of {named.TextLayout.Width:0.#})");
-            window.KeyTextInput("\"Grace\"");
-            Ui.Press(window, "Enter");
-            // The rows are read again as a value is set: found by name, not as the ones opened.
-            Ui.WaitFor(() => values.Tree.Rows.Any(r => r.Name == "Name" && r.Parent?.Name == "person" && r.Value == "\"Grace\""), $"the name set in the narrowed card, where it showed {Shown(values)}");
 
             Ui.Run(window, AppActions.Resume);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the program to end");

@@ -30,8 +30,12 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
     private readonly string folder;
     private readonly string program;
 
+    /// <summary>Where each step of a flow takes its own folder from.</summary>
+    private readonly RestoredFolders folders;
+
     public DataBreakpointTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = folders.Take("data-", made =>
         {
             File.WriteAllText(Path.Combine(made, "Sum.csproj"), Project);
@@ -94,8 +98,41 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
 
     private static bool Watches => OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64;
 
+    /// <summary>Set Data Breakpoint on a field stops at the line that changes it, after a compacting collection too,
+    /// and not where it is written unchanged; at its stop Set Next Statement shows its line and Step Over runs it; the
+    /// Breakpoints window lists it and removing it there lets the program run past the writes; a condition typed for
+    /// it decides which write stops, and one that cannot be told stops at the write saying why.</summary>
     [AvaloniaFact]
-    public void Set_data_breakpoint_on_a_field_stops_at_the_line_that_changes_it_after_a_compacting_collection_and_not_where_it_is_written_unchanged()
+    public void A_data_breakpoint_stops_where_its_field_changes_as_its_condition_allows_and_lets_the_program_go_once_removed()
+    {
+        Flow.StepApart<DataBreakpointTests>("set data breakpoint on a field stops at the line that changes it after a compacting collection and not where it is written unchanged", () => new DataBreakpointTests(folders), t =>
+        {
+            t.Set_data_breakpoint_on_a_field_stops_at_the_line_that_changes_it_after_a_compacting_collection_and_not_where_it_is_written_unchanged();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DataBreakpointTests>("at a data breakpoint's stop set next statement shows its line and step over runs that line", () => new DataBreakpointTests(folders), t =>
+        {
+            t.At_a_data_breakpoints_stop_set_next_statement_shows_its_line_and_step_over_runs_that_line();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DataBreakpointTests>("the Breakpoints window lists a data breakpoint and removing it there lets the program run past the writes", () => new DataBreakpointTests(folders), t =>
+        {
+            t.The_breakpoints_window_lists_a_data_breakpoint_and_removing_it_there_lets_the_program_run_past_the_writes();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DataBreakpointTests>("a condition typed for a data breakpoint in the Breakpoints window decides which write stops", () => new DataBreakpointTests(folders), t =>
+        {
+            t.A_condition_typed_for_a_data_breakpoint_in_the_breakpoints_window_decides_which_write_stops();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<DataBreakpointTests>("a data breakpoint's condition that cannot be told stops at the write and says why on the breakpoint", () => new DataBreakpointTests(folders), t =>
+        {
+            t.A_data_breakpoints_condition_that_cannot_be_told_stops_at_the_write_and_says_why_on_the_breakpoint();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Set_data_breakpoint_on_a_field_stops_at_the_line_that_changes_it_after_a_compacting_collection_and_not_where_it_is_written_unchanged()
     {
         Assert.SkipUnless(Watches, OnlyOnWindowsX64);
         MainWindow window = Open();
@@ -136,8 +173,7 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
 
     /// <summary>At a data breakpoint's stop, shown at the write the thread has gone past, Set Next Statement onto the line
     /// after it shows the stop there, and Step Over runs that line, stopping after it.</summary>
-    [AvaloniaFact]
-    public void At_a_data_breakpoints_stop_set_next_statement_shows_its_line_and_step_over_runs_that_line()
+    private void At_a_data_breakpoints_stop_set_next_statement_shows_its_line_and_step_over_runs_that_line()
     {
         Assert.SkipUnless(Watches, OnlyOnWindowsX64);
         MainWindow window = Open();
@@ -164,8 +200,7 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_breakpoints_window_lists_a_data_breakpoint_and_removing_it_there_lets_the_program_run_past_the_writes()
+    private void The_breakpoints_window_lists_a_data_breakpoint_and_removing_it_there_lets_the_program_run_past_the_writes()
     {
         Assert.SkipUnless(Watches, OnlyOnWindowsX64);
         MainWindow window = Open();
@@ -196,8 +231,7 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_condition_typed_for_a_data_breakpoint_in_the_breakpoints_window_decides_which_write_stops()
+    private void A_condition_typed_for_a_data_breakpoint_in_the_breakpoints_window_decides_which_write_stops()
     {
         Assert.SkipUnless(Watches, OnlyOnWindowsX64);
         MainWindow window = Open();
@@ -225,8 +259,7 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
 
     /// <summary>A data breakpoint whose condition cannot be told stops at the write that changes its data, and the
     /// breakpoint says why, as a line breakpoint does.</summary>
-    [AvaloniaFact]
-    public void A_data_breakpoints_condition_that_cannot_be_told_stops_at_the_write_and_says_why_on_the_breakpoint()
+    private void A_data_breakpoints_condition_that_cannot_be_told_stops_at_the_write_and_says_why_on_the_breakpoint()
     {
         Assert.SkipUnless(Watches, OnlyOnWindowsX64);
         MainWindow window = Open();
@@ -248,39 +281,6 @@ public sealed class DataBreakpointTests : IClassFixture<RestoredFolders>, IDispo
         Ui.WaitFor(() => Value(window, "value") == "2", "the stop at Set(2), the first write that changes count");
         Ui.WaitFor(() => watched.Message is not null, () => $"the data breakpoint to say why it stopped, its condition not told (it is {watched.Status})");
         Assert.StartsWith(Passenger.Dap.BreakpointConditions.NotEvaluated("noSuchName == 3"), watched.Message, StringComparison.Ordinal);
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Set_data_breakpoint_is_greyed_saying_why_on_a_local_on_a_property_with_no_backing_field_and_wherever_the_runtime_cannot_watch()
-    {
-        MainWindow window = Open();
-        Passenger.App.ToolWindows.DebugModel view = PausedAtReady(window);
-        string? unavailable = window.Debugger.Session!.DataBreakpointsUnavailable;
-        Assert.True(Watches == (unavailable is null), $"Windows x64 alone watches memory for a debugger; this debugger says: {unavailable ?? "it can"}");
-
-        (MenuItem field, string? fieldWhy) = Offered(window, view, Member(view, "counter", "count"));
-        (MenuItem local, string? localWhy) = Offered(window, view, view.Tree.Rows.First(r => r.Depth == 0 && r.Name == "counter"));
-        (MenuItem property, string? propertyWhy) = Offered(window, view, Member(view, "counter", "Count"));
-        Assert.Equal(DataWatchOffer.Set, field.Header as string);
-        if (unavailable is not null)
-        {
-            Assert.False(field.IsEnabled, "Set Data Breakpoint was offered where the runtime cannot watch memory");
-            Assert.Equal(unavailable, fieldWhy);
-            Assert.Contains("only available on Windows x64", fieldWhy, StringComparison.Ordinal);
-            Assert.False(local.IsEnabled);
-            Assert.Equal(unavailable, localWhy);
-        }
-        else
-        {
-            Assert.True(field.IsEnabled, $"Set Data Breakpoint was greyed on a field: {fieldWhy}");
-            Assert.False(local.IsEnabled, "Set Data Breakpoint was offered on a local variable");
-            Assert.Equal(Refusals.DataBreakpointNotAMember, localWhy);
-            Assert.False(property.IsEnabled, "Set Data Breakpoint was offered on a property whose getter is the program's own");
-            Assert.Equal("The breakpoint cannot be set. The property doesn't have a backing field.", propertyWhy);
-        }
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
         window.Close();

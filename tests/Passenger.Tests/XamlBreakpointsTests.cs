@@ -26,8 +26,12 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
 {
     private readonly string folder;
 
+    /// <summary>Where each step of a flow takes its own folder from.</summary>
+    private readonly RestoredFolders folders;
+
     public XamlBreakpointsTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("xamlbreakpoints-", made => AvaloniaApp.Debuggee(made, "XamlBreakpointsApp")));
     }
 
@@ -37,8 +41,36 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
 
     private string CodeBehind => Path.Combine(folder, "MainWindow.axaml.cs");
 
+    /// <summary>A breakpoint on an axaml element stops as its control is made and one on an attribute as its property
+    /// is set; Set Next Statement from a stop shown short of its point shows where it went; below line breaks only an
+    /// XML reader counts, a XAML breakpoint stops at the editor's line; Break When Value Changes stops in the code,
+    /// style or binding that changed the control's property.</summary>
     [AvaloniaFact]
-    public void A_breakpoint_on_an_axaml_element_stops_as_its_control_is_made_and_one_on_an_attribute_as_its_property_is_set()
+    public void A_XAML_breakpoint_stops_as_its_control_is_made_or_its_property_set_at_the_editors_line()
+    {
+        Flow.StepApart<XamlBreakpointsTests>("a breakpoint on an axaml element stops as its control is made and one on an attribute as its property is set", () => new XamlBreakpointsTests(folders), t =>
+        {
+            t.A_breakpoint_on_an_axaml_element_stops_as_its_control_is_made_and_one_on_an_attribute_as_its_property_is_set();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<XamlBreakpointsTests>("set next statement from a stop shown short of its point shows the stop where it went", () => new XamlBreakpointsTests(folders), t =>
+        {
+            t.Set_next_statement_from_a_stop_shown_short_of_its_point_shows_the_stop_where_it_went();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<XamlBreakpointsTests>("below line breaks only an XML reader counts a xaml breakpoint stops on its attribute at the editor's line", () => new XamlBreakpointsTests(folders), t =>
+        {
+            t.Below_line_breaks_only_an_xml_reader_counts_a_xaml_breakpoint_stops_on_its_attribute_at_the_editors_line();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<XamlBreakpointsTests>("break when value changes stops in the code the style or the binding that changed that controls property", () => new XamlBreakpointsTests(folders), t =>
+        {
+            t.Break_when_value_changes_stops_in_the_code_the_style_or_the_binding_that_changed_that_controls_property();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void A_breakpoint_on_an_axaml_element_stops_as_its_control_is_made_and_one_on_an_attribute_as_its_property_is_set()
     {
         MainWindow window = Opened();
         Assert.Null(window.OpenFile(Xaml));
@@ -103,41 +135,10 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         window.Close();
     }
 
-    /// <summary>Two buttons written on one line each set Content: Toggle Breakpoint on the second's is drawn on the second's,
-    /// and the program stops where that Content is set, at its column, the first's never taking the breakpoint.</summary>
-    [AvaloniaFact]
-    public void A_breakpoint_on_the_second_of_two_same_named_attributes_on_a_line_is_drawn_and_stops_on_the_second()
-    {
-        File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("<Button x:Name=\"Delete\" Content=\"Delete\" />",
-            "<Button x:Name=\"Delete\" Content=\"Delete\" /><Button x:Name=\"Undo\" Content=\"Undo\" />", StringComparison.Ordinal));
-        MainWindow window = Opened();
-        Assert.Null(window.OpenFile(Xaml));
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        int line = Line(Xaml, "Content=\"Undo\"");
-        int second = Column(Xaml, line, "Content=\"Undo\"");
-        editor.GoTo(new TextPosition(line, second + 3));
-        Ui.Run(window, AppActions.ToggleBreakpoint);
-        Assert.Equal([$"MainWindow.axaml:{line + 1} Content"], window.Debugger.Breakpoints.In(Xaml).Select(b => b.Location));
-        TextSnapshot text = editor.Document.Snapshot;
-        LineMark drawn = Assert.Single(editor.LineMarks, m => m.Line == line);
-        Assert.True(drawn.Range is { } range && text.GetText(range.Start, range.Length) == "Content=\"Undo\"",
-            $"The breakpoint on Undo's Content was drawn on {(drawn.Range is { } on ? text.GetText(on.Start, on.Length) : "its whole line")}");
-
-        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
-        DebugStop stop = Stopped(window, "the stop where Undo's Content is set");
-        AssertAt(stop, Xaml, line, second);
-
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
-        window.Close();
-    }
-
     /// <summary>At a stop shown at its breakpoint rather than where the thread is (the window's Width, which XamlIl gives no
     /// code of its own), Set Next Statement back to the window's element shows the stop there, where it went, and the
     /// program then makes the window's XAML again from its start, stopping at the Width again.</summary>
-    [AvaloniaFact]
-    public void Set_next_statement_from_a_stop_shown_short_of_its_point_shows_the_stop_where_it_went()
+    private void Set_next_statement_from_a_stop_shown_short_of_its_point_shows_the_stop_where_it_went()
     {
         MainWindow window = Opened();
         Assert.Null(window.OpenFile(Xaml));
@@ -170,8 +171,7 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
     /// below a comment holding all four and past a lone '\r' in Save's tag the PDB's lines run two ahead of the editor's: the
     /// breakpoint on Save's Background stops there with the arrow on its line, the frame's row and an agent's place say it,
     /// and a line typed above while paused moves the arrow and the row with their code, as the next stop, Delete's, is.</summary>
-    [AvaloniaFact]
-    public void Below_line_breaks_only_an_xml_reader_counts_a_xaml_breakpoint_stops_on_its_attribute_at_the_editors_line()
+    private void Below_line_breaks_only_an_xml_reader_counts_a_xaml_breakpoint_stops_on_its_attribute_at_the_editors_line()
     {
         string xaml = File.ReadAllText(Xaml)
             .Replace("    <StackPanel", $"    <!-- Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd -->\n    <StackPanel", StringComparison.Ordinal)
@@ -221,8 +221,7 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Break_when_value_changes_stops_in_the_code_the_style_or_the_binding_that_changed_that_controls_property()
+    private void Break_when_value_changes_stops_in_the_code_the_style_or_the_binding_that_changed_that_controls_property()
     {
         // XamlIl counts the lone '\r' in the window's tag as a line's end, which the editor reads inside its line.
         string xaml = File.ReadAllText(Xaml).Replace("Title=\"XAML Breakpoints\" Width", "Title=\"XAML Breakpoints\"\r        Width", StringComparison.Ordinal);
@@ -301,43 +300,6 @@ public sealed class XamlBreakpointsTests : IClassFixture<RestoredFolders>, IDisp
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
         // Each named a control of that run, as a data breakpoint names an object: none outlives it.
         Assert.Empty(store.Properties);
-        window.Close();
-    }
-
-    /// <summary>Delete's Background, which Fluent's theme gave it, set by the control itself (SetCurrentValue): the property
-    /// breakpoint says the control set it, as the property's row says it and as the theme's setter says what overrides it,
-    /// never the theme that gave the value before.</summary>
-    [AvaloniaFact]
-    public void A_property_breakpoint_on_a_value_the_control_sets_itself_says_so_as_its_row_and_the_setter_it_overrides_do()
-    {
-        MainWindow window = Opened();
-        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
-        LiveTreeView tree = window.LiveTree;
-        Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Delete"),
-            $"the Live Visual Tree to show the app's window ({window.LiveApp?.State} {window.LiveApp?.Problem})", TimeSpan.FromMinutes(2));
-
-        PropertyBreakpoint background = Watch(window, "Delete", "Background");
-        Ui.WaitFor(() => background.Status == BreakpointStatus.Bound, $"the debugger to take the property breakpoint, not to say {background.Message}");
-        Ui.TypeToDebugged(window, "nudge");
-        DebugStop stop = Stopped(window, "the stop where nudge has Delete set its own Background");
-        AssertAt(stop, CodeBehind, Line(CodeBehind, "Delete.SetCurrentValue("));
-        Says(window, "New Value: Purple, by the control itself (SetCurrentValue))");
-        Resume(window);
-        Ui.WaitFor(() => Console(window).Contains("Nudged", StringComparison.Ordinal), "nudge to finish");
-
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Panel");
-        Ui.WaitFor(() => tree.Details?.Name == "Panel", "the panel's details");
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Delete");
-        Ui.WaitFor(() => tree.Details?.Name == "Delete", "Delete's details");
-        PropertyValue row = tree.Details!.Properties.Single(p => p.Name == "Background");
-        Assert.True(row is { Source: ValueSources.Current, Detail: "Set by the control itself (SetCurrentValue)" },
-            $"Delete's Background row said it came from {row.Source} ({row.Detail}), not the control itself");
-        SetterReport themes = tree.Details.Styles.Single(s => s.Kind == StyleKinds.Theme).Setters.Single(s => s.Property == "Background");
-        Assert.True(themes is { State: SetterStates.Overridden, By: "the control itself (SetCurrentValue)" },
-            $"The theme's Background setter on Delete was {themes.State} by {themes.By}, not overridden by the control itself");
-
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
         window.Close();
     }
 

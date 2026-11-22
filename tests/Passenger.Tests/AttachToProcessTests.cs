@@ -23,8 +23,24 @@ public sealed class AttachToProcessTests : IDisposable
         new(12, "Cart", "dotnet Cart.dll", "app", false) { Container = "cart-1" },
     ];
 
+    /// <summary>The programs listed are those running where chosen and the search narrows them there, and the next
+    /// Attach to Process opens on where the last listed programs ran.</summary>
     [AvaloniaFact]
-    public void The_programs_listed_are_those_running_where_chosen_and_the_search_narrows_them_there()
+    public void Attach_to_Process_lists_the_programs_running_where_chosen_and_opens_there_next_time()
+    {
+        Flow.StepApart<AttachToProcessTests>("the programs listed are those running where chosen and the search narrows them there", t =>
+        {
+            t.The_programs_listed_are_those_running_where_chosen_and_the_search_narrows_them_there();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<AttachToProcessTests>("the next attach to process opens on where the last listed program ran", t =>
+        {
+            t.The_next_attach_to_process_opens_on_where_the_last_listed_programs_ran();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void The_programs_listed_are_those_running_where_chosen_and_the_search_narrows_them_there()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         AttachToProcessDialog dialog = new(() => Task.FromResult<IReadOnlyList<DotnetProcess>>(Programs), _ => false);
@@ -56,8 +72,7 @@ public sealed class AttachToProcessTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_next_attach_to_process_opens_on_where_the_last_listed_programs_ran()
+    private void The_next_attach_to_process_opens_on_where_the_last_listed_programs_ran()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         AttachToProcessDialog first = window.ShowAttachToProcess();
