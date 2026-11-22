@@ -1,4 +1,3 @@
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.LiveTree;
 using Passenger.App.Run.Devices;
@@ -15,14 +14,12 @@ namespace Passenger.Tests;
 /// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, and a
 /// tap given through the inspector clicks it. Debug's end ends the app and leaves nothing of the inspector's in it.
 /// Skips, saying why, without MAUI's workload, the Android SDK's platform and Java, an emulator, or the relays.
-/// Debugged through the window, so alone.</summary>
-[Collection(Alone.Name)]
-public sealed class MauiAndroidTests
+/// Steps of <see cref="AndroidDeviceTests"/>' flow, which runs alone.</summary>
+internal static class MauiAndroidTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
 
-    [AvaloniaFact]
-    public void A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree()
+    internal static void A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree()
     {
         string folder = PathNames.Canonical(TestFolders.Create("maui-android"));
         (string project, string? unmade) = Ui.AwaitPumped(Waiting.Apart(() => MauiApp.CreateAndroidHeadAsync(folder)), "dotnet new maui and the Android head's restore", Slow);

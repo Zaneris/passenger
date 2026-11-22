@@ -30,8 +30,23 @@ public sealed class MauiCatalystTests : McpRig
     /// <summary>What the update handler the test adds to the app writes once Hot Reload has applied an edit.</summary>
     private const string Handled = "Update handler called for MainPage";
 
+    /// <summary>The MAUI app's Mac Catalyst head on this Mac: run with Hot Reload, its tree, a tap and an edit; debugged as
+    /// the template builds it; the template's app as made, opened hidden by Run and given a whole Debug build
+    /// (<see cref="MauiTemplateRunTests"/>); and debugged and run at once, each instance ended alone.</summary>
     [AvaloniaFact]
-    public void A_maui_apps_mac_catalyst_head_run_with_hot_reload_shows_its_tree_takes_a_tap_and_an_edit_and_ends_with_stop()
+    public void A_maui_apps_mac_catalyst_head_runs_and_debugs_hidden_takes_edits_and_ends_each_instance_alone()
+    {
+        Flow.Step("a MAUI app's Mac Catalyst head run with Hot Reload shows its tree, takes a tap and an edit, and ends with Stop",
+            A_maui_apps_mac_catalyst_head_run_with_hot_reload_shows_its_tree_takes_a_tap_and_an_edit_and_ends_with_stop);
+        Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, and takes a Hot Reload edit",
+            A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit);
+        Flow.Step("on a Mac, Run opens the MAUI template's Mac Catalyst head hidden, its output in the Run window, and Stop ends it",
+            MauiTemplateRunTests.On_a_mac_run_opens_the_maui_apps_mac_catalyst_head_hidden_its_output_in_the_run_window_and_stop_ends_it);
+        Flow.Step("a MAUI app's Mac Catalyst head debugged and run at once ends each instance alone with its own start",
+            A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start);
+    }
+
+    private static void A_maui_apps_mac_catalyst_head_run_with_hot_reload_shows_its_tree_takes_a_tap_and_an_edit_and_ends_with_stop()
     {
         (string folder, string project) = Prepared("maui-catalyst-run", whole: true);
         MainWindow window = Ui.OpenFolder(folder);
@@ -86,8 +101,7 @@ public sealed class MauiCatalystTests : McpRig
         }
     }
 
-    [AvaloniaFact]
-    public void A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit()
+    private static void A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit()
     {
         (string folder, string project) = Prepared("maui-catalyst-debug", whole: false);
         MainWindow window = Ui.OpenFolder(folder);
@@ -148,8 +162,7 @@ public sealed class MauiCatalystTests : McpRig
     /// <summary>The same app debugged and run at once, each start opening an instance of its own: each is told from the other
     /// by its start's own token, so the debugged one's end ends it alone and Run's runs on until its own Stop, and neither
     /// leaves its opener's pipes behind, though each opener is killed.</summary>
-    [AvaloniaFact]
-    public void A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start()
+    private static void A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start()
     {
         (string folder, _) = Prepared("maui-catalyst-both", whole: false);
         MainWindow window = Ui.OpenFolder(folder);

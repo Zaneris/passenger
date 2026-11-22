@@ -1,4 +1,3 @@
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
@@ -17,9 +16,8 @@ namespace Passenger.Tests;
 /// built for its own framework; each end leaves nothing of Passenger's on the device and the build's own environment in
 /// the app, Debug's after a start left its own environment file in the build's link's place. Skips, saying why, without the
 /// Android workload, its SDK and Java, Avalonia's Android packages from nuget.org, an emulator, or the relays.
-/// Debugged through the window, so alone.</summary>
-[Collection(Alone.Name)]
-public sealed class AvaloniaAndroidTests
+/// Steps of <see cref="AndroidDeviceTests"/>' flow, which runs alone.</summary>
+internal static class AvaloniaAndroidTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(6);
 
@@ -27,8 +25,7 @@ public sealed class AvaloniaAndroidTests
 
     private static readonly string Android = $"net{MobilePlatforms.FirstOnCoreClr}.0-android";
 
-    [AvaloniaFact]
-    public void An_avalonia_apps_android_head_runs_and_stops_at_a_breakpoint_in_its_shared_code_on_an_emulator()
+    internal static void An_avalonia_apps_android_head_runs_and_stops_at_a_breakpoint_in_its_shared_code_on_an_emulator()
     {
         string folder = PathNames.Canonical(TestFolders.Create("avalonia-android"));
         (string project, string? unrestored) = Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateAndroidHeadAsync(folder, "XApp")),

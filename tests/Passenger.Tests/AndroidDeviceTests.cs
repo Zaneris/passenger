@@ -16,8 +16,8 @@ namespace Passenger.Tests;
 /// and starts it there, its log in the Run window, and Stop ends it on the emulator; Debug stops at a breakpoint in its
 /// OnCreate through Passenger's relay in the app, its locals shown, and Stop ends it; Run and Debug with Hot Reload take
 /// an edit of its code through the relay, its update handler called after it, and under Debug a method the edit added is
-/// evaluated and a breakpoint on a line the edit changed stops the edited code; a start whose app run-as does not know is
-/// refused as its relay or inspector goes in. The emulator is the one ANDROID_SERIAL names where several run, and every
+/// evaluated; a start whose app run-as does not know is refused as its relay or inspector goes in; MAUI's and Avalonia's
+/// heads (<see cref="MauiAndroidTests"/>, <see cref="AvaloniaAndroidTests"/>) are steps too. The emulator is the one ANDROID_SERIAL names where several run, and every
 /// adb call names it. Skips, saying why, without the Android workload, its SDK and Java, an emulator or the relays.
 /// Debugged through the window, so run alone.</summary>
 [Collection(Alone.Name)]
@@ -27,8 +27,47 @@ public sealed class AndroidDeviceTests
 
     private const string Package = "net.passengeride.tests.androidapp";
 
+    /// <summary>An app on an emulator: run and stopped at a breakpoint, its locals shown, an edit taken by Run and by Debug
+    /// with Hot Reload and its update handler called, a MAUI app's live tree and an Avalonia app's shared code stopped in.
+    /// The steps that need more than the emulator (MAUI's workload, Avalonia's packages) come first, so a skip ends the
+    /// flow before any step ran.</summary>
     [AvaloniaFact]
-    public void An_android_app_runs_and_stops_at_a_breakpoint_on_an_emulator_chosen_beside_its_configuration()
+    public void An_app_on_an_emulator_runs_debugs_and_takes_hot_reload_edits_and_its_live_tree_and_shared_code_are_reached()
+    {
+        Flow.Step("an Avalonia app's Android head runs and stops at a breakpoint in its shared code on an emulator",
+            AvaloniaAndroidTests.An_avalonia_apps_android_head_runs_and_stops_at_a_breakpoint_in_its_shared_code_on_an_emulator);
+        Flow.Step("a MAUI app's Android head debugged on an emulator shows its main page's label and button in the live tree",
+            MauiAndroidTests.A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree);
+        Flow.Step("an Android app runs and stops at a breakpoint on an emulator chosen beside its configuration",
+            An_android_app_runs_and_stops_at_a_breakpoint_on_an_emulator_chosen_beside_its_configuration);
+        Flow.Step("an Android app run with Hot Reload on an emulator takes an edit of its code and runs its update handler",
+            An_android_app_run_with_hot_reload_on_an_emulator_takes_an_edit_of_its_code_and_runs_its_update_handler);
+        Flow.Step("an Android app debugged with Hot Reload on an emulator evaluates a method an edit added and runs its update handler",
+            An_android_app_debugged_with_hot_reload_on_an_emulator_evaluates_a_method_an_edit_added_and_runs_its_update_handler);
+    }
+
+    /// <summary>However a start on an emulator ends, refused, stopped partway, ended from outside or by Passenger's own end,
+    /// nothing of its debugging is left there, its app never starts after a Stop, and no later start loads a relay left.</summary>
+    [AvaloniaFact]
+    public void Nothing_of_a_start_is_left_on_the_emulator_however_it_ends()
+    {
+        Flow.Step("a start whose app run-as does not know is refused in its words as the relay or inspector goes in",
+            A_start_whose_app_run_as_does_not_know_is_refused_in_its_words_as_the_relay_or_inspector_goes_in);
+        Flow.Step("a debugged app ended on the emulator from outside ends its session and leaves nothing of its debugging there",
+            A_debugged_app_ended_on_the_emulator_from_outside_ends_its_session_and_leaves_nothing_of_its_debugging_there);
+        Flow.Step("a debug start stopped once its relay is in the app leaves nothing of it on the emulator",
+            A_debug_start_stopped_once_its_relay_is_in_the_app_leaves_nothing_of_it_on_the_emulator);
+        Flow.Step("a run stopped once its relay is in the app never starts the app on the emulator",
+            A_run_stopped_once_its_relay_is_in_the_app_never_starts_the_app_on_the_emulator);
+        Flow.Step("Passenger ending while a debugged app's end on the emulator is held waits until nothing of it is left there",
+            Passenger_ending_while_a_debugged_apps_end_on_the_emulator_is_held_waits_until_nothing_of_it_is_left_there);
+        Flow.Step("a relay a vanished end left in the app is out before its next run starts it",
+            A_relay_a_vanished_end_left_in_the_app_is_out_before_its_next_run_starts_it);
+        Flow.Step("a debugged app started from its launcher while its end is held loads no relay",
+            A_debugged_app_started_from_its_launcher_while_its_end_is_held_loads_no_relay);
+    }
+
+    private static void An_android_app_runs_and_stops_at_a_breakpoint_on_an_emulator_chosen_beside_its_configuration()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -72,8 +111,7 @@ public sealed class AndroidDeviceTests
     /// waits there, so an edit of its code applied as it runs lands on the emulator: what it logs each second after is the
     /// edit's, in the Run window, with no debugging session shown, and its update handler is called with the type the edit
     /// changed, as on this machine; Stop ends it and leaves nothing of the relay or the handlers' hook there.</summary>
-    [AvaloniaFact]
-    public void An_android_app_run_with_hot_reload_on_an_emulator_takes_an_edit_of_its_code_and_runs_its_update_handler()
+    private static void An_android_app_run_with_hot_reload_on_an_emulator_takes_an_edit_of_its_code_and_runs_its_update_handler()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder);
@@ -116,8 +154,7 @@ public sealed class AndroidDeviceTests
     /// the method evaluates there, as the debugger reads the app's code as the update made it, and once the app goes on its
     /// update handler is called with the type the edit changed and the edited code runs; Stop ends it and leaves nothing of
     /// the relay or the handlers' hook there.</summary>
-    [AvaloniaFact]
-    public void An_android_app_debugged_with_hot_reload_on_an_emulator_evaluates_a_method_an_edit_added_and_runs_its_update_handler()
+    private static void An_android_app_debugged_with_hot_reload_on_an_emulator_evaluates_a_method_an_edit_added_and_runs_its_update_handler()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder);
@@ -164,67 +201,10 @@ public sealed class AndroidDeviceTests
         }
     }
 
-    /// <summary>Debug with Hot Reload on the emulator, a breakpoint bound in Ticked as built, takes an edit of Ticked's line as
-    /// OnCreate's breakpoint holds the app before its timer starts: the breakpoint binds again in Ticked's new code, so once
-    /// the app goes on it stops there as the timer calls the edited code, which then logs what the edit made it say.</summary>
-    [AvaloniaFact]
-    public void An_android_app_debugged_with_hot_reload_on_an_emulator_stops_at_a_breakpoint_on_a_line_an_edit_changed()
-    {
-        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
-        MainWindow window = Ui.OpenFolder(folder);
-        window.ApplySettings(window.Settings with { HotReload = true });
-        try
-        {
-            Choose(window, project, target);
-            window.OpenFile(Path.Combine(PathNames.Canonical(folder), "MainActivity.cs"));
-            Ui.Settle();
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            editor.GoTo(new TextPosition(10, 8));
-            Ui.Run(window, AppActions.ToggleBreakpoint);
-            editor.GoTo(new TextPosition(TickedLine, 8));
-            Ui.Run(window, AppActions.ToggleBreakpoint);
-            Ui.Launched(window, window.DebugAsync(), "the debug session's start on the emulator with Hot Reload", Slow);
-            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "answer") is not null
-                && editor.LineMarks.Contains(new LineMark(TickedLine, LineMarkKind.BreakpointBound)),
-                () => $"the stop at the breakpoint in OnCreate, Ticked's breakpoint bound; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, "
-                    + $"marks {string.Join(", ", editor.LineMarks)}: {Ui.Said(window)}\n{Console(window)}", Slow);
-
-            Typing.Replace(window, "\"Ticked as built\"", "\"Ticked after Hot Reload\"");
-            Ui.Run(window, AppActions.ApplyHotReloadChanges);
-            Ui.WaitFor(() => window.Debugger.LastApplied is not null, () => $"Hot Reload to say what it applied: {Ui.Said(window)}", Slow);
-            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied,
-                $"The app on the emulator did not take the edit: {window.Debugger.LastApplied.Said}\n{Console(window)}");
-
-            Ui.Run(window, AppActions.Resume);
-            Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.LineMarks.Contains(new LineMark(TickedLine, LineMarkKind.ExecutionPoint)),
-                () => $"the stop at the breakpoint on Ticked's edited line as the timer calls its new code; the debugger is "
-                    + $"{window.Debugger.Session?.State.ToString() ?? "not debugging"}, marks {string.Join(", ", editor.LineMarks)}: {Ui.Said(window)}\n{Console(window)}",
-                TimeSpan.FromMinutes(1));
-            editor.GoTo(new TextPosition(TickedLine, 8));
-            Ui.Run(window, AppActions.ToggleBreakpoint);
-            Ui.Run(window, AppActions.Resume);
-            Ui.WaitFor(() => Console(window).Contains("Ticked after Hot Reload", StringComparison.Ordinal),
-                () => $"the edited code the app stopped in to log what the edit made it say: {Ui.Said(window)}\n{Console(window)}", TimeSpan.FromMinutes(1));
-            Assert.False(Console(window).Contains("Ticked as built", StringComparison.Ordinal), $"Ticked's code as built ran after the edit:\n{Console(window)}");
-
-            string serial = AndroidSerials.Of(window, target);
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => Pid(tools, serial).Length == 0, () => $"the debugged app to end on the emulator once stopped; it runs as {Pid(tools, serial)}", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"the debugging's port and debugged app to be let go on the emulator; it still has {Left(tools, serial)}",
-                TimeSpan.FromSeconds(30));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Passenger's relay and its inspector put in an app run-as does not know (one no longer on the device) refuse
     /// the start at once in run-as's own words, where it went on as though they were in, forwarding a port to a relay that
     /// never came and waiting out its hello; what the start staged on the emulator is taken away all the same.</summary>
-    [AvaloniaFact]
-    public void A_start_whose_app_run_as_does_not_know_is_refused_in_its_words_as_the_relay_or_inspector_goes_in()
+    private static void A_start_whose_app_run_as_does_not_know_is_refused_in_its_words_as_the_relay_or_inspector_goes_in()
     {
         (string folder, _, DeviceTarget target, AndroidTools tools) = Prepared();
         string serial = target.Running ? target.Id
@@ -264,14 +244,10 @@ public sealed class AndroidDeviceTests
         }
     }
 
-    /// <summary>Ticked's line in MainActivity.cs, counted from 0, which the Hot Reload tests edit.</summary>
-    private const int TickedLine = 25;
-
     /// <summary>A debugged app ended on the emulator from outside its debugger, as a crash or another program's force-stop
     /// ends it, ends its session here and leaves nothing of its debugging there: the relay's port forward, the relay, the
     /// app's mark as debugged.</summary>
-    [AvaloniaFact]
-    public void A_debugged_app_ended_on_the_emulator_from_outside_ends_its_session_and_leaves_nothing_of_its_debugging_there()
+    private static void A_debugged_app_ended_on_the_emulator_from_outside_ends_its_session_and_leaves_nothing_of_its_debugging_there()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -297,8 +273,7 @@ public sealed class AndroidDeviceTests
     /// <summary>A Debug start stopped once Passenger's relay is in the app and a port forwarded to it takes out what it put on
     /// the emulator by then, the relay, its environment and the forward, so a start that never ran leaves the device as it
     /// found it and the app's next start loads no relay.</summary>
-    [AvaloniaFact]
-    public void A_debug_start_stopped_once_its_relay_is_in_the_app_leaves_nothing_of_it_on_the_emulator()
+    private static void A_debug_start_stopped_once_its_relay_is_in_the_app_leaves_nothing_of_it_on_the_emulator()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -335,55 +310,11 @@ public sealed class AndroidDeviceTests
         }
     }
 
-    /// <summary>Stop All of a Debug start held once Passenger's relay is in the app answers only once the start has taken out
-    /// what it put on the emulator, so an agent or a person going on from Stop's answer finds the device as the start found
-    /// it.</summary>
-    [AvaloniaFact]
-    public void Stop_of_a_debug_start_held_once_its_relay_is_in_the_app_answers_only_once_it_is_out_again()
-    {
-        (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource go = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        try
-        {
-            Choose(window, project, target);
-            DeviceLaunches.HeldPuts = () =>
-            {
-                reached.TrySetResult();
-                return go.Task;
-            };
-            Task<string?> debugging = window.DebugAsync();
-            Ui.PumpUntil(() => reached.Task.IsCompleted || debugging.IsCompleted, "the build, the install and the relay put in the app", Slow);
-            if (!reached.Task.IsCompleted)
-            {
-                Assert.Fail($"The debug start ended before it put its relay in the app: {Ui.AwaitPumped(debugging, "the start's end")}{Ui.BuildErrors(window)}");
-            }
-            Task stopped = window.Builds.StopAllAsync();
-            Ui.Hold(TimeSpan.FromSeconds(2), "a moment in which Stop must not answer, the start still holding its relay in the app");
-            // What the held start has put in is known, and the window is not quiet enough to ask adb while it holds it.
-            Assert.False(stopped.IsCompleted, "Stop answered while the start it stopped still held its relay in the app and a port forwarded to it");
-            go.TrySetResult();
-            Ui.AwaitPumped(stopped, "Stop's answer once the start it stopped has taken out what it put on the emulator", Slow);
-            string serial = Serial(target, project);
-            string left = Left(tools, serial);
-            Assert.True(left.Length == 0, $"Stop answered with {left} still on the emulator, so what goes on from its answer finds the start's relay there");
-            Ui.WaitFor(() => debugging.IsCompleted, "the stopped start to end", Slow);
-        }
-        finally
-        {
-            DeviceLaunches.HeldPuts = null;
-            go.TrySetResult();
-            window.Close();
-        }
-    }
-
     /// <summary>Passenger ending while a debugged app's end on the emulator is held past the limit it gives the rest of what
     /// it started waits for it, as it may take force-stop's ten seconds and more on a loaded machine: the process goes only
     /// once the app has ended there and nothing of its debugging is left, the relay's forward, the relay, the app's mark as
     /// debugged.</summary>
-    [AvaloniaFact]
-    public void Passenger_ending_while_a_debugged_apps_end_on_the_emulator_is_held_waits_until_nothing_of_it_is_left_there()
+    private static void Passenger_ending_while_a_debugged_apps_end_on_the_emulator_is_held_waits_until_nothing_of_it_is_left_there()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -433,8 +364,7 @@ public sealed class AndroidDeviceTests
     /// <summary>Run with Hot Reload stopped once all its start puts in the app is there, the relay and a port forwarded to
     /// it, never starts the app: once Stop and the start have answered, no process of the app runs on the emulator and
     /// nothing of the start is left there, where the start went on to start the app Stop had said it stopped.</summary>
-    [AvaloniaFact]
-    public void A_run_stopped_once_its_relay_is_in_the_app_never_starts_the_app_on_the_emulator()
+    private static void A_run_stopped_once_its_relay_is_in_the_app_never_starts_the_app_on_the_emulator()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -479,8 +409,7 @@ public sealed class AndroidDeviceTests
     /// <summary>The relay and an environment naming it, left in the app by a start whose end never reached the emulator (its
     /// device gone as it ended), are out before the app's next Run starts it: the app starts at once without the relay,
     /// where it loaded it and waited a minute for a debugger, and its environment is the build's link again.</summary>
-    [AvaloniaFact]
-    public void A_relay_a_vanished_end_left_in_the_app_is_out_before_its_next_run_starts_it()
+    private static void A_relay_a_vanished_end_left_in_the_app_is_out_before_its_next_run_starts_it()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -515,8 +444,7 @@ public sealed class AndroidDeviceTests
     /// <summary>A debugged app ended on the emulator and started from its launcher while its end there is held, as where the
     /// device goes as it ends, loads no relay: the app's environment is the build's again from the relay's hello on, where it
     /// still named the relay, which held the launcher's start a minute for a debugger.</summary>
-    [AvaloniaFact]
-    public void A_debugged_app_started_from_its_launcher_while_its_end_is_held_loads_no_relay()
+    private static void A_debugged_app_started_from_its_launcher_while_its_end_is_held_loads_no_relay()
     {
         (string folder, string project, DeviceTarget target, AndroidTools tools) = Prepared();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
