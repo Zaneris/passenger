@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `AndroidTargetChoiceTests`' `After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered`,
+  CI 44984656678 to 45000646248 (Linux report shard 1), as in CI 44970786971 below: "Only Passenger Relisted is listed,
+  so a run's listing has nothing else to keep". **The test held a Mac's or Windows' targets**: on Linux its stand-in app
+  had no head but Android's. It now has, on Linux, an Avalonia desktop head, which Choose Where It Runs offers as
+  "Desktop (this machine)" and a run on Android must leave listed, in place of 156281110's skip there; with that head
+  given on the Mac too it passed there, the desktop head listed before and after the run (ced22b5eb, #2103).
 - `SoundCuesTests`' `A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(kind: "pwsh")`,
   CI 44970786971 to 44995132904 (Linux), and `Debugging.SyntheticVariablesTests`'
   `A_step_out_lists_what_the_method_stepped_out_of_returned`, CI 44968934038 (Linux gate shard 2), a class run beside the
