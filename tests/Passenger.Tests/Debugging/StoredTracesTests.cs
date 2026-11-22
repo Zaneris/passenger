@@ -33,7 +33,7 @@ public class StoredTracesTests(ITestOutputHelper testOutputHelper)
     /// inlined frames, a fault, an inner exception and parameters by reference, arrays and pointers.</summary>
     private async Task Each_exceptions_stack_trace_read_from_what_it_stores_is_what_its_StackTrace_getter_writes()
     {
-        await using DebugSession host = await Launch("traces", "Console.WriteLine(\"traces done\");", "Console.WriteLine($\"caught {e.GetType().Name}\");");
+        await using DebugSession host = await Launch("traces", DebugSession.ScaledEvaluations, "Console.WriteLine(\"traces done\");", "Console.WriteLine($\"caught {e.GetType().Name}\");");
         List<string> compared = await ComparedAsync(host, Line("Console.WriteLine(\"traces done\");"));
         Assert.True(compared.Count(c => c.StartsWith("e:", StringComparison.Ordinal)) == 12 && compared.Count(c => c.StartsWith("thrown", StringComparison.Ordinal)) >= 14,
             $"Traces.Run throws at least 14 exceptions and catches 12, where these were compared: {string.Join("; ", compared)}");
@@ -45,7 +45,7 @@ public class StoredTracesTests(ITestOutputHelper testOutputHelper)
     {
         string source = Debuggees.Source("RuntimeAsyncConsoleApp", "Program.cs");
         int caught = Debuggees.Line("RuntimeAsyncConsoleApp", "Console.WriteLine($\"caught {e.GetType().Name}\");");
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("RuntimeAsyncConsoleApp"), stopAtEntry: false, justMyCode: true, arguments: ["throws"])
@@ -70,7 +70,7 @@ public class StoredTracesTests(ITestOutputHelper testOutputHelper)
         }
         try
         {
-            await using DebugSession host = await Launch("wrapped", "Console.WriteLine(\"wrapped done\");");
+            await using DebugSession host = await Launch("wrapped", null, "Console.WriteLine(\"wrapped done\");");
             StoppedEvent stop = await host.WaitForStoppedEvent();
             // The inner exception's stop, then the wrapping one's.
             stop = await host.ContinueAsync().WaitForStoppedEvent();
@@ -164,9 +164,12 @@ public class StoredTracesTests(ITestOutputHelper testOutputHelper)
         GC.KeepAlive(total);
     }
 
-    private async Task<DebugSession> Launch(string mode, params string[] stops)
+    /// <summary>The cases' program run in <paramref name="mode"/>, stopping at every exception and at the lines of
+    /// <paramref name="stops"/>; the adapter given <paramref name="environment"/> (the run's evaluation limit scaled, for a
+    /// session whose first getter's trace pays the cold cost of loading the readers of symbols and the program's PDB).</summary>
+    private async Task<DebugSession> Launch(string mode, IReadOnlyDictionary<string, string>? environment, params string[] stops)
     {
-        DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: environment);
         await host
             .InitializeAsync()
             .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: [mode])
