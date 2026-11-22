@@ -62,15 +62,15 @@ public sealed class LocalHistoryTests : IDisposable
         Flow.StepApart<LocalHistoryTests>("a revert of a text makes no row again and one bringing back a file only its own", t => t.A_revert_of_a_text_makes_no_row_again_and_one_bringing_back_a_file_only_its_own());
     }
 
-    /// <summary>What Local History names each change as one flow, each step the check one test made in an instance of
-    /// its own: a git checkout's changes kept under its name, a conflict resolved each way under that resolution's, a
-    /// change written after a checkout's moment an external change of its own, a save written as the history reads its
-    /// file kept once, a save made while a replace writes its closed files filed apart from it, and a file a server's
-    /// edit or rename writes over keeping what it held, Undo putting it back.</summary>
+    /// <summary>What Local History names each change as one flow, each step one test's check in an instance of its own: a
+    /// git checkout's, an update's and a stash's changes under each one's name, the files opened or not, a conflict resolved
+    /// each way under that resolution's, a change written after a checkout's moment an external change of its own, a save
+    /// written as the history reads its file kept once, a save made while a replace writes its closed files filed apart from
+    /// it, and a file a server's edit or rename writes over keeping what it held, Undo putting it back.</summary>
     [AvaloniaFact]
     public void Each_change_is_kept_under_the_name_of_what_made_it_and_what_it_wrote_over_kept_too()
     {
-        Flow.StepApart<LocalHistoryTests>("what a git checkout changes is kept under Riders name for it not as an external change", t => t.What_a_git_checkout_changes_is_kept_under_Riders_name_for_it_not_as_an_external_change());
+        Flow.StepApart<LocalHistoryTests>("what a git checkout an update and a stash write is kept under each ones name with what each file held", t => t.What_a_git_checkout_an_update_and_a_stash_write_is_kept_under_each_ones_name_with_what_each_file_held());
         Flow.StepApart<LocalHistoryTests>("a conflict resolved each way is kept under that resolutions name", t => t.A_conflict_resolved_each_way_is_kept_under_that_resolutions_name());
         Flow.StepApart<LocalHistoryTests>("a change written after a checkouts moment is an external change of its own though heard during the checkout", t => t.A_change_written_after_a_checkouts_moment_is_an_external_change_of_its_own_though_heard_during_the_checkout());
         Flow.StepApart<LocalHistoryTests>("a save written as the history reads its file for a change heard before is kept once as the save", t => t.A_save_written_as_the_history_reads_its_file_for_a_change_heard_before_is_kept_once_as_the_save());
@@ -262,26 +262,65 @@ public sealed class LocalHistoryTests : IDisposable
         window.Close();
     }
 
-    private void What_a_git_checkout_changes_is_kept_under_Riders_name_for_it_not_as_an_external_change()
+    /// <summary>What a stash, an update from the upstream and a checkout write over files, the one open and those never
+    /// opened here, is kept under each one's name, never as an external change or a file made, with what the file held
+    /// before it: git writes a file anew, which Windows gives the old file's creation time.</summary>
+    private void What_a_git_checkout_an_update_and_a_stash_write_is_kept_under_each_ones_name_with_what_each_file_held()
     {
-        string shop = Write("Shop.cs", Original);
-        TestGit.Init(folder);
-        TestGit.Run(folder, "switch", "-q", "-c", "side");
-        File.WriteAllText(shop, Saved1);
-        TestGit.Run(folder, "commit", "-q", "-am", "Long");
-        TestGit.Run(folder, "switch", "-q", "main");
+        string origin = TestFolders.Create("history-origin-");
+        TestFolders.Write(origin, "Shop.cs", Original);
+        TestFolders.Write(origin, "Notes.txt", "main\n");
+        TestFolders.Write(origin, "Readme.md", "# Shop\n");
+        TestFolders.Write(origin, "Todo.txt", "count\n");
+        TestGit.Init(origin);
+        TestGit.Run(origin, "switch", "-q", "-c", "side");
+        File.WriteAllText(Path.Combine(origin, "Shop.cs"), Saved1);
+        File.WriteAllText(Path.Combine(origin, "Notes.txt"), "side\n");
+        TestGit.Run(origin, "commit", "-q", "-am", "Side");
+        TestGit.Run(origin, "switch", "-q", "main");
+        TestGit.Run(folder, "clone", "-q", "-c", "core.autocrlf=false", origin, ".");
+        TestGit.Run(folder, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
+        TestGit.Run(folder, "config", "user.name", "Passenger Tests");
+        File.WriteAllText(Path.Combine(origin, "Readme.md"), "# Shop\n\nSells things.\n");
+        TestGit.Run(origin, "commit", "-q", "-am", "Readme");
+        File.WriteAllText(Path.Combine(folder, "Todo.txt"), "count\nsell\n");
         MainWindow window = Open("Shop.cs");
         Ui.WaitFor(() => window.Vcs.Repository is not null, "the folder's repository");
+        LocalHistory history = window.LocalHistory!;
 
+        VcsOutcome stashed = Ui.Await(window.Vcs.StashAsync("Todo"), "the change to Todo.txt stashed");
+        Assert.True(stashed.Succeeded, stashed.Message);
+        KeptAs("Todo.txt", "Git stash", "count\nsell\n");
+        VcsOutcome updated = Ui.Await(window.Vcs.UpdateAsync(), "main updated from the upstream");
+        Assert.True(updated.Succeeded, updated.Message);
+        KeptAs("Readme.md", "Update from VCS", "# Shop\n");
         Task<VcsOutcome> checkout = window.Vcs.CheckoutAsync("side");
         Ui.WaitFor(() => checkout.IsCompleted && Text(window) == Saved1, "side checked out and the open file following it");
         VcsOutcome checkedOut = Ui.Await(checkout, "side checked out");
         Assert.True(checkedOut.Succeeded, checkedOut.Message);
-        HistoryTab history = ShowFromFileMenu(window, "Show History…");
-        Ui.WaitFor(() => history.Rows.Count == 1, "the checkout's change to the file");
-        Assert.Equal("Git checkout", history.Rows[0].Title);
-        Ui.Landed(() => history.Diff?.Left.Document.Snapshot.ToString() == Original, "the file as main had it");
+        KeptAs("Notes.txt", "Git checkout", "main\n");
+        HistoryTab shown = ShowFromFileMenu(window, "Show History…");
+        Ui.WaitFor(() => shown.Rows.Count == 1, "the checkout's change to the open file");
+        Assert.Equal("Git checkout", shown.Rows[0].Title);
+        Ui.Landed(() => shown.Diff?.Left.Document.Snapshot.ToString() == Original, "the file as main had it");
         window.Close();
+
+        // A file never opened here, its last change kept under the operation's name with what the file held before it.
+        void KeptAs(string name, string title, string before)
+        {
+            string path = PathNames.Canonical(Path.Combine(folder, name));
+            IReadOnlyList<HistoryRow> Rows()
+            {
+                (IReadOnlyList<HistoryEvent> events, IReadOnlyDictionary<string, string?> known) = history.Snapshot();
+                return HistoryRows.OfFile(events, known, path);
+            }
+            Ui.WaitFor(() => Rows() is [{ } row, ..] && row.Title == title,
+                () => $"{name}, never opened, kept by {title}: its history lists [{string.Join(", ", Rows().Select(r => r.Title))}]");
+            Ui.WaitFor(() => !history.IsRecording, "the history to keep what it heard");
+            HistoryRow kept = Rows()[0];
+            Assert.True(kept.Title == title && kept.Version is { } version && Encoding.UTF8.GetString(history.Content(version)!) == before,
+                $"{name}, never opened, is kept by {title} as [{string.Join(", ", Rows().Select(r => r.Title))}], its row with {(kept.Version is { } held ? $"\"{Encoding.UTF8.GetString(history.Content(held)!)}\"" : "no file")} before it, not \"{before}\"");
+        }
     }
 
     /// <summary>A merge's conflicts resolved by Accept Yours, Accept Theirs and the merge window's Apply are each kept under
@@ -415,16 +454,13 @@ public sealed class LocalHistoryTests : IDisposable
     }
 
     /// <summary>A folder the watcher names though nothing came in it, as Windows names one as a file in it is first read
-    /// since it was written (a scanner's read, a build's), brings no change: its files, made as the folder opened and never
+    /// since it was written (a scanner's read, a build's), brings no change: its files, there as the folder opened and never
     /// looked at or saved here, are not kept as made by another program. A folder that comes is looked in, its file kept.</summary>
     private void A_folder_named_as_a_file_in_it_is_first_read_brings_no_change_where_a_folder_that_comes_brings_its_files()
     {
         Write("Shop.cs", Original);
         string project = Write("Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
-        string notes = Write("Lib/Notes.txt", "a note\n");
-        // Made as the folder opens, however long the window takes to open.
-        File.SetCreationTimeUtc(project, DateTime.UtcNow + TimeSpan.FromMinutes(1));
-        File.SetCreationTimeUtc(notes, DateTime.UtcNow + TimeSpan.FromMinutes(1));
+        Write("Lib/Notes.txt", "a note\n");
         MainWindow window = Open("Shop.cs");
         LocalHistory history = window.LocalHistory!;
         history.Noticed([Path.GetDirectoryName(project)!], []);

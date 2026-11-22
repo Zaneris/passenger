@@ -103,7 +103,6 @@ public sealed class LocalHistory
     private readonly string held;
     private readonly string blobs;
     private readonly string stateFolder;
-    private readonly DateTime openedUtc = DateTime.UtcNow;
     private bool draining;
     private volatile bool heldElsewhere;
     private bool changed;
@@ -331,11 +330,11 @@ public sealed class LocalHistory
         }
     }
 
-    /// <summary>Paths the folder watcher saw change, with those that <paramref name="came"/> (made, moved in): a file
-    /// the history knows is read and compared with what it knew, a change kept under the activity over that file
-    /// (<see cref="Over"/>), else the activity under way, else as an external change; one it does not know is read and kept
-    /// only as <see cref="BulkArrivals"/> says. A folder that came is looked in for its files, one deleted takes what the
-    /// history knew under it, and a file gone whose content another just made has is a move.</summary>
+    /// <summary>Paths the folder watcher saw change, with those that <paramref name="came"/> (made, moved in): a file the
+    /// history knows is read and compared with what it knew, kept under the activity over that file (<see cref="Over"/>),
+    /// else the activity under way, else as an external change; one it does not know is kept only as <see cref="BulkArrivals"/>
+    /// says, as made where it came (in a folder that came too), else as first seen. A folder that came is looked in for its
+    /// files, one deleted takes what the history knew under it, and a file gone whose content another just made has is a move.</summary>
     public void Noticed(IReadOnlyCollection<string> paths, IReadOnlyCollection<string> came)
     {
         List<string> kept = [.. paths.Where(Keeps)];
@@ -375,15 +374,22 @@ public sealed class LocalHistory
         });
     }
 
-    /// <summary>Reads, off the UI thread, files another program is about to write for an action of the IDE's (a Git
-    /// resolution, a rollback), and knows each as it stands: what the action writes over it is then kept as a change from
-    /// that under the action's name, whether the history had seen the file or not.</summary>
+    /// <summary>Reads, off the UI thread, files another program is about to write or delete for an action of the IDE's (a
+    /// Git checkout, update, stash or resolution), and knows each as it stands: what the action does to it is then kept as
+    /// a change from that under the action's name, whether the history had seen the file or not. More than a few it has not
+    /// seen are a bulk arrival's, none of which it reads (<see cref="BulkArrivals"/>).</summary>
     public async Task LookBeforeAsync(IReadOnlyList<string> paths)
     {
         List<(string Path, byte[] Bytes)> read = await BackgroundWork.Run(() =>
         {
+            List<string> kept = [.. paths.Select(PathNames.Canonical).Where(Keeps).Distinct(PathNames.Comparer)];
+            HashSet<string> unseen;
+            lock (gate)
+            {
+                unseen = new(kept.Where(path => !known.ContainsKey(path)), PathNames.Comparer);
+            }
             List<(string, byte[])> files = [];
-            foreach (string path in paths.Select(PathNames.Canonical).Where(Keeps))
+            foreach (string path in unseen.Count > BulkArrivals.AtOnce ? kept.Where(path => !unseen.Contains(path)) : kept)
             {
                 if (ReadKept(path) is { } bytes)
                 {
@@ -930,7 +936,7 @@ public sealed class LocalHistory
         List<(string Path, string Hash, byte[] Bytes, bool Made)> found = [];
         List<(string Path, string Hash)> gone = [];
         List<string> later = [];
-        List<string> unknown = [];
+        List<(string File, bool Come)> unknown = [];
         List<string> folders = [];
         HashSet<string> looked = new(PathNames.Comparer);
         foreach (string path in paths)
@@ -959,7 +965,7 @@ public sealed class LocalHistory
             }
             else if (File.Exists(path))
             {
-                Sort(path);
+                Sort(path, came.Contains(path));
             }
             else
             {
@@ -974,16 +980,18 @@ public sealed class LocalHistory
         int room = arrivals.Room(heard);
         foreach (string file in Full() ? [] : folders.SelectMany(Walk))
         {
-            Sort(file);
+            // Come with its folder.
+            Sort(file, come: true);
             if (Full())
             {
                 break;
             }
         }
         bool bulk = arrivals.Came(unknown.Count, heard);
-        foreach (string file in bulk ? unknown.Where(f => goneNames.Contains(Path.GetFileName(f))) : unknown)
+        foreach ((string file, bool come) in bulk ? unknown.Where(f => goneNames.Contains(Path.GetFileName(f.File))) : unknown)
         {
-            Look(file);
+            // A bulk arrival's file read is first seen, never made, so reverting a later change never deletes it.
+            Look(file, isNew: come && !bulk);
         }
         List<HistoryEvent> made = [];
         HashSet<string> paired = new(PathNames.Comparer);
@@ -1023,7 +1031,7 @@ public sealed class LocalHistory
         bool Full() => unknown.Count > room && goneNames.Count == 0;
 
         // A file it knows is read at once; one it does not, once the notice is known to be no bulk arrival.
-        void Sort(string file)
+        void Sort(string file, bool come)
         {
             if (!Keeps(file) || !looked.Add(file))
             {
@@ -1036,15 +1044,15 @@ public sealed class LocalHistory
             }
             if (isKnown)
             {
-                Look(file);
+                Look(file, isNew: false);
             }
             else
             {
-                unknown.Add(file);
+                unknown.Add((file, come));
             }
         }
 
-        void Look(string file)
+        void Look(string file, bool isNew)
         {
             Reading?.Invoke(file);
             if (ReadKept(file) is not { } bytes)
@@ -1059,7 +1067,7 @@ public sealed class LocalHistory
                     return;
                 }
             }
-            found.Add((file, hash, bytes, IsNew(file)));
+            found.Add((file, hash, bytes, isNew));
         }
     }
 
@@ -1072,21 +1080,6 @@ public sealed class LocalHistory
             return name == ExternalChange ? null
                 : activity?.Set == set || claims.Any(c => c.Named.Set == set && c.Until == DateTime.MaxValue) ? DateTime.MaxValue
                 : endedAt.TryGetValue(set, out DateTime until) ? until : null;
-        }
-    }
-
-    /// <summary>Whether a file the history has not seen was made since the folder opened, rather than there unseen or
-    /// brought by a bulk arrival it passed over.</summary>
-    private bool IsNew(string file)
-    {
-        try
-        {
-            DateTime made = File.GetCreationTimeUtc(file);
-            return made >= openedUtc - TimeSpan.FromSeconds(2) && !arrivals.Brought(made);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return false;
         }
     }
 

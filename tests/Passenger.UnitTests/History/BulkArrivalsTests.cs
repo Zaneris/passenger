@@ -3,8 +3,7 @@ using Passenger.App.History;
 namespace Passenger.UnitTests.History;
 
 /// <summary>Files Local History does not know, come from another program, are read while few come together, never once more
-/// than a hundred have come within two seconds of one another; and a file such a bulk arrival brought is not taken for
-/// made when it is read later.</summary>
+/// than a hundred have come within two seconds of one another.</summary>
 public sealed class BulkArrivalsTests
 {
     private static readonly DateTime Start = new(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
@@ -13,8 +12,7 @@ public sealed class BulkArrivalsTests
     public void Files_coming_together_are_one_bulk_arrival_while_they_come() => Cases.All(
         ("a hundred files at once are read and one more is a bulk arrival", A_hundred_files_at_once_are_read_and_one_more_is_a_bulk_arrival),
         ("files coming within a quiet moment of others count with them and a bulk arrival lasts while they come", Files_coming_within_a_quiet_moment_of_others_count_with_them_and_a_bulk_arrival_lasts_while_they_come),
-        ("files coming after a quiet moment count on their own", Files_coming_after_a_quiet_moment_count_on_their_own),
-        ("a file made during a bulk arrival is its and one made before or after is not", A_file_made_during_a_bulk_arrival_is_its_and_one_made_before_or_after_is_not));
+        ("files coming after a quiet moment count on their own", Files_coming_after_a_quiet_moment_count_on_their_own));
 
     private void A_hundred_files_at_once_are_read_and_one_more_is_a_bulk_arrival()
     {
@@ -39,16 +37,5 @@ public sealed class BulkArrivalsTests
         Assert.False(arrivals.Came(60, Start), "Sixty files come together were taken for a bulk arrival");
         Assert.Equal(BulkArrivals.AtOnce, arrivals.Room(Start + BulkArrivals.Quiet));
         Assert.False(arrivals.Came(60, Start + BulkArrivals.Quiet), "Sixty files come after a quiet moment were counted with the sixty before");
-    }
-
-    private void A_file_made_during_a_bulk_arrival_is_its_and_one_made_before_or_after_is_not()
-    {
-        BulkArrivals arrivals = new();
-        Assert.True(arrivals.Came(500, Start), "Five hundred files come at once were each read");
-        Assert.True(arrivals.Came(500, Start + TimeSpan.FromSeconds(1)), "Files still coming a second into a bulk arrival were read");
-        Assert.True(arrivals.Brought(Start - TimeSpan.FromSeconds(1)), "A file the arrival brought, made a moment before it was first heard, is taken for made when it is read later");
-        Assert.True(arrivals.Brought(Start + TimeSpan.FromSeconds(1)), "A file the arrival brought, made as it was last heard, is taken for made when it is read later");
-        Assert.False(arrivals.Brought(Start - BulkArrivals.Lead - TimeSpan.FromSeconds(1)), "A file made well before the arrival is taken for one it brought, so never for made");
-        Assert.False(arrivals.Brought(Start + TimeSpan.FromSeconds(5)), "A file made after the arrival is taken for one it brought, so never for made");
     }
 }

@@ -13,13 +13,6 @@ public sealed class BulkArrivals
     /// <summary>How long after files came those still coming are of the same arrival.</summary>
     public static readonly TimeSpan Quiet = TimeSpan.FromSeconds(2);
 
-    /// <summary>How long before an arrival was first heard its files may have been made.</summary>
-    public static readonly TimeSpan Lead = TimeSpan.FromSeconds(2);
-
-    /// <summary>When each bulk arrival's files were made, from its first heard less <see cref="Lead"/> to its last heard.</summary>
-    private readonly List<(DateTime From, DateTime To)> bulks = [];
-
-    private DateTime began = DateTime.MinValue;
     private DateTime last = DateTime.MinValue;
     private int count;
 
@@ -35,30 +28,14 @@ public sealed class BulkArrivals
         {
             return false;
         }
-        bool underWay = Continues(heard) && count > AtOnce;
         if (!Continues(heard))
         {
-            (began, count) = (heard, 0);
+            count = 0;
         }
         count += files;
         last = heard > last ? heard : last;
-        if (count <= AtOnce)
-        {
-            return false;
-        }
-        if (underWay)
-        {
-            bulks[^1] = (bulks[^1].From, last);
-        }
-        else
-        {
-            bulks.Add((began - Lead, last));
-        }
-        return true;
+        return count > AtOnce;
     }
-
-    /// <summary>Whether a bulk arrival brought a file made at a time: passed over then, so not made when next read.</summary>
-    public bool Brought(DateTime made) => bulks.Exists(b => made >= b.From && made <= b.To);
 
     private bool Continues(DateTime heard) => heard < last + Quiet;
 }
