@@ -276,9 +276,10 @@ Packages the build or the tests use that no app carries.
 | `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Win32.Registry` | the test platform's | MIT | © Microsoft Corporation. All rights reserved. |
 | `vpk` | Velopack's packer, a .NET tool at the version `dotnet-tools.json` pins, which builds the Windows installer (`tools/package-win.sh`). It carries others' programs under their own terms for what Passenger's installer does not use or carry: Microsoft's signtool and Azure Artifact Signing client, which sign it only when signing is asked for (the Windows SDK's and Microsoft's terms), WiX (MS-RL) for MSI packages, and zstd (BSD-3-Clause or GPL-2.0) | MIT | Copyright © Velopack Ltd. All rights reserved. |
 
-### The tests' own ESLint and Prettier
+### The tests' own ESLint, Prettier and xterm.js
 
-The npm packages `EslintPrettierTests` put in a test folder's node_modules as a project's own ESLint and Prettier:
+The npm packages `EslintPrettierTests` put in a test folder's node_modules as a project's own ESLint and Prettier, and
+the terminal `TerminalEmulationTests` holds Passenger's terminal to:
 `tests/Passenger.Tests/NodePackages/package.json` pins them and `package-lock.json` everything they bring, each with
 its tarball's sha512, which the tests' build checks as `tools/Passenger.NodePackages` puts them in the tests' output
 (`node-packages/`). No app carries them, and no test fetches them from npm. Each is named by its npm name, with the
@@ -288,6 +289,7 @@ licence its package.json states and the copyright line its licence file (else it
 | Package | In Passenger | Licence | Copyright |
 |---|---|---|---|
 | `eslint` | the project's own ESLint, which Passenger's ESLint support runs through the ESLint language server | MIT | Copyright OpenJS Foundation and other contributors, <www.openjsf.org> |
+| `@xterm/headless` | xterm.js with no screen, the terminal Passenger's own is compared with, output for output | MIT | Copyright (c) 2014-2020 The xterm.js authors; Copyright (c) 2012-2013, Christopher Jeffrey; Copyright (c) 2011 Fabrice Bellard (as its source carries them; it has no licence file) |
 | `prettier`, `prettier2` (Prettier 2.8.8, under npm's alias) | the project's own Prettier, 3 and 2, which Passenger's Prettier runner formats with | MIT | Copyright © James Long and contributors |
 | `@eslint/config-array`, `@eslint/core`, `@eslint/object-schema`, `@eslint/plugin-kit`, `@humanfs/core`, `@humanfs/node`, `@humanfs/types` | eslint's configuration, rules and file system | Apache-2.0 | no copyright line; its author: Nicholas C. Zakas |
 | `@eslint/config-helpers` | eslint's configuration | Apache-2.0 | no copyright line or author; its repository is eslint/rewrite |

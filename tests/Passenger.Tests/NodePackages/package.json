@@ -2,9 +2,10 @@
   "name": "passenger-test-node-packages",
   "version": "1.0.0",
   "private": true,
-  "description": "The project's own ESLint and Prettier (and Prettier 2, as prettier2) the tests put in a test folder's node_modules (EslintPrettierTests), fetched at build by tools/Passenger.NodePackages; never carried by the app.",
+  "description": "The project's own ESLint and Prettier (and Prettier 2, as prettier2) the tests put in a test folder's node_modules (EslintPrettierTests), and xterm.js run without a screen, which TerminalEmulationTests holds the terminal to, fetched at build by tools/Passenger.NodePackages; never carried by the app.",
   "license": "MIT",
   "dependencies": {
+    "@xterm/headless": "6.0.0",
     "eslint": "10.15.0",
     "prettier": "3.10.1",
     "prettier2": "npm:prettier@2.8.8"
