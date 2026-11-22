@@ -61,6 +61,11 @@ APART_FIRST = {"macOS": 220, "Windows": 0, "Linux": 80}
 # their seconds in a shard from run to run (CI 45022036262 to 45055574992), and as the shard runs them last, a slow
 # run of them leaves the shard room before the job's TEST_MINUTES rather than leaving them unreached.
 APART_MARGIN = 1.25
+# How many times its seconds every other class dealt to a shard --apart-shards names takes, its job having set up for
+# the classes apart: those shards' window, Beside and Alone classes' minutes against their deal over the other shards'
+# on the same runners, each the median over CI 45055574992, 45062369510 and 45069301166 (macOS 1.35 against 1.01 on
+# the image with Xcode 27 and the mobile workloads, Linux 1.21 against 0.96 beside the emulator it boots).
+SET_UP_PACE = {"macOS": 1.33, "Windows": 1.0, "Linux": 1.26}
 # What xunit's adapter writes into the listing when it could not discover an assembly's tests.
 DISCOVERY_FAILED = "Exception discovering tests"
 # How much sooner the slowest shard must end, dealt from a run's own times, before the summary asks for a new deal.
@@ -495,11 +500,12 @@ def paced(system, processes):
     return 1.0 if processes == 1 else PACED[system][processes]
 
 
-def empty_hand(processes, pace=1.0):
+def empty_hand(processes, pace=1.0, set_up=1.0):
     """A hand's seconds by kind before any class is dealt to it: its window and Beside classes' by process, which run at
-    the pace given (paced), and those of the classes it runs apart after them (deal_apart)."""
+    the pace given (paced), and those of the classes it runs apart after them (deal_apart), beside which the others run
+    at its job's set-up's pace (set_up, SET_UP_PACE)."""
     return {"window": [0.0] * processes, "beside": [0.0] * processes, "alone": 0.0, "unit": 0.0, "pace": pace,
-            "apart": 0.0}
+            "apart": 0.0, "set_up": set_up}
 
 
 def with_class(part, kind, seconds, process):
@@ -519,21 +525,21 @@ def total(part, kind):
 
 def hand_time(part):
     """A shard's seconds from its kinds' seconds: in each of its processes, its window classes', or its Beside ones' run
-    at once with them where longer, at its processes' pace, the slowest process's; then its Alone classes', its classes
-    apart and its unit tests'."""
+    at once with them where longer, at its processes' pace, the slowest process's; then its Alone classes' and its unit
+    tests', all of these at its job's set-up's pace; and its classes apart."""
     first = max(max(window, beside) for window, beside in zip(part["window"], part["beside"]))
-    return part["apart"] + first * part["pace"] + part["alone"] + part["unit"]
+    return part["apart"] + (first * part["pace"] + part["alone"] + part["unit"]) * part["set_up"]
 
 
-def deal_shards(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, held=(), held_to=0):
+def deal_shards(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, held=(), held_to=0, set_ups=None):
     """The classes in count hands so the slowest ends soonest (its start's seconds and hand_time), with each hand's seconds
     by kind and each window or Beside class's process: those that run one after another the heaviest first, each where its
     hand then ends soonest (a window class to the process with the fewest seconds); then the Beside ones, each where it
     lengthens a hand least, to the process with the fewest Beside seconds. A TOGETHER group's (together) go as one; one
-    holding a class held goes first, to the hand held_to."""
+    holding a class held goes first, to the hand held_to. Each hand's set-up's pace is set_ups' (none: 1)."""
     starts = starts or [0.0] * count
     hands = [[] for _ in range(count)]
-    parts = [empty_hand(processes, pace) for _ in range(count)]
+    parts = [empty_hand(processes, pace, set_up) for set_up in (set_ups or [1.0] * count)]
     places = {}
     units = {}
     for name in weighed:
@@ -576,12 +582,14 @@ def deal_shards(weighed, kind, count, starts=None, processes=1, pace=1.0, togeth
     return hands, parts, places
 
 
-def deal_apart(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, apart=(), second=(), apart_hands=(0,)):
+def deal_apart(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, apart=(), second=(), apart_hands=(0,),
+               set_up=1.0):
     """deal_shards with the classes apart (those needing what only the jobs of apart_hands set up) dealt among those
     hands, last in each, in one test process with nothing beside them (runs_of), and every other class dealt as though
-    each such hand began its share once its own end; those needing what the second shard's job sets up held to the
-    second; as deal_shards where none is apart or held there, or there is one hand."""
+    each such hand began its share once its own end, at set_up's pace; those needing what the second shard's job sets up
+    held to the second; as deal_shards where none is apart or held there, or there is one hand."""
     first = [name for name in weighed if name in apart]
+    set_ups = [set_up if i in apart_hands and first else 1.0 for i in range(count)]
     if count < 2 or not first and not set(second) & set(weighed):
         return deal_shards(weighed, kind, count, starts, processes, pace, together)
     starts = list(starts or [0.0] * count)
@@ -590,17 +598,17 @@ def deal_apart(weighed, kind, count, starts=None, processes=1, pace=1.0, togethe
     for slot, i in enumerate(apart_hands):
         starts[i] += hand_time(before[slot])
     hands, parts, others = deal_shards({name: spent for name, spent in weighed.items() if name not in apart}, kind, count,
-                                       starts, processes, pace, together, second, 1)
+                                       starts, processes, pace, together, second, 1, set_ups)
     for slot, i in enumerate(apart_hands):
         hands[i] = held[slot] + hands[i]
         parts[i]["apart"] = hand_time(before[slot])
     return hands, parts, {**places, **others}
 
 
-def parts_of(seconds, kind, places, processes, pace=1.0, apart=()):
-    """A hand's seconds by kind, from its classes' seconds and the process each window or Beside class ran in; those of
-    its classes apart (deal_apart) as one process's after the rest."""
-    part = empty_hand(processes, pace)
+def parts_of(seconds, kind, places, processes, pace=1.0, apart=(), set_up=1.0):
+    """A hand's seconds by kind, from its classes' seconds and the process each window or Beside class ran in, the rest
+    beside those of its classes apart (deal_apart) at set_up's pace, the classes apart as one process's after them."""
+    part = empty_hand(processes, pace, set_up if set(apart) & set(seconds) else 1.0)
     first = empty_hand(1)
     for name, spent in seconds.items():
         if name in apart:
@@ -614,12 +622,15 @@ def parts_of(seconds, kind, places, processes, pace=1.0, apart=()):
 def said_hand(part):
     """A hand's seconds by kind as the deal says them: in a job of several processes, each one's first."""
     last = f"; then {part['apart'] / 60:.1f} apart" if part["apart"] else ""
+    rest = any(total(part, k) for k in ("window", "beside", "alone", "unit"))
+    slowed = f"; these at {part['set_up']:g} times as long beside the job's set-up" if part["set_up"] != 1.0 and rest else ""
     if len(part["window"]) == 1:
-        return ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k)) + last
+        return ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k)) + slowed + last
     each = "; ".join(f"process {p + 1}: {part['window'][p] / 60:.1f} window, {part['beside'][p] / 60:.1f} beside"
                      for p in range(len(part["window"])))
     after = ", ".join(f"{part[k] / 60:.1f} {k}" for k in ("alone", "unit") if part[k])
-    return f"{each}, each at {part['pace']:g} times a lone process's pace" + (f"; then {after}" if after else "") + last
+    return (f"{each}, each at {part['pace']:g} times a lone process's pace" + (f"; then {after}" if after else "") + slowed
+            + last)
 
 
 def run_settings(classes, *filters):
@@ -655,7 +666,7 @@ def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=
     second = {name for name in classes if seconds_ups and needs(name, declared, seconds_ups)} - apart if count > 1 else set()
     seconds = {name: spent * (APART_MARGIN if name in apart else 1.0) for name, spent in seconds.items()}
     hands, parts, places = deal_apart(seconds, kind, count, starts, processes, paced(system, processes), together, apart,
-                                      second, [number - 1 for number in apart_shards])
+                                      second, [number - 1 for number in apart_shards], SET_UP_PACE[system])
     held = {"apart": sorted(apart), "apart_shards": list(apart_shards), "second": sorted(second)}
     return counts, seconds, borrowed, guessed, kind, hands, parts, places, held
 
@@ -734,7 +745,7 @@ def split(arguments):
           + (f"; the classes marked [{SAME}] only on {ONE_SYSTEM}" if arguments.lane == "report" else "")
           + (f"; the classes needing {' or '.join(arguments.apart)}, which only the jobs of shards "
              f"{', '.join(map(str, arguments.apart_shards))} set up, last in them, apart from the rest, at "
-             f"{APART_MARGIN:g} times their seconds"
+             f"{APART_MARGIN:g} times their seconds, the rest there at {SET_UP_PACE[arguments.system]:g} times theirs"
              if arguments.apart else "")
           + (f"; those needing {' or '.join(arguments.second)}, which the second shard's job alone sets up, in it"
              if arguments.second else ""))
@@ -992,8 +1003,8 @@ def console_results(path):
 
 
 def shard_results(folder, shard):
-    """A shard's results, each as trx.results gives a .trx's with how many runs ran at once with its own: each run's .trx
-    where its dotnet test ended, else what its console log holds."""
+    """A shard's results, each as trx.results gives a .trx's with how many runs ran at once with its own and its job's
+    set-up's pace (set_up_of): each run's .trx where its dotnet test ended, else what its console log holds."""
     found = []
     for run in (run for step in steps_of(os.path.join(folder, "shards"), shard) for run in step):
         name = run["name"]
@@ -1003,13 +1014,23 @@ def shard_results(folder, shard):
             held = console_results(os.path.join(folder, CONSOLE_LOG.format(name)))
         else:
             held = []
-        found += [(*result, run.get("together", 1)) for result in held]
+        found += [(*result, run.get("together", 1), set_up_of(folder, shard, run)) for result in held]
     return found
 
 
-def together_of(path):
-    """How many of its shard's runs ran at once with the one whose .trx or console log this is, by its shard's runs
-    beside it; 1 where they do not say."""
+def set_up_of(folder, shard, run):
+    """How many times their seconds a shard's run's classes took for its job's set-up (SET_UP_PACE): those beside the
+    classes apart in a shard the deal set up for them (its APART beside the results); 1 for any other run."""
+    held = load(os.path.join(folder, "shards", APART), {})
+    apart = set(held.get("apart", ()))
+    system = load(os.path.join(folder, SHARD_STATE), {}).get("system")
+    beside = apart and shard in held.get("apart_shards", ()) and not set(run.get("classes", ())) <= apart
+    return SET_UP_PACE.get(system, 1.0) if beside else 1.0
+
+
+def run_of(path):
+    """The results folder, shard and run (runs_of's) whose .trx or console log this is, by its shard's runs beside it;
+    an empty run where they do not say."""
     folder = os.path.dirname(os.path.abspath(path))
     state = load(os.path.join(folder, SHARD_STATE), {})
     name = os.path.basename(path)
@@ -1017,7 +1038,14 @@ def together_of(path):
     name = name[:-len(".trx")] if name.endswith(".trx") else name[len(before):-len(after)]
     runs = [run for step in steps_of(os.path.join(folder, "shards"), state.get("shard")) for run in step] \
         if state.get("shard") is not None else []
-    return next((run.get("together", 1) for run in runs if run["name"] == name), 1)
+    return folder, state.get("shard"), next((run for run in runs if run["name"] == name), {})
+
+
+def lone_pace(system, path):
+    """How many times a lone test process's seconds the run whose .trx or console log this is took: its processes'
+    pace (paced, by how many ran at once with it) times its job's set-up's (set_up_of)."""
+    folder, shard, run = run_of(path)
+    return paced(system, run.get("together", 1)) * set_up_of(folder, shard, run)
 
 
 def not_reached(folder):
@@ -1136,18 +1164,18 @@ def cover(arguments):
     for number, folder in folders.items():
         hand = hands.setdefault(number, {})
         found = (shard_results(folder, number) if steps_of(os.path.join(folder, "shards"), number)
-                 else [(*result, 1) for file in trx.trx_files([folder]) for result in trx.results(file)[1]])
-        for test_class, name, spent, _, together in found:
+                 else [(*result, 1, 1.0) for file in trx.trx_files([folder]) for result in trx.results(file)[1]])
+        for test_class, name, spent, _, together, set_up in found:
             ran[key(name)] += 1
             # A lone process's seconds, as TestTimes.json keeps them, for a deal from this run's times.
-            hand[test_class] = hand.get(test_class, 0.0) + spent / paced(system, together)
+            hand[test_class] = hand.get(test_class, 0.0) + spent / (paced(system, together) * set_up)
             processes = max(processes, together)
         for run in (run for step in steps_of(os.path.join(folder, "shards"), number) for run in step):
             places.update(dict.fromkeys(run.get("classes", []), run.get("process", 0)))
             if run.get("together", 1) > 1:
                 spent, tests = Counter(), Counter()
-                for test_class, _, seconds, _, _ in (result for result in found if result[0] in run["classes"]):
-                    spent[test_class] += seconds
+                for test_class, _, seconds, _, _, set_up in (result for result in found if result[0] in run["classes"]):
+                    spent[test_class] += seconds / set_up
                     tests[test_class] += 1
                 # Only a class whose every test of the lane ran here, as TestTimes.json's seconds are all of them.
                 kept = {name: lane_seconds(times, system, name, arguments.lane) if arguments.lane != "all"
@@ -1184,13 +1212,14 @@ def cover(arguments):
         # The classes the deal held to the first and second shards, which a deal from this run's times holds there too.
         held = next((load(path, {}) for path in (os.path.join(folder, "shards", APART) for folder in folders.values())
                      if os.path.exists(path)), {})
-        slowest = max(start + hand_time(parts_of(hands[number], kind, places, processes, pace,
-                                                 held.get("apart", ())))
+        slowest = max(start + hand_time(parts_of(hands[number], kind, places, processes, pace, held.get("apart", ()),
+                                                 SET_UP_PACE[system] if number in held.get("apart_shards", ()) else 1.0))
                       for start, number in zip(starts, sorted(hands)))
         declared = sources()
         together = {name: declared[name]["together"][0] for name in seconds if declared.get(name, {}).get("together")}
         _, parts, _ = deal_apart(seconds, kind, len(hands), starts, processes, pace, together, held.get("apart", ()),
-                                 held.get("second", ()), [number - 1 for number in held.get("apart_shards", [1])])
+                                 held.get("second", ()), [number - 1 for number in held.get("apart_shards", [1])],
+                                 SET_UP_PACE[system])
         best = max(start + hand_time(part) for start, part in zip(starts, parts))
         if slowest - best >= WORTH_DEALING_AGAIN:
             message = (f"Dealt from this run's own times, the slowest shard on {where} would end its tests "
@@ -1315,7 +1344,7 @@ def hang(arguments):
 def update(arguments):
     """TestTimes.json from runs' results, the newest first: each class's seconds on each system for its tests in each lane
     as the newest run listing the lane lists them, the mean of the runs that ran every one of them and listed no other,
-    each as a lone test process takes it (a run's beside another's at once by its system's PACED); one a shard did not
+    each as a lone test process takes it (lone_pace: a run's beside others at once or its job's set-up); one a shard did not
     reach, its seconds from before, or what the runs measured of it in that lane on another system at this one's pace
     where more. A lane the runs did not list keeps its seconds from before."""
     old = load(arguments.times, {})
@@ -1341,8 +1370,8 @@ def update(arguments):
             if (lane := lane_of(file)) not in LANES[:2]:
                 sys.exit(f"test-shards: nothing says which lane {file} ran in, as in a run from before there were lanes, "
                          "and TestTimes.json keeps each lane's seconds")
-            # A lone process's seconds, where the run ran beside others at once.
-            pace_here = paced(system, together_of(file))
+            # A lone process's seconds, where the run ran beside others at once or beside its job's set-up.
+            pace_here = lone_pace(system, file)
             for test_class, _, seconds, _ in results:
                 this.setdefault(system, {}).setdefault(lane, {}).setdefault(test_class, 0.0)
                 this[system][lane][test_class] += seconds / pace_here
