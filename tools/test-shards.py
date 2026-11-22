@@ -100,7 +100,7 @@ SET_UPS = {
     "aspire": re.compile(r"\bAspire(?:Functions)?App\.(?:IsUnavailable|Unavailable|IsCliUnavailable|CliUnavailable"
                          r"|AppHostSkipped|CliSkipped)\b|\bAspirePackageApp\.RunSkipped\b"),
     "mobile": re.compile(r"\bAndroidDevices\.\w|\bAppleSimulators\.\w|\bSimulatorApp\b|\bMacCatalystApp\b"
-                         r"|does not restore here from the package cache alone"),
+                         r"|does not restore here from the package cache alone|lacks a workload of the app's heads"),
 }
 # The classes a deal gave the first shard apart from the rest, which run in one test process, each Alone class in a dotnet
 # test of its own (runs_of), and those it gave the second shard, by name, beside its settings (split, read by cover).
