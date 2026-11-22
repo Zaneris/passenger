@@ -106,11 +106,22 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
         ],
     };
 
-    public static TheoryData<string> Kinds => [.. Chains.Keys];
+    /// <summary>Each chain of edits to a running program applies as the runtime allows, an edit to a method paused on
+    /// the stack runs from its statement, a frame waiting on a call goes on in the new code once it returns, and a tick
+    /// part way through when a lambda or a closure takes a new variable finishes in its old code, as one flow, each
+    /// step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Hot_Reload_applies_each_kind_of_edit_as_the_runtime_allows_and_frames_part_way_finish_in_their_old_code()
+    {
+        Flow.Step("each edit to a running program applies as the runtime allows", () => Cases.Each<string>([.. Chains.Keys], row => Flow.StepApart($"each edit to a running program applies as the runtime allows ({row})", () => new HotReloadEditsTests(project), t => t.Each_edit_to_a_running_program_applies_as_the_runtime_allows(row))));
+        Flow.StepApart("an edit to a method paused on the stack runs from its statement", () => new HotReloadEditsTests(project), t => t.An_edit_to_a_method_paused_on_the_stack_runs_from_its_statement());
+        Flow.StepApart("a frame waiting on a call goes on in the new code once the call returns", () => new HotReloadEditsTests(project), t => t.A_frame_waiting_on_a_call_goes_on_in_the_new_code_once_the_call_returns());
+        Flow.StepApart("a tick part way through when a lambda captures a new variable finishes in its old code (11, 8, \"at Tick's pet line\")", () => new HotReloadEditsTests(project), t => t.A_tick_part_way_through_when_a_lambda_captures_a_new_variable_finishes_in_its_old_code(11, 8, "at Tick's pet line"));
+        Flow.StepApart("a tick part way through when a lambda captures a new variable finishes in its old code (31, 32, \"in Describe\")", () => new HotReloadEditsTests(project), t => t.A_tick_part_way_through_when_a_lambda_captures_a_new_variable_finishes_in_its_old_code(31, 32, "in Describe"));
+        Flow.StepApart("a tick part way through when its closure takes a new variable finishes in its old code", () => new HotReloadEditsTests(project), t => t.A_tick_part_way_through_when_its_closure_takes_a_new_variable_finishes_in_its_old_code());
+    }
 
-    [AvaloniaTheory]
-    [MemberData(nameof(Kinds))]
-    public void Each_edit_to_a_running_program_applies_as_the_runtime_allows(string chain)
+    private void Each_edit_to_a_running_program_applies_as_the_runtime_allows(string chain)
     {
         MainWindow window = Open();
         try
@@ -162,8 +173,7 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
 
     /// <summary>An edit to the method the program is paused in runs from the paused statement, applied with Apply Hot
     /// Reload Changes, or with no Apply at all by the Resume that lets the program go on.</summary>
-    [AvaloniaFact]
-    public void An_edit_to_a_method_paused_on_the_stack_runs_from_its_statement()
+    private void An_edit_to_a_method_paused_on_the_stack_runs_from_its_statement()
     {
         MainWindow window = Open();
         try
@@ -206,8 +216,7 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
     /// <summary>A frame waiting on a call goes on in the new code once the call returns: paused in FetchAsync, which Tick
     /// waits on, a return type changed with its caller on Tick's next line applies, and that tick prints what the new code
     /// prints rather than calling the member the update deleted.</summary>
-    [AvaloniaFact]
-    public void A_frame_waiting_on_a_call_goes_on_in_the_new_code_once_the_call_returns()
+    private void A_frame_waiting_on_a_call_goes_on_in_the_new_code_once_the_call_returns()
     {
         MainWindow window = Open();
         try
@@ -243,10 +252,7 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
     /// that line calls: the closure the new code makes at Tick's start is one the paused tick never made, so that tick
     /// finishes in the code it began in, rather than reading the parameter from a closure that is not there, and the next
     /// tick runs the new lambda.</summary>
-    [AvaloniaTheory]
-    [InlineData(11, 8, "at Tick's pet line")]
-    [InlineData(31, 32, "in Describe")]
-    public void A_tick_part_way_through_when_a_lambda_captures_a_new_variable_finishes_in_its_old_code(int line, int column, string paused)
+    private void A_tick_part_way_through_when_a_lambda_captures_a_new_variable_finishes_in_its_old_code(int line, int column, string paused)
     {
         MainWindow window = Open();
         try
@@ -280,8 +286,7 @@ public sealed class HotReloadEditsTests : IClassFixture<HotReloadEditsTests.Tick
     /// <summary>A lambda that captures Tick's parameter made to capture a new local too, while a tick of that code is paused
     /// in Describe: the closure the tick made has no field for the local, which the new code would read as never set, so
     /// that tick finishes in the code it began in, and the next prints the local.</summary>
-    [AvaloniaFact]
-    public void A_tick_part_way_through_when_its_closure_takes_a_new_variable_finishes_in_its_old_code()
+    private void A_tick_part_way_through_when_its_closure_takes_a_new_variable_finishes_in_its_old_code()
     {
         MainWindow window = Open();
         try
