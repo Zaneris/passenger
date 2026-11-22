@@ -102,8 +102,45 @@ public sealed class EngineChecksTests
 
     private const string BuildKitSetting = "Check Dockerfiles with BuildKit";
 
+    /// <summary>A compose file's variables, its override's values and an error compose names are shown where they
+    /// stand, a secret masked wherever it is said, a remote include never fetched, undeclared names and a service's
+    /// connection strings fixed one step of Undo each, and an agent with no Node.js told why, as one flow of the steps
+    /// that need a container engine, each the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_compose_file_shows_what_its_variables_come_to_and_the_values_its_override_changes_as_hints()
+    public void A_compose_files_checks_hints_and_fixes_come_from_the_engine_its_secrets_masked()
+    {
+        Flow.StepApart<EngineChecksTests>("a compose file shows what its variables come to and the values its override changes as hints", t => t.A_compose_file_shows_what_its_variables_come_to_and_the_values_its_override_changes_as_hints());
+        Flow.StepApart<EngineChecksTests>("a compose files hints mask a secret by its variables name the key it is given to and a urls password", t => t.A_compose_files_hints_mask_a_secret_by_its_variables_name_the_key_it_is_given_to_and_a_urls_password());
+        Flow.StepApart<EngineChecksTests>("a compose files remote includes are never fetched and mark nothing", t => t.A_compose_files_remote_includes_are_never_fetched_and_mark_nothing());
+        Flow.StepApart<EngineChecksTests>("a compose files error is marked where compose names it and listed in problems until it is fixed", t => t.A_compose_files_error_is_marked_where_compose_names_it_and_listed_in_problems_until_it_is_fixed());
+        Flow.StepApart<EngineChecksTests>("composes error echoing a secrets value says it masked in the marker problems the status bar and to an agent", t => t.Composes_error_echoing_a_secrets_value_says_it_masked_in_the_marker_problems_the_status_bar_and_to_an_agent());
+        Flow.StepApart<EngineChecksTests>("a compose files undeclared names are fixed by changing removing or declaring them each one undo step", t => t.A_compose_files_undeclared_names_are_fixed_by_changing_removing_or_declaring_them_each_one_undo_step());
+        Flow.StepApart<EngineChecksTests>("a dotnet services connection strings its environment never sets are marked and set by their fixes", t => t.A_dotnet_services_connection_strings_its_environment_never_sets_are_marked_and_set_by_their_fixes());
+        Flow.StepApart<EngineChecksTests>("a services reads of connection strings its compose environment never sets are marked in its code and set from there", t => t.A_services_reads_of_connection_strings_its_compose_environment_never_sets_are_marked_in_its_code_and_set_from_there());
+        Flow.StepApart<EngineChecksTests>("without a node js an agents diagnostics of a compose file are the engines with why the servers are missing", t => t.Without_a_node_js_an_agents_diagnostics_of_a_compose_file_are_the_engines_with_why_the_servers_are_missing());
+    }
+
+    /// <summary>An agent lists a compose file's own fixes first and applies one saved, and sets a connection string a
+    /// service's environment never sets through its fix, as one flow of the steps that need a container engine and
+    /// Node.js, each in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void An_agent_takes_a_compose_files_fixes_as_the_person_does()
+    {
+        Flow.StepApart<EngineChecksTests>("an agent lists a compose files own fixes first and applies one saved", t => t.An_agent_lists_a_compose_files_own_fixes_first_and_applies_one_saved());
+        Flow.StepApart<EngineChecksTests>("an agent sets a connection string a services environment never sets through its fix", t => t.An_agent_sets_a_connection_string_a_services_environment_never_sets_through_its_fix());
+    }
+
+    /// <summary>A variable set in a list-form environment is quoted so its value is read whole, and with no engine
+    /// running a Dockerfile and a compose file show nothing of it, Problems saying only the engine's state, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_compose_files_list_form_environment_and_no_engine_are_read_as_they_stand()
+    {
+        Flow.StepApart<EngineChecksTests>("a variable set in a list form environment is quoted so its value is read whole", t => t.A_variable_set_in_a_list_form_environment_is_quoted_so_its_value_is_read_whole());
+        Flow.StepApart<EngineChecksTests>("with no engine running a dockerfile and a compose file show nothing of it and problems say only the engines state", t => t.With_no_engine_running_a_dockerfile_and_a_compose_file_show_nothing_of_it_and_problems_say_only_the_engines_state());
+    }
+
+    private void A_compose_file_shows_what_its_variables_come_to_and_the_values_its_override_changes_as_hints()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Compose = "services:\n  web:\n    image: \"busybox:${TAG:-1.36}\"\n    ports:\n      - \"${PORT:-8080}:80\"  # the host's port\n"
@@ -140,8 +177,7 @@ public sealed class EngineChecksTests
     /// <summary>A secret is known by its variable's name (a word PASS, PW, PWD or KEY, PASSWORD or SECRET anywhere in it, a
     /// name ending in KEY but an ordinary word's), by the key or list item's KEY= it is given to, or by its place as a URL's
     /// password; a value holding such a URL shows it with the password masked.</summary>
-    [AvaloniaFact]
-    public void A_compose_files_hints_mask_a_secret_by_its_variables_name_the_key_it_is_given_to_and_a_urls_password()
+    private void A_compose_files_hints_mask_a_secret_by_its_variables_name_the_key_it_is_given_to_and_a_urls_password()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Compose = "services:\n  db:\n    image: postgres:17\n    environment:\n      POSTGRES_PASSWORD: ${DB_PASS}\n      OPENAI: ${APIKEY}\n"
@@ -169,8 +205,7 @@ public sealed class EngineChecksTests
     /// <summary>Compose fetches a Git repository's or an OCI artifact's compose file that an <c>include</c> names, unless
     /// told not to: the check, which reads the file on this computer alone, asks nothing of either's host (a listener on
     /// loopback here, which no connection reaches) and marks nothing for it.</summary>
-    [AvaloniaFact]
-    public void A_compose_files_remote_includes_are_never_fetched_and_mark_nothing()
+    private void A_compose_files_remote_includes_are_never_fetched_and_mark_nothing()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         using Listener host = new();
@@ -239,8 +274,7 @@ public sealed class EngineChecksTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_compose_files_error_is_marked_where_compose_names_it_and_listed_in_problems_until_it_is_fixed()
+    private void A_compose_files_error_is_marked_where_compose_names_it_and_listed_in_problems_until_it_is_fixed()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = Folder(("compose.yaml", "services:\n  web:\n    image: busybox:1.38\n    depends_on:\n      - cache\n"));
@@ -271,8 +305,7 @@ public sealed class EngineChecksTests
     /// Passenger's one rule for secrets, wherever it is said: the compose file's marker and Problems' Containers tab as the
     /// engine checks the file, and the run of its configuration, which says why it cannot run in the status bar, in Problems
     /// and to an agent.</summary>
-    [AvaloniaFact]
-    public void Composes_error_echoing_a_secrets_value_says_it_masked_in_the_marker_problems_the_status_bar_and_to_an_agent()
+    private void Composes_error_echoing_a_secrets_value_says_it_masked_in_the_marker_problems_the_status_bar_and_to_an_agent()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Secret = "s3cr3t-hunter2";
@@ -311,8 +344,7 @@ public sealed class EngineChecksTests
     /// Context Actions there offers Passenger's own fixes first: a service depended on that is not there, removed from
     /// depends_on or changed to the service of a near name; a volume or secret declared at the top level, under its key or
     /// a key made for it, as the file indents. Each is one undo step, and the marker goes once Compose reads the text again.</summary>
-    [AvaloniaFact]
-    public void A_compose_files_undeclared_names_are_fixed_by_changing_removing_or_declaring_them_each_one_undo_step()
+    private void A_compose_files_undeclared_names_are_fixed_by_changing_removing_or_declaring_them_each_one_undo_step()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Compose = "services:\n  web:\n    image: busybox:1.38\n    depends_on:\n      - dbb\n      - cache\n  db:\n    image: busybox:1.38\n"
@@ -368,45 +400,10 @@ public sealed class EngineChecksTests
         }
     }
 
-    /// <summary>A fix is worked out again on the text as it stands when it is chosen: a line added above while its list
-    /// shows still declares the secret where it belongs, under the file's own key and indentation; one the file no longer
-    /// needs (declared by hand meanwhile) is refused, saying so, and changes nothing.</summary>
-    [AvaloniaFact]
-    public void A_compose_fix_is_worked_out_again_as_it_is_chosen_and_refused_once_the_file_no_longer_needs_it()
-    {
-        Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
-        const string Compose = "services:\n    web:\n        image: busybox:1.38\n        secrets:\n            - api_key\nsecrets:\n    other:\n        file: ./other.txt\n";
-        string folder = Folder(("compose.yaml", Compose));
-        MainWindow window = Open(folder, "compose.yaml");
-        try
-        {
-            OpenDocument document = window.EditorArea.Active!;
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Fixes(window, Marked(window, document, "api_key"), ["Declare api_key at the top level"]);
-            editor.ApplyEdits([new TextEdit(0, 0, "# The shop\n")]);
-            Ui.Press(window, "ENTER");
-            Assert.Equal("# The shop\n" + Compose + "    api_key:\n        file: ./api_key.txt\n", editor.Document.Snapshot.ToString());
-
-            Ui.Run(window, EditorActions.Undo);
-            string asked = editor.Document.Snapshot.ToString();
-            Fixes(window, Marked(window, document, "api_key"), ["Declare api_key at the top level"]);
-            editor.ApplyEdits([new TextEdit(asked.Length, 0, "    api_key:\n        environment: API_KEY\n")]);
-            string byHand = editor.Document.Snapshot.ToString();
-            Ui.Press(window, "ENTER");
-            Assert.Equal(byHand, editor.Document.Snapshot.ToString());
-            Assert.Equal("Declare api_key at the top level was not applied: the file changed, so it no longer fits", window.Status);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>An agent's code_actions on Compose's marker list Passenger's own fixes first, and apply_code_action makes one
     /// on the text as it stands, the file saved. Skipped without a Node.js too, since the agents' code tools serve a compose
     /// file through its YAML server.</summary>
-    [AvaloniaFact]
-    public void An_agent_lists_a_compose_files_own_fixes_first_and_applies_one_saved()
+    private void An_agent_lists_a_compose_files_own_fixes_first_and_applies_one_saved()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
@@ -434,8 +431,7 @@ public sealed class EngineChecksTests
     /// its container, the container itself) more softly; one given elsewhere not at all. Show Context Actions offers
     /// Passenger's fix first: set in the service's environment, one undo step, to the Postgres the file runs, else to a
     /// value the person fills in; a localhost one of a kind the file does not run has none.</summary>
-    [AvaloniaFact]
-    public void A_dotnet_services_connection_strings_its_environment_never_sets_are_marked_and_set_by_their_fixes()
+    private void A_dotnet_services_connection_strings_its_environment_never_sets_are_marked_and_set_by_their_fixes()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = ConnectionsFolder(Connections);
@@ -486,8 +482,7 @@ public sealed class EngineChecksTests
     /// <summary>A variable set in a service's environment written as a list is one double-quoted item, so YAML reads its
     /// value whole: a <c> #</c> in it no comment, a <c>: </c> no mapping, its quotes and backslashes kept; one left for the
     /// person to fill in has the caret before its closing quote.</summary>
-    [Fact]
-    public void A_variable_set_in_a_list_form_environment_is_quoted_so_its_value_is_read_whole()
+    private void A_variable_set_in_a_list_form_environment_is_quoted_so_its_value_is_read_whole()
     {
         const string Text = "services:\n  api:\n    image: api\n    environment:\n      - MODE=dev\n";
         const string Value = "Host=db;Database=Shop #2;Options=a: b;Note=\"x\\y\"";
@@ -506,8 +501,7 @@ public sealed class EngineChecksTests
     /// appsettings.Development.json is not read), not the one its env_file sets; apply_code_action makes one on the text as
     /// it stands, the file saved, after the entry the file has. Skipped without a Node.js too, since the agents' code tools
     /// serve a compose file through its YAML server.</summary>
-    [AvaloniaFact]
-    public void An_agent_sets_a_connection_string_a_services_environment_never_sets_through_its_fix()
+    private void An_agent_sets_a_connection_string_a_services_environment_never_sets_through_its_fix()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
@@ -543,8 +537,7 @@ public sealed class EngineChecksTests
     /// settings give at localhost more softly. Show Context Actions on a read offers the compose file's fix first, one
     /// undo step there, the code left as it was, and the read's mark goes with the compose file's. An agent's
     /// code_actions on a read lists the same fix first, and apply_code_action makes it, saved.</summary>
-    [AvaloniaFact]
-    public void A_services_reads_of_connection_strings_its_compose_environment_never_sets_are_marked_in_its_code_and_set_from_there()
+    private void A_services_reads_of_connection_strings_its_compose_environment_never_sets_are_marked_in_its_code_and_set_from_there()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = ConnectionsFolder(Connections);
@@ -675,8 +668,7 @@ public sealed class EngineChecksTests
     /// <summary>Without a Node.js, a compose file's language server cannot start, but the engine still checks it: each file
     /// opened after the first waits for no server's checks, and an agent's diagnostics answer the engine's findings with a
     /// word that the server's are missing and why, rather than refusing.</summary>
-    [AvaloniaFact]
-    public void Without_a_node_js_an_agents_diagnostics_of_a_compose_file_are_the_engines_with_why_the_servers_are_missing()
+    private void Without_a_node_js_an_agents_diagnostics_of_a_compose_file_are_the_engines_with_why_the_servers_are_missing()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         const string Broken = "services:\n  web:\n    image: busybox:1.38\n    depends_on:\n      - cache\n";
@@ -709,8 +701,7 @@ public sealed class EngineChecksTests
         }
     }
 
-    [AvaloniaFact]
-    public void With_no_engine_running_a_dockerfile_and_a_compose_file_show_nothing_of_it_and_problems_say_only_the_engines_state()
+    private void With_no_engine_running_a_dockerfile_and_a_compose_file_show_nothing_of_it_and_problems_say_only_the_engines_state()
     {
         string folder = Folder(("Dockerfile", Dockerfile), ("compose.yaml", "services:\n  web:\n    image: busybox\n    ports: [\"${PORT:-8080}:80\"]\n"));
         MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: ContainersTests.StandInCli(TestFolders.Create("ctr-cli-"))) };

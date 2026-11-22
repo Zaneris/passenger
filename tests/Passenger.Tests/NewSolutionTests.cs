@@ -55,11 +55,37 @@ public sealed class NewSolutionTests : IDisposable
         TestFolders.Delete(place);
     }
 
+    /// <summary>The gate's New Solution from the Welcome screen and from a window with a solution open wherever it
+    /// opens, as one flow, to take their place once it has its record on CI; Avalonia's templates installed stay a test
+    /// of their own, as the install is the run's.</summary>
+    [AvaloniaFact]
+    public void The_gates_new_solutions_hold_as_one_flow()
+    {
+        Flow.StepApart<NewSolutionTests>("New Solution from the Welcome screen makes a console app with the option chosen opens it built and runs it", t => t.New_Solution_from_the_Welcome_screen_makes_a_console_app_with_the_option_chosen_opens_it_built_and_runs_it());
+        Flow.StepApart<NewSolutionTests>("New Solution from a window with a solution open builds the new one in the window it opens in (OpenProjectIn.Ask)", t => t.New_Solution_from_a_window_with_a_solution_open_builds_the_new_one_in_the_window_it_opens_in(OpenProjectIn.Ask));
+        Flow.StepApart<NewSolutionTests>("New Solution from a window with a solution open builds the new one in the window it opens in (OpenProjectIn.CurrentWindow)", t => t.New_Solution_from_a_window_with_a_solution_open_builds_the_new_one_in_the_window_it_opens_in(OpenProjectIn.CurrentWindow));
+        Flow.StepApart<NewSolutionTests>("New Solution from a window with a solution open builds the new one in the window it opens in (OpenProjectIn.NewWindow)", t => t.New_Solution_from_a_window_with_a_solution_open_builds_the_new_one_in_the_window_it_opens_in(OpenProjectIn.NewWindow));
+    }
+
+    /// <summary>New Solution reads the templates of the SDK the folder builds with, marks a WPF app where it cannot
+    /// run, and stopped takes back what it made keeping another program's file, and New Project adds only its lines to
+    /// a solution and its versions to central package management, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
+    [AvaloniaFact]
+    public void New_Solution_and_New_Project_make_what_was_chosen_or_take_it_back_whole()
+    {
+        Flow.StepApart<NewSolutionTests>("New Solution reads the templates of the SDK the directory chosen builds with", t => t.New_Solution_reads_the_templates_of_the_SDK_the_directory_chosen_builds_with());
+        Flow.StepApart<NewSolutionTests>("a WPF app from New Solution is marked where it cannot run and opens built", t => t.A_WPF_app_from_New_Solution_is_marked_where_it_cannot_run_and_opens_built());
+        Flow.StepApart<NewSolutionTests>("New Solution stopped takes away what it made and leaves a file another program wrote into its folder meanwhile", t => t.New_Solution_stopped_takes_away_what_it_made_and_leaves_a_file_another_program_wrote_into_its_folder_meanwhile());
+        Flow.StepApart<NewSolutionTests>("Add New Project puts a class library in the solution folder and the solution file gains only its lines (\"sln\")", t => t.Add_New_Project_puts_a_class_library_in_the_solution_folder_and_the_solution_file_gains_only_its_lines("sln"));
+        Flow.StepApart<NewSolutionTests>("Add New Project puts a class library in the solution folder and the solution file gains only its lines (\"slnx\")", t => t.Add_New_Project_puts_a_class_library_in_the_solution_folder_and_the_solution_file_gains_only_its_lines("slnx"));
+        Flow.StepApart<NewSolutionTests>("New Project where packages are managed centrally puts its versions in Directory Packages props so it restores and builds", t => t.New_Project_where_packages_are_managed_centrally_puts_its_versions_in_Directory_Packages_props_so_it_restores_and_builds());
+    }
+
     /// <summary>New Solution reads the templates of the SDK the directory chosen builds with, as dotnet new runs there: a
     /// directory, not made yet, under a global.json naming an SDK no one installed says the templates could not be read,
     /// and the directory chosen back where the SDK is found takes that back, its templates listed again.</summary>
-    [AvaloniaFact]
-    public void New_Solution_reads_the_templates_of_the_SDK_the_directory_chosen_builds_with()
+    private void New_Solution_reads_the_templates_of_the_SDK_the_directory_chosen_builds_with()
     {
         Write("Pinned/global.json", "{ \"sdk\": { \"version\": \"1.0.100\", \"rollForward\": \"disable\" } }\n");
         MainWindow window = Started();
@@ -148,8 +174,7 @@ public sealed class NewSolutionTests : IDisposable
     /// <summary>New Solution's WPF Application, listed everywhere: off Windows it is marked Windows only and says before
     /// Create that it builds here but runs only on Windows; made, restored and built here (with EnableWindowsTargeting off
     /// Windows, written into none of its files), its solution opens with the app built.</summary>
-    [AvaloniaFact]
-    public void A_WPF_app_from_New_Solution_is_marked_where_it_cannot_run_and_opens_built()
+    private void A_WPF_app_from_New_Solution_is_marked_where_it_cannot_run_and_opens_built()
     {
         using IDisposable theme = TestsTheme();
         WpfApp.UseFeed(place);
@@ -179,8 +204,7 @@ public sealed class NewSolutionTests : IDisposable
 
     /// <summary>New Solution stopped after dotnet new made its project takes away what Create wrote, the solution file and
     /// the project, and leaves a file another program wrote into its folder meanwhile, with the folder.</summary>
-    [AvaloniaFact]
-    public void New_Solution_stopped_takes_away_what_it_made_and_leaves_a_file_another_program_wrote_into_its_folder_meanwhile()
+    private void New_Solution_stopped_takes_away_what_it_made_and_leaves_a_file_another_program_wrote_into_its_folder_meanwhile()
     {
         using IDisposable theme = TestsTheme();
         MainWindow window = Started();
@@ -336,10 +360,7 @@ public sealed class NewSolutionTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData("sln")]
-    [InlineData("slnx")]
-    public void Add_New_Project_puts_a_class_library_in_the_solution_folder_and_the_solution_file_gains_only_its_lines(string format)
+    private void Add_New_Project_puts_a_class_library_in_the_solution_folder_and_the_solution_file_gains_only_its_lines(string format)
     {
         string solution = WriteShop(format);
         Write("Docs/readme.md", "# Docs\n");
@@ -410,8 +431,7 @@ public sealed class NewSolutionTests : IDisposable
     /// version, Directory.Packages.props gains those it lacked beside those it has (one it pins at another version kept as
     /// the reference's VersionOverride), and the project restores, from the stand-in feed alone, and builds; one Undo takes
     /// the project and the versions back.</summary>
-    [AvaloniaFact]
-    public void New_Project_where_packages_are_managed_centrally_puts_its_versions_in_Directory_Packages_props_so_it_restores_and_builds()
+    private void New_Project_where_packages_are_managed_centrally_puts_its_versions_in_Directory_Packages_props_so_it_restores_and_builds()
     {
         // The versions xUnit's template writes, each a stand-in on the feed; xunit's carries the Fact its test compiles with.
         string probe = Path.Combine(TestFolders.Create("xunit-probe-"), "Probe");

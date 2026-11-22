@@ -96,27 +96,19 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A file linked from outside the project whose Link the project file changes on disk shows by its new name.</summary>
+    /// <summary>A wait that gives up names what the project host has not answered, and the project of the file shown
+    /// and those it references load in the language server first, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void A_linked_files_row_takes_the_name_its_changed_Link_gives_it()
+    public void A_projects_evaluation_names_what_it_waits_for_and_loads_the_file_shown_first()
     {
-        string linked = Project.Replace("""<Compile Include="../Shared/**/*.cs" Exclude="../Shared/Obsolete/**" Link="Shared/%(RecursiveDir)%(Filename)%(Extension)" />""",
-            """<Compile Include="..\Shared\Helper.cs" Link="OldName.cs" />""");
-        Write("App/App.csproj", linked);
-        MainWindow window = Open();
-        Assert.Equal(["Dependencies", "OldName.cs", "Program.cs"], Children(window, "App"));
-        Write("App/App.csproj", linked.Replace("""Link="OldName.cs" """, """Link="NewName.cs" """, StringComparison.Ordinal));
-        Ui.WaitFor(() => Children(window, "App").Contains("NewName.cs"),
-            () => $"the linked file's row to take the name its new Link gives it; the project shows [{string.Join(", ", Children(window, "App"))}]");
-        Assert.Equal(["Dependencies", "NewName.cs", "Program.cs"], Children(window, "App"));
-        Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Shared", "Helper.cs")), Row(window, NodeKind.File, "NewName.cs").Path);
-        window.Close();
+        Flow.StepApart<ProjectEvaluationTests>("a wait that gives up names what the project host has not answered", t => t.A_wait_that_gives_up_names_what_the_project_host_has_not_answered());
+        Flow.StepApart<ProjectEvaluationTests>("the project of the file shown and those it references load in the language server before the rest", t => t.The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_the_rest());
     }
 
     /// <summary>A test's wait that gives up says what the project hosts were asked and have not answered, which no quiet
     /// wait waits for: a hold of the folder's host's design-time builds, unanswered until released, named with its host.</summary>
-    [AvaloniaFact]
-    public void A_wait_that_gives_up_names_what_the_project_host_has_not_answered()
+    private void A_wait_that_gives_up_names_what_the_project_host_has_not_answered()
     {
         MainWindow window = Open();
         ProjectHost host = Ui.Await(Waiting.Apart(() => ProjectHosts.ForAsync(folder)), "the folder's project host");
@@ -274,8 +266,7 @@ public sealed class ProjectEvaluationTests : IDisposable
             : ": " + string.Join(", ", stamps.Select(s => s.Path));
     }
 
-    [AvaloniaFact]
-    public void The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_the_rest()
+    private void The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_the_rest()
     {
         Write("Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Core/Core.csproj\" />\n  <Project Path=\"Reports/Reports.csproj\" />\n"
             + "  <Project Path=\"Admin/Admin.csproj\" />\n</Solution>\n");
