@@ -30,6 +30,21 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `GodotEditorCompletionTests`' `An_open_godot_editors_unsaved_names_complete_until_it_ends` (the gate), CI 45027932334
+  (Linux gate shard 2), at 8f0cca610, passing on its retry: "Completion never offered editor_dash, which only Godot's
+  editor holds", a client of the test's own answered with it at once. **A race in the IDE**: Godot's editor at times
+  takes a request asked in its first moments and answers neither it nor any later one on that connection, a new one
+  answered at once (2 of 55 probe starts of Godot 4.7.2 on the Mac), and Passenger's link kept that connection while the
+  editor's meta file named it, matching each later answer to the request before it, so every ask waited out its 5 s for
+  two minutes; met in 2 of 13 runs on the Mac. A request given up on now ends its connection, and the next ask connects
+  again (ee4695964).
+- `NewServiceSetupTests`' `New_Project_sets_a_service_up_to_run_in_its_container_or_with_Compose_the_persons_edits_out_of_its_Undo`,
+  CI 45027932334 (Windows report shard 3), at 8f0cca610: "The Explorer shows no Solution Shop: [svc-7088fa0e, Tool,
+  Shop.slnx]" after New Project's Undo, which had read the solution without Api. **A race in the IDE**: a read of the
+  folder during the Undo found no solution, so the Explorer showed the folder's files in its place, and kept them once
+  the next read found it, showing again whatever view it last showed rather than the view the folder keeps, as it did
+  for good after any solution that did not read. It now shows the view asked for once the solution reads (54a22dcb0).
+  What made that read find none on Windows was not caught: the run keeps no IDE log, and the Mac did not meet it.
 - `BindingValuesTests`' `A_debugged_apps_bindings_show_their_values_and_a_window_shown_is_collected_once_it_closes`,
   CI 45022036262 (Linux report shard 3), after 028f29fa3: "TimeoutException: The operation has timed out. at the
   collection of a task whose fault nothing observed", as below. **A race in the IDE**: of the timed waits a Godot game's
