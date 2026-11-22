@@ -57,6 +57,10 @@ CHECKED_FIRST = {"macOS": 270, "Windows": 145, "Linux": 65}
 # mobile workloads, and on Linux an emulator): the median over CI 44995132904, 45000646248, 45009557197, 45016390450
 # and 45022036262 of the report lane's first shard's time before its tests against its third's.
 APART_FIRST = {"macOS": 220, "Windows": 0, "Linux": 80}
+# How many times their seconds the classes --apart names are dealt at: their devices ran them from 0.8 to 1.5 times
+# their seconds in a shard from run to run (CI 45022036262 to 45055574992), and as the shard runs them last, a slow
+# run of them leaves the shard room before the job's TEST_MINUTES rather than leaving them unreached.
+APART_MARGIN = 1.25
 # What xunit's adapter writes into the listing when it could not discover an assembly's tests.
 DISCOVERY_FAILED = "Exception discovering tests"
 # How much sooner the slowest shard must end, dealt from a run's own times, before the summary asks for a new deal.
@@ -649,6 +653,7 @@ def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=
     together = {name: declared[name]["together"][0] for name in classes if declared.get(name, {}).get("together")}
     apart = {name for name in classes if set_ups and needs(name, declared, set_ups)} if count > 1 else set()
     second = {name for name in classes if seconds_ups and needs(name, declared, seconds_ups)} - apart if count > 1 else set()
+    seconds = {name: spent * (APART_MARGIN if name in apart else 1.0) for name, spent in seconds.items()}
     hands, parts, places = deal_apart(seconds, kind, count, starts, processes, paced(system, processes), together, apart,
                                       second, [number - 1 for number in apart_shards])
     held = {"apart": sorted(apart), "apart_shards": list(apart_shards), "second": sorted(second)}
@@ -728,7 +733,8 @@ def split(arguments):
              "that shard's tests end" if arguments.after else "")
           + (f"; the classes marked [{SAME}] only on {ONE_SYSTEM}" if arguments.lane == "report" else "")
           + (f"; the classes needing {' or '.join(arguments.apart)}, which only the jobs of shards "
-             f"{', '.join(map(str, arguments.apart_shards))} set up, last in them, apart from the rest"
+             f"{', '.join(map(str, arguments.apart_shards))} set up, last in them, apart from the rest, at "
+             f"{APART_MARGIN:g} times their seconds"
              if arguments.apart else "")
           + (f"; those needing {' or '.join(arguments.second)}, which the second shard's job alone sets up, in it"
              if arguments.second else ""))
