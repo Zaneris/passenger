@@ -311,6 +311,58 @@ jobs:
           echo "shard=$number" >> "$GITHUB_OUTPUT"
           echo "label=Report, $NAME, shard $number of $REPORT_SHARDS, after the gate's shard $SHARD" >> "$GITHUB_OUTPUT"
 
+      # Godot 4's .NET build at the version the Godot tests are written for, which the report lane's tests are given as
+      # GODOT (the gate's are not): fetched from Godot's release, its SHA-512 checked against what Godot publishes for it,
+      # and kept in the cache for the next run. A failure here only has the Godot tests skip, saying why.
+      - name: Restore cached Godot
+        id: godot-cache
+        if: inputs.report
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/godot.zip
+          key: godot-4.7.2-${{ runner.os }}
+
+      - name: Godot
+        id: godot
+        if: inputs.report
+        continue-on-error: true
+        env:
+          ZIP: ${{ runner.temp }}/godot.zip
+          FOLDER: ${{ runner.temp }}/godot
+        run: |
+          python=python3
+          if [ "$RUNNER_OS" = Windows ]; then
+            # Paths both Git's bash and Windows' Python read.
+            python=python ZIP=$(cygpath -m "$ZIP") FOLDER=$(cygpath -m "$FOLDER")
+          fi
+          case "$RUNNER_OS" in
+            Linux) file=Godot_v4.7.2-stable_mono_linux_x86_64.zip program='*/Godot_v*_mono_linux.x86_64'
+              sum=1855960b27ee3ef5e66e5e228cced69d55637b24334a7411162687dcd077d8f9f645348cdb8eae984bec8135d49ed855a1e3a16476786b8bce60774fd8402d13 ;;
+            Windows) file=Godot_v4.7.2-stable_mono_win64.zip program='*/Godot_v*_mono_win64.exe'
+              sum=79229fd112b0c9cbeab82363a4ef7be18ea70f1caf86bf912789335b136fbe7e01db0053a33461438c5da1c680c17bbb10040bd09bedc51221cd4423d0367757 ;;
+            macOS) file=Godot_v4.7.2-stable_mono_macos.universal.zip program='*.app'
+              sum=0862c53d7158c7a67f745e2e46f90b68cf5343cbe8b95d6d4333c469e42ca104af9c121d1746a50e5d221a99d09d82ef7016495f8e0d09255842884ed0502795 ;;
+          esac
+          [ -f "$ZIP" ] || curl -fsSL --retry 3 -o "$ZIP" "https://github.com/godotengine/godot/releases/download/4.7.2-stable/$file"
+          "$python" -I -c 'import hashlib, sys; seen = hashlib.sha512(open(sys.argv[1], "rb").read()).hexdigest(); sys.exit(None if seen == sys.argv[2] else f"{sys.argv[3]} has the SHA-512 {seen}, not the release one")' "$ZIP" "$sum" "$file"
+          echo "saved=true" >> "$GITHUB_OUTPUT"
+          # ditto keeps the app bundle as signed; Python reads a zip the same on Linux and Windows.
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto -x -k "$ZIP" "$FOLDER"
+          else
+            "$python" -I -m zipfile -e "$ZIP" "$FOLDER"
+          fi
+          godot=$("$python" -I -c 'import glob, os, sys; print(glob.glob(os.path.join(sys.argv[1], sys.argv[2]))[0])' "$FOLDER" "$program")
+          [ "$RUNNER_OS" != Linux ] || chmod +x "$godot"
+          echo "path=$godot" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Godot
+        if: inputs.report && matrix.lane == 'gate' && matrix.shard == 1 && steps.godot-cache.outputs.cache-hit != 'true' && steps.godot.outputs.saved == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/godot.zip
+          key: ${{ steps.godot-cache.outputs.cache-primary-key }}
+
       # A job's tests have TEST_MINUTES in all: a gate job's report shard has what its gate tests left.
       - name: Start the clock on the job's tests
         if: matrix.lane == 'gate' && steps.report-deal.outcome == 'success'
@@ -329,6 +381,7 @@ jobs:
           RESULTS: artifacts/test-results
           SHARD: ${{ matrix.shard }}
           PASSENGER_TEST_TIME_SCALE: ${{ matrix.time_scale }}
+          GODOT: ${{ matrix.lane == 'report' && steps.godot.outputs.path || '' }}
         run: |
           $python = if ($IsWindows) { 'python' } else { 'python3' }
           & $python -I tools/test-shards.py test $env:RESULTS --shard $env:SHARD --lane $env:LANE --label $env:LABEL
@@ -378,6 +431,7 @@ jobs:
           SHARD: ${{ steps.report-deal.outputs.shard }}
           LABEL: ${{ steps.report-deal.outputs.label }}
           PASSENGER_TEST_TIME_SCALE: ${{ matrix.time_scale }}
+          GODOT: ${{ steps.godot.outputs.path }}
         run: |
           $python = if ($IsWindows) { 'python' } else { 'python3' }
           & $python -I tools/test-shards.py test $env:RESULTS --shard $env:SHARD --lane $env:LANE --label $env:LABEL
