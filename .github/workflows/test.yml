@@ -262,7 +262,9 @@ jobs:
       # The build's check, every analyzer and code-style rule with warnings as errors, is the gate's first shard's on each
       # system, which every run has; the others build the same code without running the analyzers (generators still
       # run), which change nothing that is built and take about half the build's time. Both deals give that job's
-      # shards the less to run for the minutes the check takes (--checks-first).
+      # shards the less to run for the minutes the check takes (--checks-first). The compiler server and MSBuild nodes
+      # the build leaves end with it, so the tests start with the memory they hold, which on a 7 GB runner a booted
+      # simulator, the language servers and the tests' own builds need.
       - name: Build
         env:
           CHECKS: ${{ matrix.lane == 'gate' && matrix.shard == 1 }}
@@ -272,6 +274,7 @@ jobs:
           else
             dotnet build --no-restore -p:RunAnalyzers=false
           fi
+          dotnet build-server shutdown || echo "Not every build server the build left could be ended"
 
       # Only Linux's runner runs Linux containers. The images the container tests run on (ContainerImages.txt; Docker
       # Hub limits pulls) come from a cache, pulled only when it lacks them, so no test pulls one.
