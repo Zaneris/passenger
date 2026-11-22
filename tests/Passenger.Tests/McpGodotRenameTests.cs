@@ -13,8 +13,7 @@ public sealed class McpGodotRenameTests : McpRig
     private const string Level = "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"PackedScene\" path=\"res://player.tscn\" id=\"1_player\"]\n\n"
         + "[node name=\"Level\" type=\"Node2D\"]\nTarget = NodePath(\"Player/Sprite\")\n\n[node name=\"Player\" parent=\".\" instance=ExtResource(\"1_player\")]\n";
 
-    [Fact]
-    public async Task An_agents_renames_of_a_node_one_after_another_each_find_the_closed_scene_as_it_stands()
+    internal async Task An_agents_renames_of_a_node_one_after_another_each_find_the_closed_scene_as_it_stands()
     {
         string folder = TestFolders.Create("mcp-godot-renames-");
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Renames\"\n");
@@ -33,8 +32,7 @@ public sealed class McpGodotRenameTests : McpRig
         Assert.Equal("; Written by another program.\n" + Level.Replace("Player/Sprite", "Player/Skin", StringComparison.Ordinal), File.ReadAllText(level));
     }
 
-    [Fact]
-    public async Task An_agents_rename_says_the_binary_animations_it_leaves()
+    internal async Task An_agents_rename_says_the_binary_animations_it_leaves()
     {
         string folder = TestFolders.Create("mcp-godot-binary-");
         TestFolders.Write(folder, "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Renames\"\n");

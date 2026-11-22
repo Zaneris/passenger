@@ -13,6 +13,26 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class McpGodotShaderTests : McpRig
 {
+    /// <summary>An agent's reading of Godot's files with no Godot started as one flow, each step one test's check in an
+    /// instance of its own: a shader's tools from Godot's front end and one nested too deep read in part, a GDScript's
+    /// warnings named as Godot names them and one nested too deep read in part, a script reformatted by Godot's style
+    /// guide, a scene's diagnostics answering for an edit, its outline naming an imported model, a node renamed again and
+    /// again and the binary animations a rename leaves, and godot_editor saying the person's editor connects to them.</summary>
+    [Fact]
+    public async Task An_agent_reads_reformats_and_renames_Godots_files_with_no_Godot_started()
+    {
+        await Flow.StepApartAsync("an agents tools on a shader answer from Godots front end and its language", () => new McpGodotShaderTests(), t => t.An_agents_tools_on_a_shader_answer_from_Godots_front_end_and_its_language());
+        await Flow.StepApartAsync("an agents diagnostics of a shader nested past what passenger reads say it was read in part", () => new McpGodotShaderTests(), t => t.An_agents_diagnostics_of_a_shader_nested_past_what_passenger_reads_say_it_was_read_in_part());
+        await Flow.StepApartAsync("an agents diagnostics of a gdscript give a warnings name as its code and godots words as its message", () => new McpGDScriptMarksTests(), t => t.An_agents_diagnostics_of_a_gdscript_give_a_warnings_name_as_its_code_and_godots_words_as_its_message());
+        await Flow.StepApartAsync("an agents diagnostics of a script nested past what passenger reads say it was read in part", () => new McpGDScriptMarksTests(), t => t.An_agents_diagnostics_of_a_script_nested_past_what_passenger_reads_say_it_was_read_in_part());
+        await Flow.StepApartAsync("an agent reformats a gdscript by godots style guide and it is saved", () => new McpGDScriptFormatTests(), t => t.An_agent_reformats_a_gdscript_by_godots_style_guide_and_it_is_saved());
+        await Flow.StepApartAsync("an agents diagnostics of a scene it has just edited answer for the edit", () => new McpGodotSceneMarksTests(), t => t.An_agents_diagnostics_of_a_scene_it_has_just_edited_answer_for_the_edit());
+        await Flow.StepApartAsync("an agents outline of a scene names an imported model a node instances", () => new McpGodotFixTests(), t => t.An_agents_outline_of_a_scene_names_an_imported_model_a_node_instances());
+        await Flow.StepApartAsync("an agents renames of a node one after another each find the closed scene as it stands", () => new McpGodotRenameTests(), t => t.An_agents_renames_of_a_node_one_after_another_each_find_the_closed_scene_as_it_stands());
+        await Flow.StepApartAsync("an agents rename says the binary animations it leaves", () => new McpGodotRenameTests(), t => t.An_agents_rename_says_the_binary_animations_it_leaves());
+        await Flow.StepApartAsync("godot editor on an agents own passenger says the persons editor connects to their window", () => new McpGodotEditorTests(), t => t.Godot_editor_on_an_agents_own_passenger_says_the_persons_editor_connects_to_their_window());
+    }
+
     private const string Shader = """
         shader_type spatial;
         #include "res://lib/waves.gdshaderinc"
@@ -25,8 +45,7 @@ public sealed class McpGodotShaderTests : McpRig
 
         """;
 
-    [Fact]
-    public async Task An_agents_tools_on_a_shader_answer_from_Godots_front_end_and_its_language()
+    internal async Task An_agents_tools_on_a_shader_answer_from_Godots_front_end_and_its_language()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-shaders-"));
         try
@@ -67,8 +86,7 @@ public sealed class McpGodotShaderTests : McpRig
     }
 
     /// <summary>A shader past what Passenger reads marks no error, so the note is all that tells an agent it went unchecked.</summary>
-    [Fact]
-    public async Task An_agents_diagnostics_of_a_shader_nested_past_what_passenger_reads_say_it_was_read_in_part()
+    internal async Task An_agents_diagnostics_of_a_shader_nested_past_what_passenger_reads_say_it_was_read_in_part()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-shader-part-"));
         try

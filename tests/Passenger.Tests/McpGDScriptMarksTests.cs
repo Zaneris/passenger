@@ -14,8 +14,7 @@ public sealed class McpGDScriptMarksTests : McpRig
 {
     private const string Words = "The local variable \"unused\" is declared but never used in the block. If this is intended, prefix it with an underscore: \"_unused\".";
 
-    [Fact]
-    public async Task An_agents_diagnostics_of_a_gdscript_give_a_warnings_name_as_its_code_and_godots_words_as_its_message()
+    internal async Task An_agents_diagnostics_of_a_gdscript_give_a_warnings_name_as_its_code_and_godots_words_as_its_message()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-gdscript-marks-"));
         try
@@ -39,8 +38,7 @@ public sealed class McpGDScriptMarksTests : McpRig
     }
 
     /// <summary>A script past what Passenger reads marks no error, so the note is all that tells an agent it went unchecked.</summary>
-    [Fact]
-    public async Task An_agents_diagnostics_of_a_script_nested_past_what_passenger_reads_say_it_was_read_in_part()
+    internal async Task An_agents_diagnostics_of_a_script_nested_past_what_passenger_reads_say_it_was_read_in_part()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-gdscript-part-"));
         try

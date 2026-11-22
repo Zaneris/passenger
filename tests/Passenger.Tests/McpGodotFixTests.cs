@@ -59,8 +59,7 @@ public sealed class McpGodotFixTests : McpRig
 
     /// <summary>outline of a scene names the scene each node instances, an imported model's as a scene's, though no text says
     /// the model's nodes. Needs no Godot: the scene is Passenger's own reading.</summary>
-    [Fact]
-    public async Task An_agents_outline_of_a_scene_names_an_imported_model_a_node_instances()
+    internal async Task An_agents_outline_of_a_scene_names_an_imported_model_a_node_instances()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-outline-"));
         try

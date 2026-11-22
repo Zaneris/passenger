@@ -12,8 +12,7 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class McpGodotEditorTests : McpRig
 {
-    [Fact]
-    public async Task Godot_editor_on_an_agents_own_passenger_says_the_persons_editor_connects_to_their_window()
+    internal async Task Godot_editor_on_an_agents_own_passenger_says_the_persons_editor_connects_to_their_window()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-editor-"));
         try

@@ -21,8 +21,7 @@ public sealed class McpGodotSceneMarksTests : McpRig
 
         """;
 
-    [Fact]
-    public async Task An_agents_diagnostics_of_a_scene_it_has_just_edited_answer_for_the_edit()
+    internal async Task An_agents_diagnostics_of_a_scene_it_has_just_edited_answer_for_the_edit()
     {
         string folder = PathNames.Canonical(TestFolders.Create("godot-mcp-marks-"));
         try
