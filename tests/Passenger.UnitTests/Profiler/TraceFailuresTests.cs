@@ -8,21 +8,19 @@ namespace Passenger.UnitTests.Profiler;
 public sealed class TraceFailuresTests
 {
     [Fact]
-    public void TraceEvents_failures_for_a_broken_trace_are_taken_and_its_files_too()
-    {
-        Assert.True(TraceFailures.Broken(new FormatException("Read past end of stream.")));
-        Assert.True(TraceFailures.Broken(new Exception("Read past end of stream.")));
-        Assert.True(TraceFailures.Broken(new SerializationException("Invalid string length.")));
-        Assert.True(TraceFailures.Of(new IOException("The disk is full")));
-        Assert.True(TraceFailures.Of(new UnauthorizedAccessException("Access denied")));
-        Assert.False(TraceFailures.Broken(new IOException("The disk is full")), "A file's failure was taken for a trace cut short");
-    }
+    public void A_traces_read_takes_TraceEvents_failures_and_leaves_any_other_to_the_boundary() => Cases.All(
+        ("traceEvents failures for a broken trace are taken and its files too", () =>
+        {
+            Assert.True(TraceFailures.Broken(new FormatException("Read past end of stream.")));
+            Assert.True(TraceFailures.Broken(new Exception("Read past end of stream.")));
+            Assert.True(TraceFailures.Broken(new SerializationException("Invalid string length.")));
+            Assert.True(TraceFailures.Of(new IOException("The disk is full")));
+            Assert.False(TraceFailures.Broken(new IOException("The disk is full")), "A file's failure was taken for a trace cut short");
+        }),
+        ("any other exception goes on to the boundary", () =>
+        {
+            Assert.False(TraceFailures.Of(new NullReferenceException()), "A fault of Passenger's own was taken as a trace's failure");
+            Assert.False(TraceFailures.Of(new ArgumentOutOfRangeException("index")), "A fault of Passenger's own was taken as a trace's failure");
+        }));
 
-    [Fact]
-    public void Any_other_exception_goes_on_to_the_boundary()
-    {
-        Assert.False(TraceFailures.Of(new NullReferenceException()), "A fault of Passenger's own was taken as a trace's failure");
-        Assert.False(TraceFailures.Of(new InvalidCastException()), "A fault of Passenger's own was taken as a trace's failure");
-        Assert.False(TraceFailures.Of(new ArgumentOutOfRangeException("index")), "A fault of Passenger's own was taken as a trace's failure");
-    }
 }

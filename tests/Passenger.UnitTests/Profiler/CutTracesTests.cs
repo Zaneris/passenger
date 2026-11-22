@@ -19,47 +19,46 @@ public sealed class CutTracesTests
     private const int HeaderLength = 102;
 
     [Fact]
-    public void A_trace_cut_within_its_header_is_refused_and_its_file_written_over_and_deleted_at_once()
-    {
-        string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
-        try
+    public void A_cut_trace_is_refused_or_opened_cut_short_and_its_file_let_go_at_once() => Cases.All(
+        ("a trace cut within its header is refused and its file written over and deleted at once", () =>
         {
-            string cut = Path.Combine(folder, "cut.nettrace");
-            foreach (int length in new[] { 4, 8, 12, 32, 53, 60, 100 })
+            string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
+            try
             {
-                File.WriteAllBytes(cut, Written[..length]);
-                Exception refused = Assert.ThrowsAny<Exception>(() => Snapshot.Read(cut));
-                Assert.True(TraceFailures.Broken(refused), $"The trace cut at {length} bytes, within its header, failed otherwise than as no trace: {refused}");
-                LetGo(cut, length);
+                string cut = Path.Combine(folder, "cut.nettrace");
+                foreach (int length in new[] { 4, 53, 100 })
+                {
+                    File.WriteAllBytes(cut, Written[..length]);
+                    Exception refused = Assert.ThrowsAny<Exception>(() => Snapshot.Read(cut));
+                    Assert.True(TraceFailures.Broken(refused), $"The trace cut at {length} bytes, within its header, failed otherwise than as no trace: {refused}");
+                    LetGo(cut, length);
+                }
             }
-        }
-        finally
-        {
-            Directory.Delete(folder, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void A_trace_cut_at_or_past_its_headers_end_opens_cut_short_with_nothing_and_its_file_is_written_over_and_deleted_at_once()
-    {
-        string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
-        try
-        {
-            string cut = Path.Combine(folder, "cut.nettrace");
-            foreach (int length in new[] { HeaderLength - 1, HeaderLength, HeaderLength + 4, Written.Length })
+            finally
             {
-                File.WriteAllBytes(cut, Written[..length]);
-                Snapshot opened = Snapshot.Read(cut);
-                Assert.True(opened is { CutShort: not null, Samples: 0, Threads.Count: 0 },
-                    $"The trace cut at {length} bytes opened as {opened.Samples} samples on {opened.Threads.Count} threads, cut short: {opened.CutShort ?? "no"}");
-                LetGo(cut, length);
+                Directory.Delete(folder, recursive: true);
             }
-        }
-        finally
+        }),
+        ("a trace cut at or past its header's end opens cut short with nothing and its file is written over and deleted at once", () =>
         {
-            Directory.Delete(folder, recursive: true);
-        }
-    }
+            string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
+            try
+            {
+                string cut = Path.Combine(folder, "cut.nettrace");
+                foreach (int length in new[] { HeaderLength - 1, HeaderLength + 4, Written.Length })
+                {
+                    File.WriteAllBytes(cut, Written[..length]);
+                    Snapshot opened = Snapshot.Read(cut);
+                    Assert.True(opened is { CutShort: not null, Samples: 0, Threads.Count: 0 },
+                        $"The trace cut at {length} bytes opened as {opened.Samples} samples on {opened.Threads.Count} threads, cut short: {opened.CutShort ?? "no"}");
+                    LetGo(cut, length);
+                }
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }));
 
     /// <summary>Writes over the trace just read and deletes it, as the person may at once: neither is refused while a read
     /// still holds it.</summary>

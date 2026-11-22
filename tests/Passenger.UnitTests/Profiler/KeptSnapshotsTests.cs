@@ -11,47 +11,46 @@ public sealed class KeptSnapshotsTests
     private const int Objects = 4;
 
     [Fact]
-    public void Taking_more_snapshots_than_are_kept_lets_go_of_the_oldest_graph_which_a_comparison_names_as_gone()
-    {
-        KeptSnapshots kept = new();
-        (MemorySnapshot first, WeakReference firstGraph) = Take(kept, 1);
-        MemorySnapshot second = Take(kept, 2).Snapshot;
-        MemorySnapshot third = Take(kept, 3).Snapshot;
-        Assert.Null(first.Gone);
-        MemorySnapshot fourth = Take(kept, 4).Snapshot;
+    public void A_run_keeps_its_newest_snapshots_objects_and_lets_go_of_the_rest() => Cases.All(
+        ("taking more snapshots than are kept lets go of the oldest graph which a comparison names as gone", () =>
+        {
+            KeptSnapshots kept = new();
+            (MemorySnapshot first, WeakReference firstGraph) = Take(kept, 1);
+            MemorySnapshot second = Take(kept, 2).Snapshot;
+            MemorySnapshot third = Take(kept, 3).Snapshot;
+            Assert.Null(first.Gone);
+            MemorySnapshot fourth = Take(kept, 4).Snapshot;
 
-        Assert.Equal([2, 3, 4], kept.Held);
-        string gone = "Snapshot #1's objects were let go as Snapshot #4 was taken: a run keeps those of its newest 3 snapshots";
-        Assert.Equal(gone, first.Gone);
-        Assert.All([second, third, fourth], s => Assert.Null(s.Gone));
-        Assert.Equal(gone, fourth.WhyNotComparable(first));
-        Assert.Equal(gone, first.WhyNotComparable(fourth));
-        Assert.Equal(gone, Assert.Throws<InvalidOperationException>(() => fourth.CompareWith(first)).Message);
-        Assert.Equal(gone, Assert.Throws<InvalidOperationException>(() => first.ObjectsOf(first.Types[0])).Message);
-        Assert.Equal(Objects, first.Types[0].Count);
-        Assert.Equal([2, 3], fourth.Earlier.Keys.Order());
-        Assert.Equal(Objects, fourth.CompareWith(second).SurvivedObjects);
-        Assert.True(Collected(firstGraph), "The oldest snapshot's graph was still held once a fourth was taken");
-    }
+            Assert.Equal([2, 3, 4], kept.Held);
+            string gone = "Snapshot #1's objects were let go as Snapshot #4 was taken: a run keeps those of its newest 3 snapshots";
+            Assert.Equal(gone, first.Gone);
+            Assert.All([second, third, fourth], s => Assert.Null(s.Gone));
+            Assert.Equal(gone, fourth.WhyNotComparable(first));
+            Assert.Equal(gone, first.WhyNotComparable(fourth));
+            Assert.Equal(gone, Assert.Throws<InvalidOperationException>(() => fourth.CompareWith(first)).Message);
+            Assert.Equal(gone, Assert.Throws<InvalidOperationException>(() => first.ObjectsOf(first.Types[0])).Message);
+            Assert.Equal(Objects, first.Types[0].Count);
+            Assert.Equal([2, 3], fourth.Earlier.Keys.Order());
+            Assert.Equal(Objects, fourth.CompareWith(second).SurvivedObjects);
+            Assert.True(Collected(firstGraph), "The oldest snapshot's graph was still held once a fourth was taken");
+        }),
+        ("a snapshot removed lets go of its graph at once and the run follows it no further", () =>
+        {
+            List<int> unfollowed = [];
+            KeptSnapshots kept = new(unfollowed.Add);
+            MemorySnapshot first = Take(kept, 1).Snapshot;
+            (MemorySnapshot second, WeakReference secondGraph) = Take(kept, 2);
+            MemorySnapshot third = Take(kept, 3).Snapshot;
 
-    [Fact]
-    public void A_snapshot_removed_lets_go_of_its_graph_at_once_and_the_run_follows_it_no_further()
-    {
-        List<int> unfollowed = [];
-        KeptSnapshots kept = new(unfollowed.Add);
-        MemorySnapshot first = Take(kept, 1).Snapshot;
-        (MemorySnapshot second, WeakReference secondGraph) = Take(kept, 2);
-        MemorySnapshot third = Take(kept, 3).Snapshot;
-
-        second.Remove();
-        second.Remove();
-        Assert.Equal([1, 3], kept.Held);
-        Assert.Equal([2], unfollowed);
-        Assert.Equal("Snapshot #2 was removed", second.Gone);
-        Assert.Equal([1], third.Earlier.Keys);
-        Assert.Equal(Objects, third.CompareWith(first).SurvivedObjects);
-        Assert.True(Collected(secondGraph), "A removed snapshot's graph was still held");
-    }
+            second.Remove();
+            second.Remove();
+            Assert.Equal([1, 3], kept.Held);
+            Assert.Equal([2], unfollowed);
+            Assert.Equal("Snapshot #2 was removed", second.Gone);
+            Assert.Equal([1], third.Earlier.Keys);
+            Assert.Equal(Objects, third.CompareWith(first).SurvivedObjects);
+            Assert.True(Collected(secondGraph), "A removed snapshot's graph was still held");
+        }));
 
     /// <summary>A snapshot taken into the run, with how each snapshot it keeps has its objects in this one (every object
     /// lived on, where it was), and a weak reference to its graph that nothing here holds.</summary>

@@ -11,10 +11,11 @@ public sealed class ProfileStartTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task A_program_named_by_a_path_not_there_is_refused_saying_so_and_leaves_no_snapshot(bool framesAlone)
+    [Fact]
+    public Task A_program_named_by_a_path_not_there_is_refused_saying_so_and_leaves_no_snapshot() =>
+        Cases.EachAsync([true, false], Refused, framesAlone => framesAlone ? "recording a game's frames alone" : "sampling the program");
+
+    private async Task Refused(bool framesAlone)
     {
         string program = Path.Combine(root, "gone", "godot");
         string snapshots = Path.Combine(root, "snapshots");

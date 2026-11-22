@@ -13,74 +13,66 @@ public sealed class CallTreeTests
     private static readonly MethodCode Caller = new("/app/App.dll", 0x06000001);
 
     [Fact]
-    public void Overloads_that_read_alike_under_one_caller_are_two_rows_each_with_its_own_samples_and_code()
-    {
-        Snapshot snapshot = Snapshot.Of(
-        [
-            ([("Program.Parse(class A.Text)", "App", TextA), ("Program.Caller()", "App", Caller)], 3),
-            ([("Program.Parse(class B.Text)", "App", TextB), ("Program.Caller()", "App", Caller)], 5),
-            ([("Program.Parse(class A.Text)", "App", TextA), ("Program.Caller()", "App", Caller)], 2),
-        ]);
-
-        CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
-        Assert.Equal(("Program.Caller()", 10), (caller.Name, caller.Total));
-        Assert.Equal([("Program.Parse(Text)", 5, TextA), ("Program.Parse(Text)", 5, TextB)],
-            caller.Ordered.Select(c => (c.Name, c.Total, c.Code!.Value)));
-        Assert.Equal([("Program.Parse(Text)", 5, TextA), ("Program.Parse(Text)", 5, TextB)],
-            snapshot.HotSpots.Where(h => h.Name.StartsWith("Program.Parse", StringComparison.Ordinal)).Select(h => (h.Name, h.Self, h.Code!.Value)).OrderBy(h => h.Item3.Token));
-    }
-
-    [Fact]
-    public void One_name_in_two_modules_is_two_rows()
-    {
-        MethodCode inLibrary = new("/app/Library.dll", 0x06000002);
-        Snapshot snapshot = Snapshot.Of(
-        [
-            ([("Shared.Parse(class System.String)", "App", TextA), ("Program.Caller()", "App", Caller)], 4),
-            ([("Shared.Parse(class System.String)", "Library", inLibrary), ("Program.Caller()", "App", Caller)], 6),
-        ]);
-
-        CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
-        Assert.Equal([("Shared.Parse(String)", "Library", 6), ("Shared.Parse(String)", "App", 4)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
-    }
-
-    /// <summary>A trace names a module in lower case for the code compiled as the program ran and as written for the code
-    /// compiled ahead (System.Private.CoreLib's DateTime.UtcNow, caught in both): one method, one row, named as written.</summary>
-    [Fact]
-    public void One_method_whose_module_a_trace_names_in_two_cases_is_one_row_named_as_written()
-    {
-        MethodCode jitted = new("/users/me/.dotnet/shared/microsoft.netcore.app/11.0.0/system.private.corelib.dll", 0x06000010);
-        MethodCode ahead = new("/Users/me/.dotnet/shared/Microsoft.NETCore.App/11.0.0/System.Private.CoreLib.dll", 0x06000010);
-        Snapshot snapshot = Snapshot.Of(
-        [
-            ([("System.DateTime.get_UtcNow()", "system.private.corelib", jitted), ("Program.Caller()", "App", Caller)], 9),
-            ([("System.DateTime.get_UtcNow()", "System.Private.CoreLib", ahead), ("Program.Caller()", "App", Caller)], 1),
-        ]);
-
-        CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
-        Assert.Equal([("System.DateTime.get_UtcNow()", "System.Private.CoreLib", 10)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
-        HotSpot now = Assert.Single(snapshot.HotSpots, h => h.Name == "System.DateTime.get_UtcNow()");
-        Assert.Equal(("System.Private.CoreLib", 10, ahead), (now.Module, now.Self, now.Code!.Value));
-    }
-
-    /// <summary>A trace file's stacks may be any depth: a flame graph of one 100,000 frames deep counts its rows and lays its
-    /// bars out on a small stack, one a row, each as wide as its caller's.</summary>
-    [Fact]
-    public void A_flame_graph_of_a_stack_deeper_than_a_stack_holds_counts_its_rows_and_lays_out_a_bar_for_each()
-    {
-        const int Deep = 100_000;
-        Snapshot snapshot = Snapshot.Of([([.. Enumerable.Range(0, Deep).Select(i => ($"Program.Recurse{i % 3}()", "App", (MethodCode?)null))], 7)]);
-        CallNode thread = Assert.Single(snapshot.Threads);
-        List<(CallNode Node, double X, double Width, double Y)> laid = [];
-        int rows = 0;
-        SmallStack.Run(() =>
+    public void The_call_tree_tells_methods_apart_by_what_they_are_and_lays_out_any_depth() => Cases.All(
+        ("overloads that read alike under one caller are two rows each with its own samples and code", () =>
         {
-            rows = FlameBars.Rows(thread, new Stack<(CallNode, int)>());
-            FlameBars.Lay(thread, 800, 0, (Deep + 1) * 20, 20, laid, new Stack<(CallNode, double, double, double)>(), []);
-        });
-        Assert.Equal(Deep + 1, rows);
-        Assert.Equal(Deep + 1, laid.Count);
-        Assert.All(laid, bar => Assert.Equal((0d, 800d), (bar.X, bar.Width)));
-        Assert.Equal(Deep * 20d, laid[^1].Y);
-    }
+            Snapshot snapshot = Snapshot.Of(
+            [
+                ([("Program.Parse(class A.Text)", "App", TextA), ("Program.Caller()", "App", Caller)], 3),
+                ([("Program.Parse(class B.Text)", "App", TextB), ("Program.Caller()", "App", Caller)], 5),
+                ([("Program.Parse(class A.Text)", "App", TextA), ("Program.Caller()", "App", Caller)], 2),
+            ]);
+
+            CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
+            Assert.Equal(("Program.Caller()", 10), (caller.Name, caller.Total));
+            Assert.Equal([("Program.Parse(Text)", 5, TextA), ("Program.Parse(Text)", 5, TextB)],
+                caller.Ordered.Select(c => (c.Name, c.Total, c.Code!.Value)));
+            Assert.Equal([("Program.Parse(Text)", 5, TextA), ("Program.Parse(Text)", 5, TextB)],
+                snapshot.HotSpots.Where(h => h.Name.StartsWith("Program.Parse", StringComparison.Ordinal)).Select(h => (h.Name, h.Self, h.Code!.Value)).OrderBy(h => h.Item3.Token));
+        }),
+        ("one name in two modules is two rows", () =>
+        {
+            MethodCode inLibrary = new("/app/Library.dll", 0x06000002);
+            Snapshot snapshot = Snapshot.Of(
+            [
+                ([("Shared.Parse(class System.String)", "App", TextA), ("Program.Caller()", "App", Caller)], 4),
+                ([("Shared.Parse(class System.String)", "Library", inLibrary), ("Program.Caller()", "App", Caller)], 6),
+            ]);
+
+            CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
+            Assert.Equal([("Shared.Parse(String)", "Library", 6), ("Shared.Parse(String)", "App", 4)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
+        }),
+        ("one method whose module a trace names in two cases is one row named as written", () =>
+        {
+            MethodCode jitted = new("/users/me/.dotnet/shared/microsoft.netcore.app/11.0.0/system.private.corelib.dll", 0x06000010);
+            MethodCode ahead = new("/Users/me/.dotnet/shared/Microsoft.NETCore.App/11.0.0/System.Private.CoreLib.dll", 0x06000010);
+            Snapshot snapshot = Snapshot.Of(
+            [
+                ([("System.DateTime.get_UtcNow()", "system.private.corelib", jitted), ("Program.Caller()", "App", Caller)], 9),
+                ([("System.DateTime.get_UtcNow()", "System.Private.CoreLib", ahead), ("Program.Caller()", "App", Caller)], 1),
+            ]);
+
+            CallNode caller = Assert.Single(Assert.Single(snapshot.Threads).Ordered);
+            Assert.Equal([("System.DateTime.get_UtcNow()", "System.Private.CoreLib", 10)], caller.Ordered.Select(c => (c.Name, c.Module, c.Total)));
+            HotSpot now = Assert.Single(snapshot.HotSpots, h => h.Name == "System.DateTime.get_UtcNow()");
+            Assert.Equal(("System.Private.CoreLib", 10, ahead), (now.Module, now.Self, now.Code!.Value));
+        }),
+        ("a flame graph of a stack deeper than a stack holds counts its rows and lays out a bar for each", () =>
+        {
+            const int Deep = 100_000;
+            Snapshot snapshot = Snapshot.Of([([.. Enumerable.Range(0, Deep).Select(i => ($"Program.Recurse{i % 3}()", "App", (MethodCode?)null))], 7)]);
+            CallNode thread = Assert.Single(snapshot.Threads);
+            List<(CallNode Node, double X, double Width, double Y)> laid = [];
+            int rows = 0;
+            SmallStack.Run(() =>
+            {
+                rows = FlameBars.Rows(thread, new Stack<(CallNode, int)>());
+                FlameBars.Lay(thread, 800, 0, (Deep + 1) * 20, 20, laid, new Stack<(CallNode, double, double, double)>(), []);
+            });
+            Assert.Equal(Deep + 1, rows);
+            Assert.Equal(Deep + 1, laid.Count);
+            Assert.All(laid, bar => Assert.Equal((0d, 800d), (bar.X, bar.Width)));
+            Assert.Equal(Deep * 20d, laid[^1].Y);
+        }));
+
 }
