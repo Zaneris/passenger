@@ -396,8 +396,6 @@ public static class VimMotions
 
     private const string Brackets = "(){}[]";
 
-    /// <summary>%: the bracket matching the first one at or after the caret on its line, inclusive; with a count, that
-    /// percentage of the way through the file, linewise.</summary>
     /// <summary>The strings between double quotes on a line, each from its opening quote to its closing one; none where
     /// the line holds an odd number of them. A quote after a backslash is no quote.</summary>
     private static List<(int Start, int End)> Quoted(TextSnapshot text, LineSpan line)
@@ -423,6 +421,8 @@ public static class VimMotions
         offset + 1 < text.Length && text[offset + 1] == '\''
             && ((offset >= 1 && text[offset - 1] == '\'') || (offset >= 2 && text[offset - 1] == '\\' && text[offset - 2] == '\''));
 
+    /// <summary>%: the bracket matching the first one at or after the caret on its line, inclusive; with a count, that
+    /// percentage of the way through the file, linewise.</summary>
     public static VimTarget? MatchPair(TextSnapshot text, int caret, int count, bool breakEnds)
     {
         if (count > 0)
@@ -446,11 +446,29 @@ public static class VimMotions
             return null;
         }
         int kind = Brackets.IndexOf(text[at]);
-        char open = Brackets[kind & ~1];
-        char close = Brackets[kind | 1];
-        bool forward = (kind & 1) == 0;
+        return Partner(text, at, Brackets[kind & ~1], Brackets[kind | 1]) is var partner and >= 0 ? new VimTarget(partner, VimMotionKind.Inclusive) : null;
+    }
+
+    /// <summary>Whether a backslash, not itself escaped, stands before the place.</summary>
+    public static bool Escaped(TextSnapshot text, int offset)
+    {
+        int slashes = 0;
+        for (int p = offset - 1; p >= 0 && text[p] == '\\'; p--)
+        {
+            slashes++;
+        }
+        return slashes % 2 == 1;
+    }
+
+    /// <summary>The bracket matching the one at <paramref name="at"/>, or -1: brackets in strings between double quotes,
+    /// or in a character's quotes, count only from within such a string on its line, and escaped ones only from an
+    /// escaped one.</summary>
+    public static int Partner(TextSnapshot text, int at, char open, char close)
+    {
+        bool escaped = Escaped(text, at);
+        bool forward = text[at] == open;
+        LineSpan span = LineOf(text, at);
         int depth = 0;
-        // Brackets in strings between double quotes, or a character's quotes, count only from within such a string on its line.
         LineSpan quotesOf = span;
         List<(int Start, int End)> quotes = Quoted(text, span);
         bool inQuotes = quotes.Exists(q => q.Start < at && at < q.End);
@@ -466,7 +484,8 @@ public static class VimMotions
                 quotesOf = LineOf(text, p);
                 quotes = Quoted(text, quotesOf);
             }
-            if (p != at && (quotes.Exists(q => q.Start < p && p < q.End) != (inQuotes && quotesOf.Line == span.Line) || InCharacterQuotes(text, p)))
+            if (p != at && (quotes.Exists(q => q.Start < p && p < q.End) != (inQuotes && quotesOf.Line == span.Line) || InCharacterQuotes(text, p)
+                || Escaped(text, p) != escaped))
             {
                 continue;
             }
@@ -480,10 +499,10 @@ public static class VimMotions
             }
             if (depth == 0)
             {
-                return new VimTarget(p, VimMotionKind.Inclusive);
+                return p;
             }
         }
-        return null;
+        return -1;
     }
 
     /// <summary>} and {: past the next (or last) run of lines with text to the empty line after (before) it, or the text's

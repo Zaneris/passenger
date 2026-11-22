@@ -419,12 +419,16 @@ public static class VimTextObjects
     }
 
     /// <summary>The first <paramref name="open"/> from an offset on that opens one more than closed since, each
-    /// <paramref name="close"/> on the way wanting one more; -1 where none is.</summary>
+    /// <paramref name="close"/> on the way wanting one more, escaped brackets passed over; -1 where none is.</summary>
     private static int Ahead(TextSnapshot text, int from, char open, char close)
     {
         int depth = 0;
         for (int p = from; p < text.Length; p++)
         {
+            if ((text[p] == open || text[p] == close) && VimMotions.Escaped(text, p))
+            {
+                continue;
+            }
             if (text[p] == open && ++depth == 1)
             {
                 return p;
@@ -480,7 +484,8 @@ public static class VimTextObjects
             // In the indent before a line's first brace a B block stands on the brace.
             caret = first;
         }
-        int at = caret < text.Length && text[caret] == close ? Match(text, caret, open, close, forward: false) : caret;
+        // A closing bracket under the caret opens its block where counting back, strings and all, finds the opening one.
+        int at = caret < text.Length && text[caret] == close ? Unclosed(text, caret - 1, open, close) : caret;
         if (at < 0 && !ahead)
         {
             return null;
@@ -509,7 +514,7 @@ public static class VimTextObjects
                 return null;
             }
         }
-        int end = Match(text, start, open, close, forward: true);
+        int end = VimMotions.Partner(text, start, open, close);
         if (end < 0)
         {
             return null;
@@ -543,12 +548,16 @@ public static class VimTextObjects
         return new VimSpan(innerStart, innerEnd, false);
     }
 
-    /// <summary>The nearest unclosed <paramref name="open"/> at or before the offset, or -1.</summary>
+    /// <summary>The nearest unclosed <paramref name="open"/> at or before the offset, or -1, escaped brackets passed over.</summary>
     private static int Unclosed(TextSnapshot text, int offset, char open, char close)
     {
         int depth = 0;
         for (int p = Math.Min(offset, text.Length - 1); p >= 0; p--)
         {
+            if ((text[p] == open || text[p] == close) && VimMotions.Escaped(text, p))
+            {
+                continue;
+            }
             if (text[p] == close)
             {
                 depth++;
@@ -560,27 +569,6 @@ public static class VimTextObjects
                     return p;
                 }
                 depth--;
-            }
-        }
-        return -1;
-    }
-
-    private static int Match(TextSnapshot text, int offset, char open, char close, bool forward)
-    {
-        int depth = 0;
-        for (int p = offset; forward ? p < text.Length : p >= 0; p += forward ? 1 : -1)
-        {
-            if (text[p] == open)
-            {
-                depth += forward ? 1 : -1;
-            }
-            else if (text[p] == close)
-            {
-                depth += forward ? -1 : 1;
-            }
-            if (depth == 0)
-            {
-                return p;
             }
         }
         return -1;
