@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `Debugging.ProtocolTests`' `A_message_too_large_to_read_ends_the_conversation_saying_so` (its three cases) and
+  `ContainersTests`' `A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so`, CI
+  44968934038 to 44995132904 (every system's gate; Linux report shards 2 and 3): "The adapter's log does not say why the
+  conversation ended: … over the 268,435,456 bytes the connection reads of one" and "Not found: "more than the 1073741824
+  the IDE reads of one"". **The tests were written before what they read**: since #1734 the DAP connection's and the
+  container tools' limits are said through `Numbers.Said`, and the tests still looked for plain digits. They read them
+  through it too: ProtocolTests in bf39357c1, with its flows, and ContainersTests in b14fa80f7 (#2097).
 - `AndroidTargetChoiceTests`' `After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered`,
   CI 45000646248 (Linux, report shard 1): "Only Passenger Relisted is listed, so a run's listing has nothing else to
   keep". **The test held a Mac's or Windows' targets**, as on 2026-11-21: on Linux, which runs no head of its own and no
