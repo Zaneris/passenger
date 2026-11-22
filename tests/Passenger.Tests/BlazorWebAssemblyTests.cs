@@ -25,8 +25,19 @@ public sealed class BlazorWebAssemblyTests : IDisposable
     /// <summary>The longest dotnet new may take.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(3);
 
+    /// <summary>A standalone WebAssembly app runs and debugs through its development server, and a Blazor Web App's
+    /// client is no configuration of its own.</summary>
     [AvaloniaFact]
-    public void A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged()
+    public void A_standalone_webassembly_app_runs_and_its_client_is_no_configuration()
+    {
+        Flow.StepApart<BlazorWebAssemblyTests>(nameof(A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged),
+            test => test.A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged());
+        OpenWindows.CloseAll();
+        Flow.StepApart<BlazorWebAssemblyTests>(nameof(A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged),
+            test => test.A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged());
+    }
+
+    private void A_standalone_app_runs_and_with_no_browser_debugs_through_its_development_server_saying_its_components_in_the_browser_are_not_debugged()
     {
         Make("blazorwasm", "Wasm");
         string settings = Path.Combine(folder, "Properties", "launchSettings.json");
@@ -94,8 +105,7 @@ public sealed class BlazorWebAssemblyTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged()
+    private void A_Blazor_Web_Apps_client_is_no_configuration_and_a_plan_Debug_did_not_start_says_the_client_is_not_debugged()
     {
         Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

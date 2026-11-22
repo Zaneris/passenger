@@ -64,15 +64,24 @@ public sealed class BrowserStartTests : IDisposable
         }
     }
 
+    /// <summary>A browser start given up as the browser starts or on a profile of the moment leaves neither browser nor
+    /// profile.</summary>
     [Fact]
-    public async Task A_start_given_up_as_the_browser_starts_leaves_no_browser_running()
+    public async Task A_browser_start_given_up_leaves_nothing_running()
+    {
+        await Flow.StepApartAsync(nameof(A_start_given_up_as_the_browser_starts_leaves_no_browser_running), () => new BrowserStartTests(),
+            test => test.A_start_given_up_as_the_browser_starts_leaves_no_browser_running());
+        await Flow.StepApartAsync(nameof(A_start_given_up_on_a_profile_of_the_moment_leaves_neither_browser_nor_profile), () => new BrowserStartTests(),
+            test => test.A_start_given_up_on_a_profile_of_the_moment_leaves_neither_browser_nor_profile());
+    }
+
+    private async Task A_start_given_up_as_the_browser_starts_leaves_no_browser_running()
     {
         int browser = await GivenUpAsync(Browser(handsOver: false), Path.Combine(folder, "profiles"), browsers: 1);
         Assert.True(await Waiting.UntilAsync(() => !DotnetProcesses.Runs(browser), TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "A browser whose start was given up runs on with nothing holding it");
     }
 
-    [Fact]
-    public async Task A_start_given_up_on_a_profile_of_the_moment_leaves_neither_browser_nor_profile()
+    private async Task A_start_given_up_on_a_profile_of_the_moment_leaves_neither_browser_nor_profile()
     {
         string profiles = Path.Combine(folder, "profiles");
         int browser = await GivenUpAsync(Browser(handsOver: true), profiles, browsers: 2);

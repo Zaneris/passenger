@@ -14,8 +14,19 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClassFixture<StandInAppHost>
 {
+    /// <summary>Under an Aspire service's debug or quiet session, a component's edit runs the app's update handlers and
+    /// reaches its page.</summary>
     [AvaloniaFact]
-    public void Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page()
+    public void An_aspire_services_blazor_edit_runs_its_update_handlers()
+    {
+        Flow.Step(nameof(Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page),
+            Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit),
+            Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit);
+    }
+
+    private void Under_an_Aspire_services_debug_session_a_components_edit_runs_the_apps_update_handlers_and_reaches_its_page()
     {
         project.Reset();
         string bell = Bell();
@@ -52,8 +63,7 @@ public sealed class BlazorServiceHotReloadTests(StandInAppHost project) : IClass
         }
     }
 
-    [AvaloniaFact]
-    public void Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit()
+    private void Under_run_with_hot_reload_an_Aspire_services_quiet_session_runs_the_apps_update_handlers_after_a_components_edit()
     {
         project.Reset();
         string bell = Bell();

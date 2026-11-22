@@ -36,8 +36,43 @@ public sealed class WebRoutesTests
         ("HUB /chat", RouteKinds.SignalR),
     ];
 
+    /// <summary>The Endpoints window lists every kind of route and gRPC method the app's code declares, with example
+    /// bodies.</summary>
     [AvaloniaFact]
-    public void The_endpoints_window_lists_each_kind_of_route_the_apps_code_declares_with_its_parameters()
+    public void The_endpoints_window_lists_the_apps_routes_and_services()
+    {
+        Flow.Step(nameof(The_endpoints_window_lists_each_kind_of_route_the_apps_code_declares_with_its_parameters),
+            The_endpoints_window_lists_each_kind_of_route_the_apps_code_declares_with_its_parameters);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_grpc_services_methods_are_listed_by_their_paths_from_its_proto),
+            A_grpc_services_methods_are_listed_by_their_paths_from_its_proto);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_route_that_comes_while_the_routes_are_read_is_listed_once_that_read_has_answered),
+            A_route_that_comes_while_the_routes_are_read_is_listed_once_that_read_has_answered);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body),
+            An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name),
+            An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name);
+    }
+
+    /// <summary>A route's icon and Interactive Test send its request to the running app through an http file made as
+    /// asked.</summary>
+    [AvaloniaFact]
+    public void A_routes_request_is_sent_to_the_running_app_from_its_http_file()
+    {
+        Flow.Step(nameof(A_routes_icon_sends_its_request_to_the_running_app_from_an_entry_written_into_its_http_file_and_each_goes_to_the_other),
+            A_routes_icon_sends_its_request_to_the_running_app_from_an_entry_written_into_its_http_file_and_each_goes_to_the_other);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test),
+            A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored),
+            A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored);
+    }
+
+    private void The_endpoints_window_lists_each_kind_of_route_the_apps_code_declares_with_its_parameters()
     {
         string folder = Shop(port: 5555);
         // A file of routes 20,000 lines long, and one as long that declares none: the lines one comment.
@@ -110,8 +145,7 @@ public sealed class WebRoutesTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_routes_icon_sends_its_request_to_the_running_app_from_an_entry_written_into_its_http_file_and_each_goes_to_the_other()
+    private void A_routes_icon_sends_its_request_to_the_running_app_from_an_entry_written_into_its_http_file_and_each_goes_to_the_other()
     {
         using HeldPort port = new();
         string folder = Shop(port.Port);
@@ -205,8 +239,7 @@ public sealed class WebRoutesTests
     /// <summary>An app mapping an HTTP QUERY endpoint (MapMethods) has it listed as QUERY, its Send writing a QUERY with
     /// its body's sample into the project's .http file and sending it, and Interactive Test opening that request as a
     /// QUERY: the running app answers each with the method and the body it was sent.</summary>
-    [AvaloniaFact]
-    public void A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test()
+    private void A_query_endpoint_is_sent_a_query_with_its_body_by_its_send_and_by_interactive_test()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("query-");
@@ -272,8 +305,7 @@ public sealed class WebRoutesTests
     /// <summary>A route's Send with no request for it in a folder whose .editorconfig asks for CRLF and a UTF-8 BOM makes its
     /// project's .http file so, and the next route's request goes in as that file is stored; another project's .http file,
     /// stored with '\n' and no BOM, takes its request so.</summary>
-    [AvaloniaFact]
-    public void A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored()
+    private void A_routes_http_file_is_made_as_its_editorconfig_asks_and_takes_more_requests_as_it_is_stored()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("http-form-");
@@ -330,8 +362,7 @@ public sealed class WebRoutesTests
     /// dashboard client brings them), so the service restores from there, never from nuget.org.</summary>
     private static readonly (string Id, string Version)[] GrpcPackages = [("Grpc.AspNetCore", "2.83.0"), ("Google.Protobuf", "3.36.1")];
 
-    [AvaloniaFact]
-    public void A_grpc_services_methods_are_listed_by_their_paths_from_its_proto()
+    private void A_grpc_services_methods_are_listed_by_their_paths_from_its_proto()
     {
         string cache = AvaloniaApp.Metadata("NuGetPackageRoot");
         foreach ((string id, string version) in GrpcPackages)
@@ -411,8 +442,7 @@ public sealed class WebRoutesTests
     /// in from a shared folder, written as the first read answers and loaded with the project again, is listed after that
     /// read, which lacked it; and a route typed while the project's routes are read again is listed as typed, not as that
     /// read found it a key before.</summary>
-    [AvaloniaFact]
-    public void A_route_that_comes_while_the_routes_are_read_is_listed_once_that_read_has_answered()
+    private void A_route_that_comes_while_the_routes_are_read_is_listed_once_that_read_has_answered()
     {
         string folder = TestFolders.Create("routes-during-");
         TestFolders.Write(folder, "Web/Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>").With(
@@ -478,8 +508,7 @@ public sealed class WebRoutesTests
 
     /// <summary>An endpoint whose body is a list of its own type (<c>Node : List&lt;Node&gt;</c>) is listed with its example
     /// body written, the list empty where it comes again, rather than the C# server reading it until its stack is gone.</summary>
-    [AvaloniaFact]
-    public void An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body()
+    private void An_endpoint_taking_a_list_of_itself_is_listed_with_its_example_body()
     {
         string folder = TestFolders.Create("routes-nodes-");
         TestFolders.Write(folder, "Tree.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
@@ -519,8 +548,7 @@ public sealed class WebRoutesTests
     /// <summary>An enum in an example body is its first member's number, as System.Text.Json reads enums by default, in an
     /// app that adds no JsonStringEnumConverter; and its name where the app adds one to its JSON options, or where the
     /// enum or the property names one.</summary>
-    [AvaloniaFact]
-    public void An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name()
+    private void An_enum_in_an_example_body_is_its_number_unless_the_app_reads_enums_by_name()
     {
         string folder = TestFolders.Create("routes-enums-");
         const string Paints = """

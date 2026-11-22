@@ -32,8 +32,84 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         app.Reset();
     }
 
+    /// <summary>TypeScript and a script beside a tsconfig complete, check, refactor and rename through the project's
+    /// own TypeScript, and with no Node.js a script keeps its colours and says why.</summary>
     [AvaloniaFact]
-    public void TypeScript_under_a_tsconfig_and_a_script_beside_it_complete_mark_errors_go_to_declarations_and_rename_across_their_files()
+    public void TypeScript_completes_checks_refactors_and_renames_by_its_own_server()
+    {
+        Flow.Step(nameof(Without_a_Node_js_a_script_keeps_its_colours_and_its_banner_and_the_status_bar_say_why),
+            Without_a_Node_js_a_script_keeps_its_colours_and_its_banner_and_the_status_bar_say_why);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(TypeScript_under_a_tsconfig_and_a_script_beside_it_complete_mark_errors_go_to_declarations_and_rename_across_their_files),
+            TypeScript_under_a_tsconfig_and_a_script_beside_it_complete_mark_errors_go_to_declarations_and_rename_across_their_files);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(TypeScripts_refactorings_extract_a_function_offering_its_name_and_move_a_declaration_to_a_new_file_that_undo_takes_back),
+            TypeScripts_refactorings_extract_a_function_offering_its_name_and_move_a_declaration_to_a_new_file_that_undo_takes_back);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(TypeScript_writes_a_moved_classs_new_file_and_a_quick_fix_in_the_indentation_the_editorconfig_gives_as_it_changes_too),
+            TypeScript_writes_a_moved_classs_new_file_and_a_quick_fix_in_the_indentation_the_editorconfig_gives_as_it_changes_too);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_TypeScript_rename_at_an_imported_name_or_a_use_of_one_renames_it_where_it_is_declared_and_everywhere_it_is_used),
+            A_TypeScript_rename_at_an_imported_name_or_a_use_of_one_renames_it_where_it_is_declared_and_everywhere_it_is_used);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_project_with_its_own_typescript_is_read_by_it), A_project_with_its_own_typescript_is_read_by_it);
+    }
+
+    /// <summary>Stylesheets, SCSS, Less, a component's style and script and JSON files complete, check and rename
+    /// through their servers, a server ending as it starts started again or left stopped saying so.</summary>
+    [AvaloniaFact]
+    public void Stylesheets_and_json_are_served_by_their_language_servers()
+    {
+        Flow.Step(nameof(A_stylesheet_completes_a_property_warns_of_an_unknown_one_shows_its_colours_goes_to_a_custom_propertys_declaration_and_renames_it),
+            A_stylesheet_completes_a_property_warns_of_an_unknown_one_shows_its_colours_goes_to_a_custom_propertys_declaration_and_renames_it);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_components_scoped_stylesheet_takes_deep_as_no_problem_and_completes_its_markups_elements_classes_and_ids),
+            A_components_scoped_stylesheet_takes_deep_as_no_problem_and_completes_its_markups_elements_classes_and_ids);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(An_SCSS_and_a_Less_stylesheet_complete_and_are_checked_by_the_CSS_server_as_their_own_languages),
+            An_SCSS_and_a_Less_stylesheet_complete_and_are_checked_by_the_CSS_server_as_their_own_languages);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_stylesheets_class_and_variables_renamed_by_the_name_shown_keep_their_dot_and_sigil),
+            A_stylesheets_class_and_variables_renamed_by_the_name_shown_keep_their_dot_and_sigil);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_web_server_still_being_configured_as_its_folder_closes_ends),
+            A_web_server_still_being_configured_as_its_folder_closes_ends);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen),
+            File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(VS_Codes_settings_and_a_dev_container_take_comments_where_plain_JSON_marks_one_as_an_error),
+            VS_Codes_settings_and_a_dev_container_take_comments_where_plain_JSON_marks_one_as_an_error);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Package_json_completes_and_checks_by_its_schema_goes_from_a_dependency_to_its_package_and_renames_a_script_with_its_runs),
+            Package_json_completes_and_checks_by_its_schema_goes_from_a_dependency_to_its_package_and_renames_a_script_with_its_runs);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_components_style_and_script_complete_check_go_to_declaration_and_rename_through_the_HTML_server),
+            A_components_style_and_script_complete_check_go_to_declaration_and_rename_through_the_HTML_server);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_stylesheets_language_server_that_ends_as_it_starts_is_started_again_saying_so_and_checks_the_file),
+            A_stylesheets_language_server_that_ends_as_it_starts_is_started_again_saying_so_and_checks_the_file);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_stylesheets_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again),
+            A_stylesheets_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again);
+    }
+
+    private void TypeScript_under_a_tsconfig_and_a_script_beside_it_complete_mark_errors_go_to_declarations_and_rename_across_their_files()
     {
         SkipWithoutNode(typescript: true);
         MainWindow window = app.Open("Scripts/items.ts", languageServer: false);
@@ -130,8 +206,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// <summary>TypeScript's refactorings, which its server makes by commands of its own that hand the window their edits:
     /// Extract to function writes the function, its new name then offered to rename, and Move to a new file makes the file
     /// and imports from it in both files, one command that Undo takes back whole, the new file with it.</summary>
-    [AvaloniaFact]
-    public void TypeScripts_refactorings_extract_a_function_offering_its_name_and_move_a_declaration_to_a_new_file_that_undo_takes_back()
+    private void TypeScripts_refactorings_extract_a_function_offering_its_name_and_move_a_declaration_to_a_new_file_that_undo_takes_back()
     {
         SkipWithoutNode(typescript: true);
         MainWindow window = app.Open("Scripts/cart.ts", languageServer: false);
@@ -184,8 +259,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// it: Move to a new file, from a file of two spaces under an .editorconfig that gives its scripts two, writes the
     /// class's new file in two spaces, and Implement interface writes the members in two; the .editorconfig changed to
     /// four, the next class moved goes to a file of four.</summary>
-    [AvaloniaFact]
-    public void TypeScript_writes_a_moved_classs_new_file_and_a_quick_fix_in_the_indentation_the_editorconfig_gives_as_it_changes_too()
+    private void TypeScript_writes_a_moved_classs_new_file_and_a_quick_fix_in_the_indentation_the_editorconfig_gives_as_it_changes_too()
     {
         SkipWithoutNode(typescript: true);
         string folder = PathNames.Canonical(TestFolders.Create("ts-indent-"));
@@ -250,8 +324,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// <summary>A TypeScript rename at an imported name, or at a use of one, renames the name where it is declared and
     /// everywhere it is used, as a rename from its declaration does: the file that declares it changed on disk while it is
     /// not open, and in its editor once it is, the importing file never given an alias in its place.</summary>
-    [AvaloniaFact]
-    public void A_TypeScript_rename_at_an_imported_name_or_a_use_of_one_renames_it_where_it_is_declared_and_everywhere_it_is_used()
+    private void A_TypeScript_rename_at_an_imported_name_or_a_use_of_one_renames_it_where_it_is_declared_and_everywhere_it_is_used()
     {
         SkipWithoutNode(typescript: true);
         MainWindow window = app.Open("Scripts/cart.ts", languageServer: false);
@@ -301,8 +374,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         Ui.Press(window, "ENTER");
     }
 
-    [AvaloniaFact]
-    public void A_stylesheet_completes_a_property_warns_of_an_unknown_one_shows_its_colours_goes_to_a_custom_propertys_declaration_and_renames_it()
+    private void A_stylesheet_completes_a_property_warns_of_an_unknown_one_shows_its_colours_goes_to_a_custom_propertys_declaration_and_renames_it()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("wwwroot/css/site.css", languageServer: false);
@@ -365,8 +437,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
 
     /// <summary>A component's scoped stylesheet reads <c>::deep</c> as no problem, and where a selector is written completes the
     /// elements its markup writes, named as its own, after a '.' the classes it gives and after a '#' its ids.</summary>
-    [AvaloniaFact]
-    public void A_components_scoped_stylesheet_takes_deep_as_no_problem_and_completes_its_markups_elements_classes_and_ids()
+    private void A_components_scoped_stylesheet_takes_deep_as_no_problem_and_completes_its_markups_elements_classes_and_ids()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("Components/Pages/Bell.razor.css", languageServer: false);
@@ -397,8 +468,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// <summary>An SCSS and a Less stylesheet go to the CSS server as their own languages, the status bar naming each: a
     /// property completes in either, one the server does not know is warned of, and their variables, mixins and nesting
     /// are no error, as CSS's own reading would mark them.</summary>
-    [AvaloniaFact]
-    public void An_SCSS_and_a_Less_stylesheet_complete_and_are_checked_by_the_CSS_server_as_their_own_languages()
+    private void An_SCSS_and_a_Less_stylesheet_complete_and_are_checked_by_the_CSS_server_as_their_own_languages()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("wwwroot/css/theme.scss", languageServer: false);
@@ -427,8 +497,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
 
     /// <summary>A stylesheet's class and an SCSS and a Less variable are renamed by the name the rename box shows, without
     /// its '.', '$' or '@', and keep it where declared and used: the rule stays a class's, the variable a variable.</summary>
-    [AvaloniaFact]
-    public void A_stylesheets_class_and_variables_renamed_by_the_name_shown_keep_their_dot_and_sigil()
+    private void A_stylesheets_class_and_variables_renamed_by_the_name_shown_keep_their_dot_and_sigil()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("wwwroot/css/site.css", languageServer: false);
@@ -453,8 +522,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
 
     /// <summary>A web language server still being configured as its folder closes is never installed for it: the JSON
     /// server's configuring held while package.json opens, the window closed, then let go, its process ends.</summary>
-    [AvaloniaFact]
-    public void A_web_server_still_being_configured_as_its_folder_closes_ends()
+    private void A_web_server_still_being_configured_as_its_folder_closes_ends()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("Program.cs", languageServer: false);
@@ -477,8 +545,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
 
     /// <summary>File Structure on a JSON file lists its keys, nested under the objects they are in, as its server outlines
     /// them, and a key chosen is where the caret goes.</summary>
-    [AvaloniaFact]
-    public void File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen()
+    private void File_structure_lists_a_JSON_files_keys_and_goes_to_the_one_chosen()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("package.json", languageServer: false);
@@ -504,8 +571,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// <summary>The JSON files VS Code reads with comments, its settings and a dev container among them, are told to the
     /// JSON server as JSON with comments, so a comment in one is no problem and the error beside it still is; a comment in
     /// package.json, plain JSON, is one.</summary>
-    [AvaloniaFact]
-    public void VS_Codes_settings_and_a_dev_container_take_comments_where_plain_JSON_marks_one_as_an_error()
+    private void VS_Codes_settings_and_a_dev_container_take_comments_where_plain_JSON_marks_one_as_an_error()
     {
         Assert.All(["a/.vscode/launch.json", "a/.vscode/cspell.json", "a/.babelrc", "a/shop.code-workspace", "a/.github/hooks/hooks.json", "a/tsconfig.app.json"],
             path => Assert.True(Language.ForPath(path) == Language.Json && Language.Json.IdOf(path) == "jsonc", $"{path} is not read as JSON with comments"));
@@ -532,8 +598,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Package_json_completes_and_checks_by_its_schema_goes_from_a_dependency_to_its_package_and_renames_a_script_with_its_runs()
+    private void Package_json_completes_and_checks_by_its_schema_goes_from_a_dependency_to_its_package_and_renames_a_script_with_its_runs()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("package.json", languageServer: false);
@@ -576,8 +641,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_components_style_and_script_complete_check_go_to_declaration_and_rename_through_the_HTML_server()
+    private void A_components_style_and_script_complete_check_go_to_declaration_and_rename_through_the_HTML_server()
     {
         SkipWithoutNode();
         MainWindow window = app.Open("Components/Pages/Styled.razor");
@@ -615,8 +679,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Without_a_Node_js_a_script_keeps_its_colours_and_its_banner_and_the_status_bar_say_why()
+    private void Without_a_Node_js_a_script_keeps_its_colours_and_its_banner_and_the_status_bar_say_why()
     {
         string missing = Path.Combine(TestRun.Root, "no-node-here", OperatingSystem.IsWindows() ? "node.exe" : "node");
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
@@ -659,8 +722,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
 
     /// <summary>A web language server whose process ends during its own start, before it has answered, is started again as
     /// one that ends later is, the status bar saying so, and its language comes back for the file open.</summary>
-    [AvaloniaFact]
-    public void A_stylesheets_language_server_that_ends_as_it_starts_is_started_again_saying_so_and_checks_the_file()
+    private void A_stylesheets_language_server_that_ends_as_it_starts_is_started_again_saying_so_and_checks_the_file()
     {
         SkipWithoutNode();
         string folder = TestFolders.Create("css-ending-");
@@ -693,8 +755,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
     /// is, then left stopped, its file's banner and the status bar saying why and offering to start it again. Its words
     /// start it while the cause stands, and it is tried as often again, its restarts counted afresh; once the cause is
     /// gone, the banner's link starts it, and the file is checked again, without the folder opened again.</summary>
-    [AvaloniaFact]
-    public void A_stylesheets_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    private void A_stylesheets_language_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
     {
         SkipWithoutNode();
         string folder = TestFolders.Create("css-ending-");
@@ -752,8 +813,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
 
     private static bool Warned(Marker marker) => marker.Kind == MarkerKind.Warning && marker.Message.Contains("Unknown property: 'colr'", StringComparison.Ordinal);
 
-    [AvaloniaFact]
-    public void A_project_with_its_own_typescript_is_read_by_it()
+    private void A_project_with_its_own_typescript_is_read_by_it()
     {
         SkipWithoutNode(typescript: true);
         string folder = TestFolders.Create("own-typescript-");
@@ -769,58 +829,6 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
             Ui.WaitFor(() => window.LanguageShown is { } shown && System.Text.RegularExpressions.Regex.IsMatch(shown, @"^TypeScript \d"),
                 () => $"the status bar to name the TypeScript in use, saying the language once ({window.LanguageShown})");
             Assert.DoesNotContain("Passenger's", window.LanguageShown, StringComparison.Ordinal);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>Keys typed above a stylesheet's four thousand empty rules, a warning each from the CSS server, cost the UI
-    /// thread what they do above forty, the rest of that file's four thousand rules setting a colour: the document carries
-    /// the server's markers through a key, so the web host sets them again only when the server reports.</summary>
-    [AvaloniaFact]
-    public void Keys_above_thousands_of_a_stylesheets_warnings_cost_what_they_do_above_a_few()
-    {
-        SkipWithoutNode();
-        string folder = TestFolders.Create("css-warnings-");
-        File.WriteAllText(Path.Combine(folder, "few.css"), Rules(4000, 40));
-        File.WriteAllText(Path.Combine(folder, "many.css"), Rules(4000, 4000));
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
-        try
-        {
-            long few = WarnedKeys(window, Path.Combine(PathNames.Canonical(folder), "few.css"), 40);
-            long many = WarnedKeys(window, Path.Combine(PathNames.Canonical(folder), "many.css"), 4000);
-            TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few / 1024} KB on the UI thread above 40 warnings, {many / 1024} KB above 4,000");
-            Assert.True(many <= few + (32 * 1024),
-                $"A key above a stylesheet's 4,000 warnings allocated {many / 1024} KB on the UI thread, {(many - few) / 1024} KB more than above 40: the markers were copied for every key");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A pause in typing in a JSON file of three megabytes, its hundred thousand keys listed in the Structure
-    /// window, costs the window's thread what one in a file of thirty kilobytes does: the rows are made off it, and the
-    /// key the caret is in is found without reading every row.</summary>
-    [AvaloniaFact]
-    public void A_typing_pause_in_a_three_megabyte_JSON_file_listed_in_structure_costs_the_window_what_one_in_a_small_file_does()
-    {
-        SkipWithoutNode();
-        string folder = TestFolders.Create("json-structure-");
-        File.WriteAllText(Path.Combine(folder, "small.json"), Items(200));
-        File.WriteAllText(Path.Combine(folder, "large.json"), Items(20_000));
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
-        try
-        {
-            Ui.Run(window, AppActions.ShowStructure);
-            long small = PauseInStructure(window, Path.Combine(PathNames.Canonical(folder), "small.json"), 200);
-            long large = PauseInStructure(window, Path.Combine(PathNames.Canonical(folder), "large.json"), 20_000);
-            TestContext.Current.TestOutputHelper?.WriteLine($"A typing pause cost the UI thread {small / 1024} KB over 200 items, {large / 1024} KB over 20,000");
-            Assert.True(large <= small + (256 * 1024),
-                $"A typing pause in a JSON file of 20,000 items listed in Structure allocated {large / 1024} KB on the UI thread, against {small / 1024} KB "
-                + "in one of 200: the window's thread made the outline's rows, or read every one of them");
         }
         finally
         {

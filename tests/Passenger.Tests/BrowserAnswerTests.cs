@@ -9,8 +9,18 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class BrowserAnswerTests
 {
+    /// <summary>A port that takes requests is no answer until a status comes, and a service that never answers is given
+    /// up at its limit.</summary>
     [Fact]
-    public async Task A_port_that_takes_requests_and_lets_them_go_is_no_answer_until_any_status_comes()
+    public async Task A_services_answer_is_a_status_within_its_limit()
+    {
+        await Flow.StepAsync(nameof(A_port_that_takes_requests_and_lets_them_go_is_no_answer_until_any_status_comes),
+            A_port_that_takes_requests_and_lets_them_go_is_no_answer_until_any_status_comes);
+        await Flow.StepAsync(nameof(A_service_that_never_answers_is_given_up_at_the_limit_and_a_wait_ended_first_says_neither),
+            A_service_that_never_answers_is_given_up_at_the_limit_and_a_wait_ended_first_says_neither);
+    }
+
+    private async Task A_port_that_takes_requests_and_lets_them_go_is_no_answer_until_any_status_comes()
     {
         int asked = 0;
         await using StandInHttp service = new(exchange => Interlocked.Increment(ref asked) < 3 ? Task.CompletedTask : exchange.ReplyAsync(404, "text/plain", "none"));
@@ -19,8 +29,7 @@ public sealed class BrowserAnswerTests
         Assert.True(Volatile.Read(ref asked) == 3, $"The service was asked {Volatile.Read(ref asked)} times, where two were let go unanswered and the third answered");
     }
 
-    [Fact]
-    public async Task A_service_that_never_answers_is_given_up_at_the_limit_and_a_wait_ended_first_says_neither()
+    private async Task A_service_that_never_answers_is_given_up_at_the_limit_and_a_wait_ended_first_says_neither()
     {
         await using StandInHttp service = new(_ => Task.CompletedTask);
         Uri address = new($"{service.Root}/");

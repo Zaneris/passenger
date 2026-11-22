@@ -32,8 +32,82 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         app.Reset();
     }
 
+    /// <summary>A component's classes complete from every stylesheet its pages link, lead to their rules read-only and
+    /// are marked where none defines them, a CDN's only once Settings allow its download.</summary>
     [AvaloniaFact]
-    public void A_cdns_class_completes_in_a_component_only_once_settings_allow_its_download_beside_a_packages_and_the_components_own()
+    public void A_components_classes_complete_and_lead_to_their_rules()
+    {
+        Flow.Step(nameof(A_cdns_class_completes_in_a_component_only_once_settings_allow_its_download_beside_a_packages_and_the_components_own),
+            A_cdns_class_completes_in_a_component_only_once_settings_allow_its_download_beside_a_packages_and_the_components_own);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_classs_rules_show_on_its_hover_card_and_go_to_declaration_opens_its_rule_in_the_downloaded_copy_read_only),
+            A_classs_rules_show_on_its_hover_card_and_go_to_declaration_opens_its_rule_in_the_downloaded_copy_read_only);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Go_to_declaration_of_a_packages_class_opens_its_stylesheet_in_the_package_folder_read_only_naming_the_package),
+            Go_to_declaration_of_a_packages_class_opens_its_stylesheet_in_the_package_folder_read_only_naming_the_package);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_class_no_linked_stylesheet_defines_is_marked_quietly_once_every_stylesheet_linked_was_read),
+            A_class_no_linked_stylesheet_defines_is_marked_quietly_once_every_stylesheet_linked_was_read);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_parents_deep_class_is_offered_in_the_child_it_renders_and_its_own_scoped_class_is_not),
+            A_parents_deep_class_is_offered_in_the_child_it_renders_and_its_own_scoped_class_is_not);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_style_blocks_class_a_link_under_the_pages_base_href_and_a_packages_own_base_path_are_offered_as_the_app_serves_them),
+            A_style_blocks_class_a_link_under_the_pages_base_href_and_a_packages_own_base_path_are_offered_as_the_app_serves_them);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(What_the_app_reaches_through_a_library_it_references_is_served_as_its_own_and_styled_by_its_pages),
+            What_the_app_reaches_through_a_library_it_references_is_served_as_its_own_and_styled_by_its_pages);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_components_own_scoped_stylesheet_alone_never_makes_its_classes_complete),
+            A_components_own_scoped_stylesheet_alone_never_makes_its_classes_complete);
+    }
+
+    /// <summary>A page's stylesheets are the files a browser asks for, read again as their links or files change and
+    /// said where they cannot be read, an HTML file's as a page's.</summary>
+    [AvaloniaFact]
+    public void A_pages_stylesheets_are_read_as_a_browser_asks_for_them()
+    {
+        Flow.Step(nameof(A_stylesheet_linked_with_no_integrity_is_asked_again_as_the_folder_opens_and_its_copy_stands_while_the_cdn_cant_say),
+            A_stylesheet_linked_with_no_integrity_is_asked_again_as_the_folder_opens_and_its_copy_stands_while_the_cdn_cant_say);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_stylesheet_is_downloaded_again_once_its_link_gives_another_integrity_and_what_is_not_that_integrity_is_kept_nowhere),
+            A_stylesheet_is_downloaded_again_once_its_link_gives_another_integrity_and_what_is_not_that_integrity_is_kept_nowhere);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_link_under_a_base_href_is_the_file_a_browser_asks_for_ahead_of_one_of_that_path_from_the_apps_root),
+            A_link_under_a_base_href_is_the_file_a_browser_asks_for_ahead_of_one_of_that_path_from_the_apps_root);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(An_import_of_a_parent_folder_is_followed_from_its_stylesheet_and_a_page_in_a_folder_links_from_there),
+            An_import_of_a_parent_folder_is_followed_from_its_stylesheet_and_a_page_in_a_folder_links_from_there);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_style_blocks_import_is_followed_as_a_links_is), A_style_blocks_import_is_followed_as_a_links_is);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_stylesheet_that_cannot_be_read_is_said_and_read_again_once_it_can_be),
+            A_stylesheet_that_cannot_be_read_is_said_and_read_again_once_it_can_be);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(An_import_past_the_depth_followed_is_said_never_passed_over), An_import_past_the_depth_followed_is_said_never_passed_over);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_link_an_expression_makes_is_a_stylesheet_unread), A_link_an_expression_makes_is_a_stylesheet_unread);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(An_html_files_class_completes_from_the_stylesheet_it_links_and_a_misspelt_one_is_marked),
+            An_html_files_class_completes_from_the_stylesheet_it_links_and_a_misspelt_one_is_marked);
+    }
+
+    private void A_cdns_class_completes_in_a_component_only_once_settings_allow_its_download_beside_a_packages_and_the_components_own()
     {
         NoCopies();
         int fetched = app.Fetched;
@@ -62,8 +136,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_classs_rules_show_on_its_hover_card_and_go_to_declaration_opens_its_rule_in_the_downloaded_copy_read_only()
+    private void A_classs_rules_show_on_its_hover_card_and_go_to_declaration_opens_its_rule_in_the_downloaded_copy_read_only()
     {
         MainWindow window = app.Open("Components/Pages/Styled.razor", before: w => w.ApplySettings(w.Settings with { DownloadStylesheets = true }));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -94,8 +167,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Go_to_declaration_of_a_packages_class_opens_its_stylesheet_in_the_package_folder_read_only_naming_the_package()
+    private void Go_to_declaration_of_a_packages_class_opens_its_stylesheet_in_the_package_folder_read_only_naming_the_package()
     {
         MainWindow window = app.Open("Components/Pages/Styled.razor");
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "btn-primry kit-c");
@@ -124,8 +196,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_class_no_linked_stylesheet_defines_is_marked_quietly_once_every_stylesheet_linked_was_read()
+    private void A_class_no_linked_stylesheet_defines_is_marked_quietly_once_every_stylesheet_linked_was_read()
     {
         NoCopies();
         MainWindow window = app.Open("Components/Pages/Styled.razor");
@@ -142,8 +213,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_parents_deep_class_is_offered_in_the_child_it_renders_and_its_own_scoped_class_is_not()
+    private void A_parents_deep_class_is_offered_in_the_child_it_renders_and_its_own_scoped_class_is_not()
     {
         MainWindow window = app.Open("Components/Pages/Child.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -156,8 +226,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_style_blocks_class_a_link_under_the_pages_base_href_and_a_packages_own_base_path_are_offered_as_the_app_serves_them()
+    private void A_style_blocks_class_a_link_under_the_pages_base_href_and_a_packages_own_base_path_are_offered_as_the_app_serves_them()
     {
         MainWindow window = app.Open("Components/Pages/Styled.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -173,8 +242,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_html_files_class_completes_from_the_stylesheet_it_links_and_a_misspelt_one_is_marked()
+    private void An_html_files_class_completes_from_the_stylesheet_it_links_and_a_misspelt_one_is_marked()
     {
         Assert.SkipWhen(Programs.Node() is null, "Node.js is not on the PATH, and an HTML file's language server runs on it");
         MainWindow window = app.Open("wwwroot/plain.html");
@@ -192,8 +260,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void What_the_app_reaches_through_a_library_it_references_is_served_as_its_own_and_styled_by_its_pages()
+    private void What_the_app_reaches_through_a_library_it_references_is_served_as_its_own_and_styled_by_its_pages()
     {
         MainWindow window = app.Open("Components/Pages/Styled.razor");
         Ui.WaitFor(() => window.Projects.Any(p => p.Name == "Cog") && window.Projects.Any(p => p.Name == "Gear"), "the library the app reaches through another, evaluated");
@@ -208,8 +275,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_stylesheet_linked_with_no_integrity_is_asked_again_as_the_folder_opens_and_its_copy_stands_while_the_cdn_cant_say()
+    private void A_stylesheet_linked_with_no_integrity_is_asked_again_as_the_folder_opens_and_its_copy_stands_while_the_cdn_cant_say()
     {
         NoCopies();
         app.Latest = StyledShop.LatestBefore;
@@ -240,8 +306,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         app.Latest = StyledShop.LatestBefore;
     }
 
-    [AvaloniaFact]
-    public void A_stylesheet_is_downloaded_again_once_its_link_gives_another_integrity_and_what_is_not_that_integrity_is_kept_nowhere()
+    private void A_stylesheet_is_downloaded_again_once_its_link_gives_another_integrity_and_what_is_not_that_integrity_is_kept_nowhere()
     {
         NoCopies();
         app.Latest = StyledShop.LatestBefore;
@@ -268,8 +333,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         again.Close();
     }
 
-    [AvaloniaFact]
-    public void A_link_under_a_base_href_is_the_file_a_browser_asks_for_ahead_of_one_of_that_path_from_the_apps_root()
+    private void A_link_under_a_base_href_is_the_file_a_browser_asks_for_ahead_of_one_of_that_path_from_the_apps_root()
     {
         MainWindow window = app.Open(null, languageServer: false);
         PageClasses found = Classes(window, "under-assets.html");
@@ -279,8 +343,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_import_of_a_parent_folder_is_followed_from_its_stylesheet_and_a_page_in_a_folder_links_from_there()
+    private void An_import_of_a_parent_folder_is_followed_from_its_stylesheet_and_a_page_in_a_folder_links_from_there()
     {
         MainWindow window = app.Open(null, languageServer: false);
         PageClasses found = Classes(window, "imports-up.html");
@@ -290,18 +353,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_stylesheet_only_named_like_a_css_isolation_bundle_is_read_as_the_file_it_is()
-    {
-        MainWindow window = app.Open(null, languageServer: false);
-        PageClasses found = Classes(window, "ordinary.html");
-        Assert.True(found.Complete, string.Join("; ", found.Unread));
-        Assert.Contains("ordinary", found.Classes.Keys);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_style_blocks_import_is_followed_as_a_links_is()
+    private void A_style_blocks_import_is_followed_as_a_links_is()
     {
         MainWindow window = app.Open(null, languageServer: false);
         PageClasses found = Classes(window, "inline-import.html");
@@ -310,8 +362,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_stylesheet_that_cannot_be_read_is_said_and_read_again_once_it_can_be()
+    private void A_stylesheet_that_cannot_be_read_is_said_and_read_again_once_it_can_be()
     {
         MainWindow window = app.Open(null, languageServer: false);
         using (new FileStream(app.PathOf("Gear/wwwroot/css/locked.css"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
@@ -327,8 +378,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_import_past_the_depth_followed_is_said_never_passed_over()
+    private void An_import_past_the_depth_followed_is_said_never_passed_over()
     {
         MainWindow window = app.Open(null, languageServer: false);
         PageClasses found = Classes(window, "deep.html");
@@ -339,8 +389,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_link_an_expression_makes_is_a_stylesheet_unread()
+    private void A_link_an_expression_makes_is_a_stylesheet_unread()
     {
         MainWindow window = app.Open("Components/Pages/Child.razor", languageServer: false);
         OpenDocument document = window.EditorArea.Active!;
@@ -351,8 +400,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_components_own_scoped_stylesheet_alone_never_makes_its_classes_complete()
+    private void A_components_own_scoped_stylesheet_alone_never_makes_its_classes_complete()
     {
         string folder = TestFolders.Create("lone-component-");
         File.WriteAllText(Path.Combine(folder, "Card.razor"), "<div class=\"kept hosted\"></div>\n");

@@ -23,8 +23,34 @@ public sealed class BrowserRefreshTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Under debug a page's stylesheets and scoped CSS apply in place, its other files reload it and an update
+    /// refreshes it, or the build is said to make no browser tools.</summary>
     [AvaloniaFact]
-    public void Under_debug_a_pages_stylesheets_apply_in_place_its_other_static_files_reload_it_and_an_update_refreshes_it()
+    public void A_debugged_pages_static_files_reach_it_in_place()
+    {
+        Flow.StepApart<BrowserRefreshTests>(nameof(Under_debug_a_pages_stylesheets_apply_in_place_its_other_static_files_reload_it_and_an_update_refreshes_it),
+            test => test.Under_debug_a_pages_stylesheets_apply_in_place_its_other_static_files_reload_it_and_an_update_refreshes_it());
+        OpenWindows.CloseAll();
+        Flow.StepApart<BrowserRefreshTests>(nameof(Under_debug_a_page_at_a_name_under_localhost_is_kept_up),
+            test => test.Under_debug_a_page_at_a_name_under_localhost_is_kept_up());
+        OpenWindows.CloseAll();
+        Flow.StepApart<BrowserRefreshTests>(nameof(Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place),
+            test => test.Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place());
+        OpenWindows.CloseAll();
+        Flow.StepApart<BrowserRefreshTests>(nameof(Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them),
+            test => test.Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them());
+    }
+
+    /// <summary>A Blazor Web App with WebAssembly components keeps its page up through its client's browser
+    /// tools.</summary>
+    [AvaloniaFact]
+    public void A_blazor_web_apps_page_stays_up_through_its_clients_tools()
+    {
+        Flow.StepApart<BrowserRefreshTests>(nameof(A_Blazor_Web_App_with_WebAssembly_components_keeps_its_page_up_through_its_clients_browser_tools),
+            test => test.A_Blazor_Web_App_with_WebAssembly_components_keeps_its_page_up_through_its_clients_browser_tools());
+    }
+
+    private void Under_debug_a_pages_stylesheets_apply_in_place_its_other_static_files_reload_it_and_an_update_refreshes_it()
     {
         KeptUp(sdk: null);
     }
@@ -45,8 +71,7 @@ public sealed class BrowserRefreshTests : IDisposable
     /// <summary>A Blazor Web App with WebAssembly components on the tests' framework (.NET 10), built with the machine's SDK,
     /// whose browser tools (and the key Passenger proves itself with) its WebAssembly client's build makes: debugged, its page
     /// is kept up, a wwwroot stylesheet saved in the editor applied in place, with no word that it is not.</summary>
-    [AvaloniaFact]
-    public void A_Blazor_Web_App_with_WebAssembly_components_keeps_its_page_up_through_its_clients_browser_tools()
+    private void A_Blazor_Web_App_with_WebAssembly_components_keeps_its_page_up_through_its_clients_browser_tools()
     {
         Ui.AwaitPumped(Waiting.Apart(async () =>
         {
@@ -98,8 +123,7 @@ public sealed class BrowserRefreshTests : IDisposable
 
     /// <summary>A page the app serves at a name under localhost (as an app made with <c>--localhost-tld</c> is opened) is this
     /// machine's: under debug its refresh client connects, and a stylesheet saved in the editor is applied in it.</summary>
-    [AvaloniaFact]
-    public void Under_debug_a_page_at_a_name_under_localhost_is_kept_up()
+    private void Under_debug_a_page_at_a_name_under_localhost_is_kept_up()
     {
         BellApp.Make(folder);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -131,8 +155,7 @@ public sealed class BrowserRefreshTests : IDisposable
     /// scoped CSS: under debug, its stylesheet saved in the editor is applied in place by the URL the app serves it at, and
     /// its scoped CSS another program wrote is bundled again by the library and applied, each served as written; deleted, the
     /// library's only sheet leaves none of its rules served.</summary>
-    [AvaloniaFact]
-    public void Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place()
+    private void Under_debug_a_referenced_Razor_class_librarys_stylesheet_and_scoped_CSS_apply_in_place()
     {
         string bell = Path.Combine(folder, "Bell");
         BellApp.Make(bell);
@@ -190,8 +213,7 @@ public sealed class BrowserRefreshTests : IDisposable
 
     /// <summary>A project that turns off what makes its pages' browser tools: debugged, it runs, and its console says its
     /// pages are not kept up, why, and what makes them.</summary>
-    [AvaloniaFact]
-    public void Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them()
+    private void Where_the_build_makes_no_browser_tools_debug_says_why_and_what_makes_them()
     {
         BellApp.Make(folder);
         string project = Path.Combine(folder, "Bell.csproj");

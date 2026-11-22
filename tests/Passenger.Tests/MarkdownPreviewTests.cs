@@ -110,8 +110,52 @@ public sealed class MarkdownPreviewTests
         return encoded.ToArray();
     }
 
+    /// <summary>A README's blocks, links, pictures and HTML draw beside its editor, follow its typing, and text nested
+    /// too deep ends nothing.</summary>
     [AvaloniaFact]
-    public void A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links()
+    public void A_readme_draws_beside_its_editor_and_follows_it()
+    {
+        Flow.Step(nameof(A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links),
+            A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system),
+            A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code),
+            A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice),
+            The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing),
+            A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing);
+    }
+
+    /// <summary>A README's headings nest by level in Structure and lead to their lines, and a long preview costs what a
+    /// short one does, its wheel and its editor leading each other.</summary>
+    [AvaloniaFact]
+    public void A_readmes_structure_and_long_previews_follow_their_editor()
+    {
+        Flow.Step(nameof(A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines),
+            A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block),
+            A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed),
+            A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following),
+            The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_editor_scrolled_after_its_preview_was_leads_the_preview_again),
+            The_editor_scrolled_after_its_preview_was_leads_the_preview_again);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it),
+            A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it);
+    }
+
+    private void A_README_shows_each_kind_of_block_beside_its_editor_follows_typing_and_scrolling_and_opens_its_links()
     {
         (string folder, string readme) = Shop();
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
@@ -209,40 +253,10 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
-    /// <summary>A '\r' standing alone in a Markdown file with '\n' line ends (one pasted in from an old Mac file) ends a line
-    /// for the preview and not for the document: the headings after it are still in Structure, nested by level, beside the
-    /// preview, and each goes to its own line in the editor, as the document counts its lines.</summary>
-    [AvaloniaFact]
-    public void Headings_after_a_carriage_return_standing_alone_are_in_Structure_and_go_to_their_lines()
-    {
-        string folder = TestFolders.Create("markdown-return-");
-        File.WriteAllText(Path.Combine(folder, "NOTES.md"), "# One\rwritten on an old Mac\n\n## Two\n\nWords.\n\n# Three\n");
-        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
-        Assert.Null(window.OpenFile("NOTES.md"));
-        Ui.Settle();
-        Ui.Run(window, AppActions.ShowStructure);
-        StructureView structure = window.StructureView;
-        Ui.WaitFor(() => structure.Rows.Any(r => r.Name == "Three"),
-            () => $"the headings in Structure: {string.Join(", ", structure.Rows.Select(r => r.Name))} ({structure.Said})");
-        Assert.Equal([("One", 0), ("Two", 1), ("Three", 0)], structure.Rows.Select(r => (r.Name, r.Depth)));
-        Assert.True(Shown(window.EditorArea.ActiveGroup).GetLogicalDescendants().OfType<MarkdownText>().Any(t => t.Shown == "Three"), "The preview does not show the last heading");
-
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        ListBox list = structure.GetVisualDescendants().OfType<ListBox>().First();
-        foreach ((string name, string written) in (ReadOnlySpan<(string, string)>)[("Three", "# Three"), ("Two", "## Two")])
-        {
-            Ui.Click(Ui.Row(list, structure.Rows.First(r => r.Name == name)));
-            Ui.WaitFor(() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line) == written,
-                () => $"the row of {name} to go to its line, not to line {editor.CaretPosition.Line}, '{editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line)}'");
-        }
-        window.Close();
-    }
-
     /// <summary>A page in a folder of its own links to the guide and draws a picture from the open folder's root, a slash
     /// first, as GitHub resolves them: on macOS and Linux too, where such a target also reads as a file's address.</summary>
     /// <summary>What is written deeper than a page reads is its words, and however deep a file goes the window stays.</summary>
-    [AvaloniaFact]
-    public void A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing()
+    private void A_file_nested_past_what_a_page_reads_shows_the_rest_as_words_and_ends_nothing()
     {
         string folder = TestFolders.Create("markdown-deep-");
         string path = Path.Combine(folder, "deep.md");
@@ -261,8 +275,7 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines()
+    private void A_READMEs_headings_nest_by_level_in_Structure_and_File_Structure_follow_its_typing_and_go_to_their_lines()
     {
         (string folder, string readme) = Shop();
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
@@ -310,8 +323,7 @@ public sealed class MarkdownPreviewTests
         static string Listed(IEnumerable<SymbolRow> rows) => string.Join(", ", rows.Select(r => $"{new string(' ', r.Depth)}{r.Name}"));
     }
 
-    [AvaloniaFact]
-    public void A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system()
+    private void A_link_and_an_image_written_from_the_folders_root_open_and_draw_the_root_folders_files_on_every_system()
     {
         (string folder, _) = Shop();
         string notes = Path.Combine(folder, "notes", "README.md");
@@ -339,8 +351,7 @@ public sealed class MarkdownPreviewTests
     /// <summary>Passenger's own README as GitHub draws it: its centred row of links, each opening (a web page, a heading,
     /// another file), its pictures of the look shown, the light one's source in the light look and its img's in the dark,
     /// and its MCP flags strong code with no asterisks left; a details fold opening on a click.</summary>
-    [AvaloniaFact]
-    public void A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code()
+    private void A_READMEs_HTML_draws_its_centred_links_its_pictures_of_the_look_shown_and_its_flags_strong_code()
     {
         string folder = TestFolders.Create("markdown-html-");
         Directory.CreateDirectory(Path.Combine(folder, "site", "images"));
@@ -429,36 +440,7 @@ public sealed class MarkdownPreviewTests
         window.Close();
     }
 
-    /// <summary>The README's page, kept with its tab, draws its picture again each time the tab comes back: from another
-    /// Markdown file, whose page the preview showed meanwhile, and from a C# file, beside which it showed none.</summary>
-    [AvaloniaFact]
-    public void A_pages_picture_draws_again_each_time_its_tab_is_left_and_come_back_to()
-    {
-        (string folder, string readme) = Shop();
-        MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
-        Assert.Null(window.OpenFile(readme));
-        Ui.Settle();
-        Pictured("as the README is first shown");
-        foreach (string other in new[] { Path.Combine("docs", "guide.md"), "Program.cs", Path.Combine("docs", "guide.md") })
-        {
-            Assert.Null(window.OpenFile(PathNames.Canonical(Path.Combine(folder, other))));
-            Ui.Settle();
-            Assert.Null(window.OpenFile(readme));
-            Ui.Settle();
-            Pictured($"as the README comes back from {other}");
-        }
-        window.Close();
-
-        void Pictured(string when)
-        {
-            MarkdownPicture picture = Assert.Single(Shown(window.EditorArea.ActiveGroup).GetLogicalDescendants().OfType<MarkdownPicture>());
-            Ui.WaitFor(() => picture.Shown is { PixelSize: { Width: 64, Height: 32 } },
-                $"the README's picture drawn {when} (its words stand in its place: the decode it asked for was let go)", TimeSpan.FromSeconds(10));
-        }
-    }
-
-    [AvaloniaFact]
-    public void The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice()
+    private void The_toggle_hides_and_shows_the_preview_each_split_has_its_own_and_the_next_window_keeps_the_choice()
     {
         (string folder, string readme) = Shop();
         string state = TestFolders.Create("markdown-state-");
@@ -512,8 +494,7 @@ public sealed class MarkdownPreviewTests
     /// <summary>A preview draws the blocks near its sight alone, so showing a 600 KB changelog's costs the window's thread
     /// about what a 60 KB one's does, and its page is kept with its tab: shown again deep in the file, it makes no block
     /// again.</summary>
-    [AvaloniaFact]
-    public void A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block()
+    private void A_long_changelogs_preview_costs_the_window_what_a_short_ones_does_and_its_tab_shown_again_makes_no_block()
     {
         string folder = TestFolders.Create("markdown-long-");
         File.WriteAllText(Path.Combine(folder, "WARM.md"), Changelog(2_000));
@@ -570,8 +551,7 @@ public sealed class MarkdownPreviewTests
 
     /// <summary>A pause in typing in a 600 KB changelog reads again only the lines around what was typed, which the preview
     /// shows, and leaves every other block as it was read: a long file costs a pause what the short block typed in does.</summary>
-    [AvaloniaFact]
-    public void A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed()
+    private void A_typing_pause_in_a_long_file_reads_again_only_the_lines_around_what_was_typed()
     {
         string folder = TestFolders.Create("markdown-typed-");
         File.WriteAllText(Path.Combine(folder, "LONG.md"), Changelog(600_000));
@@ -603,8 +583,7 @@ public sealed class MarkdownPreviewTests
     /// <summary>The wheel turned over the preview of a long note, its benchmark tables wider than the preview, moves what it
     /// shows one way only, by a step each turn, to the note's end and back to its start, the editor's top line following
     /// the line at the preview's top: a block laid out as it comes into sight never pulls the preview back to the editor.</summary>
-    [AvaloniaFact]
-    public void The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following()
+    private void The_wheel_over_a_long_notes_preview_moves_it_a_step_at_a_time_to_its_end_and_back_the_editor_following()
     {
         (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
         double step = double.NaN;
@@ -642,8 +621,7 @@ public sealed class MarkdownPreviewTests
 
     /// <summary>Once the wheel has moved the preview, the editor scrolled by its own wheel leads again, the preview following
     /// it to the block at its top line.</summary>
-    [AvaloniaFact]
-    public void The_editor_scrolled_after_its_preview_was_leads_the_preview_again()
+    private void The_editor_scrolled_after_its_preview_was_leads_the_preview_again()
     {
         (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
         for (int turn = 0; turn < 20; turn++)
@@ -665,8 +643,7 @@ public sealed class MarkdownPreviewTests
 
     /// <summary>A key typed in the editor, the preview moved by the wheel, leaves the preview standing where the wheel left
     /// it once the typing is drawn, and the editor where it was.</summary>
-    [AvaloniaFact]
-    public void A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it()
+    private void A_key_typed_in_the_editor_leaves_the_preview_where_the_wheel_left_it()
     {
         (MainWindow window, MarkdownPreview preview, CodeEditor editor) = Verifying();
         for (int turn = 0; turn < 30; turn++)

@@ -12,10 +12,63 @@ namespace Passenger.Tests;
 /// of the test's own with no C# language server; a test that cannot find Node.js skips, saying so.</summary>
 public sealed class JsonSchemaTests
 {
+    /// <summary>A JSON file's schema takes what its tool takes: appsettings, package.json's conditions, ESLint and
+    /// Stylelint configurations and tsconfig.</summary>
+    [AvaloniaFact]
+    public void A_jsons_schema_reads_its_values_as_their_tools_read_them()
+    {
+        Flow.Step(nameof(Appsettings_takes_serilogs_keys_in_any_case_as_dotnet_configuration_reads_them),
+            Appsettings_takes_serilogs_keys_in_any_case_as_dotnet_configuration_reads_them);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Package_json_takes_export_and_import_conditions_with_digits_and_dots_as_node_resolves_them),
+            Package_json_takes_export_and_import_conditions_with_digits_and_dots_as_node_resolves_them);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Tsconfig_takes_compiler_option_values_in_any_case_as_typescript_reads_them),
+            Tsconfig_takes_compiler_option_values_in_any_case_as_typescript_reads_them);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Package_jsons_eslint_config_takes_a_plugin_rule_of_its_severity_alone_in_an_array_as_eslint_runs_it),
+            Package_jsons_eslint_config_takes_a_plugin_rule_of_its_severity_alone_in_an_array_as_eslint_runs_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Package_jsons_eslint_config_takes_a_rules_string_options_as_eslint_runs_them),
+            Package_jsons_eslint_config_takes_a_rules_string_options_as_eslint_runs_them);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Package_jsons_stylelint_takes_a_numeric_rule_with_its_options_as_stylelint_runs_it),
+            Package_jsons_stylelint_takes_a_numeric_rule_with_its_options_as_stylelint_runs_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Package_jsons_stylelint_takes_an_overrides_files_as_one_glob_as_stylelint_applies_it),
+            Package_jsons_stylelint_takes_an_overrides_files_as_one_glob_as_stylelint_applies_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_file_based_programs_run_json_is_checked_and_completed_by_the_launch_settings_schema),
+            A_file_based_programs_run_json_is_checked_and_completed_by_the_launch_settings_schema);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Package_jsons_eslint_config_offers_plugin_rules_by_the_names_eslint_finds_them_by),
+            Package_jsons_eslint_config_offers_plugin_rules_by_the_names_eslint_finds_them_by);
+    }
+
+    /// <summary>A schema a file names is read only from this machine's disk, and a compose file is checked by Compose's
+    /// schema whatever its name.</summary>
+    [AvaloniaFact]
+    public void A_schema_is_read_only_from_this_machine_and_composes_by_its_name()
+    {
+        Flow.Step(nameof(A_schema_a_file_names_is_read_from_this_machines_disk_and_never_from_another_machines),
+            A_schema_a_file_names_is_read_from_this_machines_disk_and_never_from_another_machines);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_schema_a_yaml_file_names_is_read_from_this_machines_disk_and_never_from_another_machines),
+            A_schema_a_yaml_file_names_is_read_from_this_machines_disk_and_never_from_another_machines);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_compose_file_takes_a_variable_where_a_field_takes_certain_words_as_compose_replaces_it_first),
+            A_compose_file_takes_a_variable_where_a_field_takes_certain_words_as_compose_replaces_it_first);
+        OpenWindows.CloseAll();
+        Flow.Step("A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema(\"Compose.yaml\")",
+            () => A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema("Compose.yaml"));
+        OpenWindows.CloseAll();
+        Flow.Step("A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema(\"compose-dev.yml\")",
+            () => A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema("compose-dev.yml"));
+    }
+
     /// <summary>A file-based program's app.run.json beside its app.cs, naming no schema, takes the launch settings' schema a
     /// project's launchSettings.json takes: a value of the wrong type is marked, and a profile completes its properties.</summary>
-    [AvaloniaFact]
-    public void A_file_based_programs_run_json_is_checked_and_completed_by_the_launch_settings_schema()
+    private void A_file_based_programs_run_json_is_checked_and_completed_by_the_launch_settings_schema()
     {
         WebLanguagesTests.SkipWithoutNode();
         string folder = PathNames.Canonical(TestFolders.Create("run-json-"));
@@ -58,8 +111,7 @@ public sealed class JsonSchemaTests
     /// <summary>A schema a file names on this machine's disk (its <c>$schema</c> beside it) is read and checks the file; one
     /// naming another machine's file (<c>file://host/share/…</c>, which Windows would sign in to as the person) is never
     /// asked of the disk, by Passenger or the JSON server, its file marked saying why and left unchecked.</summary>
-    [AvaloniaFact]
-    public void A_schema_a_file_names_is_read_from_this_machines_disk_and_never_from_another_machines()
+    private void A_schema_a_file_names_is_read_from_this_machines_disk_and_never_from_another_machines()
     {
         WebLanguagesTests.SkipWithoutNode();
         string folder = PathNames.Canonical(TestFolders.Create("schema-files-"));
@@ -92,8 +144,7 @@ public sealed class JsonSchemaTests
     /// <summary>A schema a YAML file names on this machine's disk (its modeline's, beside it) is read and checks the file;
     /// one naming another machine's file (<c>file://host/share/…</c>) is never asked of the disk, by Passenger or the YAML
     /// server, which asks Passenger for each schema's file, its file marked saying why and left unchecked.</summary>
-    [AvaloniaFact]
-    public void A_schema_a_yaml_file_names_is_read_from_this_machines_disk_and_never_from_another_machines()
+    private void A_schema_a_yaml_file_names_is_read_from_this_machines_disk_and_never_from_another_machines()
     {
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
         string folder = PathNames.Canonical(TestFolders.Create("yaml-schema-files-"));
@@ -126,8 +177,7 @@ public sealed class JsonSchemaTests
     /// <summary>.NET's configuration reads keys in any case, so Serilog's and Kestrel's do in appsettings.json: each is
     /// checked as its own spelling is (an argument's name that is none marked under lower-case keys), a key required in
     /// any case.</summary>
-    [AvaloniaFact]
-    public void Appsettings_takes_serilogs_keys_in_any_case_as_dotnet_configuration_reads_them()
+    private void Appsettings_takes_serilogs_keys_in_any_case_as_dotnet_configuration_reads_them()
     {
         List<(string Text, string Message)> marked = Marked("appsettings.json", """
             {
@@ -148,8 +198,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>Node.js resolves an export or import condition of any name that is no subpath and no array index, a digit
     /// or a dot in it too, so package.json marks none of them.</summary>
-    [AvaloniaFact]
-    public void Package_json_takes_export_and_import_conditions_with_digits_and_dots_as_node_resolves_them()
+    private void Package_json_takes_export_and_import_conditions_with_digits_and_dots_as_node_resolves_them()
     {
         List<(string Text, string Message)> marked = Marked("package.json", """
             {
@@ -164,8 +213,7 @@ public sealed class JsonSchemaTests
     }
 
     /// <summary>TypeScript reads a compiler option's named value in any case, so tsconfig.json marks none of them.</summary>
-    [AvaloniaFact]
-    public void Tsconfig_takes_compiler_option_values_in_any_case_as_typescript_reads_them()
+    private void Tsconfig_takes_compiler_option_values_in_any_case_as_typescript_reads_them()
     {
         List<(string Text, string Message)> marked = Marked("tsconfig.json", """
             {
@@ -185,8 +233,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>ESLint's configuration names a plugin's rule by the plugin's short name (import/, vue/, unicorn/), so the rules
     /// package.json's eslintConfig offers are named so, never by the plugin's package.</summary>
-    [AvaloniaFact]
-    public void Package_jsons_eslint_config_offers_plugin_rules_by_the_names_eslint_finds_them_by()
+    private void Package_jsons_eslint_config_offers_plugin_rules_by_the_names_eslint_finds_them_by()
     {
         WebLanguagesTests.SkipWithoutNode();
         string folder = PathNames.Canonical(TestFolders.Create("eslint-rules-"));
@@ -231,8 +278,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>ESLint runs a plugin's rule written as its severity alone in an array, ["error"], as it runs "error", so
     /// package.json's eslintConfig marks none of them.</summary>
-    [AvaloniaFact]
-    public void Package_jsons_eslint_config_takes_a_plugin_rule_of_its_severity_alone_in_an_array_as_eslint_runs_it()
+    private void Package_jsons_eslint_config_takes_a_plugin_rule_of_its_severity_alone_in_an_array_as_eslint_runs_it()
     {
         List<(string Text, string Message)> marked = Marked("package.json", """
             {
@@ -254,8 +300,7 @@ public sealed class JsonSchemaTests
     /// <summary>typescript-eslint's consistent-generic-constructors takes constructor or type-annotation as its option, and
     /// a plugin's rule whose options the schema does not describe takes what ESLint gives it, so package.json's eslintConfig
     /// marks none of them.</summary>
-    [AvaloniaFact]
-    public void Package_jsons_eslint_config_takes_a_rules_string_options_as_eslint_runs_them()
+    private void Package_jsons_eslint_config_takes_a_rules_string_options_as_eslint_runs_them()
     {
         List<(string Text, string Message)> marked = Marked("package.json", """
             {
@@ -277,8 +322,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>stylelint runs a rule that takes a number written with its options, [2, { "severity": "warning" }], so a
     /// stylelint configuration in package.json marks none of them.</summary>
-    [AvaloniaFact]
-    public void Package_jsons_stylelint_takes_a_numeric_rule_with_its_options_as_stylelint_runs_it()
+    private void Package_jsons_stylelint_takes_a_numeric_rule_with_its_options_as_stylelint_runs_it()
     {
         List<(string Text, string Message)> marked = Marked("package.json", """
             {
@@ -298,8 +342,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>stylelint applies an override whose files is one glob as it does one whose files is a list, so a stylelint
     /// configuration in package.json marks neither.</summary>
-    [AvaloniaFact]
-    public void Package_jsons_stylelint_takes_an_overrides_files_as_one_glob_as_stylelint_applies_it()
+    private void Package_jsons_stylelint_takes_an_overrides_files_as_one_glob_as_stylelint_applies_it()
     {
         List<(string Text, string Message)> marked = Marked("package.json", """
             {
@@ -319,8 +362,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>Compose replaces a variable in a value before it reads the value, so a compose file marks none where a
     /// field takes only certain words (pull_policy, cgroup, a dependency's condition) and still marks a word it has not.</summary>
-    [AvaloniaFact]
-    public void A_compose_file_takes_a_variable_where_a_field_takes_certain_words_as_compose_replaces_it_first()
+    private void A_compose_file_takes_a_variable_where_a_field_takes_certain_words_as_compose_replaces_it_first()
     {
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
         List<(string Text, string Message)> marked = Marked("compose.yaml", """
@@ -343,10 +385,7 @@ public sealed class JsonSchemaTests
 
     /// <summary>A compose file named in another letter case or after a '-' (Compose.yaml, compose-dev.yml) is checked by the
     /// Compose specification's schema, as compose.yaml is.</summary>
-    [AvaloniaTheory]
-    [InlineData("Compose.yaml")]
-    [InlineData("compose-dev.yml")]
-    public void A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema(string name)
+    private void A_compose_file_of_any_letter_case_or_named_with_a_dash_is_checked_by_the_compose_schema(string name)
     {
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
         List<(string Text, string Message)> marked = Marked(name, """

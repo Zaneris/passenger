@@ -29,10 +29,66 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
 
     public EslintPrettierTests(Project project) => this.project = project;
 
+    /// <summary>ESLint's problems show as typed, its fixes and its server's ends are said, and the person's own ESLint
+    /// alone runs.</summary>
+    [AvaloniaFact]
+    public void Eslint_checks_and_fixes_as_its_server_says()
+    {
+        Flow.Step(nameof(An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go),
+            An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error),
+            A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still),
+            A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again),
+            An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away),
+            Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(ESLints_settings_changed_as_it_starts_leave_one_server_for_the_folder_which_ends_with_it),
+            ESLints_settings_changed_as_it_starts_leave_one_server_for_the_folder_which_ends_with_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(ESLint_and_Prettier_in_a_node_modules_another_user_made_above_are_passed_over_and_in_the_persons_own_check_the_script),
+            ESLint_and_Prettier_in_a_node_modules_another_user_made_above_are_passed_over_and_in_the_persons_own_check_the_script);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_package_json_listing_ESLint_and_Prettier_not_installed_says_so_in_the_banner_whose_link_runs_npm_install_there_and_a_Manual_ESLint_checks_it),
+            A_package_json_listing_ESLint_and_Prettier_not_installed_says_so_in_the_banner_whose_link_runs_npm_install_there_and_a_Manual_ESLint_checks_it);
+    }
+
+    /// <summary>Prettier formats on Reformat Code and on save by the project's configuration, and a save lands whatever
+    /// happens as it formats.</summary>
+    [AvaloniaFact]
+    public void Prettier_formats_and_saves_land_as_asked()
+    {
+        Flow.Step(nameof(Prettier_formats_on_Reformat_Code_and_on_save_by_the_projects_own_configuration_as_one_undo_and_leaves_what_prettierignore_names),
+            Prettier_formats_on_Reformat_Code_and_on_save_by_the_projects_own_configuration_as_one_undo_and_leaves_what_prettierignore_names);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone),
+            Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output),
+            Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names),
+            Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Save_saves_the_file_it_was_pressed_on_though_another_tab_is_chosen_while_Prettier_formats_it),
+            Save_saves_the_file_it_was_pressed_on_though_another_tab_is_chosen_while_Prettier_formats_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats),
+            Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults),
+            Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults);
+    }
+
     /// <summary>ESLint's problem shows as typed, with its rule's page, and its fix, which ESLint's server makes by handing
     /// the window its edit, makes it go, the server told the edit was made, so it logs no failure.</summary>
-    [AvaloniaFact]
-    public void An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go()
+    private void An_ESLint_problem_shows_as_it_is_typed_in_the_editor_the_stripe_and_Problems_with_its_rules_page_and_its_fix_makes_it_go()
     {
         Project.SkipWithoutNode();
         MainWindow window = project.Open("src/app.js");
@@ -87,8 +143,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error()
+    private void A_project_with_eslint_and_no_configuration_says_so_in_the_status_bar_and_logs_no_error()
     {
         Project.SkipWithoutNode();
         File.Delete(Path.Combine(project.Folder, "eslint.config.js"));
@@ -112,8 +167,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still()
+    private void A_file_whose_eslint_needs_a_later_Node_js_says_why_it_is_not_checked_and_the_rest_are_checked_still()
     {
         Project.SkipWithoutNode();
         project.AddFolder("future", ("app.js", "let total = 1;\nconsole.log(total);\n"));
@@ -146,8 +200,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
     /// <summary>ESLint's server, ending during every start before it has answered, is started again only as often as a
     /// language server is, then left stopped, the status bar saying why; once what ended it is gone, those words start it
     /// again with the file it checks, without the folder opened again.</summary>
-    [AvaloniaFact]
-    public void An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
+    private void An_ESLint_server_that_ends_during_every_start_is_left_stopped_saying_so_and_its_words_start_it_again()
     {
         Project.SkipWithoutNode();
         project.AddFolder("ending", ("app.js", "let total = 1;\nconsole.log(total);\n"));
@@ -184,8 +237,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away()
+    private void Fix_ESLint_Problems_fixes_the_whole_file_and_a_save_fixes_first_when_Settings_ask_and_Disabled_takes_ESLints_problems_away()
     {
         Project.SkipWithoutNode();
         MainWindow window = project.Open("src/app.js");
@@ -220,8 +272,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Prettier_formats_on_Reformat_Code_and_on_save_by_the_projects_own_configuration_as_one_undo_and_leaves_what_prettierignore_names()
+    private void Prettier_formats_on_Reformat_Code_and_on_save_by_the_projects_own_configuration_as_one_undo_and_leaves_what_prettierignore_names()
     {
         Project.SkipWithoutNode();
         MainWindow window = project.Open("src/format.js");
@@ -271,8 +322,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone()
+    private void Reformat_Code_with_a_statement_selected_has_Prettier_format_that_statement_alone()
     {
         Project.SkipWithoutNode();
         const string Text = "const  first = {name:\"tea\"};\nconst  second = [1,2,3];\n";
@@ -295,8 +345,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output()
+    private void Each_file_Prettier_formats_gets_its_own_text_back_though_its_configuration_prints_to_standard_output()
     {
         Project.SkipWithoutNode();
         project.AddFolder("src/noisy",
@@ -324,8 +373,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names()
+    private void Prettier_2_formats_as_Prettier_3_does_and_leaves_what_prettierignore_names()
     {
         Project.SkipWithoutNode();
         MainWindow window = project.Open("src/format.js");
@@ -356,8 +404,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Save_saves_the_file_it_was_pressed_on_though_another_tab_is_chosen_while_Prettier_formats_it()
+    private void Save_saves_the_file_it_was_pressed_on_though_another_tab_is_chosen_while_Prettier_formats_it()
     {
         Project.SkipWithoutNode();
         string held = project.AddFolder("src/held", (".prettierrc.cjs", Project.Holding), ("first.js", "const  first = {name:\"tea\"};\n"));
@@ -391,8 +438,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats()
+    private void Save_saves_the_file_though_Prettiers_runner_ends_or_the_folder_closes_while_it_formats()
     {
         Project.SkipWithoutNode();
         string held = project.AddFolder("src/held", (".prettierrc.cjs", Project.Holding), ("first.js", "const first = 1;\n"));
@@ -427,8 +473,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void ESLints_settings_changed_as_it_starts_leave_one_server_for_the_folder_which_ends_with_it()
+    private void ESLints_settings_changed_as_it_starts_leave_one_server_for_the_folder_which_ends_with_it()
     {
         Project.SkipWithoutNode();
         List<int> servers = [];
@@ -477,8 +522,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void A_package_json_listing_ESLint_and_Prettier_not_installed_says_so_in_the_banner_whose_link_runs_npm_install_there_and_a_Manual_ESLint_checks_it()
+    private void A_package_json_listing_ESLint_and_Prettier_not_installed_says_so_in_the_banner_whose_link_runs_npm_install_there_and_a_Manual_ESLint_checks_it()
     {
         Project.SkipWithoutNode();
         Assert.SkipWhen(Programs.Node() is not { } node || Npm.Cli(node) is null, "npm is not beside the PATH's Node.js, and Run 'npm install' runs it");
@@ -540,8 +584,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
     /// <summary>A folder whose package.json lists ESLint and Prettier, installed only in the node_modules of the folder above
     /// it: while another user owns that node_modules (as one made at a drive's root may be) they are passed over, the
     /// banner saying they are not installed, and once it is the person's the parent's ESLint checks the folder's script.</summary>
-    [AvaloniaFact]
-    public void ESLint_and_Prettier_in_a_node_modules_another_user_made_above_are_passed_over_and_in_the_persons_own_check_the_script()
+    private void ESLint_and_Prettier_in_a_node_modules_another_user_made_above_are_passed_over_and_in_the_persons_own_check_the_script()
     {
         Project.SkipWithoutNode();
         string app = PathNames.Canonical(project.AddFolder("app", ("package.json", Project.Package), ("app.js", Project.App)));
@@ -588,8 +631,7 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
-    [AvaloniaFact]
-    public void Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults()
+    private void Settings_has_Riders_ESLint_and_Prettier_pages_at_their_defaults()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         window.Show();

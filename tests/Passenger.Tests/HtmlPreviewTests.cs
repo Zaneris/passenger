@@ -29,8 +29,43 @@ public sealed partial class HtmlPreviewTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>An HTML page is given its text, served what its folder holds and Git keeps, and kept from going
+    /// elsewhere, or its place says the system has no web view.</summary>
     [AvaloniaFact]
-    public void An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses()
+    public void An_html_page_is_served_its_own_folder_alone()
+    {
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder),
+            test => test.An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder());
+        OpenWindows.CloseAll();
+        Flow.StepApart<HtmlPreviewTests>(nameof(A_system_without_a_web_view_for_the_page_says_so_in_its_place),
+            test => test.A_system_without_a_web_view_for_the_page_says_so_in_its_place());
+        OpenWindows.CloseAll();
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses),
+            test => test.An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses());
+        OpenWindows.CloseAll();
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_is_kept_from_going_elsewhere_and_the_banner_over_it_opens_where_it_went_only_when_asked),
+            test => test.An_HTML_page_is_kept_from_going_elsewhere_and_the_banner_over_it_opens_where_it_went_only_when_asked());
+    }
+
+    /// <summary>Where a window is seen, an HTML page keeps its place, loads its folder's files, shows a large page
+    /// whole and stands on the web view's own ground.</summary>
+    [AvaloniaFact]
+    public void An_html_page_draws_in_a_web_view_where_one_is_seen()
+    {
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to),
+            test => test.An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to());
+        OpenWindows.CloseAll();
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed),
+            test => test.An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed());
+        OpenWindows.CloseAll();
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_of_several_megabytes_is_shown_whole),
+            test => test.An_HTML_page_of_several_megabytes_is_shown_whole());
+        OpenWindows.CloseAll();
+        Flow.StepApart<HtmlPreviewTests>(nameof(An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own),
+            test => test.An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own());
+    }
+
+    private void An_HTML_files_page_is_given_its_text_beside_it_once_turned_on_and_again_as_typing_pauses()
     {
         File.WriteAllText(Path.Combine(folder, "index.html"), Page);
         File.WriteAllText(Path.Combine(folder, "site.css"), "h1 { color: teal; }\n");
@@ -74,8 +109,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_HTML_page_is_kept_from_going_elsewhere_and_the_banner_over_it_opens_where_it_went_only_when_asked()
+    private void An_HTML_page_is_kept_from_going_elsewhere_and_the_banner_over_it_opens_where_it_went_only_when_asked()
     {
         string index = Path.Combine(folder, "index.html");
         string other = Path.Combine(folder, "other.html");
@@ -123,8 +157,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder()
+    private void An_HTML_page_served_is_refused_what_gitignore_leaves_out_below_its_folder()
     {
         string site = Directory.CreateDirectory(Path.Combine(folder, "site")).FullName;
         TestGit.Run(folder, "init", "-q", "-b", "main");
@@ -154,8 +187,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
     /// <summary>Scrolled down, the page is given an edit at the same place; given a page shorter than the place, it ends at
     /// its end; and a page scrolling itself as it loads is left where it went. Only a web view of the system's scrolls, which
     /// a window nobody sees never makes, so headless this skips, run by hand where Passenger's window is seen.</summary>
-    [AvaloniaFact]
-    public void An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to()
+    private void An_HTML_page_given_again_keeps_the_place_it_was_scrolled_to()
     {
         if (PassengerApp.ShowsNoWindow)
         {
@@ -198,8 +230,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
     /// beside it. On Windows, where Passenger serves the page's folder, a picture beside the open folder loads by no address,
     /// and one whose name begins with a dot is refused, the banner saying so. Only a web view of the system's loads a page,
     /// so headless this skips, run by hand where Passenger's window is seen.</summary>
-    [AvaloniaFact]
-    public void An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed()
+    private void An_HTML_page_loads_its_folders_stylesheet_and_picture_as_it_is_typed()
     {
         if (PassengerApp.ShowsNoWindow)
         {
@@ -255,8 +286,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
 
     /// <summary>A page larger than WebView2 takes as a text is shown whole. Only a web view of the system's loads a page, so
     /// headless this skips, run by hand where Passenger's window is seen.</summary>
-    [AvaloniaFact]
-    public void An_HTML_page_of_several_megabytes_is_shown_whole()
+    private void An_HTML_page_of_several_megabytes_is_shown_whole()
     {
         if (PassengerApp.ShowsNoWindow)
         {
@@ -286,8 +316,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
     /// <summary>A page setting no background stands on white whatever the window's look, the web view drawing that ground
     /// under the page, where a page's own, on its html or body, still fills the view. Only a web view of the system's draws,
     /// so headless this skips, run by hand where Passenger's window is seen.</summary>
-    [AvaloniaFact]
-    public void An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own()
+    private void An_HTML_page_with_no_background_stands_on_a_ground_of_the_web_views_own()
     {
         if (PassengerApp.ShowsNoWindow)
         {
@@ -318,8 +347,7 @@ public sealed partial class HtmlPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_system_without_a_web_view_for_the_page_says_so_in_its_place()
+    private void A_system_without_a_web_view_for_the_page_says_so_in_its_place()
     {
         File.WriteAllText(Path.Combine(folder, "index.html"), Page);
         Func<string?> system = HtmlPreview.WhyNone;

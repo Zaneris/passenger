@@ -53,11 +53,49 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     private static void SkipWithoutBrowser() =>
         Assert.SkipWhen(ChromiumBrowsers.Find(null) is null, "No Chromium browser (Chrome, Edge, Chromium or Brave) is on this machine to debug WebAssembly in");
 
+    /// <summary>Debug with no browser, a browser that is no Chromium, one refused its sandbox or one ending as it
+    /// starts says so in the browser's own words.</summary>
+    [AvaloniaFact]
+    public void Debug_says_why_a_browser_cannot_take_the_page()
+    {
+        Flow.StepApart(nameof(Debug_with_no_browser_where_Settings_names_one_says_so_and_how_to_get_one), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.Debug_with_no_browser_where_Settings_names_one_says_so_and_how_to_get_one());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(Debug_where_Settings_names_Firefox_says_it_is_no_chromium_browser_and_which_to_name), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.Debug_where_Settings_names_Firefox_says_it_is_no_chromium_browser_and_which_to_name());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(Debug_in_a_browser_the_system_refuses_its_sandbox_says_so_naming_the_browser_and_the_fixes), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.Debug_in_a_browser_the_system_refuses_its_sandbox_says_so_naming_the_browser_and_the_fixes());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(Debug_in_a_browser_that_ends_as_it_starts_ends_its_session_within_seconds_in_the_browsers_own_words), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.Debug_in_a_browser_that_ends_as_it_starts_ends_its_session_within_seconds_in_the_browsers_own_words());
+    }
+
+    /// <summary>A Blazor app's WebAssembly component stops in the browser beside its server, standalone or started by
+    /// an AppHost, the browser waking no updater.</summary>
+    [AvaloniaFact]
+    public void A_blazor_apps_webassembly_stops_in_the_browser()
+    {
+        Flow.StepApart(nameof(A_Blazor_Web_Apps_server_and_its_WebAssembly_component_both_stop_in_one_run_each_in_its_own_tab), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.A_Blazor_Web_Apps_server_and_its_WebAssembly_component_both_stop_in_one_run_each_in_its_own_tab());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(A_standalone_WebAssembly_apps_component_stops_in_the_browser_steps_and_shows_its_field), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.A_standalone_WebAssembly_apps_component_stops_in_the_browser_steps_and_shows_its_field());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(The_browser_a_page_is_debugged_in_starts_no_updater_as_it_runs), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.The_browser_a_page_is_debugged_in_starts_no_updater_as_it_runs());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(A_page_whose_browsers_network_service_ends_as_it_fetches_its_dotnet_code_is_loaded_again_and_its_component_stops), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.A_page_whose_browsers_network_service_ends_as_it_fetches_its_dotnet_code_is_loaded_again_and_its_component_stops());
+        OpenWindows.CloseAll();
+        Flow.StepApart(nameof(A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser), () => new BlazorBrowserDebuggingTests(appHost),
+            test => test.A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser());
+    }
+
     /// <summary>A Blazor Web App's server stops at its layout's breakpoint as the browser asks for the page, and once it goes
     /// on, that breakpoint gone, the page's WebAssembly component stops at its own in the WebAssembly tab beside the
     /// server's; Step Over goes to the next line, and Variables shows the field the line set.</summary>
-    [AvaloniaFact]
-    public void A_Blazor_Web_Apps_server_and_its_WebAssembly_component_both_stop_in_one_run_each_in_its_own_tab()
+    private void A_Blazor_Web_Apps_server_and_its_WebAssembly_component_both_stop_in_one_run_each_in_its_own_tab()
     {
         SkipWithoutBrowser();
         Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
@@ -106,8 +144,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     /// a crash ends it), which leaves the page failing to fetch it for good: its WebAssembly session says so and loads the
     /// page again, and the component stops at its breakpoint. The server holds the page's .NET code until the test lets it
     /// go, so the service ends while the page waits for it.</summary>
-    [AvaloniaFact]
-    public void A_page_whose_browsers_network_service_ends_as_it_fetches_its_dotnet_code_is_loaded_again_and_its_component_stops()
+    private void A_page_whose_browsers_network_service_ends_as_it_fetches_its_dotnet_code_is_loaded_again_and_its_component_stops()
     {
         SkipWithoutBrowser();
         Make("blazor", "Bwa", "--interactivity", "WebAssembly", "--no-https");
@@ -156,8 +193,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     /// <summary>A Blazor Web App an AppHost starts debugged, as DCP asks for it, has its WebAssembly half debugged in the
     /// browser beside its server's tab, at the page its run serves (the address DCP gave it on its launch profile's path):
     /// the stand-in AppHost's service, its page's component stopping at its breakpoint in its WebAssembly tab.</summary>
-    [AvaloniaFact]
-    public void A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser()
+    private void A_Blazor_Web_App_an_AppHost_starts_debugged_has_its_WebAssembly_component_stop_in_the_browser()
     {
         SkipWithoutBrowser();
         appHost.Reset();
@@ -255,8 +291,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     /// <summary>A standalone Blazor WebAssembly app debugs in its WebAssembly tab alone, which runs its development server:
     /// its component stops as the page renders it, Step Over goes to the next line, and Variables shows its field, and its
     /// property read by its getter through the proxy once its row is opened.</summary>
-    [AvaloniaFact]
-    public void A_standalone_WebAssembly_apps_component_stops_in_the_browser_steps_and_shows_its_field()
+    private void A_standalone_WebAssembly_apps_component_stops_in_the_browser_steps_and_shows_its_field()
     {
         SkipWithoutBrowser();
         Make("blazorwasm", "Wasm");
@@ -301,8 +336,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     /// <summary>The browser a standalone WebAssembly app is debugged in starts no updater while the app runs, past the 19 s
     /// after its start at which Chrome begins its updater's work: no process it starts, nor any those start, is an updater,
     /// and nothing it writes is an updater's.</summary>
-    [AvaloniaFact]
-    public void The_browser_a_page_is_debugged_in_starts_no_updater_as_it_runs()
+    private void The_browser_a_page_is_debugged_in_starts_no_updater_as_it_runs()
     {
         SkipWithoutBrowser();
         Make("blazorwasm", "Wasm");
@@ -392,8 +426,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
 
     /// <summary>With no browser where Settings names one, Debug of a standalone app runs its development server under the
     /// debugger as before, saying its components in the browser are not debugged, why, and how to get a browser.</summary>
-    [AvaloniaFact]
-    public void Debug_with_no_browser_where_Settings_names_one_says_so_and_how_to_get_one()
+    private void Debug_with_no_browser_where_Settings_names_one_says_so_and_how_to_get_one()
     {
         Make("blazorwasm", "Wasm");
         // Nothing asks its development server: a port of the system's choosing.
@@ -424,8 +457,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     /// <summary>With Firefox where Settings names the browser, Debug of a standalone app runs its development server under
     /// the debugger as before, saying its components in the browser are not debugged, as Firefox is no Chromium browser, and
     /// which to name there instead; no browser is started to debug them.</summary>
-    [AvaloniaFact]
-    public void Debug_where_Settings_names_Firefox_says_it_is_no_chromium_browser_and_which_to_name()
+    private void Debug_where_Settings_names_Firefox_says_it_is_no_chromium_browser_and_which_to_name()
     {
         Make("blazorwasm", "Wasm");
         Profile(Path.Combine(folder, "Properties", "launchSettings.json"), 0);
@@ -458,8 +490,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     /// <summary>A browser that ends as it starts with Chromium's word that the system refused its sandbox (Ubuntu's AppArmor
     /// for a Chromium with no profile of its own): Debug says so plainly, naming the browser, the packages that carry their
     /// profile and Chromium's page on giving it one, and never passes it --no-sandbox.</summary>
-    [AvaloniaFact]
-    public void Debug_in_a_browser_the_system_refuses_its_sandbox_says_so_naming_the_browser_and_the_fixes()
+    private void Debug_in_a_browser_the_system_refuses_its_sandbox_says_so_naming_the_browser_and_the_fixes()
     {
         Make("blazorwasm", "Wasm");
         // The browser starts once the page listens; the development server has no code of the test's to wait at a gate, so its
@@ -497,8 +528,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
 
     /// <summary>A browser that ends as it starts with words of its own (here, that it has no display): Debug ends its session
     /// within seconds, saying it in the browser's own words and its exit code, rather than waiting for a page.</summary>
-    [AvaloniaFact]
-    public void Debug_in_a_browser_that_ends_as_it_starts_ends_its_session_within_seconds_in_the_browsers_own_words()
+    private void Debug_in_a_browser_that_ends_as_it_starts_ends_its_session_within_seconds_in_the_browsers_own_words()
     {
         Make("blazorwasm", "Wasm");
         // The browser starts once the page listens; the development server has no code of the test's to wait at a gate, so its

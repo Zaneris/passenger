@@ -18,8 +18,25 @@ namespace Passenger.Tests;
 /// and Microsoft.Extensions.ApiDescription.Server's from the AspireGraphs restore.</summary>
 public sealed class OpenApiEndpointsTests
 {
+    /// <summary>An app's OpenAPI document, running or built, makes its requests and holds its answers to their
+    /// schemas.</summary>
     [AvaloniaFact]
-    public void A_minimal_APIs_document_makes_its_requests_and_a_response_that_breaks_its_schema_is_said_at_the_member()
+    public void An_apps_openapi_document_makes_its_requests_and_checks_its_answers()
+    {
+        Flow.Step(nameof(A_minimal_APIs_document_makes_its_requests_and_a_response_that_breaks_its_schema_is_said_at_the_member),
+            A_minimal_APIs_document_makes_its_requests_and_a_response_that_breaks_its_schema_is_said_at_the_member);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running),
+            A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none),
+            An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone),
+            Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone);
+    }
+
+    private void A_minimal_APIs_document_makes_its_requests_and_a_response_that_breaks_its_schema_is_said_at_the_member()
     {
         using HeldPort held = new();
         int port = held.Port;
@@ -87,8 +104,7 @@ public sealed class OpenApiEndpointsTests
 
     /// <summary>A minimal API that serves no document of its own but whose build writes one (Microsoft.Extensions.ApiDescription.Server):
     /// built, never run, Generate Requests from OpenAPI reads the document the build wrote and makes its requests.</summary>
-    [AvaloniaFact]
-    public void A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running()
+    private void A_document_the_build_writes_makes_the_requests_of_an_app_that_is_not_running()
     {
         string folder = TestFolders.Create("openapi-built-");
         TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n");
@@ -136,8 +152,7 @@ public sealed class OpenApiEndpointsTests
     /// <summary>An app whose code names no OpenAPI document of its own (it serves one as a static file): its answers are held
     /// to none, until the person names the document at its path through Name OpenAPI Document…, kept with the folder, and
     /// from then on an answer that breaks its schema is said at the member.</summary>
-    [AvaloniaFact]
-    public void An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none()
+    private void An_apps_answers_are_held_to_the_document_the_person_names_where_its_code_names_none()
     {
         string folder = TestFolders.Create("openapi-named-");
         using HeldPort held = new();
@@ -205,8 +220,7 @@ public sealed class OpenApiEndpointsTests
     /// <summary>Two apps with one route, each the folder's environments' address, as tests of each would have left their
     /// documents: Interactive Test completes a body from the document of the app the environment chosen sends it to, from
     /// none with no address to go to, and another folder asking after those addresses from none.</summary>
-    [AvaloniaFact]
-    public void Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone()
+    private void Interactive_test_completes_a_body_from_the_document_of_the_app_it_goes_to_alone()
     {
         const string Orders = "POST {{host}}/orders\nContent-Type: application/json\n";
         string folder = TestFolders.Create("openapi-apps-");

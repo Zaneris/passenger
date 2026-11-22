@@ -16,8 +16,19 @@ public sealed class OpenApiDiscoveryTests
 
     private static StandInHttp Beyond() => new(exchange => exchange.ReplyAsync(200, "application/json", Document));
 
+    /// <summary>An app's OpenAPI document is read at its origin and within it alone, never at another host.</summary>
     [Fact]
-    public async Task A_path_written_to_name_another_host_asks_that_host_nothing()
+    public async Task An_apps_openapi_document_is_asked_only_at_its_origin()
+    {
+        await Flow.StepAsync(nameof(A_path_written_to_name_another_host_asks_that_host_nothing),
+            A_path_written_to_name_another_host_asks_that_host_nothing);
+        await Flow.StepAsync(nameof(A_redirect_to_another_origin_is_not_followed_and_reaches_nothing_there),
+            A_redirect_to_another_origin_is_not_followed_and_reaches_nothing_there);
+        await Flow.StepAsync(nameof(An_app_at_a_name_under_localhost_has_its_document_read), An_app_at_a_name_under_localhost_has_its_document_read);
+        await Flow.StepAsync(nameof(A_redirect_within_the_app_is_followed_to_its_document), A_redirect_within_the_app_is_followed_to_its_document);
+    }
+
+    private async Task A_path_written_to_name_another_host_asks_that_host_nothing()
     {
         await using StandInHttp beyond = Beyond();
         await using StandInHttp app = new(exchange => exchange.ReplyAsync(404, null, string.Empty));
@@ -26,8 +37,7 @@ public sealed class OpenApiDiscoveryTests
         Assert.True(beyond.Connections == 0, "A path the app's code maps sent Passenger's request to another host, where it promises to ask only the local app");
     }
 
-    [Fact]
-    public async Task A_redirect_to_another_origin_is_not_followed_and_reaches_nothing_there()
+    private async Task A_redirect_to_another_origin_is_not_followed_and_reaches_nothing_there()
     {
         await using StandInHttp beyond = Beyond();
         await using StandInHttp app = new(exchange => exchange.ReplyAsync(302, null, string.Empty, $"Location: {beyond.Root}/spec.json\r\n"));
@@ -36,8 +46,7 @@ public sealed class OpenApiDiscoveryTests
         Assert.True(beyond.Connections == 0, "An app's redirect took Passenger's request to another server, where it promises to ask only the local app");
     }
 
-    [Fact]
-    public async Task An_app_at_a_name_under_localhost_has_its_document_read()
+    private async Task An_app_at_a_name_under_localhost_has_its_document_read()
     {
         await using StandInHttp app = new(exchange => exchange.ReplyAsync(200, "application/json", Document));
         OpenApiDocument? read = await OpenApiSources.FromAppAsync(new Uri($"http://shop.dev.localhost:{app.Port}"), [], TestContext.Current.CancellationToken);
@@ -45,8 +54,7 @@ public sealed class OpenApiDiscoveryTests
             "An app at shop.dev.localhost, as dotnet new webapi --localhost-tld makes one, was taken for another machine's and never asked for its document");
     }
 
-    [Fact]
-    public async Task A_redirect_within_the_app_is_followed_to_its_document()
+    private async Task A_redirect_within_the_app_is_followed_to_its_document()
     {
         await using StandInHttp app = new(exchange => exchange.Path == "/moved.json"
             ? exchange.ReplyAsync(200, "application/json", Document)

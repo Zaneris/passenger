@@ -22,8 +22,25 @@ public sealed class NodeScriptsTests
     /// <summary>A program that says it started and runs until it is ended, as a development server does.</summary>
     private const string Serving = "node -e \"console.log('serving'); setInterval(() => {}, 1000)\"";
 
+    /// <summary>A package's scripts run in the Run window with its own package manager, their arguments word for word,
+    /// or say what is missing.</summary>
     [AvaloniaFact]
-    public void A_pnpm_monorepos_packages_show_their_manager_and_each_script_runs_with_pnpm_in_the_Run_window_until_stopped()
+    public void A_packages_scripts_run_with_its_own_manager()
+    {
+        Flow.Step(nameof(A_pnpm_monorepos_packages_show_their_manager_and_each_script_runs_with_pnpm_in_the_Run_window_until_stopped),
+            A_pnpm_monorepos_packages_show_their_manager_and_each_script_runs_with_pnpm_in_the_Run_window_until_stopped);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(An_aspnet_apps_front_end_is_a_package_of_its_project_whose_scripts_follow_the_projects_own_configuration),
+            An_aspnet_apps_front_end_is_a_package_of_its_project_whose_scripts_follow_the_projects_own_configuration);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal),
+            A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_script_with_no_Node_js_says_where_to_name_one_and_on_one_older_than_its_engines_ask_runs_saying_so_first),
+            A_script_with_no_Node_js_says_where_to_name_one_and_on_one_older_than_its_engines_ask_runs_saying_so_first);
+    }
+
+    private void A_pnpm_monorepos_packages_show_their_manager_and_each_script_runs_with_pnpm_in_the_Run_window_until_stopped()
     {
         string folder = PathNames.Canonical(TestFolders.Create("node-mono-"));
         string tools = NodeBeside(folder, standIn: "pnpm");
@@ -97,8 +114,7 @@ public sealed class NodeScriptsTests
         }
     }
 
-    [AvaloniaFact]
-    public void An_aspnet_apps_front_end_is_a_package_of_its_project_whose_scripts_follow_the_projects_own_configuration()
+    private void An_aspnet_apps_front_end_is_a_package_of_its_project_whose_scripts_follow_the_projects_own_configuration()
     {
         string folder = PathNames.Canonical(TestFolders.Create("node-spa-"));
         TestFolders.Write(folder, "Shop/Shop.csproj", $"""
@@ -141,8 +157,7 @@ public sealed class NodeScriptsTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_script_with_no_Node_js_says_where_to_name_one_and_on_one_older_than_its_engines_ask_runs_saying_so_first()
+    private void A_script_with_no_Node_js_says_where_to_name_one_and_on_one_older_than_its_engines_ask_runs_saying_so_first()
     {
         Assert.SkipWhen(Programs.Node() is not { } node || Npm.Cli(node) is null, "npm is not beside the PATH's Node.js, and an npm package's scripts run with it");
         string folder = PathNames.Canonical(TestFolders.Create("node-engines-"));
@@ -181,8 +196,7 @@ public sealed class NodeScriptsTests
     /// <summary>Words cmd.exe would read as its own (an operator, a pipe, a variable, an escape) reach a pnpm script's
     /// package manager as they were given, run in the Run window and in the Terminal, where on Windows pnpm is a .cmd that
     /// cmd.exe runs; the stand-ins for Node.js and pnpm say what they were given, so no Node.js is needed.</summary>
-    [AvaloniaFact]
-    public void A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal()
+    private void A_scripts_arguments_reach_its_package_manager_word_for_word_through_cmds_operators_and_variables_in_the_Run_window_and_the_Terminal()
     {
         const string Words = "R&D a|b %PATH% x^y";
         string folder = PathNames.Canonical(TestFolders.Create("node-words-"));

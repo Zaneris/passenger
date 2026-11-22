@@ -32,10 +32,71 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         app.Reset();
     }
 
+    /// <summary>A component's markup and code are coloured, its tags described and completed, and an end tag written
+    /// once however fast the keys come.</summary>
+    [AvaloniaFact]
+    public void A_components_markup_colours_completes_and_closes_its_tags()
+    {
+        Flow.Step(nameof(A_component_shows_its_markup_and_code_in_their_colours_a_name_mistyped_in_its_code_block_as_an_error_and_reformat_lays_out_its_csharp),
+            A_component_shows_its_markup_and_code_in_their_colours_a_name_mistyped_in_its_code_block_as_an_error_and_reformat_lays_out_its_csharp);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_components_tag_is_described_and_goes_to_its_file_and_completion_offers_elements_components_parameters_and_the_code_blocks_members),
+            A_components_tag_is_described_and_goes_to_its_file_and_completion_offers_elements_components_parameters_and_the_code_blocks_members);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_start_tags_close_in_a_components_markup_writes_its_end_tag_and_a_generics_in_its_code_block_writes_none),
+            A_start_tags_close_in_a_components_markup_writes_its_end_tag_and_a_generics_in_its_code_block_writes_none);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come),
+            An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come),
+            An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own),
+            A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo),
+            Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo);
+    }
+
+    /// <summary>A component's markup and code behind lead to, complete and rename each other's members, and a JS
+    /// interop call leads to its function.</summary>
+    [AvaloniaFact]
+    public void A_components_code_leads_to_and_renames_what_its_markup_names()
+    {
+        Flow.Step(nameof(A_razor_page_shows_a_mistyped_member_of_its_model_as_an_error_and_completes_the_models_members),
+            A_razor_page_shows_a_mistyped_member_of_its_model_as_an_error_and_completes_the_models_members);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(A_components_markup_goes_to_its_code_behinds_members_completes_them_and_its_parameters_and_shows_one_misspelt_as_an_error),
+            A_components_markup_goes_to_its_code_behinds_members_completes_them_and_its_parameters_and_shows_one_misspelt_as_an_error);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Renaming_a_parameter_or_a_code_behinds_member_renames_it_in_the_markup_and_renaming_it_in_the_markup_renames_it_in_the_code_behind),
+            Renaming_a_parameter_or_a_code_behinds_member_renames_it_in_the_markup_and_renaming_it_in_the_markup_renames_it_in_the_code_behind);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module),
+            Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit),
+            Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit);
+        OpenWindows.CloseAll();
+        app.Reset();
+        Flow.Step(nameof(Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file),
+            Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file);
+    }
+
     /// <summary>A component's markup and code in their colours, a name mistyped in its code block an error; and once put
     /// right, Reformat Code lays out the code block's C# and leaves the markup as it was.</summary>
-    [AvaloniaFact]
-    public void A_component_shows_its_markup_and_code_in_their_colours_a_name_mistyped_in_its_code_block_as_an_error_and_reformat_lays_out_its_csharp()
+    private void A_component_shows_its_markup_and_code_in_their_colours_a_name_mistyped_in_its_code_block_as_an_error_and_reformat_lays_out_its_csharp()
     {
         MainWindow window = app.Open("Components/Pages/Counter.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -77,8 +138,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Resting on a component's tag describes it and Go to Declaration opens its razor file; completion offers the
     /// elements and components after a tag's bracket, a component's parameters and the code block's members.</summary>
-    [AvaloniaFact]
-    public void A_components_tag_is_described_and_goes_to_its_file_and_completion_offers_elements_components_parameters_and_the_code_blocks_members()
+    private void A_components_tag_is_described_and_goes_to_its_file_and_completion_offers_elements_components_parameters_and_the_code_blocks_members()
     {
         MainWindow window = app.Open("Components/Pages/Home.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -142,8 +202,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
     /// <summary>Typed a key at a time, as a person types: a start tag's '>' in a component's markup writes its end tag
     /// after the caret, which one Undo takes away; "&lt;/" then writes the open element's name; a void element closes
     /// itself; a generic's '>' in the code block writes nothing; and the setting that closes tags turns it off.</summary>
-    [AvaloniaFact]
-    public void A_start_tags_close_in_a_components_markup_writes_its_end_tag_and_a_generics_in_its_code_block_writes_none()
+    private void A_start_tags_close_in_a_components_markup_writes_its_end_tag_and_a_generics_in_its_code_block_writes_none()
     {
         MainWindow window = app.Open("Components/Greeting.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -173,8 +232,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Typed without a pause, so no answer of Razor's lands between the keys: the end tag Razor wrote is passed all
     /// the same, its text left one end tag with the caret after it.</summary>
-    [AvaloniaFact]
-    public void An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
+    private void An_end_tag_typed_key_by_key_over_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
     {
         MainWindow window = app.Open("Components/Greeting.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -192,8 +250,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Above the end tag Razor wrote, with a line between, typed without a pause: the tag is joined from the text as it
     /// is there, and read once.</summary>
-    [AvaloniaFact]
-    public void An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
+    private void An_end_tag_typed_on_a_line_above_the_one_Razor_wrote_leaves_one_end_tag_however_fast_the_keys_come()
     {
         MainWindow window = app.Open("Components/Greeting.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -216,8 +273,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
     /// <summary>Text typed a key at a time, as a person types it.</summary>
     /// <summary>A start tag's end tag Razor gives after the person typed on inside the new element: written after what was
     /// typed, the caret before it, and one Undo takes the end tag alone away.</summary>
-    [AvaloniaFact]
-    public void A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own()
+    private void A_start_tags_end_tag_that_comes_after_more_was_typed_goes_after_what_was_typed_as_a_step_of_Undo_of_its_own()
     {
         MainWindow window = app.Open("Components/Greeting.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -250,8 +306,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>The same at two carets: the end tags Razor gives each '>' after the person typed on at both are written after
     /// what was typed at each, and one Undo takes both away.</summary>
-    [AvaloniaFact]
-    public void Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo()
+    private void Start_tags_end_tags_that_come_after_more_was_typed_at_two_carets_go_after_what_was_typed_at_each_as_one_step_of_Undo()
     {
         MainWindow window = app.Open("Components/Greeting.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -296,8 +351,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         Ui.Settle();
     }
 
-    [AvaloniaFact]
-    public void A_razor_page_shows_a_mistyped_member_of_its_model_as_an_error_and_completes_the_models_members()
+    private void A_razor_page_shows_a_mistyped_member_of_its_model_as_an_error_and_completes_the_models_members()
     {
         MainWindow window = app.Open("Pages/Hello.cshtml");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -316,8 +370,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Go to Declaration from a component's markup opens its code-behind at the member; the markup completes the
     /// code-behind's members and parameters and shows one misspelt as an error.</summary>
-    [AvaloniaFact]
-    public void A_components_markup_goes_to_its_code_behinds_members_completes_them_and_its_parameters_and_shows_one_misspelt_as_an_error()
+    private void A_components_markup_goes_to_its_code_behinds_members_completes_them_and_its_parameters_and_shows_one_misspelt_as_an_error()
     {
         MainWindow window = app.Open("Components/Pages/Tally.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -377,8 +430,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Renaming a component's parameter renames it where the markup sets it; renaming a code-behind's member renames
     /// it in the markup, and renaming one in the markup renames it in the code-behind.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_parameter_or_a_code_behinds_member_renames_it_in_the_markup_and_renaming_it_in_the_markup_renames_it_in_the_code_behind()
+    private void Renaming_a_parameter_or_a_code_behinds_member_renames_it_in_the_markup_and_renaming_it_in_the_markup_renames_it_in_the_code_behind()
     {
         MainWindow window = app.Open("Components/Pages/Home.razor");
         OpenDocument page = window.EditorArea.Active!;
@@ -430,8 +482,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
     /// <summary>Go to Declaration from a JS interop call's identifier in a component lands on the JavaScript function: one
     /// its collocated script declares there first, one only the app's scripts declare in them; from a call on a module
     /// imported by its path, in that module, whichever overload imported it; and from the import's path, on the module's file.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module()
+    private void Go_to_declaration_from_a_js_interop_call_goes_to_its_function_in_the_collocated_script_the_apps_scripts_or_its_module()
     {
         MainWindow window = app.Open("Components/Pages/Bell.razor");
         string bell = app.Named("Components/Pages/Bell.razor");
@@ -458,8 +509,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
 
     /// <summary>Go to Declaration from a JS interop call whose search of a script stops at the regex's time limit (held
     /// there in place of a slow machine) goes nowhere and says where it stopped, in the one wording.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit()
+    private void Go_to_declaration_from_a_js_interop_call_refuses_where_a_scripts_search_stops_at_its_time_limit()
     {
         MainWindow window = app.Open("Components/Pages/Bell.razor");
         string bell = app.Named("Components/Pages/Bell.razor");
@@ -475,8 +525,7 @@ public sealed class RazorTests : IClassFixture<BlazorShop>
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
+    private void Call_hierarchy_of_a_method_a_components_code_block_calls_goes_to_the_call_in_its_razor_file()
     {
         MainWindow window = app.Open("Components/Greeting.razor");
         CodeEditor editor = window.EditorArea.CodeEditor;

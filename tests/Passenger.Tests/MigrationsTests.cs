@@ -17,10 +17,84 @@ public sealed class MigrationsTests
     /// <summary>The longest a build and a dotnet ef command take together on a developer's machine, scaled by the run.</summary>
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
+    /// <summary>The Migrations window adds, applies, rolls back and scripts migrations, and a missing or other tool or
+    /// package is found and fixed before the command.</summary>
+    [AvaloniaFact]
+    public void Migrations_run_against_the_database_and_their_tools_are_fixed_in_place()
+    {
+        Flow.Step(nameof(Migrations_are_added_applied_rolled_back_and_scripted_against_the_runs_database),
+            Migrations_are_added_applied_rolled_back_and_scripted_against_the_runs_database);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_missing_tool_and_Design_package_are_found_before_the_command_fixed_in_place_and_the_command_made),
+            A_missing_tool_and_Design_package_are_found_before_the_command_fixed_in_place_and_the_command_made);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo),
+            Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command),
+            A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo),
+            A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name),
+            A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name);
+    }
+
+    /// <summary>A context's project, startup, environment and migrations folder are those dotnet ef runs with, and EF
+    /// Core's packages move as one set with their provider, one step of Undo.</summary>
+    [AvaloniaFact]
+    public void Ef_cores_projects_and_packages_are_those_dotnet_ef_takes()
+    {
+        Flow.Step(nameof(Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys),
+            Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup),
+            The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step),
+            A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core),
+            A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so),
+            A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken),
+            The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(The_NuGet_windows_update_of_EF_Core_past_its_provider_warns_and_updates_the_set_with_the_provider_together),
+            The_NuGet_windows_update_of_EF_Core_past_its_provider_warns_and_updates_the_set_with_the_provider_together);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Under_central_package_management_updating_the_set_moves_the_set_other_projects_reference_too),
+            Under_central_package_management_updating_the_set_moves_the_set_other_projects_reference_too);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone),
+            Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it),
+            Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind),
+            Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports),
+            Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline),
+            With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there),
+            Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in),
+            Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in);
+    }
+
     /// <summary>The Migrations window's commands as a person makes them, dotnet ef's lines in the Build window as a program's
     /// output (what it answers, its <c>data:</c> lines, left out of it).</summary>
-    [AvaloniaFact]
-    public void Migrations_are_added_applied_rolled_back_and_scripted_against_the_runs_database()
+    private void Migrations_are_added_applied_rolled_back_and_scripted_against_the_runs_database()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -108,8 +182,7 @@ public sealed class MigrationsTests
 
     /// <summary>The tool's manifest the fix makes is made as the folder's .editorconfig asks, CRLF and a UTF-8 BOM, which
     /// dotnet tool's own write of it keeps.</summary>
-    [AvaloniaFact]
-    public void A_missing_tool_and_Design_package_are_found_before_the_command_fixed_in_place_and_the_command_made()
+    private void A_missing_tool_and_Design_package_are_found_before_the_command_fixed_in_place_and_the_command_made()
     {
         string folder = ShopApp.Make(design: false, tool: null);
         TestFolders.Write(folder, ".editorconfig", "root = true\n\n[dotnet-tools.json]\nend_of_line = crlf\ncharset = utf-8-bom\n");
@@ -160,8 +233,7 @@ public sealed class MigrationsTests
     /// <summary>The missing Design package's fix from the window's button while the person types in Program.cs as its install
     /// runs (held): Undo there takes back the typing alone, asking nothing, the package staying, and the fix's own Undo in
     /// the Solution view takes the package out and leaves the typing, where the fix's command took the typing as its own.</summary>
-    [AvaloniaFact]
-    public void Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo()
+    private void Typing_in_another_file_while_a_fix_adds_a_package_stays_that_files_own_undo()
     {
         string folder = ShopApp.Make(design: false, tool: ShopApp.Version);
         string program = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Program.cs"));
@@ -221,8 +293,7 @@ public sealed class MigrationsTests
         }
     }
 
-    [AvaloniaFact]
-    public void Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys()
+    private void Only_the_projects_own_contexts_are_taken_for_its_own_not_a_nested_projects_nor_a_dependencys()
     {
         string folder = ShopApp.Make(design: false, tool: null);
         TestFolders.Write(folder, "Audit/Audit.csproj", TestProjects.Library());
@@ -247,8 +318,7 @@ public sealed class MigrationsTests
     /// library alone, chosen, never the web app that has only the Design package; Startup offers the web app that runs it
     /// first, then the library itself and the services library referencing it, never the domain library it references.
     /// Every project's C# files are read only once the window is shown.</summary>
-    [AvaloniaFact]
-    public void The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup()
+    private void The_library_declaring_the_context_is_the_project_and_the_web_app_running_it_the_first_startup()
     {
         string folder = ShopApp.MakeLayered();
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -279,8 +349,7 @@ public sealed class MigrationsTests
     private static string Names(IEnumerable<Passenger.Workspace.ProjectModel> projects) => string.Join(", ", projects.Select(p => p.Name));
 
     /// <summary>The manifest, stored with CRLF and a UTF-8 BOM, keeps them through dotnet tool's write of it.</summary>
-    [AvaloniaFact]
-    public void A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command()
+    private void A_tool_of_another_version_is_said_with_both_versions_and_pinned_to_the_runtimes_before_the_command()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Older);
         string tools = Path.Combine(folder, "dotnet-tools.json");
@@ -308,8 +377,7 @@ public sealed class MigrationsTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step()
+    private void A_provider_behind_EF_Core_is_said_with_both_versions_and_EF_Core_moved_to_what_it_supports_as_one_undo_step()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0", providers: [("1.0.0", $"[{ShopApp.Older}]")]);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -341,8 +409,7 @@ public sealed class MigrationsTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core()
+    private void A_provider_behind_EF_Core_moves_up_to_the_version_of_it_that_supports_the_projects_EF_Core()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0",
             providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")]);
@@ -368,8 +435,7 @@ public sealed class MigrationsTests
     /// <summary>The provider's version that supports the project's EF Core needs a package no feed holds, so the alignment's
     /// restore fails: the project is put back as it was and restored again, the fix saying it failed and that the project
     /// was put back, the provider still behind and nothing left for Undo.</summary>
-    [AvaloniaFact]
-    public void A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so()
+    private void A_provider_alignment_whose_restore_fails_puts_the_project_back_as_it_was_and_says_so()
     {
         // A version no other test makes: the package cache keeps a provider by its id and version.
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, provider: "1.0.0",
@@ -405,8 +471,7 @@ public sealed class MigrationsTests
     /// configured before Shop's, ShopContextFactory reads Shop and holds no connection string, Reporting's or another, made
     /// with the CRLF and UTF-8 BOM its .editorconfig asks; dotnet ef then makes the context through it, and Undo takes the
     /// factory back.</summary>
-    [AvaloniaFact]
-    public void A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo()
+    private void A_context_the_tools_cannot_make_is_said_with_why_and_a_design_time_factory_added_in_place_and_taken_back_by_undo()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
         TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*Factory.cs]\nend_of_line = crlf\ncharset = utf-8-bom\n");
@@ -476,8 +541,7 @@ public sealed class MigrationsTests
     /// <summary>The design-time factory added for a context reads the connection the startup project's settings name for it
     /// in the environment its run gives dotnet ef: with its launch profile running it in Staging, appsettings.Staging.json's
     /// ShopContext, which appsettings.json and appsettings.Development.json do not name.</summary>
-    [AvaloniaFact]
-    public void A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name()
+    private void A_design_time_factory_reads_the_connection_the_settings_of_the_runs_environment_name()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
         TestFolders.Write(folder, "Properties/launchSettings.json", """
@@ -523,8 +587,7 @@ public sealed class MigrationsTests
     /// the factory added reads the connection appsettings.Staging.json alone names, and Add and Update make Staging's
     /// database through it. Kept with the folder, its migrations are listed from that database once opened again. A name
     /// typed is taken, one that names no environment put back.</summary>
-    [AvaloniaFact]
-    public void The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken()
+    private void The_environment_chosen_beside_the_startup_project_is_the_one_dotnet_ef_runs_in_kept_with_the_folder_and_a_typed_one_taken()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version, program: Unregistered);
         TestFolders.Write(folder, "Properties/launchSettings.json", """
@@ -680,8 +743,7 @@ public sealed class MigrationsTests
         return window;
     }
 
-    [AvaloniaFact]
-    public void The_NuGet_windows_update_of_EF_Core_past_its_provider_warns_and_updates_the_set_with_the_provider_together()
+    private void The_NuGet_windows_update_of_EF_Core_past_its_provider_warns_and_updates_the_set_with_the_provider_together()
     {
         string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
             providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")]);
@@ -716,8 +778,7 @@ public sealed class MigrationsTests
     /// <summary>Under central package management, Update the Set moves the central versions of EF Core's packages another
     /// project references (Reports' relational package) with the shop's, never leaving the folder's set half at the new
     /// version.</summary>
-    [AvaloniaFact]
-    public void Under_central_package_management_updating_the_set_moves_the_set_other_projects_reference_too()
+    private void Under_central_package_management_updating_the_set_moves_the_set_other_projects_reference_too()
     {
         string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
             providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], central: true);
@@ -748,8 +809,7 @@ public sealed class MigrationsTests
 
     /// <summary>The NuGet window's Update of one of EF Core's packages moves the project's others with it, the status naming
     /// them, and Undo takes them back together; an Install of one the project lacks adds that one alone.</summary>
-    [AvaloniaFact]
-    public void Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone()
+    private void Updating_one_of_EF_Cores_packages_moves_the_projects_others_with_it_as_one_undo_step_and_an_install_adds_one_alone()
     {
         string folder = ShopApp.Make(design: true, tool: null, ef: ShopApp.Older);
         string project = Path.Combine(folder, "Shop.csproj");
@@ -782,8 +842,7 @@ public sealed class MigrationsTests
 
     /// <summary>Under central package management, a Downgrade of one of EF Core's packages moves the folder's set down with it in
     /// Directory.Packages.props: the shop's Design package and the relational package Reports references.</summary>
-    [AvaloniaFact]
-    public void Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it()
+    private void Under_central_package_management_a_downgrade_of_one_of_EF_Cores_packages_moves_the_folders_set_down_with_it()
     {
         string folder = ShopApp.Make(design: true, tool: null, central: true);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -807,8 +866,7 @@ public sealed class MigrationsTests
     /// <summary>Update Anyway, past the provider an update leaves behind, moves the project's EF Core packages together (its
     /// relational package too, which then wins over the provider's own range as the restore resolves it) and leaves the
     /// provider as it was, the status naming what moved and the provider's version that supports the EF Core asked.</summary>
-    [AvaloniaFact]
-    public void Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind()
+    private void Update_Anyway_past_a_provider_moves_EF_Cores_set_without_the_provider_and_says_it_was_left_behind()
     {
         string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
             providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], relational: true);
@@ -843,8 +901,7 @@ public sealed class MigrationsTests
     /// <summary>Where no version of the provider supports the EF Core asked, the update's question offers EF Core's newest
     /// version above the project's that a version of the provider supports: taken, EF Core's packages and the provider move
     /// there together.</summary>
-    [AvaloniaFact]
-    public void Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports()
+    private void Past_a_provider_no_version_of_which_supports_the_EF_Core_asked_the_update_offers_EF_Cores_newest_it_supports()
     {
         string folder = ShopApp.Make(design: true, tool: null, provider: "1.0.0", ef: ShopApp.Older,
             providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], fed: [("microsoft.entityframeworkcore.sqlite", ShopApp.Ef11)]);
@@ -930,8 +987,7 @@ public sealed class MigrationsTests
     /// can start its contexts, the window lists and adds migrations through the startup project the file names and the
     /// context it names, never the first app (which lacks the Design package dotnet ef needs) nor the first context; and
     /// with the database out of reach, Remove Last Migration removes the migration offline, never asking the database.</summary>
-    [AvaloniaFact]
-    public void With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline()
+    private void With_EF_Core_11_the_window_takes_what_dotnet_ef_json_names_and_removes_a_migration_offline()
     {
         string folder = ShopApp.MakeEf11();
         string data = Path.Combine(folder, "Data");
@@ -974,8 +1030,7 @@ public sealed class MigrationsTests
     /// is read from its own folder; the folder given is kept for the context and filled in again beside the folders holding
     /// its migrations, dotnet ef's own named where it is empty; and Remove Last Migration removes the last from its folder,
     /// the snapshot there kept. A folder picked outside the project is refused, saying why.</summary>
-    [AvaloniaFact]
-    public void Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there()
+    private void Each_contexts_migrations_go_into_the_folder_given_are_listed_from_it_and_the_last_removed_from_there()
     {
         string folder = ShopApp.MakeSets();
         string data = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Data"));
@@ -1068,8 +1123,7 @@ public sealed class MigrationsTests
     /// <summary>Add Migration… run from Find Action in a fresh window, before the Migrations window has listed anything, lists
     /// the context first, so its question names the context and where its migrations are (Migrations/Sqlite, beside which
     /// dotnet ef puts the next), never dotnet ef's default as for a context with none.</summary>
-    [AvaloniaFact]
-    public void Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in()
+    private void Add_Migration_asked_before_the_window_lists_names_the_context_and_the_folder_its_migrations_are_in()
     {
         string folder = ShopApp.Make(design: true, tool: ShopApp.Version);
         TestFolders.Write(folder, "Migrations/Sqlite/20260101000000_Initial.cs", """

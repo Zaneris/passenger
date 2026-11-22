@@ -13,8 +13,18 @@ public sealed class EfConnectionsTests
 {
     private static readonly string[] Configured = ["Reporting", "Shop"];
 
+    /// <summary>A context's connection is the one its registration names, else the one configured under the context's
+    /// name.</summary>
     [Fact]
-    public void A_registration_in_code_names_the_connection_directly_through_a_local_or_as_aspires_connection_name()
+    public void A_contexts_connection_is_the_one_its_registration_names()
+    {
+        Flow.Step(nameof(A_registration_in_code_names_the_connection_directly_through_a_local_or_as_aspires_connection_name),
+            A_registration_in_code_names_the_connection_directly_through_a_local_or_as_aspires_connection_name);
+        Flow.Step(nameof(Without_a_registration_the_connection_configured_under_the_contexts_name_is_its_and_never_the_first),
+            Without_a_registration_the_connection_configured_under_the_contexts_name_is_its_and_never_the_first);
+    }
+
+    private void A_registration_in_code_names_the_connection_directly_through_a_local_or_as_aspires_connection_name()
     {
         Assert.Equal("Sales", Name("builder.Services.AddDbContext<ShopContext>(o => o.UseSqlite(builder.Configuration.GetConnectionString(\"Sales\")));"));
         Assert.Equal("DefaultConnection", Name("""
@@ -30,8 +40,7 @@ public sealed class EfConnectionsTests
             """));
     }
 
-    [Fact]
-    public void Without_a_registration_the_connection_configured_under_the_contexts_name_is_its_and_never_the_first()
+    private void Without_a_registration_the_connection_configured_under_the_contexts_name_is_its_and_never_the_first()
     {
         Assert.Equal("Shop", Name("builder.Services.AddDbContext<SalesContext>(o => o.UseSqlite(builder.Configuration.GetConnectionString(\"Reporting\")));"));
         Assert.Null(EfConnections.NameOf("AuditContext", [("Program.cs", "Console.WriteLine();")], CSharpParsing.Default, Configured));

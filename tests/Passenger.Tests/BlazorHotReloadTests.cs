@@ -19,8 +19,19 @@ public sealed class BlazorHotReloadTests : IDisposable
 
     private const string HandlersRan = BellApp.HandlersRan;
 
+    /// <summary>A Blazor component's markup and code edits reach its page under debug, its update handlers run after,
+    /// and under Run with Hot Reload as dotnet watch runs it.</summary>
     [AvaloniaFact]
-    public void Under_debug_a_components_markup_and_code_edits_reach_its_page_and_the_apps_update_handlers_run_after_each()
+    public void A_blazor_components_edits_reach_its_page_under_debug_and_watch()
+    {
+        Flow.StepApart<BlazorHotReloadTests>(nameof(Under_debug_a_components_markup_and_code_edits_reach_its_page_and_the_apps_update_handlers_run_after_each),
+            test => test.Under_debug_a_components_markup_and_code_edits_reach_its_page_and_the_apps_update_handlers_run_after_each());
+        OpenWindows.CloseAll();
+        Flow.StepApart<BlazorHotReloadTests>(nameof(Under_run_with_hot_reload_a_components_markup_and_code_edits_reach_its_page_as_dotnet_watch_runs_the_update_handlers),
+            test => test.Under_run_with_hot_reload_a_components_markup_and_code_edits_reach_its_page_as_dotnet_watch_runs_the_update_handlers());
+    }
+
+    private void Under_debug_a_components_markup_and_code_edits_reach_its_page_and_the_apps_update_handlers_run_after_each()
     {
         Make();
         MainWindow window = Ui.OpenFolder(folder);
@@ -49,8 +60,7 @@ public sealed class BlazorHotReloadTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Under_run_with_hot_reload_a_components_markup_and_code_edits_reach_its_page_as_dotnet_watch_runs_the_update_handlers()
+    private void Under_run_with_hot_reload_a_components_markup_and_code_edits_reach_its_page_as_dotnet_watch_runs_the_update_handlers()
     {
         Make();
         MainWindow window = Ui.OpenFolder(folder);

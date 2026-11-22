@@ -27,13 +27,64 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
         project.Reset();
     }
 
+    /// <summary>Appsettings complete from options classes and lead to and from where they are read, and a key nothing
+    /// gives is warned of with its fixes.</summary>
+    [AvaloniaFact]
+    public void An_apps_settings_complete_lead_to_their_reads_and_are_checked()
+    {
+        Flow.Step(nameof(Appsettings_completes_a_section_s_keys_from_its_options_class_and_an_enum_s_names),
+            Appsettings_completes_a_section_s_keys_from_its_options_class_and_an_enum_s_names);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_key_nothing_gives_is_warned_of_and_its_fixes_set_it_in_appsettings_or_user_secrets),
+            A_key_nothing_gives_is_warned_of_and_its_fixes_set_it_in_appsettings_or_user_secrets);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them),
+            Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(Go_to_Declaration_goes_from_a_key_to_its_property_and_from_a_read_to_where_it_is_given),
+            Go_to_Declaration_goes_from_a_key_to_its_property_and_from_a_read_to_where_it_is_given);
+    }
+
+    /// <summary>A configuration read is checked against the programs running it, each environment's settings and
+    /// Compose, and a held settings file is written once it is let go.</summary>
+    [AvaloniaFact]
+    public void A_read_is_checked_against_every_place_that_may_give_its_key()
+    {
+        Flow.Step(nameof(A_library_s_read_is_checked_against_the_programs_that_reference_it),
+            A_library_s_read_is_checked_against_the_programs_that_reference_it);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_library_no_program_references_is_warned_of_no_key), A_library_no_program_references_is_warned_of_no_key);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_read_through_a_field_another_partial_file_declares_is_warned_of),
+            A_read_through_a_field_another_partial_file_declares_is_warned_of);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are),
+            A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says),
+            A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice),
+            A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice);
+        OpenWindows.CloseAll();
+        project.Reset();
+        Flow.Step(nameof(A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of), A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of);
+    }
+
     /// <summary>Completion in appsettings.json lists a section's keys from the options class bound to it (its
     /// properties, a renamed one by its configuration name, a nested class's) and from the code's reads, leaving out
     /// those the object has, the first key's card beside the list as it opens; a bool's key goes in with its value, and an
     /// enum's value offers its names. A key's card says what the code reads it as, a comment begun above it (a lone '/' so
     /// far) leaving it read as ever.</summary>
-    [AvaloniaFact]
-    public void Appsettings_completes_a_section_s_keys_from_its_options_class_and_an_enum_s_names()
+    private void Appsettings_completes_a_section_s_keys_from_its_options_class_and_an_enum_s_names()
     {
         MainWindow window = project.Open(project.PathOf("Shop/appsettings.json"));
         try
@@ -89,8 +140,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// <summary>Go to Declaration from a key in appsettings.json goes to the options property it sets, an agent's
     /// definition too, and from its section to where the section is bound; from a read in C# it goes to where
     /// appsettings.json gives the key.</summary>
-    [AvaloniaFact]
-    public void Go_to_Declaration_goes_from_a_key_to_its_property_and_from_a_read_to_where_it_is_given()
+    private void Go_to_Declaration_goes_from_a_key_to_its_property_and_from_a_read_to_where_it_is_given()
     {
         WebLanguagesTests.SkipWithoutNode();
         MainWindow window = project.Open(project.PathOf("Shop/appsettings.json"));
@@ -132,8 +182,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// appsettings.json, or for a secret's name (masked as typed) in user secrets, giving the project a UserSecretsId first,
     /// each one undo step; the warning goes once the key is given. An agent's code_actions lists the same fix first and
     /// apply_code_action makes it with the value given as name.</summary>
-    [AvaloniaFact]
-    public void A_key_nothing_gives_is_warned_of_and_its_fixes_set_it_in_appsettings_or_user_secrets()
+    private void A_key_nothing_gives_is_warned_of_and_its_fixes_set_it_in_appsettings_or_user_secrets()
     {
         string settings = project.PathOf("Shop/appsettings.json");
         string projectFile = project.PathOf("Shop/Shop.csproj");
@@ -263,8 +312,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// folder: a key Shop's appsettings.json gives is not warned of, one neither gives is, naming both. The given key's card
     /// and Go to Declaration go to Shop's appsettings.json, which completes the library's keys; the missing key's fixes offer
     /// each program's appsettings.json, and Shop's sets it there, after which the warning goes.</summary>
-    [AvaloniaFact]
-    public void A_library_s_read_is_checked_against_the_programs_that_reference_it()
+    private void A_library_s_read_is_checked_against_the_programs_that_reference_it()
     {
         string settings = project.PathOf("Shop/appsettings.json");
         MainWindow window = project.Open(project.PathOf("Catalog/CatalogSettings.cs"));
@@ -311,8 +359,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
     /// <summary>A library no program of the folder references runs with no configuration Passenger can know, so a read of a
     /// key nothing gives is warned of nothing, its own folder never taken for a program's.</summary>
-    [AvaloniaFact]
-    public void A_library_no_program_references_is_warned_of_no_key()
+    private void A_library_no_program_references_is_warned_of_no_key()
     {
         MainWindow window = project.Open(project.PathOf("Tools/ToolSettings.cs"));
         try
@@ -330,8 +377,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
     /// <summary>A read through a field another part of its partial class declares, in a file that never names configuration's
     /// API, is warned of as a read in the declaring file would be.</summary>
-    [AvaloniaFact]
-    public void A_read_through_a_field_another_partial_file_declares_is_warned_of()
+    private void A_read_through_a_field_another_partial_file_declares_is_warned_of()
     {
         MainWindow window = project.Open(project.PathOf("Shop/Reader.Reads.cs"));
         try
@@ -348,8 +394,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// <summary>A file pulled before the programs running its code are known, its projects not yet evaluated, is warned of the
     /// keys nothing gives once they are: the configuration's check runs again as the evaluations land, whether or not the
     /// server says its diagnostics moved, which a warm server whose projects loaded long since never does.</summary>
-    [AvaloniaFact]
-    public void A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are()
+    private void A_read_pulled_before_its_projects_are_evaluated_is_warned_of_once_they_are()
     {
         TaskCompletionSource evaluated = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource checkedOnce = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -382,8 +427,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
     /// <summary>A launch profile that lists DOTNET_ENVIRONMENT Development before ASPNETCORE_ENVIRONMENT Staging runs the app in
     /// Staging, as ASP.NET Core reads ASPNETCORE_ENVIRONMENT first, so a key appsettings.Staging.json gives is not warned of.</summary>
-    [AvaloniaFact]
-    public void A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says()
+    private void A_key_the_settings_of_the_environment_ASPNETCORE_ENVIRONMENT_names_gives_is_not_warned_of_whatever_DOTNET_ENVIRONMENT_says()
     {
         project.Write([
             ("Shop/appsettings.Staging.json", "{\n  \"Shop\": {\n    \"Banner\": \"staged\"\n  }\n}\n"),
@@ -419,8 +463,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// <summary>Launch profiles running the app in Development and in Staging have a key nothing gives warned of with every
     /// settings file it was looked for in, one choice with what else might give it, as every choice in Passenger is said:
     /// never "appsettings.json or appsettings.Development.json or appsettings.Staging.json".</summary>
-    [AvaloniaFact]
-    public void A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice()
+    private void A_key_nothing_gives_is_warned_of_with_each_environment_s_settings_listed_once_as_one_choice()
     {
         project.Write("Shop/Properties/launchSettings.json", """
             {
@@ -463,8 +506,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
 
     /// <summary>A key compose-dev.yml at the folder's top sets for the project is known as given once the file is written
     /// to set it, as compose.yaml's is: the warning that nothing gives it goes, the edit itself having it looked at again.</summary>
-    [AvaloniaFact]
-    public void A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of()
+    private void A_key_compose_dev_yml_comes_to_set_is_no_longer_warned_of()
     {
         string compose = project.Write("compose-dev.yml", "services:\n  shop:\n    build: ./Shop\n");
         MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
@@ -493,8 +535,7 @@ public sealed class ConfigurationTests : IClassFixture<ConfigurationTests.Projec
     /// <summary>Manage User Secrets on the project's row gives a project with none a UserSecretsId and opens its secrets.json,
     /// made in the run's own user secrets folder, never the person's; its keys complete there as appsettings.json's do, and
     /// asked again it opens the same file, the project left as it is.</summary>
-    [AvaloniaFact]
-    public void Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them()
+    private void Manage_User_Secrets_gives_the_project_its_secrets_and_opens_them()
     {
         string projectFile = project.PathOf("Shop/Shop.csproj");
         MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
