@@ -29,6 +29,10 @@ public sealed class MigrationsView : DockPanel
     private readonly TextBlock against;
     private bool showing;
 
+    /// <summary>The gaps the rows show, each its words, weight and fixes, so a change that leaves them as they are keeps the
+    /// rows and the buttons a person may be pressing.</summary>
+    private IReadOnlyList<(string Said, bool Blocks, string Fixes)> shownGaps = [];
+
     public MigrationsView(MigrationsController controller)
     {
         this.controller = controller;
@@ -186,12 +190,18 @@ public sealed class MigrationsView : DockPanel
         }
         against.Text = controller.Database is { } database ? $"Against {database}" : string.Empty;
         against.IsVisible = against.Text.Length > 0;
-        gaps.Children.Clear();
         IEnumerable<EfGap> pending = controller.Pending.Select(p => new EfGap($"{p.Context}'s model has changes no migration covers",
             [new EfFix(EfFixKind.AddMigration, "Add Migration…")], Blocks: false));
-        foreach (EfGap gap in controller.Gaps.Concat(pending).Concat(controller.Failure is { } failed ? [failed] : []))
+        List<EfGap> shown = [.. controller.Gaps.Concat(pending).Concat(controller.Failure is { } failed ? [failed] : [])];
+        List<(string Said, bool Blocks, string Fixes)> keys = [.. shown.Select(g => (g.Said, g.Blocks, string.Join('\n', g.Fixes.Select(f => $"{f.Kind} {f.Title}"))))];
+        if (!keys.SequenceEqual(shownGaps))
         {
-            gaps.Children.Add(GapRow(gap));
+            shownGaps = keys;
+            gaps.Children.Clear();
+            foreach (EfGap gap in shown)
+            {
+                gaps.Children.Add(GapRow(gap));
+            }
         }
         placeholder.Text = controller.Projects.Count == 0 ? Refusals.NoEfCore
             : !controller.Listed ? "Refresh to list the migrations, as dotnet ef reads them and the database has them"
