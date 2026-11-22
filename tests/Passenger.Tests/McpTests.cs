@@ -32,6 +32,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The gate's core tools as one flow: the tests listed as the agent starts, its own Passenger opening its
     /// folder while its window is built, a call with a parameter its tool lacks told which, and every action listed,
     /// one that cannot run saying why, each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [Fact]
     public async Task An_agents_Passenger_lists_its_tests_and_actions_takes_its_window_up_and_says_what_a_call_lacks()
     {
@@ -44,6 +45,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The gate's build, run and publish as one flow: a file-based program built and run as a project of its
     /// own, a run refused for anything but its own failed build naming no build errors, and a publish told the folder
     /// it landed in or why not, each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [Fact]
     public async Task An_agent_builds_runs_and_publishes_hearing_its_own_build_errors_alone()
     {
@@ -55,6 +57,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The gate's Git as one flow: changes read and committed, a merge's conflict resolved and a command run
     /// in the IDE's terminal, and a push the remote refuses said as an error naming the refusal while the commit stays
     /// made, each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [Fact]
     public async Task An_agent_reads_commits_merges_and_pushes_through_Git_hearing_a_refusal_in_its_words()
     {
@@ -238,9 +241,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("a global dotnet ef under the DOTNET CLI HOME a login profile sets is found", () => new McpTests(restored), t => t.A_global_dotnet_ef_under_the_DOTNET_CLI_HOME_a_login_profile_sets_is_found());
     }
 
-    [Gate]
-    [Fact]
-    public async Task An_agent_that_lists_the_tests_as_it_starts_gets_those_the_test_projects_code_declares()
+    private async Task An_agent_that_lists_the_tests_as_it_starts_gets_those_the_test_projects_code_declares()
     {
         // A test project as written, never built or restored: its tests come from its code, which the agent's first look waits for.
         string tests = PathNames.Canonical(TestFolders.Create("mcp-tests-"));
@@ -739,9 +740,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// them then, and the window, once built, takes all of it up. Of what its opening asked of the built window before (an
     /// evaluation, a design-time build, a language server's start and load), it asks none: the window's build is no
     /// longer the first answer's to wait out.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agents_own_passenger_opens_its_folder_while_its_window_is_built_which_takes_it_up_and_does_none_of_it_again()
+    private async Task An_agents_own_passenger_opens_its_folder_while_its_window_is_built_which_takes_it_up_and_does_none_of_it_again()
     {
         string folder = PathNames.Canonical(await TakeFolderAsync());
         await using McpClient client = await Start(["--mcp", folder]);
@@ -905,9 +904,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A file-based program (<c>dotnet run app.cs</c>) is a project to an agent: workspace lists it by its C# file,
     /// build builds it and run runs it, the code of the file it includes with it.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agent_builds_and_runs_a_file_based_program_as_a_project_of_its_own()
+    private async Task An_agent_builds_and_runs_a_file_based_program_as_a_project_of_its_own()
     {
         string program = PathNames.Canonical(TestFolders.Create("mcp-program-"));
         DeleteAtEnd(program);
@@ -998,9 +995,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A run refused for a reason of its own (here a launch profile's command named RetryFailed, which Passenger does
     /// not run) is answered with that reason alone, though the last build's errors are still in Problems; a run refused for
     /// the build it ran failing still names them.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agents_run_refused_for_anything_but_its_own_failed_build_names_no_build_errors()
+    private async Task An_agents_run_refused_for_anything_but_its_own_failed_build_names_no_build_errors()
     {
         await TakeFolderAsync();
         Write("Program.cs", "int count = \"three\";\nConsole.WriteLine(count);\n");
@@ -1349,9 +1344,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Git's tools on a repository, a merge stopped for a conflict among them: the agent finds it in vcs_status (what
     /// is under way, each side's branch, what each did to the file), resolves it with theirs, and its commit finishes the
     /// merge; and a command in the IDE's terminal.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agent_reads_and_commits_changes_resolves_a_merges_conflict_and_runs_a_command_in_the_ides_terminal()
+    private async Task An_agent_reads_and_commits_changes_resolves_a_merges_conflict_and_runs_a_command_in_the_ides_terminal()
     {
         string repository = TestFolders.Create("mcp-git-");
         try
@@ -2635,9 +2628,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Commit and Push to a remote that refuses every push: the agent hears the refusal, in git's words, as the
     /// tool's error, and the commit stays made.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agents_push_the_remote_refuses_is_an_error_naming_the_refusal_and_the_commit_stays_made()
+    private async Task An_agents_push_the_remote_refuses_is_an_error_naming_the_refusal_and_the_commit_stays_made()
     {
         string root = TestFolders.Create("mcp-push-");
         try
@@ -2824,9 +2815,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A call whose arguments its tool does not take is answered with what is wrong and every parameter the tool
     /// takes, before the tool runs.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agents_call_with_a_parameter_its_tool_lacks_or_misses_hears_which_and_what_the_tool_takes()
+    private async Task An_agents_call_with_a_parameter_its_tool_lacks_or_misses_hears_which_and_what_the_tool_takes()
     {
         string folder = TestFolders.Create("mcp-parameters-");
         DeleteAtEnd(folder);
@@ -2841,9 +2830,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's view of the IDE's actions: every one the IDE declares, listed with why it cannot run now, those an
     /// answer has no room for read on through the groups it names, and run by its id as its shortcut would.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot()
+    private async Task An_agent_lists_every_action_the_ide_declares_and_one_it_runs_says_why_when_it_cannot()
     {
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
@@ -2970,9 +2957,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's publish, build's with a project to publish: the project to a folder, answered with where it landed
     /// or why it did not.</summary>
-    [Gate]
-    [Fact]
-    public async Task An_agent_publishes_a_project_and_is_told_the_folder_it_landed_in_or_why_not()
+    private async Task An_agent_publishes_a_project_and_is_told_the_folder_it_landed_in_or_why_not()
     {
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);

@@ -47,6 +47,7 @@ public sealed partial class VcsTests : IDisposable
     /// window, a renamed file's bars against where the last commit has it, a bar's click and the diff's arrow putting a
     /// change back, Commit and Stash one at a time, and a submodule offered only where its commit moved, each step the
     /// gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Changes_show_as_bars_that_a_commit_clears_a_rename_keeps_and_a_bar_or_the_diff_puts_back()
     {
@@ -62,6 +63,7 @@ public sealed partial class VcsTests : IDisposable
     /// back reloading the open file, Update Project bringing the upstream's commit into the open file, stashing every
     /// change and new file and unstashing them back, and open files saved before a checkout or rollback and taking what
     /// git puts there, each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Branches_updates_and_stashes_bring_their_files_in_with_the_open_files_saved_first_and_reloaded()
     {
@@ -74,6 +76,7 @@ public sealed partial class VcsTests : IDisposable
     /// <summary>The gate's log and annotations as one flow: a merge laid out in two lanes with what a commit did to a
     /// file, and each line's commit named in annotations, a typed line marked and a click choosing the commit, each
     /// step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_log_and_annotations_show_each_commit_and_what_it_did()
     {
@@ -285,9 +288,7 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>An edit's change bar, and a commit from the Commit window, made by the message's own key (Cmd+Enter, Ctrl+Enter
     /// elsewhere) rather than a new line in it, which clears the bar.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it()
+    private void An_edit_shows_a_change_bar_and_committing_it_from_the_commit_window_clears_it()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -376,9 +377,7 @@ public sealed partial class VcsTests : IDisposable
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_renamed_file_keeps_its_change_bars_against_what_the_last_commit_has_where_it_was()
+    private void A_renamed_file_keeps_its_change_bars_against_what_the_last_commit_has_where_it_was()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -651,9 +650,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_new_branch_from_the_toolbar_is_checked_out_and_going_back_reloads_the_open_file()
+    private void A_new_branch_from_the_toolbar_is_checked_out_and_going_back_reloads_the_open_file()
     {
         MainWindow window = Open();
         Assert.Equal("main", window.Vcs.Branch);
@@ -842,9 +839,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Show_diff_puts_the_last_commit_beside_the_open_file_and_its_arrow_puts_a_change_back()
+    private void Show_diff_puts_the_last_commit_beside_the_open_file_and_its_arrow_puts_a_change_back()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1028,9 +1023,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_click_on_a_change_bar_shows_what_the_lines_were_and_rolls_them_back()
+    private void A_click_on_a_change_bar_shows_what_the_lines_were_and_rolls_them_back()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1132,9 +1125,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_log_lays_out_a_merge_in_two_lanes_and_shows_what_a_commit_did_to_a_file()
+    private void The_log_lays_out_a_merge_in_two_lanes_and_shows_what_a_commit_did_to_a_file()
     {
         string shop = Path.Combine(folder, "Shop.cs");
         Git("switch", "-q", "-c", "side");
@@ -1183,9 +1174,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Update_project_brings_in_the_upstreams_commit_and_the_open_file_shows_it()
+    private void Update_project_brings_in_the_upstreams_commit_and_the_open_file_shows_it()
     {
         string clone = TestFolders.Create("git-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
@@ -1424,9 +1413,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Annotations_name_each_lines_commit_mark_a_typed_line_and_a_click_chooses_the_commit()
+    private void Annotations_name_each_lines_commit_mark_a_typed_line_and_a_click_chooses_the_commit()
     {
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
         Git("commit", "-q", "-am", "Twice");
@@ -1507,9 +1494,7 @@ public sealed partial class VcsTests : IDisposable
             ? solid.Color
             : throw new InvalidOperationException("The theme has no modified bar's colour");
 
-    [Gate]
-    [AvaloniaFact]
-    public void Stashing_puts_every_change_away_unsaved_and_new_files_too_and_unstashing_brings_them_back()
+    private void Stashing_puts_every_change_away_unsaved_and_new_files_too_and_unstashing_brings_them_back()
     {
         MainWindow window = Open();
         Assert.Equal("main", window.Vcs.Branch);
@@ -1925,9 +1910,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Open_files_are_saved_before_a_checkout_or_a_rollback_and_take_what_git_puts_there_with_no_question()
+    private void Open_files_are_saved_before_a_checkout_or_a_rollback_and_take_what_git_puts_there_with_no_question()
     {
         File.WriteAllText(Path.Combine(folder, "Notes.cs"), "class Notes { }\n");
         Git("add", "-A");
@@ -1971,9 +1954,7 @@ public sealed partial class VcsTests : IDisposable
     /// the Commit window lists it with no box, saying why, and leaves it out; a commit of it is refused, and Rollback leaves
     /// it as it is, each saying why. Once its commit moves it is offered and committed, and its commit moved again is rolled
     /// back by checking the recorded one out in it, the file it does not track kept.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_submodule_whose_own_files_alone_changed_is_not_offered_for_commit_and_one_whose_commit_moved_is()
+    private void A_submodule_whose_own_files_alone_changed_is_not_offered_for_commit_and_one_whose_commit_moved_is()
     {
         string library = TestFolders.Create("git-library-");
         File.WriteAllText(Path.Combine(library, "Lib.cs"), "class Lib { }\n");
@@ -2261,9 +2242,7 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Commit_and_stash_are_off_while_one_runs_so_a_second_press_makes_no_second()
+    private void Commit_and_stash_are_off_while_one_runs_so_a_second_press_makes_no_second()
     {
         MainWindow window = Open();
         File.AppendAllText(Path.Combine(folder, "Shop.cs"), "// more\n");

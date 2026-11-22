@@ -42,6 +42,7 @@ public sealed class ConflictsTests : IDisposable
     /// merging a line's different words, Update Project stopped by a rebase's conflict naming each side by its branch,
     /// and an unstash's conflict taking the stashed change, each step the gate test it names in an instance of its
     /// own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Conflicts_of_a_merge_a_rebase_or_an_unstash_are_listed_resolved_and_finished()
     {
@@ -69,9 +70,7 @@ public sealed class ConflictsTests : IDisposable
         Flow.StepApart<ConflictsTests>("commit is greyed saying why while a file is in conflict and takes a press once it is resolved", t => t.Commit_is_greyed_saying_why_while_a_file_is_in_conflict_and_takes_a_press_once_it_is_resolved());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_merges_conflicts_are_listed_and_resolved_whole_or_in_the_merge_window_and_the_commit_finishes_the_merge()
+    private void A_merges_conflicts_are_listed_and_resolved_whole_or_in_the_merge_window_and_the_commit_finishes_the_merge()
     {
         // Both branches change Base and count; main changes Discount too, the feature Shipping.
         Git("switch", "-q", "-c", "feature");
@@ -154,9 +153,7 @@ public sealed class ConflictsTests : IDisposable
     /// <summary>A file one side deleted, or that both renamed apart, has nothing to merge: the Commit window's double-click
     /// and its Merge... show it chosen in the Conflicts dialog, the status bar saying which side keeps it, and there it is
     /// kept or deleted whole, never written as an empty file.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_file_a_side_deleted_is_kept_or_deleted_whole_from_the_commit_window_never_merged_into_an_empty_file()
+    private void A_file_a_side_deleted_is_kept_or_deleted_whole_from_the_commit_window_never_merged_into_an_empty_file()
     {
         const string Old = "class Old\n{\n}\n";
         Write("Old.cs", Old);
@@ -306,9 +303,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Resolve_simple_conflicts_merges_a_lines_different_words_undo_takes_it_back_and_the_keys_take_a_side()
+    private void Resolve_simple_conflicts_merges_a_lines_different_words_undo_takes_it_back_and_the_keys_take_a_side()
     {
         // One line, changed by each side in a different word.
         Git("switch", "-q", "-c", "feature");
@@ -363,9 +358,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Update_project_stopped_by_a_rebases_conflict_names_each_side_by_its_branch_and_the_rebase_goes_on_once_it_is_resolved()
+    private void Update_project_stopped_by_a_rebases_conflict_names_each_side_by_its_branch_and_the_rebase_goes_on_once_it_is_resolved()
     {
         string clone = TestFolders.Create("conflicts-clone-");
         Git("clone", "-q", "-c", "core.autocrlf=false", folder, clone);
@@ -496,9 +489,7 @@ public sealed class ConflictsTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change()
+    private void An_unstash_that_conflicts_opens_the_conflicts_dialog_on_the_stash_and_accept_theirs_takes_the_stashed_change()
     {
         Write("Shop.cs", Shop.Replace("int count", "short count", StringComparison.Ordinal));
         Git("stash", "push", "-m", "Short count");

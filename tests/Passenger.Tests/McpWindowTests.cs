@@ -31,6 +31,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// status bar says, an action none has or one that cannot run an error saying why, the person's run configuration
     /// saved as a launch profile, a call meeting a fault of the IDE's answered with it, and vcs_log with a path
     /// following renames, each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_attached_agents_answers_and_refusals_are_its_operations_own_and_a_fault_of_the_IDEs_said_and_logged()
     {
@@ -45,6 +46,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// off asking to let an agent in and on and off again, an agent asked before its first run with the window ceasing
     /// to wait once it gives up or goes, and each solution window's own socket, each step the gate test it names in an
     /// instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_agent_attaches_to_its_folders_window_only_as_the_person_lets_it_asking_before_it_first_runs()
     {
@@ -323,9 +325,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A tool's answer is what its own operation came to, whatever the status bar says by the time the answer is
     /// written: here the person presses Run (with nothing to run) just as the agent's push lands.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agents_answer_is_its_operations_outcome_whatever_the_status_bar_says_meanwhile()
+    private void An_agents_answer_is_its_operations_outcome_whatever_the_status_bar_says_meanwhile()
     {
         string root = TestFolders.Create("mcp-push-");
         try
@@ -362,9 +362,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_agents_action_no_action_has_or_one_that_cannot_run_here_is_an_error_saying_why()
+    private void An_agents_action_no_action_has_or_one_that_cannot_run_here_is_an_error_saying_why()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
@@ -794,9 +792,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent saves one of the folder's own run configurations as a launch profile through ide_action, naming
     /// it: the answer says where it went, the window lists it as generated from the profile, and one generated already is
     /// refused, saying why.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_saves_the_persons_run_configuration_as_a_launch_profile_and_is_told_why_not_for_a_generated_one()
+    private void An_agent_saves_the_persons_run_configuration_as_a_launch_profile_and_is_told_why_not_for_a_generated_one()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         string project = PathNames.Canonical(Path.Combine(Folder, "Sum.csproj"));
@@ -1518,9 +1514,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>A fault of the IDE's met by an agent's call, stood in for by an action that fails as no action should.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agents_call_that_meets_a_fault_of_the_IDEs_is_answered_with_it_and_logged()
+    private void An_agents_call_that_meets_a_fault_of_the_IDEs_is_answered_with_it_and_logged()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         window.Actions.Add(new IdeAction("tests.fault", "Fault", "Tests", _ => throw new NullReferenceException("The fault's own words")));
@@ -1609,9 +1603,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_attached_to_the_window_sets_a_breakpoint_the_person_sees()
+    private void An_agent_attached_to_the_window_sets_a_breakpoint_the_person_sees()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         string program = Path.Combine(window.Folder!, "Program.cs");
@@ -1645,9 +1637,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         Assert.False(File.Exists(socket), "A closed window left its socket for agents to try");
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void With_the_MCP_server_off_the_window_asks_to_let_an_agent_in_on_it_lets_agents_in_unasked_and_off_again_shuts_them_out()
+    private void With_the_MCP_server_off_the_window_asks_to_let_an_agent_in_on_it_lets_agents_in_unasked_and_off_again_shuts_them_out()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = OwnState, StartsLanguageServer = false };
         window.Show();
@@ -1704,9 +1694,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_asks_before_its_first_run_and_the_window_stops_waiting_when_it_gives_up_or_goes()
+    private void An_agent_asks_before_its_first_run_and_the_window_stops_waiting_when_it_gives_up_or_goes()
     {
         Write("Program.cs", "Console.WriteLine(\"waiting\");\nThread.Sleep(Timeout.Infinite);\n");
         MainWindow window = AgentsWindow(Folder, languageServer: false);
@@ -1758,9 +1746,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Each solution window of one Passenger listens for agents on a socket of its own, the second opened by File,
     /// Open in a window of its own as Settings says and letting agents in as the first does; an agent started in either's
     /// folder reaches that window, and a window closing takes its own socket alone.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Each_solution_window_has_its_own_socket_and_an_agent_attaches_to_the_one_over_its_folder()
+    private void Each_solution_window_has_its_own_socket_and_an_agent_attaches_to_the_one_over_its_folder()
     {
         string own = Plain("mcp-first-");
         Directory.CreateDirectory(Path.Combine(own, "Inner"));
@@ -1792,9 +1778,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>vcs_log with a path lists the commits Show History does: a file followed through its rename, and a
     /// selection's.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agents_vcs_log_with_a_path_lists_the_commits_show_history_does_renames_followed()
+    private void An_agents_vcs_log_with_a_path_lists_the_commits_show_history_does_renames_followed()
     {
         string repository = TestFolders.Create("mcp-history-");
         const string shop = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";

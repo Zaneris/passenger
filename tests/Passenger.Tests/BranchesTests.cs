@@ -51,6 +51,7 @@ public sealed class BranchesTests : IDisposable
     /// tags listed in order, Enter filtering the log to a branch's commits, the keys renaming, making a branch from and
     /// deleting the chosen branch, and Checkout, New Branch From, Rename, Delete, Update and Push doing what they say,
     /// each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_branches_panel_lists_and_filters_the_branches_and_makes_renames_and_deletes_them()
     {
@@ -64,6 +65,7 @@ public sealed class BranchesTests : IDisposable
     /// Checkout and Rebase moving the branches as git would, Compare with Current listing each branch's commits the
     /// other lacks, a merge from the panel that conflicts opening the conflicts dialog, and a branch in the toolbar's
     /// menu checked out only by its Checkout, each step the gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void Branches_merge_rebase_and_compare_as_git_would_and_check_out_only_when_asked()
     {
@@ -86,9 +88,7 @@ public sealed class BranchesTests : IDisposable
         Flow.StepApart<BranchesTests>("the branch menu over 5000 branches costs the window what 30 do and more branches searches them all", t => t.The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
+    private void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
     {
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
@@ -123,9 +123,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Enter_on_a_branch_filters_the_log_to_its_commits_and_the_filters_x_shows_every_branch_again()
+    private void Enter_on_a_branch_filters_the_log_to_its_commits_and_the_filters_x_shows_every_branch_again()
     {
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
@@ -152,9 +150,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Riders_keys_rename_make_a_branch_from_and_delete_the_chosen_branch()
+    private void Riders_keys_rename_make_a_branch_from_and_delete_the_chosen_branch()
     {
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
@@ -195,9 +191,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Checkout_new_branch_from_rename_delete_update_and_push_do_what_they_say()
+    private void Checkout_new_branch_from_rename_delete_update_and_push_do_what_they_say()
     {
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
@@ -352,9 +346,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()
+    private void Merge_into_rebase_onto_and_checkout_and_rebase_onto_current_move_the_branches_as_git_would()
     {
         Commit("Notes.txt", "notes\n", "Notes on main");
         MainWindow window = Open();
@@ -383,9 +375,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Compare_with_current_lists_each_branchs_commits_the_other_lacks_and_show_diff_with_working_tree_its_files()
+    private void Compare_with_current_lists_each_branchs_commits_the_other_lacks_and_show_diff_with_working_tree_its_files()
     {
         Commit("Notes.txt", "notes\n", "Notes on main");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Shop.Replace("int count", "long count", StringComparison.Ordinal));
@@ -519,9 +509,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_merge_from_the_panel_that_conflicts_opens_the_conflicts_dialog()
+    private void A_merge_from_the_panel_that_conflicts_opens_the_conflicts_dialog()
     {
         Git("switch", "-q", "feature");
         File.WriteAllText(Path.Combine(folder, "Shop.cs"), Shop.Replace("int count", "short count", StringComparison.Ordinal));
@@ -546,9 +534,7 @@ public sealed class BranchesTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_branch_in_the_toolbars_branch_menu_opens_its_own_menu_and_is_checked_out_only_by_its_checkout()
+    private void A_branch_in_the_toolbars_branch_menu_opens_its_own_menu_and_is_checked_out_only_by_its_checkout()
     {
         MainWindow window = Open();
 
