@@ -10,8 +10,17 @@ namespace Passenger.Tests;
 [Collection(DebugSession.Collection)]
 public sealed class RuntimeFilesTests(ITestOutputHelper output)
 {
+    /// <summary>A program the run starts keeps its runtime's socket and pipes in the run's folder and leaves none once
+    /// killed, and one a debug session launched and Stop ended leaves none, as one flow of the steps of systems whose
+    /// runtime keeps them past its process, each in an instance of its own.</summary>
     [Fact]
-    public async Task A_program_the_run_starts_keeps_its_socket_and_pipes_in_the_runs_folder_and_once_killed_leaves_none_anywhere()
+    public async Task A_program_run_or_debugged_leaves_no_socket_or_pipe_of_its_runtime_once_ended()
+    {
+        await Flow.StepApartAsync("a program the run starts keeps its socket and pipes in the runs folder and once killed leaves none anywhere", () => new RuntimeFilesTests(output), t => t.A_program_the_run_starts_keeps_its_socket_and_pipes_in_the_runs_folder_and_once_killed_leaves_none_anywhere());
+        await Flow.StepApartAsync("a program a debug session launched and stop ended leaves no socket or pipe", () => new RuntimeFilesTests(output), t => t.A_program_a_debug_session_launched_and_stop_ended_leaves_no_socket_or_pipe());
+    }
+
+    private async Task A_program_the_run_starts_keeps_its_socket_and_pipes_in_the_runs_folder_and_once_killed_leaves_none_anywhere()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' runtime pipes go with their process");
         ProcessStartInfo start = ChildProcesses.Command(Debuggees.Apphost("ReadsInputConsoleApp"), []);
@@ -31,8 +40,7 @@ public sealed class RuntimeFilesTests(ITestOutputHelper output)
         Assert.True(persons.Length == 0, $"The program's runtime made [{string.Join(", ", persons)}] in the person's temporary folder {TestRun.PersonsTemporary}");
     }
 
-    [Fact]
-    public async Task A_program_a_debug_session_launched_and_stop_ended_leaves_no_socket_or_pipe()
+    private async Task A_program_a_debug_session_launched_and_stop_ended_leaves_no_socket_or_pipe()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' runtime pipes go with their process");
         await using DebugSession host = DebugSession.ForLaunch(output);

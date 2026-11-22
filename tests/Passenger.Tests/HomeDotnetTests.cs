@@ -14,8 +14,20 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, IClassFixture<LinkedDotnetTests.Linked>
 {
+    /// <summary>An agent's Passenger loads a project whose global.json asks for the SDK only the home's dotnet folder
+    /// holds, a folder the first installation serves keeps its terminal's PATH and DOTNET_ROOT, and a global.json's
+    /// paths naming an installation of its own load and build with it or say its error, as one flow of the steps of
+    /// systems other than Windows, each in an instance of its own.</summary>
     [Fact]
-    public async Task An_agents_Passenger_loads_a_project_whose_global_json_asks_for_the_SDK_only_the_homes_dotnet_folder_holds()
+    public async Task The_dotnet_a_global_json_asks_for_in_the_home_folder_or_its_paths_is_the_one_a_folder_uses()
+    {
+        await Flow.StepApartAsync("an agents Passenger loads a project whose global json asks for the SDK only the homes dotnet folder holds", () => new HomeDotnetTests(linked), t => t.An_agents_Passenger_loads_a_project_whose_global_json_asks_for_the_SDK_only_the_homes_dotnet_folder_holds());
+        await Flow.StepApartAsync("a folder the first installation serves keeps its terminals path and dotnet root as given", () => new HomeDotnetTests(linked), t => t.A_folder_the_first_installation_serves_keeps_its_terminals_path_and_dotnet_root_as_given());
+        await Flow.StepApartAsync("a folder whose global json paths name an installation of its own loads and builds with it", () => new HomeDotnetTests(linked), t => t.A_folder_whose_global_json_paths_name_an_installation_of_its_own_loads_and_builds_with_it());
+        await Flow.StepApartAsync("a folder whose global json paths hold no sdk it takes says its error message", () => new HomeDotnetTests(linked), t => t.A_folder_whose_global_json_paths_hold_no_sdk_it_takes_says_its_error_message());
+    }
+
+    private async Task An_agents_Passenger_loads_a_project_whose_global_json_asks_for_the_SDK_only_the_homes_dotnet_folder_holds()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' own place for the install script's SDK, %LOCALAPPDATA%\\Microsoft\\dotnet, follows no variable a test can set");
         string installation = Dotnet.Root();
@@ -107,8 +119,7 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
     /// <summary>A folder the installation found first serves (its global.json asks for that one's SDK) keeps its terminal's
     /// environment as Passenger was given it: a shell reading no startup file has the PATH and DOTNET_ROOT given, and
     /// nothing of Passenger's.</summary>
-    [Fact]
-    public async Task A_folder_the_first_installation_serves_keeps_its_terminals_path_and_dotnet_root_as_given()
+    private async Task A_folder_the_first_installation_serves_keeps_its_terminals_path_and_dotnet_root_as_given()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' own place for the install script's SDK, %LOCALAPPDATA%\\Microsoft\\dotnet, follows no variable a test can set");
         (string home, string other) = Homes();
@@ -135,8 +146,7 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
     /// script's install puts one, while every installation found lacks the SDK it asks for: an agent's Passenger loads its
     /// project with that SDK and builds it there, and its terminal runs that installation's dotnet but never the git put
     /// beside it.</summary>
-    [Fact]
-    public async Task A_folder_whose_global_json_paths_name_an_installation_of_its_own_loads_and_builds_with_it()
+    private async Task A_folder_whose_global_json_paths_name_an_installation_of_its_own_loads_and_builds_with_it()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows lets a user make no link without Developer Mode");
         string installation = Dotnet.Root();
@@ -188,8 +198,7 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
 
     /// <summary>A folder whose global.json's sdk paths name no folder holding the SDK it asks for, and whose errorMessage
     /// says what to do: workspace says that message, as dotnet does.</summary>
-    [Fact]
-    public async Task A_folder_whose_global_json_paths_hold_no_sdk_it_takes_says_its_error_message()
+    private async Task A_folder_whose_global_json_paths_hold_no_sdk_it_takes_says_its_error_message()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' own place for the install script's SDK, %LOCALAPPDATA%\\Microsoft\\dotnet, follows no variable a test can set");
         (string home, string other) = Homes(linked: false);

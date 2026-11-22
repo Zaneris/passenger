@@ -23,10 +23,19 @@ public sealed class ProcessRunsTests
         Assert.False(DotnetProcesses.Runs(int.MaxValue), "An id no process has was taken for a running process: its writer's heap dump would never be swept");
     }
 
+    /// <summary>A process Passenger started runs until its exit code can be read, and one ended and waiting for its
+    /// parent to take its exit does not, as one flow of the steps of systems that keep such a process, each in an
+    /// instance of its own.</summary>
+    [Fact]
+    public void A_process_ended_runs_only_until_its_exit_code_can_be_read()
+    {
+        Flow.StepApart<ProcessRunsTests>("a process passenger started runs until its exit code can be read", t => t.A_process_passenger_started_runs_until_its_exit_code_can_be_read());
+        Flow.StepApart<ProcessRunsTests>("a process ended and waiting for its parent to take its exit does not run", t => t.A_process_ended_and_waiting_for_its_parent_to_take_its_exit_does_not_run());
+    }
+
     /// <summary>A child has ended to the system a moment before .NET's signal thread takes its exit, a moment a loop asking
     /// with nothing between its questions is sure to meet.</summary>
-    [Fact]
-    public void A_process_passenger_started_runs_until_its_exit_code_can_be_read()
+    private void A_process_passenger_started_runs_until_its_exit_code_can_be_read()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows keeps no process waiting for its parent once it has ended");
         for (int round = 0; round < 50; round++)
@@ -51,8 +60,7 @@ public sealed class ProcessRunsTests
         }
     }
 
-    [Fact]
-    public void A_process_ended_and_waiting_for_its_parent_to_take_its_exit_does_not_run()
+    private void A_process_ended_and_waiting_for_its_parent_to_take_its_exit_does_not_run()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows keeps no process waiting for its parent once it has ended");
         string named = Path.Combine(TestFolders.Create("zombie-"), "pid");

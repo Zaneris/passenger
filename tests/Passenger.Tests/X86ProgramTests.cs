@@ -62,8 +62,17 @@ public sealed class X86ProgramTests
         }
     }
 
+    /// <summary>On Windows a 32-bit program run with Hot Reload runs as x86 under dotnet watch, and one whose x86 .NET
+    /// is missing has it named for the person to install before it starts, as one flow of Windows's steps, each in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void A_32_bit_program_run_with_hot_reload_runs_as_x86_under_dotnet_watch()
+    public void On_Windows_a_32_bit_program_runs_under_dotnet_watch_and_its_missing_x86_dotnet_is_named()
+    {
+        Flow.StepApart<X86ProgramTests>("a 32 bit program run with hot reload runs as x86 under dotnet watch", t => t.A_32_bit_program_run_with_hot_reload_runs_as_x86_under_dotnet_watch());
+        Flow.StepApart<X86ProgramTests>("a 32 bit programs missing x86 net is named for the person to install before it starts", t => t.A_32_bit_programs_missing_x86_net_is_named_for_the_person_to_install_before_it_starts());
+    }
+
+    private void A_32_bit_program_run_with_hot_reload_runs_as_x86_under_dotnet_watch()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -88,8 +97,7 @@ public sealed class X86ProgramTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_32_bit_programs_missing_x86_net_is_named_for_the_person_to_install_before_it_starts()
+    private void A_32_bit_programs_missing_x86_net_is_named_for_the_person_to_install_before_it_starts()
     {
         if (!OperatingSystem.IsWindows())
         {

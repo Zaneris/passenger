@@ -72,10 +72,15 @@ public sealed class ThemeFontsTests : IDisposable
         }
     }
 
-    [AvaloniaTheory]
-    [InlineData(13, null)]
-    [InlineData(15, 15.0)]
-    public void A_code_size_kept_before_themes_gave_one_is_the_persons_unless_it_was_the_size_every_version_wrote(double kept, double? read)
+    /// <summary>A code size kept before themes gave one is the person's, unless it was the size every version wrote, as
+    /// one table whose rows each run in an instance of their own.</summary>
+    [AvaloniaFact]
+    public void A_code_size_kept_before_themes_gave_one_is_the_persons_unless_every_version_wrote_it()
+    {
+        Flow.Step("a code size kept before themes gave one is the persons unless it was the size every version wrote", () => Cases.Each<(double, double?)>([(13, null), (15, 15.0)], row => Flow.StepApart($"a code size kept before themes gave one is the persons unless it was the size every version wrote ({row})", () => new ThemeFontsTests(), t => t.A_code_size_kept_before_themes_gave_one_is_the_persons_unless_it_was_the_size_every_version_wrote(row.Item1, row.Item2))));
+    }
+
+    private void A_code_size_kept_before_themes_gave_one_is_the_persons_unless_it_was_the_size_every_version_wrote(double kept, double? read)
     {
         File.WriteAllText(Path.Combine(settings, StateStore.SettingsFile), $$"""{ "version": 4, "editorFontSize": {{kept}} }""");
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
