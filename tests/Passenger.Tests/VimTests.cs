@@ -94,9 +94,6 @@ public sealed partial class VimTests
     [System.Text.RegularExpressions.GeneratedRegex(@"^version=(\d+\.\d+\.\d+)$", System.Text.RegularExpressions.RegexOptions.Multiline)]
     private static partial System.Text.RegularExpressions.Regex VimScriptVersion();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"""[^""\n]*[\[\](){}][^""\n]*""")]
-    private static partial System.Text.RegularExpressions.Regex QuotedBrackets();
-
     /// <summary>The Vim <see cref="VimVariable"/> names, else tools/vim.sh's build, where it is <see cref="Version"/>; the
     /// test skips otherwise, saying how to build it.</summary>
     private static async Task<string> PinnedVimAsync()
@@ -206,8 +203,6 @@ public sealed partial class VimTests
         ($"iw and a( over a visual stretch by lines, which Vim's carry on or not, and keep by lines or not, by rules of their own; {ToFix}",
             (vimCase, _, _) => vimCase.Commands.Any(command => (command.Keys[0] == "V" || command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "p")))
                 && command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "w") or ("a", "(")))),
-        ($"% passes over a bracket in a string between double quotes, which Vim's % leaves out; {ToFix}",
-            (vimCase, _, passenger) => vimCase.Keys.Contains("%") && passenger.Seen.Contains(QuotedBracket)),
         ($"Lines put from a visual stretch over a text a delete emptied, which Vim's place by where the stretch and the lines' "
             + $"empty ones fall; {ToFix}",
             (vimCase, _, passenger) => passenger.Seen.Contains(Emptied) && vimCase.Commands.Any(command => command.Keys[0] is "v" or "V" or VimKeys.CtrlV
@@ -224,7 +219,6 @@ public sealed partial class VimTests
     private const string SentenceObject = "is or as";
     private const string OpenedByAnEnd = "a line opened by a sentence's end or a closer";
     private const string Emptied = "a text a delete emptied";
-    private const string QuotedBracket = "a bracket between double quotes";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -617,13 +611,12 @@ public sealed partial class VimTests
     private const string Asked = "asked the host";
 
     /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a line opened by a sentence's end or
-    /// a closing bracket or quote, a text a delete emptied, a bracket between double quotes on a line.</summary>
+    /// a closing bracket or quote, a text a delete emptied.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
         seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span
             && text[span.Start] is '.' or '!' or '?' or ')' or ']' or '"' or '\'' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
         seen.UnionWith(text.Length == 0 ? [Emptied] : []);
-        seen.UnionWith(QuotedBrackets().IsMatch(text.ToString()) ? [QuotedBracket] : []);
     }
 
     /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>

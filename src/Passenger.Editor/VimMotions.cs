@@ -398,6 +398,31 @@ public static class VimMotions
 
     /// <summary>%: the bracket matching the first one at or after the caret on its line, inclusive; with a count, that
     /// percentage of the way through the file, linewise.</summary>
+    /// <summary>The strings between double quotes on a line, each from its opening quote to its closing one; none where
+    /// the line holds an odd number of them. A quote after a backslash is no quote.</summary>
+    private static List<(int Start, int End)> Quoted(TextSnapshot text, LineSpan line)
+    {
+        List<int> marks = [];
+        for (int p = line.Start; p < line.End; p++)
+        {
+            if (text[p] == '"' && (p == line.Start || text[p - 1] != '\\'))
+            {
+                marks.Add(p);
+            }
+        }
+        List<(int Start, int End)> quoted = [];
+        for (int i = 0; marks.Count % 2 == 0 && i + 1 < marks.Count; i += 2)
+        {
+            quoted.Add((marks[i], marks[i + 1]));
+        }
+        return quoted;
+    }
+
+    /// <summary>Whether the character at an offset stands between a character's single quotes ('(' or '\(').</summary>
+    private static bool InCharacterQuotes(TextSnapshot text, int offset) =>
+        offset + 1 < text.Length && text[offset + 1] == '\''
+            && ((offset >= 1 && text[offset - 1] == '\'') || (offset >= 2 && text[offset - 1] == '\\' && text[offset - 2] == '\''));
+
     public static VimTarget? MatchPair(TextSnapshot text, int caret, int count, bool breakEnds)
     {
         if (count > 0)
@@ -425,9 +450,26 @@ public static class VimMotions
         char close = Brackets[kind | 1];
         bool forward = (kind & 1) == 0;
         int depth = 0;
+        // Brackets in strings between double quotes, or a character's quotes, count only from within such a string on its line.
+        LineSpan quotesOf = span;
+        List<(int Start, int End)> quotes = Quoted(text, span);
+        bool inQuotes = quotes.Exists(q => q.Start < at && at < q.End);
         for (int p = at; forward ? p < text.Length : p >= 0; p += forward ? 1 : -1)
         {
             char c = text[p];
+            if (c != open && c != close)
+            {
+                continue;
+            }
+            if (p < quotesOf.Start || p > quotesOf.End)
+            {
+                quotesOf = LineOf(text, p);
+                quotes = Quoted(text, quotesOf);
+            }
+            if (p != at && (quotes.Exists(q => q.Start < p && p < q.End) != (inQuotes && quotesOf.Line == span.Line) || InCharacterQuotes(text, p)))
+            {
+                continue;
+            }
             if (c == open)
             {
                 depth += forward ? 1 : -1;
