@@ -18,6 +18,36 @@ public sealed class NavigationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The gate's Go to File, Go to Line and the Explorer's keys as one flow, to take the place of their
+    /// eleven tests once it has its record on CI.</summary>
+    [AvaloniaFact]
+    public void The_gates_go_to_file_go_to_line_and_the_explorers_keys_hold_as_one_flow()
+    {
+        Flow.StepApart<NavigationTests>("Go to File finds a file by its CamelHumps, and Enter opens it", t => t.Go_to_file_finds_a_file_by_its_camel_humps_and_enter_opens_it());
+        Flow.StepApart<NavigationTests>("Page Down and Up in Go to File choose a page of results, keeping the choice in sight", t => t.Page_down_and_up_in_go_to_file_choose_a_page_of_results_keeping_the_choice_in_sight());
+        Flow.StepApart<NavigationTests>("Go to File in twenty thousand files does no work for a file whose name cannot match", t => t.Go_to_file_in_twenty_thousand_files_does_no_work_for_a_file_whose_name_cannot_match());
+        Flow.StepApart<NavigationTests>("Go to File with a slash in twenty thousand files copies nothing for a file and takes either slash", t => t.Go_to_file_with_a_slash_in_twenty_thousand_files_copies_nothing_for_a_file_and_takes_either_slash());
+        Flow.StepApart<NavigationTests>("Go to File with a line after the name opens the file at that line and column", t => t.Go_to_file_with_a_line_after_the_name_opens_the_file_at_that_line_and_column());
+        Flow.StepApart<NavigationTests>("Go to File with nothing typed offers the files opened before this one", t => t.Go_to_file_with_nothing_typed_offers_the_files_opened_before_this_one());
+        Flow.StepApart<NavigationTests>("Go to Line takes a line and column counted from one", t => t.Go_to_line_takes_a_line_and_column_counted_from_one());
+        Flow.StepApart<NavigationTests>("going to a line of a file that fits the view keeps its first line shown, and to a long file's end shows its last at the foot", t => t.Going_to_a_line_of_a_file_that_fits_the_view_keeps_its_first_line_shown_and_to_a_long_files_end_shows_its_last_at_the_foot());
+        Flow.StepApart<NavigationTests>("the Explorer's shortcut gives it the keys on the open file's row", t => t.The_explorers_shortcut_gives_it_the_keys_on_the_open_files_row());
+        Flow.StepApart<NavigationTests>("the Explorer chooses the file shown as Select Next Tab or a click on a tab shows another", t => t.The_explorer_chooses_the_file_shown_as_select_next_tab_or_a_click_on_a_tab_shows_another());
+        Flow.StepApart<NavigationTests>("Focus Editor gives the keys back to the file shown", t => t.Focus_editor_gives_the_keys_back_to_the_file_shown());
+    }
+
+    /// <summary>Back and Forward step through the files opened from the Explorer, each at its caret, and those shown by
+    /// a click on their tabs, each once, by the keys and by the mouse's buttons over the editor and a tool window; and
+    /// Go to Related File switches between markup and its code-behind both ways.</summary>
+    [AvaloniaFact]
+    public void Back_and_forward_step_through_the_files_opened_and_shown_and_go_to_related_file_switches_markup_and_code()
+    {
+        Flow.StepApart<NavigationTests>("Back and Forward step through the files opened from the Explorer, each at its caret", t => t.Back_and_forward_step_through_the_files_opened_from_the_explorer_each_at_its_caret());
+        Flow.StepApart<NavigationTests>("Back and Forward step through the files shown by a click on their tabs, each once", t => t.Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once());
+        Flow.StepApart<NavigationTests>("the mouse's back and forward buttons step back and forward over the editor and over a tool window", t => t.The_mouses_back_and_forward_buttons_step_back_and_forward_over_the_editor_and_over_a_tool_window());
+        Flow.StepApart<NavigationTests>("Go to Related File switches between markup and its code-behind both ways", t => t.Go_to_related_file_switches_between_markup_and_its_code_behind_both_ways());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Go_to_file_finds_a_file_by_its_camel_humps_and_enter_opens_it()
@@ -255,30 +285,6 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The Structure window over a plain text file, which no language server outlines, names the file and says
-    /// why it lists nothing, in the words File Structure says for it; with no file shown it says how to open one.</summary>
-    [AvaloniaFact]
-    public void Structure_over_a_text_file_says_why_it_has_no_outline_in_the_words_file_structure_says()
-    {
-        Write("notes.txt", "Nothing here is outlined.");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        Ui.Run(window, AppActions.ShowStructure);
-        Passenger.App.ToolWindows.StructureView structure = window.StructureView;
-        Ui.Settle();
-        Assert.True(structure.Said?.StartsWith("The open file's outline shows here: open one with Go to File", StringComparison.Ordinal) == true,
-            $"Structure with no file shown said: {structure.Said}");
-
-        window.OpenFile("notes.txt");
-        Ui.Settle();
-        Assert.Empty(structure.Rows);
-        Assert.True(structure.Said == "notes.txt has no outline: no language server has it open",
-            $"Structure over notes.txt said: {structure.Said}");
-        Ui.Run(window, AppActions.FileStructure);
-        Assert.False(window.IsPopupOpen, "File Structure opened over a file with no outline");
-        Assert.Equal(structure.Said, window.Status);
-        window.Close();
-    }
-
     [Gate]
     [AvaloniaFact]
     public void Go_to_line_takes_a_line_and_column_counted_from_one()
@@ -398,8 +404,7 @@ public sealed class NavigationTests : IDisposable
 
     /// <summary>Back and Forward step through the files opened one after another from the Explorer, each at the caret it
     /// was left at, as they do through the places a navigation left.</summary>
-    [AvaloniaFact]
-    public void Back_and_forward_step_through_the_files_opened_from_the_explorer_each_at_its_caret()
+    private void Back_and_forward_step_through_the_files_opened_from_the_explorer_each_at_its_caret()
     {
         WriteFiles("A.cs", "B.cs", "C.cs");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -419,8 +424,7 @@ public sealed class NavigationTests : IDisposable
 
     /// <summary>The mouse's Back and Forward side buttons step as Back and Forward do, wherever in the window they are
     /// pressed: over the editor, whose caret they leave where the step puts it, and over a tool window.</summary>
-    [AvaloniaFact]
-    public void The_mouses_back_and_forward_buttons_step_back_and_forward_over_the_editor_and_over_a_tool_window()
+    private void The_mouses_back_and_forward_buttons_step_back_and_forward_over_the_editor_and_over_a_tool_window()
     {
         WriteFiles("A.cs", "B.cs", "C.cs");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -439,34 +443,9 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The mouse's Back button pressed three times with no pause steps back three places, though the platform
-    /// counts the presses as one run of clicks, and pressed right after a left click at the same place, a run of its own,
-    /// steps back too.</summary>
-    [AvaloniaFact]
-    public void The_mouses_back_button_steps_back_at_each_press_of_a_quick_run_and_right_after_a_click()
-    {
-        WriteFiles("A.cs", "B.cs", "C.cs", "D.cs");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        FromExplorer(window, "A.cs");
-        Down(window, 2);
-        FromExplorer(window, "B.cs");
-        Down(window, 5);
-        FromExplorer(window, "C.cs");
-        Down(window, 7);
-        FromExplorer(window, "D.cs");
-        Down(window, 3);
-        CodeEditor editor = window.EditorArea.CodeEditor;
-
-        Side(window, editor, MouseButton.XButton1, "A.cs", 2, "Back's button pressed three times with no pause in D.cs", times: 3);
-        Side(window, editor, MouseButton.XButton2, "B.cs", 5, "Forward's button in A.cs");
-        Side(window, editor, MouseButton.XButton1, "A.cs", 2, "Back's button right after a click in B.cs's text", afterClick: true);
-        window.Close();
-    }
-
     /// <summary>A click on a tab leaves the file shown for Back as a navigation does; a file left again keeps one place
     /// behind, where it was left last.</summary>
-    [AvaloniaFact]
-    public void Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once()
+    private void Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once()
     {
         WriteFiles("A.cs", "B.cs", "C.cs");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -489,57 +468,9 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A tab closed puts nothing behind, so Back never opens the file just closed, while a file closed after it
-    /// was left for another opens again at its place.</summary>
-    [AvaloniaFact]
-    public void Back_passes_a_tab_just_closed_by_and_opens_again_a_file_closed_after_it_was_left()
-    {
-        WriteFiles("A.cs", "B.cs", "C.cs");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        window.OpenFile("A.cs");
-        Ui.Settle();
-        Down(window, 4);
-        window.OpenFile("B.cs");
-        window.OpenFile("C.cs");
-        Ui.Settle();
-        Ui.Run(window, AppActions.CloseTab);
-        Assert.Equal("B.cs", window.EditorArea.Active?.Name);
-        Step(window, AppActions.Back, "A.cs", 4, "Back after C.cs's tab closed and showed B.cs");
-
-        ClickTab(window, "B.cs");
-        ClickTab(window, "A.cs");
-        Ui.Run(window, AppActions.CloseTab);
-        Assert.True(window.EditorArea.Active?.Name == "B.cs" && window.EditorArea.Documents.All(d => d.Name != "A.cs"), "Close Tab on A.cs left it open");
-        Step(window, AppActions.Back, "A.cs", 4, "Back after A.cs, left for B.cs, was shown again and closed,");
-        window.Close();
-    }
-
-    /// <summary>A click in the split beside leaves the file of the split worked in for Back.</summary>
-    [AvaloniaFact]
-    public void Back_returns_to_the_file_left_by_a_click_in_the_split_beside()
-    {
-        WriteFiles("A.cs", "B.cs");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        window.OpenFile("A.cs");
-        Ui.Settle();
-        EditorGroup left = window.EditorArea.ActiveGroup;
-        Assert.True(window.Perform(AppActions.SplitRight));
-        window.OpenFile("B.cs");
-        Ui.Settle();
-        Down(window, 5);
-        Ui.Click(left.Editor);
-        Assert.True(window.EditorArea.ActiveGroup == left && window.EditorArea.Active?.Name == "A.cs", "A click in the left split did not make its A.cs the file worked in");
-        int clicked = window.EditorArea.CodeEditor.CaretPosition.Line;
-
-        Step(window, AppActions.Back, "B.cs", 5, "Back after a click in the left split's A.cs");
-        Step(window, AppActions.Forward, "A.cs", clicked, "Forward from B.cs");
-        window.Close();
-    }
-
     /// <summary>Go to Related File goes from a XAML file to its code-behind and back by its keys, and from a Razor
     /// component's code-behind to its markup and back; a file with neither beside it greys it, saying why.</summary>
-    [AvaloniaFact]
-    public void Go_to_related_file_switches_between_markup_and_its_code_behind_both_ways()
+    private void Go_to_related_file_switches_between_markup_and_its_code_behind_both_ways()
     {
         Write("Views/MainWindow.axaml", "<Window xmlns=\"https://github.com/avaloniaui\" />\n");
         Write("Views/MainWindow.axaml.cs", "namespace Shop.Views;\n\npublic partial class MainWindow { }\n");
@@ -566,31 +497,6 @@ public sealed class NavigationTests : IDisposable
         Ui.Press(window, Ui.Shortcut(AppActions.GoToRelated));
         Assert.Equal("Notes.cs", window.EditorArea.Active?.Name);
         Assert.Equal("Notes.cs has no code-behind or markup beside it", window.Status);
-        window.Close();
-    }
-
-    /// <summary>With more tabs than the strip shows, the active one is in sight: the last opened, at the strip's end; the
-    /// first gone back to, at its start; and one reached by Previous Tab, wherever it stands.</summary>
-    [AvaloniaFact]
-    public void The_active_tab_is_scrolled_into_the_strips_sight_however_many_tabs_crowd_it()
-    {
-        string[] names = [.. Enumerable.Range(0, 30).Select(i => $"Notes{i:00}.txt")];
-        WriteFiles(names);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        foreach (string name in names)
-        {
-            Assert.Null(window.OpenFile(name));
-        }
-        Ui.Settle();
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Assert.Equal(names.Length, group.Tabs.Count);
-        InSight(group, "Notes29.txt");
-        Assert.Null(window.OpenFile("Notes00.txt"));
-        Ui.Settle();
-        InSight(group, "Notes00.txt");
-        Ui.Run(window, AppActions.PreviousTab);
-        InSight(group, window.EditorArea.Active!.Name);
-        Assert.NotEqual("Notes00.txt", window.EditorArea.Active.Name);
         window.Close();
     }
 

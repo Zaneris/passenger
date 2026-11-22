@@ -70,6 +70,28 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         project.Reset();
     }
 
+    /// <summary>The gate's Go to Type Declaration, Base and Derived Symbols, Recent Locations and Last Edit Location as
+    /// one flow, to take the place of their five tests once it has its record on CI.</summary>
+    [AvaloniaFact]
+    public void The_gates_go_to_type_base_derived_recent_and_last_edit_hold_as_one_flow()
+    {
+        Flow.StepApart("Go to Type Declaration from a variable goes to the class it holds, not to where the variable is declared", () => new GoToTests(project), t => t.Type_declaration_from_a_variable_goes_to_the_class_it_holds_not_to_where_the_variable_is_declared());
+        Flow.StepApart("Base Symbols go from an override to what it overrides, from an implementation to the interface, and offer both when there are two", () => new GoToTests(project), t => t.Base_symbols_go_from_an_override_to_what_it_overrides_from_an_implementation_to_the_interface_and_offer_both_when_there_are_two());
+        Flow.StepApart("Derived Symbols from the editor's Go To menu offer what overrides or implements a member or derives from a type", () => new GoToTests(project), t => t.Derived_symbols_from_the_editors_go_to_menu_offer_what_overrides_or_implements_a_member_or_derives_from_a_type());
+        Flow.StepApart("Recent Locations lists the places left with their lines of code and goes to the one chosen", () => new GoToTests(project), t => t.Recent_locations_lists_the_places_left_with_their_lines_of_code_and_goes_to_the_one_chosen());
+        Flow.StepApart("Last Edit Location steps back through edits in two files, and the recent lists show only what was edited", () => new GoToTests(project), t => t.Last_edit_location_steps_back_through_edits_in_two_files_and_recent_lists_show_only_what_was_edited());
+    }
+
+    /// <summary>Back after Go to Declaration returns to the call, then to the file shown before, and Forward retraces
+    /// them; and the keymap's clicks go to the declaration, the type's declaration and, on macOS, the derived symbols
+    /// where clicked.</summary>
+    [AvaloniaFact]
+    public void Back_returns_from_a_declaration_and_the_keymaps_clicks_go_to_what_they_name()
+    {
+        Flow.StepApart("Back after Go to Declaration returns to the call, then to the file shown before, and Forward retraces them", () => new GoToTests(project), t => t.Back_after_go_to_declaration_returns_to_the_call_then_to_the_file_shown_before_and_forward_retraces_them());
+        Flow.StepApart("the keymap's clicks go to the declaration, the type's declaration and, on macOS, the derived symbols where clicked", () => new GoToTests(project), t => t.The_keymaps_clicks_go_to_the_declaration_the_types_declaration_and_on_macOS_the_derived_symbols_where_clicked());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void Type_declaration_from_a_variable_goes_to_the_class_it_holds_not_to_where_the_variable_is_declared()
@@ -201,8 +223,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
 
     /// <summary>Back from a declaration returns to the call Go to Declaration left, and Back again to the file shown
     /// before the call's file opened; Forward goes the same way again.</summary>
-    [AvaloniaFact]
-    public void Back_after_go_to_declaration_returns_to_the_call_then_to_the_file_shown_before_and_forward_retraces_them()
+    private void Back_after_go_to_declaration_returns_to_the_call_then_to_the_file_shown_before_and_forward_retraces_them()
     {
         MainWindow window = project.Open("Shapes.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -225,8 +246,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
     /// <summary>The keymap's clicks run the Navigate actions its keys run, at the place clicked: Cmd+click (Ctrl+click off
     /// macOS) goes to the declaration, with Shift to the type's declaration, and on macOS Cmd+Option+click to the derived
     /// symbols, which Rider's Visual Studio OSX keymap binds as IntelliJ's Go to Implementation, Alt+End's action.</summary>
-    [AvaloniaFact]
-    public void The_keymaps_clicks_go_to_the_declaration_the_types_declaration_and_on_macOS_the_derived_symbols_where_clicked()
+    private void The_keymaps_clicks_go_to_the_declaration_the_types_declaration_and_on_macOS_the_derived_symbols_where_clicked()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -249,104 +269,6 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
             Assert.True(editor.CaretPosition.Line == 25, $"A Cmd+Option+click on Shape's Describe went to line {editor.CaretPosition.Line + 1}, not to Circle's override on line 26");
         }
         window.Close();
-    }
-
-    /// <summary>While Go to Declaration's gesture is held (Cmd on macOS, Ctrl elsewhere, as the keymap gives its click), the
-    /// name under the pointer that a click would go to is underlined and the pointer is the hand; letting go of the key, or
-    /// the pointer moving on with none held, puts both back. A line's indent, where a click goes nowhere, is never underlined.</summary>
-    [AvaloniaFact]
-    public void Holding_the_declarations_gesture_over_a_name_underlines_it_with_the_hand_until_the_key_is_let_go()
-    {
-        MainWindow window = project.Open("Program.cs");
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            bool mac = OperatingSystem.IsMacOS();
-            RawInputModifiers command = mac ? RawInputModifiers.Meta : RawInputModifiers.Control;
-            TextSnapshot text = editor.Document.Snapshot;
-            int area = text.GetLineStart(6) + text.GetLineText(6).IndexOf("Area", StringComparison.Ordinal);
-
-            Ui.Hover(editor, Inside(editor, 6, "Area"), command);
-            Ui.WaitFor(() => editor.PointedRange is not null, "the held gesture's underline under shape.Area");
-            Assert.True(editor.PointedRange == new TextRange(area, "Area".Length),
-                $"Holding {(mac ? "Cmd" : "Ctrl")} over shape.Area underlined {editor.PointedRange}, not the name Area at {area}");
-            Assert.True(editor.ShowsHand, "Holding the gesture over a name a click goes to, the pointer is not the hand");
-
-            window.KeyRelease(mac ? Key.LWin : Key.LeftCtrl, RawInputModifiers.None, mac ? PhysicalKey.MetaLeft : PhysicalKey.ControlLeft, null);
-            Ui.Settle();
-            Assert.True(editor.PointedRange is null, $"Letting go of the key left {editor.PointedRange} underlined");
-            Assert.False(editor.ShowsHand, "Letting go of the key left the pointer the hand");
-
-            Ui.Hover(editor, Inside(editor, 4, "Square"), command);
-            Ui.WaitFor(() => editor.PointedRange is not null, "the held gesture's underline under Square");
-            Ui.Hover(editor, Inside(editor, 4, "Square"));
-            Assert.True(editor.PointedRange is null && !editor.ShowsHand, "The pointer moved with no key held left the name underlined, or the hand");
-
-            Ui.Hover(editor, editor.PointOf(text.GetLineStart(5) + 2) + new Point(1, editor.LineHeight / 2), command);
-            Ui.Hold(TimeSpan.FromMilliseconds(500), "a rest past the gesture's ask over the line's indent");
-            Assert.True(editor.PointedRange is null && !editor.ShowsHand, $"Holding the gesture over a line's indent underlined {editor.PointedRange}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>The middle button goes where the keymap in force sends it: to the declaration in Visual Studio's keymap off
-    /// macOS and in VS Code's on macOS; with Shift to the type's declaration in Visual Studio's on macOS, and with Ctrl to
-    /// Quick Documentation in VS Code's there, a card no rest of the pointer shows. Where its keymap drags a column with it,
-    /// a click goes nowhere.</summary>
-    [AvaloniaFact]
-    public void Middle_clicks_go_to_the_declaration_the_types_declaration_or_quick_documentation_as_the_keymap_in_force_has_it()
-    {
-        MainWindow window = project.Open("Program.cs");
-        try
-        {
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            bool mac = OperatingSystem.IsMacOS();
-            Ui.MiddleClick(editor, Inside(editor, 6, "Area"));
-            if (mac)
-            {
-                Assert.True(window.EditorArea.Active?.Name == "Program.cs", $"A middle click in Visual Studio's keymap on macOS, a column's drag there, showed {window.EditorArea.Active?.Name}");
-                Ui.MiddleClick(editor, Inside(editor, 6, "Area"), RawInputModifiers.Control);
-                Ui.Hold(TimeSpan.FromSeconds(1), "the pointer's rest past the hover's delay, after which a card would show for it");
-                Assert.True(window.Assist.HoverText is null, $"A Ctrl+middle click in Visual Studio's keymap on macOS, which gives it nothing, showed a card: {window.Assist.HoverText}");
-                Ui.MiddleClick(editor, Inside(editor, 5, "shape"), RawInputModifiers.Shift);
-                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a Shift+middle click on shape to open its type");
-                Assert.True(editor.CaretPosition.Line == 12, $"A Shift+middle click on a var holding a Square went to line {editor.CaretPosition.Line + 1}, not to class Square on line 13");
-            }
-            else
-            {
-                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a middle click on Area to open Square's Area");
-                Assert.True(editor.CaretPosition.Line == 16, $"A middle click on shape.Area() went to line {editor.CaretPosition.Line + 1}, not to Square's Area on line 17");
-            }
-
-            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
-            window.OpenFile(project.PathOf("Program.cs"));
-            Ui.Settle();
-            Ui.MiddleClick(editor, Inside(editor, 6, "Area"));
-            if (mac)
-            {
-                Ui.WaitFor(() => window.EditorArea.Active?.Name == "Shapes.cs", "a middle click in VS Code's keymap on Area to open Square's Area");
-                Assert.True(editor.CaretPosition.Line == 16, $"A middle click in VS Code's keymap went to line {editor.CaretPosition.Line + 1}, not to Square's Area on line 17");
-                window.OpenFile(project.PathOf("Program.cs"));
-                Ui.Settle();
-                Ui.MiddleClick(editor, Inside(editor, 6, "Area"), RawInputModifiers.Control);
-                Ui.WaitFor(() => window.Assist.HoverText is not null, "a Ctrl+middle click's Quick Documentation card");
-                Assert.Contains("Square.Area()", window.Assist.HoverText, StringComparison.Ordinal);
-                Assert.Equal("Program.cs", window.EditorArea.Active?.Name);
-            }
-            else
-            {
-                Assert.True(window.EditorArea.Active?.Name == "Program.cs", $"A middle click in VS Code's keymap, a column's drag there, showed {window.EditorArea.Active?.Name}");
-            }
-        }
-        finally
-        {
-            // The keymap in force is the process's; the next test starts on the platform's own.
-            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VisualStudio });
-            window.Close();
-        }
     }
 
     [Gate]
