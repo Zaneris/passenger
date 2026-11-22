@@ -613,5 +613,9 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Passenger.TestTables" />
+    <!-- The ways one test holds many checks, a table of rows and a flow of steps (tests/Shared), linked into both test
+         projects. -->
+    <Compile Include="../Shared/*.cs" LinkBase="Shared" />
   </ItemGroup>
 </Project>
