@@ -449,9 +449,12 @@ public static partial class Limits
     /// scope ends: a test of minutes begins with it, so a wait that stalls fails naming itself before the run ends the test.</summary>
     public static IDisposable BeginHang()
     {
-        HangEnd.Value = Deadline.In(Hang - TimeSpan.FromSeconds(30));
+        HangEnd.Value = Deadline.In(TestsTime);
         return new HangScope();
     }
+
+    /// <summary>A test's time within <see cref="Hang"/> from <see cref="BeginHang"/>: half a minute short of it.</summary>
+    private static TimeSpan TestsTime => Hang - TimeSpan.FromSeconds(30);
 
     /// <summary>A wait's limit as Ui's waits take one, before their scaling: <paramref name="limit"/>, or what is left of
     /// the running test's time within <see cref="Hang"/> where that is less; <paramref name="limit"/> outside such a time.</summary>
@@ -464,6 +467,15 @@ public static partial class Limits
         TimeSpan left = end.Left / TestRun.TimeScale;
         return left < limit ? left : limit;
     }
+
+    /// <summary>What a wait that gives up once the running test's time is spent (<see cref="BeginHang"/>) says of how long
+    /// it waited; nothing otherwise.</summary>
+    internal static string SpentSaid() => HangEnd.Value is { Passed: true }
+        ? $", all the test had left of its {Durations.Said(TestsTime)} within the run's limit on a test," : string.Empty;
+
+    /// <summary>What a wait that gives up within the running test's time ends its words with: the IDE's log's end, which
+    /// says how long each program the steps ran took, so a step left no time says where it went; nothing outside one.</summary>
+    internal static string WhereTheTimeWent() => HangEnd.Value is null ? string.Empty : Ui.IdeLogTail();
 
     private sealed class HangScope : IDisposable
     {
@@ -1351,7 +1363,7 @@ public static class Ui
         {
             if (until.Passed)
             {
-                throw new TimeoutException($"Waited {within.TotalSeconds} s for {what()}{HostsAsked()}");
+                throw new TimeoutException($"Waited {within.TotalSeconds} s{Limits.SpentSaid()} for {what()}{HostsAsked()}{Limits.WhereTheTimeWent()}");
             }
             Frame();
             if (!Settled(Deadline.Later(Deadline.In(SettleLimit.Scaled()), until)))
