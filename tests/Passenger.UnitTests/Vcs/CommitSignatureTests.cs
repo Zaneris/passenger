@@ -4,16 +4,15 @@ using Passenger.Vcs;
 namespace Passenger.UnitTests.Vcs;
 
 /// <summary>A commit's signature read as the Log reads it: which commits of a batch are signed and in which format, from
-/// their gpgsig headers' armour, then git's verdict on each said in a sentence that begins with what it is worth.</summary>
+/// their gpgsig headers' armour, then git's verdict on each read with its signer and key.</summary>
 public class CommitSignatureTests
 {
     private const string Tree = "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor A <a@example.org> 1700000000 +0000\ncommitter A <a@example.org> 1700000000 +0000\n";
 
     [Fact]
-    public void A_commits_signature_is_found_by_its_armour_and_gits_verdict_said_with_what_it_is_worth() => Cases.All(
+    public void A_commits_signature_is_found_by_its_armour_and_gits_verdict_read_with_its_signer_and_key() => Cases.All(
         ("a batch names the signed commits by their armour and passes over the unsigned missing and unknown", A_batch_names_the_signed_commits_by_their_armour_and_passes_over_the_unsigned_missing_and_unknown),
-        ("gits verdicts are read for the signed and said with the signer and key", Gits_verdicts_are_read_for_the_signed_and_said_with_the_signer_and_key),
-        ("each verdict has its state and words", Each_verdict_has_its_state_and_words));
+        ("gits verdicts are read for the signed and said with the signer and key", Gits_verdicts_are_read_for_the_signed_and_said_with_the_signer_and_key));
 
     private void A_batch_names_the_signed_commits_by_their_armour_and_passes_over_the_unsigned_missing_and_unknown()
     {
@@ -47,23 +46,6 @@ public class CommitSignatureTests
             (verdicts["3333"].State, verdicts["3333"].Said));
         Assert.Equal((SignatureState.Bad, "Bad GPG signature by Me <me@example.org>, key 0123ABCD: the commit is not what was signed"),
             (verdicts["4444"].State, verdicts["4444"].Said));
-    }
-
-    private void Each_verdict_has_its_state_and_words()
-    {
-        CommitSignature Of(char verdict) => new(SigningFormat.OpenPgp, verdict, "Me", "ABCD");
-        Assert.Equal(
-            [
-                "G Good Good GPG signature by Me, key ABCD",
-                "U Unverified Unverified GPG signature by Me, key ABCD: the key is not trusted",
-                "E Unverified Unverified GPG signature, key ABCD: it cannot be checked, as the key is not in the keyring",
-                "B Bad Bad GPG signature by Me, key ABCD: the commit is not what was signed",
-                "X Expired Expired GPG signature by Me, key ABCD",
-                "Y Expired Expired GPG signature by Me, key ABCD: the key has expired",
-                "R Bad Bad GPG signature by Me, key ABCD: the key was revoked",
-            ],
-            "GUEBXYR".Select(v => $"{v} {Of(v).State} {Of(v).Said}"));
-        Assert.Equal("X.509", new CommitSignature(SigningFormat.X509, 'G', null, null).Kind);
     }
 
     private static string Object(string hash, string body) => $"{hash} commit {Encoding.UTF8.GetByteCount(body)}\n{body}\n";

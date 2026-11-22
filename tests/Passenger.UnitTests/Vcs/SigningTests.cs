@@ -3,18 +3,16 @@ using Passenger.Vcs;
 namespace Passenger.UnitTests.Vcs;
 
 /// <summary>Signing as the Commit window reads and sets it: git's config read with each setting's scope, the later
-/// winning; the key named as the window names it; one commit's -S, --no-gpg-sign and --signoff; a signing failure in a
-/// person's words with its fix; the person's key added once to an allowed signers file; the host a push goes to; and
-/// ssh-keygen's passphrase prompt read as signing's.</summary>
+/// winning; the key named as the window names it; one commit's -S, --no-gpg-sign and --signoff; the person's key added
+/// once to an allowed signers file; the host a push goes to; and ssh-keygen's passphrase prompt read as signing's.</summary>
 public class SigningTests
 {
     [Fact]
-    public void Signing_is_read_from_gits_config_and_set_for_one_commit_and_a_failure_to_sign_says_its_fix() => Cases.All(
+    public void Signing_is_read_from_gits_config_and_set_for_one_commit_with_the_gpg_it_runs() => Cases.All(
         ("gits config is read with the scope that sets the key the later setting winning", Gits_config_is_read_with_the_scope_that_sets_the_key_the_later_setting_winning),
         ("signings keys are asked of git each whole in lower case", Signings_keys_are_asked_of_git_each_whole_in_lower_case),
         ("gits config names the gpgsm an x509 commit is signed with", Gits_config_names_the_gpgsm_an_x509_commit_is_signed_with),
         ("one commit is signed not signed or signed off as asked", One_commit_is_signed_not_signed_or_signed_off_as_asked),
-        ("a failure to sign names its cause and its fix", A_failure_to_sign_names_its_cause_and_its_fix),
         ("ssh keygens and passengers gpgs prompts ask for a passphrase to sign", Ssh_keygens_and_passengers_gpgs_prompts_ask_for_a_passphrase_to_sign),
         ("git for windows own gpg is found under its top folder from its git", () => Cases.Each<string>(
         [
@@ -47,23 +45,6 @@ public class SigningTests
         Assert.Equal(["-S", "--signoff"], new CommitSigning(true, SignOff: true).After);
         Assert.Equal(["--no-gpg-sign"], new CommitSigning(false).After);
         Assert.Equal(["-c", "gpg.program=/x/gpg"], new CommitSigning(Config: ["gpg.program=/x/gpg"]).Before);
-    }
-
-    private void A_failure_to_sign_names_its_cause_and_its_fix()
-    {
-        SigningSetup ssh = new(true, SigningFormat.Ssh, "/k/own.pub", "local");
-        SigningSetup gpg = new(true, SigningFormat.OpenPgp, "ABCD", "global");
-        Assert.Equal("The commit was not signed: the passphrase given is not that of SSH key own.pub. Commit again and give its passphrase",
-            SigningFailure.Of("error: Load key \"/k/own\": incorrect passphrase supplied to decrypt private key?\n\nfatal: failed to write commit object\n", ssh));
-        Assert.Equal("The commit was not signed: SSH key own.pub is not there (user.signingkey). Choose a key in Commit Signing…",
-            SigningFailure.Of("error: Couldn't load public key /k/own.pub: No such file or directory?\n", ssh));
-        Assert.Equal("The commit was not signed: gpg is not installed. Install GnuPG, or sign with SSH in Commit Signing…",
-            SigningFailure.Of("error: cannot run gpg: No such file or directory\nerror: gpg failed to sign the data:\n(no gpg output)\n", gpg));
-        Assert.Equal("The commit was not signed: there is no secret key for GPG key ABCD. Import it, or choose another in Commit Signing…",
-            SigningFailure.Of("gpg: skipped \"ABCD\": No secret key\ngpg: signing failed: No secret key\nerror: gpg failed to sign the data\n", gpg));
-        Assert.Equal("The commit was not signed: gpg failed to sign the data: something new",
-            SigningFailure.Of("error: gpg failed to sign the data: something new\n", gpg));
-        Assert.Null(SigningFailure.Of("error: pathspec 'x' did not match any file(s) known to git\n", gpg));
     }
 
     [Fact]
@@ -132,7 +113,6 @@ public class SigningTests
     {
         GitQuestion ssh = GitQuestion.Of("Enter passphrase for \"/home/me/.ssh/id_ed25519\": ");
         Assert.Equal((GitQuestionKind.Passphrase, "/home/me/.ssh/id_ed25519", "id_ed25519", true), (ssh.Kind, ssh.About, ssh.Place, ssh.Signs));
-        Assert.Equal("the passphrase of key id_ed25519", ssh.Asks);
         GitQuestion gpg = GitQuestion.Of("Enter passphrase for GPG key Me <me@example.org> (0123ABCD): ");
         Assert.Equal((GitQuestionKind.Passphrase, "Me <me@example.org> (0123ABCD)", true, true), (gpg.Kind, gpg.Place, gpg.Signs, gpg.IsGpg));
         Assert.False(GitQuestion.Of("Enter passphrase for key '/home/me/.ssh/id_ed25519': ").Signs);

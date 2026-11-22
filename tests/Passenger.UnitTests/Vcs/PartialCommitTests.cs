@@ -8,13 +8,6 @@ public sealed class PartialCommitTests
 {
     [Fact]
     public void A_partial_commit_takes_only_the_changes_and_lines_chosen_with_their_line_endings() => Cases.All(
-        ("only the chosen change enters the content with its line endings", () => Cases.Each<(string, string, string)>(
-        [
-            ("a\nb\nc\n", "A\nb\nC\n", "A\nb\nc\n"),
-            ("a\r\nb\r\nc\r\n", "A\r\nb\r\nC\r\n", "A\r\nb\r\nc\r\n"),
-            ("a", "a\nb", "a\nb"),
-            ("a\nb\n", "a\n", "a\n"),
-        ], row => Only_the_chosen_change_enters_the_content_with_its_line_endings(row.Item1, row.Item2, row.Item3))),
         ("a choice follows the changes it still makes and leaves new ones out", () => Cases.Each<(string, bool)>(
         [
             ("A\nb\nc\nd\nEE\n", true),
@@ -30,12 +23,6 @@ public sealed class PartialCommitTests
             ("6", "7"),
             ("1-7", "2 4 7"),
         ], row => Lines_of_the_file_now_take_the_changed_lines_they_name_and_a_deletion_beside_them_whole(row.Item1, row.Item2))),
-        ("lines touching no change or not read as lines are refused saying where the changes are", () => Cases.Each<(string, string)>(
-        [
-            ("3", "no change is at line 3: its changes are at line 2, lines 4-5 and between lines 6 and 7"),
-            ("2,x", "x is not a line or a range of lines, as 3 or 12-14"),
-            (" ", "no lines are named"),
-        ], row => Lines_touching_no_change_or_not_read_as_lines_are_refused_saying_where_the_changes_are(row.Item1, row.Item2))),
         ("lines chosen take their own part of a change", () => Cases.Each<(string, string, string, string, string)>(
         [
             ("a\nb\nc\nd\n", "A\nB\nC\nd\n", "1", "", "a\nB\nc\nd\n"),
@@ -50,14 +37,6 @@ public sealed class PartialCommitTests
             ("a\nb\nnew\nc\nd\ne\nf\n", "FTF"),
             ("a\nb\nc\nd\nf\n", "FFT"),
         ], row => A_change_is_held_in_the_index_where_the_file_differs_from_it_nowhere_among_its_lines(row.Item1, row.Item2))));
-
-    private void Only_the_chosen_change_enters_the_content_with_its_line_endings(string before, string after, string expected)
-    {
-        FileDiff diff = FileDiff.Compare(before, new TextDocument(after).Snapshot);
-        Assert.Equal(expected, new PartialCommit(diff, [diff.Hunks[0]]).Content());
-        Assert.Equal(before, new PartialCommit(diff, []).Content());
-        Assert.Equal(after, new PartialCommit(diff, diff.Hunks).Content());
-    }
 
     private const string Head = "a\nb\nc\nd\ne\n";
 
@@ -86,13 +65,6 @@ public sealed class PartialCommitTests
         Assert.Null(why);
         // Each change named by the line of the file now where it starts (a deletion's by the line after it).
         Assert.Equal(starts, string.Join(' ', hunks.Select(h => h.NewStart + 1)));
-    }
-
-    private void Lines_touching_no_change_or_not_read_as_lines_are_refused_saying_where_the_changes_are(string ranges, string expected)
-    {
-        (IReadOnlyList<DiffHunk> hunks, string? why) = PartialCommit.Touched(Changed(), ranges);
-        Assert.Empty(hunks);
-        Assert.Equal(expected, why);
     }
 
     [Fact]

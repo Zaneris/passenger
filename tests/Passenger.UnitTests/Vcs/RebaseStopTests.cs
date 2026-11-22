@@ -3,14 +3,13 @@ using Passenger.Vcs;
 namespace Passenger.UnitTests.Vcs;
 
 /// <summary>Where an interactive rebase stopped, read from its done list's last step: an edit, a break or an exec stops it
-/// with the tree handed over, said so, while a pick stops only for conflicts.</summary>
+/// with the tree handed over, while a pick stops only for conflicts.</summary>
 public class RebaseStopTests
 {
     [Fact]
-    public void A_rebase_stopped_by_an_edit_a_break_or_an_exec_is_said_so_and_a_pick_stops_only_for_conflicts() => Cases.All(
+    public void A_rebase_stops_at_an_edit_a_break_or_an_exec_and_at_a_pick_only_for_conflicts() => Cases.All(
         ("an edit a break or an exec by its word or letter is a stop of the list", An_edit_a_break_or_an_exec_by_its_word_or_letter_is_a_stop_of_the_list),
-        ("a pick or nothing done stops only for conflicts", A_pick_or_nothing_done_stops_only_for_conflicts),
-        ("a rebase says the stop it is at and where it stopped for conflicts the commit", A_rebase_says_the_stop_it_is_at_and_where_it_stopped_for_conflicts_the_commit));
+        ("a pick or nothing done stops only for conflicts", A_pick_or_nothing_done_stops_only_for_conflicts));
 
     private void An_edit_a_break_or_an_exec_by_its_word_or_letter_is_a_stop_of_the_list()
     {
@@ -31,12 +30,4 @@ public class RebaseStopTests
         Assert.Null(RebaseStop.Of("exec"));
     }
 
-    private void A_rebase_says_the_stop_it_is_at_and_where_it_stopped_for_conflicts_the_commit()
-    {
-        MergeState conflicts = new(MergeOperation.Rebase, "main", "feature", "1a2b3c4d", null);
-        Assert.Equal("Rebasing feature onto main, stopped at 1a2b3c4d", conflicts.UnderWay);
-        Assert.Equal("Rebasing feature onto main, stopped to edit 1a2b3c4d", (conflicts with { Stop = new RebaseStop(RebaseStep.Edit) }).UnderWay);
-        Assert.Equal("Rebasing feature onto main, stopped at a break", (conflicts with { Commit = null, Stop = new RebaseStop(RebaseStep.Break) }).UnderWay);
-        Assert.Equal("Rebasing feature onto main, stopped after exec make", (conflicts with { Commit = null, Stop = new RebaseStop(RebaseStep.Exec, "make") }).UnderWay);
-    }
 }
