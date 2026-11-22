@@ -13,8 +13,9 @@ namespace Passenger.Tests;
 /// <summary>A Godot game's runtime errors kept after it ends: a game that pushes one error every frame and another once
 /// leaves both pinned at their lines once stopped, each with its count and its last words, a badge's press listing each
 /// time with its stack; the Run console shows each once, folded with its count, its other lines as written; and an edit of
-/// a pinned line takes its pin off. Godot runs headless, its user folders the run's; without a Godot 4 .NET build the test
-/// skips saying why. Its game runs and is stopped, so run alone.</summary>
+/// a pinned line takes its pin off. Godot runs headless at twenty frames a second, as a game drawn to a screen runs about,
+/// where a headless one runs thousands, its user folders the run's; without a Godot 4 .NET build the test skips saying
+/// why. Its game runs and is stopped, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotPinsTests : IClassFixture<GodotPinsTests.Game>
 {
@@ -70,7 +71,7 @@ public sealed class GodotPinsTests : IClassFixture<GodotPinsTests.Game>
         try
         {
             RunConfiguration generated = Generated(window, "Spinner");
-            window.SetConfigurations([generated with { Name = "Spinner on Godot", Generated = false, Arguments = "--headless", Environment = new(game.Homes) }], "Spinner on Godot");
+            window.SetConfigurations([generated with { Name = "Spinner on Godot", Generated = false, Arguments = "--headless --max-fps 20", Environment = new(game.Homes) }], "Spinner on Godot");
             Ui.Launched(window, window.RunAsync(), "the game's build and start", TimeSpan.FromMinutes(3));
             Ui.WaitFor(() => Run(window).Contains("frame 30\n", StringComparison.Ordinal), () => $"the game to run thirty frames ({Tail(window)})", TimeSpan.FromMinutes(1));
             Ui.Run(window, AppActions.Stop);
