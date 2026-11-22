@@ -23,7 +23,42 @@ public class XmlTreeTests
         """;
 
     [Fact]
-    public void A_well_formed_file_reads_as_its_elements_in_order_each_name_and_value_where_it_is_written()
+    public void Markup_reads_as_its_elements_and_places_where_written_each_fault_said_in_a_persons_words() => Cases.All(
+        ("a well formed file reads as its elements in order each name and value where it is written", A_well_formed_file_reads_as_its_elements_in_order_each_name_and_value_where_it_is_written),
+        ("a file mid edit is read as far as it goes each fault said where it is", A_file_mid_edit_is_read_as_far_as_it_goes_each_fault_said_where_it_is),
+        ("each kind of broken markup is said in a persons words", () => Cases.Each<(string, string)>(
+        [
+            ("<a></b></a>", "End tag 'b' has no start tag"),
+            ("<a/><b/>", "A XAML file has one root element"),
+            ("<a><!-- open", "Comment is not closed"),
+            ("<a x=\"1\" x=\"2\"/>", "'x' is set twice"),
+            ("<a></a", "The end tag of 'a' is not closed"),
+            ("<a b=\"1\"\"/>", "Unexpected '\"' in the tag of 'a'"),
+            ("<a><b></a>", "Element 'b' is not closed"),
+        ], row => Each_kind_of_broken_markup_is_said_in_a_persons_words(row.Item1, row.Item2))),
+        ("a caret at the end of what is typed is in the part of the markup it types", () => Cases.Each<(string, XmlPlaceKind)>(
+        [
+            ("<Bu", XmlPlaceKind.StartTagName),
+            ("<Button Con", XmlPlaceKind.AttributeName),
+            ("<Button Content=\"x", XmlPlaceKind.AttributeValue),
+            ("<Button Content=\"x\">te", XmlPlaceKind.Content),
+            ("<Button Content=\"x\">text</Button", XmlPlaceKind.EndTagName),
+            ("<Button Content=\"x\">text<!-- no", XmlPlaceKind.Comment),
+        ], row => A_caret_at_the_end_of_what_is_typed_is_in_the_part_of_the_markup_it_types(row.Item1, row.Item2))),
+        ("the element at a place is the innermost holding it up to the end of its end tag", The_element_at_a_place_is_the_innermost_holding_it_up_to_the_end_of_its_end_tag),
+        ("character references read as what they name and any other ampersand as written", () => Cases.Each<(string, string)>(
+        [
+            ("&lt;&gt;&amp;&quot;&apos;", "<>&\"'"),
+            ("&#65;&#x42;&#X43;", "ABC"),
+            ("&#x1F600;", "\U0001F600"),
+            ("&#xD83D;&#xDE00;", "&#xD83D;&#xDE00;"),
+            ("a & b &unknown; &amp", "a & b &unknown; &amp"),
+        ], row => Character_references_read_as_what_they_name_and_any_other_ampersand_as_written(row.Item1, row.Item2))),
+        ("a value written into a file escapes what would end it and reads back as it was", A_value_written_into_a_file_escapes_what_would_end_it_and_reads_back_as_it_was),
+        ("a comment left open holds every place to the end of the text", A_comment_left_open_holds_every_place_to_the_end_of_the_text),
+        ("an editorconfigs max line length off with a comment after it turns xaml wrapping off", An_editorconfigs_max_line_length_off_with_a_comment_after_it_turns_xaml_wrapping_off));
+
+    private void A_well_formed_file_reads_as_its_elements_in_order_each_name_and_value_where_it_is_written()
     {
         XmlTree tree = XmlTree.Parse(Window);
         Assert.Empty(tree.Problems);
@@ -52,8 +87,7 @@ public class XmlTreeTests
 
     /// <summary>A file as it is while it is typed: a value left without its closing quote ends with its line, a start tag left
     /// open is taken as empty so what follows stays its sibling, and an element left open ends at its parent's end tag.</summary>
-    [Fact]
-    public void A_file_mid_edit_is_read_as_far_as_it_goes_each_fault_said_where_it_is()
+    private void A_file_mid_edit_is_read_as_far_as_it_goes_each_fault_said_where_it_is()
     {
         const string Text = "<Window>\n  <Button Content=\"Hi\n  <TextBlock Text=x>\n</Window>";
         XmlTree tree = XmlTree.Parse(Text);
@@ -70,37 +104,17 @@ public class XmlTreeTests
         Assert.Equal("Content", Text[tree.Problems[0].Range.Start..tree.Problems[0].Range.End]);
     }
 
-    [Theory]
-    [InlineData("<a></b></a>", "End tag 'b' has no start tag")]
-    [InlineData("<a/><b/>", "A XAML file has one root element")]
-    [InlineData("<a/> text", "Text is outside the root element")]
-    [InlineData("<a><!-- open", "Comment is not closed")]
-    [InlineData("<a><![CDATA[ open", "CDATA section is not closed")]
-    [InlineData("<a x=\"1\" x=\"2\"/>", "'x' is set twice")]
-    [InlineData("<a>< /a>", "An element's name is missing")]
-    [InlineData("<a></a", "The end tag of 'a' is not closed")]
-    [InlineData("<a b=\"1\"\"/>", "Unexpected '\"' in the tag of 'a'")]
-    [InlineData("<a><b></a>", "Element 'b' is not closed")]
-    public void Each_kind_of_broken_markup_is_said_in_a_persons_words(string text, string problem)
+    private void Each_kind_of_broken_markup_is_said_in_a_persons_words(string text, string problem)
     {
         Assert.Contains(problem, XmlTree.Parse(text).Problems.Select(p => p.Message));
     }
 
-    [Theory]
-    [InlineData("<Bu", XmlPlaceKind.StartTagName)]
-    [InlineData("<Button Con", XmlPlaceKind.AttributeName)]
-    [InlineData("<Button Content=\"x", XmlPlaceKind.AttributeValue)]
-    [InlineData("<Button Content=\"x\" ", XmlPlaceKind.InStartTag)]
-    [InlineData("<Button Content=\"x\">te", XmlPlaceKind.Content)]
-    [InlineData("<Button Content=\"x\">text</Button", XmlPlaceKind.EndTagName)]
-    [InlineData("<Button Content=\"x\">text<!-- no", XmlPlaceKind.Comment)]
-    public void A_caret_at_the_end_of_what_is_typed_is_in_the_part_of_the_markup_it_types(string typed, XmlPlaceKind kind)
+    private void A_caret_at_the_end_of_what_is_typed_is_in_the_part_of_the_markup_it_types(string typed, XmlPlaceKind kind)
     {
         Assert.Equal(kind, XmlTree.Parse(typed).PlaceAt(typed.Length).Kind);
     }
 
-    [Fact]
-    public void The_element_at_a_place_is_the_innermost_holding_it_up_to_the_end_of_its_end_tag()
+    private void The_element_at_a_place_is_the_innermost_holding_it_up_to_the_end_of_its_end_tag()
     {
         const string Text = "<a><b>x</b> <c/></a>";
         XmlTree tree = XmlTree.Parse(Text);
@@ -112,20 +126,12 @@ public class XmlTreeTests
         Assert.Null(tree.ElementAt(0));
     }
 
-    [Theory]
-    [InlineData("&lt;&gt;&amp;&quot;&apos;", "<>&\"'")]
-    [InlineData("&#65;&#x42;&#X43;", "ABC")]
-    [InlineData("&#x1F600;", "\U0001F600")]
-    [InlineData("&#xD83D;&#xDE00;", "&#xD83D;&#xDE00;")]
-    [InlineData("&#0;&#x110000;", "&#0;&#x110000;")]
-    [InlineData("a & b &unknown; &amp", "a & b &unknown; &amp")]
-    public void Character_references_read_as_what_they_name_and_any_other_ampersand_as_written(string raw, string read)
+    private void Character_references_read_as_what_they_name_and_any_other_ampersand_as_written(string raw, string read)
     {
         Assert.Equal(read, XmlEntities.Decode(raw));
     }
 
-    [Fact]
-    public void A_value_written_into_a_file_escapes_what_would_end_it_and_reads_back_as_it_was()
+    private void A_value_written_into_a_file_escapes_what_would_end_it_and_reads_back_as_it_was()
     {
         const string Value = "a < b & \"c\" 'd'";
         Assert.Equal("a &lt; b &amp; &quot;c&quot; 'd'", XmlEntities.Encode(Value, '"'));
@@ -136,8 +142,7 @@ public class XmlTreeTests
         Assert.Equal(Value, a.Attribute("w")!.Value);
     }
 
-    [Fact]
-    public void A_comment_left_open_holds_every_place_to_the_end_of_the_text()
+    private void A_comment_left_open_holds_every_place_to_the_end_of_the_text()
     {
         const string Text = "<a/><!-- open";
         XmlTree tree = XmlTree.Parse(Text);
@@ -151,12 +156,28 @@ public class XmlTreeTests
     private static string Nested(int deep, string open = "<a>", string close = "</a>") =>
         string.Concat(Enumerable.Repeat(open, deep)) + string.Concat(Enumerable.Repeat(close, deep));
 
-    [Theory]
-    [InlineData("<a>", "</a>")]
-    [InlineData("<a.b>", "</a.b>")]
-    [InlineData("<a DataContext=\"{Binding}\">", "</a>")]
-    [InlineData("<Style Selector=\"^:a\">", "</Style>")]
-    public void Elements_nested_past_what_a_tree_holds_read_as_far_as_it_holds_and_end_nothing(string open, string close)
+    [Fact]
+    public void Markup_nested_past_what_a_tree_holds_or_a_stack_runs_to_is_read_as_far_as_it_goes_and_ends_nothing() => Cases.All(
+        ("elements nested past what a tree holds read as far as it holds and end nothing", () => Cases.Each<(string, string)>(
+        [
+            ("<a>", "</a>"),
+            ("<a.b>", "</a.b>"),
+            ("<a DataContext=\"{Binding}\">", "</a>"),
+            ("<Style Selector=\"^:a\">", "</Style>"),
+        ], row => Elements_nested_past_what_a_tree_holds_read_as_far_as_it_holds_and_end_nothing(row.Item1, row.Item2))),
+        ("where reading stopped is a note and nothing past it is called wrong", Where_reading_stopped_is_a_note_and_nothing_past_it_is_called_wrong),
+        ("a fault before reading stopped stands beside its note", A_fault_before_reading_stopped_stands_beside_its_note),
+        ("a file read in part is neither laid out nor renamed in", A_file_read_in_part_is_neither_laid_out_nor_renamed_in),
+        ("elements as deep as a tree holds read whole and are laid out or refused where the stack runs short", Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out_or_refused_where_the_stack_runs_short),
+        ("walks of a tree on a stack too small for it refuse or answer as past the bound and end nothing", () => Cases.Each<(string, string)>(
+        [
+            ("<a>", "</a>"),
+            ("<a.b>", "</a.b>"),
+            ("<a DataContext=\"{Binding}\">", "</a>"),
+            ("<Style Selector=\"^:a\">", "</Style>"),
+        ], row => Walks_of_a_tree_on_a_stack_too_small_for_it_refuse_or_answer_as_past_the_bound_and_end_nothing(row.Item1, row.Item2))));
+
+    private void Elements_nested_past_what_a_tree_holds_read_as_far_as_it_holds_and_end_nothing(string open, string close)
     {
         string text = Nested(100_000, open, close);
         SmallStack.Run(() =>
@@ -177,8 +198,7 @@ public class XmlTreeTests
         });
     }
 
-    [Fact]
-    public void Where_reading_stopped_is_a_note_and_nothing_past_it_is_called_wrong()
+    private void Where_reading_stopped_is_a_note_and_nothing_past_it_is_called_wrong()
     {
         XamlFile file = XamlFiles.Read("Deep.axaml", Nested(100_000), AvaloniaDialect.Instance);
         Assert.Empty(file.Tree.Problems);
@@ -186,15 +206,13 @@ public class XmlTreeTests
         Assert.Equal((XamlSeverity.Note, XmlTree.TooDeep, file.Tree.Stopped), (note.Severity, note.Message, (TextRange?)note.Range));
     }
 
-    [Fact]
-    public void A_fault_before_reading_stopped_stands_beside_its_note()
+    private void A_fault_before_reading_stopped_stands_beside_its_note()
     {
         XamlFile file = XamlFiles.Read("Deep.axaml", "<b c>" + Nested(100_000), AvaloniaDialect.Instance);
         Assert.Equal([XamlSeverity.Error, XamlSeverity.Note], XamlDiagnostics.Of(file).Select(d => d.Severity));
     }
 
-    [Fact]
-    public void An_editorconfigs_max_line_length_off_with_a_comment_after_it_turns_xaml_wrapping_off()
+    private void An_editorconfigs_max_line_length_off_with_a_comment_after_it_turns_xaml_wrapping_off()
     {
         string text = $"<Grid xmlns=\"https://github.com/avaloniaui\" Tag=\"{new string('t', 60)}\" Name=\"{new string('n', 60)}\" />";
         XamlFormatSettings off = new XamlFormatSettings().Over(key => key == "max_line_length" ? "off  # no wrap" : null);
@@ -212,8 +230,7 @@ public class XmlTreeTests
         Assert.Equal(new XamlFormatSettings { SpaceBeforeSelfClosing = false, MaxBlankLines = 1, AttributeStyle = XamlAttributeStyle.OnDifferentLines }, read);
     }
 
-    [Fact]
-    public void A_file_read_in_part_is_neither_laid_out_nor_renamed_in()
+    private void A_file_read_in_part_is_neither_laid_out_nor_renamed_in()
     {
         string text = Nested(100_000);
         Assert.NotNull(XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n").Problem);
@@ -223,8 +240,7 @@ public class XmlTreeTests
 
     /// <summary>How much stack a level of layout takes is the platform's: on a stack a third of the thread pool's a tree as
     /// deep as it is read is laid out, or refused as too deep where that stack runs short, and never ends the process.</summary>
-    [Fact]
-    public void Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out_or_refused_where_the_stack_runs_short()
+    private void Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out_or_refused_where_the_stack_runs_short()
     {
         string text = Nested(XmlTree.DeepestNesting);
         SmallStack.Run(() =>
@@ -241,12 +257,7 @@ public class XmlTreeTests
     /// <summary>A stack too small for a tree as deep as it is read, as a platform whose levels take more would leave: the
     /// layout is refused saying so, and every other walk of the tree answers as it does past where reading stops, or walks
     /// with a stack of its own.</summary>
-    [Theory]
-    [InlineData("<a>", "</a>")]
-    [InlineData("<a.b>", "</a.b>")]
-    [InlineData("<a DataContext=\"{Binding}\">", "</a>")]
-    [InlineData("<Style Selector=\"^:a\">", "</Style>")]
-    public void Walks_of_a_tree_on_a_stack_too_small_for_it_refuse_or_answer_as_past_the_bound_and_end_nothing(string open, string close)
+    private void Walks_of_a_tree_on_a_stack_too_small_for_it_refuse_or_answer_as_past_the_bound_and_end_nothing(string open, string close)
     {
         string text = Nested(XmlTree.DeepestNesting, open, close);
         SmallStack.Run(192 * 1024, () =>

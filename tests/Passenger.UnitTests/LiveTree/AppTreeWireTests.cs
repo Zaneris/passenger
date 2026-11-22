@@ -32,7 +32,14 @@ public sealed class AppTreeWireTests
         [.. AppTree.Walk(tree.Roots).Select(walked => JsonSerializer.Serialize(walked.Element with { Children = [] }, WireJson.Default.Element))];
 
     [Fact]
-    public void An_app_tree_nested_past_what_a_stack_holds_crosses_the_wire_whole_on_a_small_stack()
+    public void An_apps_tree_crosses_the_wire_flat_as_it_was_and_one_whose_counts_do_not_add_up_is_refused() => Cases.All(
+        ("an app tree nested past what a stack holds crosses the wire whole on a small stack", An_app_tree_nested_past_what_a_stack_holds_crosses_the_wire_whole_on_a_small_stack),
+        ("an app tree on the wire nests no deeper than an element however deep the tree", An_app_tree_on_the_wire_nests_no_deeper_than_an_element_however_deep_the_tree),
+        ("every elements words layout and values cross the wire as they were", Every_elements_words_layout_and_values_cross_the_wire_as_they_were),
+        ("a tree whose counts do not add up does not read", A_tree_whose_counts_do_not_add_up_does_not_read),
+        ("a walk goes each element before what it holds at its depth into only what it is let into", A_walk_goes_each_element_before_what_it_holds_at_its_depth_into_only_what_it_is_let_into));
+
+    private void An_app_tree_nested_past_what_a_stack_holds_crosses_the_wire_whole_on_a_small_stack()
     {
         AppTree tree = new([Chain(100_000), Chain(3)]);
         AppTree? read = null;
@@ -41,8 +48,7 @@ public sealed class AppTreeWireTests
             "The tree read back was not the tree sent: the Live Visual Tree would show another app than the one running");
     }
 
-    [Fact]
-    public void An_app_tree_on_the_wire_nests_no_deeper_than_an_element_however_deep_the_tree()
+    private void An_app_tree_on_the_wire_nests_no_deeper_than_an_element_however_deep_the_tree()
     {
         Utf8JsonReader reader = new(Sent(new AppTree([Chain(300)])));
         int deepest = 0;
@@ -53,8 +59,7 @@ public sealed class AppTreeWireTests
         Assert.True(deepest <= 6, $"A tree 300 deep nested {deepest} deep on the wire, which System.Text.Json walks on its thread's stack at either end");
     }
 
-    [Fact]
-    public void Every_elements_words_layout_and_values_cross_the_wire_as_they_were()
+    private void Every_elements_words_layout_and_values_cross_the_wire_as_they_were()
     {
         Element label = new(3, "TextBlock", "Greeting", ["title", "big"], true, true, false, [])
         {
@@ -80,8 +85,7 @@ public sealed class AppTreeWireTests
         Assert.Equal(told.Bases, Read(Sent(told))?.Bases);
     }
 
-    [Fact]
-    public void A_tree_whose_counts_do_not_add_up_does_not_read()
+    private void A_tree_whose_counts_do_not_add_up_does_not_read()
     {
         string sent = System.Text.Encoding.UTF8.GetString(Sent(new AppTree([Chain(3)])));
         Assert.Contains("\"held\":[1,1,0]", sent, StringComparison.Ordinal);
@@ -91,8 +95,7 @@ public sealed class AppTreeWireTests
         }
     }
 
-    [Fact]
-    public void A_walk_goes_each_element_before_what_it_holds_at_its_depth_into_only_what_it_is_let_into()
+    private void A_walk_goes_each_element_before_what_it_holds_at_its_depth_into_only_what_it_is_let_into()
     {
         Element first = new(3, "TextBlock", "First", [], false, false, true, []);
         Element panel = new(2, "StackPanel", "Panel", [], false, false, true, [first, new Element(4, "TextBlock", "Second", [], false, false, true, [])]);

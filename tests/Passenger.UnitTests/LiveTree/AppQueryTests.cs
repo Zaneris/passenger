@@ -20,7 +20,15 @@ public sealed class AppQueryTests
     }
 
     [Fact]
-    public void Every_walk_of_a_tree_nested_past_what_a_stack_holds_finishes_on_a_small_stack()
+    public void An_apps_tree_is_walked_on_a_small_stack_however_deep_saying_where_it_holds_more() => Cases.All(
+        ("every walk of a tree nested past what a stack holds finishes on a small stack", Every_walk_of_a_tree_nested_past_what_a_stack_holds_finishes_on_a_small_stack),
+        ("an element that holds more than was read says so wherever the tree is written", An_element_that_holds_more_than_was_read_says_so_wherever_the_tree_is_written),
+        ("two trees holding the same elements in other places are not the same", Two_trees_holding_the_same_elements_in_other_places_are_not_the_same),
+        ("a query finds the outermost matches inside what its last step found", A_query_finds_the_outermost_matches_inside_what_its_last_step_found),
+        ("a query by a type finds an element of a type derived from it", A_query_by_a_type_finds_an_element_of_a_type_derived_from_it),
+        ("the inspector tells each type by the types it derives from directly", The_inspector_tells_each_type_by_the_types_it_derives_from_directly));
+
+    private void Every_walk_of_a_tree_nested_past_what_a_stack_holds_finishes_on_a_small_stack()
     {
         const int Deep = 100_000;
         Element root = Chain(Deep);
@@ -46,8 +54,7 @@ public sealed class AppQueryTests
         Assert.Equal($"... and {Passenger.Core.Numbers.Said(Deep - AppQuery.MostLines)} more elements: narrow it with control, filter or depth", lines[^1]);
     }
 
-    [Fact]
-    public void An_element_that_holds_more_than_was_read_says_so_wherever_the_tree_is_written()
+    private void An_element_that_holds_more_than_was_read_says_so_wherever_the_tree_is_written()
     {
         Element deeper = new(3, "Border", null, [], false, false, true, []) { Deeper = true };
         Element panel = new(2, "StackPanel", "Outer", [], false, false, true, [deeper]);
@@ -63,8 +70,7 @@ public sealed class AppQueryTests
         Assert.Equal($"Window @1\n  StackPanel#Outer @2\n    {note}", AppQuery.Write(AppQuery.Flatten([templated]).Take(1), null, false, false));
     }
 
-    [Fact]
-    public void Two_trees_holding_the_same_elements_in_other_places_are_not_the_same()
+    private void Two_trees_holding_the_same_elements_in_other_places_are_not_the_same()
     {
         Element Leaf(long id) => new(id, "TextBlock", null, [], false, false, true, []);
         Element side = new(1, "StackPanel", null, [], false, false, true, [Leaf(2), Leaf(3)]);
@@ -75,8 +81,7 @@ public sealed class AppQueryTests
         Assert.False(AppQuery.Same([side], [side with { Children = [Leaf(2), Leaf(3) with { Deeper = true }] }]), "An element that came to hold more than was read read as the same");
     }
 
-    [Fact]
-    public void A_query_finds_the_outermost_matches_inside_what_its_last_step_found()
+    private void A_query_finds_the_outermost_matches_inside_what_its_last_step_found()
     {
         Element save = new(4, "Button", "Save", [], false, false, true, []) { Text = "Save" };
         Element inner = new(3, "Border", "Inner", [], false, false, true, [save]);
@@ -91,8 +96,7 @@ public sealed class AppQueryTests
 
     /// <summary>A query by a type finds an element of a type derived from it as of its own, however far down, by what the
     /// tree tells each type derives from directly; a tree that tells nothing finds each by its own type alone.</summary>
-    [Fact]
-    public void A_query_by_a_type_finds_an_element_of_a_type_derived_from_it()
+    private void A_query_by_a_type_finds_an_element_of_a_type_derived_from_it()
     {
         Element lib = new(4, "TextBlock", null, [], false, false, true, []) { Text = "Lib" };
         Element tree = new(3, "TreeList", "Rows", [], false, false, true, [lib]);
@@ -116,8 +120,7 @@ public sealed class AppQueryTests
 
     /// <summary>What each type derives from, as the inspector tells it: every type up from those given, object left out, and
     /// two types of one name telling theirs together.</summary>
-    [Fact]
-    public void The_inspector_tells_each_type_by_the_types_it_derives_from_directly()
+    private void The_inspector_tells_each_type_by_the_types_it_derives_from_directly()
     {
         Dictionary<string, IReadOnlyList<string>> bases = Words.BasesOf([typeof(Leaf), typeof(Middle), typeof(Other.Middle)]);
         Assert.Equal(["Leaf", "Middle"], bases.Keys.Order(StringComparer.Ordinal));

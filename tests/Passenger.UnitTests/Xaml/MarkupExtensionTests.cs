@@ -7,7 +7,20 @@ namespace Passenger.UnitTests.Xaml;
 public class MarkupExtensionTests
 {
     [Fact]
-    public void A_binding_reads_as_its_named_and_positional_arguments_and_the_extension_nested_in_one()
+    public void A_markup_extension_reads_as_its_arguments_and_nested_extensions_as_far_as_it_goes() => Cases.All(
+        ("a binding reads as its named and positional arguments and the extension nested in one", A_binding_reads_as_its_named_and_positional_arguments_and_the_extension_nested_in_one),
+        ("a prefixed name reads as its prefix and local name and its value whole", A_prefixed_name_reads_as_its_prefix_and_local_name_and_its_value_whole),
+        ("a quoted and an escaped value read as the text they hold", A_quoted_and_an_escaped_value_read_as_the_text_they_hold),
+        ("a value that is no extension reads as none", () => Cases.Each<string>(
+        [
+            "plain text",
+            "{}{literal braces}",
+            "   ",
+        ], A_value_that_is_no_extension_reads_as_none)),
+        ("an extension still being typed reads as far as it goes", An_extension_still_being_typed_reads_as_far_as_it_goes),
+        ("extensions nested a hundred thousand deep read to a depth short of the stack", Extensions_nested_a_hundred_thousand_deep_read_to_a_depth_short_of_the_stack));
+
+    private void A_binding_reads_as_its_named_and_positional_arguments_and_the_extension_nested_in_one()
     {
         const string Text = "<TextBlock Text=\"{Binding Name, Mode=TwoWay, Converter={StaticResource Upper}}\" />";
         int start = Text.IndexOf('{');
@@ -28,8 +41,7 @@ public class MarkupExtensionTests
         Assert.Equal("Mode", binding.ArgumentAt(Text.IndexOf("TwoWay", StringComparison.Ordinal))!.Key);
     }
 
-    [Fact]
-    public void A_prefixed_name_reads_as_its_prefix_and_local_name_and_its_value_whole()
+    private void A_prefixed_name_reads_as_its_prefix_and_local_name_and_its_value_whole()
     {
         const string Text = "{x:Static local:Strings.Title}";
         MarkupExtension extension = MarkupExtension.Parse(Text, 0, Text.Length)!;
@@ -37,8 +49,7 @@ public class MarkupExtensionTests
         Assert.Equal("local:Strings.Title", Assert.Single(extension.Arguments).Value);
     }
 
-    [Fact]
-    public void A_quoted_and_an_escaped_value_read_as_the_text_they_hold()
+    private void A_quoted_and_an_escaped_value_read_as_the_text_they_hold()
     {
         const string Quoted = "{Binding StringFormat='{}{0:N2}, {1}'}";
         Assert.Equal("{}{0:N2}, {1}", MarkupExtension.Parse(Quoted, 0, Quoted.Length)!.Argument("StringFormat")!.Value);
@@ -46,17 +57,12 @@ public class MarkupExtensionTests
         Assert.Equal("A,B", MarkupExtension.Parse(Escaped, 0, Escaped.Length)!.Argument("Path")!.Value);
     }
 
-    [Theory]
-    [InlineData("plain text")]
-    [InlineData("{}{literal braces}")]
-    [InlineData("   ")]
-    public void A_value_that_is_no_extension_reads_as_none(string text)
+    private void A_value_that_is_no_extension_reads_as_none(string text)
     {
         Assert.Null(MarkupExtension.Parse(text, 0, text.Length));
     }
 
-    [Fact]
-    public void An_extension_still_being_typed_reads_as_far_as_it_goes()
+    private void An_extension_still_being_typed_reads_as_far_as_it_goes()
     {
         const string Text = "{Binding Path=Na";
         MarkupExtension extension = MarkupExtension.Parse(Text, 0, Text.Length)!;
@@ -70,8 +76,7 @@ public class MarkupExtensionTests
 
     /// <summary>A value of extensions nested far past any written by hand reads to a depth short of the stack, the rest
     /// held unread, so a file pasted with one never ends the IDE.</summary>
-    [Fact]
-    public void Extensions_nested_a_hundred_thousand_deep_read_to_a_depth_short_of_the_stack()
+    private void Extensions_nested_a_hundred_thousand_deep_read_to_a_depth_short_of_the_stack()
     {
         string text = string.Concat(Enumerable.Repeat("{A B=", 100_000)) + new string('}', 100_000);
         MarkupExtension? at = MarkupExtension.Parse(text, 0, text.Length);

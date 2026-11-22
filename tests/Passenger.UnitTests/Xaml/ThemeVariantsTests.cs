@@ -10,7 +10,11 @@ namespace Passenger.UnitTests.Xaml;
 public sealed class ThemeVariantsTests
 {
     [Fact]
-    public void The_fix_adds_a_key_to_the_variant_the_warning_names_never_to_a_dictionary_keyed_under_another_namespace()
+    public void A_theme_dictionarys_variant_is_read_by_its_key_one_way() => Cases.All(
+        ("the fix adds a key to the variant the warning names never to a dictionary keyed under another namespace", The_fix_adds_a_key_to_the_variant_the_warning_names_never_to_a_dictionary_keyed_under_another_namespace),
+        ("dictionaries keyed by x static variants warn only of a key one lacks naming the variant and the fix adds it there", Dictionaries_keyed_by_x_static_variants_warn_only_of_a_key_one_lacks_naming_the_variant_and_the_fix_adds_it_there));
+
+    private void The_fix_adds_a_key_to_the_variant_the_warning_names_never_to_a_dictionary_keyed_under_another_namespace()
     {
         const string Palette = """
             <ResourceDictionary xmlns="https://github.com/avaloniaui"
@@ -43,8 +47,7 @@ public sealed class ThemeVariantsTests
         Assert.True(fixedText == expected, $"Add 'Accent' to Light left the Light dictionary the warning named without it, the warning staying however often it is taken:\n{fixedText}");
     }
 
-    [Fact]
-    public void Dictionaries_keyed_by_x_static_variants_warn_only_of_a_key_one_lacks_naming_the_variant_and_the_fix_adds_it_there()
+    private void Dictionaries_keyed_by_x_static_variants_warn_only_of_a_key_one_lacks_naming_the_variant_and_the_fix_adds_it_there()
     {
         const string Palette = """
             <ResourceDictionary xmlns="https://github.com/avaloniaui"

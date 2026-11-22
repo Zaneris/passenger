@@ -13,11 +13,16 @@ public sealed class XamlOnlyClassesTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
-    [Theory]
-    [InlineData("Gallery.गिनती", true)]
-    [InlineData("Gallery.Badge", true)]
-    [InlineData("Gallery.2Badge", false)]
-    public void An_x_class_no_csharp_declares_is_a_class_where_csharp_reads_it_as_a_name(string named, bool declared)
+    [Fact]
+    public void An_x_class_no_csharp_declares_is_a_class_only_where_csharp_reads_it_as_a_name() => Cases.All(
+        ("an x class no csharp declares is a class where csharp reads it as a name", () => Cases.Each<(string, bool)>(
+        [
+            ("Gallery.गिनती", true),
+            ("Gallery.Badge", true),
+            ("Gallery.2Badge", false),
+        ], row => An_x_class_no_csharp_declares_is_a_class_where_csharp_reads_it_as_a_name(row.Item1, row.Item2))));
+
+    private void An_x_class_no_csharp_declares_is_a_class_where_csharp_reads_it_as_a_name(string named, bool declared)
     {
         string project = Path.Combine(root, "Gallery", "Gallery.csproj");
         Directory.CreateDirectory(Path.GetDirectoryName(project)!);

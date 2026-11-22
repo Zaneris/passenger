@@ -9,7 +9,11 @@ namespace Passenger.UnitTests.Xaml;
 public class PreviewRepliesTests
 {
     [Fact]
-    public async Task Each_answer_the_previewer_writes_is_read_as_it_meant_it()
+    public Task A_previewers_answers_are_read_from_its_bytes_a_line_at_a_time() => Cases.AllAsync(
+        ("each answer the previewer writes is read as it meant it", Each_answer_the_previewer_writes_is_read_as_it_meant_it),
+        ("a frame costs its picture and never its text", A_frame_costs_its_picture_and_never_its_text));
+
+    private async Task Each_answer_the_previewer_writes_is_read_as_it_meant_it()
     {
         byte[] png = [0x89, (byte)'P', (byte)'N', (byte)'G', 1, 2, 3];
         byte[] written = Written(
@@ -36,8 +40,7 @@ public class PreviewRepliesTests
         Assert.Equal((PreviewKinds.Nothing, "A ResourceDictionary is not drawn"), (read[2].Kind, read[2].Message));
     }
 
-    [Fact]
-    public async Task A_frame_costs_its_picture_and_never_its_text()
+    private async Task A_frame_costs_its_picture_and_never_its_text()
     {
         byte[] png = new byte[39_999];
         new Random(2).NextBytes(png);

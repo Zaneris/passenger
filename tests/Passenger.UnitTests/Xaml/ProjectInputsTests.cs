@@ -9,14 +9,35 @@ namespace Passenger.UnitTests.Xaml;
 /// reads as MSBuild reads it.</summary>
 public sealed class ProjectInputsTests : IDisposable
 {
-    private readonly string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+    private readonly string top = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
 
-    public void Dispose() => Directory.Delete(root, recursive: true);
+    /// <summary>The folder of the check running, each its own (<see cref="Apart"/>).</summary>
+    private string root = string.Empty;
 
-    [Theory]
-    [InlineData("net10.0", "net11.0")]
-    [InlineData(".NETCoreApp,Version=v10.0", ".NETCoreApp,Version=v11.0")]
-    public void The_framework_chosen_reads_its_own_targets_packages_shared_frameworks_and_usings(string first, string second)
+    public void Dispose() => Directory.Delete(top, recursive: true);
+
+    /// <summary>A check run in a folder of its own, as each was a test of its own.</summary>
+    private Action Apart(Action check) => () =>
+    {
+        root = Directory.CreateDirectory(Path.Join(top, Guid.NewGuid().ToString("N"))).FullName;
+        check();
+    };
+
+    [Fact]
+    public void A_projects_inputs_are_read_for_the_framework_chosen_from_its_restore_packs_and_usings() => Cases.All(
+        ("the framework chosen reads its own targets packages shared frameworks and usings", () => Cases.Each<(string, string)>(
+        [
+            ("net10.0", "net11.0"),
+            (".NETCoreApp,Version=v10.0", ".NETCoreApp,Version=v11.0"),
+        ], row => Apart(() => The_framework_chosen_reads_its_own_targets_packages_shared_frameworks_and_usings(row.Item1, row.Item2))())),
+        ("an implicit using of a namespace whose name holds marks is read whole", Apart(An_implicit_using_of_a_namespace_whose_name_holds_marks_is_read_whole)),
+        ("a global usings file that cannot be read leaves the project read without its implicit usings", Apart(A_global_usings_file_that_cannot_be_read_leaves_the_project_read_without_its_implicit_usings)),
+        ("a shared frameworks pack folder holding a release candidate and its release reads the release", Apart(A_shared_frameworks_pack_folder_holding_a_release_candidate_and_its_release_reads_the_release)),
+        ("a workloads reference pack in the users own dotnet is read where the dotnet installs workloads there", Apart(A_workloads_reference_pack_in_the_users_own_dotnet_is_read_where_the_dotnet_installs_workloads_there)),
+        ("a restore whose members are of other kinds reads as far as it can rather than throw", Apart(A_restore_whose_members_are_of_other_kinds_reads_as_far_as_it_can_rather_than_throw)),
+        ("a build is of a framework by its folder under the output alone", Apart(A_build_is_of_a_framework_by_its_folder_under_the_output_alone)));
+
+    private void The_framework_chosen_reads_its_own_targets_packages_shared_frameworks_and_usings(string first, string second)
     {
         string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         string assets = Assets(first, second);
@@ -46,8 +67,7 @@ public sealed class ProjectInputsTests : IDisposable
 
     /// <summary>The usings the SDK writes as C# reads them: a namespace whose name holds marks whole, a static using and an
     /// alias no namespace a name is looked up in.</summary>
-    [Fact]
-    public void An_implicit_using_of_a_namespace_whose_name_holds_marks_is_read_whole()
+    private void An_implicit_using_of_a_namespace_whose_name_holds_marks_is_read_whole()
     {
         string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         string assets = Assets("net10.0", "net11.0");
@@ -62,8 +82,7 @@ public sealed class ProjectInputsTests : IDisposable
 
     /// <summary>A GlobalUsings.g.cs listed but not read (taken away by a clean between the two, here a link to no file; on
     /// Windows held by a build writing it) leaves the project read without its implicit usings.</summary>
-    [Fact]
-    public void A_global_usings_file_that_cannot_be_read_leaves_the_project_read_without_its_implicit_usings()
+    private void A_global_usings_file_that_cannot_be_read_leaves_the_project_read_without_its_implicit_usings()
     {
         string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         string assets = Assets("net10.0", "net11.0");
@@ -90,8 +109,7 @@ public sealed class ProjectInputsTests : IDisposable
 
     /// <summary>The SDK's packs of a framework, a release candidate's beside its release: the release's reference
     /// assemblies are read, whatever order the folder lists them in, as the SDK builds against the release.</summary>
-    [Fact]
-    public void A_shared_frameworks_pack_folder_holding_a_release_candidate_and_its_release_reads_the_release()
+    private void A_shared_frameworks_pack_folder_holding_a_release_candidate_and_its_release_reads_the_release()
     {
         string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         string assets = Assets("net10.0", "net11.0");
@@ -108,8 +126,7 @@ public sealed class ProjectInputsTests : IDisposable
 
     /// <summary>A workload's reference pack where the .NET installs workloads for each user (its SDK's band's userlocal
     /// marker), in the user's own .dotnet alone, is read there, the .NET's own packs still read from its own folder.</summary>
-    [Fact]
-    public void A_workloads_reference_pack_in_the_users_own_dotnet_is_read_where_the_dotnet_installs_workloads_there()
+    private void A_workloads_reference_pack_in_the_users_own_dotnet_is_read_where_the_dotnet_installs_workloads_there()
     {
         string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         string assets = Write("App/obj/project.assets.json", """
@@ -133,8 +150,7 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Equal(["System.Runtime.dll"], Read(WorkloadFolders.Of(dotnet, "11.0.100", Path.Combine(root, "home", "ann"))));
     }
 
-    [Fact]
-    public void A_restore_whose_members_are_of_other_kinds_reads_as_far_as_it_can_rather_than_throw()
+    private void A_restore_whose_members_are_of_other_kinds_reads_as_far_as_it_can_rather_than_throw()
     {
         string project = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
         string assets = Write("App/obj/project.assets.json", """
@@ -147,8 +163,7 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Empty(inputs.FrameworkReferences);
     }
 
-    [Fact]
-    public void A_build_is_of_a_framework_by_its_folder_under_the_output_alone()
+    private void A_build_is_of_a_framework_by_its_folder_under_the_output_alone()
     {
         string bin = Path.Combine(root, "net11.0", "App", "bin");
         Assert.True(ProjectInputs.InFolderOf(Path.Combine(bin, "Debug", "net10.0", "App.dll"), "net10.0", bin));
@@ -159,7 +174,21 @@ public sealed class ProjectInputsTests : IDisposable
     }
 
     [Fact]
-    public void A_project_reference_written_escaped_is_the_project_msbuild_finds()
+    public void A_projects_items_and_references_are_the_files_msbuild_finds_however_written() => Cases.All(
+        ("a project reference written escaped is the project msbuild finds", Apart(A_project_reference_written_escaped_is_the_project_msbuild_finds)),
+        ("an item written escaped is the file msbuild finds", () => Cases.Each<(string, string)>(
+        [
+            ("per%25cent/a%3Bb.png", "per%cent/a;b.png"),
+            ("per%2525cent/**", "per%cent/a;b.png"),
+            ("per%2525cent/*%253Bb.png", "per%cent/a;b.png"),
+            ("per%2525cent/?;Other/nothing", "per%cent/z"),
+        ], row => Apart(() => An_item_written_escaped_is_the_file_msbuild_finds(row.Item1, row.Item2))())),
+        ("a remove written escaped takes out the file it names and a property stays unread", Apart(A_remove_written_escaped_takes_out_the_file_it_names_and_a_property_stays_unread)),
+        ("an items glob and remove take a file named in another case where its folder ignores case", Apart(An_items_glob_and_remove_take_a_file_named_in_another_case_where_its_folder_ignores_case)),
+        ("an items glob passes over build output dependencies and hidden folders", Apart(An_items_glob_passes_over_build_output_dependencies_and_hidden_folders)),
+        ("a project referenced in two spellings of one path is one reference", Apart(A_project_referenced_in_two_spellings_of_one_path_is_one_reference)));
+
+    private void A_project_reference_written_escaped_is_the_project_msbuild_finds()
     {
         string project = Write("App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="..\per%25cent%3Bsemi\Lib.csproj" /></ItemGroup></Project>""");
 
@@ -168,12 +197,7 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Equal([Path.Combine(root, "per%cent;semi", "Lib.csproj")], read.ProjectReferences);
     }
 
-    [Theory]
-    [InlineData("per%25cent/a%3Bb.png", "per%cent/a;b.png")]
-    [InlineData("per%2525cent/**", "per%cent/a;b.png")]
-    [InlineData("per%2525cent/*%253Bb.png", "per%cent/a;b.png")]
-    [InlineData("per%2525cent/?;Other/nothing", "per%cent/z")]
-    public void An_item_written_escaped_is_the_file_msbuild_finds(string include, string found)
+    private void An_item_written_escaped_is_the_file_msbuild_finds(string include, string found)
     {
         Write("App/per%cent/a;b.png", string.Empty);
         Write("App/per%cent/z", string.Empty);
@@ -182,8 +206,7 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Contains(found, ProjectInputs.Read(project, null).Items("AvaloniaResource"));
     }
 
-    [Fact]
-    public void A_remove_written_escaped_takes_out_the_file_it_names_and_a_property_stays_unread()
+    private void A_remove_written_escaped_takes_out_the_file_it_names_and_a_property_stays_unread()
     {
         Write("App/per%cent/a.png", string.Empty);
         Write("App/per%cent/b.png", string.Empty);
@@ -194,8 +217,7 @@ public sealed class ProjectInputsTests : IDisposable
 
     /// <summary>MSBuild's names on macOS for these items over a folder named assets: a glob's folder as written, what its
     /// wildcards found as the disk names it, a name in another case taken and removed where its folder ignores case.</summary>
-    [Fact]
-    public void An_items_glob_and_remove_take_a_file_named_in_another_case_where_its_folder_ignores_case()
+    private void An_items_glob_and_remove_take_a_file_named_in_another_case_where_its_folder_ignores_case()
     {
         Write("App/assets/logo.png", string.Empty);
         Write("App/assets/Sub/Icon.PNG", string.Empty);
@@ -213,8 +235,7 @@ public sealed class ProjectInputsTests : IDisposable
         Assert.Equal(expected, ProjectInputs.Read(project, null).Items("AvaloniaResource"));
     }
 
-    [Fact]
-    public void An_items_glob_passes_over_build_output_dependencies_and_hidden_folders()
+    private void An_items_glob_passes_over_build_output_dependencies_and_hidden_folders()
     {
         foreach (string file in (string[])["App/Assets/a.png", "App/node_modules/pkg/b.png", "App/.git/c.png", "App/bin/d.png", "App/Assets/obj/e.png", "App/Assets/.cache/f.png"])
         {
@@ -226,8 +247,7 @@ public sealed class ProjectInputsTests : IDisposable
     }
 
     /// <summary>The project file names its reference in one letter case, its restore in the disk's.</summary>
-    [Fact]
-    public void A_project_referenced_in_two_spellings_of_one_path_is_one_reference()
+    private void A_project_referenced_in_two_spellings_of_one_path_is_one_reference()
     {
         Assert.SkipUnless(PathNames.CaseIgnoredIn(root), "Here lib and Lib are two folders");
         Write("Lib/Lib.csproj", """<Project Sdk="Microsoft.NET.Sdk" />""");

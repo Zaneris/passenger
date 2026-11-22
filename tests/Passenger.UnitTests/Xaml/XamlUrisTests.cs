@@ -10,7 +10,15 @@ namespace Passenger.UnitTests.Xaml;
 public class XamlUrisTests
 {
     [Fact]
-    public void A_wpf_page_in_a_folder_named_c_sharp_is_named_by_a_pack_uri_whose_folder_is_no_fragment()
+    public void A_xaml_files_uri_is_the_one_its_build_names_it_by_escaped_and_read_back_to_the_file() => Cases.All(
+        ("a wpf page in a folder named c sharp is named by a pack uri whose folder is no fragment", A_wpf_page_in_a_folder_named_c_sharp_is_named_by_a_pack_uri_whose_folder_is_no_fragment),
+        ("an avalonia view in a folder named c sharp resolves what is beside it in that folder", An_avalonia_view_in_a_folder_named_c_sharp_resolves_what_is_beside_it_in_that_folder),
+        ("a file linked in from outside the project keeps the projects assembly in its uri", A_file_linked_in_from_outside_the_project_keeps_the_projects_assembly_in_its_uri),
+        ("a path in the assembly escapes each part as a uri writes it", A_path_in_the_assembly_escapes_each_part_as_a_uri_writes_it),
+        ("a backslash in a files name is escaped as a letter where the system takes it as one", A_backslash_in_a_files_name_is_escaped_as_a_letter_where_the_system_takes_it_as_one),
+        ("a maui file has no uri its build names it by", A_maui_file_has_no_uri_its_build_names_it_by));
+
+    private void A_wpf_page_in_a_folder_named_c_sharp_is_named_by_a_pack_uri_whose_folder_is_no_fragment()
     {
         XamlProject project = XamlFiles.Project(WpfDialect.Instance);
         string page = XamlFiles.PathOf(Path.Combine("Views", "C#", "Page.xaml"));
@@ -21,8 +29,7 @@ public class XamlUrisTests
         Assert.True(project.ResolveSource(uri!, page) == page, $"{uri} reads back as {project.ResolveSource(uri!, page)}, where the page is {page}");
     }
 
-    [Fact]
-    public void An_avalonia_view_in_a_folder_named_c_sharp_resolves_what_is_beside_it_in_that_folder()
+    private void An_avalonia_view_in_a_folder_named_c_sharp_resolves_what_is_beside_it_in_that_folder()
     {
         XamlProject project = XamlFiles.Project(AvaloniaDialect.Instance);
         string view = XamlFiles.PathOf(Path.Combine("Views", "C#", "Card.axaml"));
@@ -35,8 +42,7 @@ public class XamlUrisTests
         Assert.True(beside.AbsolutePath == "/Views/C%23/Palette.axaml", $"Palette.axaml beside the card resolves to {beside}, outside the card's folder");
     }
 
-    [Fact]
-    public void A_file_linked_in_from_outside_the_project_keeps_the_projects_assembly_in_its_uri()
+    private void A_file_linked_in_from_outside_the_project_keeps_the_projects_assembly_in_its_uri()
     {
         XamlProject project = XamlFiles.Project(WpfDialect.Instance);
         string linked = Path.GetFullPath(Path.Combine(XamlFiles.Folder, "..", "Shared", "Theme.xaml"));
@@ -44,8 +50,7 @@ public class XamlUrisTests
         Assert.Equal("pack://application:,,,/App;component/Theme.xaml", project.UriOf(linked));
     }
 
-    [Fact]
-    public void A_path_in_the_assembly_escapes_each_part_as_a_uri_writes_it()
+    private void A_path_in_the_assembly_escapes_each_part_as_a_uri_writes_it()
     {
         Assert.Equal("My%20Views/Fen%C3%AAtre.xaml", XamlProject.PathIn(XamlFiles.Folder, XamlFiles.PathOf(Path.Combine("My Views", "Fenêtre.xaml"))));
         Assert.Equal("Page.xaml", XamlProject.PathIn(XamlFiles.Folder, XamlFiles.PathOf("Page.xaml")));
@@ -53,16 +58,14 @@ public class XamlUrisTests
 
     /// <summary>A backslash parts a path's names only on Windows: on macOS and Linux it is a letter of the file's name, which
     /// its URI escapes as one.</summary>
-    [Fact]
-    public void A_backslash_in_a_files_name_is_escaped_as_a_letter_where_the_system_takes_it_as_one()
+    private void A_backslash_in_a_files_name_is_escaped_as_a_letter_where_the_system_takes_it_as_one()
     {
         string expected = OperatingSystem.IsWindows() ? "Views/Page.xaml" : "Views%5CPage.xaml";
         string named = XamlProject.PathIn(XamlFiles.Folder, XamlFiles.PathOf(@"Views\Page.xaml"));
         Assert.True(named == expected, $"The file named Views\\Page.xaml was put in its assembly as {named}, not {expected}: a URI naming it names another file");
     }
 
-    [Fact]
-    public void A_maui_file_has_no_uri_its_build_names_it_by()
+    private void A_maui_file_has_no_uri_its_build_names_it_by()
     {
         Assert.Null(XamlFiles.Project(MauiDialect.Instance).UriOf(XamlFiles.PathOf("MainPage.xaml")));
     }

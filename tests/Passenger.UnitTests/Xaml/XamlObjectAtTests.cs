@@ -19,7 +19,11 @@ public class XamlObjectAtTests
         """;
 
     [Fact]
-    public void An_offset_in_a_tag_or_on_its_open_angle_is_that_elements_and_one_between_tags_is_the_parents()
+    public void The_element_at_an_offset_is_the_one_whose_object_it_is_in() => Cases.All(
+        ("an offset in a tag or on its open angle is that elements and one between tags is the parents", An_offset_in_a_tag_or_on_its_open_angle_is_that_elements_and_one_between_tags_is_the_parents),
+        ("an offset in a property element is its owners and one past the root is no elements", An_offset_in_a_property_element_is_its_owners_and_one_past_the_root_is_no_elements));
+
+    private void An_offset_in_a_tag_or_on_its_open_angle_is_that_elements_and_one_between_tags_is_the_parents()
     {
         XmlTree tree = XmlTree.Parse(Window);
         int button = Window.IndexOf("<Button", StringComparison.Ordinal);
@@ -28,8 +32,7 @@ public class XamlObjectAtTests
         Assert.Equal("StackPanel", XamlFile.ObjectAt(tree, button - 1)?.Name);
     }
 
-    [Fact]
-    public void An_offset_in_a_property_element_is_its_owners_and_one_past_the_root_is_no_elements()
+    private void An_offset_in_a_property_element_is_its_owners_and_one_past_the_root_is_no_elements()
     {
         XmlTree tree = XmlTree.Parse(Window);
         Assert.Equal("Window", XamlFile.ObjectAt(tree, Window.IndexOf("<Window.Styles>", StringComparison.Ordinal) + 3)?.Name);

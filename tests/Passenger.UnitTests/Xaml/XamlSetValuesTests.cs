@@ -22,7 +22,11 @@ public class XamlSetValuesTests
         """;
 
     [Fact]
-    public void An_elements_attributes_are_its_local_values_bindings_and_resources_its_directives_left_out()
+    public void What_an_element_sets_itself_is_each_property_it_sets_with_its_binding_or_resource() => Cases.All(
+        ("an elements attributes are its local values bindings and resources its directives left out", An_elements_attributes_are_its_local_values_bindings_and_resources_its_directives_left_out),
+        ("a property element is its owners value by what it holds and the designers attributes are left out", A_property_element_is_its_owners_value_by_what_it_holds_and_the_designers_attributes_are_left_out));
+
+    private void An_elements_attributes_are_its_local_values_bindings_and_resources_its_directives_left_out()
     {
         XmlTree tree = XmlTree.Parse(Window);
         XmlElement button = tree.Elements.Single(e => e.Name == "Button");
@@ -36,8 +40,7 @@ public class XamlSetValuesTests
             XamlSetValues.Of(tree, button));
     }
 
-    [Fact]
-    public void A_property_element_is_its_owners_value_by_what_it_holds_and_the_designers_attributes_are_left_out()
+    private void A_property_element_is_its_owners_value_by_what_it_holds_and_the_designers_attributes_are_left_out()
     {
         XmlTree tree = XmlTree.Parse(Window);
         Assert.Equal(

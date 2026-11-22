@@ -8,7 +8,11 @@ namespace Passenger.UnitTests.LiveTree;
 public sealed class InspectorWordsTests
 {
     [Fact]
-    public void A_thickness_in_a_german_app_reads_with_points_as_xaml_writes_it()
+    public void A_values_words_are_the_inspectors_whatever_the_apps_culture() => Cases.All(
+        ("a thickness in a german app reads with points as xaml writes it", A_thickness_in_a_german_app_reads_with_points_as_xaml_writes_it),
+        ("a property attached from another type is named by its owner and a long value is cut", A_property_attached_from_another_type_is_named_by_its_owner_and_a_long_value_is_cut));
+
+    private void A_thickness_in_a_german_app_reads_with_points_as_xaml_writes_it()
     {
         CultureInfo was = CultureInfo.CurrentCulture;
         try
@@ -22,8 +26,7 @@ public sealed class InspectorWordsTests
         }
     }
 
-    [Fact]
-    public void A_property_attached_from_another_type_is_named_by_its_owner_and_a_long_value_is_cut()
+    private void A_property_attached_from_another_type_is_named_by_its_owner_and_a_long_value_is_cut()
     {
         Assert.Equal("Grid.Row", Words.PropertyName(typeof(Grid), "Row", attached: true));
         Assert.Equal("Width", Words.PropertyName(typeof(Grid), "Width", attached: false));
