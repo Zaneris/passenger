@@ -15,27 +15,38 @@ namespace Passenger.Tests;
 /// end it first, and ends with its own exit code.</summary>
 public sealed partial class AvaloniaLibraryProgramsTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public AvaloniaLibraryProgramsTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("avalonia-libraries-", Write));
     }
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Programs using Avalonia's libraries and none of its windows run to their own end, in a person's window
+    /// and in one nobody sees, and one with Avalonia's controls and no application wakes the inspector seldom after its
+    /// first seconds.</summary>
     [AvaloniaFact]
-    public void In_a_persons_window_programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end() => RunEach(unseen: false);
+    public void Programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end_seen_or_unseen()
+    {
+        Flow.StepApart("in a person's window, programs using Avalonia's libraries and none of its windows run to their own end", () => new AvaloniaLibraryProgramsTests(folders), t => t.In_a_persons_window_programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end());
+        Flow.StepApart("in a window nobody sees, programs using Avalonia's libraries and none of its windows run to their own end", () => new AvaloniaLibraryProgramsTests(folders), t => t.In_a_window_nobody_sees_programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end());
+        Flow.StepApart("a program with Avalonia's controls and no application wakes the inspector seldom after its first seconds", () => new AvaloniaLibraryProgramsTests(folders), t => t.In_a_persons_window_a_program_with_avalonias_controls_and_no_application_wakes_the_inspector_seldom_after_its_first_seconds());
+    }
+
+    private void In_a_persons_window_programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end() => RunEach(unseen: false);
 
     /// <summary>A window nobody sees (an agent's own Passenger's) keeps an Avalonia app off the screen, which none of these
     /// programs can reach: each runs as it would without Passenger.</summary>
-    [AvaloniaFact]
-    public void In_a_window_nobody_sees_programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end() => RunEach(unseen: true);
+    private void In_a_window_nobody_sees_programs_using_avalonias_libraries_and_none_of_its_windows_run_to_their_own_end() => RunEach(unseen: true);
 
     /// <summary>Easel counts the inspector's looks by the logger it takes: Easel sets a sink of its own again each time it
     /// finds the inspector's in its place, as an app setting itself up does.</summary>
-    [AvaloniaFact]
-    public void In_a_persons_window_a_program_with_avalonias_controls_and_no_application_wakes_the_inspector_seldom_after_its_first_seconds()
+    private void In_a_persons_window_a_program_with_avalonias_controls_and_no_application_wakes_the_inspector_seldom_after_its_first_seconds()
     {
         MainWindow window = Opened(unseen: false);
         try

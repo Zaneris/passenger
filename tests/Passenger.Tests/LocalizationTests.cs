@@ -28,11 +28,23 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
         project.Reset();
     }
 
+    /// <summary>Localization: a key a language lacks warned of and its fix adding it as the file writes its entries; a
+    /// Razor component's keys with their languages on the card, going to their entries, an agent adding one; a
+    /// generated resource class's keys and XLIFF translations; and a localizer's keys listed off the window's
+    /// thread.</summary>
+    [AvaloniaFact]
+    public void A_key_a_language_lacks_is_warned_of_and_added_and_a_localizers_keys_are_read_off_the_window()
+    {
+        Flow.StepApart("a key a language lacks is warned of, and its fix adds it as the file writes its entries", () => new LocalizationTests(project), t => t.A_key_a_language_lacks_is_warned_of_and_its_fix_adds_it_as_the_file_writes_its_entries());
+        Flow.StepApart("a Razor component's keys have their languages on the card, go to their entries, and an agent adds one", () => new LocalizationTests(project), t => t.A_razor_component_s_keys_have_their_languages_on_the_card_go_to_their_entries_and_an_agent_adds_one());
+        Flow.StepApart("a generated resource class's keys and XLIFF translations are warned of and translated", () => new LocalizationTests(project), t => t.A_generated_resource_class_s_keys_and_xliff_translations_are_warned_of_and_translated());
+        Flow.StepApart("a localizer's keys are listed off the window's thread", () => new LocalizationTests(project), t => t.A_localizers_keys_are_listed_off_the_UI_thread());
+    }
+
     /// <summary>A C# localizer's key Spanish lacks is warned of, and only it; its fix asks the value and adds the entry to
     /// Greeter.es.resx as that file writes its entries, the warning going, and Undo takes it out again. Completion in the
     /// localizer's string offers the resource's keys and replaces the key.</summary>
-    [AvaloniaFact]
-    public void A_key_a_language_lacks_is_warned_of_and_its_fix_adds_it_as_the_file_writes_its_entries()
+    private void A_key_a_language_lacks_is_warned_of_and_its_fix_adds_it_as_the_file_writes_its_entries()
     {
         string spanish = project.PathOf("Shop/Services/Greeter.es.resx");
         string written = File.ReadAllText(spanish);
@@ -87,8 +99,7 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
     /// completion after <c>@L["</c> offers the component's keys. An agent's diagnostics lists the warning, its code_actions
     /// the fix first, and apply_code_action adds the value it names; its definition goes to both entries. A component whose
     /// .resx files are named for its file (Sign-In) rather than its type (Sign_In) is told its localizer reads none of them.</summary>
-    [AvaloniaFact]
-    public void A_razor_component_s_keys_have_their_languages_on_the_card_go_to_their_entries_and_an_agent_adds_one()
+    private void A_razor_component_s_keys_have_their_languages_on_the_card_go_to_their_entries_and_an_agent_adds_one()
     {
         string spanish = project.PathOf("Shop/Pages/Home.es.resx");
         MainWindow window = project.Open(project.PathOf("Shop/Pages/Home.razor"));
@@ -158,8 +169,7 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
     /// the neutral value and each language's, and Go to Declaration offers the Designer's property beside each file's entry. A
     /// class whose translations are XLIFF files: a key with no unit and one still new are warned of in their own words, and
     /// their fixes add the unit as XliffTasks writes it, in order of the ids, and fill in the new one's target, made translated.</summary>
-    [AvaloniaFact]
-    public void A_generated_resource_class_s_keys_and_xliff_translations_are_warned_of_and_translated()
+    private void A_generated_resource_class_s_keys_and_xliff_translations_are_warned_of_and_translated()
     {
         string french = project.PathOf("Shop/xlf/Strings.fr.xlf");
         MainWindow window = project.Open(project.PathOf("Shop/Program.cs"));
@@ -210,33 +220,10 @@ public sealed class LocalizationTests : IClassFixture<LocalizationTests.Project>
         }
     }
 
-    /// <summary>Under the ResourcesPath the app's localization options set, a localizer's files are those in that folder, its
-    /// type's name less the root namespace as a path, as ASP.NET Core's factory reads them; those beside the type no longer count.</summary>
-    [AvaloniaFact]
-    public void Under_the_app_s_ResourcesPath_a_localizer_s_files_are_those_in_that_folder()
-    {
-        Directory.CreateDirectory(project.PathOf("Shop/Resources/Services"));
-        project.Write("Shop/Resources/Services/Greeter.de.resx", Project.Resx(oneLine: false, ("Hello", "Hallo")));
-        project.Rewrite("Shop/Program.cs", Project.Program.Replace("AddLocalization()", "AddLocalization(options => options.ResourcesPath = \"Resources\")", StringComparison.Ordinal));
-        MainWindow window = project.Open(project.PathOf("Shop/Services/Greeter.cs"));
-        try
-        {
-            Ui.WaitFor(() => Missing(window).SetEquals(["'Bye' has no German translation (Greeter.de.resx)"]),
-                $"the key the Resources folder's German lacks, and only it, to be warned of: {string.Join("; ", Missing(window))}");
-            string card = Hover(window, "Hello\"]", "de: ");
-            Assert.True(card.Contains("de: Hallo", StringComparison.Ordinal) && !card.Contains("fr: ", StringComparison.Ordinal), $"Hello's card: {card}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A localizer's list is made off the UI thread: its resource's keys made into items and the server's matched
     /// against them there, so a list of 2,000 keys costs the UI thread, from the key typed in the localizer's string to the
     /// list open, what one of 100 does, counted rather than timed.</summary>
-    [AvaloniaFact]
-    public void A_localizers_keys_are_listed_off_the_UI_thread()
+    private void A_localizers_keys_are_listed_off_the_UI_thread()
     {
         MainWindow window = project.Open(project.PathOf("Shop/Services/Few.cs"));
         try

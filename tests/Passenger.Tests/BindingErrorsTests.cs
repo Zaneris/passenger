@@ -21,10 +21,13 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public BindingErrorsTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("bindings-", made => AvaloniaApp.Debuggee(made, "BindingErrorsApp")));
     }
 
@@ -35,12 +38,24 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
     /// <summary>Where the caption's binding names Nmae, on its start tag's third line, from zero.</summary>
     private TextPosition Misspelt => new(Line("{Binding Nmae}") - 1, Lines()[Line("{Binding Nmae}") - 1].IndexOf("Nmae", StringComparison.Ordinal));
 
+    /// <summary>A misspelt binding of a running Avalonia app shown in Run linked to its line and in Problems once, with
+    /// its count and fix, at the editor's line below line breaks only an XML reader counts; thousands failing as an app
+    /// opens leaving the live tree answering and every failure counted; and Avalonia Binding Errors stopping a debugged
+    /// app where its binding fails, saying what failed.</summary>
+    [AvaloniaFact]
+    public void A_misspelt_binding_is_shown_where_it_is_written_and_binding_errors_stop_a_debugged_app_where_it_fails()
+    {
+        Flow.StepApart("a running app's misspelt binding shows in Run linked to its line and in Problems once, with its count and fix", () => new BindingErrorsTests(folders), t => t.A_running_apps_misspelt_binding_shows_in_run_linked_to_its_line_and_in_problems_once_with_its_count_and_fix());
+        Flow.StepApart("a misspelt binding below line breaks only an XML reader counts is placed at the editor's line", () => new BindingErrorsTests(folders), t => t.A_misspelt_binding_below_line_breaks_only_an_xml_reader_counts_is_placed_at_the_editors_line());
+        Flow.StepApart("an app failing thousands of bindings as it opens answers the live visual tree, and Problems counts every failure", () => new BindingErrorsTests(folders), t => t.An_app_failing_thousands_of_bindings_as_it_opens_answers_the_live_visual_tree_and_problems_counts_every_failure());
+        Flow.StepApart("Avalonia Binding Errors stops a debugged app where its binding fails, saying what failed, its condition and log choosing", () => new BindingErrorsTests(folders), t => t.Avalonia_binding_errors_stops_a_debugged_app_where_its_binding_fails_saying_what_failed_and_its_condition_and_log_choose());
+    }
+
     /// <summary>Run while the temporary folder's path is longer than a Unix socket's address holds (an agent's TMPDIR
     /// can be), the app gets its inspector all the same, in Passenger's own socket folder. macOS and Linux read TMPDIR;
     /// Windows reads TMP, so there the run is as any other. Then its misspelt binding shows in the Run window, linked,
     /// and in Problems with its fix.</summary>
-    [AvaloniaFact]
-    public void A_running_apps_misspelt_binding_shows_in_run_linked_to_its_line_and_in_problems_once_with_its_count_and_fix()
+    private void A_running_apps_misspelt_binding_shows_in_run_linked_to_its_line_and_in_problems_once_with_its_count_and_fix()
     {
         string temp = Path.Combine(TestFolders.Create("long-temp-"), new string('t', 60), new string('u', 60));
         Directory.CreateDirectory(temp);
@@ -107,8 +122,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
     /// or U+2029, so below a lone '\r' in the window's tag and a comment holding all four before the caption on the caption's
     /// own line, the place the app reports runs two lines ahead of the editor's and its column starts after the comment's:
     /// the Run window's line, its link, Problems and the fix all find the misspelt member at its own line.</summary>
-    [AvaloniaFact]
-    public void A_misspelt_binding_below_line_breaks_only_an_xml_reader_counts_is_placed_at_the_editors_line()
+    private void A_misspelt_binding_below_line_breaks_only_an_xml_reader_counts_is_placed_at_the_editors_line()
     {
         string text = File.ReadAllText(Xaml)
             .Replace("Title=\"Binding Errors App\" Width", "Title=\"Binding Errors App\"\r        Width", StringComparison.Ordinal)
@@ -147,8 +161,7 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Avalonia_binding_errors_stops_a_debugged_app_where_its_binding_fails_saying_what_failed_and_its_condition_and_log_choose()
+    private void Avalonia_binding_errors_stops_a_debugged_app_where_its_binding_fails_saying_what_failed_and_its_condition_and_log_choose()
     {
         // XamlIl counts the lone '\r' in the window's tag as a line's end, which the editor reads inside its line.
         File.WriteAllText(Xaml, File.ReadAllText(Xaml).Replace("Title=\"Binding Errors App\" Width", "Title=\"Binding Errors App\"\r        Width", StringComparison.Ordinal));
@@ -225,79 +238,11 @@ public sealed class BindingErrorsTests : IClassFixture<RestoredFolders>, IDispos
         window.Close();
     }
 
-    /// <summary>A debugged app's misspelt binding shows in the Debug window's console linked to its line, in Problems, and in
-    /// the caption's details in the Live Visual Tree, none in the greeting's; XAML Binding Errors' hit count, the third
-    /// failure, counts on past a property breakpoint set between its hits.</summary>
-    [AvaloniaFact]
-    public void A_debugged_apps_misspelt_binding_shows_in_the_debug_console_and_binding_errors_hit_count_counts_on_past_a_property_breakpoint()
-    {
-        MainWindow window = Opened();
-        BreakpointStore store = window.Debugger.Breakpoints;
-        string program = Path.Combine(folder, "Program.cs");
-        // The third failure stops: the caption's as the app starts, then one at each rebind.
-        store.Update(store.BindingErrors, enabled: true, suspend: true, condition: null, hitCondition: "3", logMessage: null);
-
-        Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
-        window.BottomPanel.Debug.ShowTab(console: true);
-        OutputView console = window.BottomPanel.Debug.Console;
-        string line = WaitForLine(console, "the Debug window's console to say the caption's binding failed");
-        Assert.StartsWith($"MainWindow.axaml({Misspelt.Line + 1},{Misspelt.Column + 1}): ", line, StringComparison.Ordinal);
-        Ui.ClickLink(console, line);
-        Assert.Equal(Xaml, window.EditorArea.Active?.Path);
-        Assert.Equal(Misspelt, window.EditorArea.CodeEditor.CaretPosition);
-        BindingProblem caption = Assert.Single(window.BottomPanel.Problems.BindingProblems);
-        Assert.Equal(("TextBlock#Caption", "Text", "Nmae", Xaml), (caption.Failure.Control, caption.Failure.Property, caption.Failure.Path, caption.Problem.Path));
-        Assert.Equal(["Name"], caption.Failure.Nearest);
-        Assert.DoesNotContain("Greeting", console.Document.Snapshot.ToString(), StringComparison.Ordinal);
-
-        Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element.Name == "Caption"),
-            $"the Live Visual Tree to show the app's window ({window.LiveApp?.State} {window.LiveApp?.Problem})", TimeSpan.FromMinutes(2));
-        Ui.TypeToDebugged(window, "rebind");
-        Ui.WaitFor(() => Console(window).Contains("Bound again", StringComparison.Ordinal), "the app's second failed binding, which the hit count lets go by");
-        Assert.True(window.Debugger.Session?.State == DebugState.Running, $"XAML Binding Errors stopped before its third hit: {window.Status}");
-
-        LiveTreeView tree = window.LiveTree;
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Caption");
-        Ui.WaitFor(() => tree.Details?.Name == "Caption", "the caption's details");
-        Assert.True(tree.FailuresShown is [{ } failed] && failed.Contains("TextBlock#Caption.Text to Nmae", StringComparison.Ordinal),
-            $"The caption's details showed its binding failures as {string.Join("; ", tree.FailuresShown)}");
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
-        Ui.WaitFor(() => tree.Details?.Name == "Greeting", "the greeting's details");
-        Assert.True(tree.FailuresShown.Count == 0, $"The greeting, whose binding holds, showed the failures {string.Join("; ", tree.FailuresShown)}");
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Caption");
-        Ui.WaitFor(() => tree.Details?.Name == "Caption", "the caption's details");
-        tree.ShowPage(LiveTreePage.Properties);
-        Ui.Settle();
-        tree.PropertyList.SelectedItem = tree.PropertyRows.First(p => p.Name == "FontSize");
-        Ui.ChooseFromMenu(tree.PropertyList, LiveTreeView.BreakWhenValueChanges);
-        PropertyBreakpoint size = store.FindProperty(window.Debugger.Session!, tree.Details!.Id, "FontSize")
-            ?? throw new Xunit.Sdk.XunitException("Break When Value Changes set no property breakpoint on the caption's FontSize");
-        Ui.WaitFor(() => size.Status == BreakpointStatus.Bound, $"the debugger to take the property breakpoint, not to say {size.Message}");
-
-        Ui.TypeToDebugged(window, "rebind");
-        DebugStop stop;
-        try
-        {
-            stop = Stopped(window, "the stop at the third failed binding");
-        }
-        catch (TimeoutException)
-        {
-            throw new Xunit.Sdk.XunitException($"XAML Binding Errors let its third hit go, its count started again by the property breakpoint set beside it: {window.Status}");
-        }
-        AssertAt(stop, program, LineIn(program, "window.DataContext = new MainViewModel();"));
-        Says(window, "paused on a binding error");
-
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
-        window.Close();
-    }
-
     /// <summary>The app's flood (tests/Debuggees/BindingErrorsApp/Flood.cs): 3,000 rows whose bindings fail as its window opens
     /// and again every 50 ms until it is calmed, far more than its inspector lists. Asked meanwhile, the Live Visual Tree is
     /// answered, its answers going ahead of the failures waiting to be said; once the app is calm, every failure Avalonia
     /// logged is either listed in Problems' Bindings, counted on its row, or counted under them as not listed.</summary>
-    [AvaloniaFact]
-    public void An_app_failing_thousands_of_bindings_as_it_opens_answers_the_live_visual_tree_and_problems_counts_every_failure()
+    private void An_app_failing_thousands_of_bindings_as_it_opens_answers_the_live_visual_tree_and_problems_counts_every_failure()
     {
         MainWindow window = Opened();
         // While the app floods, its failures keep the window busy: the waits run its loop rather than wait for it to be quiet.

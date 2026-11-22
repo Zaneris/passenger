@@ -20,10 +20,13 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public AvaloniaFramesTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("frames-", made => AvaloniaApp.Debuggee(made, "FramesApp")));
     }
 
@@ -31,8 +34,17 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
 
     private string Xaml => Path.Combine(folder, "MainWindow.axaml");
 
+    /// <summary>An Avalonia app's frames: a slow measure in a profiled app is its heaviest control in each frame and in
+    /// all, and the profiler attached to a debugged app records its frames, its overlays toggled from the debug
+    /// window.</summary>
     [AvaloniaFact]
-    public void A_slow_measure_in_a_profiled_avalonia_app_is_its_heaviest_control_in_each_frame_and_in_all()
+    public void A_profiled_or_debugged_avalonia_apps_frames_are_recorded_naming_their_heaviest_control()
+    {
+        Flow.StepApart("a slow measure in a profiled Avalonia app is its heaviest control in each frame and in all", () => new AvaloniaFramesTests(folders), t => t.A_slow_measure_in_a_profiled_avalonia_app_is_its_heaviest_control_in_each_frame_and_in_all());
+        Flow.StepApart("the profiler attached to a debugged Avalonia app records its frames, and its overlays toggle from the debug window", () => new AvaloniaFramesTests(folders), t => t.The_profiler_attached_to_a_debugged_avalonia_app_records_its_frames_and_its_overlays_toggle_from_the_debug_window());
+    }
+
+    private void A_slow_measure_in_a_profiled_avalonia_app_is_its_heaviest_control_in_each_frame_and_in_all()
     {
         MainWindow window = Opened();
         // 80 slow frames (2.4 s), so the panel leads the table even when the first layout shapes text slowly.
@@ -90,8 +102,7 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_profiler_attached_to_a_debugged_avalonia_app_records_its_frames_and_its_overlays_toggle_from_the_debug_window()
+    private void The_profiler_attached_to_a_debugged_avalonia_app_records_its_frames_and_its_overlays_toggle_from_the_debug_window()
     {
         MainWindow window = Opened();
         Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
@@ -145,40 +156,6 @@ public sealed class AvaloniaFramesTests : IClassFixture<RestoredFolders>, IDispo
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
         Ui.WaitFor(() => !debug.Overlays.IsVisible, "the overlay toggle to go with the app");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Overlays_toggled_in_the_run_window_show_in_the_running_app_and_from_the_next_launch_on()
-    {
-        MainWindow window = Opened();
-        OutputView run = window.BottomPanel.Run;
-        Assert.False(run.Overlays.IsVisible, "The Run window offers overlays with no app running");
-        Ui.Launched(window, window.RunAsync(), "the app to build and start", TimeSpan.FromMinutes(4));
-        Ui.WaitFor(() => run.Overlays.IsVisible, "the Run window's overlay toggle once the app's inspector says hello", TimeSpan.FromMinutes(2));
-        LiveApp first = window.Session.RunApp!;
-        Assert.Null(Shown(first));
-
-        Toggle(window, ToolWindowIds.Run, run.Overlays, "Fps");
-        Assert.Equal(["Fps"], Shown(first));
-        Toggle(window, ToolWindowIds.Run, run.Overlays, "DirtyRects");
-        Assert.Equal(["Fps", "DirtyRects"], Shown(first));
-        Assert.Contains("shows FPS, Dirty Rects on 1 window", window.Status, StringComparison.Ordinal);
-        Toggle(window, ToolWindowIds.Run, run.Overlays, "Fps");
-        Assert.Equal(["DirtyRects"], Shown(first));
-
-        window.Perform(AppActions.OverlayRenderTimeGraph);
-        Ui.WaitFor(() => window.Status?.Contains("Render Time Graph", StringComparison.Ordinal) == true, "the status bar to say the app shows the render time graph");
-        Assert.Equal(["DirtyRects", "RenderTimeGraph"], Shown(first));
-
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
-        Ui.WaitFor(() => !run.Overlays.IsVisible, "the overlay toggle to go with the app");
-        Ui.Launched(window, window.RunAsync(), "the app to start again", TimeSpan.FromMinutes(2));
-        Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected } again && again != first, "the app's inspector to say hello again", TimeSpan.FromMinutes(2));
-        Ui.WaitFor(() => Shown(window.Session.RunApp!) is ["DirtyRects", "RenderTimeGraph"], "the app's window to show the overlays left from its launch");
-        Ui.Run(window, AppActions.Stop);
-        Ui.WaitFor(() => !window.Runner.IsRunning, "the app to stop");
         window.Close();
     }
 

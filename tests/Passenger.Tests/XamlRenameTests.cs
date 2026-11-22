@@ -105,10 +105,21 @@ public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
 
     private string CardPath => shop.PathOf("Views/Card.axaml");
 
+    /// <summary>A rename from a binding renames the view model's property, its C# uses and every other binding as one
+    /// step of Undo, refused where a use stands past where a view was read; and the MVVM Toolkit's ObservableProperty
+    /// field and RelayCommand method renamed with the names it makes of them.</summary>
+    [AvaloniaFact]
+    public void A_rename_from_a_binding_or_the_toolkits_names_reaches_the_csharp_and_every_binding_as_one_step_of_undo()
+    {
+        Flow.StepApart("Rename on a binding renames the view model's property, its C# uses and every other binding as one step of Undo", () => new XamlRenameTests(shop), t => t.Rename_on_a_binding_renames_the_view_models_property_its_csharp_uses_and_every_other_binding_as_one_step_of_undo());
+        Flow.StepApart("a rename whose use stands past where a view was read is refused and renames nothing", () => new XamlRenameTests(shop), t => t.A_rename_whose_use_stands_past_where_a_view_was_read_is_refused_and_renames_nothing());
+        Flow.StepApart("renaming an ObservableProperty field renames its property's uses and change method, and a binding to its property renames the field", () => new XamlRenameTests(shop), t => t.Renaming_an_ObservableProperty_field_renames_its_propertys_uses_and_change_method_and_a_binding_to_its_property_renames_the_field());
+        Flow.StepApart("renaming a RelayCommand method renames its command's and cancel command's uses, and a binding to the cancel command renames the method", () => new XamlRenameTests(shop), t => t.Renaming_a_RelayCommand_method_renames_its_command_and_cancel_commands_uses_and_a_binding_to_the_cancel_command_renames_the_method());
+    }
+
     /// <summary>Rename on a binding's property in a view hands over to C#'s: the view model's property, its use in another C#
     /// file and the other view's binding follow, the view model's file never opened in a tab, and one Undo takes it all back.</summary>
-    [AvaloniaFact]
-    public void Rename_on_a_binding_renames_the_view_models_property_its_csharp_uses_and_every_other_binding_as_one_step_of_undo()
+    private void Rename_on_a_binding_renames_the_view_models_property_its_csharp_uses_and_every_other_binding_as_one_step_of_undo()
     {
         MainWindow window = shop.Open(shop.PathOf("MainWindow.axaml"));
         OpenDocument view = window.EditorArea.Active!;
@@ -141,8 +152,7 @@ public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
 
     /// <summary>A view nested past what Passenger reads, its one binding to the property past where reading stopped: renaming
     /// the property is refused saying so, as that use would go unseen, and nothing is renamed.</summary>
-    [AvaloniaFact]
-    public void A_rename_whose_use_stands_past_where_a_view_was_read_is_refused_and_renames_nothing()
+    private void A_rename_whose_use_stands_past_where_a_view_was_read_is_refused_and_renames_nothing()
     {
         string deep = "<UserControl xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" "
             + "xmlns:vm=\"using:Shop.ViewModels\" x:Class=\"Shop.Views.Deep\" x:DataType=\"vm:MainViewModel\">\n"
@@ -164,8 +174,7 @@ public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
     /// <summary>Rename on an <c>[ObservableProperty]</c> field renames what the toolkit makes of it, which Roslyn's rename of the
     /// field alone leaves: its property's use in another C# file, the code's own OnXChanged, and both views' bindings; then
     /// Rename on such a binding renames the field, keeping its underscore, so its property is the name typed.</summary>
-    [AvaloniaFact]
-    public void Renaming_an_ObservableProperty_field_renames_its_propertys_uses_and_change_method_and_a_binding_to_its_property_renames_the_field()
+    private void Renaming_an_ObservableProperty_field_renames_its_propertys_uses_and_change_method_and_a_binding_to_its_property_renames_the_field()
     {
         MainWindow window = shop.Open(ViewModelPath);
         OpenDocument model = window.EditorArea.Active!;
@@ -196,8 +205,7 @@ public sealed class XamlRenameTests : IClassFixture<XamlRenameTests.Shop>
     /// <summary>Rename on a <c>[RelayCommand(IncludeCancelCommand = true)]</c> method renames what the toolkit makes of it, which
     /// Roslyn's rename of the method alone leaves: the C# uses and bindings of both its commands, so the code goes on
     /// compiling; then Rename on a binding to the cancel command renames the method, keeping its Async.</summary>
-    [AvaloniaFact]
-    public void Renaming_a_RelayCommand_method_renames_its_command_and_cancel_commands_uses_and_a_binding_to_the_cancel_command_renames_the_method()
+    private void Renaming_a_RelayCommand_method_renames_its_command_and_cancel_commands_uses_and_a_binding_to_the_cancel_command_renames_the_method()
     {
         shop.Write([("ViewModels/Loader.cs", Loader), ("ViewModels/Starter.cs", Starter), ("Views/LoadCard.axaml", LoadCard), ("Views/LoadCard.axaml.cs", LoadCardCode)]);
         string starter = shop.PathOf("ViewModels/Starter.cs");

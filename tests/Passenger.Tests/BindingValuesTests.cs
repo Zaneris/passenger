@@ -20,10 +20,13 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public BindingValuesTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("bindingvalues-", made => AvaloniaApp.Debuggee(made, "BindingValuesApp")));
     }
 
@@ -33,8 +36,16 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
 
     private string CodeBehind => Path.Combine(folder, "MainWindow.axaml.cs");
 
+    /// <summary>A debugged app's view shows its bindings' values after them and on hover, paused and running, with a
+    /// control chosen; and a window whose values were shown is collected once it closes as the app runs.</summary>
     [AvaloniaFact]
-    public void A_debugged_apps_view_shows_its_bindings_values_after_them_and_on_hover_paused_and_running_with_a_control_chosen()
+    public void A_debugged_apps_bindings_show_their_values_and_a_window_shown_is_collected_once_it_closes()
+    {
+        Flow.StepApart("a debugged app's view shows its bindings' values after them and on hover, paused and running, with a control chosen", () => new BindingValuesTests(folders), t => t.A_debugged_apps_view_shows_its_bindings_values_after_them_and_on_hover_paused_and_running_with_a_control_chosen());
+        Flow.StepApart("a window whose values were shown is collected once it closes as the app runs", () => new BindingValuesTests(folders), t => t.A_window_whose_values_were_shown_is_collected_once_it_closes_as_the_app_runs());
+    }
+
+    private void A_debugged_apps_view_shows_its_bindings_values_after_them_and_on_hover_paused_and_running_with_a_control_chosen()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         // Where rename has changed the name, on the app's UI thread.
@@ -111,8 +122,7 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
 
     /// <summary>A second window of the app's whose values were shown, then closed as the app runs while another file's are
     /// shown, is collected by the app's GC: the values watched hold none of its controls.</summary>
-    [AvaloniaFact]
-    public void A_window_whose_values_were_shown_is_collected_once_it_closes_as_the_app_runs()
+    private void A_window_whose_values_were_shown_is_collected_once_it_closes_as_the_app_runs()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900, languageServer: false);
         Ui.Launched(window, window.DebugAsync(), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));

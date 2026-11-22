@@ -12,13 +12,24 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class InstalledAppTests : McpRig, IClassFixture<RestoredFolders>
 {
+    private readonly RestoredFolders folders;
+
     public InstalledAppTests(RestoredFolders folders)
         : base(folders)
     {
+        this.folders = folders;
     }
 
+    /// <summary>The C# server of an installed Passenger writes nothing inside the app: an install its user cannot write
+    /// run from a copy, and a macOS app bundle left whole, last as it skips elsewhere.</summary>
     [Fact]
-    public async Task The_csharp_server_of_an_app_bundle_writes_nothing_inside_the_bundle()
+    public async Task The_csharp_server_of_an_installed_app_writes_nothing_inside_it()
+    {
+        await Flow.StepApartAsync("the C# server of an install its user cannot write runs from a copy", () => new InstalledAppTests(folders), t => t.The_csharp_server_of_an_install_its_user_cannot_write_runs_from_a_copy());
+        await Flow.StepApartAsync("the C# server of an app bundle writes nothing inside the bundle", () => new InstalledAppTests(folders), t => t.The_csharp_server_of_an_app_bundle_writes_nothing_inside_the_bundle());
+    }
+
+    private async Task The_csharp_server_of_an_app_bundle_writes_nothing_inside_the_bundle()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "An app bundle, whose seal a file added inside breaks, is macOS's");
         string bundle = TestFolders.Create("bundle-");
@@ -29,8 +40,7 @@ public sealed class InstalledAppTests : McpRig, IClassFixture<RestoredFolders>
         await RunsFromCopy(app, "wrote inside the app bundle, breaking its seal", throughDotnet: true);
     }
 
-    [Fact]
-    public async Task The_csharp_server_of_an_install_its_user_cannot_write_runs_from_a_copy()
+    private async Task The_csharp_server_of_an_install_its_user_cannot_write_runs_from_a_copy()
     {
         if (OperatingSystem.IsWindows())
         {

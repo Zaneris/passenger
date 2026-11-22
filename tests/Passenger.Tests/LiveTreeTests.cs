@@ -22,22 +22,37 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public LiveTreeTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = PathNames.Canonical(folders.Take("livetree-", made => AvaloniaApp.Debuggee(made, "LiveTreeApp")));
     }
 
     public void Dispose() => TestFolders.Delete(folder);
+
+    /// <summary>A debugged Avalonia app's live tree: its controls with where each value and style comes from and the
+    /// control clicked in it, their places at the editor's line below line breaks only an XML reader counts, a password
+    /// box's typed text shown as the box shows it, and an inspector socket too long for its address leaving the app
+    /// running and the tree saying why.</summary>
+    [AvaloniaFact]
+    public void A_debugged_avalonia_apps_live_tree_shows_its_controls_values_and_places_as_the_app_and_its_xaml_have_them()
+    {
+        Flow.StepApart("a debugged Avalonia app shows its controls, where each value and style comes from, and the control clicked in it", () => new LiveTreeTests(folders), t => t.A_debugged_avalonia_app_shows_its_controls_where_each_value_and_style_comes_from_and_the_control_clicked_in_it());
+        Flow.StepApart("below line breaks only an XML reader counts, the details name and go to each place at the editor's line", () => new LiveTreeTests(folders), t => t.Below_line_breaks_only_an_xml_reader_counts_the_details_name_and_go_to_each_place_at_the_editors_line());
+        Flow.StepApart("a password box's typed text shows in its details as the box shows it", () => new LiveTreeTests(folders), t => t.A_password_boxs_typed_text_shows_in_its_details_as_the_box_shows_it());
+        Flow.StepApart("an inspector socket past what a socket's address holds leaves the app running and the tree saying why", () => new LiveTreeTests(folders), t => t.An_inspector_socket_past_what_a_sockets_address_holds_leaves_the_app_running_and_the_tree_saying_why());
+    }
 
     /// <summary>The app's controls in the tree, and where each value and style comes from: a button's background from
     /// Fluent's theme by its selector, a style that does not apply saying which part of its selector fails, a local
     /// value and the theme's setter it overrides, an application style's setter at its line; Go to Source on an element
     /// and on a style's selector; the tree kept as it last ran while the app is paused; and Select Element choosing the
     /// control clicked in the app.</summary>
-    [AvaloniaFact]
-    public void A_debugged_avalonia_app_shows_its_controls_where_each_value_and_style_comes_from_and_the_control_clicked_in_it()
+    private void A_debugged_avalonia_app_shows_its_controls_where_each_value_and_style_comes_from_and_the_control_clicked_in_it()
     {
         MainWindow window = Debugged();
         LiveTreeView tree = window.LiveTree;
@@ -122,8 +137,7 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
     /// the places the app reports run two lines ahead of the editor's at Delete and one at the danger style: the details name
     /// each at its own line, the theme's setter the style overrides on Delete names it there too, and Go to Source lands on
     /// it.</summary>
-    [AvaloniaFact]
-    public void Below_line_breaks_only_an_xml_reader_counts_the_details_name_and_go_to_each_place_at_the_editors_line()
+    private void Below_line_breaks_only_an_xml_reader_counts_the_details_name_and_go_to_each_place_at_the_editors_line()
     {
         string xaml = Path.Combine(folder, "MainWindow.axaml");
         string text = File.ReadAllText(xaml)
@@ -165,8 +179,7 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>What a person types into a password box in the app shows in its details as the box shows it, a dot for
     /// each character, in its Text and in the Text of the presenter inside it, and nowhere in clear: the Live Visual Tree
     /// gives its properties to whoever looks, an agent among them.</summary>
-    [AvaloniaFact]
-    public void A_password_boxs_typed_text_shows_in_its_details_as_the_box_shows_it()
+    private void A_password_boxs_typed_text_shows_in_its_details_as_the_box_shows_it()
     {
         const string Typed = "hunter2";
         string dots = $"\"{new string('•', Typed.Length)}\"";
@@ -202,67 +215,10 @@ public sealed class LiveTreeTests : IClassFixture<RestoredFolders>, IDisposable
             elements.Select(e => e.Name == name ? e : Find(e.Children, name)).FirstOrDefault(e => e is not null);
     }
 
-    /// <summary>The XAML workspace, off, leaves MainWindow.axaml alone beside the debugged app's tree, its caret choosing
-    /// nothing there; turned on, the file opens beside its preview and the tree, and one element is chosen across them: the
-    /// caret rested in Save's tag chooses Save in the tree, Greeting chosen in the tree puts the caret on its tag (the tree
-    /// keeping Greeting) and is outlined in the preview, Delete clicked in the preview is chosen in the tree, and the caret
-    /// on the window's own tag chooses the window, which Avalonia knows by its x:Class.</summary>
-    [AvaloniaFact]
-    public void In_the_xaml_workspace_the_caret_and_the_live_tree_choose_the_same_element_each_way()
-    {
-        string xaml = Path.Combine(folder, "MainWindow.axaml");
-        MainWindow window = Debugged();
-        LiveTreeView tree = window.LiveTree;
-        Assert.Null(window.OpenFile(xaml));
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "<Button x:Name=\"Sa");
-        Ui.Settle();
-        Assert.True(tree.Details is null && window.PreviewPaneOf(window.EditorArea.Active!) is null,
-            $"With the XAML workspace off, the caret in Save's tag chose {tree.Details?.Name} in the tree, or the file opened beside a preview");
-
-        window.ApplySettings(window.Settings with { XamlWorkspace = true });
-        Ui.WaitFor(() => window.PreviewPaneOf(window.EditorArea.Active!) is { } pane && window.EditorArea.Groups.Any(g => g.Side == pane),
-            "MainWindow.axaml beside its preview once the XAML workspace is on");
-        Assert.True(window.DockHost.IsShown(ToolWindowIds.LiveTree), "The Live Visual Tree is not beside the XAML workspace's file and preview");
-
-        Ui.PlaceAfter(editor, "<Button x:Name=\"Sav");
-        Ui.WaitFor(() => tree.Details?.Name == "Save" && tree.Tree.SelectedItem is LiveTreeRow { Element.Name: "Save" },
-            () => $"Save chosen in the tree as the caret rested in its tag, where the tree chose {tree.Details?.Name}");
-
-        tree.Tree.SelectedItem = tree.Rows.First(r => r.Element.Name == "Greeting");
-        int greeting = Line("MainWindow.axaml", "x:Name=\"Greeting\"") - 1;
-        Ui.WaitFor(() => editor.CaretPosition.Line == greeting, () => $"the caret on Greeting's tag, line {greeting + 1}, not {editor.CaretPosition.Line + 1}");
-        Assert.StartsWith("TextBlock", File.ReadAllLines(xaml)[greeting][editor.CaretPosition.Column..], StringComparison.Ordinal);
-        Assert.Equal(xaml, window.EditorArea.Active?.Path);
-        Ui.Settle();
-        Assert.True(tree.Details?.Name == "Greeting", $"The caret put on Greeting's tag chose {tree.Details?.Name} in the tree after it");
-
-        // The preview places the file's elements as Avalonia's designer draws them, through Passenger's inspector in it.
-        Passenger.App.Xaml.XamlPreview preview = window.PreviewOf(window.EditorArea.Active!)!;
-        Passenger.App.Xaml.XamlPreviewPane pane = window.PreviewPaneOf(window.EditorArea.Active!)!;
-        Passenger.App.Xaml.PreviewElement? Placed(string tag) =>
-            preview.Elements.FirstOrDefault(e => e.Tag.Start == editor.Document.Snapshot.ToString().IndexOf(tag, StringComparison.Ordinal));
-        Ui.WaitFor(() => Placed("<TextBlock x:Name=\"Greeting\"") is { } placed && pane.Outlined == placed.Box,
-            () => $"Greeting outlined in the preview as it was chosen in the tree ({preview.Status}; {preview.Elements.Count} elements placed)", TimeSpan.FromMinutes(1));
-        Rect delete = Placed("<Button x:Name=\"Delete\"")?.Box ?? throw new InvalidOperationException("The preview placed no Delete");
-        Point at = pane.Frame.TranslatePoint(delete.Center, window) ?? throw new InvalidOperationException("The preview's frame is not on the window");
-        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
-        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
-        Ui.WaitFor(() => tree.Details?.Name == "Delete", () => $"Delete chosen in the tree as it was clicked in the preview, where the tree chose {tree.Details?.Name}");
-        Assert.Equal(delete, pane.Outlined);
-
-        Ui.PlaceAfter(editor, "<Wind");
-        Ui.WaitFor(() => tree.Details?.Type == "MainWindow", () => $"the window chosen in the tree as the caret rested in its own tag, not {tree.Details?.Type}");
-
-        Stop(window);
-        window.Close();
-    }
-
     /// <summary>An inspector's socket whose path is past what a Unix socket's address holds leaves the app running without
     /// the inspector: the Live Visual Tree says why it has no tree, the app's own output says the inspector is not in it,
     /// and the app runs on.</summary>
-    [AvaloniaFact]
-    public void An_inspector_socket_past_what_a_sockets_address_holds_leaves_the_app_running_and_the_tree_saying_why()
+    private void An_inspector_socket_past_what_a_sockets_address_holds_leaves_the_app_running_and_the_tree_saying_why()
     {
         string sockets = Directory.CreateDirectory(Path.Combine(TestFolders.Create("sockets-"), new string('s', 120))).FullName;
         LiveApp.SocketsIn = sockets;

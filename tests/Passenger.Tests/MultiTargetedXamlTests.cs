@@ -36,16 +36,23 @@ public sealed class MultiTargetedXamlTests : IClassFixture<MultiTargetedXamlTest
         app.Reset();
     }
 
+    /// <summary>A multi-targeted project's one framework chosen drives its XAML's preview, completion, checks and C#,
+    /// and is kept; a XAML error of one framework's build is the file's only while that framework is chosen.</summary>
     [AvaloniaFact]
-    public void One_framework_chosen_per_project_drives_the_preview_completion_checks_and_csharp_and_is_kept() =>
+    public void One_framework_chosen_per_project_drives_its_xaml_and_an_error_of_another_frameworks_build_is_not_shown()
+    {
+        Flow.StepApart("one framework chosen per project drives the preview, completion, checks and C#, and is kept", () => new MultiTargetedXamlTests(app), t => t.One_framework_chosen_per_project_drives_the_preview_completion_checks_and_csharp_and_is_kept());
+        Flow.StepApart("a XAML error of one framework's build is the file's only while that framework is chosen", () => new MultiTargetedXamlTests(app), t => t.A_xaml_error_of_one_frameworks_build_is_the_files_only_while_that_framework_is_chosen());
+    }
+
+    private void One_framework_chosen_per_project_drives_the_preview_completion_checks_and_csharp_and_is_kept() =>
         Check(app, "MainWindow.axaml", TestProjects.Framework, Second);
 
     /// <summary>A XAML error only the first framework's build finds (the marker's Note, which the second's C# alone gives it)
     /// is the XAML file's only while that framework is chosen: the build lists it as the first framework's, with the second
     /// chosen the file is marked nowhere and Problems lists nothing of it, and with the first chosen again its line is marked
     /// once more.</summary>
-    [AvaloniaFact]
-    public void A_xaml_error_of_one_frameworks_build_is_the_files_only_while_that_framework_is_chosen()
+    private void A_xaml_error_of_one_frameworks_build_is_the_files_only_while_that_framework_is_chosen()
     {
         app.Rewrite("MainWindow.axaml", AvaloniaWindow.Replace("<local:Marker />", "<local:Marker Note=\"x\" />", StringComparison.Ordinal));
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));

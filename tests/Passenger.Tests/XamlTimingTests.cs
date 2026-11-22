@@ -18,11 +18,19 @@ public sealed class XamlTimingTests : IClassFixture<XamlTimingTests.LongView>
 
     public XamlTimingTests(LongView app) => this.app = app;
 
+    /// <summary>Completion in a five-thousand-line view reads the view once a key, and reading Passenger's own types
+    /// for its XAML leaves the window taking keys.</summary>
+    [AvaloniaFact]
+    public void A_long_view_and_passengers_own_types_never_hold_the_window_taking_keys()
+    {
+        Flow.StepApart("completion in a five-thousand-line view reads the view once a key", () => new XamlTimingTests(app), t => t.Completion_in_a_five_thousand_line_view_reads_the_view_once_a_key());
+        Flow.StepApart("reading Passenger's own types for its XAML leaves the window taking keys", () => new XamlTimingTests(app), t => t.Reading_passengers_own_types_for_its_xaml_leaves_the_window_taking_keys());
+    }
+
     /// <summary>Completion after '&lt;' in a view of five thousand lines allocates, over every thread, under one and a half
     /// times what reading the view's text once (its copy and its tree, about 19 bytes a character) costs more than in a
     /// short view: each key parses the text once.</summary>
-    [AvaloniaFact]
-    public void Completion_in_a_five_thousand_line_view_reads_the_view_once_a_key()
+    private void Completion_in_a_five_thousand_line_view_reads_the_view_once_a_key()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         window.Show();
@@ -39,8 +47,7 @@ public sealed class XamlTimingTests : IClassFixture<XamlTimingTests.LongView>
     /// <summary>Reading Passenger.App's types for its XAML runs off the UI thread, which allocates under a quarter of what
     /// the process does meanwhile (about 1 %, its frames); and the first completion once they are read reads none of them
     /// again, allocating under a tenth of what the read did.</summary>
-    [AvaloniaFact]
-    public void Reading_passengers_own_types_for_its_xaml_leaves_the_window_taking_keys()
+    private void Reading_passengers_own_types_for_its_xaml_leaves_the_window_taking_keys()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         window.Show();

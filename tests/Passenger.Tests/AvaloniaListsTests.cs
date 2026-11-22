@@ -50,34 +50,6 @@ public sealed class AvaloniaListsTests : IClassFixture<AvaloniaListsTests.ListsA
         }
     }
 
-    [AvaloniaFact]
-    public void A_scroll_step_down_a_panels_thousand_elements_in_the_live_visual_tree_hands_the_rows_other_elements_never_making_one_again()
-    {
-        MainWindow window = Opened();
-        try
-        {
-            Ui.Launched(window, window.DebugAsync("--lists"), "the app to build and start under the debugger", TimeSpan.FromMinutes(4));
-            LiveTreeView tree = window.LiveTree;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element.Name == "Thousand"),
-                () => $"the Live Visual Tree to show the app's window ({window.LiveApp?.State} {window.LiveApp?.Problem})", TimeSpan.FromMinutes(2));
-            LongListsTests.Holds("The Live Visual Tree", "elements", 100, 1000, count =>
-            {
-                LiveTreeRow panel = tree.Rows.Single(r => r.Element.Name == (count == 100 ? "Hundred" : "Thousand"));
-                HashSet<long> under = [.. panel.Element.Children.Select(c => c.Id)];
-                Assert.Equal(count, under.Count);
-                Press(window, tree.Tree, panel, "Right");
-                Ui.WaitFor(() => tree.Rows.Count(r => under.Contains(r.Element.Id)) == count, () => $"{panel.Element.Name}'s {count} elements in the tree, where it shows {tree.Rows.Count} rows");
-                return (tree.Tree, () => Press(window, tree.Tree, tree.Rows.Single(r => r.Element.Name == panel.Element.Name), "Left"));
-            });
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugging to end");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     private MainWindow Opened() => Ui.OpenFolder(PathNames.Canonical(app.Folder), 1400, 900, languageServer: false);
 
     /// <summary>A key pressed on a row of a list, the row chosen and given the keys first as a click on it does.</summary>

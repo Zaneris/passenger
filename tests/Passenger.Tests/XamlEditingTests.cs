@@ -40,14 +40,21 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
     private const string Untidy = "<StackPanel   Margin=\"12\">\n<!-- the\n     greeting -->\n      <TextBlock Text='Fish &amp; chips' />\n"
         + "<Button Grid.Row=\"1\" Content=\"Go\"\n  x:Name=\"Pay\"\n     HorizontalAlignment=\"Center\"/>\n\n\n\n  <Border></Border>\n</StackPanel >";
 
+    /// <summary>Each XAML editing tool makes its edit in one window on the app's files, in Avalonia's XAML and in
+    /// WPF's; and a generated resource class's strings in XAML have their languages, a missing one added.</summary>
+    [AvaloniaFact]
+    public void Each_xaml_editing_tool_makes_its_edit_and_a_resource_classs_strings_have_their_languages_in_either_dialect()
+    {
+        Flow.StepApart("each XAML editing tool makes its edit in one window on an Avalonia app's files", () => new XamlEditingTests(avalonia, wpf), t => t.Each_xaml_editing_tool_makes_its_edit_in_one_window_on_the_apps_files("Avalonia"));
+        Flow.StepApart("each XAML editing tool makes its edit in one window on a WPF app's files", () => new XamlEditingTests(avalonia, wpf), t => t.Each_xaml_editing_tool_makes_its_edit_in_one_window_on_the_apps_files("WPF"));
+        Flow.StepApart("a generated resource class's strings in XAML have their languages, and a missing one is added", () => new XamlEditingTests(avalonia, wpf), t => t.A_generated_resource_class_s_strings_in_xaml_have_their_languages_and_a_missing_one_is_added("Avalonia"));
+    }
+
     /// <summary>Every tool in one window on the dialect's app, which its language server loads once, the main file put back
     /// as written before each: Surround With, Extract Resource and Extract Style, the fixes that create what a binding
     /// lacks, in Avalonia's XAML a partial property and the places below line breaks only Roslyn counts, and Reformat Code
     /// last, since its settings' change would lay out what the others write.</summary>
-    [AvaloniaTheory]
-    [InlineData("Avalonia")]
-    [InlineData("WPF")]
-    public void Each_xaml_editing_tool_makes_its_edit_in_one_window_on_the_apps_files(string dialect)
+    private void Each_xaml_editing_tool_makes_its_edit_in_one_window_on_the_apps_files(string dialect)
     {
         SharedProject app = App(dialect);
         MainWindow window = app.Open(app.PathOf(MainFile(dialect)));
@@ -73,10 +80,7 @@ public sealed class XamlEditingTests : IClassFixture<XamlEditingTests.AvaloniaGa
     /// its neutral and French values; Go to Declaration offers the property and each language's entry; completion offers the
     /// keys with their neutral text; the fix asks the French value and adds the entry, one Undo taking it out again. An
     /// agent's diagnostics, code_actions, apply_code_action and definition say and do the same.</summary>
-    [AvaloniaTheory]
-    [InlineData("Avalonia")]
-    [InlineData("WPF")]
-    public void A_generated_resource_class_s_strings_in_xaml_have_their_languages_and_a_missing_one_is_added(string dialect)
+    private void A_generated_resource_class_s_strings_in_xaml_have_their_languages_and_a_missing_one_is_added(string dialect)
     {
         SharedProject app = App(dialect);
         string view = dialect == "Avalonia" ? "GreetingView.axaml" : "GreetingView.xaml";

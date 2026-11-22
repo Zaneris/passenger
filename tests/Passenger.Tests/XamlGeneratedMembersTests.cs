@@ -59,12 +59,20 @@ public sealed class XamlGeneratedMembersTests : IClassFixture<XamlGeneratedMembe
 
     private string ViewModelPath => project.PathOf("ViewModels/MainViewModel.cs");
 
+    /// <summary>Bindings to what ReactiveUI's generators make are known, offered and lead to the field or method they
+    /// are made of, a command typed into the open view model known once the generator has made it.</summary>
+    [AvaloniaFact]
+    public void Bindings_to_what_reactiveuis_generators_make_are_known_as_they_are_made()
+    {
+        Flow.StepApart("bindings to what ReactiveUI's generators make are known, offered and lead to the field or method they are made of", () => new XamlGeneratedMembersTests(project), t => t.Bindings_to_what_reactiveuis_generators_make_are_known_offered_and_lead_to_the_field_or_method_they_are_made_of());
+        Flow.StepApart("a command typed into the open view model is known to a binding to it once the generator has made it", () => new XamlGeneratedMembersTests(project), t => t.A_command_typed_into_the_open_view_model_is_known_to_a_binding_to_it_once_the_generator_has_made_it());
+    }
+
     /// <summary>Once the language server has loaded the app, the bindings to what ReactiveUI's generators make are not marked
     /// and the one to a property nothing makes is; completion in a binding offers the generated property and command, Go to
     /// Declaration from each binding lands on the field or method it is made of, and Find Usages from the method lists the
     /// binding to its command.</summary>
-    [AvaloniaFact]
-    public void Bindings_to_what_reactiveuis_generators_make_are_known_offered_and_lead_to_the_field_or_method_they_are_made_of()
+    private void Bindings_to_what_reactiveuis_generators_make_are_known_offered_and_lead_to_the_field_or_method_they_are_made_of()
     {
         MainWindow window = project.Open(project.PathOf("MainWindow.axaml"));
         OpenDocument view = window.EditorArea.Active!;
@@ -98,8 +106,7 @@ public sealed class XamlGeneratedMembersTests : IClassFixture<XamlGeneratedMembe
 
     /// <summary>A binding to a command no method makes yet is marked; the method typed into the open view model, marked for
     /// ReactiveUI's generator, makes it known to the binding once typing pauses, nothing saved.</summary>
-    [AvaloniaFact]
-    public void A_command_typed_into_the_open_view_model_is_known_to_a_binding_to_it_once_the_generator_has_made_it()
+    private void A_command_typed_into_the_open_view_model_is_known_to_a_binding_to_it_once_the_generator_has_made_it()
     {
         MainWindow window = project.Open(project.PathOf("MainWindow.axaml"));
         OpenDocument view = window.EditorArea.Active!;
