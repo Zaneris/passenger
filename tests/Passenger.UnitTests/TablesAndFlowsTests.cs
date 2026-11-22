@@ -2,11 +2,12 @@ using Xunit.Sdk;
 
 namespace Passenger.UnitTests;
 
-/// <summary>The ways one test holds many checks (tests/Shared): a table runs every row and names each that failed.</summary>
+/// <summary>The two ways one test holds many checks (tests/Shared): a table runs every row and names each that failed, and
+/// a flow names the step that failed after those that passed.</summary>
 public sealed class TablesAndFlowsTests
 {
     [Fact]
-    public async Task A_table_runs_every_row_naming_each_that_failed()
+    public async Task A_table_runs_every_row_naming_each_that_failed_and_a_flow_names_its_failed_step_after_those_passed()
     {
         List<int> ran = [];
         Exception several = Assert.ThrowsAny<Exception>(() => Cases.Each([(1, "one"), (2, "two"), (3, "three")], row =>
@@ -29,6 +30,14 @@ public sealed class TablesAndFlowsTests
             Assert.Equal(1, row);
         }));
         Assert.True(Said(waited).Contains("The row 2 failed", StringComparison.Ordinal), $"A waiting table's failed row went unnamed: {Said(waited)}");
+
+        Flow.Step("the first step holds", () => { });
+        Assert.Equal(4, Flow.Step("a step hands on what it made", () => 4));
+        await Flow.StepAsync("a step that waits holds", async () => await Task.Yield());
+        Exception step = Assert.ThrowsAny<Exception>(() => Flow.Step("the fourth step holds", () => Assert.Equal(1, 2)));
+        Assert.True(Said(step).Contains("step 4 failed, so this no longer holds: the fourth step holds", StringComparison.Ordinal)
+            && Said(step).Contains("(the step before it: a step that waits holds)", StringComparison.Ordinal),
+            $"A flow's failure did not name its step and the steps before it: {Said(step)}");
     }
 
     /// <summary>An exception's words with those of each it carries, as a runner writes them.</summary>
