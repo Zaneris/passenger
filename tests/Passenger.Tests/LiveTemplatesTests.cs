@@ -29,10 +29,22 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
 
     public void Dispose() => TestFolders.Delete(settings);
 
+    /// <summary>Live and postfix templates as a person uses them: new's postfix makes an instance in an expression and
+    /// Undo puts the suffix back, a postfix offered in completion and turned off, one asking which expression to wrap,
+    /// and templates turned off, edited and added in Settings, every change there after a restart.</summary>
+    [AvaloniaFact]
+    public void Live_and_postfix_templates_expand_ask_which_expression_and_keep_their_settings_after_a_restart()
+    {
+        Flow.StepApart("new's postfix creates an instance and Undo restores the suffix", () => new LiveTemplatesTests(project), t => t.New_postfix_creates_an_instance_in_an_expression_and_undo_restores_the_suffix("Pair.new", "new Pair()"));
+        Flow.StepApart("new's postfix creates an instance of a nested generic type", () => new LiveTemplatesTests(project), t => t.New_postfix_creates_an_instance_in_an_expression_and_undo_restores_the_suffix("System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>.new", "new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>()"));
+        Flow.StepApart("new's postfix is offered in completion and can be turned off", () => new LiveTemplatesTests(project), t => t.New_postfix_is_offered_in_completion_and_can_be_turned_off());
+        Flow.StepApart("a postfix template asks which expression to wrap when more than one fits, and Settings turn one or all off", () => new LiveTemplatesTests(project), t => t.A_postfix_template_asks_which_expression_to_wrap_when_more_than_one_fits_and_Settings_turn_one_or_all_off());
+        Flow.StepApart("templates turned off, edited and added in Settings type as changed, and every change is there after a restart", () => new LiveTemplatesTests(project), t => t.Templates_turned_off_edited_and_added_in_Settings_type_as_changed_and_every_change_is_there_after_a_restart());
+    }
+
     /// <summary>A template turned off stays the word typed and one whose text is edited expands to its new text; a template
     /// added fills in its variables as their macros say; and every change is there after a restart.</summary>
-    [AvaloniaFact]
-    public void Templates_turned_off_edited_and_added_in_Settings_type_as_changed_and_every_change_is_there_after_a_restart()
+    private void Templates_turned_off_edited_and_added_in_Settings_type_as_changed_and_every_change_is_there_after_a_restart()
     {
         MainWindow window = Open("Sum.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -148,16 +160,7 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
 
     /// <summary>Creating an instance leaves the caret ready for arguments, preserves the surrounding code, and undoes
     /// in one step.</summary>
-    [AvaloniaTheory]
-    [InlineData("Pair.new", "new Pair()")]
-    [InlineData("var pair = Pair.new;", "var pair = new Pair();")]
-    [InlineData("return Pair.new;", "return new Pair();")]
-    [InlineData("Console.WriteLine(Pair.new);", "Console.WriteLine(new Pair());")]
-    [InlineData("System.Collections.Generic.List<string>.new", "new System.Collections.Generic.List<string>()")]
-    [InlineData("System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>.new",
-        "new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>()")]
-    [InlineData("global::System.Text.StringBuilder.new", "new global::System.Text.StringBuilder()")]
-    public void New_postfix_creates_an_instance_in_an_expression_and_undo_restores_the_suffix(string typed, string expanded)
+    private void New_postfix_creates_an_instance_in_an_expression_and_undo_restores_the_suffix(string typed, string expanded)
     {
         MainWindow window = Open("Pair.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -179,8 +182,7 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
     }
 
     /// <summary>The new postfix is offered with members, commits from completion, and obeys its Settings switch.</summary>
-    [AvaloniaFact]
-    public void New_postfix_is_offered_in_completion_and_can_be_turned_off()
+    private void New_postfix_is_offered_in_completion_and_can_be_turned_off()
     {
         MainWindow window = Open("Pair.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -218,8 +220,7 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
     /// <summary>A postfix template that could wrap more than one expression asks which and wraps the one chosen, one that
     /// fits only one wraps it at once; one turned off in Settings is offered no more, postfix templates kept out of the
     /// list still expand on Tab, and postfix completion turned off leaves Tab a tab.</summary>
-    [AvaloniaFact]
-    public void A_postfix_template_asks_which_expression_to_wrap_when_more_than_one_fits_and_Settings_turn_one_or_all_off()
+    private void A_postfix_template_asks_which_expression_to_wrap_when_more_than_one_fits_and_Settings_turn_one_or_all_off()
     {
         MainWindow window = Open("Pair.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;

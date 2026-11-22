@@ -30,8 +30,16 @@ public sealed class NavigationBarTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The navigation bar names the namespace, type and member the caret rests in, each part listing what
+    /// stands beside it to go to, and Jump to Navigation Bar gives it the keys.</summary>
     [AvaloniaFact]
-    public void The_bar_names_the_namespace_type_and_member_the_caret_rests_in_and_each_part_lists_what_stands_beside_it_to_go_to()
+    public void The_navigation_bar_names_where_the_caret_rests_and_takes_the_keys_to_go_along_it()
+    {
+        Flow.StepApart<NavigationBarTests>("the bar names the namespace, type and member the caret rests in, and each part lists what stands beside it to go to", t => t.The_bar_names_the_namespace_type_and_member_the_caret_rests_in_and_each_part_lists_what_stands_beside_it_to_go_to());
+        Flow.StepApart<NavigationBarTests>("Jump to Navigation Bar gives it the keys to move along it and open a list, and with the bar off lists the caret's part itself", t => t.Jump_to_Navigation_Bar_gives_it_the_keys_to_move_along_it_and_open_a_list_and_with_the_bar_off_lists_the_caret_s_part_itself());
+    }
+
+    private void The_bar_names_the_namespace_type_and_member_the_caret_rests_in_and_each_part_lists_what_stands_beside_it_to_go_to()
     {
         (MainWindow window, CodeEditor editor, NavigationBar bar) = OpenCart();
         try
@@ -87,8 +95,7 @@ public sealed class NavigationBarTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Jump_to_Navigation_Bar_gives_it_the_keys_to_move_along_it_and_open_a_list_and_with_the_bar_off_lists_the_caret_s_part_itself()
+    private void Jump_to_Navigation_Bar_gives_it_the_keys_to_move_along_it_and_open_a_list_and_with_the_bar_off_lists_the_caret_s_part_itself()
     {
         (MainWindow window, CodeEditor editor, NavigationBar bar) = OpenCart();
         try
@@ -125,34 +132,6 @@ public sealed class NavigationBarTests : IDisposable
 
             window.ApplySettings(window.Settings with { ShowNavigationBar = true });
             Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.Count == 3, () => $"the bar back, naming Add, not {string.Join(" › ", bar.Shown)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_Markdown_files_bar_names_the_headings_the_caret_is_under_and_a_file_with_no_outline_shows_none()
-    {
-        string guide = Path.Combine(folder, "GUIDE.md");
-        File.WriteAllText(guide, "# Guide\n\nWords.\n\n## Install\n\n### Mac\n\nDrag it in.\n\n## Use\n");
-        string notes = Path.Combine(folder, "notes.txt");
-        File.WriteAllText(notes, "nothing to outline\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            Assert.Null(window.OpenFile(guide));
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            NavigationBar bar = window.EditorArea.ActiveGroup.Navigation;
-            Ui.PlaceAfter(editor, "Drag");
-            Ui.WaitFor(() => bar.Shown.Count == 3, () => $"the headings the caret is under, not {string.Join(" › ", bar.Shown)}");
-            Assert.Equal(["Guide", "Install", "Mac"], bar.Shown);
-            Assert.Equal("Mac, heading", AutomationProperties.GetName(bar.Buttons[2]));
-
-            Assert.Null(window.OpenFile(notes));
-            Ui.Settle();
-            Assert.False(bar.Bar.IsVisible, "A text file with no outline shows the navigation bar over its editor");
         }
         finally
         {

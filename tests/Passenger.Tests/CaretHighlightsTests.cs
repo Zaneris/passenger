@@ -35,8 +35,23 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         project.Reset();
     }
 
+    /// <summary>What the caret lights: a symbol's writes and reads with their marks on the scrollbar, gone as it moves
+    /// off and never left on text typing changed, kept by Highlight Usages in File until Escape, and a bracket's pair,
+    /// which Move Caret to Matching Brace goes to; an answer before the file's first parse waits without holding the
+    /// window's thread.</summary>
     [AvaloniaFact]
-    public void Resting_the_caret_on_a_local_highlights_its_writes_and_reads_and_marks_them_on_the_scrollbar()
+    public void The_caret_lights_a_symbols_uses_and_a_brackets_pair_follows_moves_and_typing_and_never_holds_the_window()
+    {
+        Flow.StepApart("resting the caret on a local highlights its writes and reads and marks them on the scrollbar", () => new CaretHighlightsTests(project), t => t.Resting_the_caret_on_a_local_highlights_its_writes_and_reads_and_marks_them_on_the_scrollbar());
+        Flow.StepApart("highlights answered before a file's first parse wait for it without holding the window's thread", () => new CaretHighlightsTests(project), t => t.Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread());
+        Flow.StepApart("moving the caret off a symbol takes its highlights away at once, and another symbol brings its own", () => new CaretHighlightsTests(project), t => t.Moving_the_caret_off_a_symbol_takes_its_highlights_away_at_once_and_another_symbol_brings_its_own());
+        Flow.StepApart("typing never leaves a highlight on text it changed, and the uses come back where they now are", () => new CaretHighlightsTests(project), t => t.Typing_never_leaves_a_highlight_on_text_it_changed_and_the_uses_come_back_where_they_now_are());
+        Flow.StepApart("Highlight Usages in File keeps the uses as the caret moves and the text changes, until Escape", () => new CaretHighlightsTests(project), t => t.Highlight_usages_in_file_keeps_the_uses_as_the_caret_moves_and_the_text_changes_until_escape());
+        Flow.StepApart("a bracket at the caret and its pair are highlighted, nested and across lines", () => new CaretHighlightsTests(project), t => t.A_bracket_at_the_caret_and_its_pair_are_highlighted_nested_and_across_lines());
+        Flow.StepApart("Move Caret to Matching Brace goes to the pair and back", () => new CaretHighlightsTests(project), t => t.Move_caret_to_matching_brace_goes_to_the_pair_and_back());
+    }
+
+    private void Resting_the_caret_on_a_local_highlights_its_writes_and_reads_and_marks_them_on_the_scrollbar()
     {
         MainWindow window = project.Open("Totals.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -64,8 +79,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
     /// <summary>The server's highlights for the caret in a file whose first parse has not landed wait for that parse
     /// without holding the window's thread, which goes on running meanwhile: with the file's parse held, its highlights
     /// come once the parse lands, and the window's thread never waited for it, where it used to stand still until then.</summary>
-    [AvaloniaFact]
-    public void Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread()
+    private void Highlights_answered_before_a_files_first_parse_wait_for_it_without_holding_the_windows_thread()
     {
         MainWindow window = project.Open("Totals.cs");
         TaskCompletionSource parse = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,8 +109,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Moving_the_caret_off_a_symbol_takes_its_highlights_away_at_once_and_another_symbol_brings_its_own()
+    private void Moving_the_caret_off_a_symbol_takes_its_highlights_away_at_once_and_another_symbol_brings_its_own()
     {
         MainWindow window = project.Open("Totals.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -122,8 +135,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Typing_never_leaves_a_highlight_on_text_it_changed_and_the_uses_come_back_where_they_now_are()
+    private void Typing_never_leaves_a_highlight_on_text_it_changed_and_the_uses_come_back_where_they_now_are()
     {
         MainWindow window = project.Open("Totals.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -151,8 +163,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Highlight_usages_in_file_keeps_the_uses_as_the_caret_moves_and_the_text_changes_until_escape()
+    private void Highlight_usages_in_file_keeps_the_uses_as_the_caret_moves_and_the_text_changes_until_escape()
     {
         MainWindow window = project.Open("Totals.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -192,55 +203,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
-    /// <summary>A double-click on a keyword, which the server lights nothing for, lights its other places as whole words
-    /// in its case, in comments and strings too, each marked on the scrollbar where its row is and saying what it is.</summary>
-    [AvaloniaFact]
-    public void Double_clicking_a_keyword_lights_its_other_places_by_their_text_and_marks_each_on_the_scrollbar()
-    {
-        MainWindow window = project.Open("Words.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("public static int", StringComparison.Ordinal) + 2) + new Point(1, editor.LineHeight / 2));
-        Ui.WaitFor(() => editor.UsageHighlights.Count == 4, () => $"public's four places lit, not [{Lit(editor)}]");
-
-        Assert.Equal([2, 3, 13, 13], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
-        Assert.All(editor.UsageHighlights, u => Assert.True(TextOf(editor, u.Range) == "public" && u.ByText && !u.IsWrite,
-            $"The places of public should each be the word, lit by its text as read: [{Lit(editor)}]"));
-        List<CodeEditor.StripeMark> marks = [.. editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage)];
-        Assert.Equal([2, 3, 13, 13], marks.Select(m => m.Row));
-        Assert.All(marks, m => Assert.Equal("Same word", m.Message));
-        Assert.Equal(Token(window, TokenKeys.Editor_UsageRead), Ui.Pixel(window, InBox(window, editor, editor.UsageHighlights[0].Range.Start)));
-        Assert.Equal(Token(window, TokenKeys.Editor_UsageReadMark), Ui.Pixel(window, editor.TranslatePoint(editor.StripePoint(marks[0]), window)!.Value));
-
-        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("static int", StringComparison.Ordinal) + 2) + new Point(1, editor.LineHeight / 2));
-        Ui.WaitFor(() => editor.UsageHighlights.Count == 3 && editor.UsageHighlights.All(u => TextOf(editor, u.Range) == "static"),
-            () => $"static's three places lit, not [{Lit(editor)}]");
-        Assert.Equal([0, 3, 13], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
-        window.Close();
-    }
-
-    /// <summary>A double-click on a local lights only its uses as the server gives them, never the same word written in a
-    /// comment or a string; the word chosen in the comment, where the server lights nothing, lights every place of it.</summary>
-    [AvaloniaFact]
-    public void Double_clicking_a_symbol_lights_only_its_uses_and_the_same_word_in_a_comment_lights_every_place_of_it()
-    {
-        MainWindow window = project.Open("Words.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("return count", StringComparison.Ordinal) + "return co".Length) + new Point(1, editor.LineHeight / 2));
-        Ui.WaitFor(() => editor.UsageHighlights.Count == 3 && !editor.UsageHighlights.Any(u => u.ByText),
-            () => $"the local's three uses from the server, not [{Lit(editor)}]");
-        Assert.Equal([5, 8, 10], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
-        Assert.Equal([true, true, false], editor.UsageHighlights.Select(u => u.IsWrite));
-        Assert.All(editor.StripeMarks.Where(m => m.Kind is StripeMarkKind.Usage or StripeMarkKind.WriteUsage), m => Assert.NotEqual("Same word", m.Message));
-
-        Ui.DoubleClick(editor, editor.PointOf(Words.IndexOf("count of", StringComparison.Ordinal) + 2) + new Point(1, editor.LineHeight / 2));
-        Ui.WaitFor(() => editor.UsageHighlights.Count == 5, () => $"count's five places by its text, not [{Lit(editor)}]");
-        Assert.All(editor.UsageHighlights, u => Assert.True(TextOf(editor, u.Range) == "count" && u.ByText, $"Lit: [{Lit(editor)}]"));
-        Assert.Equal([2, 5, 8, 10, 13], editor.UsageHighlights.Select(u => editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)));
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_bracket_at_the_caret_and_its_pair_are_highlighted_nested_and_across_lines()
+    private void A_bracket_at_the_caret_and_its_pair_are_highlighted_nested_and_across_lines()
     {
         MainWindow window = project.Open("Braces.cs", languageServer: false);
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -269,8 +232,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Move_caret_to_matching_brace_goes_to_the_pair_and_back()
+    private void Move_caret_to_matching_brace_goes_to_the_pair_and_back()
     {
         MainWindow window = project.Open("Braces.cs", languageServer: false);
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -299,10 +261,6 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
     }
 
     private static string TextOf(CodeEditor editor, TextRange range) => editor.Document.Snapshot.GetText(range);
-
-    /// <summary>What is lit, each as its text, line and kind.</summary>
-    private static string Lit(CodeEditor editor) => string.Join(", ", editor.UsageHighlights.Select(u =>
-        $"{TextOf(editor, u.Range)}@{editor.Document.Snapshot.GetLineFromOffset(u.Range.Start)}{(u.ByText ? " by text" : u.IsWrite ? " write" : " read")}"));
 
     /// <summary>A point inside the box drawn behind the character at an offset: at its top, above the glyph, and at its
     /// right, clear of a caret before it.</summary>

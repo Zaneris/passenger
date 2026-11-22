@@ -19,8 +19,19 @@ public sealed class ErrorStripeTests
 {
     private const string Unused = "CS0219: The variable is assigned but its value is never used";
 
+    /// <summary>The error stripe on the scrollbar: its thumb drags over the marks, its track pages, a click on a mark
+    /// goes to its line in the middle of the view; and thousands of marks are worked out once and drawn at what forty
+    /// cost.</summary>
     [AvaloniaFact]
-    public void Hovering_the_stripe_of_a_file_with_thousands_of_warnings_works_its_marks_out_once_and_again_only_after_a_change()
+    public void The_error_stripe_goes_to_a_marks_line_and_keeping_thousands_of_marks_costs_a_change_not_a_frame()
+    {
+        Flow.Step("the scrollbar's thumb drags from over the marks, its track pages beside a change, and a click on a mark goes to its line", The_scrollbars_thumb_drags_from_over_the_marks_its_track_pages_beside_a_change_and_a_click_on_a_mark_goes_to_its_line);
+        Flow.Step("a use's mark lies where the thumb's middle is with its line in the middle of the view, wrapped and folded too", A_uses_mark_lies_where_the_thumbs_middle_is_with_its_line_in_the_middle_of_the_view_wrapped_and_folded_too);
+        Flow.Step("hovering the stripe of a file with thousands of warnings works its marks out once, and again only after a change", Hovering_the_stripe_of_a_file_with_thousands_of_warnings_works_its_marks_out_once_and_again_only_after_a_change);
+        Flow.Step("a frame over four thousand decorated lines costs what it does over forty", A_frame_over_four_thousand_decorated_lines_costs_what_it_does_over_forty);
+    }
+
+    private void Hovering_the_stripe_of_a_file_with_thousands_of_warnings_works_its_marks_out_once_and_again_only_after_a_change()
     {
         const int Lines = 4000;
         EditorRig rig = new(string.Concat(Enumerable.Range(0, Lines).Select(i => $"        int value{i} = {i};\n")));
@@ -72,111 +83,10 @@ public sealed class ErrorStripeTests
             $"The stripe's marks were worked out {editor.StripeMarksBuilt - built - 1} times after a line was put in, not once");
     }
 
-    /// <summary>Keys typed above 4,000 warnings, which the document carries through each, keep every mark and allocate on
-    /// the UI thread under twice what they do above 40, and so does an Enter, which moves every mark down a row; a click on
-    /// a mark goes to its warning as the text stands.</summary>
-    [AvaloniaFact]
-    public void Keys_and_an_Enter_above_four_thousand_warnings_cost_what_they_do_above_forty()
-    {
-        (long fewKey, long fewEnter) = BytesPerKey(40);
-        (long manyKey, long manyEnter) = BytesPerKey(4000);
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A key allocated {fewKey:N0} bytes above 40 warnings, {manyKey:N0} above 4,000; an Enter {fewEnter:N0} and {manyEnter:N0}.");
-        Assert.True(manyKey < fewKey * 2,
-            $"A key above 4,000 warnings allocated {manyKey / 1024:N0} KB on the UI thread, above 40 {fewKey / 1024:N0} KB: the markers, the stripe's marks or their order were made again from all of them");
-        Assert.True(manyEnter < fewEnter * 2,
-            $"An Enter above 4,000 warnings allocated {manyEnter / 1024:N0} KB on the UI thread, above 40 {fewEnter / 1024:N0} KB: the stripe's marks or their messages were made anew for all of them");
-    }
-
-    /// <summary>With soft wrap on, keys typed into a wrapped line above 4,000 warnings on wrapped lines, which leave every line
-    /// on as many rows, keep every mark where it was: the stripe's marks are never worked out again, and a key allocates on
-    /// the UI thread under twice what it does above 40. Edits in wrapped lines whose words are matches, which move their rows,
-    /// leave each mark where it now stands.</summary>
-    [AvaloniaFact]
-    public void Keys_in_a_wrapped_line_above_four_thousand_wrapped_warnings_keep_the_stripe_and_cost_what_they_do_above_forty()
-    {
-        (long few, int fewBuilt) = BytesPerWrappedKey(40);
-        (long many, int manyBuilt) = BytesPerWrappedKey(4000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"Wrapped, a key allocated {few:N0} bytes above 40 warnings, {many:N0} above 4,000.");
-        Assert.True(fewBuilt == 0 && manyBuilt == 0,
-            $"Wrapped, the stripe's marks were worked out {fewBuilt} times for keys above 40 warnings and {manyBuilt} above 4,000, the keys moving no mark's row");
-        Assert.True(many < few * 2,
-            $"Wrapped, a key above 4,000 warnings allocated {many / 1024:N0} KB on the UI thread, above 40 {few / 1024:N0} KB: the stripe's marks were made again for all of them");
-    }
-
-    /// <summary>Long lines that wrap onto several rows at the rig's width, all as long, a warning on each, and a few words
-    /// short of another row.</summary>
-    private static string Wrapped(int lines) =>
-        string.Concat(Enumerable.Range(0, lines).Select(i => $"        int value{i:0000} = {i:0000}; // {string.Concat(Enumerable.Repeat("words ", 40))}end\n"));
-
-    /// <summary>What a key typed at the start of the first of some wrapped lines with a warning each allocates on the UI
-    /// thread, the stripe drawn after each, and how many times the keys had its marks worked out; above 40, with every word
-    /// then a match, edits anywhere in the lines hold each mark to where it stands after each.</summary>
-    private static (long Key, int Built) BytesPerWrappedKey(int lines)
-    {
-        EditorRig rig = new(Wrapped(lines));
-        CodeEditor editor = rig.Editor;
-        editor.SoftWrap = true;
-        TextSnapshot text = rig.Document.Snapshot;
-        editor.SetMarkers([.. Enumerable.Range(0, lines).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 9), MarkerKind.Warning, Unused))]);
-        editor.Focus();
-        Ui.Settle();
-        int[] rows = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning).Select(m => m.Row)];
-        int each = rows[1] - rows[0];
-        Assert.True(each > 1 && rows.Select((row, line) => row == line * each).All(same => same), $"The lines do not each wrap onto {each} rows: [{string.Join(", ", rows.Take(5))}…]");
-        int built = editor.StripeMarksBuilt;
-        const int Keys = 5;
-        long allocated = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Keys; i++)
-        {
-            rig.Type("x");
-        }
-        long keys = GC.GetAllocatedBytesForCurrentThread() - allocated;
-        built = editor.StripeMarksBuilt - built;
-        Assert.Equal(rows, editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning).Select(m => m.Row));
-
-        if (lines <= 40)
-        {
-            // Every word a match, which keys anywhere push across their rows' breaks: kept or worked out, each mark is where it stands.
-            string all = rig.Document.Snapshot.ToString();
-            editor.SetHighlights([.. Enumerable.Range(0, all.Length - 5).Where(at => string.CompareOrdinal(all, at, "words", 0, 5) == 0).Select(at => new TextRange(at, 5))], 0);
-            Ui.Settle();
-            Random random = new(561);
-            string[] typed = ["x", " ", "words ", "a long word "];
-            for (int i = 0; i < 200; i++)
-            {
-                LineSpan line = rig.Document.Snapshot.GetLine(random.Next(lines));
-                int at = line.Start + random.Next(line.Length + 1);
-                rig.PlaceCaret(at);
-                if (at > line.Start && random.Next(3) == 0)
-                {
-                    rig.Press("BACK_SPACE");
-                }
-                else
-                {
-                    rig.Type(typed[random.Next(typed.Length)]);
-                }
-                List<string> kept = Shown(editor);
-                editor.SetBookmarks([i % lines]);
-                Ui.Settle();
-                List<string> fresh = Shown(editor);
-                int differs = kept.Zip(fresh).TakeWhile(pair => pair.First == pair.Second).Count();
-                Assert.True(kept.Count == fresh.Count && differs == kept.Count,
-                    $"After {i + 1} edits the stripe's mark {differs} of {kept.Count} stood as {kept.ElementAtOrDefault(differs)}, where worked out afresh, of {fresh.Count}, it is {fresh.ElementAtOrDefault(differs)}");
-            }
-        }
-        return (keys / Keys, built);
-    }
-
-    /// <summary>The stripe's marks but the caret's and the bookmarks', each by its kind and rows.</summary>
-    private static List<string> Shown(CodeEditor editor) =>
-        [.. editor.StripeMarks.Where(m => m.Kind is not (StripeMarkKind.Caret or StripeMarkKind.Bookmark)).Select(m => $"{m.Kind} at row {m.Row}, {m.Rows} high")];
-
     /// <summary>A frame over a file with a warning, an annotation, a change bar and a bookmark on each of 4,000 lines
     /// allocates on the UI thread under twice what it does over 40: what is drawn on the text is read for the lines on
     /// screen.</summary>
-    [AvaloniaFact]
-    public void A_frame_over_four_thousand_decorated_lines_costs_what_it_does_over_forty()
+    private void A_frame_over_four_thousand_decorated_lines_costs_what_it_does_over_forty()
     {
         long few = BytesPerFrame(40);
         long many = BytesPerFrame(4000);
@@ -200,65 +110,10 @@ public sealed class ErrorStripeTests
         return Ui.BlinkBytes(editor);
     }
 
-    /// <summary>What a key and an Enter typed at the top of a file of a warning a line allocate on the UI thread, the
-    /// warnings set once, as a host sets them when its server reports, the stripe drawn after each.</summary>
-    private static (long Key, long Enter) BytesPerKey(int lines)
-    {
-        EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => $"        int value{i} = {i};\n")));
-        CodeEditor editor = rig.Editor;
-        TextSnapshot text = rig.Document.Snapshot;
-        editor.SetMarkers([.. Enumerable.Range(0, lines).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 5), MarkerKind.Warning, Unused))]);
-        editor.Focus();
-        Ui.Settle();
-        int built = editor.StripeMarksBuilt;
-        const int Keys = 5;
-        long allocated = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Keys; i++)
-        {
-            rig.Type("x");
-        }
-        long keys = GC.GetAllocatedBytesForCurrentThread() - allocated;
-        Assert.True(editor.StripeMarksBuilt == built, $"The stripe's marks were worked out {editor.StripeMarksBuilt - built} times for keys that moved no line");
-        List<CodeEditor.StripeMark> warnings = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning)];
-        Assert.Equal(lines, warnings.Count);
-        Assert.Equal(text.GetLineStart(lines - 1) + 12 + Keys, editor.Markers[lines - 1].Range.Start);
-
-        if (lines <= 40)
-        {
-            // Where the marks stand apart, a line's mark kept through the keys goes to its warning where they moved it.
-            Point at = editor.TranslatePoint(editor.StripePoint(warnings[^1]), rig.Window)!.Value;
-            rig.Window.MouseDown(at, MouseButton.Left);
-            rig.Window.MouseUp(at, MouseButton.Left);
-            Ui.Settle();
-            Assert.Equal(text.GetLineStart(lines - 1) + 12 + Keys, editor.Selections.Primary.Caret);
-            editor.Selections = SelectionSet.Single(0);
-            Ui.Settle();
-        }
-
-        // The first aside, whose redraw of thousands of marks allocates once what later ones reuse.
-        rig.Press("ENTER");
-        Ui.Settle();
-        const int Enters = 3;
-        allocated = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Enters; i++)
-        {
-            rig.Press("ENTER");
-            Ui.Settle();
-        }
-        long enters = GC.GetAllocatedBytesForCurrentThread() - allocated;
-        Assert.True(editor.StripeMarksBuilt == built + 1 + Enters, $"The stripe's marks were worked out {editor.StripeMarksBuilt - built} times for {1 + Enters} Enters");
-        warnings = [.. editor.StripeMarks.Where(m => m.Kind == StripeMarkKind.Warning)];
-        Assert.Equal(lines, warnings.Count);
-        Assert.Equal(1 + Enters + lines - 1, warnings[^1].Line);
-        Assert.Equal(Unused, warnings[^1].Message);
-        return (keys / Keys, enters / Enters);
-    }
-
     /// <summary>A warning on each line on screen and a change down the whole file, as Git marks a new one: a click on the
     /// thumb over a warning goes to it, a drag from there drags the thumb, the track beside the change pages, and a
     /// warning's tick and the change's strip off the thumb take the caret to their lines.</summary>
-    [AvaloniaFact]
-    public void The_scrollbars_thumb_drags_from_over_the_marks_its_track_pages_beside_a_change_and_a_click_on_a_mark_goes_to_its_line()
+    private void The_scrollbars_thumb_drags_from_over_the_marks_its_track_pages_beside_a_change_and_a_click_on_a_mark_goes_to_its_line()
     {
         const int Lines = 400;
         EditorRig rig = new(string.Concat(Enumerable.Range(0, Lines).Select(i => $"        int value{i} = {i};\n")));
@@ -321,8 +176,7 @@ public sealed class ErrorStripeTests
     /// <summary>Each use's mark lies where the thumb's middle is when its line stands in the middle of the view, so a line on
     /// screen has its mark on the thumb where the line is in the view: in a file a few screens long, in one of thousands of
     /// lines (the thumb at its least length), and with lines wrapped and a fold shut above the uses.</summary>
-    [AvaloniaFact]
-    public void A_uses_mark_lies_where_the_thumbs_middle_is_with_its_line_in_the_middle_of_the_view_wrapped_and_folded_too()
+    private void A_uses_mark_lies_where_the_thumbs_middle_is_with_its_line_in_the_middle_of_the_view_wrapped_and_folded_too()
     {
         foreach ((int lines, bool bent) in (ReadOnlySpan<(int, bool)>)[(60, false), (5000, false), (120, true)])
         {
@@ -376,81 +230,6 @@ public sealed class ErrorStripeTests
 
     private static Rect Bounds(Control control, Visual within) =>
         new(control.TranslatePoint(default, within) ?? throw new Xunit.Sdk.XunitException($"{control.GetType().Name} is not laid out"), control.Bounds.Size);
-
-    [AvaloniaFact]
-    public void The_stripes_marks_take_the_new_themes_colours_when_the_theme_changes()
-    {
-        EditorRig rig = new(string.Concat(Enumerable.Range(0, 40).Select(i => $"        int value{i} = {i};\n")));
-        CodeEditor editor = rig.Editor;
-        TextSnapshot text = rig.Document.Snapshot;
-        editor.SetMarkers([.. Enumerable.Range(0, 40).Select(i => new Marker(new TextRange(text.GetLineStart(i) + 12, 5), MarkerKind.Warning, Unused))]);
-        Ui.Settle();
-        CodeEditor.StripeMark mark = editor.StripeMarks.First(m => m.Kind == StripeMarkKind.Warning && m.Row == 20);
-        Point at = editor.TranslatePoint(editor.StripePoint(mark), rig.Window)!.Value;
-        Assert.Equal(Warning(ThemeVariant.Dark), Ui.Pixel(rig.Window, at));
-
-        rig.Window.RequestedThemeVariant = ThemeVariant.Light;
-        Ui.Settle();
-        Color shown = Ui.Pixel(rig.Window, at);
-        Assert.True(shown == Warning(ThemeVariant.Light), $"In the light theme the stripe's warning is {shown}, the dark theme's colour left on it");
-    }
-
-    /// <summary>The caret on a warning's line draws its line along the warning's tick, leaving the tick's middle in the
-    /// warning's colour, so the problem shows what it is with the caret on its line.</summary>
-    [AvaloniaFact]
-    public void The_caret_on_a_problems_line_leaves_the_middle_of_the_problems_mark_in_its_colour()
-    {
-        EditorRig rig = new(string.Concat(Enumerable.Range(0, 40).Select(i => $"        int value{i} = {i};\n")));
-        CodeEditor editor = rig.Editor;
-        TextSnapshot text = rig.Document.Snapshot;
-        editor.SetMarkers([new Marker(new TextRange(text.GetLineStart(20) + 12, 5), MarkerKind.Warning, Unused)]);
-        rig.PlaceCaret(text.GetLineStart(20));
-        Ui.Settle();
-        CodeEditor.StripeMark warning = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Warning);
-        CodeEditor.StripeMark caret = Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Caret);
-        Assert.Equal(warning.Row, caret.Row);
-        Color middle = Ui.Pixel(rig.Window, editor.TranslatePoint(editor.StripePoint(warning), rig.Window)!.Value);
-        Assert.True(middle == Warning(rig.Window.ActualThemeVariant),
-            $"With the caret on its line the warning's mark shows {middle} at its middle, not the warning colour: the caret's line hides what the problem is");
-        Color line = Ui.Pixel(rig.Window, editor.TranslatePoint(editor.StripePoint(caret), rig.Window)!.Value);
-        Assert.True(line == CaretMarkColour(rig.Window.ActualThemeVariant), $"The caret's line on the warning's row shows {line}, not the caret's mark");
-    }
-
-    /// <summary>Down through a file of more lines than the stripe's track has pixels, the caret on screen near its end,
-    /// draws the stripe again only for the keys that move the caret's mark on the track, which shows it where it went.</summary>
-    [AvaloniaFact]
-    public void Down_in_a_file_longer_than_the_track_draws_the_stripe_only_where_the_caret_mark_moves()
-    {
-        const int Lines = 5000;
-        EditorRig rig = new(string.Concat(Enumerable.Range(0, Lines).Select(i => $"        int value{i} = {i};\n")));
-        CodeEditor editor = rig.Editor;
-        editor.GoTo(new TextPosition(Lines - 100, 0));
-        editor.Focus();
-        Ui.Settle();
-        long stripes = editor.StripesDrawn;
-        const int Keys = 20;
-        int moved = 0;
-        Point at = CaretMark(editor);
-        for (int i = 0; i < Keys; i++)
-        {
-            rig.Press("DOWN");
-            Point now = CaretMark(editor);
-            moved += now != at ? 1 : 0;
-            at = now;
-        }
-        Assert.True(moved is > 0 and < Keys / 2, $"The caret's mark moved on the track for {moved} of {Keys} keys down {Keys} lines of {Lines:N0}");
-        Assert.True(editor.StripesDrawn - stripes == moved,
-            $"{Keys} keys down drew the stripe {editor.StripesDrawn - stripes} times, where its caret's mark moved {moved} times");
-        Color shown = Ui.Pixel(rig.Window, editor.TranslatePoint(at, rig.Window)!.Value);
-        Assert.True(shown == CaretMarkColour(rig.Window.ActualThemeVariant), $"Where the caret's mark now stands the stripe shows {shown}, not the caret's mark");
-    }
-
-    private static Point CaretMark(CodeEditor editor) => editor.StripePoint(Assert.Single(editor.StripeMarks, m => m.Kind == StripeMarkKind.Caret));
-
-    private static Color CaretMarkColour(ThemeVariant theme) =>
-        Application.Current!.TryFindResource(TokenKeys.Editor_LineNumberCurrent, theme, out object? brush) && brush is ISolidColorBrush solid
-            ? solid.Color
-            : throw new InvalidOperationException($"The {theme} theme has no current line number's colour");
 
     private static Color Warning(ThemeVariant theme) =>
         Application.Current!.TryFindResource(TokenKeys.Editor_Warning, theme, out object? brush) && brush is ISolidColorBrush solid

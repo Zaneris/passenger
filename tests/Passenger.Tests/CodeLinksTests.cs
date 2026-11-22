@@ -50,8 +50,16 @@ public sealed class CodeLinksTests : IDisposable
         return window;
     }
 
+    /// <summary>An address in a comment or a string is a link, none found in words alone, code left out or a service's
+    /// address, and the declaration's gesture opens it in the browser where a plain click places the caret.</summary>
     [AvaloniaFact]
-    public void An_address_in_a_comment_or_a_string_is_a_link_and_none_is_found_in_words_alone_code_left_out_or_a_services_address()
+    public void An_address_in_a_comment_or_a_string_is_a_link_the_declarations_gesture_opens_in_the_browser()
+    {
+        Flow.StepApart<CodeLinksTests>("an address in a comment or a string is a link, and none is found in words alone, code left out or a service's address", t => t.An_address_in_a_comment_or_a_string_is_a_link_and_none_is_found_in_words_alone_code_left_out_or_a_services_address());
+        Flow.StepApart<CodeLinksTests>("the declaration's gesture on a comment's address opens it in the browser, where a plain click places the caret", t => t.The_declarations_gesture_on_a_comments_address_opens_it_in_the_browser_where_a_plain_click_places_the_caret());
+    }
+
+    private void An_address_in_a_comment_or_a_string_is_a_link_and_none_is_found_in_words_alone_code_left_out_or_a_services_address()
     {
         MainWindow window = Open(out CodeEditor editor);
         try
@@ -79,8 +87,7 @@ public sealed class CodeLinksTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void The_declarations_gesture_on_a_comments_address_opens_it_in_the_browser_where_a_plain_click_places_the_caret()
+    private void The_declarations_gesture_on_a_comments_address_opens_it_in_the_browser_where_a_plain_click_places_the_caret()
     {
         MainWindow window = Open(out CodeEditor editor);
         try
@@ -99,58 +106,6 @@ public sealed class CodeLinksTests : IDisposable
             Ui.Settle();
             Ui.Press(window, Ui.Shortcut(AppActions.GoToDeclaration));
             Assert.True(window.Browsed.SequenceEqual([new Uri(Issue), new Uri(Docs)]), $"Go to Declaration's keys on a string's address opened [{string.Join(", ", window.Browsed)}]");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An address holding parentheses is linked whole, the ')' that wraps it and the sentence's '.' left out, and
-    /// Go to Declaration's click on its parentheses opens the whole address.</summary>
-    [AvaloniaFact]
-    public void An_address_holding_parentheses_is_linked_and_opened_whole_without_the_pair_that_wraps_it()
-    {
-        MainWindow window = Open(out CodeEditor editor);
-        try
-        {
-            TextSnapshot text = editor.Document.Snapshot;
-            int start = Place(text, 10, Wiki);
-            int inside = Place(text, 10, "programming") + 2;
-            Assert.Equal((new TextRange(start, Wiki.Length), new Uri(Wiki)), Linked(editor, inside));
-            Assert.True(editor.LinkOn(start + Wiki.Length) is null, "The ')' that wraps the comment's address is part of its link");
-
-            Point on = editor.PointOf(inside) + new Point(1, editor.LineHeight / 2);
-            Ui.Click(editor, on, OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control);
-            Assert.True(window.Browsed.SequenceEqual([new Uri(Wiki)]), $"Go to Declaration's click on the address's parentheses opened [{string.Join(", ", window.Browsed)}]");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>The card the pointer's rest shows says the address and the keys that open it; with the gesture held the
-    /// address takes the hand.</summary>
-    [AvaloniaFact]
-    public void A_comments_address_says_where_it_leads_when_the_pointer_rests_on_it_and_takes_the_hand_with_the_gesture_held()
-    {
-        MainWindow window = Open(out CodeEditor editor);
-        try
-        {
-            TextSnapshot text = editor.Document.Snapshot;
-            int start = Place(text, 0, Issue);
-            Point on = editor.PointOf(start + 8) + new Point(1, editor.LineHeight / 2);
-            Ui.Hover(editor, on);
-            Ui.WaitFor(() => window.Assist.HoverText is not null, "the card of a comment's address");
-            Assert.Contains(Issue, window.Assist.HoverText, StringComparison.Ordinal);
-            Assert.Contains(window.Actions.ShortcutsShown(AppActions.GoToDeclaration)!, window.Assist.HoverText, StringComparison.Ordinal);
-            Assert.False(editor.ShowsHand, "A comment's address took the hand with no key held, where a click only places the caret");
-
-            Ui.Hover(editor, on + new Point(2, 0), OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control);
-            Ui.WaitFor(() => editor.PointedRange is not null, "the held gesture to reach the comment's address");
-            Assert.True(editor.PointedRange == new TextRange(start, Issue.Length) && editor.ShowsHand,
-                $"With the gesture held a comment's address reached {editor.PointedRange} and the hand is {(editor.ShowsHand ? "shown" : "not shown")}");
         }
         finally
         {

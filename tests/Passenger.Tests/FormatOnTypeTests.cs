@@ -29,12 +29,27 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     /// <summary>The issue's loop as laid out once typed, the method around it as written.</summary>
     private const string Laid = "static class Loop\n{\n    public static void Run()\n    {\n        for (var i = 0; i < 10; i += 1)\n        {\n            var x = i + 1;\n        }\n    }\n}\n";
 
+    /// <summary>C# typed as a person types it is laid out at its ';', its '}' and Enter, each layout one step of Undo
+    /// with the key that made it, as the file's .editorconfig puts braces; never in a string or a comment, with the
+    /// setting off, or in an agent's edit; and in Vim mode joined to the insert session's one step, which '.' types
+    /// again.</summary>
+    [AvaloniaFact]
+    public void C_sharp_typed_is_laid_out_at_its_semicolon_brace_and_enter_each_one_step_of_undo_and_never_where_it_is_text_or_an_agents()
+    {
+        Flow.StepApart("the issue's loop typed as a person types it is laid out at its semicolon and as the caret leaves its block, each undone alone", () => new FormatOnTypeTests(project), t => t.The_issues_loop_typed_as_a_person_types_it_is_laid_out_at_its_semicolon_and_as_the_caret_leaves_its_block_each_undone_alone());
+        Flow.StepApart("a brace typed above the one Enter wrote closes the block with one brace laid out, and one Undo takes both back", () => new FormatOnTypeTests(project), t => t.A_brace_typed_above_the_one_enter_wrote_closes_the_block_with_one_brace_laid_out_and_one_undo_takes_both_back());
+        Flow.StepApart("the issue's initializer has its brace laid out on a line of its own at Enter, and one Undo takes both back", () => new FormatOnTypeTests(project), t => t.The_issues_initializer_has_its_brace_laid_out_on_a_line_of_its_own_at_enter_and_one_undo_takes_both_back());
+        Flow.StepApart("under an .editorconfig keeping braces on their line, Enter leaves the initializer's brace where it was typed", () => new FormatOnTypeTests(project), t => t.Under_an_editorconfig_keeping_braces_on_their_line_enter_leaves_the_initializers_brace_where_it_was_typed());
+        Flow.StepApart("a semicolon in a string or a comment, with the setting off, or typed on before the layout came, leaves the text as typed", () => new FormatOnTypeTests(project), t => t.A_semicolon_in_a_string_or_a_comment_with_the_setting_off_or_typed_on_before_the_layout_came_leaves_the_text_as_typed());
+        Flow.StepApart("an agent's edit is written as given and never laid out", () => new FormatOnTypeTests(project), t => t.An_agents_edit_is_written_as_given_and_never_laid_out());
+        Flow.StepApart("in Vim mode the layout joins the insert session's one step, and dot types again what the keys typed", () => new FormatOnTypeTests(project), t => t.In_vim_mode_the_layout_joins_the_insert_sessions_one_step_and_dot_types_again_what_the_keys_typed());
+    }
+
     /// <summary>The issue's loop typed at the left margin as a person types it here, '{' and Enter writing its '}': its
     /// header's ';'s change nothing, the body's ';' lays out the statement it ends, the caret after it, and Down, leaving
     /// the block, lays out the loop whole. Each layout is a step of Undo of its own key or move: Undo takes the loop's
     /// back alone, and again the ';' with its statement's.</summary>
-    [AvaloniaFact]
-    public void The_issues_loop_typed_as_a_person_types_it_is_laid_out_at_its_semicolon_and_as_the_caret_leaves_its_block_each_undone_alone()
+    private void The_issues_loop_typed_as_a_person_types_it_is_laid_out_at_its_semicolon_and_as_the_caret_leaves_its_block_each_undone_alone()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -63,8 +78,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     /// <summary>A '}' typed on a line of its own above the '}' that '{' and Enter wrote types over that one, the line it was
     /// typed on taken away, so the loop has one brace, and lays the loop out, the caret after it; one Undo takes the brace
     /// and the layout back together, the line typed on with them.</summary>
-    [AvaloniaFact]
-    public void A_brace_typed_above_the_one_enter_wrote_closes_the_block_with_one_brace_laid_out_and_one_undo_takes_both_back()
+    private void A_brace_typed_above_the_one_enter_wrote_closes_the_block_with_one_brace_laid_out_and_one_undo_takes_both_back()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -120,8 +134,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     /// <summary>A ';' typed in a string or a comment changes nothing; turned off in Settings, a statement's ';' leaves it as
     /// typed; and a key typed before the server's layout came leaves the text as the keys made it. A ';' that chooses what
     /// completion offers before it still lays out the statement it ends.</summary>
-    [AvaloniaFact]
-    public void A_semicolon_in_a_string_or_a_comment_with_the_setting_off_or_typed_on_before_the_layout_came_leaves_the_text_as_typed()
+    private void A_semicolon_in_a_string_or_a_comment_with_the_setting_off_or_typed_on_before_the_layout_came_leaves_the_text_as_typed()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -187,8 +200,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     }
 
     /// <summary>An agent's edit writing a statement and a block is written as given: only typing is laid out.</summary>
-    [AvaloniaFact]
-    public void An_agents_edit_is_written_as_given_and_never_laid_out()
+    private void An_agents_edit_is_written_as_given_and_never_laid_out()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -204,8 +216,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     /// <summary>In Vim mode a statement typed in an insert session is laid out at its ';' within the session's one step of
     /// Undo, and . on another line types again what the session's keys typed, laid out as they were, its indent the
     /// layout's alone.</summary>
-    [AvaloniaFact]
-    public void In_vim_mode_the_layout_joins_the_insert_sessions_one_step_and_dot_types_again_what_the_keys_typed()
+    private void In_vim_mode_the_layout_joins_the_insert_sessions_one_step_and_dot_types_again_what_the_keys_typed()
     {
         MainWindow window = project.Open("Twice.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -238,54 +249,6 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         window.Close();
     }
 
-    /// <summary>In Vim mode a block typed in an insert session and left by o on its '}' line is laid out within o's session,
-    /// whose one step u takes back with the layout and Ctrl+R brings back, and . types again what that session's keys
-    /// typed.</summary>
-    [AvaloniaFact]
-    public void In_vim_mode_a_block_left_by_o_is_laid_out_within_os_one_step_and_dot_types_again_what_its_keys_typed()
-    {
-        MainWindow window = project.Open("Loop.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        string Line() => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line);
-        window.ApplySettings(window.Settings with { VimMode = true });
-        Ui.Settle();
-        Ui.PlaceAfter(editor, "Run()\n    {\n");
-        editor.Focus();
-        Ui.Type(window, "I", "i");
-        window.KeyTextInput("for (var i=0;i<10;i+=1)");
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("{");
-        Ui.Settle();
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("var x=i+1");
-        Ui.Settle();
-        window.KeyTextInput(";");
-        Ui.Settle();
-        Ui.Press(window, "ESCAPE");
-        string typed = editor.Document.Snapshot.ToString();
-
-        Ui.Type(window, "J", "j");
-        Assert.Equal("        }", Line());
-        Ui.Type(window, "O", "o");
-        window.KeyTextInput("int y=2");
-        Ui.Settle();
-        window.KeyTextInput(";");
-        Ui.Settle();
-        Ui.Press(window, "ESCAPE");
-        string laid = Laid.Replace("        }\n    }", "        }\n        int y = 2;\n    }", StringComparison.Ordinal);
-        Assert.True(editor.Document.Snapshot.ToString() == laid, $"o leaving the loop's block did not lay the loop out:\n{editor.Document.Snapshot}");
-
-        Ui.Type(window, "U", "u");
-        Assert.True(editor.Document.Snapshot.ToString() == typed, $"u did not take o's session back whole, the loop's layout with it:\n{editor.Document.Snapshot}");
-        Ui.Press(window, "control R");
-        Assert.True(editor.Document.Snapshot.ToString() == laid, $"Ctrl+R did not bring o's session back, the loop laid out:\n{editor.Document.Snapshot}");
-
-        Ui.Type(window, "PERIOD", ".");
-        Ui.Settle();
-        Assert.True(Line().TrimStart() == "int y = 2;", $". did not type again what o's session typed: '{Line()}'\n{editor.Document.Snapshot}");
-        window.Close();
-    }
-
     /// <summary>A class with an indented empty line in its body and one in a method's, where the block tests type.</summary>
     private const string Blocks = "using System;\n\nclass Blocks\n{\n    \n    public static void Run(string[] args)\n    {\n        \n    }\n}\n";
 
@@ -296,8 +259,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
     /// between them lays the '{' out on a line of its own at the statement's indentation, as the file's formatting (C#'s
     /// default, no .editorconfig saying otherwise) puts it, the caret on the empty line between at the block's
     /// indentation. One Undo takes Enter and its layout back together, to the braces as typed.</summary>
-    [AvaloniaFact]
-    public void The_issues_initializer_has_its_brace_laid_out_on_a_line_of_its_own_at_enter_and_one_undo_takes_both_back()
+    private void The_issues_initializer_has_its_brace_laid_out_on_a_line_of_its_own_at_enter_and_one_undo_takes_both_back()
     {
         MainWindow window = project.Open("Blocks.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -319,8 +281,7 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
 
     /// <summary>Under an .editorconfig that keeps a block's '{' on its line, Enter between the initializer's braces leaves
     /// the '{' where it was typed, the caret on the empty line between at the block's indentation.</summary>
-    [AvaloniaFact]
-    public void Under_an_editorconfig_keeping_braces_on_their_line_enter_leaves_the_initializers_brace_where_it_was_typed()
+    private void Under_an_editorconfig_keeping_braces_on_their_line_enter_leaves_the_initializers_brace_where_it_was_typed()
     {
         MainWindow window = project.Open("Kept/Blocks.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -330,86 +291,6 @@ public sealed class FormatOnTypeTests : IClassFixture<FormatOnTypeTests.Project>
         Ui.Press(window, "ENTER");
         AssertOpened(editor, KeptBlocks.Replace("    {\n        \n", "    {\n        var item = new() {\n            \n        }\n", StringComparison.Ordinal),
             "the initializer's, kept on its line,");
-        window.Close();
-    }
-
-    /// <summary>Each of C#'s blocks typed as a person types it, in a method's body or a class's, its '{' writing its '}' and
-    /// Enter laying the '{' out on a line of its own at its statement's or member's indentation, as the file's formatting
-    /// puts each kind's (initializers, control blocks, a switch, a lambda, a local function, a method, a property, a type),
-    /// the caret on the empty line between; one Undo takes each Enter back with its layout.</summary>
-    [AvaloniaFact]
-    public void Each_kind_of_block_has_its_brace_laid_out_as_the_file_puts_it_at_enter()
-    {
-        MainWindow window = project.Open("Blocks.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        (string Place, string Header)[] blocks =
-        [
-            ("    {\n        ", "var list = new System.Collections.Generic.List<int>"),
-            ("    {\n        ", "int[] numbers ="),
-            ("    {\n        ", "if (args.Length > 0)"),
-            ("    {\n        ", "for (var i = 0; i < 3; i++)"),
-            ("    {\n        ", "foreach (string arg in args)"),
-            ("    {\n        ", "while (args.Length > 3)"),
-            ("    {\n        ", "switch (args.Length)"),
-            ("    {\n        ", "try"),
-            ("    {\n        ", "Action run = () =>"),
-            ("    {\n        ", "void Local()"),
-            ("Blocks\n{\n    ", "void Other()"),
-            ("Blocks\n{\n    ", "int Count"),
-            ("Blocks\n{\n    ", "class Inner"),
-        ];
-        foreach ((string place, string header) in blocks)
-        {
-            Ui.PlaceAfter(editor, place);
-            editor.Focus();
-            string indent = place[(place.LastIndexOf('\n') + 1)..];
-            string typed = TypeBlock(window, editor, header + " ");
-            Ui.Press(window, "ENTER");
-            AssertOpened(editor, Blocks.Replace(place + "\n", $"{place}{header}\n{indent}{{\n{indent}    \n{indent}}}\n", StringComparison.Ordinal),
-                $"'{header}''s");
-            Ui.Run(window, EditorActions.Undo);
-            Assert.True(editor.Document.Snapshot.ToString() == typed, $"One Undo did not take Enter after '{header}' back with its layout:\n{editor.Document.Snapshot}");
-            for (int undone = 0; undone < 20 && editor.Document.Snapshot.ToString() != Blocks; undone++)
-            {
-                // The steps between are not what is checked: what they bring lands once, after the last.
-                Ui.Run(window, EditorActions.Undo, settle: false);
-            }
-            Ui.Settle();
-            Assert.True(editor.Document.Snapshot.ToString() == Blocks, $"Undo did not take '{header}' and its block back:\n{editor.Document.Snapshot}");
-        }
-        window.Close();
-    }
-
-    /// <summary>In Vim mode the initializer's layout at Enter joins the insert session's one step, which u takes back whole
-    /// and Ctrl+R brings back, and . on another line types again what the session typed, laid out as it was.</summary>
-    [AvaloniaFact]
-    public void In_vim_mode_enters_layout_joins_the_insert_sessions_one_step_and_dot_types_it_again_laid_out()
-    {
-        MainWindow window = project.Open("Blocks.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        string Line(int below = 0) => editor.Document.Snapshot.GetLineText(editor.CaretPosition.Line + below);
-        window.ApplySettings(window.Settings with { VimMode = true });
-        Ui.Settle();
-        Ui.PlaceAfter(editor, "    {\n    ");
-        editor.Focus();
-        Ui.Type(window, "shift A", "A");
-        TypeBlock(window, editor, "var item = new", "(", ")", " ");
-        Ui.Press(window, "ENTER");
-        Assert.True(Line(-1) == "        {" && Line(-2) == "        var item = new()",
-            $"Enter in the insert session did not lay the initializer's '{{' out on a line of its own:\n{editor.Document.Snapshot}");
-        Ui.Press(window, "ESCAPE");
-        string laid = editor.Document.Snapshot.ToString();
-
-        Ui.Type(window, "U", "u");
-        Assert.True(editor.Document.Snapshot.ToString() == Blocks, $"u did not take the insert session back whole, the layout with it:\n{editor.Document.Snapshot}");
-        Ui.Press(window, "control R");
-        Assert.True(editor.Document.Snapshot.ToString() == laid, $"Ctrl+R did not bring the session back laid out:\n{editor.Document.Snapshot}");
-
-        Ui.PlaceAfter(editor, "Blocks\n{\n");
-        Ui.Type(window, "PERIOD", ".");
-        Ui.Settle();
-        Assert.True(editor.Document.Snapshot.ToString().StartsWith("using System;\n\nclass Blocks\n{\n    var item = new()\n        {\n", StringComparison.Ordinal),
-            $". did not type again what the session typed, laid out as it was:\n{editor.Document.Snapshot}");
         window.Close();
     }
 

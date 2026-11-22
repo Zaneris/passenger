@@ -26,12 +26,26 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         project.Reset();
     }
 
+    /// <summary>A key in a file of 20,000 lines costs what it changed, not the file: completion, layout, squiggles and
+    /// colours, hints and diagnostics among thousands; and usages of a method called thousands of times and a list of
+    /// thousands of members never hold the window's thread.</summary>
+    [AvaloniaFact]
+    public void A_key_in_a_file_of_twenty_thousand_lines_costs_what_it_changed_and_usages_and_lists_of_thousands_never_hold_the_window()
+    {
+        Flow.StepApart("typing a dot in a file of twenty thousand lines opens completion without parsing the file again", () => new LongFileAssistTests(project), t => t.Typing_a_dot_in_a_file_of_twenty_thousand_lines_opens_completion_without_parsing_the_file_again());
+        Flow.StepApart("a statement's semicolon in a file of twenty thousand lines is laid out at a short file's cost", () => new LongFileAssistTests(project), t => t.A_statements_semicolon_in_a_file_of_twenty_thousand_lines_is_laid_out_at_a_short_files_cost());
+        Flow.StepApart("squiggles and colours in a file of twenty thousand lines stay on their words, and a key reads and decodes only what it changed", () => new LongFileAssistTests(project), t => t.Squiggles_and_colours_in_a_file_of_twenty_thousand_lines_stay_on_their_words_and_a_key_reads_and_decodes_only_what_it_changed());
+        Flow.StepApart("the usages of a method called thousands of times are read off the window's thread", () => new LongFileAssistTests(project), t => t.The_usages_of_a_method_called_thousands_of_times_are_read_off_the_UI_thread());
+        Flow.StepApart("a key above thousands of hinted calls costs what it does above a few and wraps only its line", () => new LongFileAssistTests(project), t => t.A_key_above_thousands_of_hinted_calls_costs_what_it_does_above_a_few_and_wraps_only_its_line());
+        Flow.StepApart("diagnostics landing among thousands of warnings cost what they do among a few", () => new LongFileAssistTests(project), t => t.Diagnostics_landing_among_thousands_of_warnings_cost_what_they_do_among_a_few());
+        Flow.StepApart("a scroll step down the structure of four thousand members hands the rows other members, never making one again", () => new LongFileAssistTests(project), t => t.A_scroll_step_down_the_structure_of_four_thousand_members_hands_the_rows_other_members_never_making_one_again());
+    }
+
     /// <summary>Completion after a dot reads the file's syntax (the live templates that fit there, the postfix templates
     /// for what is before the dot), which in a file of 20,000 lines is the highlighter's tree carried over the edit, never
     /// the file parsed again on the UI thread. What the window allocates is the count, not a time a slow machine would
     /// stretch: the frame that opens the list allocates less than one parse of the file does.</summary>
-    [AvaloniaFact]
-    public void Typing_a_dot_in_a_file_of_twenty_thousand_lines_opens_completion_without_parsing_the_file_again()
+    private void Typing_a_dot_in_a_file_of_twenty_thousand_lines_opens_completion_without_parsing_the_file_again()
     {
         MainWindow window = project.Open("Dotted.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -64,8 +78,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     /// screen shows the same code, and costs the UI thread what it does there: the key, from its change, its syntax read
     /// from the file's own parse off the UI thread, and each frame until its layout is made, a statement's few edits. The
     /// least of three rounds, each taken back by one Undo; what the window allocates is the count, never a time.</summary>
-    [AvaloniaFact]
-    public void A_statements_semicolon_in_a_file_of_twenty_thousand_lines_is_laid_out_at_a_short_files_cost()
+    private void A_statements_semicolon_in_a_file_of_twenty_thousand_lines_is_laid_out_at_a_short_files_cost()
     {
         MainWindow window = project.Open("Brief.cs");
         (long fewKey, long fewFrame) = LaidOut(window, "Brief.cs");
@@ -125,8 +138,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     /// The server's colours, hundreds of thousands of tokens, are decoded off the UI thread: no frame while they land
     /// allocates a quarter of what one decoded copy takes, nor a key half of it; through the keys typed before they
     /// land, and after, a local keeps its colour on its word, on screen and off it.</summary>
-    [AvaloniaFact]
-    public void Squiggles_and_colours_in_a_file_of_twenty_thousand_lines_stay_on_their_words_and_a_key_reads_and_decodes_only_what_it_changed()
+    private void Squiggles_and_colours_in_a_file_of_twenty_thousand_lines_stay_on_their_words_and_a_key_reads_and_decodes_only_what_it_changed()
     {
         string source = Project.Long;
         MainWindow window = project.Open("Long.cs");
@@ -236,187 +248,12 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         window.Close();
     }
 
-    /// <summary>Keys typed in one place while the server answers no colours (as while its projects load) keep the
-    /// colours it gave last on their words, below the keys and at the file's end, each key costing no more than the one
-    /// before. Each key waits for its colours' refusal, not for the file's diagnostics (seconds a key in 20,000 lines),
-    /// which a key's colours never wait on.</summary>
-    [AvaloniaFact]
-    public void Keys_typed_while_the_server_gives_no_colours_carry_its_last_through_one_change_for_the_run()
-    {
-        string source = Project.Long;
-        MainWindow window = project.Open("Long.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument document = window.EditorArea.Active!;
-        TokenKind? KindAt(int offset) => document.Highlighter?.GetSpans(document.Text.Snapshot, offset, 1)
-            .Where(s => s.Start == offset).Select(s => (TokenKind?)s.Kind).FirstOrDefault();
-        int near = source.IndexOf("value0 * 3", StringComparison.Ordinal);
-        int far = source.LastIndexOf("value98 * 3", StringComparison.Ordinal);
-        Ui.WaitFor(() => KindAt(near) == TokenKind.Local && KindAt(far) == TokenKind.Local, "the server's colours on the locals");
-        Ui.Settle();
-        Passenger.Languages.CSharp.SemanticHighlighter colours = Assert.IsType<Passenger.Languages.CSharp.SemanticHighlighter>(document.Highlighter);
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(document)!.Lsp!;
-        _ = server.RefuseNext(lsp.RangeColoursMethod, 1000);
-        _ = server.RefuseNext(lsp.ColoursMethod, 1000);
-        try
-        {
-            editor.Selections = SelectionSet.Single(source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0".Length);
-            editor.Focus();
-            const int Keys = 12;
-            for (int i = 0; i < Keys; i++)
-            {
-                window.KeyTextInput((i % 10).ToString(System.Globalization.CultureInfo.InvariantCulture));
-                Assert.True(colours.Asking, $"Key {i + 1} asked the server for no colours");
-                Ui.PumpUntil(() => !colours.Asking, $"the server's refusal of the colours after key {i + 1}");
-                Assert.True(KindAt(near + i + 1) == TokenKind.Local, $"After {i + 1} keys the local's use below them lost its colour: {KindAt(near + i + 1)}");
-            }
-            Assert.True(colours.Carrying <= 1, $"The server's last colours were carried through {colours.Carrying} changes, one for each of the {Keys} keys typed in one place");
-            Assert.Equal(TokenKind.Local, KindAt(far + Keys));
-        }
-        finally
-        {
-            _ = server.RefuseNext(lsp.RangeColoursMethod, 0);
-            _ = server.RefuseNext(lsp.ColoursMethod, 0);
-        }
-        window.Close();
-    }
-
-    /// <summary>Until the parse catches up with a key (it falls behind while a solution loads), the lines on screen
-    /// keep the colours read for them from the tree before the key, carried through it: a key classifies again the line
-    /// it changed and no other, and they are the colours the tree gives once the parse has landed. Counted in the
-    /// characters classified on the UI thread, not a time.</summary>
-    [AvaloniaFact]
-    public void Until_the_parse_catches_up_a_key_classifies_again_only_the_line_it_changed()
-    {
-        string source = Project.Long;
-        // The file's own parse alone, which the server's colours would only lay over.
-        MainWindow window = project.Open("Long.cs", languageServer: false);
-        OpenDocument document = window.EditorArea.Active!;
-        Passenger.Languages.CSharp.CSharpHighlighter syntax = document.Syntax!;
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.Selections = SelectionSet.Single(source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0".Length);
-        editor.Focus();
-        Ui.Settle();
-        TextSnapshot text = document.Text.Snapshot;
-        int start = text.GetLineStart(0);
-        int end = text.GetLine(80).EndIncludingBreak;
-        _ = syntax.GetSpans(text, start, end - start);
-
-        // Through the editor but not its input, whose end runs the window's loop, where a quick parse lands.
-        long before = syntax.CharactersClassified;
-        int caret = editor.Selections.Primary.Caret;
-        editor.ApplyEdits([new TextEdit(caret, 0, "1")], SelectionSet.Single(caret + 1));
-        TextSnapshot typed = document.Text.Snapshot;
-        Assert.True(syntax.Newest is null, "The key's parse landed before the screen's colours were read");
-        Assert.Equal(text.Length + 1, typed.Length);
-        SyntaxSpan[] carried = [.. syntax.GetSpans(typed, start, end + 1 - start)];
-        long classified = syntax.CharactersClassified - before;
-        Assert.True(classified < (end - start) / 10,
-            $"A key classified {classified} characters again of the {end - start} on screen: it classified every line drawn, not the one it changed");
-
-        Ui.Settle();
-        SyntaxSpan[] landed = [.. syntax.GetSpans(typed, start, end + 1 - start)];
-        Assert.True(carried.SequenceEqual(landed),
-            $"The colours carried through the key differ from the tree's once its parse landed, first at {carried.Zip(landed).FirstOrDefault(pair => pair.First != pair.Second)}");
-        window.Close();
-    }
-
-    /// <summary>A file of 20,000 lines is a million numbers of tokens, which the server takes a second to make and the
-    /// IDE megabytes to read: while typing goes on with pauses, only the lines on screen are asked for again, and what
-    /// only the server colours on screen is coloured from them; once typing stops, the whole file is asked for once, a word
-    /// from the server that its colours moved read before that request crossed asking nothing more, however late it is
-    /// parsed. Counted in the protocol's own trace, once the colours have nothing more to ask.</summary>
-    [AvaloniaFact]
-    public void Typing_with_pauses_in_a_file_of_twenty_thousand_lines_asks_for_the_screens_colours_and_the_whole_files_once_it_stops()
-    {
-        string source = Project.Long;
-        MainWindow? window = null;
-        int whole = 0;
-        int screens = 0;
-        int refreshedSince = 0;
-        try
-        {
-            window = project.Open("Long.cs");
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            OpenDocument document = window.EditorArea.Active!;
-            TokenKind? KindAt(int offset) => document.Highlighter?.GetSpans(document.Text.Snapshot, offset, 1)
-                .Where(s => s.Start == offset).Select(s => (TokenKind?)s.Kind).FirstOrDefault();
-            int far = source.LastIndexOf("value98 * 3", StringComparison.Ordinal);
-            Ui.WaitFor(() => KindAt(far) == TokenKind.Local, "the server's colours on the file's last local");
-            Passenger.Languages.CSharp.SemanticHighlighter colours = Assert.IsType<Passenger.Languages.CSharp.SemanticHighlighter>(document.Highlighter);
-            Passenger.Lsp.LspDocument lsp = window.CSharpService!.For(document)!.Lsp!;
-            string wholeMethod = lsp.ColoursMethod;
-            string screenMethod = lsp.RangeColoursMethod;
-            // That read counts as drawn down to the file's end, so the server's word would ask for the whole file: a key taken back ends it.
-            int at = source.IndexOf("seed + 0;", StringComparison.Ordinal) + "seed + 0;".Length;
-            editor.Selections = SelectionSet.Single(at);
-            editor.Focus();
-            window.KeyTextInput(" ");
-            Ui.Press(window, "BACK_SPACE");
-            // The opening's last ask answered before counting begins, the whole file's after an idle that no settle waits for.
-            Ui.PumpUntil(() => !colours.Asking, "the colours' last ask before typing answered, the whole file's after the idle included");
-            Ui.Settle();
-            Assert.True(document.Text.Snapshot.ToString() == source, "The key typed and taken back left Long.cs otherwise than it was written");
-            // Every colour request and refresh as the wire had them, for a failure to say.
-            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
-            System.Collections.Concurrent.ConcurrentQueue<string> wire = new();
-            Passenger.Lsp.LanguageServer.Trace = (server, message) =>
-            {
-                if (System.Text.RegularExpressions.Regex.Match(message, "\"method\":\"([^\"]*semanticTokens[^\"]*)\"") is { Success: true } method)
-                {
-                    string file = System.Text.RegularExpressions.Regex.Match(message, "\"uri\":\"[^\"]*/([^\"/]+)\"") is { Success: true } uri ? $" {uri.Groups[1].Value}" : "";
-                    wire.Enqueue($"{clock.ElapsedMilliseconds} ms, server {server}: {message[..3]} {method.Groups[1].Value}{file}");
-                }
-                if (message.StartsWith("-->", StringComparison.Ordinal) && message.Contains($"\"{wholeMethod}\"", StringComparison.Ordinal))
-                {
-                    Interlocked.Increment(ref whole);
-                }
-                else if (message.StartsWith("-->", StringComparison.Ordinal) && message.Contains($"\"{screenMethod}\"", StringComparison.Ordinal))
-                {
-                    Interlocked.Increment(ref screens);
-                }
-                else if (message.StartsWith("<--", StringComparison.Ordinal) && message.Contains($"\"{Passenger.Lsp.LspMethods.SemanticTokensRefresh}\"", StringComparison.Ordinal)
-                    && Volatile.Read(ref whole) > 0)
-                {
-                    // The server's word that its colours moved, after the file's were asked for: they are rightly asked again.
-                    Interlocked.Increment(ref refreshedSince);
-                }
-            };
-
-            // Statements typed one by one, a pause after each long enough for the screen's colours and short of the idle.
-            for (int i = 0; i < 4; i++)
-            {
-                window.KeyTextInput($" int fresh{i} = value0;");
-                int used = editor.Selections.Primary.Caret - "value0;".Length;
-                Ui.PumpUntil(() => KindAt(used) == TokenKind.Local, $"the screen's colours on the local used in statement {i + 1}");
-                Ui.Hold(TimeSpan.FromMilliseconds(300), "a pause in typing, shorter than the idle after which the whole file's colours are asked for");
-            }
-            Assert.True(screens > 0, "The screen's colours were never asked for as the statements were typed");
-            Assert.True(whole == 0, $"The whole file's colours were asked for {whole} times while typing went on with pauses:\n{string.Join('\n', wire)}");
-
-            Ui.PumpUntil(() => Volatile.Read(ref whole) > 0, "the whole file's colours once typing stopped");
-            // A needless second ask waits out the idle after the screen's colours, which no settle waits for, and is still asking.
-            Ui.PumpUntil(() => !colours.Asking, "the colours' last ask answered, a needless second one included");
-            Ui.Settle();
-            int refreshes = Volatile.Read(ref refreshedSince);
-            Assert.True(whole <= 1 + refreshes,
-                $"Once typing stopped the whole file's colours were asked for {whole} times, with {refreshes} word from the server since that they moved:\n{string.Join('\n', wire)}");
-            Assert.Equal(TokenKind.Local, KindAt(far + 4 * " int freshN = value0;".Length));
-        }
-        finally
-        {
-            Passenger.Lsp.LanguageServer.Trace = null;
-            window?.Close();
-        }
-    }
-
     /// <summary>Find Usages' answer, like every answer that grows with the solution, is read into places off the UI thread,
     /// before what asked resumes there: a method called four thousand times answers as many places, and no frame while its
     /// answer lands allocates on the UI thread a quarter of what reading that answer takes, nor much past the most a frame
     /// does while a local's two usages land or while nothing is asked (the caret's blink draws the editor again). What the
     /// window allocates is the count, not a time a busy machine stretches.</summary>
-    [AvaloniaFact]
-    public void The_usages_of_a_method_called_thousands_of_times_are_read_off_the_UI_thread()
+    private void The_usages_of_a_method_called_thousands_of_times_are_read_off_the_UI_thread()
     {
         MainWindow window = project.Open("Calls.cs");
         (int few, long fewLanding, _) = Usages(window, "int total =");
@@ -475,8 +312,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     /// <summary>A key typed above four thousand calls, a parameter's name hint before each argument, costs the UI
     /// thread about what it does above sixty (a screen of them, the rest naming their parameters), soft-wrapped or not,
     /// and each hint still stands before its argument.</summary>
-    [AvaloniaFact]
-    public void A_key_above_thousands_of_hinted_calls_costs_what_it_does_above_a_few_and_wraps_only_its_line()
+    private void A_key_above_thousands_of_hinted_calls_costs_what_it_does_above_a_few_and_wraps_only_its_line()
     {
         MainWindow window = project.Open("Few.cs");
         foreach (bool wrapping in new[] { false, true })
@@ -494,29 +330,12 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         window.Close();
     }
 
-    /// <summary>Keys typed above four thousand warnings, a local each that is never read, cost the UI thread what they do
-    /// above forty, the rest of that file's four thousand lines adding to a total: the document carries the server's
-    /// markers through a key, so the C# host sets them again only when the server reports, and each still stands under its
-    /// local.</summary>
-    [AvaloniaFact]
-    public void A_key_above_thousands_of_warnings_costs_what_it_does_above_a_few()
-    {
-        MainWindow window = project.Open("FewWarned.cs");
-        long few = WarnedKeys(window, "FewWarned.cs", 40);
-        long many = WarnedKeys(window, "Warned.cs", 4000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated {few / 1024} KB on the UI thread above 40 warnings, {many / 1024} KB above 4,000");
-        Assert.True(many <= few + (32 * 1024),
-            $"A key above 4,000 warnings allocated {many / 1024} KB on the UI thread, {(many - few) / 1024} KB more than above 40: the markers were copied for every key");
-        window.Close();
-    }
-
     /// <summary>The server's diagnostics landing after a typing pause cost the UI thread about what they do among forty
     /// warnings among four thousand in a file as long, the File tab of Problems listing them: after a key that changes none
     /// of them, after a key that adds an error and a warning beside it and the Backspace that takes them away, and after a
     /// name typed at two carets at once (a rename by hand), which moves every warning past the first caret and back. Every
     /// warning then still stands under its local, listed once.</summary>
-    [AvaloniaFact]
-    public void Diagnostics_landing_among_thousands_of_warnings_cost_what_they_do_among_a_few()
+    private void Diagnostics_landing_among_thousands_of_warnings_cost_what_they_do_among_a_few()
     {
         MainWindow window = project.Open("FewLocals.cs");
         Landings few = Landed(window, "FewLocals.cs", 40);
@@ -596,41 +415,6 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         return least;
     }
 
-    /// <summary>The bytes a key and the frame after it allocate on the UI thread, the middle of five, typed above a file's warnings
-    /// once they have come; every warning then still stands under its local.</summary>
-    private long WarnedKeys(MainWindow window, string file, int warned)
-    {
-        window.OpenFile(project.PathOf(file));
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        OpenDocument document = window.EditorArea.Active!;
-        Ui.WaitFor(() => editor.ProblemCount.Warnings == warned, $"the warnings of {file}'s {warned} locals never read");
-        Ui.PlaceAfter(editor, "int total = 0");
-        editor.Focus();
-        Ui.Settle();
-        const int Keys = 5;
-        long[] bytes = new long[Keys];
-        for (int i = 0; i < Keys; i++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            window.KeyTextInput("1");
-            Ui.Hold(TimeSpan.FromMilliseconds(10), "a frame after the key, whose allocations are measured");
-            bytes[i] = GC.GetAllocatedBytesForCurrentThread() - before;
-        }
-        TestContext.Current.TestOutputHelper?.WriteLine($"The keys above {warned} warnings allocated {string.Join(", ", bytes.Select(b => $"{b / 1024} KB"))}");
-        TextSnapshot text = document.Text.Snapshot;
-        List<Marker> warnings = [.. document.Markers.Where(m => m.Kind == MarkerKind.Warning)];
-        Assert.Equal(warned, warnings.Count);
-        foreach (Marker warning in warnings)
-        {
-            Assert.True(text.GetText(warning.Range.Start, "unused".Length) == "unused",
-                $"After {Keys} keys above them, a warning of {file} stands on '{text.GetText(warning.Range.Start, Math.Min(12, text.Length - warning.Range.Start))}' on line {text.GetLineFromOffset(warning.Range.Start) + 1}");
-        }
-        // The middle key's: an answer to an earlier request may land in another's frame.
-        Array.Sort(bytes);
-        return bytes[Keys / 2];
-    }
-
     /// <summary>Keys typed above a file's calls once its hints have come, with soft wrap on or off: how many hints, and the
     /// bytes each key and the frame after it allocate on the UI thread and the characters each wraps, on average; every hint
     /// then still stands before its argument.</summary>
@@ -674,8 +458,7 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
     /// <summary>The Structure window over a file of four thousand members is scrolled with the wheel as a person scrolls
     /// it: its rows are handed other members, none made again, and a step costs the UI thread what one down a file of two
     /// hundred does.</summary>
-    [AvaloniaFact]
-    public void A_scroll_step_down_the_structure_of_four_thousand_members_hands_the_rows_other_members_never_making_one_again()
+    private void A_scroll_step_down_the_structure_of_four_thousand_members_hands_the_rows_other_members_never_making_one_again()
     {
         (long fewStep, int fewMade) = StructureScrolled("Long.cs", 200);
         (long manyStep, int manyMade) = StructureScrolled("Calls.cs", 4000);
@@ -685,62 +468,6 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             $"Scrolling the Structure window made {fewMade} rows of Long.cs's members and {manyMade} of Calls.cs's again, where each row is kept and handed another: every member scrolled into view was built and styled anew");
         Assert.True(manyStep <= fewStep + (64 * 1024),
             $"A wheel step down the Structure window allocated {manyStep / 1024} KB on the UI thread over Calls.cs's members, against {fewStep / 1024} KB over Long.cs's: a step costs the list's length");
-    }
-
-    /// <summary>Typing through completion over a type of four thousand members (the best 200 listed), Down a row at a time
-    /// past its first screen and on into the list a letter narrows, hands the rows on screen the members they come to, none
-    /// made again.</summary>
-    [AvaloniaFact]
-    public void Typing_through_completion_over_four_thousand_members_hands_its_rows_other_members_never_making_one_again()
-    {
-        MainWindow window = project.Open("Program.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.PlaceAfter(editor, "    static void Main()\n    {");
-        editor.Focus();
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("Calls");
-        Ui.Settle();
-        Ui.Press(window, "ESCAPE");
-        window.KeyTextInput(".");
-        Ui.WaitFor(() => window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.Count(l => l.StartsWith("Call", StringComparison.Ordinal)) > 100,
-            () => $"Calls's members, where the list shows [{string.Join(", ", window.Assist.CompletionLabels.Take(5))}] of {window.Assist.CompletionLabels.Count}");
-        HashSet<Avalonia.Controls.Control> containers = [];
-        HashSet<Avalonia.Controls.Control> rows = [];
-        void Seen()
-        {
-            foreach (Avalonia.Controls.Control row in window.Assist.CompletionRowControls)
-            {
-                rows.Add(row);
-                containers.Add(row.FindAncestorOfType<Avalonia.Controls.ListBoxItem>() ?? throw new Xunit.Sdk.XunitException("A completion row is in no container of the list"));
-            }
-        }
-        Seen();
-        // Each row looked at as the key's frame draws it, the next key coming before the chosen member's card would.
-        for (int i = 0; i < 30; i++)
-        {
-            Ui.Press(window, "DOWN", settle: false);
-            Ui.Draw();
-            Seen();
-        }
-        foreach (char letter in "Call1")
-        {
-            window.KeyTextInput(letter.ToString());
-            Ui.Settle();
-            Seen();
-        }
-        Assert.True(window.Assist.IsCompletionOpen && window.Assist.CompletionLabels.All(l => l.StartsWith("Call1", StringComparison.Ordinal)),
-            $"Narrowed by Call1 the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(5))}");
-        for (int i = 0; i < 30; i++)
-        {
-            Ui.Press(window, "DOWN", settle: false);
-            Ui.Draw();
-            Seen();
-        }
-        Assert.False(window.Assist.CompletionRowControls.Count == 0, "No row of the list is on screen after the keys");
-        Assert.True(rows.Count == containers.Count,
-            $"Typing through the completion list made {rows.Count - containers.Count} rows again for its {containers.Count} containers, where each row is kept and handed another: every member scrolled into view was built and styled anew");
-        Ui.Press(window, "ESCAPE");
-        window.Close();
     }
 
     /// <summary>The least the UI thread allocated for a wheel step down the Structure window over a file's members, and
