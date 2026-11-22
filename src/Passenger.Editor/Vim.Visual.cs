@@ -561,10 +561,12 @@ public sealed partial class Vim
                     moved = Target(command, text, cursor, operating: false, view)?.Offset;
                     break;
             }
-            if (moved is not { } to)
+            if (moved is not { } reached)
             {
                 continue;
             }
+            // Past the last line a visual cursor stands at its end, after its last character.
+            int to = Math.Min(reached, LineEndOf(text, VimMotions.LastLine(text, breakEnds)));
             regions[i] = r with { Cursor = to };
             visualAims[i] = aim;
             if (block)

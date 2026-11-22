@@ -206,7 +206,6 @@ public sealed partial class VimTests
             + $"by a sentence's end, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
         ($"( and ) about a paragraph opened by a sentence's end; {ToFix}",
             (vimCase, _, passenger) => vimCase.Keys.Any(key => key is "(" or ")") && passenger.Seen.Contains(OpenedByAnEnd)),
-        ($"Visual mode's cursor goes past the last line; {ToFix}", (_, _, passenger) => passenger.Seen.Contains(VisualPastEnd)),
         ($"Visual block mode's corners: a block over a line's last character, its I and A, ~ and J after o; {ToFix}", (vimCase, _, _) => vimCase.Uses(Block)),
         ($"I and A over a visual stretch by characters or lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(VisualInsert)),
     ];
@@ -229,7 +228,6 @@ public sealed partial class VimTests
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
     private const string LoneEmptyLine = "a text of one empty line";
-    private const string VisualPastEnd = "a visual cursor past the last line";
     private const string VisualObject = "a text object in visual mode";
     private const string SentenceObject = "is or as";
     private const string OpenedByAnEnd = "a paragraph opened by a sentence's end";
@@ -571,7 +569,7 @@ public sealed partial class VimTests
     {
         foreach (string key in keys)
         {
-            Observe(vim, text, carets, seen);
+            Observe(text, seen);
             VimResult result = vim.Press(key, text, carets, view);
             seen.UnionWith(result.Action is not null || result.Request is { Kind: not VimRequestKind.Commands } ? [Asked] : []);
             if (result.Replay is { } replay)
@@ -619,21 +617,20 @@ public sealed partial class VimTests
                 carets = Vim.Settled(text, carets, view.KeepsFinalLineBreak);
             }
         }
-        Observe(vim, text, carets, seen);
+        Observe(text, seen);
         return (text, carets);
     }
 
     /// <summary>A key that asked the host for what only a window does.</summary>
     private const string Asked = "asked the host";
 
-    /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a text of one empty line, a visual
-    /// cursor on the place after the final line break, a paragraph opened by a sentence's end.</summary>
-    private static void Observe(Vim vim, TextSnapshot text, SelectionSet carets, HashSet<string> seen)
+    /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a text of one empty line, a paragraph
+    /// opened by a sentence's end.</summary>
+    private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
         seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span && (line == 0 || text.GetLine(line - 1).Length == 0)
             && text[span.Start] is '.' or '!' or '?' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
         seen.UnionWith(text.Length == 0 || (text.Length == 1 && text[0] == '\n') ? [LoneEmptyLine] : []);
-        seen.UnionWith(Vim.IsVisual(vim.Mode) && vim.VisualCursors(carets).Any(cursor => cursor >= text.Length) ? [VisualPastEnd] : []);
     }
 
     /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>
