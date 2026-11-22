@@ -49,7 +49,8 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>A scenario is marked before a build and Run Tests at its caret runs it and marks its result; a
     /// scenario with examples binds its steps for each row and its run mark runs a row for each example; a breakpoint
-    /// on a step stops there, Step Into goes into its definition and Step Over to the next step.</summary>
+    /// on a step stops there, Step Into goes into its definition and Step Over to the next step; after a run each step
+    /// shows its outcome; a code-behind under obj still finds its test.</summary>
     [AvaloniaFact]
     public void A_scenario_runs_and_debugs_from_its_caret_each_example_a_row_and_each_step_a_place_to_stop()
     {
@@ -66,6 +67,16 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
         Flow.StepApart<BddRunTests>("a breakpoint on a step stops there step into goes into its definition and step over goes to the next step", () => new BddRunTests(folders), t =>
         {
             t.A_breakpoint_on_a_step_stops_there_step_into_goes_into_its_definition_and_step_over_goes_to_the_next_step();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddStepRunTests>("after a run each step shows its outcome, the failure its words and stack, and an example row runs alone", () => new BddStepRunTests(folders), t =>
+        {
+            t.After_a_run_each_step_shows_its_outcome_the_failure_its_words_and_stack_and_an_example_row_runs_alone();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddIntermediateRunTests>("a scenario whose code-behind its build writes under obj runs from its caret", () => new BddIntermediateRunTests(folders), t =>
+        {
+            t.A_scenario_whose_code_behind_is_under_obj_runs_from_its_caret();
             OpenWindows.CloseAll();
         });
     }
@@ -184,10 +195,9 @@ public sealed class BddRunTests : IClassFixture<RestoredFolders>, IDisposable
 }
 
 /// <summary>A Reqnroll project whose code-behind its build writes under obj (ReqnrollUseIntermediateOutputPathForCodeBehind),
-/// where the folder's walk never reads: a scenario run from its caret still finds its test by its feature line. Runs tests
-/// through the window, so the class runs alone.</summary>
-[Collection(Alone.Name)]
-public sealed class BddIntermediateRunTests : IClassFixture<RestoredFolders>, IDisposable
+/// where the folder's walk never reads: a scenario run from its caret still finds its test by its feature line. A step of
+/// <see cref="BddRunTests"/>' flow, which runs alone.</summary>
+public sealed class BddIntermediateRunTests : IDisposable
 {
     private readonly string folder;
 
@@ -198,8 +208,7 @@ public sealed class BddIntermediateRunTests : IClassFixture<RestoredFolders>, ID
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    [AvaloniaFact]
-    public void A_scenario_whose_code_behind_is_under_obj_runs_from_its_caret()
+    internal void A_scenario_whose_code_behind_is_under_obj_runs_from_its_caret()
     {
         MainWindow window = Ui.OpenFolder(folder, width: 1400, height: 900);
         try

@@ -1,4 +1,3 @@
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.Core;
 
@@ -7,8 +6,7 @@ namespace Passenger.Tests;
 /// <summary>The tests a folder's test projects declare, kept in the state's cache as the folder's opening read them: the
 /// next opening of the folder parses only the files changed since, and finds every test the first found and those the
 /// change made, the tests of an attribute the project derives and those an abstract class leaves to the classes deriving
-/// from it read as the first read them.</summary>
-[SameOnEverySystem]
+/// from it read as the first read them. A step of <see cref="UnitTestsTests"/>' flow.</summary>
 public sealed class TestsCacheTests : IDisposable
 {
     private const int Sums = 12;
@@ -40,8 +38,7 @@ public sealed class TestsCacheTests : IDisposable
         TestFolders.Delete(state);
     }
 
-    [AvaloniaFact]
-    public void A_second_opening_parses_only_the_test_files_changed_since_and_finds_every_test_the_first_did()
+    internal void A_second_opening_parses_only_the_test_files_changed_since_and_finds_every_test_the_first_did()
     {
         (int firstParsed, string[] first, ulong? sharedCode) = Opened(Sums * 2 + 2);
         Assert.Contains("Cache.Tests.OwnTests.Via_its_own_attribute", first);

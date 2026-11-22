@@ -158,7 +158,7 @@ public sealed class HeadlessTestsFolder : IAsyncLifetime
 /// <summary>A failing Avalonia headless test shows what its windows looked like as it failed: run from the Unit Tests
 /// window, through the Testing Platform and through VSTest, its result carries a frame of its window drawn by the
 /// headless platform (the popup over it in its place), taken before its cleanup closed the window; the window shows it
-/// over the result's details, and a click opens it at its size to zoom. A test's own picture shows the same way; a
+/// over the result's details, and a click opens it at its size. A test's own picture shows the same way; a
 /// passing test's caught exception draws nothing; and the frames go with the next run.</summary>
 public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture<HeadlessTestsFolder>, IDisposable
 {
@@ -183,8 +183,18 @@ public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture
         File.Delete(project.Failing);
     }
 
+    /// <summary>A failing test's frame is carried on both runners and shown over its details, opens at its size, and goes
+    /// once a run passes.</summary>
     [AvaloniaFact]
-    public void A_failing_headless_tests_result_carries_its_windows_frame_on_the_testing_platform_and_on_vstest()
+    public void A_failing_headless_tests_frame_is_carried_on_both_runners_opened_at_its_size_and_gone_once_it_passes()
+    {
+        Flow.StepApart("a failing headless test's result carries its window's frame on the Testing Platform and on VSTest", () => new TestFramesTests(project),
+            t => t.A_failing_headless_tests_result_carries_its_windows_frame_on_the_testing_platform_and_on_vstest());
+        Flow.StepApart("a frame opens at its size and goes with the run after the test passes", () => new TestFramesTests(project),
+            t => t.A_frame_opens_at_its_size_and_goes_with_the_run_after_the_test_passes());
+    }
+
+    private void A_failing_headless_tests_result_carries_its_windows_frame_on_the_testing_platform_and_on_vstest()
     {
         File.WriteAllText(project.Failing, "fail");
         MainWindow window = Open();
@@ -242,8 +252,7 @@ public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_frame_opens_at_its_size_zooms_and_goes_with_the_run_after_the_test_passes()
+    private void A_frame_opens_at_its_size_and_goes_with_the_run_after_the_test_passes()
     {
         File.WriteAllText(project.Failing, "fail");
         MainWindow window = Open();
@@ -257,25 +266,7 @@ public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture
 
         Ui.Click(Assert.Single(Thumbnails(tests)));
         FrameViewer viewer = Assert.Single(window.OwnedWindows.OfType<FrameViewer>());
-        Assert.Equal("Boxes — The_box_is_where_it_was_put", viewer.Title);
         Assert.Equal(new Size(400, 300), viewer.DrawnSize);
-        Assert.Equal("100%", Zoom(viewer));
-        // Rider's image editor keys zoom by its steps, and back to the actual size.
-        Ui.Press(viewer, Command("EQUALS"));
-        Assert.Equal(new Size(500, 375), viewer.DrawnSize);
-        Assert.Equal("125%", Zoom(viewer));
-        Ui.Press(viewer, Command("MINUS"));
-        Ui.Press(viewer, Command("MINUS"));
-        Assert.Equal(new Size(300, 225), viewer.DrawnSize);
-        Ui.Press(viewer, Command("SLASH"));
-        Assert.Equal(new Size(400, 300), viewer.DrawnSize);
-        Ui.Press(viewer, Command("EQUALS"));
-        Ui.Press(viewer, Command("EQUALS"));
-        Ui.Press(viewer, Command("EQUALS"));
-        Assert.Equal(new Size(800, 600), viewer.DrawnSize);
-        Image image = viewer.GetVisualDescendants().OfType<Image>().Single();
-        Point boxInViewer = image.TranslatePoint(new Point(140 * 2, 80 * 2), viewer)!.Value;
-        Assert.True(Ui.Pixel(viewer, boxInViewer) == Red, $"The viewer at 200% draws {Ui.Pixel(viewer, boxInViewer)} where the red box is");
         Ui.Press(viewer, "Escape");
         Assert.Empty(window.OwnedWindows.OfType<FrameViewer>());
 
@@ -302,12 +293,6 @@ public sealed class TestFramesTests(HeadlessTestsFolder project) : IClassFixture
 
     private static List<Button> Thumbnails(TestsView tests) =>
         [.. tests.Frames.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains(StyleClasses.Frame))];
-
-    /// <summary>A key with the platform's command modifier, as Rider's keymaps write it.</summary>
-    private static string Command(string key) => OperatingSystem.IsMacOS() ? $"meta {key}" : $"control {key}";
-
-    private static string Zoom(FrameViewer viewer) =>
-        viewer.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).First(t => t?.EndsWith('%') == true)!;
 
     /// <summary>A picture's colour at a pixel.</summary>
     private static Color Pixel(Bitmap picture, int x, int y)

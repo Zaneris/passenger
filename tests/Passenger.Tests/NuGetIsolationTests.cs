@@ -1,4 +1,3 @@
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.Core;
 using Passenger.Packages;
@@ -26,8 +25,8 @@ public sealed class NuGetIsolationTests : IDisposable
             $"A restore in a test's folder would take the package sources [{string.Join(", ", sources)}], so a package the cache lacks would come from there rather than fail the test");
     }
 
-    [AvaloniaFact]
-    public void The_nuget_window_on_a_test_folder_finds_no_feed_audit_source_or_mapping_in_effect_but_the_runs_clearing_file_above_it()
+    /// <summary>A step of <see cref="PackageSourcesTests"/>' flow, apart from this class's plain test.</summary>
+    internal void The_nuget_window_on_a_test_folder_finds_no_feed_audit_source_or_mapping_in_effect_but_the_runs_clearing_file_above_it()
     {
         TestFolders.Write(folder, "Lib.csproj", TestProjects.Library());
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

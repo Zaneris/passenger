@@ -1,4 +1,3 @@
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -9,8 +8,9 @@ namespace Passenger.Tests;
 /// <summary>A SpecFlow project's features, as a Reqnroll one's: its bindings read from TechTalk.SpecFlow's attributes (here a
 /// library of the solution's own declaring them, as SpecFlow's assembly does, so no package is restored), its steps
 /// matched, and a missing step's definition written in SpecFlow's default style, a regular expression, into a new file
-/// where no class binds its feature's steps, its lines ending as its .editorconfig asks.</summary>
-public sealed class BddSpecFlowTests : IClassFixture<RestoredFolders>, IDisposable
+/// where no class binds its feature's steps, its lines ending as its .editorconfig asks. Steps of <see cref="BddTests"/>'
+/// flow.</summary>
+public sealed class BddSpecFlowTests : IDisposable
 {
     private readonly string folder;
 
@@ -41,8 +41,7 @@ public sealed class BddSpecFlowTests : IClassFixture<RestoredFolders>, IDisposab
         return Path.Combine(PathNames.Canonical(made), "Shop.slnx");
     }
 
-    [AvaloniaFact]
-    public void A_specflow_projects_steps_are_matched_and_a_missing_one_is_defined_as_a_regular_expression()
+    internal void A_specflow_projects_steps_are_matched_and_a_missing_one_is_defined_as_a_regular_expression()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -68,8 +67,7 @@ public sealed class BddSpecFlowTests : IClassFixture<RestoredFolders>, IDisposab
         }
     }
 
-    [AvaloniaFact]
-    public void A_step_of_a_feature_no_class_binds_is_defined_in_a_new_file_whose_lines_end_as_its_editorconfig_asks()
+    internal void A_step_of_a_feature_no_class_binds_is_defined_in_a_new_file_whose_lines_end_as_its_editorconfig_asks()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try

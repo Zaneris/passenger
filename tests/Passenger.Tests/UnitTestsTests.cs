@@ -279,7 +279,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// is said with the test running then, is no pass in Local History and ends Run Until Failure; an assembly VSTest
     /// cannot look through hides no other project's tests; a test renamed as it runs is counted and a deleted file's
     /// tests leave the window; a project's run settings give their variables to its tests; a run's results come back
-    /// when the folder opens again.</summary>
+    /// when the folder opens again, which parses only the test files changed since.</summary>
     [AvaloniaFact]
     public void A_run_that_crashes_hangs_or_is_stopped_says_so_and_ends_whole_and_a_runs_settings_and_results_are_kept()
     {
@@ -316,6 +316,11 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Flow.StepApart<UnitTestsTests>("a run's results come back as an earlier run's when the folder opens again until the tests run again", () => new UnitTestsTests(restored), t =>
         {
             t.A_runs_results_come_back_as_an_earlier_runs_when_the_folder_opens_again_until_the_tests_run_again();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<TestsCacheTests>("a second opening parses only the test files changed since and finds every test the first did", t =>
+        {
+            t.A_second_opening_parses_only_the_test_files_changed_since_and_finds_every_test_the_first_did();
             OpenWindows.CloseAll();
         });
     }

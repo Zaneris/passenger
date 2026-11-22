@@ -49,7 +49,7 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>Bindings read from code and a referenced library with no build; an unbound step marked, a bound one's
     /// card and declaration leading to its definition; Find Usages and completion of steps; a context action writing an
     /// unbound step's definition; Rename of a definition and its steps, an outline's left as written; a feature in
-    /// another language than its project's marked.</summary>
+    /// another language than its project's marked; arguments checked as Reqnroll converts them; SpecFlow's steps.</summary>
     [AvaloniaFact]
     public void A_projects_step_definitions_are_read_from_code_and_bind_mark_find_complete_and_rename_its_steps()
     {
@@ -81,6 +81,26 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
         Flow.StepApart<BddTests>("a feature written in another language than its project's is marked saying so and the project's load problem names it", () => new BddTests(folders), t =>
         {
             t.A_feature_written_in_another_language_than_its_projects_is_marked_saying_so_and_the_projects_load_problem_names_it();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddArgumentTests>("an argument or a table column its step's definition cannot take as Reqnroll converts them is marked where written", () => new BddArgumentTests(folders), t =>
+        {
+            t.An_int_a_date_an_enum_a_transformation_and_a_table_column_its_definition_cannot_take_are_each_marked_saying_what_it_takes();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddArgumentTests>("a date in a project whose features are in Austrian German is read as its run converts it", () => new BddArgumentTests(folders), t =>
+        {
+            t.A_date_in_a_project_whose_features_are_in_austrian_german_is_read_as_its_run_converts_it();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddSpecFlowTests>("a SpecFlow project's steps are matched and a missing one is defined as a regular expression", () => new BddSpecFlowTests(folders), t =>
+        {
+            t.A_specflow_projects_steps_are_matched_and_a_missing_one_is_defined_as_a_regular_expression();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<BddSpecFlowTests>("a step of a feature no class binds is defined in a new file whose lines end as its .editorconfig asks", () => new BddSpecFlowTests(folders), t =>
+        {
+            t.A_step_of_a_feature_no_class_binds_is_defined_in_a_new_file_whose_lines_end_as_its_editorconfig_asks();
             OpenWindows.CloseAll();
         });
     }

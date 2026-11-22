@@ -15,7 +15,9 @@ namespace Passenger.Tests;
 /// <summary>The Requests window: a web app on EF Core and SQLite that Run runs, followed while the window shows with no
 /// change to the app, lists each request it serves with its status, the route of the folder's code it reached and the SQL
 /// commands it issued, a command run again and again for one request marked (an N+1), a value its Password column takes
-/// as dots; a request opens at its handler, one that failed where its exception was thrown.</summary>
+/// as dots; a request opens at its handler, one that failed where its exception was thrown. A step debugs a web app
+/// through the window, so the class runs alone.</summary>
+[Collection(Alone.Name)]
 public sealed class LiveRequestsTests
 {
     private const string Program = """
@@ -90,8 +92,8 @@ public sealed class LiveRequestsTests
 
     /// <summary>The Requests window lists a running app's requests with their routes and commands and opens their
     /// handlers, each request of one trace with its own commands; a runtime that takes no session is said and asked no
-    /// more, nor is one the window stopped looking at; it follows a web app Run runs in the terminal; a thousand
-    /// requests scroll on rows made once, and a request heard costs what it changed however many are listed.</summary>
+    /// more, nor is one the window stopped looking at; it follows a web app Run runs in the terminal and one Debug
+    /// launches; a thousand requests scroll on rows made once, and a request heard costs what it changed.</summary>
     [AvaloniaFact]
     public void The_Requests_window_lists_a_running_apps_requests_while_someone_looks_and_costs_what_each_changed()
     {
@@ -118,6 +120,11 @@ public sealed class LiveRequestsTests
         Flow.StepApart<LiveRequestsTests>("the requests window follows a web app Run runs in the terminal", t =>
         {
             t.The_requests_window_follows_a_web_app_Run_runs_in_the_terminal();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<LiveRequestsDebuggingTests>("the requests window follows a web app Debug launches as it follows Run's", t =>
+        {
+            t.A_debugged_apps_requests_are_followed_as_a_run_ones_are();
             OpenWindows.CloseAll();
         });
         Flow.StepApart<LiveRequestsTests>("a scroll step down a thousand requests a running app answered hands the rows other requests never making one again", t =>

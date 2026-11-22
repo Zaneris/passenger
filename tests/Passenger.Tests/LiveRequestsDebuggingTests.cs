@@ -1,17 +1,14 @@
 using System.Net.Http;
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Endpoints;
 
 namespace Passenger.Tests;
 
 /// <summary>The Requests window follows a web app Debug launches as it follows Run's: LiveRequestsTests' shop, debugged, lists
-/// the request it serves with its command. Alone, since it debugs through the window.</summary>
-[Collection(Alone.Name)]
+/// the request it serves with its command. A step of <see cref="LiveRequestsTests"/>' flow.</summary>
 public sealed class LiveRequestsDebuggingTests
 {
-    [AvaloniaFact]
-    public void A_debugged_apps_requests_are_followed_as_a_run_ones_are()
+    internal void A_debugged_apps_requests_are_followed_as_a_run_ones_are()
     {
         using HeldPort port = new();
         string folder = TestFolders.Create("requests-debug-");

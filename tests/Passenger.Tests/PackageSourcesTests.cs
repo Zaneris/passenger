@@ -21,7 +21,7 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
     /// <summary>The folder's feeds are listed, searched one or all, disabled and enabled, and a new one written into
     /// its nuget.config; a feed added to a nuget.config open in a tab outside the folder shows there; a feed's search
     /// on another host that asks for credentials is refused and never sent them; installing from the private feed
-    /// restores with its credentials, which nothing logs.</summary>
+    /// restores with its credentials, which nothing logs; a test's folder takes no feed of the person's.</summary>
     [AvaloniaFact]
     public void A_folders_feeds_are_listed_and_edited_and_their_credentials_go_only_to_their_own_host_and_nowhere_in_a_log()
     {
@@ -43,6 +43,11 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
         Flow.StepApart<PackageSourcesTests>("installing from the private feed restores with its credentials which nothing logs", t =>
         {
             t.Installing_from_the_private_feed_restores_with_its_credentials_which_nothing_logs();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetIsolationTests>("the NuGet window on a test's folder finds no feed, audit source or mapping in effect but the run's clearing file above it", t =>
+        {
+            t.The_nuget_window_on_a_test_folder_finds_no_feed_audit_source_or_mapping_in_effect_but_the_runs_clearing_file_above_it();
             OpenWindows.CloseAll();
         });
     }
