@@ -608,14 +608,20 @@ public sealed partial class PassengerTools
 
     /// <summary>What the Problems window lists beyond a file's diagnostics, as diagnostics with no path or a folder's answers
     /// it: within the folder, of the severity and project asked, each list's severest first, by file and place, held to
-    /// <see cref="AgentAnswers.MostFindings"/> in all, saying what it left out.</summary>
+    /// <see cref="AgentAnswers.MostFindings"/> in all, saying what it left out; with C#, once the language server answers
+    /// for the projects as they stand (<see cref="SettledServer"/>), refused as that refuses.</summary>
     private Task<ProblemsInfo> Problems(string? within, string? severity, string? project, CancellationToken cancel) => OnUi(cancel, async () =>
     {
         global::Passenger.Workspace.ProjectModel? named = project is null ? null : Project(project);
+        string? without = null;
+        if (Session.CSharp is not null)
+        {
+            // Toolset is what the server said of each project's load, solution what it found: of the projects loaded as they stand.
+            await SettledServer(cancel);
+            without = WentWithout(await UntakenAsync(cancel) ?? []);
+        }
         if (Session.CSharp is { SolutionWide: true })
         {
-            // Its first answers come once the server has loaded the solution and analysed it.
-            await Server(cancel);
             // Looked at every 50 ms: the server's solution-wide pulls raise nothing as the last is answered.
             await Until(() => Session.CSharp is not { IsAnalysing: true }, ServerLimit, cancel);
         }
@@ -632,7 +638,7 @@ public sealed partial class PassengerTools
         int leftOut = left.Sum();
         string? more = leftOut == 0 ? null : AgentAnswers.More(leftOut, "finding",
             $"{LeftOut(left)}; diagnostics with severity, project or a folder's path lists fewer at once, with a file's path that file's own");
-        return new ProblemsInfo(kept[0], kept[1], solution is null ? null : kept[2]) { More = more };
+        return new ProblemsInfo(kept[0], kept[1], solution is null ? null : kept[2]) { More = more is null ? without : without is null ? more : $"{more}. {without}" };
 
         bool Within(string? path, string? owner) =>
             (within is null || (path is not null && PathNames.Within(path, within)))
@@ -699,6 +705,7 @@ public sealed record HistoryRowInfo(long Set, string Time, string Title, bool La
 /// solution's with solution-wide analysis on (null while it is off).</summary>
 public sealed record ProblemsInfo(IReadOnlyList<Finding> Toolset, IReadOnlyList<Finding> Build, IReadOnlyList<Finding>? Solution)
 {
-    /// <summary>How many findings past those listed were left out, of which severities, and how to read them.</summary>
+    /// <summary>How many findings past those listed were left out, of which severities, and how to read them; then the C#
+    /// files and projects the language server had not taken in or loaded again yet, which the lists went without.</summary>
     public string? More { get; init; }
 }

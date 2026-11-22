@@ -147,7 +147,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new InvalidOperationException($"{Session.WhyNoCSharp}, and routes are read from code through it");
         }
-        await When(() => Session.CSharp is not { } csharp || csharp.IsReady || csharp.IsStopped, ServerLimit, cancel, ServerState());
+        await SettledServer(cancel);
         IReadOnlyList<Roslyn.Extension.WebRoute> found = await window.RoutesAsync(cancel);
         return HeldWorkspace(answered with
         {
@@ -1296,7 +1296,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             throw new ArgumentException($"No kind '{kind}'; Go to Symbol's kinds are {string.Join(", ", SymbolKinds.All)}", nameof(kind));
         }
         // Found once the C# files come under the folder's projects are in them (one just made may declare it), saying any left out.
-        await Server(cancel);
+        await SettledServer(cancel);
         IReadOnlyList<(string Path, string Project)> untaken = await UntakenAsync(cancel) ?? [];
         RoslynSession session = await Server(cancel);
         string? without = WentWithout(untaken);
@@ -1366,7 +1366,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException("Give symbol, a name, or path, line and column, a place: not both");
         }
-        SymbolsNamed named = await NamedAsync(await Server(cancel), symbol, null, 10, cancel);
+        SymbolsNamed named = await NamedAsync(await SettledServer(cancel), symbol, null, 10, cancel);
         return named.Symbols.Count == 1 ? new CodePlace(named.Symbols[0].Path, named.Symbols[0].Line, named.Symbols[0].Column)
             : throw new InvalidOperationException($"{symbol} names {Plural.Of(named.Symbols.Count + named.More, "symbol")} of the solution's own code: "
                 + $"{string.Join("; ", named.Symbols.Select(n => n.ToString()))}{(named.More > 0 ? $"; and {Numbers.Said(named.More)} more" : string.Empty)}. Name one by its container, "
@@ -1415,7 +1415,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     /// card says.</summary>
     private async Task<string> SymbolsInfo(string symbol, CancellationToken cancel)
     {
-        SymbolsNamed named = await NamedAsync(await Server(cancel), symbol, null, 10, cancel);
+        SymbolsNamed named = await NamedAsync(await SettledServer(cancel), symbol, null, 10, cancel);
         List<string> each = [];
         foreach (NamedPlace place in named.Symbols)
         {
@@ -3704,12 +3704,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 : $"The language server has not loaded {Path.GetFileName(document.Path)} ({Session.CSharp?.State ?? "none"})"));
     }
 
-    /// <summary>Waits until the C# language server answers for a file of the folder's as its projects stand, and <paramref name="held"/>
-    /// holds: answers before the solution has loaded, or before what a restore as it loaded brought (the projects' load
-    /// after it, their generators' run, the files its builds wrote read again), are of the code before, so the agent is
-    /// told what it waits for. Refused once the server has stopped, when the time is up with the load or what the restore
-    /// brought still to come, and when the server's generators' wait ran out meanwhile with what it waited for unread.</summary>
-    private async Task ServerSettledAsync(string path, Func<CSharpService, bool> held, CancellationToken cancel)
+    /// <summary>Waits until the C# language server answers for a file of the folder's, or with none the whole solution, as
+    /// its projects stand, and <paramref name="held"/> holds: answers before the solution has loaded, or before what a restore
+    /// as it loaded brought (the projects' load after it, their generators' run, the files its builds wrote read again), are
+    /// of the code before, so the agent is told what it waits for. Refused once the server has stopped, when the time is up
+    /// with any of it still to come, and when the generators' wait ran out meanwhile with what it waited for unread.</summary>
+    private async Task ServerSettledAsync(string? path, Func<CSharpService, bool> held, CancellationToken cancel)
     {
         await LookedAgainForCodeAsync(cancel);
         string? reloading = null;
@@ -3717,20 +3717,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         bool settled = false;
         long began = System.Diagnostics.Stopwatch.GetTimestamp();
         // Looked at every 50 ms.
-        await Until(() =>
+        await Until(Settled, ServerLimit, cancel);
+        if (settled)
         {
-            if (Session.CSharp is not { } csharp || csharp.IsStopped)
-            {
-                return settled = true;
-            }
-            if (csharp.IsReady && csharp.ReloadingWhat(path) is var what && what != reloading)
-            {
-                reloading = what;
-                waited |= what is not null;
-                AgentCall.Say(what is null ? null : $"Waiting for {what}");
-            }
-            return settled = csharp.IsReady && reloading is null && !csharp.AwaitsRestore(path) && held(csharp);
-        }, ServerLimit, cancel);
+            // The load's end is heard on the server's thread, what it said before it on this one only in its turn: heard, then looked at again.
+            await PostedHeardAsync().WaitAsync(cancel);
+            await Until(Settled, ServerLimit - System.Diagnostics.Stopwatch.GetElapsedTime(began), cancel);
+        }
         if (reloading is not null)
         {
             AgentCall.Say(null);
@@ -3747,11 +3740,49 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new TimeoutException(Refusals.StillLoading(ServerLimit, unready.State));
         }
-        if (!settled && (reloading ?? (Session.CSharp?.AwaitsRestore(path) == true ? $"the C# language server to restore {Session.ProjectOf(path)?.Name}" : null)) is { } coming)
+        if (!settled && (reloading ?? (Session.CSharp is { } restoring && RestoreAwaited(restoring) is { } project ? $"the C# language server to restore {project}" : null)) is { } coming)
         {
             throw new TimeoutException(Refusals.StillComing(ServerLimit, coming));
         }
         await WrittenTakenInAsync(cancel);
+
+        bool Settled()
+        {
+            if (Session.CSharp is not { } csharp || csharp.IsStopped)
+            {
+                return settled = true;
+            }
+            if (csharp.IsReady && csharp.ReloadingWhat(path) is var what && what != reloading)
+            {
+                reloading = what;
+                waited |= what is not null;
+                AgentCall.Say(what is null ? null : $"Waiting for {what}");
+            }
+            return settled = csharp.IsReady && reloading is null && RestoreAwaited(csharp) is null && held(csharp);
+        }
+
+        // The project whose restore the answer waits for, by name: the file's, or with none, any the server loaded.
+        string? RestoreAwaited(CSharpService csharp) => path is null ? csharp.RestoreAwaited()
+            : csharp.AwaitsRestore(path) ? Session.ProjectOf(path)?.Name ?? string.Empty : null;
+    }
+
+    /// <summary>Done once the window's thread has run what was posted to it before now at <see cref="UiThread.Post(Action,
+    /// string, int)"/>'s priority, below a wait's own turns: the C# language server's words among it.</summary>
+    private static Task PostedHeardAsync()
+    {
+        TaskCompletionSource heard = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        UiThread.Post(() => heard.TrySetResult());
+        return heard.Task;
+    }
+
+    /// <summary>The language server once it answers for the whole solution as its projects stand (<see cref="Server"/>, then
+    /// <see cref="ServerSettledAsync"/> with no file), for a question of the solution's whole code: what it says of the
+    /// projects' load, their symbols, routes and findings. Refused, saying why, as each of those refuses.</summary>
+    private async Task<RoslynSession> SettledServer(CancellationToken cancel)
+    {
+        await Server(cancel);
+        await ServerSettledAsync(null, _ => true, cancel);
+        return await Server(cancel);
     }
 
     /// <summary>Waits, up to <see cref="LookLimit"/>, for the watchers to look again once in this call for what another program

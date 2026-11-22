@@ -551,9 +551,9 @@ public sealed partial class PassengerTools
             return new RefactorAnswer(kind, $"{name} would tidy {Plural.Of(files.Count, "C# file")} of the {scope}",
                 [.. files.Select(f => new RefactorFile(Relative(f), "unchanged", []))], []);
         }
-        // Answers before the server has loaded the solution come from a file it knows alone, and are wrong.
-        await When(() => Session.CSharp is not { } csharp || csharp.IsReady, ServerLimit, cancel, ServerState());
-        CSharpService service = Session.CSharp is { IsReady: true } ready ? ready : throw new TimeoutException($"The language server has not loaded the workspace ({Session.CSharp?.State ?? "none"})");
+        // Answers before the server has loaded the solution as it stands come from a file it knows alone, or from the code before.
+        await SettledServer(cancel);
+        CSharpService service = Session.CSharp ?? throw new InvalidOperationException(Session.WhyNoCSharp);
         List<RefactorFile> tidied = [];
         List<string> left = [];
         // Those open are the person's, each with its own undo; the others are one command.
