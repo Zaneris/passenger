@@ -3,11 +3,11 @@
 
 A lane is a part of the suite: the gate's [Gate] tests and the unit tests, the report lane's every other test (off
 ONE_SYSTEM, but its classes marked [SameOnEverySystem]), or all. `list` writes a lane as `dotnet test --list-tests`
-prints it, asking again while a project names no test or says discovery failed. `split` deals its classes by their
-seconds on that system in TestTimes.json (else the others'), the longest first, each where its shard ends soonest by
-its kinds of class (one in another lane's job from that one's end, one in a job building the check first from that
-build's end), and to one of a job's test processes, the same in every shard; `check` fails unless every test is in
-exactly one. `test` runs a hand, keeping its console as it comes; `ended` names the classes it did not run whole; `cover`
+prints it, asking again while a project names no test or says discovery failed, and fails above the suite's most tests.
+`split` deals its classes by their seconds on that system in TestTimes.json (else the others'), the longest first, each
+where its shard ends soonest by its kinds of class (one in another lane's job from that one's end, one in a job building
+the check first from that build's end), and to one of a job's test processes, the same in every shard; `check` fails
+unless every test is in exactly one. `test` runs a hand, keeping its console as it comes; `ended` names the classes it did not run whole; `cover`
 fails unless every test has one result; `failures` tables misses; `update` rewrites TestTimes.json."""
 import argparse
 import ctypes
@@ -59,6 +59,11 @@ DISCOVERY_FAILED = "Exception discovering tests"
 WORTH_DEALING_AGAIN = 120
 # How many times a listing that names no test or says discovery failed (xunit #3576) is asked for.
 TRIES = 3
+# The most tests the suite may list, unit and window tests, gate and report lane together, every case of a theory
+# counted (#2095): a new check joins a flow's step or a table's row where one fits (tests/Shared).
+MOST_TESTS = 2000
+# How many more it may list for now, while #2095's batches bring it down, lowered as each lands until it is 0.
+ALLOWANCE = 10001
 # A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit.
 HANG = "10m"
 # What a shard's dotnet test of a project wrote to its console, kept beside its results as it came (`test`), so a shard
@@ -235,9 +240,20 @@ def list_tests(arguments):
             return 1
     with open(arguments.out, "wb") as file:
         file.write(printed)
-    print(f"{len(tests_in(printed.decode('utf-8', errors='replace')))} {arguments.lane} tests listed from "
+    listed = len(tests_in(printed.decode('utf-8', errors='replace')))
+    print(f"{listed} {arguments.lane} tests listed from "
           f"{', '.join(shown(p) for p in chosen)}{f' with {arguments.settings}' if arguments.settings else ''}")
-    return 0
+    return 0 if arguments.settings else held_to_most(listed + sum(len(listing(path)) for path in arguments.beside))
+
+
+def held_to_most(count):
+    """Whether the suite's count of tests is within MOST_TESTS and its ALLOWANCE, said when it is not."""
+    if count <= MOST_TESTS + ALLOWANCE:
+        return 0
+    say("error", "Too many tests", f"The suite lists {count:,} tests, more than the {MOST_TESTS:,} it may (#2095) with "
+        f"the {ALLOWANCE:,} more allowed while its batches cut it down: join each new check to a flow's step or a "
+        f"table's row where one fits (tests/Shared), or cut what no longer guards anything another test does not")
+    return 1
 
 
 def list_project(project, options, tries):
@@ -1236,6 +1252,8 @@ def main():
                          "the report lane has no class marked [SameOnEverySystem]; every system's where none is given")
     command.add_argument("--settings", help="a shard's dotnet test settings, to list only its hand")
     command.add_argument("--tries", type=int, default=TRIES)
+    command.add_argument("--beside", nargs="*", default=[], help="what dotnet test --list-tests printed for the suite's "
+                         "other lanes, whose tests count with these against MOST_TESTS: the listing fails above it")
     command.set_defaults(run=list_tests)
 
     command = commands.add_parser("split", help="deal a system's test classes to its shards, their settings to --out")
