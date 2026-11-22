@@ -302,10 +302,10 @@ public sealed class TerminalTests
     }
 
     /// <summary>Enter held with each modifier, Enter alone and Ctrl+J reach a program in every keymap, no IDE shortcut
-    /// taking one from the terminal: as xterm sends them (Ctrl+J a line feed) until the program asks for the kitty
-    /// keyboard protocol, then each as that protocol's own key, Enter alone still a carriage return. The program asks for
-    /// disambiguation and alternate keys, as OpenCode's library does, and is told disambiguation alone is in force; its
-    /// flags go when it pops them.</summary>
+    /// taking one from the terminal: as xterm sends them (Ctrl+J a line feed), a line feed after each Return in new line
+    /// mode, until the program asks for the kitty keyboard protocol, then each as that protocol's own key, Enter alone
+    /// still a carriage return. The program asks for disambiguation and alternate keys, as OpenCode's library does, and is
+    /// told disambiguation alone is in force; its flags go when it pops them.</summary>
     private void Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(KeymapPreset keymap)
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
@@ -325,9 +325,16 @@ public sealed class TerminalTests
             WaitForScreen(window, shell, s => Lines(s).Contains(legacy), $"the keys as xterm sends them, {legacy}, read by a program that never asked for more");
             WaitForPromptBelow(window, shell, legacy);
 
+            RunCase(window, "keyboard", "newline");
+            WaitForScreen(window, shell, s => Lines(s).Count(l => l == "keyboard?") == 2, "the program to wait for its keys in new line mode");
+            Press(window, keys);
+            string newLine = $"^M^J^M^J{alt}^M^J^M^J{alt}^M^J^J^M^J";
+            WaitForScreen(window, shell, s => Lines(s).Contains(newLine), $"the keys as xterm sends them in new line mode, each Return a carriage return and a line feed, {newLine}");
+            WaitForPromptBelow(window, shell, newLine);
+
             RunCase(window, "keyboard", "5");
             WaitForLine(shell, "flags 1", "the program told disambiguation alone is in force");
-            WaitForScreen(window, shell, s => s.KeyboardFlags == TerminalKeys.Disambiguate && Lines(s).Count(l => l == "keyboard?") == 2,
+            WaitForScreen(window, shell, s => s.KeyboardFlags == TerminalKeys.Disambiguate && Lines(s).Count(l => l == "keyboard?") == 3,
                 "the program to wait for its keys under the kitty keyboard protocol");
             Press(window, keys);
             string kitty = "^[[13;2u^[[13;5u^[[13;3u^[[13;6u^[[13;4u^[[106;5u^M";

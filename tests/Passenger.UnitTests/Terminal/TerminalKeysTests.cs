@@ -5,9 +5,9 @@ namespace Passenger.UnitTests.Terminal;
 
 /// <summary>A key's bytes as the program in the terminal reads them: xterm's until it asks for the kitty keyboard
 /// protocol, every one as before; then the protocol's "disambiguate escape codes", which tells Enter, Tab, Backspace and
-/// Esc held with any modifier apart from the key alone, and Ctrl+J from Enter's line feed. A function key held with
-/// modifiers is its one number and final either way, each modifier, Meta too, counted alike. The keypad's 5 with Num Lock
-/// off is Begin, which X11 names no key for.</summary>
+/// Esc held with any modifier apart from the key alone, and Ctrl+J from Enter's line feed. Return is CR LF in new line
+/// mode under either. A function key held with modifiers is its one number and final either way, each modifier, Meta
+/// too, counted alike. The keypad's 5 with Num Lock off is Begin, which X11 names no key for.</summary>
 public class TerminalKeysTests
 {
     private const KeyModifiers None = KeyModifiers.None;
@@ -19,9 +19,9 @@ public class TerminalKeysTests
 
     /// <summary>A key pressed as the terminal hears it, and the bytes it is to send, null for none (its text typing it).</summary>
     private sealed record Press(string Name, Key Key, KeyModifiers Held, string? Bytes, int Flags = 0, PhysicalKey Physical = PhysicalKey.None,
-        string? Symbol = null, bool ApplicationCursor = false, bool AltSendsEscape = true, bool BeginNamed = false)
+        string? Symbol = null, bool ApplicationCursor = false, bool AltSendsEscape = true, bool BeginNamed = false, bool NewLine = false)
     {
-        public string? Sent => TerminalKeys.Of(Key, Held, Physical, Symbol, ApplicationCursor, Flags, AltSendsEscape, BeginNamed);
+        public string? Sent => TerminalKeys.Of(Key, Held, Physical, Symbol, ApplicationCursor, NewLine, Flags, AltSendsEscape, BeginNamed);
     }
 
     [Fact]
@@ -31,6 +31,10 @@ public class TerminalKeysTests
         new("Ctrl+Enter", Key.Enter, Ctrl, "\r"),
         new("Alt+Enter, Alt sending Escape", Key.Enter, Alt, "\e\r"),
         new("Alt+Enter, Alt typing (the Mac's Option)", Key.Enter, Alt, "\r", AltSendsEscape: false),
+        new("Enter in new line mode", Key.Enter, None, "\r\n", NewLine: true),
+        new("Alt+Enter in new line mode, Alt sending Escape", Key.Enter, Alt, "\e\r\n", NewLine: true),
+        new("the keypad's Enter in new line mode", Key.Enter, None, "\r\n", Physical: PhysicalKey.NumPadEnter, NewLine: true),
+        new("Ctrl+J in new line mode", Key.J, Ctrl, "\n", NewLine: true),
         new("Ctrl+J", Key.J, Ctrl, "\n"),
         new("Up in the application cursor mode", Key.Up, None, "\eOA", ApplicationCursor: true),
         new("F3", Key.F3, None, "\eOR"),
@@ -50,6 +54,8 @@ public class TerminalKeysTests
     public void Under_the_protocol_a_key_sends_its_forms_and_one_that_types_leaves_it_to_its_text() => Cases.Each<Press>(
     [
         new("Enter alone", Key.Enter, None, "\r", Kitty),
+        new("Enter alone in new line mode", Key.Enter, None, "\r\n", Kitty, NewLine: true),
+        new("Shift+Enter in new line mode", Key.Enter, Shift, "\e[13;2u", Kitty, NewLine: true),
         new("Shift+Enter", Key.Enter, Shift, "\e[13;2u", Kitty),
         new("Ctrl+Alt+Shift+Enter", Key.Enter, Ctrl | Alt | Shift, "\e[13;8u", Kitty),
         new("Meta+Enter", Key.Enter, Super, "\e[13;9u", Kitty),
@@ -70,6 +76,7 @@ public class TerminalKeysTests
         new("F13", Key.F13, None, "\e[57376u", Kitty),
         new("the menu key", Key.Apps, None, "\e[57363u", Kitty),
         new("the keypad's Enter", Key.Enter, None, "\e[57414u", Kitty, PhysicalKey.NumPadEnter),
+        new("the keypad's Enter in new line mode", Key.Enter, None, "\e[57414u", Kitty, PhysicalKey.NumPadEnter, NewLine: true),
         new("X11's Begin with Ctrl+Alt", Key.NumPad5, Ctrl | Alt, "\e[1;7E", Kitty, PhysicalKey.NumPad5),
         new("Ctrl and the keypad's 5 with Num Lock on", Key.NumPad5, Ctrl, "\e[57404;5u", Kitty, PhysicalKey.NumPad5, "5"),
         new("Alt and the keypad's 5 where the platform names Begin", Key.NumPad5, Alt, "\e[57404;3u", Kitty, PhysicalKey.NumPad5, BeginNamed: true),

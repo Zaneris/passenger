@@ -53,9 +53,6 @@ public sealed class TerminalScreen
     private bool insertMode;
     private bool lineDrawing;
 
-    /// <summary>Line feed/new line mode (LNM): a line feed, vertical tab or form feed also returns to the first column.</summary>
-    private bool newLineMode;
-
     /// <summary>Whether the decoder may hold the start of a character: the last bytes it took were not ASCII.</summary>
     private bool utf8Open;
 
@@ -137,6 +134,10 @@ public sealed class TerminalScreen
 
     /// <summary>Whether the arrow keys send their application forms (ESC O A rather than ESC [ A), as vim asks.</summary>
     public bool ApplicationCursorKeys { get; private set; }
+
+    /// <summary>Line feed/new line mode (LNM): a line feed, vertical tab or form feed also returns to the first column, and
+    /// Return sends CR LF.</summary>
+    public bool NewLineMode { get; private set; }
 
     /// <summary>Whether a paste is to be bracketed, so a shell takes it as text rather than typed commands.</summary>
     public bool BracketedPaste { get; private set; }
@@ -611,7 +612,7 @@ public sealed class TerminalScreen
                 Tab(1);
                 break;
             case 0x0a or 0x0b or 0x0c:
-                if (newLineMode)
+                if (NewLineMode)
                 {
                     CursorColumn = 0;
                 }
@@ -1182,7 +1183,7 @@ public sealed class TerminalScreen
                     }
                     else if (groups[group, 0] == 20)
                     {
-                        newLineMode = final == 'h';
+                        NewLineMode = final == 'h';
                     }
                 }
                 break;
@@ -1601,7 +1602,7 @@ public sealed class TerminalScreen
         alternate = null;
         Lines = main;
         (savedMain, savedAlternate, mainMargins) = (Saved.Unsaved, Saved.Unsaved, (top, bottom));
-        newLineMode = false;
+        NewLineMode = false;
         repeatable = false;
         CursorRow = 0;
         CursorColumn = 0;

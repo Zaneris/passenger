@@ -65,23 +65,29 @@ switch (args)
         break;
     case ["keyboard", .. string[] asked]:
         // The keys as read, as cat -v shows them, on one line once q comes; with flags, first pushed as the kitty
-        // keyboard protocol asks and the flags the terminal says are in force told, then popped at the end.
+        // keyboard protocol asks and the flags the terminal says are in force told, then popped at the end; with
+        // "newline", line feed/new line mode set instead, then reset at the end.
         using (Terminal.Raw())
         {
-            if (asked is [string flags])
+            bool newLine = asked is ["newline"];
+            if (!newLine && asked is [string flags])
             {
                 Write($"\e[>{flags}u\e[?u");
                 string answer = ReadTo('u');
                 Write($"flags {answer[3..^1]}\r\n");
             }
-            Write("keyboard?\r\n");
+            Write($"{(newLine ? "\e[20h" : "")}keyboard?\r\n");
             StringBuilder read = new();
             for (int b = input.ReadByte(); b is >= 0 and not 'q'; b = input.ReadByte())
             {
                 read.Append(b < 32 ? $"^{(char)(b + 64)}" : ((char)b).ToString());
             }
             Write($"{read}\r\n");
-            if (asked.Length > 0)
+            if (newLine)
+            {
+                Write("\e[20l");
+            }
+            else if (asked.Length > 0)
             {
                 Write("\e[<u");
             }

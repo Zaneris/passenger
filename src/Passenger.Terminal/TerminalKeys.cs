@@ -6,7 +6,8 @@ namespace Passenger.Terminal;
 /// protocol's first enhancement (<see cref="TerminalScreen.KeyboardFlags"/>), that protocol's, which tell every modifier
 /// apart: Shift+Enter is CSI 13;2u, Ctrl+J CSI 106;5u, Esc CSI 27u, a key held with Ctrl or Alt CSI code;mods u by
 /// its unshifted character, the keypad's keys by their own numbers. Enter, Tab and Backspace alone stay as xterm
-/// sends them, and a key that types sends its text. Null for a key whose text input carries it.</summary>
+/// sends them, Return CR LF under new line mode as either protocol has it, and a key that types sends its text. Null
+/// for a key whose text input carries it.</summary>
 public static class TerminalKeys
 {
     /// <summary>The kitty keyboard protocol's enhancements the keys follow: disambiguate escape codes (1) alone, so a
@@ -16,28 +17,30 @@ public static class TerminalKeys
     /// <summary>The kitty keyboard protocol's "disambiguate escape codes" enhancement.</summary>
     public const int Disambiguate = 1;
 
-    /// <summary>The bytes of a key held with these modifiers, the arrows in their application form when the program asked
-    /// (xterm's alone), under the kitty keyboard flags in force; <paramref name="altSendsEscape"/> where Alt is a modifier
-    /// for the shell rather than the layout's (not macOS's Option, which types). A NumPad5 with no symbol is the keypad's
-    /// Begin, which X11 names no key for (Num Lock's 5 has its symbol), unless <paramref name="beginNamed"/>: the platform
-    /// names the Begin itself (Windows' Clear), so a NumPad5 there is its 5 whatever its symbol.</summary>
-    public static string? Of(Key key, KeyModifiers modifiers, PhysicalKey physical, string? symbol, bool applicationCursor, int keyboardFlags, bool altSendsEscape, bool beginNamed)
+    /// <summary>The bytes of a key held with these modifiers under the kitty keyboard flags in force, the arrows in their
+    /// application form when the program asked (xterm's alone) and Return CR LF where <paramref name="newLine"/>;
+    /// <paramref name="altSendsEscape"/> where Alt is the shell's modifier, not the layout's (macOS's Option types). A
+    /// NumPad5 with no symbol is the keypad's Begin, which X11 names no key for, unless <paramref name="beginNamed"/>:
+    /// the platform names the Begin itself (Windows' Clear), so a NumPad5 there is its 5 whatever its symbol.</summary>
+    public static string? Of(Key key, KeyModifiers modifiers, PhysicalKey physical, string? symbol, bool applicationCursor, bool newLine, int keyboardFlags,
+        bool altSendsEscape, bool beginNamed)
     {
         Key named = !beginNamed && key == Key.NumPad5 && symbol is null ? Key.Clear : key;
-        return (keyboardFlags & Disambiguate) != 0 ? Kitty(named, modifiers, physical, altSendsEscape) : Xterm(named, modifiers, applicationCursor, altSendsEscape);
+        string enter = newLine ? "\r\n" : "\r";
+        return (keyboardFlags & Disambiguate) != 0 ? Kitty(named, modifiers, physical, enter, altSendsEscape) : Xterm(named, modifiers, applicationCursor, enter, altSendsEscape);
     }
 
-    /// <summary>xterm's bytes for a key that is not plain text: Enter, the function keys by their number and final
-    /// (<see cref="Functional"/>), and Ctrl (or Alt, as a leading ESC) with a letter. Held with none, F1 to F4 take SS3,
-    /// as the cursor keys do in the application cursor mode.</summary>
-    private static string? Xterm(Key key, KeyModifiers mods, bool applicationCursor, bool altSendsEscape)
+    /// <summary>xterm's bytes for a key that is not plain text: Enter as <paramref name="enter"/>, the function keys by their
+    /// number and final (<see cref="Functional"/>), and Ctrl (or Alt, as a leading ESC) with a letter. Held with none, F1
+    /// to F4 take SS3, as the cursor keys do in the application cursor mode.</summary>
+    private static string? Xterm(Key key, KeyModifiers mods, bool applicationCursor, string enter, bool altSendsEscape)
     {
         bool ctrl = mods.HasFlag(KeyModifiers.Control);
         bool alt = mods.HasFlag(KeyModifiers.Alt) && altSendsEscape;
         int held = Held(mods);
         string? plain = key switch
         {
-            Key.Enter => "\r",
+            Key.Enter => enter,
             Key.Back => ctrl ? "\x08" : "\x7f",
             Key.Tab => mods.HasFlag(KeyModifiers.Shift) ? "\x1b[Z" : "\t",
             Key.Escape => "\x1b",
@@ -117,8 +120,8 @@ public static class TerminalKeys
 
     /// <summary>The kitty keyboard protocol's bytes for a key under "disambiguate escape codes": every key that types no
     /// text as CSI number;modifiers u (or ~, or CSI 1;modifiers and a letter), the modifiers 1 more than Shift 1, Alt 2,
-    /// Ctrl 4 and Super 8 added, and left out when there are none.</summary>
-    private static string? Kitty(Key key, KeyModifiers mods, PhysicalKey physical, bool altSendsEscape)
+    /// Ctrl 4 and Super 8 added, and left out when there are none; Enter alone as <paramref name="enter"/>.</summary>
+    private static string? Kitty(Key key, KeyModifiers mods, PhysicalKey physical, string enter, bool altSendsEscape)
     {
         int held = Held(mods);
         if (Keypad(key, physical) is { } pad)
@@ -127,7 +130,7 @@ public static class TerminalKeys
         }
         string? functional = key switch
         {
-            Key.Enter => held == 0 ? "\r" : Csi(13, 'u', held),
+            Key.Enter => held == 0 ? enter : Csi(13, 'u', held),
             Key.Tab => held == 0 ? "\t" : Csi(9, 'u', held),
             Key.Back => held == 0 ? "\x7f" : Csi(127, 'u', held),
             Key.Escape => Csi(27, 'u', held),
