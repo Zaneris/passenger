@@ -87,6 +87,40 @@ public sealed class FindTests : IDisposable
         window.Close();
     }
 
+    /// <summary>What Replace All came to stays in the find bar's count once the window settles, through the search its own
+    /// edits bring, and a screen reader hears it; a key typed in the text, or a search changed, puts the count back.</summary>
+    [AvaloniaFact]
+    public void Replace_all_says_how_many_it_replaced_until_the_text_or_the_search_changes_and_a_screen_reader_hears_it()
+    {
+        (MainWindow window, CodeEditor editor) = Open("total + total * total");
+        Ui.Press(window, Ui.Shortcut(AppActions.Replace));
+        window.KeyTextInput("total");
+        Ui.Settle();
+        FindBar bar = window.EditorArea.FindBar;
+        bar.FindControl<TextBox>("ReplaceWith")!.Text = "sum";
+        List<(string Words, Avalonia.Automation.AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        Ui.Settle();
+        Assert.True(bar.CountText == "Replaced 3", $"Replace All left the find bar saying '{bar.CountText}' once the window settled, where it says how many it replaced");
+        Assert.True(heard.Any(h => h.Words == "Replaced 3"), $"A screen reader heard {AccessibilityTests.Said(heard)} as Replace All ended, not \"Replaced 3\"");
+
+        editor.Focus();
+        window.KeyTextInput(" ");
+        Ui.Settle();
+        Assert.True(bar.CountText == "0 results", $"A key typed in the text left the find bar saying '{bar.CountText}', where it counts the query's matches again");
+
+        editor.TryExecute(EditorActions.Undo);
+        editor.TryExecute(EditorActions.Undo);
+        Assert.Equal("total + total * total", editor.Document.Snapshot.ToString());
+        Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+        Ui.Settle();
+        Assert.Equal("Replaced 3", bar.CountText);
+        bar.FindControl<TextBox>("Query")!.Text = "sum";
+        Ui.Settle();
+        Assert.True(bar.CountText.EndsWith("/3", StringComparison.Ordinal), $"A query typed after Replace All left the find bar saying '{bar.CountText}', where it counts the new query's 3 matches");
+        window.Close();
+    }
+
     /// <summary>The find bar says its counts in the IDE's digits whatever the system's language: under a German culture, which
     /// writes a thousand as 1.234, a file of 1,234 matches counts "1/1,000+" as far as the bar lists, and Replace All says
     /// "Replaced 1,234".</summary>
@@ -104,14 +138,9 @@ public sealed class FindTests : IDisposable
             FindBar bar = window.EditorArea.FindBar;
             Assert.True(bar.CountText == "1/1,000+", $"Under a German culture the find bar counted {bar.CountText}, where the IDE's digits read 1/1,000+");
             bar.FindControl<TextBox>("ReplaceWith")!.Text = "sum";
-            // The bar searches the text again once it is replaced in, so what Replace All said is read as it was shown.
-            List<string> said = [];
-            using (AvaloniaObjectExtensions.GetObservable(bar.FindControl<TextBlock>("Count")!, TextBlock.TextProperty)
-                .Subscribe(new Avalonia.Reactive.AnonymousObserver<string?>(text => said.Add(text ?? string.Empty))))
-            {
-                Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
-            }
-            Assert.True(said.Contains("Replaced 1,234"), $"Under a German culture Replace All said '{string.Join("', '", said)}', where the IDE's digits read 'Replaced 1,234'");
+            Ui.Click(bar.FindControl<Button>("ReplaceAllButton")!);
+            Ui.Settle();
+            Assert.True(bar.CountText == "Replaced 1,234", $"Under a German culture Replace All said '{bar.CountText}', where the IDE's digits read 'Replaced 1,234'");
             Assert.DoesNotContain("tally", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
             window.Close();
         }

@@ -74,6 +74,11 @@ public partial class FindBar : UserControl
     private TableSearch cells = TableSearch.None;
     private CancellationTokenSource? searching;
 
+    /// <summary>What Replace All came to, said in the count's place while the text is the one it left (<see cref="toldOf"/>)
+    /// and the search the one it ran, so the search its own edits bring does not wipe it; null when it stands no longer.</summary>
+    private string? told;
+    private TextSnapshot? toldOf;
+
     public FindBar()
     {
         InitializeComponent();
@@ -94,10 +99,10 @@ public partial class FindBar : UserControl
         // On the way down, so an option's key never types into the field it is pressed in.
         AddHandler(KeyDownEvent, (_, e) => OptionToggles.Hear(e, (OptionToggles.MatchCase, MatchCase), (OptionToggles.Words, WholeWords), (OptionToggles.Regex, UseRegex)),
             RoutingStrategies.Tunnel);
-        Query.TextChanged += (_, _) => Search(jump: true);
-        MatchCase.IsCheckedChanged += (_, _) => Search(jump: true);
-        WholeWords.IsCheckedChanged += (_, _) => Search(jump: true);
-        UseRegex.IsCheckedChanged += (_, _) => Search(jump: true);
+        Query.TextChanged += (_, _) => SearchAnew();
+        MatchCase.IsCheckedChanged += (_, _) => SearchAnew();
+        WholeWords.IsCheckedChanged += (_, _) => SearchAnew();
+        UseRegex.IsCheckedChanged += (_, _) => SearchAnew();
         NextButton.Click += (_, _) => Next();
         PreviousButton.Click += (_, _) => Previous();
         CloseButton.Click += (_, _) => Close();
@@ -109,7 +114,7 @@ public partial class FindBar : UserControl
         ReplaceWith.AddHandler(KeyDownEvent, OnFieldKeyDown, RoutingStrategies.Tunnel);
     }
 
-    /// <summary>What the count beside the arrows says: "2/5", "0 results", a bad regex's error.</summary>
+    /// <summary>What the count beside the arrows says: "2/5", "0 results", a bad regex's error, what Replace All came to.</summary>
     public string CountText => Count.Text ?? string.Empty;
 
     public SearchQuery CurrentQuery => new(Query.Text ?? string.Empty, MatchCase.IsChecked == true, WholeWords.IsChecked == true, UseRegex.IsChecked == true);
@@ -153,6 +158,7 @@ public partial class FindBar : UserControl
         editor = null;
         beside?.SetHighlights([], -1);
         beside = null;
+        Untell();
         Follow(null);
         result = SearchResult.None;
         searched = null;
@@ -231,6 +237,7 @@ public partial class FindBar : UserControl
     public void Close()
     {
         IsVisible = false;
+        Untell();
         searching?.Cancel();
         editor?.SetHighlights([], -1);
         beside?.SetHighlights([], -1);
@@ -248,6 +255,13 @@ public partial class FindBar : UserControl
     public void Next() => Step(forward: true);
 
     public void Previous() => Step(forward: false);
+
+    /// <summary>The search changed (its query or an option): what Replace All came to no longer stands.</summary>
+    private void SearchAnew()
+    {
+        Untell();
+        Search(jump: true);
+    }
 
     private void Search(bool jump)
     {
@@ -339,6 +353,7 @@ public partial class FindBar : UserControl
 
     private void Step(bool forward)
     {
+        Untell();
         if (grid is not null)
         {
             StepCells(grid, forward);
@@ -398,6 +413,7 @@ public partial class FindBar : UserControl
         {
             return;
         }
+        Untell();
         TextSnapshot text = editor.Document.Snapshot;
         SearchResult found = TextSearch.FindAll(text, query, TextSearch.AtOnce, int.MaxValue);
         if (found.Stopped)
@@ -435,7 +451,7 @@ public partial class FindBar : UserControl
         }
         if (found.Stopped)
         {
-            Count.Text = $"{found.Problem} Nothing was replaced.";
+            Tell($"{found.Problem} Nothing was replaced.", shown, Urgency.Assertive);
             return;
         }
         Replace(shown, edits, why);
@@ -445,11 +461,37 @@ public partial class FindBar : UserControl
     {
         if (why is not null)
         {
-            Count.Text = $"Nothing was replaced: {why}.";
+            Tell($"Nothing was replaced: {why}.", shown, Urgency.Assertive);
             return;
         }
         shown.ApplyEdits(edits);
-        Count.Text = $"Replaced {Numbers.Said(edits.Count)}";
+        Tell($"Replaced {Numbers.Said(edits.Count)}", shown, Urgency.Polite);
+    }
+
+    /// <summary>Says what Replace All came to in the count's place, where it stays until the search or the text changes,
+    /// and tells a screen reader, a refusal at once.</summary>
+    private void Tell(string said, CodeEditor shown, Urgency urgency)
+    {
+        told = said;
+        toldOf = shown.Document.Snapshot;
+        Count.Text = said;
+        Announcer.Of(TopLevel.GetTopLevel(this))?.Tell(said, urgency);
+    }
+
+    /// <summary>What Replace All came to while it stands, or null once the text it left is no longer the one shown.</summary>
+    private string? Told()
+    {
+        if (told is not null && !ReferenceEquals(editor?.Document.Snapshot, toldOf))
+        {
+            Untell();
+        }
+        return told;
+    }
+
+    private void Untell()
+    {
+        told = null;
+        toldOf = null;
     }
 
     private void Show()
@@ -462,9 +504,10 @@ public partial class FindBar : UserControl
     /// <summary>The matches marked in the editor beside the one searched, as last shown.</summary>
     public int MarkedBeside => beside?.Highlights.Count ?? 0;
 
-    /// <summary>The count, or that a regex too slow for the UI thread is being searched off it.</summary>
+    /// <summary>The count, what Replace All came to while it stands, or that a regex too slow for the UI thread is being
+    /// searched off it.</summary>
     private void ShowCount() =>
-        Count.Text = result.Stopped && finding ? Searching : Counted(result.Problem, result.Matches.Count, result.Truncated);
+        Count.Text = Told() ?? (result.Stopped && finding ? Searching : Counted(result.Problem, result.Matches.Count, result.Truncated));
 
     private string Counted(string? problem, int count, bool truncated) =>
         problem ?? (string.IsNullOrEmpty(Query.Text) ? string.Empty
