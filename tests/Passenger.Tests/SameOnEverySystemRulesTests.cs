@@ -106,6 +106,8 @@ public sealed partial class SameOnEverySystemRulesTests
         "Ui.ProgramsRunning",
         // Deleting a test's folders once it has ended, waiting out what holds them on Windows.
         "TestFolders.Delete",
+        // A table's skip where each of its rows skipped, which the rows' own code, followed, shows.
+        "Cases.SkipWhereEverySkipped",
     };
 
     /// <summary>A system named in a test's own words.</summary>
