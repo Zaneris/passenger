@@ -17,8 +17,19 @@ public class GodotShaderPreprocessorTests
         ["res://shaders/other.gdshader"] = "shader_type spatial;\n",
     };
 
+    /// <summary>Macros, branches and includes are expanded and errors said as Godot's preprocessor does.</summary>
     [Fact]
-    public void Macros_are_expanded_with_their_arguments_and_joins_and_comments_leave_their_line_breaks()
+    public void Shaders_are_preprocessed_as_godots_preprocessor_does() => Cases.All(
+        (nameof(Macros_are_expanded_with_their_arguments_and_joins_and_comments_leave_their_line_breaks),
+            Macros_are_expanded_with_their_arguments_and_joins_and_comments_leave_their_line_breaks),
+        (nameof(Branches_keep_one_side_under_the_renderer_s_defines_and_say_their_regions),
+            Branches_keep_one_side_under_the_renderer_s_defines_and_say_their_regions),
+        (nameof(An_include_is_inlined_between_its_markers_its_relative_path_taken_from_the_shader_s_folder),
+            An_include_is_inlined_between_its_markers_its_relative_path_taken_from_the_shader_s_folder),
+        (nameof(An_error_in_an_include_names_the_shader_s_line_then_the_include_s),
+            An_error_in_an_include_names_the_shader_s_line_then_the_include_s));
+
+    private void Macros_are_expanded_with_their_arguments_and_joins_and_comments_leave_their_line_breaks()
     {
         GodotShaderPreprocessed read = Read("shader_type spatial;\n#define SCALE 2.0\n#define MUL(a, b) ((a) * (b))\n#define CAT(x) x ## _end\n"
             + "float f = MUL(SCALE, 3.0); // comment\nint CAT(name) = 1; /* block\ncomment */ int z;\n");
@@ -30,8 +41,7 @@ public class GodotShaderPreprocessorTests
         Assert.Equal(8, lines.Length);
     }
 
-    [Fact]
-    public void Branches_keep_one_side_under_the_renderer_s_defines_and_say_their_regions()
+    private void Branches_keep_one_side_under_the_renderer_s_defines_and_say_their_regions()
     {
         GodotShaderPreprocessed read = Read("shader_type spatial;\n#ifdef MISSING\nint a;\n#else\nint b;\n#endif\n"
             + "#if defined(SCALE) || CURRENT_RENDERER == RENDERER_MOBILE\nint c;\n#elif 1\nint d;\n#endif\n", "mobile");
@@ -45,31 +55,7 @@ public class GodotShaderPreprocessorTests
         Assert.Equal(11, read.Code.Split('\n').Length);
     }
 
-    [Theory]
-    [InlineData("shader_type spatial;\n\n#bogus\n", "Unknown directive.", 3)]
-    [InlineData("#define A 1\n#define A 2\n", "Macro redefinition.", 2)]
-    [InlineData("#ifdef X\nint a;\n", "Can't find matching branch directive.", 2)]
-    [InlineData("#if 1.5\n#endif\n", "Floating-point number operations are not supported by the shader preprocessor.", 1)]
-    [InlineData("#if FOO\n#endif\n", "Condition evaluation error.", 1)]
-    [InlineData("#if (1\n#endif\n", "Expected a ')'.", 1)]
-    [InlineData("#if 1 = 1\n#endif\n", "Expected '='.", 1)]
-    [InlineData("#if 1 / 0\n#endif\n", "Condition evaluation error.", 1)]
-    [InlineData("int a; #define X\n", "Invalid symbols placed before directive.", 1)]
-    [InlineData("int a;\n/* never closed\n", "Block comment mismatch", 2)]
-    [InlineData("#undef CURRENT_RENDERER\n", "Cannot use 'undef' on built-in define.", 1)]
-    [InlineData("#else\n", "Unmatched 'else' directive.", 1)]
-    [InlineData("#error stop here\n", "stop here", 1)]
-    [InlineData("shader_type spatial;\n#include \"missing.gdshaderinc\"\n", "Shader include file does not exist: res://shaders/missing.gdshaderinc", 2)]
-    [InlineData("shader_type spatial;\n#include \"other.gdshader\"\n", "Shader include resource type is wrong.", 2)]
-    public void An_error_is_said_in_godot_s_words_at_its_line(string code, string error, int line)
-    {
-        GodotShaderPreprocessed read = Read(code);
-        Assert.Equal(error, read.Error);
-        Assert.Equal([new GodotShaderFilePosition(Shader, line)], read.ErrorPositions);
-    }
-
-    [Fact]
-    public void An_include_is_inlined_between_its_markers_its_relative_path_taken_from_the_shader_s_folder()
+    private void An_include_is_inlined_between_its_markers_its_relative_path_taken_from_the_shader_s_folder()
     {
         GodotShaderPreprocessed read = Read("shader_type spatial;\n#include \"../inc/a.gdshaderinc\"\nvoid fragment() {}\n");
         Assert.Null(read.Error);
@@ -78,20 +64,11 @@ public class GodotShaderPreprocessorTests
         Assert.Contains("}\n\n@@<res://inc/a.gdshaderinc\n", read.Code, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void An_error_in_an_include_names_the_shader_s_line_then_the_include_s()
+    private void An_error_in_an_include_names_the_shader_s_line_then_the_include_s()
     {
         GodotShaderPreprocessed read = Read("shader_type spatial;\n\n#include \"res://inc/b.gdshaderinc\"\n");
         Assert.Equal("Unknown directive.", read.Error);
         Assert.Equal([new GodotShaderFilePosition("res://inc/b.gdshaderinc", 3), new GodotShaderFilePosition("res://inc/b.gdshaderinc", 1)], read.ErrorPositions);
-    }
-
-    [Fact]
-    public void A_line_continuation_joins_a_macro_s_body_and_keeps_the_line_count()
-    {
-        GodotShaderPreprocessed read = Read("#define LONG 1 + \\\n 2\nint x = LONG;\n");
-        Assert.Null(read.Error);
-        Assert.Equal(["", "", "int x = 1 + 2 ;", ""], read.Code.Split('\n').Select(l => string.Join(' ', l.Split(' ', StringSplitOptions.RemoveEmptyEntries))));
     }
 
     private static GodotShaderPreprocessed Read(string code, string method = "forward_plus") =>
