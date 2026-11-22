@@ -84,6 +84,11 @@ container-tools *args:
 container-tools *args:
     $sh = (Get-Command sh -ErrorAction SilentlyContinue).Source; if (-not $sh) { $sh = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) 'bin\sh.exe' }; & $sh tools/container-tools.sh {{args}}
 
+# The Vim that VimTests compares Vim mode with, built from its release into artifacts/vim/<version>/ (tools/vim.sh).
+[unix]
+vim:
+    tools/vim.sh
+
 # Passenger's debug relay for Android (arm64, x64) and iOS (devices, Apple Silicon simulators) into
 # artifacts/debug-relay/<rid>/, which the app carries under debugger/relay/; macOS with Xcode and the Android workload.
 # just debug-relay [android] [apple]

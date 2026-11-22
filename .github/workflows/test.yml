@@ -127,6 +127,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends git libx11-6 libice6 libsm6 libfontconfig1
 
+      # The Vim that VimTests compares Vim mode with (tools/vim.sh), built from its release where the cache lacks it,
+      # which the gate's first shard then fills; elsewhere its test skips, saying so.
+      - name: Restore the tests' Vim
+        if: runner.os == 'Linux'
+        id: vim
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts/vim
+          key: vim-${{ hashFiles('tools/vim.sh') }}-${{ matrix.os }}-${{ runner.arch }}
+
+      - name: Build the tests' Vim
+        if: runner.os == 'Linux' && steps.vim.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y --no-install-recommends libncurses-dev
+          tools/vim.sh
+
+      - name: Cache the tests' Vim
+        if: runner.os == 'Linux' && matrix.lane == 'gate' && matrix.shard == 1 && steps.vim.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts/vim
+          key: ${{ steps.vim.outputs.cache-primary-key }}
+
       - name: Restore cached NuGet packages
         id: nuget
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
