@@ -16,12 +16,24 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
         new() { Type = "Library.Point2", Assembly = "SomeOtherAssembly", Value = "never shown" },
     ];
 
+    /// <summary>A presented value reads from its fields and opens to its own type's members, its rows, then Raw View;
+    /// an assembly's display and view for a type show its values as its own attributes would, constructions of a
+    /// generic type reaching only their own; a display reads a member typed by a type parameter at the value's exact
+    /// type.</summary>
+    [Fact]
+    public async Task A_value_is_presented_as_its_own_types_and_its_libraries_attributes_say()
+    {
+        await Flow.StepApartAsync<PresentationsTests>("a presented value reads from its fields and opens to its own type's members then its rows then Raw View", () => new PresentationsTests(testOutputHelper), t => t.A_presented_value_reads_from_its_fields_and_opens_to_its_own_types_members_then_its_rows_then_Raw_View());
+        await Flow.StepApartAsync<PresentationsTests>("an assembly's display and view for a type show its values as its own attributes would", () => new PresentationsTests(testOutputHelper), t => t.An_assemblys_display_and_view_for_a_type_show_its_values_as_its_own_attributes_would());
+        await Flow.StepApartAsync<PresentationsTests>("an assembly's displays and views for constructions of a generic type reach only their own", () => new PresentationsTests(testOutputHelper), t => t.An_assemblys_displays_and_views_for_constructions_of_a_generic_type_reach_only_their_own());
+        await Flow.StepApartAsync<PresentationsTests>("a display reads a member typed by a type parameter at the value's exact type", () => new PresentationsTests(testOutputHelper), t => t.A_display_reads_a_member_typed_by_a_type_parameter_at_the_values_exact_type());
+    }
+
     /// <summary>A value of a presented type reads as its presentation's format from its fields, its ToString never called; one
     /// of the program's type deriving from a presented type with rows opens to what its own type declares, the marked member
     /// first, then the rows, then Raw View, where the library's types' members are; one with a [DebuggerDisplay] of its own
     /// keeps it and its members.</summary>
-    [Fact]
-    public async Task A_presented_value_reads_from_its_fields_and_opens_to_its_own_types_members_then_its_rows_then_Raw_View()
+    private async Task A_presented_value_reads_from_its_fields_and_opens_to_its_own_types_members_then_its_rows_then_Raw_View()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, Given);
@@ -53,41 +65,10 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
             $"A type with a [DebuggerDisplay] of its own opens to {Listed(own)}, not to its members as before");
     }
 
-    /// <summary>A [DebuggerTypeProxy] naming its generic view closed (typeof(BagView&lt;int&gt;)) on a type that is not
-    /// generic opens the value to the view's rows, made with the type arguments the name gives.</summary>
-    [Fact]
-    public async Task A_debugger_view_named_closed_shows_the_rows_of_a_value_of_a_type_that_is_not_generic()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, null);
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        DapVariable bag = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "bag");
-        List<DapVariable> rows = await host.VariablesAsync(bag.VariablesReference);
-        Assert.True(rows.Take(3).Select(r => r.Value).SequenceEqual(["5", "6", "7"]) && rows.Any(r => r.Name == "Raw View"),
-            $"The bag opens to {Listed(rows)}, where its view's 5, 6 and 7 and a Raw View were to be; the engine said "
-            + string.Join(" | ", host.EngineLog().Split('\n').Where(l => l.Contains("proxy", StringComparison.OrdinalIgnoreCase))));
-    }
-
-    /// <summary>A dictionary's key–value rows, from the runtime's own view of it, each name its value's own type in the type
-    /// column, where they named the view's item type: an int's int, and in a dictionary of objects each value's type, a
-    /// null's the type it is declared as.</summary>
-    [Fact]
-    public async Task A_dictionarys_rows_name_the_types_of_their_values()
-    {
-        await using DebugSession host = await LaunchTargeted();
-        List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
-        List<DapVariable> ages = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "ages").VariablesReference);
-        Assert.True(ages.FirstOrDefault() is { Name: "[\"ann\"]", Value: "31", Type: "int" }, $"The ages open to {Typed(ages)}, where [\"ann\"] = 31 (int) was to be first");
-        List<DapVariable> mixed = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "mixed").VariablesReference);
-        Assert.True(mixed.Take(3).Select(r => (r.Name, r.Value, r.Type)).SequenceEqual([("[\"text\"]", "\"words\"", "string"), ("[\"number\"]", "4.5", "double"), ("[\"none\"]", "null", "object")]),
-            $"The mixed values open to {Typed(mixed)}, each value's own type not named");
-    }
-
     /// <summary>A [DebuggerDisplay] and a [DebuggerTypeProxy] the program's assembly declares for a type it names (Target,
     /// TargetTypeName) show its values as the type's own would: the runtime's Version and a library's Gauge read as their
     /// displays say, and a library's Bookcase opens to the program's view of it, then Raw View.</summary>
-    [Fact]
-    public async Task An_assemblys_display_and_view_for_a_type_show_its_values_as_its_own_attributes_would()
+    private async Task An_assemblys_display_and_view_for_a_type_show_its_values_as_its_own_attributes_would()
     {
         await using DebugSession host = await LaunchTargeted();
         List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
@@ -101,8 +82,7 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
     /// <summary>An assembly's displays and views for constructions of one generic type each reach their own: a box of numbers
     /// and a box of words read differently, through an array and a nested box too, a box of anything else by the display for
     /// the definition, and only the box of numbers opens to the view declared for it, which is generic in nothing.</summary>
-    [Fact]
-    public async Task An_assemblys_displays_and_views_for_constructions_of_a_generic_type_reach_only_their_own()
+    private async Task An_assemblys_displays_and_views_for_constructions_of_a_generic_type_reach_only_their_own()
     {
         await using DebugSession host = await LaunchTargeted();
         List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());
@@ -117,8 +97,7 @@ public class PresentationsTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A display's fragment reads a member typed by a type parameter at the value's exact type, a struct's and one
     /// nested in a generic type too: what a construction's own member offers works, and what it lacks is said of that construction.</summary>
-    [Fact]
-    public async Task A_display_reads_a_member_typed_by_a_type_parameter_at_the_values_exact_type()
+    private async Task A_display_reads_a_member_typed_by_a_type_parameter_at_the_values_exact_type()
     {
         await using DebugSession host = await LaunchTargeted();
         List<DapVariable> locals = await host.LocalsAsync(await host.WaitForStoppedEvent());

@@ -24,12 +24,27 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
     /// <summary>Names in the methods the stops run under, which their attributes hide.</summary>
     private static readonly string[] Hidden = ["ThrowHelpers", "InitHelpers", "StaticsHelpers", "System.Runtime.EH.", "HiddenFrames.Fail("];
 
+    /// <summary>Frames the runtime and the program hide (#1503, #1511): an exception a runtime helper or the program's
+    /// hidden method throws stops in the frame that called it, a step out of an async method from one stops at the
+    /// caller's catch, and without Just My Code a step into a line reading a class, out of its static constructor and
+    /// from it comes back to that line before the rest runs, on this .NET and on the newest installed.</summary>
+    [Fact]
+    public async Task A_stop_or_step_through_code_hidden_from_debuggers_lands_in_the_frame_shown_on_this_runtime_and_the_last()
+    {
+        await Flow.StepApartAsync<HiddenFramesTests>("an exception a runtime helper or the program's hidden method throws stops in the frame that called it, on this .NET", () => new HiddenFramesTests(testOutputHelper), t => t.An_exception_a_runtime_helper_or_the_programs_hidden_method_throws_stops_in_the_frame_that_called_it(false));
+        await Flow.StepApartAsync<HiddenFramesTests>("an exception a runtime helper or the program's hidden method throws stops in the frame that called it, on the newest .NET", () => new HiddenFramesTests(testOutputHelper), t => t.An_exception_a_runtime_helper_or_the_programs_hidden_method_throws_stops_in_the_frame_that_called_it(true));
+        await Flow.StepApartAsync<HiddenFramesTests>("a step out of an async method from an exception a runtime helper threw stops at the caller's catch, on this .NET", () => new HiddenFramesTests(testOutputHelper), t => t.A_step_out_of_an_async_method_from_an_exception_a_runtime_helper_threw_stops_at_the_callers_catch(false));
+        await Flow.StepApartAsync<HiddenFramesTests>("a step out of an async method from an exception a runtime helper threw stops at the caller's catch, on the newest .NET", () => new HiddenFramesTests(testOutputHelper), t => t.A_step_out_of_an_async_method_from_an_exception_a_runtime_helper_threw_stops_at_the_callers_catch(true));
+        await Flow.StepApartAsync<HiddenFramesTests>("without Just My Code a step into a line reading a class stops in the helper shown and goes on to the call, on the newest .NET", () => new HiddenFramesTests(testOutputHelper), t => t.A_step_into_a_line_reading_a_class_without_Just_My_Code_stops_in_the_helper_shown_and_goes_on_to_the_call(true));
+        await Flow.StepApartAsync<HiddenFramesTests>("a step out of a static constructor without Just My Code stops before the rest of the line runs, on this .NET", () => new HiddenFramesTests(testOutputHelper), t => t.A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs(false));
+        await Flow.StepApartAsync<HiddenFramesTests>("a step out of a static constructor without Just My Code stops before the rest of the line runs, on the newest .NET", () => new HiddenFramesTests(testOutputHelper), t => t.A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs(true));
+        await Flow.StepApartAsync<HiddenFramesTests>("a step over from a static constructor without Just My Code comes back to the line that read the class, on the newest .NET", () => new HiddenFramesTests(testOutputHelper), t => t.Steps_from_a_static_constructor_without_Just_My_Code_come_back_to_the_line_that_read_the_class_before_the_rest_runs(true, true));
+        await Flow.StepApartAsync<HiddenFramesTests>("a step out from a static constructor without Just My Code comes back to the line that read the class, on this .NET", () => new HiddenFramesTests(testOutputHelper), t => t.Steps_from_a_static_constructor_without_Just_My_Code_come_back_to_the_line_that_read_the_class_before_the_rest_runs(false, false));
+    }
+
     /// <summary>The breakpoint on every exception stops at the index the runtime's helper throws for, in the async method
     /// with its locals, and at the call of the program's hidden method that throws, in its caller.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task An_exception_a_runtime_helper_or_the_programs_hidden_method_throws_stops_in_the_frame_that_called_it(bool newestRuntime)
+    private async Task An_exception_a_runtime_helper_or_the_programs_hidden_method_throws_stops_in_the_frame_that_called_it(bool newestRuntime)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, newestRuntime, justMyCode: true, new SetExceptionBreakpointsArguments([DapExceptionFilters.All]));
@@ -50,10 +65,7 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
     /// <summary>A step out of the async method from the exception the runtime's helper threw in it, stopped at by the
     /// breakpoint the IDE sets on every exception, handled in the user's code too, and turned off before the step so the
     /// step alone stops: the step ends where the awaiting caller catches it, as the async step out of the method shown.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_step_out_of_an_async_method_from_an_exception_a_runtime_helper_threw_stops_at_the_callers_catch(bool newestRuntime)
+    private async Task A_step_out_of_an_async_method_from_an_exception_a_runtime_helper_threw_stops_at_the_callers_catch(bool newestRuntime)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         DapExceptionOptions handled = new([new DapExceptionPathSegment(["CLR"])], DapBreakModes.Always)
@@ -73,10 +85,7 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
     /// <summary>Without Just My Code, a step into a line that reads a class with a static constructor, then calls a method,
     /// stops in the runtime's hidden helper that finds the class's statics, shown on top where the stop is, with nothing
     /// past it run; a step out of the helper comes back to the line, and a step into it enters the method.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_step_into_a_line_reading_a_class_without_Just_My_Code_stops_in_the_helper_shown_and_goes_on_to_the_call(bool newestRuntime)
+    private async Task A_step_into_a_line_reading_a_class_without_Just_My_Code_stops_in_the_helper_shown_and_goes_on_to_the_call(bool newestRuntime)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, newestRuntime, justMyCode: false, null, LaterRead);
@@ -97,10 +106,7 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
     /// <summary>Without Just My Code, a step out of a static constructor stops before the rest of the line that read the
     /// class runs, in the stack's top frame: on the newest .NET in the runtime's hidden InitHelpers that called it, shown on
     /// top; on .NET 10, whose runtime calls it from native code, back in the code that read the class.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs(bool newestRuntime)
+    private async Task A_step_out_of_a_static_constructor_without_Just_My_Code_stops_before_the_rest_of_the_line_runs(bool newestRuntime)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, newestRuntime, justMyCode: false, null, LaterInitializing);
@@ -115,12 +121,7 @@ public class HiddenFramesTests(ITestOutputHelper testOutputHelper)
     /// class before the rest of it runs, each stopping in the stack's top frame, through the runtime's hidden code that
     /// called the constructor where a step stops in it (the newest .NET's CallClassConstructor): none is lost where that
     /// code, or the constructor itself, returns to the runtime's native code.</summary>
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public async Task Steps_from_a_static_constructor_without_Just_My_Code_come_back_to_the_line_that_read_the_class_before_the_rest_runs(bool newestRuntime, bool over)
+    private async Task Steps_from_a_static_constructor_without_Just_My_Code_come_back_to_the_line_that_read_the_class_before_the_rest_runs(bool newestRuntime, bool over)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, newestRuntime, justMyCode: false, null, LaterInitializing);

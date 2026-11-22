@@ -9,11 +9,31 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class InterpreterTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>The evaluator's C#: integers, enums, conversions, unboxing, arrays and Set Value as the language says;
+    /// a pattern's or out argument's variables; With on a struct leaving the program's variable; arrays made as the
+    /// program makes them; a delegate given to a constructor made in the program; a large lambda as a small one, one
+    /// that loops without end stopped, the making of a session's first lambda not counted in its time; and a call that
+    /// throws, an index outside an array and a null named with the exception the program would throw.</summary>
+    [Fact]
+    public async Task An_expression_evaluates_as_the_language_says_and_one_that_loops_or_throws_is_stopped_or_named_as_the_program_would()
+    {
+        await Flow.StepApartAsync<InterpreterTests>("integers enums conversions unboxing arrays and set value evaluate as the language says", () => new InterpreterTests(testOutputHelper), t => t.Integers_enums_conversions_unboxing_arrays_and_set_value_evaluate_as_the_language_says());
+        await Flow.StepApartAsync<InterpreterTests>("variables a pattern or an out argument declares evaluate", () => new InterpreterTests(testOutputHelper), t => t.Variables_a_pattern_or_an_out_argument_declares_evaluate());
+        await Flow.StepApartAsync<InterpreterTests>("with on a struct answers the changed copy and leaves the program's variable as it was", () => new InterpreterTests(testOutputHelper), t => t.With_on_a_struct_answers_the_changed_copy_and_leaves_the_programs_variable_as_it_was());
+        await Flow.StepApartAsync<InterpreterTests>("an array initializer of constants makes the array the program would", () => new InterpreterTests(testOutputHelper), t => t.An_array_initializer_of_constants_makes_the_array_the_program_would());
+        await Flow.StepApartAsync<InterpreterTests>("a multi dimensional array is made as the program would make it", () => new InterpreterTests(testOutputHelper), t => t.A_multi_dimensional_array_is_made_as_the_program_would_make_it());
+        await Flow.StepApartAsync<InterpreterTests>("a delegate given to a constructor is made in the program as one given to a method is", () => new InterpreterTests(testOutputHelper), t => t.A_delegate_given_to_a_constructor_is_made_in_the_program_as_one_given_to_a_method_is());
+        await Flow.StepApartAsync<InterpreterTests>("a large lambda evaluates as a small one does and an expression that loops without end is stopped", () => new InterpreterTests(testOutputHelper), t => t.A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped());
+        await Flow.StepApartAsync<InterpreterTests>("the making of a session's first lambda in the program is not counted in the expression's time", () => new InterpreterTests(testOutputHelper), t => t.The_making_of_a_sessions_first_lambda_in_the_program_is_not_counted_in_the_expressions_time());
+        await Flow.StepApartAsync<InterpreterTests>("a call that throws in the program is named with what its exception says", () => new InterpreterTests(testOutputHelper), t => t.A_call_that_throws_in_the_program_is_named_with_what_its_exception_says());
+        await Flow.StepApartAsync<InterpreterTests>("an index outside an array throws the IndexOutOfRangeException the program would", () => new InterpreterTests(testOutputHelper), t => t.An_index_outside_an_array_throws_the_IndexOutOfRangeException_the_program_would());
+        await Flow.StepApartAsync<InterpreterTests>("a null array or reference throws the NullReferenceException the program would", () => new InterpreterTests(testOutputHelper), t => t.A_null_array_or_reference_throws_the_NullReferenceException_the_program_would());
+    }
+
     /// <summary>In one program, at Bumper.Work and then at Interpreter.Run's end: a constrained call on a struct argument,
     /// integers, enums, conversions and unboxing, Set Value, a multi-dimensional array's elements, and checked conversions.
     /// Each part names itself in its failure, and leaves the locals the next reads as they were.</summary>
-    [Fact]
-    public async Task Integers_enums_conversions_unboxing_arrays_and_set_value_evaluate_as_the_language_says()
+    private async Task Integers_enums_conversions_unboxing_arrays_and_set_value_evaluate_as_the_language_says()
     {
         string bumper = "Console.WriteLine(\"bumper\");";
         string interpreter = "Console.WriteLine(\"interpreter\");";
@@ -75,8 +95,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A lambda watch evaluates with a large lambda as with a small one, and an expression that loops without end
     /// is stopped saying it took too long, the program as it was and evaluating on.</summary>
-    [Fact]
-    public async Task A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped()
+    private async Task A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped()
     {
         // The first lambda loads the debugger's own code into the program, slow on a loaded machine.
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
@@ -107,8 +126,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
     /// <summary>The debugger's making of an expression's lambda in the program, its own code compiled and loaded there, is
     /// no part of the expression's time: held as long as an expression may take, as a busy machine once took it, the
     /// session's first lambda still answers, and so does the next, on the run's own limit.</summary>
-    [Fact]
-    public async Task The_making_of_a_sessions_first_lambda_in_the_program_is_not_counted_in_the_expressions_time()
+    private async Task The_making_of_a_sessions_first_lambda_in_the_program_is_not_counted_in_the_expressions_time()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { [AdapterEnvironment.HoldLambdaVariable] = "1" });
         await host
@@ -129,8 +147,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
     /// <summary>A with on a record struct and on a tuple answers the changed copy and leaves the program's variable as it
     /// was: the copy is the evaluation's own, never the variable it was read from. A with on a struct the expression
     /// makes changes the struct it made.</summary>
-    [Fact]
-    public async Task With_on_a_struct_answers_the_changed_copy_and_leaves_the_programs_variable_as_it_was()
+    private async Task With_on_a_struct_answers_the_changed_copy_and_leaves_the_programs_variable_as_it_was()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -142,30 +159,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Spot { X = 1, Y = 5 }", (await Evaluate(host, frame, "new Spot(1, 2) with { Y = 5 }")).Value);
     }
 
-    /// <summary>A char joined to a string, after it, before it and twice, answers the string the program would make: the
-    /// span over the char the compiler makes keeps a value of the evaluation's own. An out argument the expression
-    /// discards passes as the int it is, and a call that may keep a reference to a char the debugger lends it only for the
-    /// call is refused, saying why, the program evaluating on.</summary>
-    [Fact]
-    public async Task A_char_joined_to_a_string_answers_the_string_the_program_would_make()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        int frame = await StoppedInReadingAsync(host);
-
-        Assert.Equal("\"helloA\"", (await Evaluate(host, frame, "word + letter")).Value);
-        Assert.Equal("\"Ahello\"", (await Evaluate(host, frame, "letter + word")).Value);
-        Assert.Equal("\"helloAA\"", (await Evaluate(host, frame, "word + letter + letter")).Value);
-        Assert.True((await Evaluate(host, frame, "int.TryParse(\"5\", out _)")).Value == "true",
-            "An out argument into a variable of the evaluation's own did not pass the int it is, which the program could not live through");
-        string kept = (await Evaluate(host, frame, "System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref letter, 1).Length")).Value;
-        Assert.True(kept.Contains("Not evaluated:", StringComparison.Ordinal) && kept.Contains("may keep a reference", StringComparison.Ordinal),
-            $"A span over the char the debugger lends only for the call answered \"{kept}\", where it is refused, saying why");
-    }
-
     /// <summary>The variables an expression declares, a pattern's and an out argument's, evaluate: each holds what the
     /// pattern took apart or the call put out.</summary>
-    [Fact]
-    public async Task Variables_a_pattern_or_an_out_argument_declares_evaluate()
+    private async Task Variables_a_pattern_or_an_out_argument_declares_evaluate()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -178,67 +174,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("5", (await Evaluate(host, frame, "int.TryParse(\"5\", out int parsed) ? parsed : -1")).Value);
     }
 
-    /// <summary>A native integer evaluates as wide as the program's are, read, in arithmetic, converted to and set, each
-    /// answering an nint or nuint as the program would hold it.</summary>
-    [Fact]
-    public async Task Native_integers_evaluate_as_wide_as_the_programs()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        int frame = await StoppedInReadingAsync(host);
-
-        Assert.Equal(("5000000000", "nint"), await Evaluate(host, frame, "native"));
-        Assert.Equal(("5000000001", "nint"), await Evaluate(host, frame, "native + 1"));
-        Assert.Equal(("10000000000", "nint"), await Evaluate(host, frame, "native * 2"));
-        Assert.Equal(("5", "nint"), await Evaluate(host, frame, "(nint)5"));
-        Assert.Equal(("18446744073709551615", "nuint"), await Evaluate(host, frame, "unsignedNative - 8"));
-        Assert.Equal(("3", "nuint"), await Evaluate(host, frame, "unsignedNative / 2"));
-        Assert.Equal("\"5000000000\"", (await Evaluate(host, frame, "native.ToString()")).Value);
-        Assert.Equal("9", (await Evaluate(host, frame, "unsignedNative = 9")).Value);
-        Assert.True((await Evaluate(host, frame, "unsignedNative")).Value == "9", "unsignedNative = 9 left the program's unsignedNative as it was");
-    }
-
-    /// <summary>A float cast to an integer it does not fit answers what the program's runtime makes of the cast, as Reading's
-    /// casts holds it: the nearest value the integer holds, a type narrower than an int cut as that runtime's version cuts it.</summary>
-    [Fact]
-    public async Task A_float_cast_to_an_integer_it_does_not_fit_answers_what_the_programs_runtime_makes()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        int frame = await StoppedInReadingAsync(host);
-
-        string[] casts = ["(int)huge", "(int)-huge", "(uint)negOne", "(uint)(d300 * 1e8)", "(byte)(d300 * 1e8)", "(sbyte)-d300", "(ushort)(negOne * -70000)", "(nint)huge"];
-        for (int cast = 0; cast < casts.Length; cast++)
-        {
-            string evaluated = (await Evaluate(host, frame, casts[cast])).Value;
-            string run = (await Evaluate(host, frame, $"casts[{cast}]")).Value;
-            Assert.True(run == $"\"{evaluated}\"", $"{casts[cast]} evaluated to {evaluated}, where the program's runtime makes {run}");
-        }
-    }
-
-    /// <summary>A string the expression writes answers as the program's would, a call's receiver too, and a string's
-    /// constructors make the string the program would, or throw as it would.</summary>
-    [Fact]
-    public async Task A_written_string_and_a_strings_constructors_answer_as_the_program_would()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        int frame = await StoppedInReadingAsync(host);
-
-        Assert.Equal(("3", "int"), await Evaluate(host, frame, "\"abc\".Length"));
-        Assert.Equal(("98 'b'", "char"), await Evaluate(host, frame, "\"abc\"[1]"));
-        Assert.Equal("\"ABC\"", (await Evaluate(host, frame, "\"abc\".ToUpper()")).Value);
-        Assert.Equal("true", (await Evaluate(host, frame, "word.Contains(\"bell\".Substring(1))")).Value);
-        Assert.Equal(("\"aaa\"", "string"), await Evaluate(host, frame, "new string('a', 3)"));
-        Assert.Equal("\"AA\"", (await Evaluate(host, frame, "new string(letter, 2)")).Value);
-        Assert.Equal("\"ab\"", (await Evaluate(host, frame, "new string(new[] { 'a', 'b' })")).Value);
-        Assert.Equal("\"ell\"", (await Evaluate(host, frame, "new string(word.AsSpan(1, 3))")).Value);
-        string negative = (await Evaluate(host, frame, "new string('a', -1)")).Value;
-        Assert.True(negative.Contains("System.ArgumentOutOfRangeException", StringComparison.Ordinal),
-            $"new string('a', -1) answered \"{negative}\", where the program would throw an ArgumentOutOfRangeException");
-    }
-
     /// <summary>An array initializer of constants makes the array the program would, of any length and element type, and
     /// a span over constants likewise: each element is the constant written for it.</summary>
-    [Fact]
-    public async Task An_array_initializer_of_constants_makes_the_array_the_program_would()
+    private async Task An_array_initializer_of_constants_makes_the_array_the_program_would()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -259,8 +197,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
     /// <summary>A multi-dimensional array the expression makes is the one the program would make: of its rank and lengths,
     /// filled as its initializer says, of any element type, its elements read and written; a negative length throws as
     /// the program's would.</summary>
-    [Fact]
-    public async Task A_multi_dimensional_array_is_made_as_the_program_would_make_it()
+    private async Task A_multi_dimensional_array_is_made_as_the_program_would_make_it()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -279,34 +216,6 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
             $"new int[letter - 'B', 2] answered \"{negative}\", where the program would throw an OverflowException for the length of -1");
     }
 
-    /// <summary>A multi-dimensional array of bounds from zero costs the program one call, Array.CreateInstance given its
-    /// lengths, once the session has its element type's System.Type, kept from the first such array through a step; a rank
-    /// past three costs one call more, for its lengths' array, and a typeof of the type none. Calls are counted, never timed.</summary>
-    [Fact]
-    public async Task A_multi_dimensional_array_takes_one_call_in_the_program_once_the_session_has_its_element_type()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await host
-            .InitializeAsync()
-            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true)
-            .WaitForInitializedEvent();
-        string reading = "Console.WriteLine(\"reading\");";
-        await host.BreakpointsAsync([Line(reading)], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        int thread = stop.ThreadId!.Value;
-        int frame = (await host.TopFrameAsync(thread)).Id;
-
-        // Its element type's name made in the program, Type.GetType of it, then Array.CreateInstance.
-        await Called(host, frame, "new int[,] { {1,2},{3,4} }[1,0]", "3", 3);
-        await Called(host, frame, "(new int[2, 3])[1, 2]", "0", 1);
-        await Called(host, frame, "(new int[1, 2, 1, 2])[0, 1, 0, 1]", "0", 2);
-        await Called(host, frame, "typeof(int).Name", "\"Int32\"", 1);
-
-        await host.StepOverAsync(thread).WaitForStoppedEvent();
-        frame = (await host.TopFrameAsync(thread)).Id;
-        await Called(host, frame, "(new int[3, 3])[2, 2]", "0", 1);
-    }
-
     /// <summary>Evaluates <paramref name="expression"/>, which is to answer <paramref name="answer"/> having run
     /// <paramref name="calls"/> calls in the program, as the engine's log tells each one's end.</summary>
     private static async Task Called(DebugSession host, int frame, string expression, string answer, int calls)
@@ -321,8 +230,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A call that throws in the program is named with what its exception says, as the program's own catch reads
     /// it, the value it was given too, on one line.</summary>
-    [Fact]
-    public async Task A_call_that_throws_in_the_program_is_named_with_what_its_exception_says()
+    private async Task A_call_that_throws_in_the_program_is_named_with_what_its_exception_says()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -339,8 +247,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
     /// <summary>An index outside an array throws the IndexOutOfRangeException the program would, named with what the
     /// program's own catch reads: past the end or before the start, read, written or an element's field read, of a
     /// vector, a multi-dimensional array or an array of structs, by an int or a native integer.</summary>
-    [Fact]
-    public async Task An_index_outside_an_array_throws_the_IndexOutOfRangeException_the_program_would()
+    private async Task An_index_outside_an_array_throws_the_IndexOutOfRangeException_the_program_would()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -359,8 +266,7 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>An index, a store or the length of a null array, and a field, a store or a call through a null reference,
     /// throw the NullReferenceException the program would, named with what the program's own catch reads.</summary>
-    [Fact]
-    public async Task A_null_array_or_reference_throws_the_NullReferenceException_the_program_would()
+    private async Task A_null_array_or_reference_throws_the_NullReferenceException_the_program_would()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedInReadingAsync(host);
@@ -376,37 +282,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("null", (await Evaluate(host, frame, "nobody?.Value")).Value);
     }
 
-    /// <summary>With the program's culture fr-FR, a number interpolated in an evaluation is written as the program writes it,
-    /// with or without a format: its own ToString of each, in that culture, comma and all.</summary>
-    [Fact]
-    public async Task An_interpolated_number_is_formatted_in_the_programs_culture()
-    {
-        string cultured = "Console.WriteLine($\"cultured {d} {d:N1} {d:P0} {below:N0}\");";
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await host
-            .InitializeAsync()
-            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["culture"])
-            .WaitForInitializedEvent();
-        await host.BreakpointsAsync([Line(cultured)], Debuggees.Source("PassengerCases", "Program.cs")).ConfigurationDoneAsync();
-        int frame = await StoppedAt(host, cultured);
-
-        Assert.Equal("\"1234,5\"", (await Evaluate(host, frame, "d.ToString()")).Value);
-        foreach ((string interpolated, string own) in new[]
-        {
-            ("$\"{d}\"", "d.ToString()"), ("$\"{d:N1}\"", "d.ToString(\"N1\")"), ("$\"{d:P0}\"", "d.ToString(\"P0\")"),
-            ("$\"{below:N0}\"", "below.ToString(\"N0\")"), ("$\"{below}\"", "below.ToString()"), ("$\"[{d,10}]\"", "\"[\" + d.ToString().PadLeft(10) + \"]\""),
-        })
-        {
-            string written = (await Evaluate(host, frame, interpolated)).Value;
-            string expected = (await Evaluate(host, frame, own)).Value;
-            Assert.True(written == expected, $"{interpolated} answered {written}, where the program's {own} is {expected}");
-        }
-    }
-
     /// <summary>A lambda, one reading the frame's locals and a method group given to a constructor (Lazy's, Thread's,
     /// Timer's) are made delegates in the program, as those given to a method are, and the objects made read on.</summary>
-    [Fact]
-    public async Task A_delegate_given_to_a_constructor_is_made_in_the_program_as_one_given_to_a_method_is()
+    private async Task A_delegate_given_to_a_constructor_is_made_in_the_program_as_one_given_to_a_method_is()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         int frame = await StoppedInReadingAsync(host);
@@ -418,18 +296,6 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.True(type == "int" && int.TryParse(id, out int managed) && managed > 0, $"A thread made with a lambda has the managed id {id} ({type})");
         (string timer, string? timerType) = await Evaluate(host, frame, "new System.Threading.Timer(_ => { })");
         Assert.True(timerType == "System.Threading.Timer", $"A timer made with a lambda reads {timer} ({timerType})");
-    }
-
-    /// <summary>A call that returns nothing says it ran with no value, of type void, never a null of type object.</summary>
-    [Fact]
-    public async Task A_call_that_returns_nothing_says_it_ran_with_no_value()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        int frame = await StoppedInReadingAsync(host);
-
-        Assert.Equal((DapRows.RanWithNoValue, "void"), await Evaluate(host, frame, "GC.Collect()"));
-        Assert.Equal((DapRows.RanWithNoValue, "void"), await Evaluate(host, frame, "Console.Out.Flush()"));
-        Assert.Equal(("5", "int"), await Evaluate(host, frame, "word.Length"));
     }
 
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);

@@ -10,8 +10,16 @@ public class ImplementedTests(ITestOutputHelper testOutputHelper)
 {
     private const string Implemented = "Console.WriteLine(\"implemented\");";
 
+    /// <summary>A call through a generic interface or base is made on that type as the value implements it, and a LINQ
+    /// call evaluates the first time in a program that has not loaded System.Linq.</summary>
     [Fact]
-    public async Task A_call_through_a_generic_interface_or_base_is_made_on_that_type_as_the_value_implements_it()
+    public async Task A_call_through_an_interface_base_or_LINQ_is_made_as_the_value_implements_it()
+    {
+        await Flow.StepApartAsync<ImplementedTests>("a call through a generic interface or base is made on that type as the value implements it", () => new ImplementedTests(testOutputHelper), t => t.A_call_through_a_generic_interface_or_base_is_made_on_that_type_as_the_value_implements_it());
+        await Flow.StepApartAsync<ImplementedTests>("a LINQ call evaluates the first time in a program that has not loaded System.Linq", () => new ImplementedTests(testOutputHelper), t => t.A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq("list.Count()", "3", "list.Count(x => x > 1)", "2"));
+    }
+
+    private async Task A_call_through_a_generic_interface_or_base_is_made_on_that_type_as_the_value_implements_it()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await StoppedAtImplementedAsync(host);
@@ -28,10 +36,7 @@ public class ImplementedTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A LINQ call evaluated before the program has loaded System.Linq answers the first time, the one taking a lambda
     /// as the one taking nothing, whichever comes first, though without System.Linq the compiler binds Count elsewhere.</summary>
-    [Theory]
-    [InlineData("list.Count()", "3", "list.Count(x => x > 1)", "2")]
-    [InlineData("list.Count(x => x > 1)", "2", "list.Count()", "3")]
-    public async Task A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq(string first, string firstCount, string then, string thenCount)
+    private async Task A_LINQ_call_evaluates_the_first_time_in_a_program_that_has_not_loaded_System_Linq(string first, string firstCount, string then, string thenCount)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         int frame = await StoppedAtImplementedAsync(host);

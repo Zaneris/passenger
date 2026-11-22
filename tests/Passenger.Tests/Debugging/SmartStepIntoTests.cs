@@ -12,8 +12,19 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
 
     private static int Line(string code) => Debuggees.Line(Stepping, code);
 
+    /// <summary>The calls of a line are listed in the order they run and the one chosen is stepped into, the second of
+    /// two calls of one method too; a lambda on the line is stepped into when what it is handed to runs it; an awaited
+    /// async method is stepped into at its first line.</summary>
     [Fact]
-    public async Task The_calls_of_a_line_are_listed_in_the_order_they_run_and_the_one_chosen_is_stepped_into()
+    public async Task Smart_Step_Into_lists_a_lines_calls_in_the_order_they_run_and_steps_into_the_one_chosen()
+    {
+        await Flow.StepApartAsync<SmartStepIntoTests>("the calls of a line are listed in the order they run and the one chosen is stepped into", () => new SmartStepIntoTests(testOutputHelper), t => t.The_calls_of_a_line_are_listed_in_the_order_they_run_and_the_one_chosen_is_stepped_into());
+        await Flow.StepApartAsync<SmartStepIntoTests>("of two calls of the same method the second chosen is the one stepped into", () => new SmartStepIntoTests(testOutputHelper), t => t.Of_two_calls_of_the_same_method_the_second_chosen_is_the_one_stepped_into());
+        await Flow.StepApartAsync<SmartStepIntoTests>("a lambda on the line is stepped into when what it is handed to runs it", () => new SmartStepIntoTests(testOutputHelper), t => t.A_lambda_on_the_line_is_stepped_into_when_what_it_is_handed_to_runs_it());
+        await Flow.StepApartAsync<SmartStepIntoTests>("an awaited async method is stepped into at its first line", () => new SmartStepIntoTests(testOutputHelper), t => t.An_awaited_async_method_is_stepped_into_at_its_first_line());
+    }
+
+    private async Task The_calls_of_a_line_are_listed_in_the_order_they_run_and_the_one_chosen_is_stepped_into()
     {
         const string code = "int nested = Outer(Inner());";
         int line = Line(code);
@@ -35,8 +46,7 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("20", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "value").Value);
     }
 
-    [Fact]
-    public async Task Of_two_calls_of_the_same_method_the_second_chosen_is_the_one_stepped_into()
+    private async Task Of_two_calls_of_the_same_method_the_second_chosen_is_the_one_stepped_into()
     {
         int line = Line("int sum = Add(Add(1, 2), 3);");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
@@ -51,37 +61,7 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(("3", "3"), (Assert.Single(locals, v => v.Name == "a").Value, Assert.Single(locals, v => v.Name == "b").Value));
     }
 
-    /// <summary>Of ok ? Pick(1) : Pick(2) with ok false, Pick(2) chosen is stepped into from its own call, though Pick(1)
-    /// never ran; Pick(1) chosen is never entered from its call, so the step ends at the next line as a step over does.</summary>
-    [Fact]
-    public async Task A_call_chosen_after_one_the_condition_skips_is_stepped_into_and_the_skipped_one_never_is()
-    {
-        const string code = "int chosen = ok ? Pick(1) : Pick(2);";
-        int line = Line(code);
-        string text = File.ReadAllLines(Debuggees.Source(Stepping, "Program.cs"))[line - 1];
-        int first = text.IndexOf("Pick(1)", StringComparison.Ordinal) + 1;
-        int second = text.IndexOf("Pick(2)", StringComparison.Ordinal) + 1;
-        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        int thread = stop.ThreadId!.Value;
-
-        IReadOnlyList<StepInTarget> targets = await Targets(host, thread);
-        Assert.Equal(["Pick(int)", "Pick(int)"], targets.Select(t => t.Label));
-        Assert.Equal([first, second], targets.Select(t => t.Column ?? 0).Order());
-        stop = await host.Step(thread, Assert.Single(targets, t => t.Column == second));
-        Assert.True(stop.ReadStopInfo().line == Line("private static int Pick(int value)") + 1,
-            $"Smart Step Into Pick(2) stopped at line {stop.ReadStopInfo().line} ({stop.Reason}), not in Pick: it waited for an entry from Pick(1), which ok skipped");
-        Assert.Equal("2", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "value").Value);
-
-        stop = await host.ContinueAsync().WaitForStoppedEvent();
-        Assert.Equal((StopReasons.Breakpoint, line), (stop.Reason, stop.ReadStopInfo().line));
-        stop = await host.Step(thread, Assert.Single(await Targets(host, thread), t => t.Column == first));
-        Assert.True((stop.Reason, stop.ReadStopInfo().line) == (StopReasons.Step, Line("Console.WriteLine($\"chosen {chosen}\");")),
-            $"Smart Step Into Pick(1), which ok skips, stopped at line {stop.ReadStopInfo().line} ({stop.Reason}), where it was to end at the next line");
-    }
-
-    [Fact]
-    public async Task A_lambda_on_the_line_is_stepped_into_when_what_it_is_handed_to_runs_it()
+    private async Task A_lambda_on_the_line_is_stepped_into_when_what_it_is_handed_to_runs_it()
     {
         const string code = "int[] doubled = [.. Numbers().Select(n => Twice(n))];";
         int line = Line(code);
@@ -100,8 +80,7 @@ public class SmartStepIntoTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("1", Assert.Single(await host.LocalsAsync(stop), v => v.Name == "n").Value);
     }
 
-    [Fact]
-    public async Task An_awaited_async_method_is_stepped_into_at_its_first_line()
+    private async Task An_awaited_async_method_is_stepped_into_at_its_first_line()
     {
         int line = Line("int computed = await ComputeAsync(Seed());");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);

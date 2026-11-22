@@ -9,11 +9,19 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int TestEnd = Debuggees.Line("DebuggableConsoleApp", "VariablesClass.cs", "CompositeValueFixtures localCompositeValues = new CompositeValueFixtures();") + 1;
 
+    /// <summary>A stop lists locals and fields of every kind with their values and types, and a float and a double
+    /// read as C# writes them under a German culture and take back the text shown.</summary>
+    [Fact]
+    public async Task A_stop_lists_every_kind_of_local_and_field_with_its_value_read_as_CSharp_writes_it()
+    {
+        await Flow.StepApartAsync<Variables2Tests>("a stop lists locals and fields of every kind with their values and types", () => new Variables2Tests(testOutputHelper), t => t.A_stop_lists_locals_and_fields_of_every_kind_with_their_values_and_types());
+        await Flow.StepApartAsync<Variables2Tests>("a float and a double read as C# writes them under a German culture and take back the text shown", () => new Variables2Tests(testOutputHelper), t => t.A_float_and_a_double_read_as_CSharp_writes_them_under_a_German_culture_and_take_back_the_text_shown());
+    }
+
     /// <summary>A float's and a double's values read as C# writes them whatever the machine's culture, and Set Value takes
     /// back the text shown. The culture comes from LANG and LC_ALL on macOS and Linux; Windows takes it from the user's
     /// settings, so there the test holds the values to C#'s alone.</summary>
-    [Fact]
-    public async Task A_float_and_a_double_read_as_CSharp_writes_them_under_a_German_culture_and_take_back_the_text_shown()
+    private async Task A_float_and_a_double_read_as_CSharp_writes_them_under_a_German_culture_and_take_back_the_text_shown()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: new Dictionary<string, string> { ["LANG"] = "de_DE.UTF-8", ["LC_ALL"] = "de_DE.UTF-8" });
         await host
@@ -48,8 +56,7 @@ public class Variables2Tests(ITestOutputHelper testOutputHelper)
         string? Shown(string name) => locals.FirstOrDefault(v => v.Name == name)?.Value;
     }
 
-    [Fact]
-    public async Task A_stop_lists_locals_and_fields_of_every_kind_with_their_values_and_types()
+    private async Task A_stop_lists_locals_and_fields_of_every_kind_with_their_values_and_types()
     {
         bool startSuspended = true;
 

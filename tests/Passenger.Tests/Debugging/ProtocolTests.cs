@@ -10,29 +10,18 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class ProtocolTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>A message too large to read ends the conversation saying so: a header that never ends, the row of the
+    /// table FramingTests reads in full.</summary>
     [Fact]
-    public async Task A_request_the_adapter_does_not_support_is_refused_naming_it_and_the_next_is_still_answered()
+    public async Task A_message_too_large_to_read_ends_the_adapters_conversation_saying_so()
     {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-
-        DapException unimplementedError = await Assert.ThrowsAsync<DapException>(() => host.RequestAsync("setVariable", new { variablesReference = 0, name = "value", value = "1" }));
-        Assert.Equal("Request 'setVariable' is not supported.", unimplementedError.Reason);
-
-        DapException unknownError = await Assert.ThrowsAsync<DapException>(() => host.RequestAsync("unknownRequest"));
-        Assert.Equal("Request 'unknownRequest' is not supported.", unknownError.Reason);
-
-        DapCapabilities capabilities = await host.RequestAsync<DapCapabilities>(DapCommands.Initialize, DebugSession.InitializeArguments);
-        Assert.True(capabilities.SupportsConfigurationDoneRequest);
+        await Flow.StepApartAsync<ProtocolTests>("a header that never ends ends the conversation saying so", () => new ProtocolTests(testOutputHelper), t => t.A_message_too_large_to_read_ends_the_conversation_saying_so("header"));
     }
 
     /// <summary>A client that sends what no message of the protocol is (a header that never ends, or a Content-Length past
     /// the 256 MB a message may be, or past any number) ends the conversation, the adapter saying why in its log; it never
     /// waits to take its memory for it.</summary>
-    [Theory]
-    [InlineData("header")]
-    [InlineData("268435457")]
-    [InlineData("99999999999999999999")]
-    public async Task A_message_too_large_to_read_ends_the_conversation_saying_so(string sent)
+    private async Task A_message_too_large_to_read_ends_the_conversation_saying_so(string sent)
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         bool whole = host.SendRaw(Encoding.ASCII.GetBytes(sent == "header"
@@ -43,7 +32,7 @@ public class ProtocolTests(ITestOutputHelper testOutputHelper)
         Assert.True(host.Ended(TimeSpan.FromSeconds(20)), $"The adapter was still reading what it was sent ({sent}) 20 s later: {host.EngineLog()}");
         string logged = host.EngineLog();
         Assert.True(logged.Contains("DAP read ended", StringComparison.Ordinal)
-            && logged.Contains(sent == "header" ? $"ran past {DapConnection.MostHeader} bytes" : $"over the {DapConnection.MostBody} bytes", StringComparison.Ordinal),
+            && logged.Contains(sent == "header" ? $"ran past {Passenger.Core.Numbers.Said(DapConnection.MostHeader)} bytes" : $"over the {Passenger.Core.Numbers.Said(DapConnection.MostBody)} bytes", StringComparison.Ordinal),
             $"The adapter's log does not say why the conversation ended: {logged}");
     }
 }

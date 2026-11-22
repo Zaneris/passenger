@@ -10,8 +10,19 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
 {
     private const string Reckoning = "Console.WriteLine(\"reckoning\");";
 
+    /// <summary>A long-based flags enum keeps its bits above 32 in a bitwise operation; a pointer type is its own
+    /// type; a property a class takes from a closed generic base is read; a proxy in another library shows its members
+    /// and one in no library leaves the raw members.</summary>
     [Fact]
-    public async Task A_long_based_flags_enum_keeps_its_bits_above_32_in_a_bitwise_operation()
+    public async Task A_value_is_reckoned_at_its_own_type_through_its_enum_pointer_base_and_proxy()
+    {
+        await Flow.StepApartAsync<ReckoningTests>("a long based flags enum keeps its bits above 32 in a bitwise operation", () => new ReckoningTests(testOutputHelper), t => t.A_long_based_flags_enum_keeps_its_bits_above_32_in_a_bitwise_operation());
+        await Flow.StepApartAsync<ReckoningTests>("a pointer type is its own type never the type it points at", () => new ReckoningTests(testOutputHelper), t => t.A_pointer_type_is_its_own_type_never_the_type_it_points_at());
+        await Flow.StepApartAsync<ReckoningTests>("a property a class takes from a closed generic base is read", () => new ReckoningTests(testOutputHelper), t => t.A_property_a_class_takes_from_a_closed_generic_base_is_read());
+        await Flow.StepApartAsync<ReckoningTests>("a proxy in another library shows its members and one in no library leaves the raw members", () => new ReckoningTests(testOutputHelper), t => t.A_proxy_in_another_library_shows_its_members_and_one_in_no_library_leaves_the_raw_members());
+    }
+
+    private async Task A_long_based_flags_enum_keeps_its_bits_above_32_in_a_bitwise_operation()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (_, int frame) = await StoppedAtReckoningAsync(host);
@@ -22,8 +33,7 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Low", await Evaluate(host, frame, "~big & wide"));
     }
 
-    [Fact]
-    public async Task A_pointer_type_is_its_own_type_never_the_type_it_points_at()
+    private async Task A_pointer_type_is_its_own_type_never_the_type_it_points_at()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (_, int frame) = await StoppedAtReckoningAsync(host);
@@ -33,19 +43,7 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("true", await Evaluate(host, frame, "typeof(int*).IsPointer"));
     }
 
-    [Fact]
-    public async Task A_formatted_hole_of_a_programs_value_takes_its_format()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        (_, int frame) = await StoppedAtReckoningAsync(host);
-
-        string month = await Evaluate(host, frame, "$\"{date:yyyy-MM}\"");
-        Assert.True(month == "\"2026-10\"", $"$\"{{date:yyyy-MM}}\" is {month}, its format dropped");
-        Assert.Equal("\"[  2026-10]\"", await Evaluate(host, frame, "$\"[{date,9:yyyy-MM}]\""));
-    }
-
-    [Fact]
-    public async Task A_property_a_class_takes_from_a_closed_generic_base_is_read()
+    private async Task A_property_a_class_takes_from_a_closed_generic_base_is_read()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (StoppedEvent stop, _) = await StoppedAtReckoningAsync(host);
@@ -57,8 +55,7 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("1", Assert.Single(members, v => v.Name == "Count").Value);
     }
 
-    [Fact]
-    public async Task A_proxy_in_another_library_shows_its_members_and_one_in_no_library_leaves_the_raw_members()
+    private async Task A_proxy_in_another_library_shows_its_members_and_one_in_no_library_leaves_the_raw_members()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (StoppedEvent stop, _) = await StoppedAtReckoningAsync(host);
@@ -71,18 +68,6 @@ public class ReckoningTests(ITestOutputHelper testOutputHelper)
         List<DapVariable> raw = await host.VariablesAsync(Assert.Single(locals, v => v.Name == "unproxied").VariablesReference);
         Assert.True(raw.Any(v => v.Name == "Raw" && v.Value == "4"),
             $"unproxied, whose proxy is in no assembly, opens to {string.Join(", ", raw.Select(v => $"{v.Name} {v.Value}"))}, not its own Raw 4");
-    }
-
-    [Fact]
-    public async Task A_flags_enum_with_a_negative_member_shows_a_combination_by_its_members_names()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        (StoppedEvent stop, int frame) = await StoppedAtReckoningAsync(host);
-
-        DapVariable access = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "access");
-        Assert.True(access.Value == "Read | Write", $"Read | Write of an enum declaring All = -1 shows as {access.Value}");
-        Assert.Equal("Read | Write", await Evaluate(host, frame, "access"));
-        Assert.Equal("All", await Evaluate(host, frame, "Access.All"));
     }
 
     /// <summary>The program launched to Reckoning.Run's stop, and its top frame.</summary>

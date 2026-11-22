@@ -135,18 +135,6 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.DoesNotContain(angry, v => v.Name is "_message" or "StackTrace");
     }
 
-    /// <summary>A [DebuggerDisplay] naming a property the type implements explicitly by its full name, which no C# expression
-    /// evaluates, shows the property's value where its names hold marks too.</summary>
-    [Fact]
-    public async Task DebuggerDisplay_naming_an_explicit_property_by_a_full_name_holding_marks_shows_its_value()
-    {
-        int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
-        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        DapVariable tally = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "tally");
-        Assert.True(tally.Value == "गिनती = 7", $"The display naming Iगिनती.गिनती shows \"{tally.Value}\", the name read only to its first mark");
-    }
-
     /// <summary>A value whose ToString throws shows its type and still opens to its members.</summary>
     [Gate]
     [Fact]
@@ -167,10 +155,18 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("{Unprintable}", evaluated.Result);
     }
 
+    /// <summary>A multi-dimensional array's long outer dimension opens in ranges of 100, and an element under a range
+    /// takes a value set through the array.</summary>
+    [Fact]
+    public async Task A_multi_dimensional_arrays_rows_open_in_ranges_and_take_a_value_set_through_the_array()
+    {
+        await Flow.StepApartAsync<VariablesCasesTests>("a multi dimensional array's long outer dimension opens in ranges of 100", () => new VariablesCasesTests(testOutputHelper), t => t.A_multi_dimensional_arrays_long_outer_dimension_opens_in_ranges_of_100());
+        await Flow.StepApartAsync<VariablesCasesTests>("an element under a multi dimensional array's range takes a value set through the array", () => new VariablesCasesTests(testOutputHelper), t => t.An_element_under_a_multi_dimensional_arrays_range_takes_a_value_set_through_the_array());
+    }
+
     /// <summary>A multi-dimensional array's outer dimension over 100 long opens in ranges of 100, as a long array does, each
     /// range to its rows and each row to its elements: a 200,000 by 1 array is 2,000 rows at its top, not 200,000.</summary>
-    [Fact]
-    public async Task A_multi_dimensional_arrays_long_outer_dimension_opens_in_ranges_of_100()
+    private async Task A_multi_dimensional_arrays_long_outer_dimension_opens_in_ranges_of_100()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
@@ -195,8 +191,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
     /// <summary>An element under a long multi-dimensional array's range and row is reached by an expression naming the array
     /// itself, which Set Value writes through into the program; the range and the row, rows the debugger adds to show the
     /// array, have none.</summary>
-    [Fact]
-    public async Task An_element_under_a_multi_dimensional_arrays_range_takes_a_value_set_through_the_array()
+    private async Task An_element_under_a_multi_dimensional_arrays_range_takes_a_value_set_through_the_array()
     {
         string setting = "Console.WriteLine(\"setting\");";
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);

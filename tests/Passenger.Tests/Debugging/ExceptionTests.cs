@@ -16,12 +16,22 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
     private static readonly int Caught = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "catch (Exception e)");
     private static readonly int Tested = Debuggees.Line("DebuggableConsoleApp", "Exceptions.cs", "if (exceptionToThrow is ExceptionToThrow.Normal)");
 
+    /// <summary>At an exception's stop the exception is listed with the locals and evaluates and the next statement is
+    /// refused saying why; one thrown in code not the program's stops with no source under Just My Code; each
+    /// exception filter and condition stops at the exceptions it names alone; with Just My Code off all exceptions
+    /// stop at one handled within external code.</summary>
+    [Fact]
+    public async Task An_exception_stops_where_its_breakpoint_and_Just_My_Code_say_and_is_listed_at_its_stop()
+    {
+        await Flow.StepApartAsync<ExceptionTests>("at an exception's stop the exception is listed with the locals and evaluates and the next statement is refused saying why", () => new ExceptionTests(testOutputHelper), t => t.At_an_exceptions_stop_the_exception_is_listed_with_the_locals_and_evaluates_and_the_next_statement_is_refused_saying_why(true));
+        await Flow.StepApartAsync<ExceptionTests>("an exception thrown in code not the program's own stops with no source under Just My Code", () => new ExceptionTests(testOutputHelper), t => t.An_exception_thrown_in_code_not_the_programs_own_stops_with_no_source_under_Just_My_Code());
+        await Flow.StepApartAsync<ExceptionTests>("each exception filter and condition stops at the exceptions it names and at no other", () => new ExceptionTests(testOutputHelper), t => t.Each_exception_filter_and_condition_stops_at_the_exceptions_it_names_and_at_no_other());
+        await Flow.StepApartAsync<ExceptionTests>("with just my code off all exceptions stop at one handled within external code", () => new ExceptionTests(testOutputHelper), t => t.With_just_my_code_off_all_exceptions_stop_at_one_handled_within_external_code());
+    }
+
     /// <summary>On the .NET the program targets and on the newest, whose runtime leaves its exception dispatch among the
     /// stop's frames: the stop is in the frame that threw, with its locals.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task At_an_exceptions_stop_the_exception_is_listed_with_the_locals_and_evaluates_and_the_next_statement_is_refused_saying_why(bool newestRuntime)
+    private async Task At_an_exceptions_stop_the_exception_is_listed_with_the_locals_and_evaluates_and_the_next_statement_is_refused_saying_why(bool newestRuntime)
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2,
@@ -109,8 +119,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
         Assert.Contains("the thread is stopped at an exception being thrown", refused.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task An_exception_thrown_in_code_not_the_programs_own_stops_with_no_source_under_Just_My_Code()
+    private async Task An_exception_thrown_in_code_not_the_programs_own_stops_with_no_source_under_Just_My_Code()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -202,8 +211,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
     /// <summary>Each exception filter and condition in turn, in one program with Just My Code on: from the loop's head
     /// (no filter set while the loop came round) the filter and the exception to throw are set, and the
     /// program stops at the exception with its type and break mode, or goes on to the line after the throw without.</summary>
-    [Fact]
-    public async Task Each_exception_filter_and_condition_stops_at_the_exceptions_it_names_and_at_no_other()
+    private async Task Each_exception_filter_and_condition_stops_at_the_exceptions_it_names_and_at_no_other()
     {
         await using DebugSession host = await AttachedAfterTheThrow(justMyCode: true);
         SetExceptionBreakpointsArguments all = new([DapExceptionFilters.All], []);
@@ -231,8 +239,7 @@ public class ExceptionTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>With Just My Code off, the filter for all exceptions stops at one thrown and handled within external code.</summary>
-    [Fact]
-    public async Task With_just_my_code_off_all_exceptions_stop_at_one_handled_within_external_code()
+    private async Task With_just_my_code_off_all_exceptions_stop_at_one_handled_within_external_code()
     {
         await using DebugSession host = await AttachedAfterTheThrow(justMyCode: false);
         await Round(host, "all exceptions without Just My Code", new SetExceptionBreakpointsArguments([DapExceptionFilters.All], []), "HandledWithinExternalCode",

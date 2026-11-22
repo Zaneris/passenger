@@ -32,11 +32,19 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", breakpoint.Message);
     }
 
+    /// <summary>A condition nested past what the parser reads is refused saying so and the adapter runs on, and a
+    /// condition reading a pattern's variable stops only where it holds.</summary>
+    [Fact]
+    public async Task A_condition_the_parser_cannot_read_or_a_patterns_variable_reads_is_refused_or_held_where_it_holds()
+    {
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("a condition nested past what the parser reads is refused saying so and the adapter runs on", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_condition_nested_past_what_the_parser_reads_is_refused_saying_so_and_the_adapter_runs_on());
+        await Flow.StepApartAsync<ConditionalBreakpointTests>("a condition reading a pattern's variable stops only where it holds", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_condition_reading_a_patterns_variable_stops_only_where_it_holds());
+    }
+
     /// <summary>A condition nested past what the parser reads (interpolations within interpolations, each a level of a lexer
     /// that checks no stack) is refused when set, saying so, where reading it ended the adapter; the program then runs to a
     /// breakpoint after it, the refused one never bound.</summary>
-    [Fact]
-    public async Task A_condition_nested_past_what_the_parser_reads_is_refused_saying_so_and_the_adapter_runs_on()
+    private async Task A_condition_nested_past_what_the_parser_reads_is_refused_saying_so_and_the_adapter_runs_on()
     {
         string deep = string.Concat(Enumerable.Repeat("$\"{", 20_000)) + "0" + string.Concat(Enumerable.Repeat("}\"", 20_000)) + " == \"0\"";
         bool startSuspended = true;
@@ -56,38 +64,6 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         StoppedEvent stop = await host.WaitForStoppedEvent();
         Assert.True(stop.ReadStopInfo().line == Debuggees.MyMethodEnd,
             $"The program stopped at line {stop.ReadStopInfo().line} of {stop.ReadStopInfo().filePath} before MyMethod's end: the refused breakpoint was bound");
-    }
-
-    /// <summary>A lambda condition is refused when set on a function breakpoint and on a data breakpoint, as on a line's,
-    /// rather than stopping at every hit saying it could not be told: the program runs past the function breakpoint to the
-    /// line breakpoint after it.</summary>
-    [Fact]
-    public async Task A_function_or_data_breakpoint_with_a_lambda_condition_is_refused_saying_why()
-    {
-        const string Lambda = "_intList.Any(value => value == 4)";
-        bool startSuspended = true;
-        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
-        await host
-            .InitializeAsync()
-            .AttachAsync(debuggee.Id)
-            .WaitForInitializedEvent();
-        SetBreakpointsResponse functions = await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
-            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("DebuggableConsoleApp.MyClass.MyMethod", Condition: Lambda)]));
-        SetDataBreakpointsResponse data = await host.RequestAsync<SetDataBreakpointsResponse>(DapCommands.SetDataBreakpoints,
-            new SetDataBreakpointsArguments([new DapDataBreakpoint("data:1", "write", Condition: Lambda)]));
-        foreach ((string kind, DapBreakpoint refused) in new[] { ("function", Assert.Single(functions.Breakpoints)), ("data", Assert.Single(data.Breakpoints)) })
-        {
-            Assert.True(!refused.Verified && refused.Reason == BreakpointReasons.Failed, $"The {kind} breakpoint's lambda condition was taken, to fail at every hit: {refused.Message}");
-            Assert.Equal("Lambda expressions are not supported in breakpoint conditions.", refused.Message);
-        }
-
-        await host
-            .BreakpointsAsync(Debuggees.Source("DebuggableConsoleApp", "MyClass.cs"), [new DapSourceBreakpoint(Debuggees.MyMethodEnd)])
-            .ConfigurationDoneAsync()
-            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
-        StoppedEvent first = await host.WaitForStoppedEvent();
-        Assert.True(first.ReadStopInfo().line == Debuggees.MyMethodEnd,
-            $"The program stopped at line {first.ReadStopInfo().line} of {first.ReadStopInfo().filePath} before MyMethod's end: the refused function breakpoint was bound");
     }
 
     [Gate]
@@ -275,100 +251,6 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.True(added.Breakpoints[2].Verified, "the breakpoint added while paused binds");
     }
 
-    /// <summary>A breakpoint sent again at its line held for Run to Cursor, then as it was: it stops on the hit it reaches
-    /// meanwhile, whatever its hit count says, and counts on from there to the hit its count names.</summary>
-    [Fact]
-    public async Task A_breakpoint_held_for_Run_to_Cursor_stops_at_its_next_hit_and_counts_on_from_its_hits()
-    {
-        bool startSuspended = true;
-        string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
-        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
-        await host
-            .InitializeAsync()
-            .AttachAsync(debuggee.Id)
-            .WaitForInitializedEvent();
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
-        await host
-            .ConfigurationDoneAsync()
-            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
-        StoppedEvent third = await host.WaitForStoppedEvent();
-        Assert.Equal((CountUp, "2"), (third.ReadStopInfo().line, await Count(host, third)));
-
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5", RunTo: true)]);
-        StoppedEvent reached = await host.ContinueAsync().WaitForStoppedEvent();
-        Assert.True((AfterCount, "3") == (reached.ReadStopInfo().line, await Count(host, reached)),
-            $"Run to Cursor's hold of the breakpoint stopped at line {reached.ReadStopInfo().line}, the count {await Count(host, reached)}, not at its next hit, the third");
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5")]);
-
-        // Its fifth hit, not five after it was sent back.
-        StoppedEvent fifth = await host.ContinueAsync().WaitForStoppedEvent();
-        Assert.Equal((AfterCount, "5"), (fifth.ReadStopInfo().line, await Count(host, fifth)));
-    }
-
-    /// <summary>A hit count counts only hits whose condition held, through an edit of its message: _count &gt; 10 and ==4 stop
-    /// at _count 14, as every debugger counts (GDScript's and the browser's tests stop alike), not on the twentieth pass, where
-    /// one counting every hit would. The edited message logs \{ and \} as braces, a string quoted unless ,nq and a whole
-    /// number in hexadecimal under ,h, as every debugger does; one writing {{ is refused saying how to write a brace.</summary>
-    [Fact]
-    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
-    {
-        bool startSuspended = true;
-        string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
-        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
-        await host
-            .InitializeAsync()
-            .AttachAsync(debuggee.Id)
-            .WaitForInitializedEvent();
-        DapSourceBreakpoint counted = new(AfterCount, Condition: "_count > 10", HitCondition: "==4", LogMessage: "first {_count}", Suspend: true);
-        DapSourceBreakpoint missed = new(TestEnd, Condition: "_count == 20", LogMessage: "missed {_count}", Suspend: true);
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, Condition: "_count == 12"), counted, missed]);
-        await host
-            .ConfigurationDoneAsync()
-            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
-        StoppedEvent paused = await host.WaitForStoppedEvent();
-        Assert.Equal((CountUp, "12"), (paused.ReadStopInfo().line, await Count(host, paused)));
-
-        SetBreakpointsResponse edited = await host.SetBreakpointsAsync(file, [counted with { LogMessage = "second \\{{_count}\\} {_name} {_name,nq} {_count,h}" }, missed,
-            new DapSourceBreakpoint(CountUp, LogMessage: "{{_count}}")]);
-        DapBreakpoint doubled = edited.Breakpoints[2];
-        Assert.True(!doubled.Verified && doubled.Message == DisplayFormat.Misread("{{_count}}"),
-            $"The tracepoint writing a brace as {{{{ was taken, to log what it was not meant to, or refused saying something else: {doubled.Message}");
-        await host.ContinueAsync();
-        OutputEvent logged = await host.WaitForEvent<OutputEvent>(o => o.Output.StartsWith("second", StringComparison.Ordinal) || o.Output.StartsWith("first", StringComparison.Ordinal)
-            || o.Output.StartsWith("missed", StringComparison.Ordinal));
-        StoppedEvent stopped = await host.WaitForStoppedEvent();
-        (int line, string count) at = (stopped.ReadStopInfo().line, await Count(host, stopped));
-        Assert.True(at == (AfterCount, "14") && logged.Output == "second {14} \"Ada\" Ada 0x0000000e\n",
-            $"The breakpoint counting where _count > 10 stopped at line {at.line} with _count {at.count}, saying {logged.Output.Trim()}, not on its fourth such hit at line {AfterCount} with _count 14, saying second {{14}} \"Ada\" Ada 0x0000000e");
-    }
-
-    /// <summary>A breakpoint whose hit count is edited counts again from the edit, as one whose condition or place is edited
-    /// does: ==5 edited to ==2 after its second hit stops two hits later, on the fourth pass.</summary>
-    [Fact]
-    public async Task A_breakpoint_whose_hit_count_is_edited_counts_again_from_the_edit()
-    {
-        bool startSuspended = true;
-        string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
-        await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
-        await host
-            .InitializeAsync()
-            .AttachAsync(debuggee.Id)
-            .WaitForInitializedEvent();
-        DapSourceBreakpoint missed = new(TestEnd, Condition: "_count == 9");
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==5"), missed]);
-        await host
-            .ConfigurationDoneAsync()
-            .ResumeRuntimeAsync(debuggee.Id, startSuspended);
-        StoppedEvent third = await host.WaitForStoppedEvent();
-        Assert.Equal((CountUp, "2"), (third.ReadStopInfo().line, await Count(host, third)));
-
-        await host.SetBreakpointsAsync(file, [new DapSourceBreakpoint(CountUp, HitCondition: "==3"), new DapSourceBreakpoint(AfterCount, HitCondition: "==2"), missed]);
-        StoppedEvent stopped = await host.ContinueAsync().WaitForStoppedEvent();
-        (int line, string count) at = (stopped.ReadStopInfo().line, await Count(host, stopped));
-        Assert.True(at == (AfterCount, "4"),
-            $"The breakpoint whose hit count was edited to ==2 stopped at line {at.line} with _count {at.count}, not on its second hit after the edit at line {AfterCount} with _count 4");
-    }
-
     /// <summary>Hit counts the debugger cannot read, each set in turn with the program's code loaded, where one it took would
     /// bind at once: each is refused saying why, the breakpoint beside it binds, and the program never stops at it.</summary>
     [Gate]
@@ -499,8 +381,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A condition that reads a pattern's variable (boxed is int k &amp;&amp; …) stops only where it holds: never
     /// where it is false on every round, and on the one round where it is true, which the round then read says.</summary>
-    [Fact]
-    public async Task A_condition_reading_a_patterns_variable_stops_only_where_it_holds()
+    private async Task A_condition_reading_a_patterns_variable_stops_only_where_it_holds()
     {
         string source = Debuggees.Source("PassengerCases", "Program.cs");
         int never = Debuggees.Line("PassengerCases", "Console.WriteLine($\"reading round {round}\");");

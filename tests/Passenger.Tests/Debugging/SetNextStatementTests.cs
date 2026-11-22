@@ -8,8 +8,16 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class SetNextStatementTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>The next statement skips ahead and goes back within the method, and goes to a line holding a lambda at
+    /// its statement.</summary>
     [Fact]
-    public async Task The_next_statement_skips_ahead_and_goes_back_within_the_method()
+    public async Task Set_Next_Statement_moves_within_the_method_to_a_statements_start()
+    {
+        await Flow.StepApartAsync<SetNextStatementTests>("the next statement skips ahead and goes back within the method", () => new SetNextStatementTests(testOutputHelper), t => t.The_next_statement_skips_ahead_and_goes_back_within_the_method());
+        await Flow.StepApartAsync<SetNextStatementTests>("the next statement goes to a line holding a lambda at its statement in the method", () => new SetNextStatementTests(testOutputHelper), t => t.The_next_statement_goes_to_a_line_holding_a_lambda_at_its_statement_in_the_method());
+    }
+
+    private async Task The_next_statement_skips_ahead_and_goes_back_within_the_method()
     {
         int first = Debuggees.Line("PassengerCases", "jumps += 1;");
         int second = Debuggees.Line("PassengerCases", "jumps += 10;");
@@ -40,8 +48,7 @@ public class SetNextStatementTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A line holding a lambda after its statement begins is a target in the method paused in, at the statement:
     /// the thread goes back to it and on to the next line from it, never into the lambda.</summary>
-    [Fact]
-    public async Task The_next_statement_goes_to_a_line_holding_a_lambda_at_its_statement_in_the_method()
+    private async Task The_next_statement_goes_to_a_line_holding_a_lambda_at_its_statement_in_the_method()
     {
         const string Stepping = "SteppingConsoleApp";
         int counted = Debuggees.Line(Stepping, "int counted = numbers.Count(n => n > 2);");

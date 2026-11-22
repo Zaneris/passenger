@@ -238,29 +238,16 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.False(again.Breakpoints.Single().Verified);
     }
 
-    /// <summary>A line holding a lambda after its statement begins is the statement's: a breakpoint on it stops there once,
-    /// as the method runs it, never in the lambda, though the query it makes is never read.</summary>
+    /// <summary>A breakpoint given a lambda's column stops inside the lambda each time it runs, and one in a file
+    /// compiled into two assemblies stops in each.</summary>
     [Fact]
-    public async Task A_breakpoint_on_a_line_holding_a_lambda_stops_once_at_its_statement_never_in_the_lambda()
+    public async Task A_breakpoint_given_a_lambdas_column_or_in_a_file_of_two_assemblies_stops_in_each()
     {
-        string source = Debuggees.Source(Stepping, "Program.cs");
-        (int Line, string Code)[] lines = [(Debuggees.Line(Stepping, Counted), "int counted"), (Debuggees.Line(Stepping, Unread), "IEnumerable<int> unread")];
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await host.InitializeAsync().LaunchAsync(Debuggees.Program(Stepping), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
-        await host.BreakpointsAsync(source, [.. lines.Select(l => new DapSourceBreakpoint(l.Line))]).ConfigurationDoneAsync();
-
-        foreach ((int line, string code) in lines)
-        {
-            StoppedEvent stop = await host.WaitForStoppedEvent();
-            Assert.Equal((line, GetColumnNumber(source, line, code)), (stop.ReadStopInfo().line, stop.ReadStopInfo().column));
-            Assert.EndsWith("!Queries.Run()", (await host.TopFrameAsync(stop.ThreadId!.Value)).Name, StringComparison.Ordinal);
-            await host.ContinueAsync();
-        }
-        Assert.Contains("counted 3", (await host.WaitForEnd()).Output, StringComparison.Ordinal);
+        await Flow.StepApartAsync<BreakpointTests>("a breakpoint given a lambda's column stops inside the lambda each time it runs", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_given_a_lambdas_column_stops_inside_the_lambda_each_time_it_runs());
+        await Flow.StepApartAsync<BreakpointTests>("a breakpoint in a file compiled into two assemblies stops in each", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_in_a_file_compiled_into_two_assemblies_stops_in_each());
     }
 
-    [Fact]
-    public async Task A_breakpoint_given_a_lambdas_column_stops_inside_the_lambda_each_time_it_runs()
+    private async Task A_breakpoint_given_a_lambdas_column_stops_inside_the_lambda_each_time_it_runs()
     {
         string source = Debuggees.Source(Stepping, "Program.cs");
         int line = Debuggees.Line(Stepping, Counted);
@@ -281,8 +268,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>One file compiled into two assemblies, the program and a library it calls, is code in each: a breakpoint in
     /// it stops in the program's copy, then in the library's, which loads after the breakpoint was bound in the program.</summary>
-    [Fact]
-    public async Task A_breakpoint_in_a_file_compiled_into_two_assemblies_stops_in_each()
+    private async Task A_breakpoint_in_a_file_compiled_into_two_assemblies_stops_in_each()
     {
         string source = Debuggees.Source("LinkedLibrary", "Linked.cs");
         int line = Debuggees.Line("LinkedLibrary", "Linked.cs", "return value * 2;");

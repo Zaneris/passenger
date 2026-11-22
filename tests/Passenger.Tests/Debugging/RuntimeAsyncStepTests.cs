@@ -35,48 +35,57 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
     private static readonly int FirstSet = Line("int first = which;");
     private static readonly int SecondSet = Line("int second = first * 10;");
 
+    /// <summary>Runtime-async awaits (.NET 11): a step over one that suspends or completes at once stops on the next
+    /// line, as in a method the runtime called and when another run of the method goes on first; Step Into an awaited
+    /// method then over its await and out stops where its run goes; a step out before it suspends and past the end of
+    /// a method that went on after an await stop in the caller.</summary>
     [Fact]
-    public async Task A_step_over_an_await_that_suspends_stops_on_the_next_line_once_the_method_goes_on()
+    public async Task A_step_over_into_or_out_of_a_runtime_async_await_stops_where_its_own_run_goes_on()
+    {
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await that suspends stops on the next line once the method goes on", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_that_suspends_stops_on_the_next_line_once_the_method_goes_on());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await done at once stops on the next line", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_done_at_once_stops_on_the_next_line());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("step Into an awaited method then over its await and out stop where its run goes", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.Step_Into_an_awaited_method_then_over_its_await_and_out_stop_where_its_run_goes());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step out of a method before it suspends stops in its caller once it completes", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_out_of_a_method_before_it_suspends_stops_in_its_caller_once_it_completes());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step past the end of a method that went on after an await stops in the caller that awaits it", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_past_the_end_of_a_method_that_went_on_after_an_await_stops_in_the_caller_that_awaits_it());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await in a method the runtime called stops on the next line once the method goes on", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_in_a_method_the_runtime_called_stops_on_the_next_line_once_the_method_goes_on());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await stops in its own run when another run of the method goes on first", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_stops_in_its_own_run_when_another_run_of_the_method_goes_on_first());
+    }
+
+    private async Task A_step_over_an_await_that_suspends_stops_on_the_next_line_once_the_method_goes_on()
     {
         await AssertStops(InnerAwaited, [(Step.Over, AfterInner)]);
         await AssertStops(TotalAwaited, [(Step.Over, TotalWritten)]);
     }
 
-    [Fact]
-    public async Task A_step_over_an_await_done_at_once_stops_on_the_next_line()
+    private async Task A_step_over_an_await_done_at_once_stops_on_the_next_line()
     {
         await AssertStops(DoneAwaited, [(Step.Over, DoneAdded), (Step.Over, SumReturned)]);
     }
 
-    [Fact]
-    public async Task Step_Into_an_awaited_method_then_over_its_await_and_out_stop_where_its_run_goes()
+    private async Task Step_Into_an_awaited_method_then_over_its_await_and_out_stop_where_its_run_goes()
     {
         await AssertStops(InnerAwaited, [(Step.Into, InnerOpened), (Step.Over, BeforeSet), (Step.Over, DelayAwaited), (Step.Over, Doubled), (Step.Out, AfterInner)]);
     }
 
-    [Fact]
-    public async Task A_step_out_of_a_method_before_it_suspends_stops_in_its_caller_once_it_completes()
+    private async Task A_step_out_of_a_method_before_it_suspends_stops_in_its_caller_once_it_completes()
     {
         await AssertStops(BeforeSet, [(Step.Out, AfterInner)]);
         await AssertStops(SumStarted, [(Step.Out, TotalWritten)]);
     }
 
-    [Fact]
-    public async Task A_step_past_the_end_of_a_method_that_went_on_after_an_await_stops_in_the_caller_that_awaits_it()
+    private async Task A_step_past_the_end_of_a_method_that_went_on_after_an_await_stops_in_the_caller_that_awaits_it()
     {
         await AssertStops(Doubled, [(Step.Over, DoubledReturned), (Step.Over, InnerClosed), (Step.Over, AfterInner)]);
         await AssertStops(SumReturned, [(Step.Over, OuterClosed), (Step.Over, TotalWritten)]);
     }
 
-    [Fact]
-    public async Task A_step_over_an_await_in_a_method_the_runtime_called_stops_on_the_next_line_once_the_method_goes_on()
+    private async Task A_step_over_an_await_in_a_method_the_runtime_called_stops_on_the_next_line_once_the_method_goes_on()
     {
         await AssertStops(RunDelayed, [(Step.Over, RunEnded)]);
     }
 
     /// <summary>Two runs of a method wait at the same await, the other going on first: the step stops in its own run.</summary>
-    [Fact]
-    public async Task A_step_over_an_await_stops_in_its_own_run_when_another_run_of_the_method_goes_on_first()
+    private async Task A_step_over_an_await_stops_in_its_own_run_when_another_run_of_the_method_goes_on_first()
     {
         foreach (string debuggee in (string[])[StateMachines, RuntimeAsync])
         {
@@ -93,47 +102,6 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
                 $"{debuggee}'s step over the first run's await stopped at line {stop.Line} with {string.Join(", ", locals.Select(local => $"{local.Name} = {local.Value}"))}, "
                 + $"not at line {SecondSet} in the run with which = 1");
         }
-    }
-
-    /// <summary>.NET 11's libraries are compiled with runtime async: Process.WaitForExitAsync, its module decompiled, steps over
-    /// its await for the child to end (which the debuggee lets end only once the method has suspended there) to its next
-    /// line of code after the await, rather than to its caller or past that line.</summary>
-    [Fact]
-    public async Task Without_Just_My_Code_a_step_over_an_await_in_a_decompiled_library_method_stops_in_it_once_it_goes_on()
-    {
-        string cache = TestFolders.Create("symbols");
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, cache);
-        await host.InitializeAsync().LaunchAsync(Debuggees.Program(RuntimeAsync), stopAtEntry: false, justMyCode: false).WaitForInitializedEvent();
-        string source = Debuggees.Source(RuntimeAsync, "Program.cs");
-        await host.BreakpointsAsync(ChildIdRead, source).ConfigurationDoneAsync();
-        StoppedEvent read = await host.WaitForStoppedEvent();
-        await host.ClearBreakpointsAsync(source);
-        StoppedEvent inId = await host.StepInAsync(read.ThreadId!.Value).WaitForStoppedEvent();
-        Assert.True(inId.Source?.Path?.EndsWith("Process.cs", StringComparison.Ordinal) is true, $"A step into Process.Id stopped at {inId.Source?.Path}:{inId.Line}");
-        // Process's module has its symbols now, so a function breakpoint binds in it.
-        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints,
-            new SetFunctionBreakpointsArguments([new DapFunctionBreakpoint("System.Diagnostics.Process.WaitForExitAsync")]));
-        StoppedEvent entered = await host.ContinueAsync().WaitForStoppedEvent();
-        await host.RequestAsync<SetBreakpointsResponse>(DapCommands.SetFunctionBreakpoints, new SetFunctionBreakpointsArguments([]));
-        string? decompiled = entered.Source?.Path;
-        Assert.True(entered.Reason == StopReasons.Breakpoint && decompiled == inId.Source?.Path,
-            $"Process.WaitForExitAsync's breakpoint stopped for {entered.Reason} at {decompiled}:{entered.Line}");
-        string[] lines = DecompiledLines(cache, decompiled!);
-        List<int> stops = [entered.Line ?? 0];
-        StoppedEvent stop = entered;
-        for (int steps = 0; steps < 60 && !IsAwait(lines, stop.Line); steps++)
-        {
-            stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
-            stops.Add(stop.Line ?? 0);
-            Assert.True(stop.Source?.Path == decompiled, $"Stepping over WaitForExitAsync's lines toward its await left it for {stop.Source?.Path}:{stop.Line}; its stops: {string.Join(", ", stops)}");
-        }
-        int awaited = stop.Line ?? 0;
-        Assert.True(IsAwait(lines, awaited), $"Stepping over WaitForExitAsync's lines met no await; its stops: {string.Join(", ", stops)}");
-        stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
-        string? skipped = stop.Line > awaited ? lines[awaited..(stop.Line.Value - 1)].FirstOrDefault(line => line.Trim() is not ("" or "{" or "}")) : null;
-        Assert.True(stop.Reason == StopReasons.Step && stop.Source?.Path == decompiled && stop.Line > awaited && skipped is null,
-            $"A step over WaitForExitAsync's await at line {awaited} ({lines[awaited - 1].Trim()}) stopped for {stop.Reason} at {stop.Source?.Path}:{stop.Line}, "
-            + (skipped is null ? "not on a line of it after the await" : $"past its next line of code ({skipped.Trim()})"));
     }
 
     private static bool IsAwait(string[] lines, int? line) =>

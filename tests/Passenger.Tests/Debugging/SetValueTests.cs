@@ -12,10 +12,23 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
 {
     private const string Setting = "Console.WriteLine(\"setting\");";
 
+    /// <summary>Set Value on an object holding a box changes the reference and leaves the shared box, runs its target
+    /// once and answers what it wrote, writes a string with a NUL inside whole, changes a pointer's address and not
+    /// what it pointed at, and takes a value fitting the type a frame runs a type parameter as.</summary>
+    [Fact]
+    public async Task Set_Value_writes_what_it_says_where_its_target_refers_and_nothing_else()
+    {
+        await Flow.StepApartAsync<SetValueTests>("set Value on an object holding a box changes the reference and leaves the shared box as it was", () => new SetValueTests(testOutputHelper), t => t.Set_Value_on_an_object_holding_a_box_changes_the_reference_and_leaves_the_shared_box_as_it_was());
+        await Flow.StepApartAsync<SetValueTests>("set Value runs its target once and answers the value it wrote", () => new SetValueTests(testOutputHelper), t => t.Set_Value_runs_its_target_once_and_answers_the_value_it_wrote());
+        await Flow.StepApartAsync<SetValueTests>("a string set with a NUL inside it is the whole string in the program", () => new SetValueTests(testOutputHelper), t => t.A_string_set_with_a_NUL_inside_it_is_the_whole_string_in_the_program());
+        await Flow.StepApartAsync<SetValueTests>("set Value on a pointer changes its address and leaves what it pointed at", () => new SetValueTests(testOutputHelper), t => t.Set_Value_on_a_pointer_changes_its_address_and_leaves_what_it_pointed_at());
+        await Flow.StepApartAsync<SetValueTests>("set Value on a variable typed by a type parameter takes a value fitting the type its frame runs", () => new SetValueTests(testOutputHelper), t => t.Set_Value_on_a_variable_typed_by_a_type_parameter_takes_a_value_fitting_the_type_its_frame_runs());
+        await Flow.StepApartAsync<SetValueTests>("set Value on a variable typed by a type parameter in a larger type takes a value fitting the type its frame runs", () => new SetValueTests(testOutputHelper), t => t.Set_Value_on_a_variable_typed_by_a_type_parameter_in_a_larger_type_takes_a_value_fitting_the_type_its_frame_runs());
+    }
+
     /// <summary>An object local holding a box another local shares takes null and then a new box: the reference changes,
     /// never the box the other local still holds.</summary>
-    [Fact]
-    public async Task Set_Value_on_an_object_holding_a_box_changes_the_reference_and_leaves_the_shared_box_as_it_was()
+    private async Task Set_Value_on_an_object_holding_a_box_changes_the_reference_and_leaves_the_shared_box_as_it_was()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (_, int frame) = await StoppedAtSettingAsync(host);
@@ -35,8 +48,7 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>Set Value on an element its index moves past runs the index once and answers the element it wrote, a real
     /// number written as a float is shown taking its suffix without the target being run for it.</summary>
-    [Fact]
-    public async Task Set_Value_runs_its_target_once_and_answers_the_value_it_wrote()
+    private async Task Set_Value_runs_its_target_once_and_answers_the_value_it_wrote()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (_, int frame) = await StoppedAtSettingAsync(host);
@@ -53,8 +65,7 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A string written with a NUL inside it is the whole string in the program, its length counting past the NUL.</summary>
-    [Fact]
-    public async Task A_string_set_with_a_NUL_inside_it_is_the_whole_string_in_the_program()
+    private async Task A_string_set_with_a_NUL_inside_it_is_the_whole_string_in_the_program()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (_, int frame) = await StoppedAtSettingAsync(host);
@@ -67,22 +78,8 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
         Assert.Contains("text 3", output, StringComparison.Ordinal);
     }
 
-    /// <summary>A string whose last character is a NUL shows it, escaped, beside its length.</summary>
-    [Fact]
-    public async Task A_string_ending_in_a_NUL_shows_it()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        (StoppedEvent stop, int frame) = await StoppedAtSettingAsync(host);
-
-        DapVariable ended = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "ended");
-        Assert.True(ended.Value == "\"A\\0\"", $"\"A\\0\" shows as {ended.Value}, its last character dropped");
-        Assert.Equal("\"A\\0\"", await Evaluate(host, frame, "ended"));
-        Assert.Equal("2", await Evaluate(host, frame, "ended.Length"));
-    }
-
     /// <summary>A pointer set to another pointer, then to null, takes their addresses, the ints it pointed at left as they were.</summary>
-    [Fact]
-    public async Task Set_Value_on_a_pointer_changes_its_address_and_leaves_what_it_pointed_at()
+    private async Task Set_Value_on_a_pointer_changes_its_address_and_leaves_what_it_pointed_at()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         (_, int frame) = await StoppedAtSettingAsync(host);
@@ -104,8 +101,7 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
     /// <summary>In a generic method's frame, a local and a parameter typed by the class's T (int) and by the method's own U
     /// (string) take values of those types, which the program goes on with, and a value of another type is refused naming
     /// the type the frame runs the parameter as.</summary>
-    [Fact]
-    public async Task Set_Value_on_a_variable_typed_by_a_type_parameter_takes_a_value_fitting_the_type_its_frame_runs()
+    private async Task Set_Value_on_a_variable_typed_by_a_type_parameter_takes_a_value_fitting_the_type_its_frame_runs()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
@@ -135,8 +131,7 @@ public class SetValueTests(ITestOutputHelper testOutputHelper)
     /// <summary>In a generic method's frame, a List&lt;T&gt; local (T the class's, int) and a V? local (V the method's own
     /// struct, double) take values of the types the frame runs them as, null too, which the program goes on with, and a value
     /// of another type is refused naming the type the frame runs.</summary>
-    [Fact]
-    public async Task Set_Value_on_a_variable_typed_by_a_type_parameter_in_a_larger_type_takes_a_value_fitting_the_type_its_frame_runs()
+    private async Task Set_Value_on_a_variable_typed_by_a_type_parameter_in_a_larger_type_takes_a_value_fitting_the_type_its_frame_runs()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host

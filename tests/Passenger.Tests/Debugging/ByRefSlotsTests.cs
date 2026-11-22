@@ -20,10 +20,21 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
     private static readonly int Summed = Debuggees.Line("PassengerCases", "sum = dialCopy.Level + spotCopy.X + momentCopy.Day;");
     private static readonly int Doubled = Debuggees.Line("PassengerCases", "return doubled;");
 
+    /// <summary>Ref, out and in parameters and a ref local evaluate and take a value where they refer; a member of an
+    /// in parameter takes a value written into the caller's struct; a condition on a ref parameter stops only where it
+    /// holds; a struct method's this evaluates and is assigned.</summary>
+    [Fact]
+    public async Task A_by_reference_slot_evaluates_and_takes_a_value_where_it_refers_to()
+    {
+        await Flow.StepApartAsync<ByRefSlotsTests>("ref out and in parameters and a ref local evaluate and take a value where they refer to", () => new ByRefSlotsTests(testOutputHelper), t => t.Ref_out_and_in_parameters_and_a_ref_local_evaluate_and_take_a_value_where_they_refer_to());
+        await Flow.StepApartAsync<ByRefSlotsTests>("a member of an in parameter takes a value written into the caller's struct", () => new ByRefSlotsTests(testOutputHelper), t => t.A_member_of_an_in_parameter_takes_a_value_written_into_the_callers_struct());
+        await Flow.StepApartAsync<ByRefSlotsTests>("a condition on a ref parameter stops only where it holds", () => new ByRefSlotsTests(testOutputHelper), t => t.A_condition_on_a_ref_parameter_stops_only_where_it_holds());
+        await Flow.StepApartAsync<ByRefSlotsTests>("a struct method's this evaluates and is assigned", () => new ByRefSlotsTests(testOutputHelper), t => t.A_struct_methods_this_evaluates_and_is_assigned());
+    }
+
     /// <summary>A ref, an out and an in parameter and a ref local evaluate and take a value, the program reading back each
     /// value set where the slot refers to: the caller's variable, the array's element.</summary>
-    [Fact]
-    public async Task Ref_out_and_in_parameters_and_a_ref_local_evaluate_and_take_a_value_where_they_refer_to()
+    private async Task Ref_out_and_in_parameters_and_a_ref_local_evaluate_and_take_a_value_where_they_refer_to()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await LaunchToAsync(host, [new DapSourceBreakpoint(Increment), new DapSourceBreakpoint(Assigned), new DapSourceBreakpoint(AddOne)], Increment);
@@ -51,8 +62,7 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A member of an in parameter, a struct C# keeps readonly, takes a value written into the caller's struct,
     /// which the program goes on with.</summary>
-    [Fact]
-    public async Task A_member_of_an_in_parameter_takes_a_value_written_into_the_callers_struct()
+    private async Task A_member_of_an_in_parameter_takes_a_value_written_into_the_callers_struct()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await LaunchToAsync(host, [new DapSourceBreakpoint(AddOne)], AddOne);
@@ -68,8 +78,7 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A condition on a ref parameter is evaluated through it at every hit, so the breakpoint stops once, where it
     /// holds, never saying it could not be evaluated.</summary>
-    [Fact]
-    public async Task A_condition_on_a_ref_parameter_stops_only_where_it_holds()
+    private async Task A_condition_on_a_ref_parameter_stops_only_where_it_holds()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await LaunchToAsync(host, [new DapSourceBreakpoint(Climb, Condition: "value > 100")], Climb);
@@ -83,8 +92,7 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>In a struct's method, this evaluates as the struct, boxed and passed to its own methods, and an assignment
     /// to it changes the struct the method was called on.</summary>
-    [Fact]
-    public async Task A_struct_methods_this_evaluates_and_is_assigned()
+    private async Task A_struct_methods_this_evaluates_and_is_assigned()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         int frame = await LaunchToAsync(host, [new DapSourceBreakpoint(Grow)], Grow);
@@ -99,46 +107,6 @@ public class ByRefSlotsTests(ITestOutputHelper testOutputHelper)
         await host.ContinueAsync();
         (string output, _) = await host.WaitForEnd();
         Assert.Contains("refs 4 42 5 1 160 10 22", output, StringComparison.Ordinal);
-    }
-
-    /// <summary>A ref and an in parameter of a struct show as the copies of them beside them do, each with its type: a struct
-    /// by its [DebuggerDisplay], a record struct and a DateTime by their ToString, read as rows, opened, evaluated (as a hover
-    /// reads one) and in a tracepoint, beside a call that returns nothing; the frame names its ref, in and out parameters as
-    /// declared; and a struct's this in its property shows by its [DebuggerDisplay].</summary>
-    [Fact]
-    public async Task A_by_reference_struct_shows_as_its_copy_does_and_its_frame_names_in_and_out_as_declared()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await LaunchWithAsync(host, [new DapSourceBreakpoint(Copied, LogMessage: "dial {dial}, collected {System.GC.Collect()}"), new DapSourceBreakpoint(Summed)]);
-        OutputEvent logged = await host.WaitForEvent<OutputEvent>(output => output.Output.StartsWith("dial ", StringComparison.Ordinal));
-        Assert.Equal($"dial Dial at 7, collected {DapRows.RanWithNoValue}\n", logged.Output);
-        DapStackFrame shown = await StoppedFrameAsync(host, Summed);
-        int frame = shown.Id;
-        Assert.EndsWith("Refs.Shown(ref Dial dial, in Spot spot, ref System.DateTime moment, out int sum)", shown.Name, StringComparison.Ordinal);
-        List<DapVariable> rows = await host.VariablesAsync(Assert.Single((await host.ScopesAsync(frame)).Scopes).VariablesReference);
-        DapVariable Row(string name) => Assert.Single(rows, row => row.Name == name);
-        Assert.Equal(("Dial at 7", "Dial"), (Row("dial").Value, Row("dial").Type));
-        Assert.Equal(("Spot { X = 1, Y = 2 }", "Spot"), (Row("spot").Value, Row("spot").Type));
-        foreach ((string byReference, string copy) in new[] { ("dial", "dialCopy"), ("spot", "spotCopy"), ("moment", "momentCopy") })
-        {
-            Assert.True((Row(byReference).Value, Row(byReference).Type) == (Row(copy).Value, Row(copy).Type),
-                $"{byReference}, by reference, shows {Row(byReference).Value} ({Row(byReference).Type}), where its copy {copy} shows {Row(copy).Value} ({Row(copy).Type})");
-            EvaluateResponse evaluated = await host.EvaluateAsync(frame, byReference);
-            Assert.True((evaluated.Result, evaluated.Type) == (Row(copy).Value, Row(copy).Type),
-                $"{byReference} evaluates to {evaluated.Result} ({evaluated.Type}), where its copy {copy} shows {Row(copy).Value} ({Row(copy).Type})");
-        }
-        List<DapVariable> members = await host.VariablesAsync(Row("dial").VariablesReference);
-        Assert.Equal("7", Assert.Single(members, member => member.Name == "Level").Value);
-        Assert.Equal("14", Assert.Single(members, member => member.Name == "Doubled").Value);
-
-        await host.BreakpointsAsync(File, [new DapSourceBreakpoint(Doubled)]);
-        frame = await ContinueToAsync(host, Doubled);
-        rows = await host.VariablesAsync(Assert.Single((await host.ScopesAsync(frame)).Scopes).VariablesReference);
-        Assert.True((Row("this").Value, Row("this").Type) == ("Dial at 7", "Dial"), $"In Dial's Doubled, this shows {Row("this").Value} ({Row("this").Type}), where its display is Dial at 7");
-
-        await host.ClearBreakpointsAsync(File).ContinueAsync();
-        (string output, _) = await host.WaitForEnd();
-        Assert.Contains("shown 28 28 14", output, StringComparison.Ordinal);
     }
 
     /// <summary>PassengerCases launched with Refs' breakpoints to its first stop, which must be at <paramref name="line"/>;

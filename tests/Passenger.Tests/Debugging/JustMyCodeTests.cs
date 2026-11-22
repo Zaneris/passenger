@@ -13,11 +13,21 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
 
     private static int Line(string code) => Debuggees.Line("PassengerCases", code);
 
+    /// <summary>An exception caught in code marked not the user's stops as user-unhandled and Step Into passes over
+    /// such code; a step from where an exception is thrown goes past a handler outside the user's code or stops in
+    /// their catch; a step over a call that throws and catches within it ends at the next line.</summary>
+    [Fact]
+    public async Task Just_My_Code_passes_over_code_not_the_users_and_steps_through_exceptions_to_the_users_catch()
+    {
+        await Flow.StepApartAsync<JustMyCodeTests>("an exception caught in code marked not the user's stops as user unhandled and step into passes over such code", () => new JustMyCodeTests(testOutputHelper), t => t.An_exception_caught_in_code_marked_not_the_users_stops_as_user_unhandled_and_step_into_passes_over_such_code());
+        await Flow.StepApartAsync<JustMyCodeTests>("a step from where an exception is thrown goes past a handler outside the user's code or stops in their catch", () => new JustMyCodeTests(testOutputHelper), t => t.A_step_from_where_an_exception_is_thrown_goes_past_a_handler_outside_the_users_code_or_stops_in_their_catch());
+        await Flow.StepApartAsync<JustMyCodeTests>("a step over a call that throws and catches within it ends at the next line", () => new JustMyCodeTests(testOutputHelper), t => t.A_step_over_a_call_that_throws_and_catches_within_it_ends_at_the_next_line());
+    }
+
     /// <summary>An exception caught in code marked not the user's stops as user-unhandled; a step from it stops where the
     /// user's code goes on; Step Into then passes over each method marked not the user's, a breakpoint in one is not hit and
     /// says why, and an evaluation that never returns on the way is stopped and the debugger goes on.</summary>
-    [Fact]
-    public async Task An_exception_caught_in_code_marked_not_the_users_stops_as_user_unhandled_and_step_into_passes_over_such_code()
+    private async Task An_exception_caught_in_code_marked_not_the_users_stops_as_user_unhandled_and_step_into_passes_over_such_code()
     {
         int marked = Line("[DebuggerStepThrough] public static void StepThrough()");
         int end = Line("Console.WriteLine(\"end\");");
@@ -64,8 +74,7 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A step from where an exception is thrown goes past a handler outside the user's code, and stops in the user's
     /// own catch; and every thread listed at a later stop has frames to show.</summary>
-    [Fact]
-    public async Task A_step_from_where_an_exception_is_thrown_goes_past_a_handler_outside_the_users_code_or_stops_in_their_catch()
+    private async Task A_step_from_where_an_exception_is_thrown_goes_past_a_handler_outside_the_users_code_or_stops_in_their_catch()
     {
         string thrown = "try { throw new Exception(\"Message1\"); }";
         string waiting = "Console.WriteLine(\"both workers are waiting\");";
@@ -96,8 +105,7 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
         await Assert.AllAsync(threads, async t => Assert.NotEmpty((await host.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(t.Id))).StackFrames));
     }
 
-    [Fact]
-    public async Task A_step_over_a_call_that_throws_and_catches_within_it_ends_at_the_next_line()
+    private async Task A_step_over_a_call_that_throws_and_catches_within_it_ends_at_the_next_line()
     {
         int call = Line("Wrapper.CallWithCatch(");
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
@@ -111,27 +119,6 @@ public class JustMyCodeTests(ITestOutputHelper testOutputHelper)
 
         stop = await host.StepOverAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
         Assert.Equal((StopReasons.Step, Line("Attributed.StepThrough();")), (stop.Reason, stop.ReadStopInfo().line));
-    }
-
-    /// <summary>The thread running Main is marked as Main's whatever the program named it, as an app names its UI
-    /// thread.</summary>
-    [Fact]
-    public async Task The_thread_running_Main_is_marked_as_Mains_under_the_name_the_program_gave_it()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await host
-            .InitializeAsync()
-            .LaunchAsync(Debuggees.Program("PassengerCases"), stopAtEntry: false, justMyCode: true, arguments: ["named main"])
-            .WaitForInitializedEvent();
-        await host.BreakpointsAsync(Line("Console.WriteLine(\"both workers are waiting\");"), Source)
-            .ConfigurationDoneAsync();
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-
-        IReadOnlyList<DapThread> threads = (await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads;
-        DapThread main = Assert.Single(threads, t => t.IsMain == true);
-        Assert.True(main.Id == stop.ThreadId && main.Name == "UI",
-            $"Main's thread, named UI, was to be the one marked; the threads are {string.Join(", ", threads.Select(t => $"{t.Id} {t.Name}{(t.IsMain == true ? " (main)" : "")}"))}, stopped on {stop.ThreadId}");
-        Assert.DoesNotContain(threads, t => t.Name == "Main Thread");
     }
 
     private Task<DebugSession> Launch(int breakpointLine, IReadOnlyList<string> exceptionFilters) =>

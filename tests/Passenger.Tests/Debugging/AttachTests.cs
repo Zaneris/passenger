@@ -131,10 +131,20 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("child ran", Debuggees.HeldWrote(await written));
     }
 
+    /// <summary>A program held at its start whose runtime starts after its attach ended runs on; one its attach's end
+    /// could not let go is told as still waiting; an attach whose diagnostic port fails as it is asked says why and
+    /// that the program was not let go.</summary>
+    [Fact]
+    public async Task A_program_held_at_its_start_is_let_go_or_told_as_waiting_however_its_attach_ends()
+    {
+        await Flow.StepApartAsync<AttachTests>("a program held at its start whose runtime starts after its attach ended runs on", () => new AttachTests(testOutputHelper), t => t.A_program_held_at_its_start_whose_runtime_starts_after_its_attach_ended_runs_on());
+        await Flow.StepApartAsync<AttachTests>("a program held at its start that its attach's end could not let go is told as still waiting", () => new AttachTests(testOutputHelper), t => t.A_program_held_at_its_start_that_its_attachs_end_could_not_let_go_is_told_as_still_waiting());
+        await Flow.StepApartAsync<AttachTests>("an attach whose diagnostic port fails as it is asked says why and that the program was not let go", () => new AttachTests(testOutputHelper), t => t.An_attach_whose_diagnostic_port_fails_as_it_is_asked_says_why_and_that_the_program_was_not_let_go());
+    }
+
     /// <summary>As above, for a program whose runtime opens its diagnostic port only after the attach has ended, as one a
     /// busy machine starts late does: the end waits for the port and lets the program go once it is there.</summary>
-    [Fact]
-    public async Task A_program_held_at_its_start_whose_runtime_starts_after_its_attach_ended_runs_on()
+    private async Task A_program_held_at_its_start_whose_runtime_starts_after_its_attach_ended_runs_on()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no exec: a program a shell starts late has an id of its own, not the shell's attached to");
         // The shell becomes the program a second after it starts, keeping its id, so the attach ends before the runtime is there.
@@ -157,8 +167,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     /// <summary>A program held at its start whose runtime has not opened its diagnostic port by the time its let-go gives up
     /// (here a shell that becomes it half a minute on, the adapter's waits a tenth as long) is told in the console as left
     /// waiting, with what ends the wait, rather than left held unsaid.</summary>
-    [Fact]
-    public async Task A_program_held_at_its_start_that_its_attachs_end_could_not_let_go_is_told_as_still_waiting()
+    private async Task A_program_held_at_its_start_that_its_attachs_end_could_not_let_go_is_told_as_still_waiting()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no exec: a program a shell starts late has an id of its own, not the shell's attached to");
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command("/bin/sh", ["-c", "sleep 30 && exec \"$0\" child", Debuggees.Apphost("PassengerCases")]);
@@ -203,8 +212,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     /// <summary>An attach whose let-go meets a diagnostic port that fails as it is asked (here a socket at a path longer than
     /// an address holds, which the diagnostics client throws for as it names it) fails its configurationDone saying why, and
     /// its end tells the program was not let go, rather than the port's fault passing both.</summary>
-    [Fact]
-    public async Task An_attach_whose_diagnostic_port_fails_as_it_is_asked_says_why_and_that_the_program_was_not_let_go()
+    private async Task An_attach_whose_diagnostic_port_fails_as_it_is_asked_says_why_and_that_the_program_was_not_let_go()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' diagnostic port is a named pipe, with no socket path to be too long");
         Process other = Debuggees.NotDotnet();

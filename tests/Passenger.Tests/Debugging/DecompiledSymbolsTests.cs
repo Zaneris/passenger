@@ -12,8 +12,21 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) : DecompiledSymbolsSessions(testOutputHelper)
 {
+    /// <summary>A frame whose decompile a killed adapter cut short is resolved by the next session; a cached PDB that
+    /// does not load is decompiled again; an adapter starting deletes symbols unused for a month and those never
+    /// finished; a disconnect or a request while a decompile runs, CoreLib's or one taking every processor, is
+    /// answered and leaves no symbols half written.</summary>
     [Fact]
-    public async Task A_frame_whose_decompile_the_killed_adapter_cut_short_is_resolved_by_the_next_session()
+    public async Task Decompiled_symbols_are_written_whole_kept_while_used_and_never_hold_a_request_or_a_disconnect()
+    {
+        await Flow.StepApartAsync<DecompiledSymbolsTests>("a frame whose decompile the killed adapter cut short is resolved by the next session", () => new DecompiledSymbolsTests(Output), t => t.A_frame_whose_decompile_the_killed_adapter_cut_short_is_resolved_by_the_next_session());
+        await Flow.StepApartAsync<DecompiledSymbolsTests>("a cached PDB that does not load is decompiled again and a step into its code stops on its line", () => new DecompiledSymbolsTests(Output), t => t.A_cached_PDB_that_does_not_load_is_decompiled_again_and_a_step_into_its_code_stops_on_its_line());
+        await Flow.StepApartAsync<DecompiledSymbolsTests>("an adapter starting deletes symbols unused for a month and writes never finished and keeps those in use", () => new DecompiledSymbolsTests(Output), t => t.An_adapter_starting_deletes_symbols_unused_for_a_month_and_writes_never_finished_and_keeps_those_in_use());
+        await Flow.StepApartAsync<DecompiledSymbolsTests>("a disconnect while CoreLib is decompiled is answered before it ends and leaves no symbols half written", () => new DecompiledSymbolsTests(Output), t => t.A_disconnect_while_CoreLib_is_decompiled_is_answered_before_it_ends_and_leaves_no_symbols_half_written());
+        await Flow.StepApartAsync<DecompiledSymbolsTests>("a request and a disconnect are answered while a decompile takes every processor and the thread pool cannot grow", () => new DecompiledSymbolsTests(Output), t => t.A_request_and_a_disconnect_are_answered_while_a_decompile_takes_every_processor_and_the_thread_pool_cannot_grow());
+    }
+
+    private async Task A_frame_whose_decompile_the_killed_adapter_cut_short_is_resolved_by_the_next_session()
     {
         string cache = TestFolders.Create("symbols");
         await using (DebugSession killed = await StoppedInLinqCallback(cache))
@@ -34,8 +47,7 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
         Assert.Single(Pdbs(cache));
     }
 
-    [Fact]
-    public async Task A_cached_PDB_that_does_not_load_is_decompiled_again_and_a_step_into_its_code_stops_on_its_line()
+    private async Task A_cached_PDB_that_does_not_load_is_decompiled_again_and_a_step_into_its_code_stops_on_its_line()
     {
         string cache = TestFolders.Create("symbols");
         (string Path, int Line) first;
@@ -58,8 +70,7 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
             "The PDB that did not load is still the one in the cache, so every session after would refuse it again");
     }
 
-    [Fact]
-    public async Task An_adapter_starting_deletes_symbols_unused_for_a_month_and_writes_never_finished_and_keeps_those_in_use()
+    private async Task An_adapter_starting_deletes_symbols_unused_for_a_month_and_writes_never_finished_and_keeps_those_in_use()
     {
         string cache = TestFolders.Create("symbols");
         string stale = Plant(cache, "Old.Library.pdb", TimeSpan.FromDays(40));
@@ -83,8 +94,7 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
 
     /// <summary>A decompile runs off the engine's lock: a request and a disconnect made while CoreLib is decompiled, which
     /// takes a minute or more, are answered before it ends, and leave no symbols half written.</summary>
-    [Fact]
-    public async Task A_disconnect_while_CoreLib_is_decompiled_is_answered_before_it_ends_and_leaves_no_symbols_half_written()
+    private async Task A_disconnect_while_CoreLib_is_decompiled_is_answered_before_it_ends_and_leaves_no_symbols_half_written()
     {
         string cache = TestFolders.Create("symbols");
         await using DebugSession host = await StoppedInCoreLibCallback(cache);
@@ -102,8 +112,7 @@ public sealed class DecompiledSymbolsTests(ITestOutputHelper testOutputHelper) :
     /// <summary>A decompile taking every processor of an adapter whose thread pool cannot grow past them, as CoreLib's does on
     /// a busy machine, and a request and a disconnect made while it runs: each thread of the decompile is held after its
     /// first file until the session ends.</summary>
-    [Fact]
-    public async Task A_request_and_a_disconnect_are_answered_while_a_decompile_takes_every_processor_and_the_thread_pool_cannot_grow()
+    private async Task A_request_and_a_disconnect_are_answered_while_a_decompile_takes_every_processor_and_the_thread_pool_cannot_grow()
     {
         const int processors = 8;
         string count = processors.ToString(CultureInfo.InvariantCulture);

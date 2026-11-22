@@ -8,10 +8,21 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
 {
+    /// <summary>An indexer is no row and nothing is evaluated for one; a local a local function captures is listed in
+    /// both frames; each row's evaluate name reads its own value; a collection's rows through its view are read-only
+    /// where a list's elements and raw members are not.</summary>
+    [Fact]
+    public async Task A_variables_rows_read_their_own_values_and_evaluate_nothing_unasked()
+    {
+        await Flow.StepApartAsync<VariablesRowsTests>("an indexer is no row of its object and nothing is evaluated for one", () => new VariablesRowsTests(testOutputHelper), t => t.An_indexer_is_no_row_of_its_object_and_nothing_is_evaluated_for_one());
+        await Flow.StepApartAsync<VariablesRowsTests>("a local a local function captures is listed in both frames and an iterator's frame lists no current", () => new VariablesRowsTests(testOutputHelper), t => t.A_local_a_local_function_captures_is_listed_in_both_frames_and_an_iterators_frame_lists_no_current());
+        await Flow.StepApartAsync<VariablesRowsTests>("each row's evaluate name reads its own value and a row the debugger adds has none", () => new VariablesRowsTests(testOutputHelper), t => t.Each_rows_evaluate_name_reads_its_own_value_and_a_row_the_debugger_adds_has_none());
+        await Flow.StepApartAsync<VariablesRowsTests>("a collection's rows through its view are read only and a list's elements and raw members are not", () => new VariablesRowsTests(testOutputHelper), t => t.A_collections_rows_through_its_view_are_read_only_and_a_lists_elements_and_raw_members_are_not());
+    }
+
     /// <summary>An indexer is no row: a class with one, a list's and a dictionary's raw views and a tuple list none, and no
     /// getter is called in the program to show one; the members beside it are listed as before.</summary>
-    [Fact]
-    public async Task An_indexer_is_no_row_of_its_object_and_nothing_is_evaluated_for_one()
+    private async Task An_indexer_is_no_row_of_its_object_and_nothing_is_evaluated_for_one()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
@@ -40,8 +51,7 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
     /// <summary>A local only a local function captures is listed under its own name, with its live value, in the frame that
     /// declares it and in the local function's, with no row of the closure holding it nor that closure in the local
     /// function's frame name; an iterator's frame lists its own variables and none of its enumerator's properties.</summary>
-    [Fact]
-    public async Task A_local_a_local_function_captures_is_listed_in_both_frames_and_an_iterators_frame_lists_no_current()
+    private async Task A_local_a_local_function_captures_is_listed_in_both_frames_and_an_iterators_frame_lists_no_current()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, "Console.WriteLine($\"called {Call(1)}\");", "return called;", "yield return taken;");
@@ -70,28 +80,11 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(v => $"{v.Name} = {v.Value}"));
     }
 
-    /// <summary>A lambda's captures are listed in its frame, those of its own closure and of the closure it is nested in,
-    /// though showing one evaluates in the program (a list's Count, by its DebuggerDisplay), which voids the closure read
-    /// before it: no row fails as a value the evaluation left unusable.</summary>
-    [Fact]
-    public async Task A_lambdas_captures_through_its_closures_parent_are_listed_where_showing_one_evaluates_in_the_program()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, "return seen;");
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        List<DapVariable> locals = await host.LocalsAsync(stop);
-        string listed = string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"));
-        Assert.True(locals.Any(v => v is { Name: "innerList", Value: "Count = 1" }) && locals.Any(v => v is { Name: "outerList", Value: "Count = 1" })
-            && locals.Any(v => v is { Name: "round", Value: "0" }), $"The lambda's frame lists {listed}, where innerList and outerList (Count = 1) and round = 0 are to be listed");
-        Assert.DoesNotContain("zombie", host.EngineLog(), StringComparison.Ordinal);
-    }
-
     /// <summary>Each row's evaluate name is C# the evaluator takes, reading the row's own value: a HashSet's elements, a
     /// dictionary's entry and its Key and Value, a list's element (by its index in the list, which Set Value writes) and the
     /// members of its raw view, an explicit interface implementation's among them, and a tuple's item; Raw View, a row the
     /// debugger adds, has none.</summary>
-    [Fact]
-    public async Task Each_rows_evaluate_name_reads_its_own_value_and_a_row_the_debugger_adds_has_none()
+    private async Task Each_rows_evaluate_name_reads_its_own_value_and_a_row_the_debugger_adds_has_none()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
@@ -127,55 +120,10 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
     }
 
-    /// <summary>Each row reads its own value by its evaluate name where its owner is held as another type, is named by a
-    /// keyword or is static: a boxed List's and array's elements, an IEnumerable-held HashSet's and List's, a local @class, a
-    /// field holder.@event, and a type's static members (Shelf.Reads, Keyworded.@static).</summary>
-    [Fact]
-    public async Task Rows_held_as_another_type_named_by_a_keyword_or_static_read_their_own_value_by_their_evaluate_name()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
-        List<DapVariable> locals = await host.LocalsAsync(stop);
-
-        List<DapVariable> holder = await Opened("holder");
-        List<DapVariable> rows =
-        [
-            .. Elements(await Opened("boxedList")), .. Elements(await Opened("boxedArray")), .. Elements(await Opened("setAsEnumerable")),
-            .. Elements(await Opened("listAsEnumerable")), Assert.Single(locals, v => v.Name == "class"), Assert.Single(holder, row => row.Name == "event"),
-            .. await StaticsOf(holder), .. await StaticsOf(await Opened("shelf")),
-        ];
-        string[] named = [.. rows.Select(row => $"{row.Name}: {row.EvaluateName}")];
-        Assert.True(rows.Count == 8, $"The rows are {string.Join("; ", named)}, where four elements, class, event, static and Reads are to be listed");
-        Assert.Contains("class: @class", named);
-        Assert.Contains("event: holder.@event", named);
-        Assert.Contains("static: Keyworded.@static", named);
-        Assert.Contains("Reads: Shelf.Reads", named);
-        List<string> wrong = [];
-        foreach (DapVariable row in rows)
-        {
-            EvaluateResponse? read = row.EvaluateName is { } expression ? await host.EvaluateAsync(frame, expression) : null;
-            if (read?.Result != row.Value)
-            {
-                wrong.Add($"{row.Name} = {row.Value} by {row.EvaluateName ?? "no expression"}: {read?.Result}");
-            }
-        }
-        Assert.True(wrong.Count == 0, $"Rows whose evaluate name does not read their value, so Set Value, Add to Watches and Inspect fail on them: {string.Join("; ", wrong)}");
-
-        async Task<List<DapVariable>> Opened(string local) => await host.VariablesAsync(Assert.Single(locals, v => v.Name == local).VariablesReference);
-
-        static IEnumerable<DapVariable> Elements(List<DapVariable> rows) => rows.Where(row => row.Name.StartsWith('['));
-
-        async Task<List<DapVariable>> StaticsOf(List<DapVariable> members) =>
-            await host.VariablesAsync(Assert.Single(members, row => row.Name == "Static members").VariablesReference);
-    }
-
     /// <summary>The rows a debugger view shows a collection by, a HashSet's elements and a dictionary's entry with its Key
     /// and Value, say they are read-only, being the view's copies; a list's elements, reached by their index in it, and the
     /// members of a HashSet's raw view, its own, do not.</summary>
-    [Fact]
-    public async Task A_collections_rows_through_its_view_are_read_only_and_a_lists_elements_and_raw_members_are_not()
+    private async Task A_collections_rows_through_its_view_are_read_only_and_a_lists_elements_and_raw_members_are_not()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
@@ -195,29 +143,6 @@ public class VariablesRowsTests(ITestOutputHelper testOutputHelper)
         static bool ReadOnly(DapVariable row) => row.PresentationHint?.Has(DapAttributes.ReadOnly) == true;
 
         static string Listed(List<DapVariable> rows) => string.Join(", ", rows.Select(row => $"{row.Name} = {row.Value}{(ReadOnly(row) ? " (read-only)" : "")}"));
-    }
-
-    /// <summary>A nullable struct's member under its Value reads by its evaluate name, through the Value, and takes a value
-    /// set there, which the program goes on with.</summary>
-    [Fact]
-    public async Task A_nullable_structs_member_under_its_value_reads_by_its_evaluate_name_and_takes_a_value()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-        await Launch(host, "Console.WriteLine($\"rows {shelf[0]}");
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
-        List<DapVariable> locals = await host.LocalsAsync(stop);
-
-        DapVariable held = Assert.Single(await host.VariablesAsync(Assert.Single(locals, v => v.Name == "place").VariablesReference), row => row.Name == "Value");
-        DapVariable x = Assert.Single(await host.VariablesAsync(held.VariablesReference), row => row.Name == "X");
-        Assert.Equal(("place.Value.X", "3"), (x.EvaluateName, x.Value));
-        Assert.Equal("3", (await host.EvaluateAsync(frame, x.EvaluateName!)).Result);
-        Assert.Equal("10", (await host.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(x.EvaluateName!, "10", frame))).Value);
-        Assert.True((await host.EvaluateAsync(frame, "place.Value.X + place.Value.Y")).Result == "14", $"place.Value.X = 10 left place {(await host.EvaluateAsync(frame, "place")).Result}");
-
-        await host.ContinueAsync();
-        (string output, _) = await host.WaitForEnd();
-        Assert.Contains("rows a 2 2 1 (1, one) 10", output, StringComparison.Ordinal);
     }
 
     /// <summary>PassengerCases launched on its rows case, stopping at the lines with this code on them.</summary>

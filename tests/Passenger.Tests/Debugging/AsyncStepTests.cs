@@ -22,8 +22,18 @@ public class AsyncStepTests(ITestOutputHelper testOutputHelper)
     private static readonly int YieldAwaited = StateMachinesLine("static async Task ThrowsLaterAsync(int depth)") + 2;
     private static readonly int Deeper = YieldAwaited + 1;
 
+    /// <summary>Steps through an async method stop at each of its lines in turn; a step out whose ask of its builder,
+    /// or a step over an await whose question of the run that went on, is held unfinished stops in the caller or at
+    /// the next line once that evaluation returns.</summary>
     [Fact]
-    public async Task Steps_through_an_async_method_stop_at_each_of_its_lines_in_turn()
+    public async Task Steps_through_an_async_method_stop_at_each_line_and_one_held_unfinished_goes_on_once_it_returns()
+    {
+        await Flow.StepApartAsync<AsyncStepTests>("steps through an async method stop at each of its lines in turn", () => new AsyncStepTests(testOutputHelper), t => t.Steps_through_an_async_method_stop_at_each_of_its_lines_in_turn());
+        await Flow.StepApartAsync<AsyncStepTests>("a step out whose ask of its builder is held unfinished stops in the caller once that evaluation returns", () => new AsyncStepTests(testOutputHelper), t => t.A_step_out_whose_ask_of_its_builder_is_held_unfinished_stops_in_the_caller_once_that_evaluation_returns());
+        await Flow.StepApartAsync<AsyncStepTests>("a step over an await whose question of the run that went on is held unfinished stops at the next line once it returns", () => new AsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_whose_question_of_the_run_that_went_on_is_held_unfinished_stops_at_the_next_line_once_it_returns());
+    }
+
+    private async Task Steps_through_an_async_method_stop_at_each_of_its_lines_in_turn()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -94,8 +104,7 @@ public class AsyncStepTests(ITestOutputHelper testOutputHelper)
     /// <summary>A step out of an async method whose ask of its builder, to tell of the method's end, is held unfinished, as
     /// one waiting on what a held thread has is: the step waits for that evaluation and, once it returns, goes on as a plain
     /// step out, stopping in the caller where the method returned to it, never left to the evaluation (#2029).</summary>
-    [Fact]
-    public async Task A_step_out_whose_ask_of_its_builder_is_held_unfinished_stops_in_the_caller_once_that_evaluation_returns()
+    private async Task A_step_out_whose_ask_of_its_builder_is_held_unfinished_stops_in_the_caller_once_that_evaluation_returns()
     {
         await using DebugSession host = await LaunchHoldingAsyncSteps(BeforeSet);
         StoppedEvent stop = await host.WaitForStoppedEvent();
@@ -114,8 +123,7 @@ public class AsyncStepTests(ITestOutputHelper testOutputHelper)
     /// goes on on: the step waits for that evaluation and, once it returns, goes on there to the next line, never left to
     /// the evaluation (#2029). The await is Task.Yield's, which always leaves the method: a delay may end before its await
     /// looks, the method then going on with no run to tell (#2078).</summary>
-    [Fact]
-    public async Task A_step_over_an_await_whose_question_of_the_run_that_went_on_is_held_unfinished_stops_at_the_next_line_once_it_returns()
+    private async Task A_step_over_an_await_whose_question_of_the_run_that_went_on_is_held_unfinished_stops_at_the_next_line_once_it_returns()
     {
         await using DebugSession host = await LaunchHoldingAsyncSteps(YieldAwaited, ["throws"]);
         StoppedEvent stop = await host.WaitForStoppedEvent();

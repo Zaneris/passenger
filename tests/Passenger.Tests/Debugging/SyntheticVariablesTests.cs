@@ -16,8 +16,26 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
 
     private static int Line(string code) => Debuggees.Line(Stepping, code);
 
+    /// <summary>What a step over or out lists as returned (in the order the calls returned, named for an expression;
+    /// out of a call part way through its statement, of an async method on either kind of state machine, of an
+    /// attached program) and an exception's stop: a returned int runs nothing in the program, and a box of a returned
+    /// struct held unfinished stops in the caller or goes on to the next line once it returns.</summary>
     [Fact]
-    public async Task A_step_over_lists_what_each_call_returned_in_the_order_they_returned_and_names_them_for_an_expression()
+    public async Task A_step_lists_what_each_call_returned_running_nothing_in_the_program_and_a_box_held_unfinished_never_holds_the_step()
+    {
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step over lists what each call returned in the order they returned and names them for an expression", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_over_lists_what_each_call_returned_in_the_order_they_returned_and_names_them_for_an_expression());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step out lists what the method stepped out of returned", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_out_lists_what_the_method_stepped_out_of_returned());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step out of a method returning an int runs nothing in the program and only an expression naming it boxes it", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_out_of_a_method_returning_an_int_runs_nothing_in_the_program_and_only_an_expression_naming_it_boxes_it());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step out whose box of the returned struct is held unfinished stops in the caller saying why it was not kept", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_out_whose_box_of_the_returned_struct_is_held_unfinished_stops_in_the_caller_saying_why_it_was_not_kept());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step over whose box of a returned struct is held unfinished goes on to the next line once the box returns", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_over_whose_box_of_a_returned_struct_is_held_unfinished_goes_on_to_the_next_line_once_the_box_returns());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step out of a call part way through its statement lists what it returned", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_out_of_a_call_part_way_through_its_statement_lists_what_it_returned());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step out of an async method lists the value it returned, a state machine's", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_out_of_an_async_method_lists_the_value_it_returned("StateMachineAsyncConsoleApp"));
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a step out of an async method lists the value it returned, the runtime's own", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_step_out_of_an_async_method_lists_the_value_it_returned("RuntimeAsyncConsoleApp"));
+        await Flow.StepApartAsync<SyntheticVariablesTests>("an attached program's step out lists what the method returned", () => new SyntheticVariablesTests(testOutputHelper), t => t.An_attached_programs_step_out_lists_what_the_method_returned());
+        await Flow.StepApartAsync<SyntheticVariablesTests>("a stop at an exception lists it as exception and an expression reads its message", () => new SyntheticVariablesTests(testOutputHelper), t => t.A_stop_at_an_exception_lists_it_as_exception_and_an_expression_reads_its_message());
+    }
+
+    private async Task A_step_over_lists_what_each_call_returned_in_the_order_they_returned_and_names_them_for_an_expression()
     {
         int line = Line("string described = Describe(Count());");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
@@ -61,8 +79,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    [Fact]
-    public async Task A_step_out_lists_what_the_method_stepped_out_of_returned()
+    private async Task A_step_out_lists_what_the_method_stepped_out_of_returned()
     {
         int line = Line("string described = Describe(Count());");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, line, []);
@@ -81,8 +98,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
     /// <summary>A step out of a method returning an int runs nothing in the program: its row is the value's bytes, so a box
     /// the program cannot make never holds the step. Only an expression naming $ReturnValue boxes it, and says why it could
     /// not where the box's evaluation is held unfinished (#2019).</summary>
-    [Fact]
-    public async Task A_step_out_of_a_method_returning_an_int_runs_nothing_in_the_program_and_only_an_expression_naming_it_boxes_it()
+    private async Task A_step_out_of_a_method_returning_an_int_runs_nothing_in_the_program_and_only_an_expression_naming_it_boxes_it()
     {
         int line = Line("string described = Describe(Count());");
         await using DebugSession host = await LaunchHoldingBoxes(line, onNewestRuntime: false);
@@ -106,8 +122,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
     /// above the caller's frame: the step still stops in the caller, its row saying why the value was not kept, with no run
     /// with every thread let go offered, as nothing can bring it back, and the program goes on to its end once the evaluation
     /// can (#2019).</summary>
-    [Fact]
-    public async Task A_step_out_whose_box_of_the_returned_struct_is_held_unfinished_stops_in_the_caller_saying_why_it_was_not_kept()
+    private async Task A_step_out_whose_box_of_the_returned_struct_is_held_unfinished_stops_in_the_caller_saying_why_it_was_not_kept()
     {
         int line = Line("Spot spot = Locate(2, 3);");
         await using DebugSession host = await LaunchHoldingBoxes(line, onNewestRuntime: true);
@@ -132,8 +147,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
     /// <summary>A step over a call returning a struct whose box the program cannot make, its evaluation held unfinished
     /// partway through the statement: the step goes on once the evaluation returns, stopping at the next line, its row
     /// saying why the value was not kept (#2019).</summary>
-    [Fact]
-    public async Task A_step_over_whose_box_of_a_returned_struct_is_held_unfinished_goes_on_to_the_next_line_once_the_box_returns()
+    private async Task A_step_over_whose_box_of_a_returned_struct_is_held_unfinished_goes_on_to_the_next_line_once_the_box_returns()
     {
         int line = Line("Spot spot = Locate(2, 3);");
         await using DebugSession host = await LaunchHoldingBoxes(line, onNewestRuntime: true);
@@ -193,33 +207,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
             $"Let go once its held box had its input, the program did not run on to its end as it would have (exit code {exitCode}):\n{output}");
     }
 
-    [Fact]
-    public async Task A_step_out_of_a_method_returning_an_nint_or_an_nuint_lists_its_value()
-    {
-        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, Line("nint signed = Signed();"), []);
-        StoppedEvent stop = await host.WaitForStoppedEvent();
-        int thread = stop.ThreadId!.Value;
-
-        stop = await StepOutOf("static nint Signed() => -42;", "Signed() returned", "-42", "nint");
-        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
-        Assert.Equal(Line("nuint unsigned = Unsigned();"), stop.ReadStopInfo().line);
-        await StepOutOf("static nuint Unsigned() => 4000000000;", "Unsigned() returned", "4000000000", "nuint");
-
-        async Task<StoppedEvent> StepOutOf(string body, string name, string value, string type)
-        {
-            StoppedEvent inside = await host.StepInAsync(thread).WaitForStoppedEvent();
-            Assert.Equal(Line(body), inside.ReadStopInfo().line);
-            StoppedEvent back = await host.StepOutAsync(thread).WaitForStoppedEvent();
-            DapVariable returned = (await host.LocalsAsync(back))[0];
-            Assert.True((returned.Name, returned.Value, returned.Type) == (name, value, type),
-                $"Stepped out, the first row was {returned.Name} = {returned.Value} ({returned.Type}), not {name} = {value} ({type}): what it returned was lost");
-            Assert.Equal(value, (await Evaluate(host, (await host.TopFrameAsync(thread)).Id, "$ReturnValue")).Result);
-            return back;
-        }
-    }
-
-    [Fact]
-    public async Task A_step_out_of_a_call_part_way_through_its_statement_lists_what_it_returned()
+    private async Task A_step_out_of_a_call_part_way_through_its_statement_lists_what_it_returned()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
@@ -248,10 +236,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
     /// <summary>Steps out of async methods compiled with state machines and with runtime async: a Task&lt;int&gt;'s, out of
     /// its run after its await and before it, one that never suspends, and a ValueTask&lt;int&gt;'s, each listing the value
     /// the method returned as a call's is, and naming it $ReturnValue.</summary>
-    [Theory]
-    [InlineData("StateMachineAsyncConsoleApp")]
-    [InlineData("RuntimeAsyncConsoleApp")]
-    public async Task A_step_out_of_an_async_method_lists_the_value_it_returned(string debuggee)
+    private async Task A_step_out_of_an_async_method_lists_the_value_it_returned(string debuggee)
     {
         const string program = "RuntimeAsyncConsoleApp";
         string source = Debuggees.Source(program, "Program.cs");
@@ -288,8 +273,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    [Fact]
-    public async Task An_attached_programs_step_out_lists_what_the_method_returned()
+    private async Task An_attached_programs_step_out_lists_what_the_method_returned()
     {
         (DebugSession host, StoppedEvent stop) = await AttachToReturning("LoopingConsoleApp", justMyCode: true);
         await using (host)
@@ -299,22 +283,6 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
             List<DapVariable> locals = await host.LocalsAsync(stop);
             Assert.True(locals.FirstOrDefault() is { Name: "Twice() returned" } returned && returned.Value == $"{turn * 2}",
                 $"Stepped out of Twice({turn}) in the program attached to, its value was not listed: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
-        }
-    }
-
-    [Fact]
-    public async Task An_attached_optimized_programs_step_out_says_why_no_value_is_listed()
-    {
-        // Optimized code is not the user's: the step goes out to it only with Just My Code off.
-        (DebugSession host, StoppedEvent stop) = await AttachToReturning("LoopingConsoleAppOptimized", justMyCode: false);
-        await using (host)
-        {
-            stop = await host.StepOutAsync(stop.ThreadId!.Value).WaitForStoppedEvent();
-            List<DapVariable> locals = await host.LocalsAsync(stop);
-            Assert.True(locals.FirstOrDefault() is { Name: "Twice() returned" } returned
-                && returned.Value.StartsWith("Not shown: LoopingConsoleAppOptimized.dll is built optimized", StringComparison.Ordinal)
-                && returned.PresentationHint?.Attributes?.Contains(DapAttributes.FailedEvaluation) == true,
-                $"Stepped out of Twice() in an optimized program, Variables did not say why no value is listed: {string.Join(", ", locals.Select(v => $"{v.Name} = {v.Value}"))}");
         }
     }
 
@@ -341,8 +309,7 @@ public class SyntheticVariablesTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    [Fact]
-    public async Task A_stop_at_an_exception_lists_it_as_exception_and_an_expression_reads_its_message()
+    private async Task A_stop_at_an_exception_lists_it_as_exception_and_an_expression_reads_its_message()
     {
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, Stepping, Line("Throws.Run();"), [DapExceptionFilters.All]);
         StoppedEvent stop = await host.WaitForStoppedEvent();

@@ -280,10 +280,24 @@ public class StepTests(ITestOutputHelper testOutputHelper)
         AssertStepEnded(host, await host.WaitForStoppedEvent(), "the waiting builder's step ends here");
     }
 
+    /// <summary>A step over an await stops at its next line though its thread's leaving is told only with the step's
+    /// end; a step out of a web app's handler, sync or async, or off a handler a managed loop calls, lets the program
+    /// run on so later requests never stop where no breakpoint is; a step off a lambda a library calls lands in its
+    /// next call or the pipeline's next lambda.</summary>
+    [Fact]
+    public async Task A_step_off_a_handler_or_lambda_a_framework_calls_lets_the_program_run_on_and_an_await_stops_at_its_next_line()
+    {
+        await Flow.StepApartAsync<StepTests>("a step over an await stops at its next line though the stepping thread leaving at it is told only with its step's end", () => new StepTests(testOutputHelper), t => t.A_step_over_an_await_stops_at_its_next_line_though_the_stepping_thread_leaving_at_it_is_told_only_with_its_steps_end());
+        await Flow.StepApartAsync<StepTests>("a step out of a web app's handler lets the program run on so later requests never stop where its deleted breakpoint was", () => new StepTests(testOutputHelper), t => t.A_step_out_of_a_web_apps_handler_lets_the_program_run_on_so_later_requests_never_stop_where_its_deleted_breakpoint_was());
+        await Flow.StepApartAsync<StepTests>("a step out of a web app's async handler lets the program run on where the framework awaits it", () => new StepTests(testOutputHelper), t => t.A_step_out_of_a_web_apps_async_handler_lets_the_program_run_on_where_the_framework_awaits_it());
+        await Flow.StepApartAsync<StepTests>("a step out of an async handler whose end calls the next on its thread lets the program run on", () => new StepTests(testOutputHelper), t => t.A_step_out_of_an_async_handler_whose_end_calls_the_next_on_its_thread_lets_the_program_run_on());
+        await Flow.StepApartAsync<StepTests>("a step off a handler a managed loop calls lets the program run on so its call for the next input never stops", () => new StepTests(testOutputHelper), t => t.A_step_off_a_handler_a_managed_loop_calls_lets_the_program_run_on_so_its_call_for_the_next_input_never_stops());
+        await Flow.StepApartAsync<StepTests>("a step off a lambda a library calls lands in its next call or the pipeline's next lambda", () => new StepTests(testOutputHelper), t => t.A_step_off_a_lambda_a_library_calls_lands_in_its_next_call_or_the_pipelines_next_lambda());
+    }
+
     /// <summary>The engine holds the yield back as the runtime once did under load: the thread runs on past it, its step
     /// ending later. This await always suspends, so the yield always comes.</summary>
-    [Fact]
-    public async Task A_step_over_an_await_stops_at_its_next_line_though_the_stepping_thread_leaving_at_it_is_told_only_with_its_steps_end()
+    private async Task A_step_over_an_await_stops_at_its_next_line_though_the_stepping_thread_leaving_at_it_is_told_only_with_its_steps_end()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper,
             environment: new Dictionary<string, string> { [AdapterEnvironment.LateYieldVariable] = "1" });
@@ -372,30 +386,26 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     /// rest of the handler end as it returns to the framework that called it, with none of the user's code below it to go
     /// back to, and the program runs on, the same handler asked again and again never stopping where the deleted breakpoint
     /// was, nor anywhere else, until the program ends (#1891).</summary>
-    [Fact]
-    public Task A_step_out_of_a_web_apps_handler_lets_the_program_run_on_so_later_requests_never_stop_where_its_deleted_breakpoint_was() =>
+    private Task A_step_out_of_a_web_apps_handler_lets_the_program_run_on_so_later_requests_never_stop_where_its_deleted_breakpoint_was() =>
         StepOutOfHandler(MinimalApi, [], "int handled = n + 1;", "return Results.Ok(handled);", "handled 20 requests");
 
     /// <summary>The same of an async handler stopped after its await: its step out goes to where the framework awaits it,
     /// none of it the user's, and the program runs on (#1891).</summary>
-    [Fact]
-    public Task A_step_out_of_a_web_apps_async_handler_lets_the_program_run_on_where_the_framework_awaits_it() =>
+    private Task A_step_out_of_a_web_apps_async_handler_lets_the_program_run_on_where_the_framework_awaits_it() =>
         StepOutOfHandler(MinimalApi, [], "int twice = n * 2;", "return Results.Ok(twice);", "handled 20 requests");
 
     /// <summary>The same where the code awaiting the async handler, not the user's, goes on as the handler ends, on its
     /// thread above its frame, and calls the next handler there at once, as a web app's next request is taken in when it
     /// came before the last was answered: the step ends as that code takes over, never in the next handler, the ended
     /// one's frame below holding none of the user's code still to run (#1990).</summary>
-    [Fact]
-    public Task A_step_out_of_an_async_handler_whose_end_calls_the_next_on_its_thread_lets_the_program_run_on() =>
+    private Task A_step_out_of_an_async_handler_whose_end_calls_the_next_on_its_thread_lets_the_program_run_on() =>
         StepOutOfHandler(Looping, ["dispatch"], "the dispatched handler goes on after its await", "the dispatched handler returns", "dispatched 20 handlers");
 
     /// <summary>A program whose loop, code that is not the user's, waits for each line of input and hands it through frames
     /// of its own to the user's handler, as a window's loop in managed code hands it a click, stopped in the handler, its
     /// breakpoint deleted and stepped off its end: the step ends there and the program runs on, the handler's calls for the
     /// lines after never stopping, though the user's code that started the loop is below it (#1899).</summary>
-    [Fact]
-    public async Task A_step_off_a_handler_a_managed_loop_calls_lets_the_program_run_on_so_its_call_for_the_next_input_never_stops()
+    private async Task A_step_off_a_handler_a_managed_loop_calls_lets_the_program_run_on_so_its_call_for_the_next_input_never_stops()
     {
         string source = Debuggees.Source(Cases, "Program.cs");
         int counted = Debuggees.Line(Cases, "handled++;");
@@ -424,8 +434,7 @@ public class StepTests(ITestOutputHelper testOutputHelper)
     /// a LINQ pipeline's lambda in the next lambda the pipeline calls, whether the iterator that called the one stepped off
     /// calls it, an iterator below, or one the pipeline calls anew for the next element; and off the pipeline's last
     /// lambda, back in the foreach that reads it (#1899).</summary>
-    [Fact]
-    public async Task A_step_off_a_lambda_a_library_calls_lands_in_its_next_call_or_the_pipelines_next_lambda()
+    private async Task A_step_off_a_lambda_a_library_calls_lands_in_its_next_call_or_the_pipelines_next_lambda()
     {
         string source = Debuggees.Source(Cases, "Program.cs");
         int each = Debuggees.Line(Cases, "Console.WriteLine($\"each {value}\");");

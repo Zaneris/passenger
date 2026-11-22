@@ -10,8 +10,16 @@ public class AsyncVariablesTests(ITestOutputHelper testOutputHelper)
     private static readonly int FirstAwait = Debuggees.Line("DebuggableConsoleApp", "MyAsyncClass.cs", "int result = await AnotherClass.AnotherMethodAsync();");
     private static readonly int AnotherMethodOpened = Debuggees.Line("DebuggableConsoleApp", "Namespace1/AnotherClass.cs", "AnotherMethodAsync()") + 1;
 
+    /// <summary>A stop in an async method lists its locals as they are, and a stop in a state machine only the hoisted
+    /// locals in scope there.</summary>
     [Fact]
-    public async Task A_stop_in_an_async_method_lists_its_locals_as_they_are()
+    public async Task A_stop_in_an_async_method_lists_its_locals_as_they_are_and_only_those_in_scope()
+    {
+        await Flow.StepApartAsync<AsyncVariablesTests>("a stop in an async method lists its locals as they are", () => new AsyncVariablesTests(testOutputHelper), t => t.A_stop_in_an_async_method_lists_its_locals_as_they_are());
+        await Flow.StepApartAsync<AsyncVariablesTests>("a stop in a state machine lists only the hoisted locals in scope there", () => new AsyncVariablesTests(testOutputHelper), t => t.A_stop_in_a_state_machine_lists_only_the_hoisted_locals_in_scope_there());
+    }
+
+    private async Task A_stop_in_an_async_method_lists_its_locals_as_they_are()
     {
         bool startSuspended = true;
 
@@ -77,8 +85,7 @@ public class AsyncVariablesTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A method compiled to a state machine lists the hoisted locals in scope where it stopped: its loop's variable
     /// inside the loop, and not once the loop is done, where an expression cannot read it either.</summary>
-    [Fact]
-    public async Task A_stop_in_a_state_machine_lists_only_the_hoisted_locals_in_scope_there()
+    private async Task A_stop_in_a_state_machine_lists_only_the_hoisted_locals_in_scope_there()
     {
         const string program = "RuntimeAsyncConsoleApp";
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
