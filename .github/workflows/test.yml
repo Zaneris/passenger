@@ -237,34 +237,6 @@ jobs:
             -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
           echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
 
-      # The iPhone simulator the iOS tests take (the first the iOS workload lists, every one being shut down), booted
-      # while the solution builds and shut down again before the tests, so its first boot on the runner, minutes longer
-      # than a later one's, falls in no test's time; which one, and what its boot said, in the log of the step that
-      # shuts it down. A failure here only leaves that first boot to the first iOS test.
-      - name: An iOS simulator's first boot
-        if: env.MOBILE == 'true' && runner.os == 'macOS'
-        continue-on-error: true
-        env:
-          # The listing leaves no MSBuild server holding memory into the build.
-          DOTNET_CLI_USE_MSBUILD_SERVER: 0
-          MSBUILDUSESERVER: 0
-        run: |
-          (
-            trap 'date +%s > "$RUNNER_TEMP/simulator.ended"' EXIT
-            listed=$(dotnet msbuild tests/MauiGraphs/iOS -nologo -nodeReuse:false -target:ComputeAvailableDevices -getItem:Devices) \
-              || { echo "$listed"; exit 1; }
-            udid=$(python3 -I -c 'import json, sys
-          text = sys.stdin.read()
-          devices = json.JSONDecoder().raw_decode(text, text.index("{"))[0]["Items"]["Devices"]
-          phones = [d["Identity"] for d in devices if d.get("Type") == "Simulator" and d.get("Description", "").startswith("iPhone")]
-          print(phones[0]) if phones else sys.exit("The iOS workload lists no iPhone simulator")' <<< "$listed")
-            echo "$udid" > "$RUNNER_TEMP/simulator.udid"
-            xcrun simctl list devices | grep "$udid" || true
-            booted=0
-            xcrun simctl bootstatus "$udid" -b || booted=$?
-            echo "$booted" > "$RUNNER_TEMP/simulator.booted"
-          ) < /dev/null > "$RUNNER_TEMP/simulator.log" 2>&1 &
-
       # Azure Functions Core Tools 4, whose func runs the Functions app a real AppHost adds, on the PATH: its release's
       # archive, its SHA-256 checked against the one the release gives.
       - name: Azure Functions Core Tools
@@ -499,44 +471,6 @@ jobs:
           echo "::warning title=Android emulator::It did not boot in 10 minutes, so the Android tests start it themselves"
           tail -n 50 "$RUNNER_TEMP/emulator.log"
           exit 1
-
-      # The simulator booted while the solution built, kept up two minutes past its boot, as its system goes on starting
-      # after simctl says it booted, then shut down for the tests to boot; one still booting after 10 minutes is shut down
-      # as it stands.
-      - name: Shut down the iOS simulator
-        if: env.MOBILE == 'true' && runner.os == 'macOS'
-        continue-on-error: true
-        timeout-minutes: 14
-        run: |
-          for _ in $(seq 120); do
-            if [ -f "$RUNNER_TEMP/simulator.ended" ]; then
-              break
-            fi
-            sleep 5
-          done
-          cat "$RUNNER_TEMP/simulator.log" || true
-          if [ ! -f "$RUNNER_TEMP/simulator.udid" ]; then
-            echo "::warning title=iOS simulator::None was booted while the solution built, so the first iOS test's boot is its first"
-            exit 1
-          fi
-          udid=$(cat "$RUNNER_TEMP/simulator.udid")
-          if [ ! -f "$RUNNER_TEMP/simulator.ended" ]; then
-            echo "::warning title=iOS simulator::$udid did not boot in 10 minutes, so it is shut down as it stands"
-          elif [ "$(cat "$RUNNER_TEMP/simulator.booted" 2> /dev/null)" != 0 ]; then
-            echo "::warning title=iOS simulator::$udid did not boot (its words above), so the first iOS test's boot may be its first"
-          else
-            left=$(( $(cat "$RUNNER_TEMP/simulator.ended") + 120 - $(date +%s) ))
-            if [ "$left" -gt 0 ]; then
-              sleep "$left"
-            fi
-          fi
-          xcrun simctl shutdown "$udid" || true
-          state=$(xcrun simctl list devices | grep "$udid" || true)
-          echo "$state"
-          case "$state" in
-            *"(Shutdown)"*) ;;
-            *) echo "::warning title=iOS simulator::$udid was not shut down, so the iOS tests run on it as they find it"; exit 1 ;;
-          esac
 
       # A job's tests have TEST_MINUTES in all: a gate job's report shard has what its gate tests left.
       - name: Start the clock on the job's tests
