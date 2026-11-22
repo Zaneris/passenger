@@ -16,7 +16,7 @@ public static class VimTextObjects
     {
         "w" => Word(text, caret, n, inner, bigWord: false, breakEnds),
         "W" => Word(text, caret, n, inner, bigWord: true, breakEnds),
-        "s" => Sentence(text, caret, n, inner),
+        "s" => Sentence(text, caret, n, inner, breakEnds),
         "p" => Paragraph(text, caret, n, inner, breakEnds),
         "(" or ")" or "b" => Block(text, caret, n, inner, '(', ')'),
         "{" or "}" or "B" => Block(text, caret, n, inner, '{', '}'),
@@ -306,10 +306,31 @@ public static class VimTextObjects
 
     /// <summary>is and as: the sentence the caret is in, or the white after it; the outer one takes the white after, or
     /// before where none is after. On a run of empty lines the sentence is the run's last line.</summary>
-    private static VimSpan? Sentence(TextSnapshot text, int caret, int n, bool inner)
+    private static VimSpan? Sentence(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
     {
-        int start = caret < text.Length ? VimMotions.PreviousSentenceStart(text, caret + 1) : VimMotions.PreviousSentenceStart(text, caret);
         LineSpan on = VimMotions.LineOf(text, caret);
+        if (inner && n == 1 && on.Length == 0 && on.Line > 0 && on.Line == VimMotions.LastLine(text, breakEnds) && text.GetLine(on.Line - 1).Length > 0)
+        {
+            // From an empty last line, is takes the white before it, a whole line of blanks as a line, else nothing.
+            int blank = on.Start;
+            while (blank > 0 && char.IsWhiteSpace(text[blank - 1]))
+            {
+                blank--;
+            }
+            return VimMotions.InIndent(text, blank) || blank < text.GetLine(on.Line - 1).End ? new VimSpan(blank, on.Start, false) : new VimSpan(on.Start, on.Start, false);
+        }
+        if (inner && on.Line > 0 && text.GetLine(on.Line - 1).Length == 0 && VimMotions.InIndent(text, caret) && on.Length > 0)
+        {
+            // In the blanks opening a paragraph, is takes the sentence after them.
+            int first = caret;
+            while (first < text.Length && char.IsWhiteSpace(text[first]) && !(VimMotions.LineOf(text, first) is { Length: 0 } empty && empty.Start == first))
+            {
+                first++;
+            }
+            caret = first < text.Length ? first : caret;
+            on = VimMotions.LineOf(text, caret);
+        }
+        int start = caret < text.Length ? VimMotions.PreviousSentenceStart(text, caret + 1) : VimMotions.PreviousSentenceStart(text, caret);
         if (on.Length == 0)
         {
             int runEnd = on.Line;
@@ -353,9 +374,10 @@ public static class VimTextObjects
             LineSpan before = VimMotions.LineOf(text, back);
             start = back == before.End && before.BreakLength > 0 && back < start ? Math.Min(before.EndIncludingBreak, start) : back;
         }
-        end = Math.Max(start, end);
+        // The text's end is its last line's, never the place after a final line break.
+        end = Math.Max(start, Math.Min(end, text.GetLine(VimMotions.LastLine(text, breakEnds)).End));
         LineSpan last = VimMotions.LineOf(text, end);
-        if (end == last.End && last.Length > 0 && last.BreakLength > 0 && last.Line + 1 < text.LineCount
+        if (end == last.End && last.Length > 0 && last.BreakLength > 0 && last.Line < VimMotions.LastLine(text, breakEnds)
             && text.GetLine(last.Line + 1) is var below && (below.Length == 0 || !char.IsWhiteSpace(text[below.Start])))
         {
             // Text ending at a line's end runs to the next sentence where that begins the next line, as its first column.

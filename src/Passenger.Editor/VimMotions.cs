@@ -518,6 +518,16 @@ public static class VimMotions
             }
             return at >= text.Length ? new VimTarget(end, VimMotionKind.Inclusive) : new VimTarget(at, VimMotionKind.Exclusive);
         }
+        if (text.Length > 0 && text[0] is '.' or '!' or '?' && EndsSentence(text, 0, out _) && NextSentenceStart(text, 0) is var first && first < text.Length)
+        {
+            // A text opening with a sentence's end begins its first sentence after it, as far back as ( goes.
+            at = Math.Max(at, first);
+            for (int i = caret < first ? 1 : 0; i < n && at > first; i++)
+            {
+                at = Math.Max(first, SentenceStartBefore(text, at));
+            }
+            return new VimTarget(at, VimMotionKind.Exclusive);
+        }
         bool topAgain = Blank(text, 0);
         for (int i = 0; i < n; i++)
         {

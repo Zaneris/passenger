@@ -202,7 +202,10 @@ public sealed partial class VimTests
                 passenger.Registers[name].Text)) || TookAnEmptyLine(vim, passenger))),
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
-        ($"is and as on an empty or one-word line take the line whole; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
+        ($"is and as from an empty line ending the text, from blanks before or after its last sentence, and about a paragraph opened "
+            + $"by a sentence's end, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
+        ($"( and ) about a paragraph opened by a sentence's end; {ToFix}",
+            (vimCase, _, passenger) => vimCase.Keys.Any(key => key is "(" or ")") && passenger.Seen.Contains(OpenedByAnEnd)),
         ($"Visual mode's cursor goes past the last line; {ToFix}", (_, _, passenger) => passenger.Seen.Contains(VisualPastEnd)),
         ($"Visual block mode's corners: a block over a line's last character, its I and A, ~ and J after o; {ToFix}", (vimCase, _, _) => vimCase.Uses(Block)),
         ($"I and A over a visual stretch by characters or lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(VisualInsert)),
@@ -229,6 +232,7 @@ public sealed partial class VimTests
     private const string VisualPastEnd = "a visual cursor past the last line";
     private const string VisualObject = "a text object in visual mode";
     private const string SentenceObject = "is or as";
+    private const string OpenedByAnEnd = "a paragraph opened by a sentence's end";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -623,9 +627,11 @@ public sealed partial class VimTests
     private const string Asked = "asked the host";
 
     /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a text of one empty line, a visual
-    /// cursor on the place after the final line break.</summary>
+    /// cursor on the place after the final line break, a paragraph opened by a sentence's end.</summary>
     private static void Observe(Vim vim, TextSnapshot text, SelectionSet carets, HashSet<string> seen)
     {
+        seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span && (line == 0 || text.GetLine(line - 1).Length == 0)
+            && text[span.Start] is '.' or '!' or '?' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
         seen.UnionWith(text.Length == 0 || (text.Length == 1 && text[0] == '\n') ? [LoneEmptyLine] : []);
         seen.UnionWith(Vim.IsVisual(vim.Mode) && vim.VisualCursors(carets).Any(cursor => cursor >= text.Length) ? [VisualPastEnd] : []);
     }
