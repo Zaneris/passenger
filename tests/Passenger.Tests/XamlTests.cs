@@ -535,7 +535,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                     """);
                 Restore.Run(folder);
             }, folder);
-            MainWindow window = Ui.OpenFolder(folder, autosaves: false);
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
             window.OpenFile(Path.Combine(folder, "MainView.axaml"));
             OpenDocument document = window.EditorArea.Active!;
             Passenger.App.Xaml.XamlDocument xaml = window.XamlService.For(document) ?? throw new InvalidOperationException("The XAML file of a C# project was given no XAML");
@@ -588,7 +588,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                     """);
                 Restore.Run(folder);
             }, folder);
-            MainWindow window = Ui.OpenFolder(folder, autosaves: false);
+            MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
             window.OpenFile(Path.Combine(folder, "MainWindow.axaml"));
             OpenDocument document = window.EditorArea.Active!;
             Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("AvaloniaHeadlessPlatformOptions", StringComparison.Ordinal)),
@@ -638,7 +638,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                 Restore.Run(app);
             }, folder);
             Assert.True(File.Exists(Path.Combine(folder, "artifacts", "obj", "Fresh", "project.assets.json")), "The restore wrote its assets somewhere other than artifacts/obj/Fresh");
-            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, Watching = eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree };
+            MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false, Watching = eachFolder ? FolderWatching.Inotify : FolderWatching.WholeTree };
             window.Show();
             window.OpenFolder(folder);
             window.OpenFile(Path.Combine(app, "MainWindow.axaml"));
