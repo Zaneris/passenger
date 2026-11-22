@@ -23,8 +23,52 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         project.Reset();
     }
 
+    /// <summary>Solution-wide analysis, turned on and off, as the server starts, refuses a pull, loads again between
+    /// windows or takes a burst of keys.</summary>
     [AvaloniaFact]
-    public void Solution_wide_analysis_lists_every_files_errors_and_follows_an_edit_that_breaks_a_file_nobody_has_open()
+    public void Solution_wide_analysis_lists_every_files_errors_and_follows_edits_restarts_refusals_and_a_kept_server()
+    {
+        Flow.StepApart("solution-wide analysis lists every file's errors and follows an edit that breaks a file nobody has open", () => new ProblemsTests(project), t => t.Solution_wide_analysis_lists_every_files_errors_and_follows_an_edit_that_breaks_a_file_nobody_has_open());
+        Flow.StepApart("turned on while the server starts, it lists the error of a file nobody opened", () => new ProblemsTests(project), t => t.Solution_wide_analysis_turned_on_while_the_server_starts_lists_the_error_of_a_file_nobody_opened());
+        Flow.StepApart("turned off, it narrows the running server's scope to its own", () => new ProblemsTests(project), t => t.Solution_wide_analysis_turned_off_narrows_the_running_servers_scope_to_its_own());
+        Flow.StepApart("its first round ends once the server has analysed every source, though its answer waits", () => new ProblemsTests(project), t => t.The_first_round_ends_once_the_server_has_analysed_every_source_though_its_answer_waits());
+        Flow.StepApart("it goes on following edits after the server refuses a pull", () => new ProblemsTests(project), t => t.Solution_wide_analysis_goes_on_following_edits_after_the_server_refuses_a_pull());
+        Flow.StepApart("keys typed in a burst have it ask the server again once typing pauses", () => new ProblemsTests(project), t => t.Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses());
+        Flow.StepApart("a kept server loading its project again between windows has its builds from the next window, which lists a new file's error", () => new ProblemsTests(project), t => t.A_kept_server_loading_its_project_again_between_windows_has_its_builds_from_the_next_window_which_lists_a_new_files_error());
+        Flow.StepApart("a net11 project's collection expression arguments at LangVersion latest list no error", () => new ProblemsTests(project), t => t.A_net11_projects_collection_expression_arguments_at_lang_version_latest_list_no_error());
+    }
+
+    /// <summary>A file's project-wide pull the server holds past its patience: said in the log alone, and told the
+    /// person once the server leaves its check unanswered.</summary>
+    [AvaloniaFact]
+    public void A_pull_the_server_holds_past_its_patience_is_said_in_the_log_and_noticed_once_its_check_goes_unanswered()
+    {
+        Flow.StepApart("a pull held past the server's patience is said in the log alone, where a hover is noticed", () => new ProblemsTests(project), t => t.A_files_project_wide_pull_held_past_the_servers_patience_is_said_in_the_log_alone_where_a_hover_is_noticed());
+        Flow.StepApart("a pull held past the server's patience is noticed once the server leaves its check unanswered", () => new ProblemsTests(project), t => t.A_files_project_wide_pull_held_past_the_servers_patience_is_noticed_once_the_server_leaves_its_check_unanswered());
+    }
+
+    /// <summary>The Problems window's list as a person reads it, and what a key costs it however many problems the
+    /// solution has.</summary>
+    [AvaloniaFact]
+    public void The_Problems_list_filters_counts_and_goes_to_each_problem_and_a_key_lists_only_the_open_files_however_many_the_solution_has()
+    {
+        Flow.StepApart("warnings turned off and a filter's text leave only the matching errors, and the counts follow", () => new ProblemsTests(project), t => t.Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow());
+        Flow.StepApart("a problem below line breaks only Roslyn counts is listed and gone to at its own line", () => new ProblemsTests(project), t => t.A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line());
+        Flow.StepApart("a typing pause lists again only the open file's problems, however many the solution has", () => new ProblemsTests(project), t => t.A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has());
+        Flow.StepApart("a key in a large solution lists the open file's problems without waiting for the whole project's analysis", () => new ProblemsTests(project), t => t.A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis());
+    }
+
+    /// <summary>A thousand files changed on disk at once, as a branch switch or a generator changes them: each reaches
+    /// the server through the folder's watcher, and the open file's answers never stall.</summary>
+    [AvaloniaFact]
+    public void A_thousand_files_rewritten_or_deleted_on_disk_reach_the_server_and_leave_the_open_files_answers_unstalled()
+    {
+        Flow.StepApart("a thousand files rewritten on disk reach the server from the folder's watcher and their new problems are listed", () => new ProblemsTests(project), t => t.A_thousand_files_rewritten_on_disk_reach_the_server_from_the_folders_watcher_and_their_new_problems_are_listed());
+        Flow.StepApart("a thousand files deleted side by side each leave Go to File and reach the server as gone", () => new ProblemsTests(project), t => t.A_thousand_files_deleted_side_by_side_each_leave_go_to_file_and_reach_the_server_as_gone());
+        Flow.StepApart("a thousand warned files deleted at once leave the open file's answers unstalled", () => new ProblemsTests(project), t => t.A_thousand_warned_files_deleted_at_once_leave_the_open_files_answers_unstalled());
+    }
+
+    private void Solution_wide_analysis_lists_every_files_errors_and_follows_an_edit_that_breaks_a_file_nobody_has_open()
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -91,56 +135,11 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             $"The Solution tab's rows {when} are not those it lists afresh:\n{string.Join('\n', kept)}\n\nAfresh:\n{string.Join('\n', afresh)}");
     }
 
-    /// <summary>The status bar says solution-wide analysis is under way while its first round is, a turning ring in place
-    /// of its icon: a tick there would say the solution has no errors before any file nobody opened was analysed. Once the
-    /// round answers, it says what the round found (here Bad.cs's error).</summary>
-    [AvaloniaFact]
-    public void The_status_bar_says_solution_wide_analysis_is_under_way_until_its_first_round_answers()
-    {
-        MainWindow window = project.Open("Helper.cs");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        Avalonia.Controls.Button analysis = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Button>(window, "AnalysisButton")!;
-        WorkingRing? ring = Avalonia.Controls.ControlExtensions.FindControl<WorkingRing>(window, "AnalysisWorking");
-        TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        List<(long At, string What)> marks = [];
-        long since = Mark(marks, "solution-wide analysis turned on");
-        (bool Analysing, string? Said, bool Ringed)? held = null;
-        try
-        {
-            // The first pull held unsent, as by a server still analysing a large solution, the bar read as it is held: the server's refresh may let go of it before a later look.
-            Task holding = server.HoldNext(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic, _ =>
-            {
-                Mark(marks, "a pull held unsent, the status bar looked at");
-                held = Avalonia.Threading.Dispatcher.UIThread.CheckAccess()
-                    ? (window.CSharpService.IsAnalysing, Avalonia.Controls.ToolTip.GetTip(analysis) as string, ring?.IsVisible == true)
-                    : (false, "nothing: the pull was asked off the window's thread", false);
-                return true;
-            }, asked.Task);
-            window.Perform(AppActions.ToggleSolutionAnalysis);
-            // Pumped, not settled: the round is background work until it answers.
-            Ui.PumpUntil(() => holding.IsCompleted, "the first pull of the solution's diagnostics to be asked, and held");
-            Assert.True(held?.Analysing == true,
-                $"Solution-wide analysis's first round was over as its first pull was held unsent:\n{StepsSince(window.CSharpService, since, marks)}");
-            Assert.True(held?.Said?.StartsWith("Solution-wide analysis is under way", StringComparison.Ordinal) == true && held?.Ringed == true,
-                $"While solution-wide analysis had yet to answer its first round, the status bar said \"{held?.Said}\" with {(held?.Ringed == true ? "a turning ring" : "no ring")}");
-        }
-        finally
-        {
-            asked.TrySetResult();
-        }
-        Ui.WaitFor(() => window.CSharpService is { IsAnalysing: false }, () => $"the first round to answer once its pull was let go:\n{StepsSince(window.CSharpService, since, marks)}");
-        string? after = Avalonia.Controls.ToolTip.GetTip(analysis) as string;
-        Assert.True(after?.StartsWith("Solution-wide analysis: ", StringComparison.Ordinal) == true && ring?.IsVisible == false,
-            $"Once the first round answered, finding Bad.cs's error, the status bar said \"{after}\" with {(ring?.IsVisible == true ? "a ring still turning" : "no ring")}");
-        window.Close();
-    }
-
     /// <summary>Solution-wide analysis's first round is over once the server has analysed every source, not once it answers,
     /// which it may leave until the next change: a round's pull asked again as the solution moved, after the pull before it
     /// had taken that change, is held open with nothing coming to end it. With the first pull's answer held, the round ends
     /// and the Solution tab lists the closed file's error.</summary>
-    [AvaloniaFact]
-    public void The_first_round_ends_once_the_server_has_analysed_every_source_though_its_answer_waits()
+    private void The_first_round_ends_once_the_server_has_analysed_every_source_though_its_answer_waits()
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -166,102 +165,10 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
-    /// <summary>A file nobody has open changed on disk while one of solution-wide analysis's pulls is under way has the pull
-    /// let go and asked again of the solution the change made, rather than waited for: the server would finish it on the
-    /// solution before the change, then analyse it whole again, as it did every session's first round. With the pull asked
-    /// after a key held unsent, as by a server analysing a large solution for minutes, the Solution tab lists the file's new
-    /// error once the server says its solution moved.</summary>
-    [AvaloniaFact]
-    public void A_file_changed_on_disk_while_a_pull_is_under_way_has_it_asked_again_of_the_solution_the_change_made()
-    {
-        MainWindow window = project.Open("Helper.cs");
-        ProblemsModel problems = window.BottomPanel.Problems;
-        List<(long At, string What)> marks = [];
-        long since = Mark(marks, "solution-wide analysis turned on");
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
-        Passenger.App.CSharp.CSharpService service = window.CSharpService!;
-        Passenger.Lsp.LanguageServer server = service.Session!.Server;
-        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        const string Analysed = "WorkspaceDocumentsAndProject";
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task? holding = null;
-        // Placed at the key's change, so only a pull asked after it is held: the one under way may be one no key lets go, which the server answers.
-        void HoldTheNextPull(object? sender, DocumentChangedEventArgs e)
-        {
-            editor.Document.Changed -= HoldTheNextPull;
-            Mark(marks, "the key's change, the next pull to be held unsent");
-            holding = server.HoldNext(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
-                p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: Analysed }, released.Task);
-        }
-        try
-        {
-            editor.Document.Changed += HoldTheNextPull;
-            Rename(window, "Twice", "Twice2");
-            Ui.WaitFor(() => holding?.IsCompleted == true,
-                () => $"the analysis to ask again once the key's own pull answered, and that pull held:\n{StepsSince(service, since, marks)}");
-            int asked = service.PullsAsked(Analysed);
-
-            Mark(marks, "Bad.cs rewritten");
-            project.Rewrite("Bad.cs", "class Bad\n{\n    public int Count = Missing;\n}\n");
-            bool Listed() => problems.SolutionProblems?.Any(p => p.Code == "CS0103" && p.Path?.EndsWith("Bad.cs", StringComparison.Ordinal) == true) == true;
-            // Pumped, not settled: the held pull stands for the server's work in flight until it is let go.
-            Assert.True(Ui.Pumped(Listed, TimeSpan.FromSeconds(90)),
-                $"Bad.cs's new error was not listed while the pull asked after the key, before Bad.cs changed, was held unsent: "
-                + $"the analysis asked {service.PullsAsked(Analysed) - asked} more pulls of every file's problems (listed: "
-                + $"{string.Join("; ", problems.SolutionProblems?.Select(p => $"{Path.GetFileName(p.Path)} {p.Code}") ?? [])}):\n"
-                + $"{StepsSince(service, since, marks)}{Ui.ServerLogTail()}");
-            Assert.DoesNotContain(problems.SolutionProblems!, p => p.Code == "CS0029" && p.Path?.EndsWith("Bad.cs", StringComparison.Ordinal) == true);
-        }
-        finally
-        {
-            editor.Document.Changed -= HoldTheNextPull;
-            released.TrySetResult();
-        }
-        window.Close();
-    }
-
-    /// <summary>A file's pull of what its project's whole analysis reports in it, which solution-wide analysis adds, is named
-    /// by its source while it waits on the server, so a long wait (a large project's) says which pull it is.</summary>
-    [AvaloniaFact]
-    public void A_files_project_wide_pull_waiting_on_the_server_is_named_by_its_source()
-    {
-        MainWindow window = project.Open("Helper.cs");
-        Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Ui.WaitFor(() => server.DiagnosticSources.Contains(Passenger.Lsp.LspDocument.ProjectWideSource),
-            "the server to give files a project-wide source of diagnostics, as it does analysing the whole solution");
-        TaskCompletionSource asked = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        string? conversation = null;
-        try
-        {
-            // Read as the pull is held, where it surely waits: a later pull (the server's refresh) may let go of it before the test looks.
-            Task holding = server.HoldNext(Passenger.Lsp.LspMethods.DocumentDiagnostic, p =>
-            {
-                if (p is not Passenger.Lsp.DocumentDiagnosticParams { Identifier: Passenger.Lsp.LspDocument.ProjectWideSource })
-                {
-                    return false;
-                }
-                conversation = server.Conversation();
-                return true;
-            }, asked.Task);
-            window.KeyTextInput(" ");
-            Ui.PumpUntil(() => holding.IsCompleted, "the file's project-wide pull to be asked, and held");
-            Assert.True(conversation!.Contains($"{Passenger.Lsp.LspMethods.DocumentDiagnostic} ({Passenger.Lsp.LspDocument.ProjectWideSource})", StringComparison.Ordinal),
-                $"The file's project-wide pull waiting on the server was not named by its source: {conversation}");
-        }
-        finally
-        {
-            asked.TrySetResult();
-        }
-        window.Close();
-    }
-
     /// <summary>A file's project-wide pull, which the window makes of its own accord and nobody waits on, held by the server
     /// past its patience while it answers Passenger's checks, is said in the log alone, never as the notice that the server
     /// is slow to answer; a hover held as long, which someone waits on, is noticed.</summary>
-    [AvaloniaFact]
-    public void A_files_project_wide_pull_held_past_the_servers_patience_is_said_in_the_log_alone_where_a_hover_is_noticed()
+    private void A_files_project_wide_pull_held_past_the_servers_patience_is_said_in_the_log_alone_where_a_hover_is_noticed()
     {
         MainWindow window = project.Open("Helper.cs");
         SlowAnswers slow = new(window, checkLimit: null);
@@ -302,8 +209,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>A file's project-wide pull, which nobody waits on, held by the server past its patience once Passenger's
     /// check of it has gone unanswered as long as a request waits before the server is checked, is noticed as the server
     /// slow to answer: it has stopped answering at all.</summary>
-    [AvaloniaFact]
-    public void A_files_project_wide_pull_held_past_the_servers_patience_is_noticed_once_the_server_leaves_its_check_unanswered()
+    private void A_files_project_wide_pull_held_past_the_servers_patience_is_noticed_once_the_server_leaves_its_check_unanswered()
     {
         MainWindow window = project.Open("Helper.cs");
         // Never called not responding, which would end the server the class shares.
@@ -433,8 +339,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>Solution-wide analysis turned on as the folder opens, while its language server starts and before the
     /// window has a session of it, reaches the server once it has: the Solution tab lists the error of a file nobody
     /// opened, which a server left analysing the open files alone never reports.</summary>
-    [AvaloniaFact]
-    public void Solution_wide_analysis_turned_on_while_the_server_starts_lists_the_error_of_a_file_nobody_opened()
+    private void Solution_wide_analysis_turned_on_while_the_server_starts_lists_the_error_of_a_file_nobody_opened()
     {
         // A server of the window's own, started as the folder opens: one taken up warm is the window's at once.
         project.Drop();
@@ -455,8 +360,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>Solution-wide analysis turned off narrows the running server's scope back to its own, so it stops analysing
     /// files nobody opened: asked again of Bad.cs, a file nobody opened, with the result it gave while the analysis was on,
     /// the server says that file's problems are gone, where one left analysing the whole solution has nothing new to say.</summary>
-    [AvaloniaFact]
-    public void Solution_wide_analysis_turned_off_narrows_the_running_servers_scope_to_its_own()
+    private void Solution_wide_analysis_turned_off_narrows_the_running_servers_scope_to_its_own()
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -513,8 +417,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
 
     /// <summary>A pull the server refuses or cuts short (Roslyn cancels one a change made stale) is asked again, so the
     /// solution's problems go on following edits.</summary>
-    [AvaloniaFact]
-    public void Solution_wide_analysis_goes_on_following_edits_after_the_server_refuses_a_pull()
+    private void Solution_wide_analysis_goes_on_following_edits_after_the_server_refuses_a_pull()
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -541,8 +444,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// answered, and the Solution tab then lists what the keys broke in a file nobody has open. The keys come one straight
     /// after another, each with the work it posted run, so no pause comes between them however slow the machine; what is
     /// asked counts from the first key's change, as the work come due before it runs as the key is sent.</summary>
-    [AvaloniaFact]
-    public void Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses()
+    private void Keys_typed_in_a_burst_have_solution_wide_analysis_ask_the_server_again_once_typing_pauses()
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -619,33 +521,6 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
             $"{System.Diagnostics.Stopwatch.GetElapsedTime(since, s.At).TotalMilliseconds,9:0.0} ms  {s.What}"));
     }
 
-    /// <summary>A file's markers are put in order once, as its diagnostics are taken, however its server's sources gave them
-    /// (a syntax error each side of a type error, reported by two): the keys typed in it, and the pulls after each, never
-    /// have them sorted again.</summary>
-    [AvaloniaFact]
-    public void A_files_markers_are_put_in_order_as_they_come_and_never_sorted_again_for_a_key()
-    {
-        Write("Two.cs", "class Two\n{\n    void A() { int a = 1 }\n    int Count = \"none\";\n    void B() { int b = 2 }\n}\n");
-        MainWindow window = project.Open("Two.cs");
-        Passenger.App.Workspace.OpenDocument open = window.EditorArea.Active!;
-        Ui.WaitFor(() => open.Markers.Count(m => m.Kind == Passenger.Editor.MarkerKind.Error) == 3, "the file's three errors");
-        Ui.Settle();
-        int sorted = open.Decorations.MarkersSorted;
-        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(0, 0));
-        editor.Focus();
-        const int Keys = 4;
-        for (int i = 0; i < Keys; i++)
-        {
-            Ui.Press(window, "ENTER");
-        }
-        Assert.True(open.Decorations.MarkersSorted == sorted,
-            $"The file's markers were sorted again {open.Decorations.MarkersSorted - sorted} times for {Keys} keys and the pulls after them");
-        Assert.Equal([2 + Keys, 3 + Keys, 4 + Keys], open.Markers.Where(m => m.Kind == Passenger.Editor.MarkerKind.Error)
-            .Select(m => open.Text.Snapshot.GetLineFromOffset(m.Range.Start)));
-        window.Close();
-    }
-
     /// <summary>The open file's word typed over, as a person selecting it and typing does.</summary>
     private static void Rename(MainWindow window, string from, string to)
     {
@@ -655,48 +530,10 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.KeyTextInput(to);
     }
 
-    /// <summary>Lines typed above a file's problems move them, and the File tab says where they are now after every key,
-    /// each row's place shown on its own line of the list as it was: the list's rows are not made again for every
-    /// key.</summary>
-    [AvaloniaFact]
-    public void Lines_typed_above_a_files_problems_move_their_rows_without_making_the_list_again()
-    {
-        Write("Several.cs", "class Several\n{\n    int First = \"one\";\n    int Second = \"two\";\n    string Third = 3;\n}\n");
-        MainWindow window = project.Open("Several.cs", w => w.Perform(AppActions.ShowProblems));
-        ProblemsModel problems = window.BottomPanel.Problems;
-        Assert.Equal(ProblemsTab.File, problems.Shown);
-        Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Error) == 3, "the file's three errors");
-        Avalonia.Controls.ListBox list = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window.ProblemsWindow).OfType<Avalonia.Controls.ListBox>().First();
-        // The text on each row that says where its problem is, as the list shows it.
-        Avalonia.Controls.TextBlock[] Shown() => [.. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(list).OfType<Avalonia.Controls.ListBoxItem>()
-            .Select(item => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(item).OfType<Avalonia.Controls.TextBlock>()
-                .First(t => t.Text?.StartsWith("Several.cs:", StringComparison.Ordinal) == true))];
-        string[] Places() => [.. Shown().Select(t => t.Text ?? string.Empty)];
-        Avalonia.Controls.TextBlock[] before = Shown();
-        Assert.Equal(3, before.Length);
-        Assert.Equal(["Several.cs:3:17", "Several.cs:4:18", "Several.cs:5:20"], Places());
-
-        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(1, 1));
-        editor.Focus();
-        for (int i = 1; i <= 3; i++)
-        {
-            Ui.Press(window, "ENTER");
-            Assert.Equal([2 + i, 3 + i, 4 + i], problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error).Select(p => p.Position.Line));
-            Assert.True(Shown().SequenceEqual(before), $"After {i} lines went in above the problems the File tab's rows were made again");
-            Assert.Equal([$"Several.cs:{3 + i}:17", $"Several.cs:{4 + i}:18", $"Several.cs:{5 + i}:20"], Places());
-        }
-
-        Ui.Settle();
-        Assert.Equal(["Several.cs:6:17", "Several.cs:7:18", "Several.cs:8:20"], Places());
-        window.Close();
-    }
-
     /// <summary>Problems filtered as a person does it: Warnings turned off leaves the file's errors, the counts on its tab and
     /// toggles following; Find's keys give the filter the keys and its text leaves the error that holds it, the warning that
     /// holds it too staying hidden; Escape empties it and Warnings turned on lists all four again.</summary>
-    [AvaloniaFact]
-    public void Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow()
+    private void Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow()
     {
         Write("Mixed.cs", "public class Mixed\n{\n    public int First = \"one\";\n    public int Second = missing;\n    public void A() { int unused; }\n    public void B() { int missingToo; }\n}\n");
         MainWindow window = project.Open("Mixed.cs", w => w.Perform(AppActions.ShowProblems));
@@ -753,117 +590,16 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
-    /// <summary>The status bar counts the errors and warnings of the file shown, beside solution-wide analysis's glyph as one
-    /// widget, and the editor draws nothing over its code: the end of a long first line, where the counts stood, is the
-    /// editor's to click. A click on the counts goes to the next problem and opens Problems; a clean file shows a tick; with
-    /// two splits the counts follow the one with the keys; a tool window's tab shows none (#2037).</summary>
-    [AvaloniaFact]
-    public void The_status_bar_counts_the_shown_files_problems_beside_solution_wide_analysis_and_nothing_covers_the_code()
-    {
-        string first = "// " + string.Join(' ', Enumerable.Repeat("a first line long enough to reach past the right edge of the editor", 8)) + "\n";
-        Write("Mixed.cs", first + "public class Mixed\n{\n    public int First = \"one\";\n    public int Second = missing;\n    public void A() { int unused; }\n    public void B() { int missingToo; }\n}\n");
-        Write("Clean.cs", first + "public class Clean\n{\n}\n");
-        MainWindow window = project.Open("Mixed.cs");
-        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.WaitFor(() => window.FileProblemsShown == (2, 2), () => $"the status bar to count Mixed.cs's two errors and two warnings (it counts {window.FileProblemsShown?.ToString() ?? "nothing"})");
-        Avalonia.Controls.Button counts = Named<Avalonia.Controls.Button>(window, "FileProblemsButton");
-        Avalonia.Controls.Button analysis = Named<Avalonia.Controls.Button>(window, "AnalysisButton");
-        Rect countsAt = Placed(window, counts);
-        Rect analysisAt = Placed(window, analysis);
-        Assert.True(analysis.IsEffectivelyVisible && Math.Abs(countsAt.Right - analysisAt.Left) < 0.5 && Math.Abs(countsAt.Top - analysisAt.Top) < 0.5,
-            $"The file's counts at {countsAt} and solution-wide analysis's glyph at {analysisAt} do not stand together as one widget");
-        Assert.Equal("2 errors and 2 warnings in Mixed.cs: click to go to the next and open Problems", Avalonia.Controls.ToolTip.GetTip(counts));
-        Assert.Equal("2 errors and 2 warnings in Mixed.cs: click to go to the next and open Problems", Avalonia.Automation.AutomationProperties.GetName(counts));
-
-        double edge = Avalonia.VisualTree.VisualExtensions.GetVisualChildren(editor).OfType<Avalonia.Controls.Primitives.ScrollBar>()
-            .Single(b => b.Orientation == Avalonia.Layout.Orientation.Vertical).Bounds.Left;
-        foreach (double x in (ReadOnlySpan<double>)[edge - 8, edge - 40, edge - 90])
-        {
-            Point end = editor.TranslatePoint(new Point(x, editor.LineHeight / 2), window)!.Value;
-            object? hit = Avalonia.Input.InputExtensions.InputHitTest(window, end);
-            Assert.True(ReferenceEquals(hit, editor), $"At the end of the long first line ({end}) a press lands on {hit?.GetType().Name ?? "nothing"}, not on the editor's text");
-        }
-
-        Ui.Click(counts);
-        Assert.True(editor.CaretPosition == new TextPosition(3, 23) && window.DockHost.IsShown(ToolWindowIds.Problems),
-            $"A click on the counts left the caret at {editor.CaretPosition} with Problems {(window.DockHost.IsShown(ToolWindowIds.Problems) ? "shown" : "hidden")}, "
-            + "not at the first error's place with Problems shown");
-        Ui.Click(counts);
-        Assert.Equal(new TextPosition(4, 24), editor.CaretPosition);
-
-        Assert.True(window.Perform(AppActions.SplitRight));
-        window.OpenFile(project.PathOf("Clean.cs"));
-        Ui.WaitFor(() => window.FileProblemsShown == (0, 0) && Named<Avalonia.Controls.PathIcon>(window, "FileCleanIcon").IsEffectivelyVisible,
-            () => $"a tick for Clean.cs, which has no problems, in the split with the keys (it counts {window.FileProblemsShown?.ToString() ?? "nothing"})");
-        Ui.Click(window.EditorArea.Groups[0].Editor);
-        Assert.True(window.FileProblemsShown == (2, 2), $"With the keys back in Mixed.cs's split the status bar counts {window.FileProblemsShown?.ToString() ?? "nothing"}");
-
-        Passenger.App.Docking.DockHost dock = window.DockHost;
-        dock.SetMode(dock[ToolWindowIds.Problems], Passenger.App.Docking.ToolMode.Editor);
-        dock.Show(ToolWindowIds.Problems);
-        Ui.Settle();
-        Assert.True(window.EditorArea.Active?.Tool is not null && window.FileProblemsShown is null && analysis.IsEffectivelyVisible,
-            $"With Problems' tab shown among the editors the status bar counts {window.FileProblemsShown?.ToString() ?? "nothing"} (the tab shows {window.EditorArea.Active?.Name}), "
-            + "where a tool window's tab has no problems of its own and solution-wide analysis's glyph stays");
-        window.Close();
-    }
-
     private static T Named<T>(MainWindow window, string name)
         where T : Avalonia.Controls.Control =>
         Avalonia.Controls.ControlExtensions.FindControl<T>(window, name) ?? throw new InvalidOperationException($"The window has no {name}");
-
-    private static Rect Placed(MainWindow window, Avalonia.Visual visual) =>
-        new(visual.TranslatePoint(default, window)!.Value, visual.Bounds.Size);
-
-    /// <summary>A file with thousands of problems types as one with few does: every key moves the file's markers, and the
-    /// File tab lists where they went once typing pauses, rather than placing and listing every one again for each
-    /// key. Sixteen keys come one straight after another, so however slow the machine some come within the pause.</summary>
-    [AvaloniaFact]
-    public void Keys_typed_above_thousands_of_problems_list_them_again_once_typing_pauses()
-    {
-        System.Text.StringBuilder warned = new("class Warned\n{\n    static void All()\n    {\n");
-        for (int i = 0; i < 3000; i++)
-        {
-            warned.Append(System.Globalization.CultureInfo.InvariantCulture, $"        int unused{i};\n");
-        }
-        Write("Warned.cs", warned.Append("    }\n}\n").ToString());
-        MainWindow window = project.Open("Warned.cs", w => w.Perform(AppActions.ShowProblems));
-        ProblemsModel problems = window.BottomPanel.Problems;
-        Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning) == 3000, "the file's 3,000 warnings", TimeSpan.FromMinutes(2));
-        Assert.Equal(new TextPosition(4, 12), problems.FileProblems[0].Position);
-        Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
-        editor.GoTo(new TextPosition(1, 1));
-        editor.Focus();
-        Ui.Settle();
-
-        // Keys in quick succession, each one's own work done but no pause between them.
-        int listed = 0;
-        IReadOnlyList<Problem> shown = problems.FileProblems;
-        const int Keys = 16;
-        for (int typed = 0; typed < Keys; typed++)
-        {
-            window.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
-            window.KeyRelease(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            listed += ReferenceEquals(problems.FileProblems, shown) ? 0 : 1;
-            shown = problems.FileProblems;
-        }
-        Assert.True(listed < Keys, $"The File tab listed the file's 3,000 problems again for each of {Keys} keys typed one straight after another");
-
-        Ui.Settle();
-        Assert.Equal(3000, problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning));
-        Assert.Equal(new TextPosition(4 + Keys, 12), problems.FileProblems[0].Position);
-        Assert.Equal(new TextPosition(4 + Keys + 2999, 12), problems.FileProblems[^1].Position);
-        window.Close();
-    }
 
     /// <summary>A typing pause lists again only the open file's problems, however many the solution has: with 4,000 warnings
     /// in twenty files nobody has open and the Solution tab shown, keys that move the open file's warning move its row where
     /// it is, and one that gives the file an error takes out and puts in that file's rows alone, with its project's count.
     /// What the tab's list is told counts, not what the pause costs: the tab is never listed whole again, nor another file's
     /// rows.</summary>
-    [AvaloniaFact]
-    public void A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has()
+    private void A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has()
     {
         (MainWindow window, string typed, int listed) = Warned(warnings: 200);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -958,8 +694,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>A key's problems never wait for what the whole project's analysis reports in the open file, which with
     /// solution-wide analysis on and 4,000 warnings in files nobody has open answers a change seconds after the file's own:
     /// with that held unanswered, the error a key makes is listed in the File and Solution tabs and marked in the editor.</summary>
-    [AvaloniaFact]
-    public void A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis()
+    private void A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis()
     {
         (MainWindow window, string typed, _) = Warned(warnings: 200);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -989,8 +724,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>Roslyn's compiler ends a line at each break in Separated.cs's comment, as its language server does, where the
     /// editor's lines end only at '\n': the problem below them is listed and gone to at the editor's line 4, not the
     /// compiler's 8, from Problems' Build and Solution tabs, the Build window's link to the message, and an agent's look.</summary>
-    [AvaloniaFact]
-    public void A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line()
+    private void A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line()
     {
         Write("Separated.cs", $"class Separated\n{{\n    /* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\n    public int Below = \"none\";\n}}\n");
         string separated = Passenger.Core.PathNames.Canonical(Path.Combine(project.Folder, "Separated.cs"));
@@ -1037,8 +771,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// server, which registered its files for the IDE to watch and so watches none itself, hears of them from the folder's
     /// watcher, in batches rather than file by file, and solution-wide analysis lists the problems of the closed files'
     /// new text and the open file's edit, until the open file takes the disk's text.</summary>
-    [AvaloniaFact]
-    public void A_thousand_files_rewritten_on_disk_reach_the_server_from_the_folders_watcher_and_their_new_problems_are_listed()
+    private void A_thousand_files_rewritten_on_disk_reach_the_server_from_the_folders_watcher_and_their_new_problems_are_listed()
     {
         const int Files = 1000;
         static string Checked(int i, string variable) => $"static class Checked{i}\n{{\n    static void All()\n    {{\n        int {variable};\n    }}\n}}\n";
@@ -1120,8 +853,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// names (it says it dropped them): the folder's watcher, its record older than such a drop reaches back, lists again
     /// the folder they went from, rather than the whole folder, and every one leaves Go to File and is told the language
     /// server as gone.</summary>
-    [AvaloniaFact]
-    public void A_thousand_files_deleted_side_by_side_each_leave_go_to_file_and_reach_the_server_as_gone()
+    private void A_thousand_files_deleted_side_by_side_each_leave_go_to_file_and_reach_the_server_as_gone()
     {
         const int Files = 1000;
         project.Write([.. Enumerable.Range(0, Files).Select(i => ($"Side{i}.cs", $"static class Side{i}\n{{\n}}\n"))]);
@@ -1179,8 +911,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// analysis on and the project's design-time build held, as a large project's takes a while: the open file's completion
     /// and the error a key makes there are answered while the removal is under way, and once the build lands the Solution
     /// tab lists none of their warnings.</summary>
-    [AvaloniaFact]
-    public void A_thousand_warned_files_deleted_at_once_leave_the_open_files_answers_unstalled()
+    private void A_thousand_warned_files_deleted_at_once_leave_the_open_files_answers_unstalled()
     {
         const int Files = 1000;
         static string Gone(int i) => $"static class Gone{i}\n{{\n    static void All()\n    {{\n        int unused;\n    }}\n}}\n";
@@ -1259,8 +990,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// leaves it) and loads the project again, asking for builds no window is there to give: the next window that takes
     /// it up gives them, and is ready with a file written meanwhile loaded and its error listed, rather than starting for
     /// ever behind that question.</summary>
-    [AvaloniaFact]
-    public void A_kept_server_loading_its_project_again_between_windows_has_its_builds_from_the_next_window_which_lists_a_new_files_error()
+    private void A_kept_server_loading_its_project_again_between_windows_has_its_builds_from_the_next_window_which_lists_a_new_files_error()
     {
         project.Open("Helper.cs").Close();
         File.SetLastWriteTimeUtc(project.PathOf("Sample.csproj"), DateTime.UtcNow);
@@ -1276,8 +1006,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>C# 15's collection expression arguments (<c>[with(…)]</c>) in a net11.0 project at LangVersion latest are
     /// no preview feature to the language server, as the .NET 11 SDK's compiler builds them: the file lists its one warning
     /// and no error (#1352).</summary>
-    [AvaloniaFact]
-    public void A_net11_projects_collection_expression_arguments_at_lang_version_latest_list_no_error()
+    private void A_net11_projects_collection_expression_arguments_at_lang_version_latest_list_no_error()
     {
         string folder = Passenger.Core.PathNames.Canonical(TestFolders.Create("csharp15-"));
         TestFolders.Write(folder, "Demo.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net11.0</TargetFramework>\n"
