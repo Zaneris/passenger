@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `McpIosSimulatorTests`' `An_agent_chooses_an_ios_heads_simulator_and_runs_it_in_a_call_each_…`, CI 45069301166
+  (macOS report shard 3), at f4262be65: "run failed: … The simulator iPhone 17 - iOS 27.2 did not start: Device boot
+  failed … (domain=com.apple.CoreSimulator.SimError, code=405): Unable to boot device in current state: Booted". **A
+  race in the IDE**: a start that found the simulator shut down booted it with `simctl bootstatus -b`, which looks at
+  the simulator before it asks for the boot and is refused where another boot of it lands between the two, though the
+  simulator is then up; a `simctl boot` fired on the Mac as the start finished reading its build met it in 1 of 2 runs
+  (the other's boot losing in the other). What booted iPhone 17 on the runner then was not found: the run keeps no IDE
+  log of the class before, MauiSimulatorTests, whose test host was ended at its 10-minute hang just before. A start
+  whose boot simctl refuses now waits for the boot under way where simctl lists the simulator booting or booted
+  (1c8e14f4c); the test passed on the Mac in 4 of 4 such runs, the other boot first in 2.
 - `AvaloniaSimulatorTests`' `An_avalonia_apps_ios_head_debugged_on_a_simulator_stops_at_a_breakpoint_in_its_shared_…`,
   CI 45062369510 (macOS report shard 3, a 7 GB runner), at 5d54a9074: "The IDE was not quiet while waiting 547.7685194 s
   for the build, the install and the debugged start on the simulator", the IDE's log timing the simulator's boot at 2.3
