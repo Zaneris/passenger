@@ -30,6 +30,36 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `BindingValuesTests`' `A_debugged_apps_bindings_show_their_values_and_a_window_shown_is_collected_once_it_closes`,
+  CI 45022036262 (Linux report shard 3), after 028f29fa3: "TimeoutException: The operation has timed out. at the
+  collection of a task whose fault nothing observed", as below. **A race in the IDE**: of the timed waits a Godot game's
+  run takes, the wait for its loop (`GodotGame.LoopedAsync`, before Passenger's helper comes in) was the one the game's
+  end left to run out: a game ended under it, stopped in the debugger or before its first monitors, left it waiting an
+  answer's whole limit (20 s on CI) for a beat no game would send. Begun on `GodotCopiesTests`' window as its copies
+  ended, it ran out after that test's window thread had stopped, unheard until collected, 18 to 38 s after that test in
+  each of the five failures; probes that collected for 100 s after the class on the Mac and the Linux VM never caught
+  one, and a probe ending a game under the wait had it end 10 s later. It now ends as the game does (f7e5b2b6e, #2104).
+- `GodotPinsTests`' `Errors_stay_pinned_at_their_lines_with_their_counts_after_Stop_the_console_folds_them_and_an_edit_takes_a_pin_off`,
+  CI 45022036262 (Windows report shard 3), after 45b0b0bd6: "The IDE was not quiet while waiting 450 s for the game's
+  build and start", the console's wait on a line still coming and Problems' Godot tab's gathering each begun within the
+  last 160 ms. **The test**: its headless game ran uncapped, thousands of frames a second on that runner, each raising an
+  error the console, the pins and Problems took in, so the window was never quiet for the wait to look again; it now
+  runs at 20 frames a second, as a game drawn to a screen runs about (76f7fccf9, #2103).
+- `FileColoursTests`' `Colours_follow_typing_and_a_line_too_long_or_slow_to_colour_never_holds_the_window`, CI
+  45022036262 (Windows report shard 1), its step of a comment line run out of the grammar's time: "The line after a
+  comment the grammar ran out of time on is coloured Text". **The test**: with a millisecond for every line, the line
+  after the comment, read for the first time with its patterns yet to parse, ran out of it twice too and kept the colours
+  found before it stopped; the lines after the comment are now read once first with a line's whole time (8a4c4c577, #679).
+- `XamlTests`' `Xaml_gets_its_help_as_projects_and_packages_arrive_and_change`, CI 45022036262 (Windows report shard
+  1), its step of a project taking Avalonia: "dotnet restore … exited with code 1: … error : Cannot create a file when
+  that file already exists". **The test**: its own restore ran beside the language server's, which restored the project
+  itself as it loaded it with the package, and on Windows the two wrote the project's obj files at once; the steps that
+  restore while their XAML is open ask nothing of C# and now open without the server (eb4be0e91, #298).
+- `MigrationsTests`' `Ef_cores_projects_and_packages_are_those_dotnet_ef_takes`, CI 45022036262 (Windows report shard
+  1), its step of a provider behind EF Core: "Button 'Bring … and EF Core into Step' is not laid out in its window". **A
+  race in the IDE**, the one `Migrations_run_against_the_database_…` met in CI 45016390450 below: that run was of
+  f67e06a66, before the Migrations window kept its rows while its gaps stay as they were; the flow passed on the Windows
+  VM since (70374013e, #689).
 - `BuildRunTests`' `With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window`,
   CI 45016390450 (Windows gate shard 1): "Waited 150 s for dotnet watch to start the program again and watch it", the Run
   window showing dotnet watch's restart, its build, "Waiting for changes" and the program run again for the wait's 150 s.
