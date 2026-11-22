@@ -30,36 +30,86 @@ namespace Passenger.Tests;
 /// every system, so Windows checks what ConPTY makes of them.</summary>
 public sealed class TerminalTests
 {
+    /// <summary>A shell in the Terminal starts in the window's folder, takes commands and hides as it exits; a full-
+    /// screen program's screen gives the shell's back, a program's questions are answered, an emoji takes two columns
+    /// and an input method's text goes in as committed; the scrollback holds output, its place, a selection and a long
+    /// line through a resize, Clear Buffer leaves the prompt, and the cursor takes the shape set.</summary>
     [AvaloniaFact]
-    public void A_program_receives_the_mouse_release_when_Shift_changes_after_the_press()
+    public void A_shell_in_the_terminal_takes_commands_draws_what_programs_write_and_keeps_its_scrollback()
     {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "The program asking for mouse reports is sh's printf and cat -v, which cmd.exe has none of");
-        string folder = TestFolders.Create("terminal-");
-        try
-        {
-            (MainWindow window, TerminalSession shell) = Open(folder, "/bin/sh");
-            Run(window, "printf '\\033[?1000h\\033[?1006h'; cat -v");
-            WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Press, "cat to receive mouse reports");
-            TerminalView view = window.TerminalPanel.View;
-            Point at = view.TranslatePoint(view.PointOf(shell.Screen.ScreenTop, 0), window)!.Value;
-            window.MouseDown(at, MouseButton.Left);
-            window.MouseUp(at, MouseButton.Left, RawInputModifiers.Shift);
-            Ui.Press(window, "ENTER");
-            WaitForLine(shell, text => text.Contains("^[[<0;1;1M^[[<0;1;1m", StringComparison.Ordinal), "the reported mouse press and its release, Shift held");
-            Ui.Press(window, "control C");
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
+        Flow.StepApart<TerminalTests>("the terminal window runs a shell that takes typed commands and hides when it exits", t => t.The_terminal_window_runs_a_shell_that_takes_typed_commands_and_hides_when_it_exits());
+        Flow.StepApart<TerminalTests>("a terminal shown as the window is made starts its shell in the folder the window starts on", t => t.A_terminal_shown_as_the_window_is_made_starts_its_shell_in_the_folder_the_window_starts_on());
+        Flow.StepApart<TerminalTests>("what a full screen program draws lands where it puts it and the shell's screen comes back after", t => t.What_a_full_screen_program_draws_lands_where_it_puts_it_and_the_shells_screen_comes_back_after());
+        Flow.StepApart<TerminalTests>("a program's questions about the terminal are answered", t => t.A_programs_questions_about_the_terminal_are_answered());
+        Flow.StepApart<TerminalTests>("an emoji takes the two columns the shell counts so the text after it stays in place", t => t.An_emoji_takes_the_two_columns_the_shell_counts_so_the_text_after_it_stays_in_place());
+        Flow.StepApart<TerminalTests>("text an input method composes shows at the cursor and reaches the program only as it is committed", t => t.Text_an_input_method_composes_shows_at_the_cursor_and_reaches_the_program_only_as_it_is_committed());
+        Flow.StepApart<TerminalTests>("output past the screen goes to the scrollback and clear buffer leaves only the prompt at the top", t => t.Output_past_the_screen_goes_to_the_scrollback_and_clear_buffer_leaves_only_the_prompt_at_the_top());
+        Flow.StepApart<TerminalTests>("scrolled back the terminal holds its place as output arrives", t => t.Scrolled_back_the_terminal_holds_its_place_as_output_arrives());
+        Flow.StepApart<TerminalTests>("a selection stays on its text as output streams past the scrollback's limit", t => t.A_selection_stays_on_its_text_as_output_streams_past_the_scrollbacks_limit());
+        Flow.StepApart<TerminalTests>("a long line reads whole after the terminal narrows and widens again and the prompt keeps its cursor", t => t.A_long_line_reads_whole_after_the_terminal_narrows_and_widens_again_and_the_prompt_keeps_its_cursor());
+        Flow.StepApart<TerminalTests>("copy on selection copies a finished drag only when enabled", t => t.Copy_on_selection_copies_a_finished_drag_only_when_enabled());
+        Flow.StepApart<TerminalTests>("the terminal draws the configured cursor shape", t => t.The_terminal_draws_the_configured_cursor_shape(CursorShape.Bar, false, true, false));
+        Flow.StepApart<TerminalTests>("programs override the configured cursor and reset restores it", t => t.Programs_override_the_configured_cursor_and_reset_restores_it("\\033[0 q"));
     }
 
-    [AvaloniaTheory]
-    [InlineData(CursorShape.Block, true, true, true)]
-    [InlineData(CursorShape.Bar, false, true, false)]
-    [InlineData(CursorShape.Underline, false, false, true)]
-    public void The_terminal_draws_the_configured_cursor_shape(CursorShape style, bool centre, bool left, bool bottom)
+    /// <summary>Keys reach a program in the terminal as xterm sends them in either cursor mode, Enter with each
+    /// modifier and Ctrl+J as it asked for them whatever the keymap binds, while every tool window's shortcut still
+    /// opens it; and the terminal takes the keys from the file only when the person shows it, a window opening on a
+    /// kept layout with the terminal open giving the file it opens the keys.</summary>
+    [AvaloniaFact]
+    public void The_keys_reach_the_program_in_the_terminal_and_the_ide_only_as_meant()
+    {
+        Flow.StepApart<TerminalTests>("keys reach a program as xterm sends them in either cursor mode", t => t.Keys_reach_a_program_as_xterm_sends_them_in_either_cursor_mode());
+        Flow.StepApart<TerminalTests>("enter with each modifier and Ctrl J reach a program as it asked for them in every keymap", t => t.Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(KeymapPreset.IntelliJ));
+        Flow.StepApart<TerminalTests>("every tool window's shortcut opens it while the terminal has the keys", t => t.Every_tool_windows_shortcut_opens_it_while_the_terminal_has_the_keys());
+        Flow.StepApart<TerminalTests>("a window opening on a kept layout with the terminal open gives the file it opens the keys", t => t.A_window_opening_on_a_kept_layout_with_the_terminal_open_gives_the_file_it_opens_the_keys());
+        Flow.StepApart<TerminalTests>("the terminal shown by its stripe button takes the keys from the file", t => t.The_terminal_shown_by_its_stripe_button_takes_the_keys_from_the_file());
+    }
+
+    /// <summary>Nothing reaches a terminal's shell to run that the person did not mean: a paste never ends its own
+    /// bracket and runs the line after it, a dropped file whose name holds a command is read as its name, what
+    /// Passenger took out of its environment and a tmux or screen it was started in reach no shell or run, and nothing
+    /// run in one terminal or started by the IDE can type into another.</summary>
+    [AvaloniaFact]
+    public void Nothing_reaches_a_terminals_shell_to_run_that_the_person_did_not_type()
+    {
+        Flow.StepApart<TerminalTests>("a file dropped on the terminal whose name holds a command is read as its name and nothing runs", t => t.A_file_dropped_on_the_terminal_whose_name_holds_a_command_is_read_as_its_name_and_nothing_runs());
+        Flow.StepApart<TerminalTests>("what Passenger takes out of its environment as it starts reaches no shell in its terminal", t => t.What_Passenger_takes_out_of_its_environment_as_it_starts_reaches_no_shell_in_its_terminal());
+        Flow.StepApart<TerminalTests>("a tmux or screen Passenger was started in reaches no shell or run in its terminal", t => t.A_tmux_or_screen_Passenger_was_started_in_reaches_no_shell_or_run_in_its_terminal());
+        Flow.StepApart<TerminalTests>("nothing run in one terminal or started by the IDE can type into another terminal", t => t.Nothing_run_in_one_terminal_or_started_by_the_IDE_can_type_into_another_terminal());
+        Flow.StepApart<TerminalTests>("a paste cannot end its own bracket and run the line after it", t => t.A_paste_cannot_end_its_own_bracket_and_run_the_line_after_it());
+    }
+
+    /// <summary>A program run in the terminal reads a key and a line typed there and draws in colour where it puts the
+    /// cursor, one needing a terminal in the Run window is offered one, Stop ends it with what it started, a variable
+    /// the run takes away never reaches it while macOS's loader keeps its own, and a line it writes as it ends at once
+    /// is on its tab every run.</summary>
+    [AvaloniaFact]
+    public void A_program_run_in_the_terminal_reads_what_is_typed_shows_all_it_wrote_and_ends_with_what_it_started()
+    {
+        Flow.StepApart<TerminalTests>("a program run in the terminal reads a key and a line typed there and draws in colour where it puts the cursor", t => t.A_program_run_in_the_terminal_reads_a_key_and_a_line_typed_there_and_draws_in_colour_where_it_puts_the_cursor());
+        Flow.StepApart<TerminalTests>("a program needing a terminal in the Run window is offered one and reads a key there", t => t.A_program_needing_a_terminal_in_the_Run_window_is_offered_one_and_reads_a_key_there());
+        Flow.StepApart<TerminalTests>("stop ends a program running in the terminal and what it started", t => t.Stop_ends_a_program_running_in_the_terminal_and_what_it_started());
+        Flow.StepApart<TerminalTests>("a variable a run in the terminal takes away never reaches its program", t => t.A_variable_a_run_in_the_terminal_takes_away_never_reaches_its_program());
+        Flow.StepApart<TerminalTests>("a program that writes a line and ends at once has it on its tab every run", t => t.A_program_that_writes_a_line_and_ends_at_once_has_it_on_its_tab_every_run());
+        Flow.StepApart<TerminalTests>("a run in the terminal that takes a variable away keeps the loader's variables on macOS", t => t.A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS());
+    }
+
+    /// <summary>An address or a file's path in the terminal opens with a click, and words a program links (OSC 8) are a
+    /// link a click opens: a web address in the browser, a file only on this machine, the disk asked only on the click,
+    /// what it opens told from its address alone, and a path naming another machine never asked of the disk, in the
+    /// terminal or a console.</summary>
+    [AvaloniaFact]
+    public void Links_in_the_terminal_open_what_they_name_and_never_ask_another_machine_of_the_disk()
+    {
+        Flow.StepApart<TerminalTests>("an address in the terminal opens with a click or cmd click and a file's path with cmd click", t => t.An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click(false));
+        Flow.StepApart<TerminalTests>("words a program links to a web address are a link a click opens", t => t.Words_a_program_links_to_a_web_address_are_a_link_a_click_opens());
+        Flow.StepApart<TerminalTests>("words a program links to a file are a link only on this machine and a click asks the disk", t => t.Words_a_program_links_to_a_file_are_a_link_only_on_this_machine_and_a_click_asks_the_disk());
+        Flow.StepApart<TerminalTests>("what a program's link opens is told from its address alone", t => t.What_a_programs_link_opens_is_told_from_its_address_alone());
+        Flow.StepApart<TerminalTests>("a path naming another machine in the terminal or a console is never asked of the disk", t => t.A_path_naming_another_machine_in_the_terminal_or_a_console_is_never_asked_of_the_disk());
+    }
+
+    private void The_terminal_draws_the_configured_cursor_shape(CursorShape style, bool centre, bool left, bool bottom)
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -86,8 +136,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void Copy_on_selection_copies_a_finished_drag_only_when_enabled()
+    private void Copy_on_selection_copies_a_finished_drag_only_when_enabled()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -146,11 +195,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaTheory]
-    [InlineData("\\033[!p")]
-    [InlineData("\\033c")]
-    [InlineData("\\033[0 q")]
-    public void Programs_override_the_configured_cursor_and_reset_restores_it(string reset)
+    private void Programs_override_the_configured_cursor_and_reset_restores_it(string reset)
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The program's cursor requests are written by sh's printf, which cmd.exe has none of");
         string folder = TestFolders.Create("terminal-");
@@ -182,78 +227,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void Cursor_blinking_changes_the_drawn_cursor_and_focus_loss_leaves_an_outline()
-    {
-        string folder = TestFolders.Create("terminal-");
-        try
-        {
-            (MainWindow window, TerminalSession shell) = Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
-            SettingsDialog dialog = SettingsTests.TerminalDialog(window);
-            Assert.Contains("Cursor blinking", dialog.Shown);
-            CheckBox blinking = SettingsTests.Editor<CheckBox>(dialog, "Cursor blinking");
-            Ui.Click(blinking);
-            dialog.Ok();
-            Ui.Settle();
-            TerminalView view = window.TerminalPanel.View;
-            window.TerminalPanel.FocusView();
-            Ui.Settle();
-            Point centre = CursorCentre(window);
-            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
-            Ui.WaitFor(() => Ui.Pixel(window, centre) == background, "the blinking cursor to disappear");
-            Ui.WaitFor(() => Ui.Pixel(window, centre) != background, "the blinking cursor to reappear");
-            SettingsDialog other = window.ShowSettings();
-            Ui.Settle();
-            Assert.False(view.IsFocused);
-            Assert.Equal(background, Ui.Pixel(window, centre));
-            double width = view.PointOf(shell.Screen.ScreenTop + shell.Screen.CursorRow, shell.Screen.CursorColumn + 1).X
-                - view.PointOf(shell.Screen.ScreenTop + shell.Screen.CursorRow, shell.Screen.CursorColumn).X;
-            Assert.NotEqual(background, Ui.Pixel(window, centre - new Point(width / 2, 0)));
-            other.Close();
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_program_can_enable_blinking_then_disable_it_and_reset_to_the_persons_default()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "The program's cursor requests are written by sh's printf, which cmd.exe has none of");
-        string folder = TestFolders.Create("terminal-");
-        try
-        {
-            (MainWindow window, TerminalSession shell) = Open(folder, "/bin/sh");
-            TerminalView view = window.TerminalPanel.View;
-            Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
-            Run(window, "printf '\\033[1 q'; read x; printf '\\033[?12l'; read x; printf '\\033[?12h'; read x; printf '\\033[0 q'");
-            WaitForScreen(window, shell, s => s.CursorColumn == 0 && s.RequestedCursorBlinking == true, "the program to request a blinking cursor");
-            Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) == background, "the program's cursor to blink off");
-            Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) != background, "the program's cursor to blink on");
-            Ui.Press(window, "ENTER");
-            WaitForScreen(window, shell, s => s.RequestedCursorBlinking == false, "the program to disable blinking with DEC mode 12");
-            Ui.Hold(TimeSpan.FromMilliseconds(650), "a steady cursor to remain visible past its blink interval");
-            Assert.NotEqual(background, Ui.Pixel(window, CursorCentre(window)));
-            Ui.Press(window, "ENTER");
-            WaitForScreen(window, shell, s => s.RequestedCursorBlinking == true, "the program to enable blinking with DEC mode 12");
-            Ui.WaitFor(() => Ui.Pixel(window, CursorCentre(window)) == background, "DEC mode 12 to blink the cursor off");
-            Ui.Press(window, "ENTER");
-            WaitForScreen(window, shell, s => s.RequestedCursorBlinking is null && s.CursorColumn > 0, "the program to restore the configured cursor");
-            Ui.Hold(TimeSpan.FromMilliseconds(650), "the configured steady cursor to remain visible past its blink interval");
-            Assert.NotEqual(background, Ui.Pixel(window, CursorCentre(window)));
-            Assert.False(window.Settings.TerminalCursorBlinking);
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
-    }
-
-    [AvaloniaFact]
-    public void What_a_full_screen_program_draws_lands_where_it_puts_it_and_the_shells_screen_comes_back_after()
+    private void What_a_full_screen_program_draws_lands_where_it_puts_it_and_the_shells_screen_comes_back_after()
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
         TerminalScreen screen = shell.Screen;
@@ -289,8 +263,7 @@ public sealed class TerminalTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_programs_questions_about_the_terminal_are_answered()
+    private void A_programs_questions_about_the_terminal_are_answered()
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
         // Where the cursor is, as a program asks before drawing, and what the terminal is, each answer read back.
@@ -299,8 +272,7 @@ public sealed class TerminalTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Keys_reach_a_program_as_xterm_sends_them_in_either_cursor_mode()
+    private void Keys_reach_a_program_as_xterm_sends_them_in_either_cursor_mode()
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
         RunCase(window, "keys");
@@ -327,11 +299,7 @@ public sealed class TerminalTests
     /// keyboard protocol, then each as that protocol's own key, Enter alone still a carriage return. The program asks for
     /// disambiguation and alternate keys, as OpenCode's library does, and is told disambiguation alone is in force; its
     /// flags go when it pops them.</summary>
-    [AvaloniaTheory]
-    [InlineData(KeymapPreset.VisualStudio)]
-    [InlineData(KeymapPreset.VSCode)]
-    [InlineData(KeymapPreset.IntelliJ)]
-    public void Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(KeymapPreset keymap)
+    private void Enter_with_each_modifier_and_Ctrl_J_reach_a_program_as_it_asked_for_them_in_every_keymap(KeymapPreset keymap)
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
         try
@@ -379,79 +347,7 @@ public sealed class TerminalTests
         }
     }
 
-    /// <summary>The keypad's 5 reaches a program as X11 reports it, naming no key for its Begin: with Num Lock off as
-    /// NumPad5 with no symbol and no text, sent as xterm sends Begin until the program asks for the kitty keyboard
-    /// protocol, then as that protocol does; with Num Lock on as NumPad5 with its symbol 5, the 5 it types either way.</summary>
-    [AvaloniaFact]
-    public void The_keypads_5_as_X11_reports_it_reaches_a_program_as_Begin_with_Num_Lock_off_and_5_with_it_on()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows names the keypad's 5 with Num Lock off Clear, never NumPad5 with no symbol");
-        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
-        try
-        {
-            const string read = "^[[E5";
-            RunCase(window, "keyboard");
-            WaitForLine(shell, "keyboard?", "the program to wait for its keys");
-            Press(window);
-            WaitForScreen(window, shell, s => Lines(s).Contains(read),
-                $"the keypad's Begin as xterm sends it, then its 5, {read}, read by a program that never asked for more: without it the program never hears Begin");
-            WaitForPromptBelow(window, shell, read);
-
-            RunCase(window, "keyboard", "1");
-            WaitForLine(shell, "flags 1", "the program told disambiguation is in force");
-            WaitForScreen(window, shell, s => s.KeyboardFlags == TerminalKeys.Disambiguate && Lines(s).Count(l => l == "keyboard?") == 2,
-                "the program to wait for its keys under the kitty keyboard protocol");
-            Press(window);
-            WaitForScreen(window, shell, s => Lines(s).Count(l => l == read) == 2,
-                $"the keypad's Begin, then its 5, {read}, under the kitty keyboard protocol: without it the program never hears Begin");
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static void Press(MainWindow window)
-        {
-            window.KeyPress(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, null);
-            window.KeyRelease(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, null);
-            window.KeyPress(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, "5");
-            window.KeyTextInput("5");
-            window.KeyRelease(Key.NumPad5, RawInputModifiers.None, PhysicalKey.NumPad5, "5");
-            window.KeyTextInput("q");
-            Ui.Settle();
-        }
-    }
-
-    /// <summary>A program that asks for the mouse's moves reads each move into another cell as xterm reports it: under 1002
-    /// (drags) a drag's press, its moves with the button held and its release, and nothing of a move with no button; under
-    /// 1003 (every move) a move with no button too.</summary>
-    [AvaloniaFact]
-    public void A_program_asking_for_drags_or_every_move_reads_each_move_into_another_cell()
-    {
-        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
-        TerminalView view = window.TerminalPanel.View;
-        RunCase(window, "mouse", "1002");
-        WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Drag && s.SgrMouse && Lines(s).Contains("mouse?"), "the program to ask for drags");
-        // On the screen's second row: a move with no button over cells 2 to 4 (from 0), then a drag from 2 to 6.
-        Hover(window, view.TopLine + 1, 2, 4);
-        Drag(window, view.TopLine + 1, 2, view.TopLine + 1, 6);
-        WaitForLine(shell, "^[[<0;7;2m", "the drag's release as the program read it");
-        Assert.Equal(["^[[<0;3;2M", "^[[<32;4;2M", "^[[<32;5;2M", "^[[<32;6;2M", "^[[<32;7;2M", "^[[<0;7;2m"], Reports(shell.Screen, 1));
-        Ui.Press(window, "control C");
-        WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.None && !s.SgrMouse, "the program to give the mouse back as it ends");
-        WaitForPromptBelow(window, shell, "^[[<0;7;2m");
-
-        RunCase(window, "mouse", "1003");
-        WaitForScreen(window, shell, s => s.MouseTracking == MouseTracking.Any && Lines(s).Count(l => l == "mouse?") == 2, "the program to ask for every move");
-        Hover(window, view.TopLine + 1, 2, 4);
-        WaitForLine(shell, "^[[<35;5;2M", "the last move as the program read it");
-        Assert.Equal(["^[[<35;3;2M", "^[[<35;4;2M", "^[[<35;5;2M"], Reports(shell.Screen, 2));
-        Ui.Press(window, "control C");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Output_past_the_screen_goes_to_the_scrollback_and_clear_buffer_leaves_only_the_prompt_at_the_top()
+    private void Output_past_the_screen_goes_to_the_scrollback_and_clear_buffer_leaves_only_the_prompt_at_the_top()
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
         TerminalScreen screen = shell.Screen;
@@ -472,8 +368,7 @@ public sealed class TerminalTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_terminal_shown_as_the_window_is_made_starts_its_shell_in_the_folder_the_window_starts_on()
+    private void A_terminal_shown_as_the_window_is_made_starts_its_shell_in_the_folder_the_window_starts_on()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -502,32 +397,9 @@ public sealed class TerminalTests
         }
     }
 
-    /// <summary>Under Bonbon, whose layout opens the Terminal as Slate's and Phosphor's do, a window opening on a folder and a
-    /// file gives the file's editor the keys, whether it starts after it shows (a screenshot's, an agent's) or as it shows
-    /// (the person's): the Terminal's first shell starts beside it without them, and what is typed goes into the file.</summary>
-    [AvaloniaFact]
-    public void A_window_opening_under_a_theme_whose_layout_shows_the_terminal_gives_the_file_it_opens_the_keys()
-    {
-        Assert.Null(Ui.Await(ThemeListing.TakeAsync(SourcedTheme.Repository("Bonbon"), code: false), "Bonbon to be kept"));
-        try
-        {
-            Themes.Apply(Application.Current!, SourcedTheme.Repository("Bonbon"), null);
-            foreach (bool startsAsItShows in new[] { false, true })
-            {
-                OpensWithTheKeysInTheFile(new MainWindow { Width = 1200, Height = 800, StartsLanguageServer = false }, startsAsItShows);
-            }
-        }
-        finally
-        {
-            // The theme in force is the process's; the next test starts on Passenger's own.
-            Themes.Apply(Application.Current!, null, null);
-        }
-    }
-
     /// <summary>The person's window on the layout they left with the Terminal open, starting as it shows on a folder and a
     /// file, gives the file's editor the keys, and what is typed goes into the file.</summary>
-    [AvaloniaFact]
-    public void A_window_opening_on_a_kept_layout_with_the_terminal_open_gives_the_file_it_opens_the_keys()
+    private void A_window_opening_on_a_kept_layout_with_the_terminal_open_gives_the_file_it_opens_the_keys()
     {
         string state = TestFolders.Create("terminal-state-");
         try
@@ -594,8 +466,7 @@ public sealed class TerminalTests
 
     /// <summary>The Terminal shown by a click on its stripe's button takes the keys from the file, as its action gives them,
     /// so what is typed next goes to its shell.</summary>
-    [AvaloniaFact]
-    public void The_terminal_shown_by_its_stripe_button_takes_the_keys_from_the_file()
+    private void The_terminal_shown_by_its_stripe_button_takes_the_keys_from_the_file()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -619,8 +490,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void The_terminal_window_runs_a_shell_that_takes_typed_commands_and_hides_when_it_exits()
+    private void The_terminal_window_runs_a_shell_that_takes_typed_commands_and_hides_when_it_exits()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -657,8 +527,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void Every_tool_windows_shortcut_opens_it_while_the_terminal_has_the_keys()
+    private void Every_tool_windows_shortcut_opens_it_while_the_terminal_has_the_keys()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -682,8 +551,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_paste_cannot_end_its_own_bracket_and_run_the_line_after_it()
+    private void A_paste_cannot_end_its_own_bracket_and_run_the_line_after_it()
     {
         // zsh's line editor brackets pastes (as the Mac's own shell, it is always there on a Mac).
         Assert.SkipUnless(File.Exists("/bin/zsh"), "zsh, whose line editor asks for bracketed pastes, is not installed here");
@@ -712,33 +580,9 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_dropped_on_the_terminal_is_typed_as_its_path_quoted_for_the_shell()
-    {
-        string folder = TestFolders.Create("terminal-");
-        try
-        {
-            // A space and a quote in its name, which the shell would split or end its word at, unquoted.
-            string dropped = Path.Combine(folder, "it's here.txt");
-            File.WriteAllText(dropped, "dropped-42\n");
-            (MainWindow window, TerminalSession shell) = Open(folder);
-            window.KeyTextInput(OperatingSystem.IsWindows() ? "type " : "cat ");
-            Ui.Drop(window, window.TerminalPanel.View, dropped);
-            Ui.Press(window, "ENTER");
-            WaitForLine(shell, "dropped-42", "the dropped file read by the shell from its path, quoted as one word");
-            Assert.True(window.EditorArea.Documents.Count == 0, "The file dropped on the terminal opened in the editor too");
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
-    }
-
     /// <summary>A file whose name holds a command, dropped on the terminal's own shell (PowerShell on Windows, sh elsewhere),
     /// is read by the shell as its name: its name is echoed as it is, and the command never runs.</summary>
-    [AvaloniaFact]
-    public void A_file_dropped_on_the_terminal_whose_name_holds_a_command_is_read_as_its_name_and_nothing_runs()
+    private void A_file_dropped_on_the_terminal_whose_name_holds_a_command_is_read_as_its_name_and_nothing_runs()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -764,8 +608,7 @@ public sealed class TerminalTests
     /// <summary>What an agent's --mcp-attach and a relay's session hand a Passenger they start, which it takes out of its
     /// environment as it starts, reaches no shell of its Terminal: each set as a parent's variables are, in the process's
     /// own environment, before the start's check takes them.</summary>
-    [AvaloniaFact]
-    public void What_Passenger_takes_out_of_its_environment_as_it_starts_reaches_no_shell_in_its_terminal()
+    private void What_Passenger_takes_out_of_its_environment_as_it_starts_reaches_no_shell_in_its_terminal()
     {
         string folder = TestFolders.Create("terminal-");
         string session = Path.Combine(folder, "relay-session.json");
@@ -809,8 +652,7 @@ public sealed class TerminalTests
     /// process's own environment, reach no shell of its Terminal nor a program a run starts there, which would take itself
     /// for that pane (its tmux commands acting on the person's own session); what the run configuration gives one of them
     /// reaches its program.</summary>
-    [AvaloniaFact]
-    public void A_tmux_or_screen_Passenger_was_started_in_reaches_no_shell_or_run_in_its_terminal()
+    private void A_tmux_or_screen_Passenger_was_started_in_reaches_no_shell_or_run_in_its_terminal()
     {
         string folder = TestFolders.Create("terminal-outer-");
         Dictionary<string, string> outer = new()
@@ -884,8 +726,7 @@ public sealed class TerminalTests
     /// descriptor it holds that is a terminal (through bash, which takes a descriptor above 9 where dash takes none); a
     /// command typed into each terminal afterwards, which its shell reads after all written to it before, shows that
     /// neither ran.</summary>
-    [AvaloniaFact]
-    public void Nothing_run_in_one_terminal_or_started_by_the_IDE_can_type_into_another_terminal()
+    private void Nothing_run_in_one_terminal_or_started_by_the_IDE_can_type_into_another_terminal()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "What types into the descriptors it holds is bash, writing to Unix ones");
         string folder = TestFolders.Create("terminal-own-");
@@ -936,35 +777,7 @@ public sealed class TerminalTests
     /// so the typed line never reads as what it says, and on a line of its own, past what it wrote to its own terminal.</summary>
     private const string HeldWord = "terminals-held:";
 
-    [AvaloniaFact]
-    public void A_decomposed_accent_shows_on_its_letter_in_one_cell_and_copies_with_it()
-    {
-        string folder = TestFolders.Create("terminal-");
-        try
-        {
-            (MainWindow window, TerminalSession shell) = Open(folder);
-            // Résumé.pdf as macOS's file system spells it, each é an e and a combining acute (CC 81), as ls prints it.
-            string name = "Re\u0301sume\u0301.pdf";
-            RunCase(window, "accent");
-            long line = WaitForLine(shell, text => text.StartsWith('R') && text.EndsWith(".pdf", StringComparison.Ordinal), "the name printed");
-            TerminalLine row = shell.Screen.LineAt(line);
-            Assert.True(row.Text() == name, $"Résumé.pdf printed as \"{row.Text()}\": its accents were dropped");
-            Assert.True(row.TextOf(1) == "e\u0301" && row.Cells[2].Rune == 's' && row.Cells[9].Rune == 'f',
-                $"Résumé.pdf took other columns than its ten letters, so text after an accent drifts from where the shell counts it: [{string.Join("|", Enumerable.Range(0, 12).Select(row.TextOf))}]");
-
-            Drag(window, line, 0, line, 9);
-            Ui.Press(window, CopyKey);
-            Assert.Equal(name, Ui.Clipboard(window));
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
-    }
-
-    [AvaloniaFact]
-    public void An_emoji_takes_the_two_columns_the_shell_counts_so_the_text_after_it_stays_in_place()
+    private void An_emoji_takes_the_two_columns_the_shell_counts_so_the_text_after_it_stays_in_place()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -991,8 +804,7 @@ public sealed class TerminalTests
     /// key the input method takes (Enter, a candidate's number on the keypad), until it is committed, and the program then
     /// reads the committed text alone, under the kitty keyboard protocol as an agent's prompt asks, in the columns the
     /// composition took; a composition left as the keys go elsewhere is dropped.</summary>
-    [AvaloniaFact]
-    public void Text_an_input_method_composes_shows_at_the_cursor_and_reaches_the_program_only_as_it_is_committed()
+    private void Text_an_input_method_composes_shows_at_the_cursor_and_reaches_the_program_only_as_it_is_committed()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -1065,8 +877,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_long_line_reads_whole_after_the_terminal_narrows_and_widens_again_and_the_prompt_keeps_its_cursor()
+    private void A_long_line_reads_whole_after_the_terminal_narrows_and_widens_again_and_the_prompt_keeps_its_cursor()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -1113,8 +924,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void Scrolled_back_the_terminal_holds_its_place_as_output_arrives()
+    private void Scrolled_back_the_terminal_holds_its_place_as_output_arrives()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -1151,8 +961,7 @@ public sealed class TerminalTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_selection_stays_on_its_text_as_output_streams_past_the_scrollbacks_limit()
+    private void A_selection_stays_on_its_text_as_output_streams_past_the_scrollbacks_limit()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -1183,71 +992,10 @@ public sealed class TerminalTests
         }
     }
 
-    /// <summary>Plain text lands where a terminal puts it a character at a time, however it arrives: at a row's last column
-    /// it waits and wraps with the next character (with wrapping off, writes on over that column), in insert mode it pushes
-    /// the row's rest right (beside a wide character too), it takes the line-drawing set and the colour set before it, a
-    /// repeat repeats its last character, and a run, an escape or a character's bytes split between writes read whole.</summary>
-    [AvaloniaFact]
-    public void Plain_text_lands_as_written_at_a_rows_end_in_insert_mode_and_split_between_writes()
-    {
-        string folder = TestFolders.Create("terminal-");
-        try
-        {
-            (MainWindow window, TerminalSession shell) = Open(folder);
-            TerminalScreen screen = shell.Screen;
-            window.Perform(AppActions.MaximizeToolWindow);
-            WaitForScreen(window, shell, s => s.Rows >= 18, "the terminal to take the frame");
-            int width = screen.Columns;
-            RunCase(window, "runs", width.ToString(CultureInfo.InvariantCulture));
-            WaitForScreen(window, shell, s => s.IsAlternate && s.Lines[17].Text() == "abbbb", "the program to write its rows");
-
-            string digits = string.Concat(Enumerable.Range(0, width).Select(i => (char)('0' + (i % 10))));
-            (string Text, bool Wrapped, string What)[] rows =
-            [
-                (new string(' ', width - 4) + "wxyz", true, "text written up to the last column"),
-                ("!", false, "the character after it, on the next row"),
-                (new string(' ', width - 3) + "125", false, "text past the last column with wrapping off, each character over the last"),
-                ("abXYcdef", false, "text inserted inside a row"),
-                (" Q字ab", false, "a character inserted over a wide character's second half"),
-                ("┌──┐ ok", false, "the line-drawing set's corners and lines"),
-                ("split-run", false, "a run split between two writes"),
-                ("café!", false, "a character's two bytes split between writes"),
-                ("red plain", false, "text after a colour whose escape was split between writes"),
-                (new string('-', width), true, "the first row of a run two rows and five long"),
-                (new string('-', width), true, "the second row of that run"),
-                ("-----", false, "the end of that run"),
-                (new string(' ', width - 2) + "ab", true, "a write ending at the last column"),
-                ("cd", false, "the next write, wrapped to the next row"),
-                ("<<" + digits[..^2], false, "text inserted at a full row's start, its last two columns pushed off"),
-                (new string(' ', width - 2) + "XY", true, "text inserted to the row's end"),
-                ("Z", false, "the rest of it, inserted on the next row"),
-                ("abbbb", false, "a repeat of the last character written"),
-            ];
-            for (int row = 0; row < rows.Length; row++)
-            {
-                TerminalLine line = screen.Lines[row];
-                Assert.True(line.Text() == rows[row].Text && line.Wrapped == rows[row].Wrapped,
-                    $"{rows[row].What} reads \"{line.Text()}\"{(line.Wrapped ? ", wrapped" : string.Empty)} on row {row + 1}, not \"{rows[row].Text}\"{(rows[row].Wrapped ? ", wrapped" : string.Empty)}:\n{Screen(shell)}");
-            }
-            Cell[] colours = screen.Lines[8].Cells;
-            Assert.True(colours[..3].All(c => c.Style == new CellStyle(1, CellStyle.Default, CellFlags.Bold)) && colours[4].Style == CellStyle.Plain,
-                $"\"red\" is not bold red with the rest of its row plain: {colours[0].Style}, {colours[4].Style}");
-
-            Ui.Press(window, "ENTER");
-            WaitForScreen(window, shell, s => !s.IsAlternate && s.CursorColumn > 0, "the shell's screen back with its prompt");
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
-    }
-
     /// <summary>A log longer than the scrollback holds costs the window's thread nothing for each line past it: the line a
     /// full scrollback lets go is the next row. 30,000 lines allocate on the UI thread under 64 bytes a line more than
     /// 12,000, where a new row's cells alone take 16 bytes a column; the terminal is hidden meanwhile, so no frame counts.</summary>
-    [AvaloniaFact]
-    public void A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it()
+    internal void A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it()
     {
         long few = UiBytesForLog(12_000);
         long many = UiBytesForLog(30_000);
@@ -1301,8 +1049,7 @@ public sealed class TerminalTests
     /// <summary>A log in colour streaming up a full screen costs a frame on the UI thread what a frame with one row of an
     /// empty screen written again costs, and what drawing each other row as it was shaped records, under 2 KB a row where
     /// shaping one of these takes tens; so does a full-screen program drawing its whole screen again with one row changed.</summary>
-    [AvaloniaFact]
-    public void A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does()
+    internal void A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does()
     {
         string folder = TestFolders.Create("terminal-");
         try
@@ -1382,8 +1129,7 @@ public sealed class TerminalTests
     /// real terminal: the program clears the screen and writes in colour where it puts the cursor, reads a key and then a line
     /// typed into the view, and its tab, kept once it ends, says so with its exit code; the toolbar's Stop shows while it
     /// runs.</summary>
-    [AvaloniaFact]
-    public void A_program_run_in_the_terminal_reads_a_key_and_a_line_typed_there_and_draws_in_colour_where_it_puts_the_cursor()
+    private void A_program_run_in_the_terminal_reads_a_key_and_a_line_typed_there_and_draws_in_colour_where_it_puts_the_cursor()
     {
         MainWindow window = RunWindow(TestFolders.Create("terminal-run-"), string.Empty);
         Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(3));
@@ -1421,8 +1167,7 @@ public sealed class TerminalTests
     /// .NET writes there (Console.ReadKey refusing the window's pipe, on Windows Console.Clear before it), with Run in the
     /// Terminal, which has its configuration use the terminal, kept with the folder, and runs it again in a tab of the
     /// Terminal window, where it reads a key typed there.</summary>
-    [AvaloniaFact]
-    public void A_program_needing_a_terminal_in_the_Run_window_is_offered_one_and_reads_a_key_there()
+    private void A_program_needing_a_terminal_in_the_Run_window_is_offered_one_and_reads_a_key_there()
     {
         string folder = TestFolders.Create("terminal-need-");
         string settings = TestFolders.Create("settings-");
@@ -1488,8 +1233,7 @@ public sealed class TerminalTests
     }
 
     /// <summary>Stop ends a program running in the terminal and the program it started, and its tab says it was ended.</summary>
-    [AvaloniaFact]
-    public void Stop_ends_a_program_running_in_the_terminal_and_what_it_started()
+    private void Stop_ends_a_program_running_in_the_terminal_and_what_it_started()
     {
         MainWindow window = RunWindow(TestFolders.Create("terminal-stop-"), "child");
         Ui.Launched(window, window.RunAsync(), "the run to start", TimeSpan.FromMinutes(3));
@@ -1513,8 +1257,7 @@ public sealed class TerminalTests
     /// <summary>A variable a run in the terminal takes away never reaches its program, though Passenger's environment holds
     /// it as a parent's variables are held, in the process's own: a git hook's, which every run is started without, and one
     /// the run configuration gives no value. What the configuration sets reaches it.</summary>
-    [AvaloniaFact]
-    public void A_variable_a_run_in_the_terminal_takes_away_never_reaches_its_program()
+    private void A_variable_a_run_in_the_terminal_takes_away_never_reaches_its_program()
     {
         string folder = TestFolders.Create("terminal-unset-");
         // GIT_PREFIX: of a git hook's variables, the one git itself never reads, should anything else started meanwhile get it.
@@ -1565,8 +1308,7 @@ public sealed class TerminalTests
 
     /// <summary>A program run in the terminal that writes a line and ends at once, as echo does within a millisecond of its
     /// start, has that line on its tab above how it ended, every time: 300 runs, each in a tab of its own.</summary>
-    [AvaloniaFact]
-    public void A_program_that_writes_a_line_and_ends_at_once_has_it_on_its_tab_every_run()
+    private void A_program_that_writes_a_line_and_ends_at_once_has_it_on_its_tab_every_run()
     {
         const int Runs = 300;
         const string Said = "said-at-once";
@@ -1613,8 +1355,7 @@ public sealed class TerminalTests
     /// <summary>On macOS a run in the terminal that takes a variable away (the outer tmux's) still hands its program the
     /// loader's variables, which the loader takes out of a protected program's environment (env's, sh's): one Passenger
     /// inherited, held as a parent's are in the process's own environment, and one the run configuration gives.</summary>
-    [AvaloniaFact]
-    public void A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS()
+    private void A_run_in_the_terminal_that_takes_a_variable_away_keeps_the_loaders_variables_on_macOS()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's loader takes its variables out of what a program it guards runs");
         string folder = TestFolders.Create("terminal-loader-");
@@ -1665,10 +1406,7 @@ public sealed class TerminalTests
     /// <summary>The terminal's links: an address is a link a click opens (a drag from it selects instead) and so does
     /// Cmd+click (Ctrl+click elsewhere), wrapped across rows or not; a file's path is text until Cmd or Ctrl is held over
     /// it, and Cmd+click opens it at its line.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click(bool copyOnSelection)
+    private void An_address_in_the_terminal_opens_with_a_click_or_cmd_click_and_a_files_path_with_cmd_click(bool copyOnSelection)
     {
         string folder = TestFolders.Create("terminal-");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "first\nsecond\nthird\n");
@@ -1745,8 +1483,7 @@ public sealed class TerminalTests
     /// <summary>Words a program links (OSC 8, as Spectre.Console's link markup writes them) are a link a click opens: each
     /// run of words linked to a web address, its link ended by ST or by BEL, an id among its parameters passed over; words
     /// linked to an address a click opens nothing for, and the words between, stay text.</summary>
-    [AvaloniaFact]
-    public void Words_a_program_links_to_a_web_address_are_a_link_a_click_opens()
+    private void Words_a_program_links_to_a_web_address_are_a_link_a_click_opens()
     {
         (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
         TerminalView view = window.TerminalPanel.View;
@@ -1786,8 +1523,7 @@ public sealed class TerminalTests
     /// as the disk has it then: another host's file, a share's path by four slashes or by escaped backslashes are text, so
     /// drawing them reaches no other machine; a file here opens in the editor, and one that is not there is said in the
     /// status bar, nothing opened.</summary>
-    [AvaloniaFact]
-    public void Words_a_program_links_to_a_file_are_a_link_only_on_this_machine_and_a_click_asks_the_disk()
+    private void Words_a_program_links_to_a_file_are_a_link_only_on_this_machine_and_a_click_asks_the_disk()
     {
         string folder = TestFolders.Create("terminal-");
         string notes = Path.Combine(folder, "notes.txt");
@@ -1830,8 +1566,7 @@ public sealed class TerminalTests
     /// <summary>What a program's link opens is told from its address alone, the disk asked nothing, so a link to a file
     /// that is not there is one as much as a link to one that is; an address of another host, of a share or a device, or
     /// of a scheme a click opens nothing for is none.</summary>
-    [Fact]
-    public void What_a_programs_link_opens_is_told_from_its_address_alone()
+    private void What_a_programs_link_opens_is_told_from_its_address_alone()
     {
         string missing = Path.Combine(TestRun.Root, "no-such-folder", "no-such-file.txt");
         Assert.Equal(new ProgramFileLink(missing), MainWindow.ProgramLink(new Uri(missing).AbsoluteUri));
@@ -1864,8 +1599,7 @@ public sealed class TerminalTests
     /// link and never asked of the disk as the terminal or the Run window shows it, so showing a line reaches no other
     /// machine and mounts nothing; a frame in a file of the folder's still links it once the disk, asked off the window's
     /// thread, has answered, and a click opens it at its line.</summary>
-    [AvaloniaFact]
-    public void A_path_naming_another_machine_in_the_terminal_or_a_console_is_never_asked_of_the_disk()
+    private void A_path_naming_another_machine_in_the_terminal_or_a_console_is_never_asked_of_the_disk()
     {
         string folder = TestFolders.Create("terminal-");
         Directory.CreateDirectory(Path.Combine(folder, "src"));
@@ -1922,34 +1656,6 @@ public sealed class TerminalTests
             Assert.True(reached.Length == 0, $"Showing {where}'s lines asked the disk about {string.Join(", ", reached)}, which reaches another machine or mounts it");
             Assert.Contains(links.Asked, p => PathNames.Same(PathNames.Canonical(p), PathNames.Canonical(program)));
         }
-    }
-
-    /// <summary>Block elements fill the share of their cells they stand for, edge to edge: a bar of full blocks is one
-    /// colour from its first cell's top to its last cell's foot, never seamed between cells or short of the row's height as
-    /// the font's glyphs leave it, an upper half fills only its cell's top and a right half only its right.</summary>
-    [AvaloniaFact]
-    public void A_bar_of_block_elements_fills_its_cells_edge_to_edge_and_a_half_block_its_half()
-    {
-        (MainWindow window, TerminalSession shell) = Open(TestFolders.Create("terminal-"));
-        TerminalView view = window.TerminalPanel.View;
-        RunCase(window, "blocks");
-        long line = WaitForLine(shell, "██████ ▀▀▐", "the program's blocks");
-        WaitForPromptBelow(window, shell, "██████ ▀▀▐");
-        double width = view.PointOf(line, 1).X - view.PointOf(line, 0).X;
-        double height = view.PointOf(line + 1, 0).Y - view.PointOf(line, 0).Y;
-        Color background = ((ISolidColorBrush)view.FindResource(window.ActualThemeVariant, TokenKeys.Terminal_Background)!).Color;
-        Color At(int column, double across, double down) =>
-            Ui.Pixel(window, view.TranslatePoint(view.PointOf(line, column) + new Point(across * width, down * height), window)!.Value);
-        Color bar = At(2, 0, 0);
-        Assert.NotEqual(background, bar);
-        for (int column = 1; column < 6; column++)
-        {
-            Assert.True(At(column, -0.5, 0) == bar, $"The bar is seamed between its cells {column - 1} and {column}: {At(column, -0.5, 0)} there, {bar} in them");
-        }
-        Assert.True((At(3, 0, -0.45), At(3, 0, 0.45)) == (bar, bar), $"A full block falls short of its row's top or foot: {At(3, 0, -0.45)} and {At(3, 0, 0.45)}, {bar} between");
-        Assert.True((At(7, 0, -0.3), At(7, 0, 0.3)) == (bar, background), $"An upper half block does not fill its cell's top alone: {At(7, 0, -0.3)} above, {At(7, 0, 0.3)} below");
-        Assert.True((At(9, -0.3, 0), At(9, 0.3, 0)) == (background, bar), $"A right half block does not fill its cell's right alone: {At(9, -0.3, 0)} left, {At(9, 0.3, 0)} right");
-        window.Close();
     }
 
     /// <summary>A window over a folder of its own holding TerminalConsoleApp, restored, its configuration Keys running the
@@ -2100,29 +1806,6 @@ public sealed class TerminalTests
         Ui.Drag(window, from, to);
     }
 
-    /// <summary>The pointer moved with no button held along a line from one cell to another, a quarter of a cell at a time.</summary>
-    private static void Hover(MainWindow window, long line, int fromColumn, int toColumn)
-    {
-        TerminalView view = window.TerminalPanel.View;
-        Point from = view.TranslatePoint(view.PointOf(line, fromColumn), window)!.Value;
-        Point to = view.TranslatePoint(view.PointOf(line, toColumn), window)!.Value;
-        int steps = Math.Max(1, Math.Abs(toColumn - fromColumn) * 4);
-        for (int step = 0; step <= steps; step++)
-        {
-            window.MouseMove(from + ((to - from) * ((double)step / steps)), RawInputModifiers.None);
-        }
-        Ui.Settle();
-    }
-
-    /// <summary>The mouse reports the TerminalCases program read in its given run (from 1), in order: the lines after that
-    /// run's "mouse?".</summary>
-    private static List<string> Reports(TerminalScreen screen, int run)
-    {
-        List<string> lines = Lines(screen);
-        int asked = lines.Select((line, at) => (line, at)).Where(l => l.line == "mouse?").Select(l => l.at).ElementAt(run - 1);
-        return [.. lines.Skip(asked + 1).TakeWhile(l => l.StartsWith("^[[<", StringComparison.Ordinal))];
-    }
-
     /// <summary>The window over a folder, its Terminal open on the system's plain shell (cmd.exe on Windows, sh elsewhere).</summary>
     private static (MainWindow Window, TerminalSession Shell) Open(string folder) => Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
 
@@ -2188,8 +1871,22 @@ public sealed class TerminalTests
 [Collection(Alone.Name)]
 public sealed class TerminalResponsivenessTests
 {
+    /// <summary>The terminal never holds the window: a log three times the scrollback costs the window no more for each
+    /// line than one just past it, a log in colour streaming up the screen costs a frame what one changed row does, a
+    /// flood of output leaves the window taking keys and Ctrl+C stops it, a paste a program reads none of neither holds
+    /// the window nor its end, and the shell echoes what is typed while every thread of the pool is busy.</summary>
     [AvaloniaFact]
-    public void A_flood_of_output_leaves_the_window_taking_keys_and_Ctrl_C_stops_it()
+    public void The_terminal_never_holds_the_window_whatever_its_programs_write_or_leave_unread()
+    {
+        Flow.StepApart<TerminalTests>("a log three times the scrollback costs the window no more for each line than one just past it", t => t.A_log_three_times_the_scrollback_costs_the_window_no_more_for_each_line_than_one_just_past_it());
+        Flow.StepApart<TerminalTests>("a log in colour streaming up the screen costs a frame what one changed row does", t => t.A_log_in_colour_streaming_up_the_screen_costs_a_frame_what_one_changed_row_does());
+        Flow.StepApart<TerminalResponsivenessTests>("a flood of output leaves the window taking keys and Ctrl C stops it", t => t.A_flood_of_output_leaves_the_window_taking_keys_and_Ctrl_C_stops_it());
+        Flow.StepApart<TerminalResponsivenessTests>("a paste into a program that reads nothing leaves the window taking keys", t => t.A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys());
+        Flow.StepApart<TerminalResponsivenessTests>("a terminal whose program read none of a paste ends without holding the window", t => t.A_terminal_whose_program_read_none_of_a_paste_ends_without_holding_the_window());
+        Flow.StepApart<TerminalResponsivenessTests>("the shell echoes what is typed while every thread of the pool is busy", t => t.The_shell_echoes_what_is_typed_while_every_thread_of_the_pool_is_busy());
+    }
+
+    private void A_flood_of_output_leaves_the_window_taking_keys_and_Ctrl_C_stops_it()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The flood is sh's seq, stopped by a Unix pseudo-terminal's own Ctrl+C, which ConPTY has none of");
         string folder = TestFolders.Create("terminal-");
@@ -2249,8 +1946,7 @@ public sealed class TerminalResponsivenessTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys()
+    private void A_paste_into_a_program_that_reads_nothing_leaves_the_window_taking_keys()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(),
             "A Unix pseudo-terminal's input queue holds a kilobyte or so, past which a write waits for the program; ConPTY's has no such limit to hold");
@@ -2295,8 +1991,7 @@ public sealed class TerminalResponsivenessTests
 
     /// <summary>A terminal ended while its program writes on and has read none of a paste ends without holding the window:
     /// Close Solution comes back, and the shell and its program end.</summary>
-    [AvaloniaFact]
-    public void A_terminal_whose_program_read_none_of_a_paste_ends_without_holding_the_window()
+    private void A_terminal_whose_program_read_none_of_a_paste_ends_without_holding_the_window()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(),
             "A Unix pseudo-terminal's input queue holds a kilobyte or so, past which a write waits for the program; ConPTY's has no such limit to hold");
@@ -2339,8 +2034,7 @@ public sealed class TerminalResponsivenessTests
 
     private static bool PasteEchoed(TerminalSession shell) => TerminalTests.Screen(shell).Contains("echo pasted 0", StringComparison.Ordinal);
 
-    [AvaloniaFact]
-    public void The_shell_echoes_what_is_typed_while_every_thread_of_the_pool_is_busy()
+    private void The_shell_echoes_what_is_typed_while_every_thread_of_the_pool_is_busy()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The shell held to its answer is sh, a Unix one");
         string folder = TestFolders.Create("terminal-");
