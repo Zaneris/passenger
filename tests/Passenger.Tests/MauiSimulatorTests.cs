@@ -2,23 +2,21 @@ using System.Runtime.InteropServices;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
-using Passenger.App.LiveTree;
 using Passenger.App.Run.Devices;
 using Passenger.Core;
-using Passenger.Inspector;
 using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
-/// <summary>The app <c>dotnet new maui</c> makes, its iOS head run and debugged on an iOS simulator chosen beside its run
-/// configuration, as the iOS workload lists them: Run builds it for the simulator, boots one that is shut down with no window,
-/// installs and starts the app there, its output in the Run window, its MAUI inspector's tree the app's and a tap reaching
-/// its button through UIKit; with Hot Reload an edit lands through Passenger's relay, carried into the app's data container,
-/// and its update handler is called; Debug stops in its main page, steps, shows, evaluates and takes an edit; Stop ends the
-/// app and takes out what was carried, and a simulator the window booted is shut down as it closes. Skips, saying why, off
-/// a Mac, without MAUI's and iOS's workloads, Xcode or an iPhone simulator, or the simulator's relay. Debugged through the
-/// window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+/// <summary>The app <c>dotnet new maui</c> makes, its iOS head debugged on an iOS simulator chosen beside its run
+/// configuration, as the iOS workload lists them, the iOS head's debug path (<see cref="AvaloniaSimulatorTests"/> holds its
+/// run path): Debug builds it for the simulator, boots one that is shut down with no window, installs and starts the app
+/// with Passenger's relay carried into its data container, stops in its main page, steps, shows, evaluates and takes a Hot
+/// Reload edit, whose update handler is called once the app goes on; Stop ends the app and takes out what was carried, and a
+/// simulator the window booted is shut down as it closes. Skips, saying why, off a Mac, without MAUI's and iOS's workloads,
+/// Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone; its waits end within the
+/// run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiSimulatorTests
@@ -27,53 +25,6 @@ public sealed class MauiSimulatorTests
 
     /// <summary>What the update handler the test adds to the app writes once Hot Reload has applied an edit.</summary>
     private const string Handled = "Update handler called for MainPage";
-
-    [AvaloniaFact]
-    public void A_maui_apps_ios_head_run_on_a_simulator_shows_its_tree_takes_a_tap_and_a_hot_reload_edit_and_ends_with_stop()
-    {
-        using IDisposable hang = Limits.BeginHang();
-        (string folder, string project, DeviceTarget target, AppleTools tools) = Prepared("maui-ios-run");
-        MainWindow window = Ui.OpenFolder(folder);
-        window.ApplySettings(window.Settings with { HotReload = true });
-        try
-        {
-            Choose(window, project, target);
-            Ui.Launched(window, window.RunAsync(), "the build, the install and the start on the simulator with Hot Reload", Slow);
-            Ui.WaitFor(() => window.Session.RunApp is { State: LiveAppState.Connected } && window.Debugger.Running.Count == 1,
-                () => $"the app's inspector to connect and the debugger to attach for Hot Reload; the inspector is {window.Session.RunApp?.State.ToString() ?? "not made"} "
-                    + $"({window.Session.RunApp?.Problem}), the debugger runs {window.Debugger.Running.Count} quietly: {Ui.Said(window)}\n{Output(window)}", Slow);
-            Assert.False(window.Debugger.IsDebugging, "Run with Hot Reload showed a debugging session");
-            LiveApp app = window.Session.RunApp!;
-            Assert.True(app is { Kind: LiveAppKind.Maui } && app.Framework.StartsWith("MAUI 11.", StringComparison.Ordinal), $"The app was taken for {app.Kind}, {app.Framework}");
-            AppTree tree = Ui.AwaitPumped(app.TreeAsync(), "the app's tree", TimeSpan.FromMinutes(1));
-            Element button = AppTree.Walk(tree.Roots).Select(e => e.Element).FirstOrDefault(e => e is { Type: "Button", Name: "CounterBtn" })
-                ?? throw new Xunit.Sdk.XunitException("The app's tree has no CounterBtn");
-            InputDone tapped = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button", TimeSpan.FromMinutes(1));
-            Assert.True(tapped.Target == button.Id && tapped.Shows == "Clicked 1 time", $"The tap reached {tapped.TargetName}, which shows \"{tapped.Shows}\", not the button counting it");
-            string? started = SimulatorStart(window.BottomPanel.Run.Document.Snapshot, window);
-            Assert.True(started is not null, $"simctl did not say the app's process in the Run window:\n{Output(window)}");
-            string carried = Carried(window);
-
-            window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml.cs"));
-            Typing.Replace(window, "$\"Clicked {count} time\"", "$\"Tapped {count} time\"");
-            Ui.Run(window, AppActions.ApplyHotReloadChanges);
-            Ui.WaitFor(() => window.Debugger.LastApplied is not null, () => $"Hot Reload to say what it applied: {Ui.Said(window)}", Slow);
-            Assert.True(window.Debugger.LastApplied!.Result == HotReloadResult.Applied, $"The app on the simulator did not take the edit: {window.Debugger.LastApplied.Said}\n{Output(window)}");
-            Ui.WaitFor(() => Output(window).Contains(Handled, StringComparison.Ordinal),
-                () => $"the app's update handler to be called on the simulator with the type the edit changed: {Ui.Said(window)}\n{Output(window)}", TimeSpan.FromMinutes(1));
-
-            Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
-            Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the quiet session to end with the app");
-            Ui.WaitFor(() => !Runs(started!), () => $"the app to end on the simulator once stopped; process {started} still runs", TimeSpan.FromSeconds(30));
-            Ui.WaitFor(() => !Directory.Exists(carried), () => $"what the run carried into the app to be taken out once stopped; {carried} is still there", TimeSpan.FromSeconds(30));
-        }
-        finally
-        {
-            window.Close();
-        }
-        LeftAsFound(target, tools);
-    }
 
     [AvaloniaFact]
     public void A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit()
@@ -195,13 +146,13 @@ public sealed class MauiSimulatorTests
 
     /// <summary>The app's process as simctl said it launched it, in a console's text; null until it has.</summary>
     private static string? SimulatorStart(TextSnapshot shown, MainWindow window) =>
-        (window.Session.RunPlan?.Device?.App ?? window.Debugger.Tabs.Select(t => t.Plan?.Device?.App).LastOrDefault(a => a is not null))?.StartedIn(shown);
+        window.Debugger.Tabs.Select(t => t.Plan?.Device?.App).LastOrDefault(a => a is not null)?.StartedIn(shown);
 
     /// <summary>Where the start carried what the app loads of Passenger's in its data container, which it has there now.</summary>
     private static string Carried(MainWindow window)
     {
-        SimulatorApp app = (window.Session.RunPlan?.Device?.App ?? window.Debugger.Tabs.Select(t => t.Plan?.Device?.App).LastOrDefault(a => a is not null)) as SimulatorApp
-            ?? throw new InvalidOperationException("The start named no app on a simulator");
+        SimulatorApp app = window.Debugger.Tabs.Select(t => t.Plan?.Device?.App).LastOrDefault(a => a is not null) as SimulatorApp
+            ?? throw new InvalidOperationException("Debug named no app on a simulator");
         Assert.True(File.Exists(Path.Combine(app.Carried, SimulatorApp.RelayFile)), $"The relay was not carried into the app's data container ({app.Carried}), where the app reads it");
         return app.Carried;
     }
@@ -223,8 +174,6 @@ public sealed class MauiSimulatorTests
     private static string State(DeviceTarget target, AppleTools tools) =>
         Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.Command(tools.Simctl, ["list", "devices"]))), "simctl's devices").Output
             .Split('\n').FirstOrDefault(l => l.Contains(target.Id, StringComparison.Ordinal))?.Trim() ?? "not listed";
-
-    private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
 
     private static string Console(MainWindow window) => window.BottomPanel.Debug.Console.Document.Snapshot.ToString();
 

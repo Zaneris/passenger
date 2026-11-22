@@ -12,20 +12,16 @@ namespace Passenger.Tests;
 /// <summary>The app <c>dotnet new maui</c> makes, opened in the window: its one run configuration is named for it, and the
 /// menu of where it runs offers this machine's head (Windows on Windows, Mac Catalyst on a Mac) beside Android, its
 /// devices and emulators or what Android lacks here. With all it needs here, it says nothing lacking but, off a Mac, that
-/// only a Mac makes its iOS and Mac Catalyst apps, and builds every head to what this machine makes of it. Run builds this
-/// machine's head: on Windows it runs as the WinUI app it is; on a Mac (<see cref="MauiCatalystTests"/>) the system opens it
-/// hidden, never in front. What it writes is in the Run window, and Stop ends it; on Windows with Hot Reload, under dotnet
-/// watch, a saved edit reaches it as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for a build, without the
-/// workload of any head the app's restore reads. Its packages come from nuget.org, as no restore of the solution's brings
-/// them, so it is never one of the gate's.</summary>
+/// only a Mac makes its iOS and Mac Catalyst apps, and builds every head to what this machine makes of it. On Windows Run
+/// builds its Windows head, which runs as the WinUI app it is, what it writes in the Run window, and Stop ends it; with Hot
+/// Reload, under dotnet watch, a saved edit reaches it as it runs (a Mac's head runs in <see cref="MauiCatalystTests"/>).
+/// Skips, saying why, without MAUI's workload, whose template makes the app, or, for a build, without the workload of any
+/// head the app's restore reads. Its packages come from nuget.org, as no restore of the solution's brings them, so it is
+/// never one of the gate's.</summary>
 [AboutMacOS]
 public sealed class MauiTemplateRunTests
 {
     private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(15));
-
-    /// <summary>How long a step after the build waits at most (the app's page up, the Debug build kept whole): each fails
-    /// with its own words well before the test runner takes a test that has done nothing for 10 minutes as hung.</summary>
-    private static readonly TimeSpan Step = TimeSpan.FromMinutes(2);
 
     /// <summary>What the app writes once its main page is made, which the Run window shows.</summary>
     private const string Up = "MauiApp1's main page is up";
@@ -180,78 +176,6 @@ public sealed class MauiTemplateRunTests
         {
             window.Close();
         }
-    }
-
-    /// <summary>On a Mac, Run with nothing chosen builds the app's Mac Catalyst head and the system opens it as an app, hidden
-    /// and never in front as nobody sees this window: what it writes is in the Run window while it runs, and Stop ends it,
-    /// the app gone with its opener. Its Debug build trims .NET's own assemblies, so the Run window offers to keep them
-    /// whole, which writes MtouchLink None for its Debug build. A step of <see cref="MauiCatalystTests"/>' flow.</summary>
-    internal static void On_a_mac_run_opens_the_maui_apps_mac_catalyst_head_hidden_its_output_in_the_run_window_and_stop_ends_it()
-    {
-        if (!OperatingSystem.IsMacOS())
-        {
-            Assert.Skip("A .NET MAUI app's Mac Catalyst head runs only on a Mac");
-        }
-        string folder = Made();
-        try
-        {
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-            try
-            {
-                Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "MauiApp1"), () => $"the app's configuration: {Ui.Said(window)}", Slow);
-                Assert.Equal(DeviceTargets.Here(TargetPlatform.MacCatalyst).Shown, window.FindControl<TextBlock>("RunTargetName")!.Text);
-                Assert.True(window.Unseen, "The test's window is one a person sees, so the app would open on their screen");
-                Built(window);
-                Ui.Launched(window, window.RunAsync(), "the Mac Catalyst head's build and its opening", Slow);
-                LaunchPlan plan = window.Session.RunPlan ?? throw new Xunit.Sdk.XunitException("Run made no plan");
-                Assert.Equal("net11.0-maccatalyst", plan.Framework);
-                MacCatalystApp app = plan.MacCatalyst?.App ?? throw new Xunit.Sdk.XunitException($"The plan opens no Mac Catalyst app: it runs {plan.Program}");
-                IReadOnlyList<string> opening = [.. plan.Arguments.Take(plan.Leading)];
-                Assert.True(opening.Contains("-g") && opening.Contains("-j"),
-                    $"The app opens where the person sees it, though nobody sees the window that ran it: {string.Join(' ', opening.Skip(3))}");
-                Ui.WaitFor(() => Output(window).Contains(Up, StringComparison.Ordinal),
-                    () => $"the app to make its main page, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Step);
-                Assert.True(window.Runner.IsRunning, $"The app's run ended once its page was up:\n{Output(window)}");
-                Assert.True(Running(app) is not null, $"No process runs {app.Executable} once its page is up");
-                // The template's Debug build trims .NET's own assemblies: the Run window offers to keep them whole.
-                Assert.False(app.Whole, "The template's Mac Catalyst Debug build no longer trims .NET's own assemblies");
-                Assert.Equal($"MauiApp1's Debug build trims .NET's own assemblies, so {MacCatalystApp.KeptOut}", window.BottomPanel.Run.Offered);
-                Ui.Run(window, AppActions.Stop);
-                Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app's run to end once stopped", TimeSpan.FromMinutes(1));
-                Ui.WaitFor(() => Running(app) is null, () => $"the app to end once stopped; process {Running(app)} still runs it", TimeSpan.FromSeconds(30));
-                string project = Path.Combine(folder, "MauiApp1", "MauiApp1.csproj");
-                Ui.ClickButton(window.BottomPanel.Run, "Keep .NET's Assemblies Whole in Debug");
-                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null, () => $"the Run window's offer to keep the Debug build whole: {Ui.Said(window)}", Step);
-                Assert.Equal(Passenger.App.Mobile.MobileHeads.Whole("MauiApp1"), window.Status);
-                // The app has other heads, so MtouchLink is set for its Mac Catalyst framework's Debug build alone.
-                Assert.Contains("== 'Debug' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'\">None</MtouchLink>", File.ReadAllText(project), StringComparison.Ordinal);
-                Assert.Null(window.BottomPanel.Run.Offered);
-            }
-            finally
-            {
-                window.Close();
-            }
-        }
-        finally
-        {
-            TestFolders.Delete(folder);
-        }
-    }
-
-    /// <summary>The process running the app's program; null where none does.</summary>
-    private static int? Running(MacCatalystApp app)
-    {
-        foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcesses())
-        {
-            using (process)
-            {
-                if (Libc.ExecutableOf(process.Id) is { } program && PathNames.Same(program, app.Executable))
-                {
-                    return process.Id;
-                }
-            }
-        }
-        return null;
     }
 
     /// <summary>Run with Hot Reload on Windows runs the app's Windows head under dotnet watch, as a program of this machine:

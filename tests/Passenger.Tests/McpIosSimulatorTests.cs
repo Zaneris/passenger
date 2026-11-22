@@ -12,25 +12,33 @@ namespace Passenger.Tests;
 /// not the configuration chosen: run with no simulator chosen is refused, saying how an agent chooses one, and leaves the
 /// chosen configuration as it was; ide_action app.chooseRunTarget naming the head's configuration and an iPhone simulator
 /// chooses it in one call, still leaving the choice of configuration; run then answers once the app has started there,
-/// and chooses the head as a person's Run does; that Passenger killed with its tree, the app ends there too. Skips, saying
-/// why, off a Mac, without the iOS workload, Xcode or an iPhone simulator, or nuget.org's Avalonia iOS packages. Alone, the
-/// simulator shared with AvaloniaSimulatorTests; a simulator the run booted is shut down at its end.</summary>
+/// and chooses the head as a person's Run does; that Passenger killed with its tree, the app ends there too and the
+/// simulator it booted shuts down. Skips, saying why, off a Mac, without the iOS workload, Xcode or an iPhone simulator
+/// shut down, or nuget.org's Avalonia iOS packages. Alone, the simulator shared with AvaloniaSimulatorTests; a simulator
+/// the run booted is shut down at its end.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class McpIosSimulatorTests : McpRig
 {
     private const string Name = "XApp";
 
+    /// <summary>The agent's choice and run, then its Passenger killed as a test runner kills a hung host, every process of
+    /// its tree first, the deepest first, then itself: the app there, a process of this Mac that an end of simctl's launch
+    /// leaves running, still ends with it, and the simulator is shut down, as its watchdog, in no tree of Passenger's, ends
+    /// what it took on (#1792).</summary>
     [Fact]
-    public async Task An_agent_chooses_an_ios_heads_simulator_and_runs_it_in_a_call_each_without_changing_the_chosen_configuration_and_a_refused_run_leaves_it_too()
+    public async Task An_agent_chooses_an_ios_heads_simulator_and_runs_it_leaving_the_chosen_configuration_and_the_app_and_simulator_end_once_its_passenger_and_tree_are_killed()
     {
-        (string folder, DeviceTarget target, AppleTools tools) = await PreparedAsync("mcp-avalonia-ios-");
+        (string folder, DeviceTarget target, AppleTools tools) = await PreparedAsync("mcp-avalonia-ios-", shutDown: true);
         string head = $"{Name}.iOS";
+        int? app = null;
         try
         {
-            await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-            await Waiting.UntilAsync(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(c => c.GetString() == head),
-                TimeSpan.FromMinutes(3), Cancel, TimeSpan.FromMilliseconds(500));
+            McpClient client = await Start(["--mcp", folder], languageServer: false);
+            // Each program it takes on is in its log as it does.
+            await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["logEveryProgram"] = true } });
+            await Until(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(c => c.GetString() == head),
+                "the head's run configuration");
             async Task<string?> ChosenAsync() => (await Call(client, McpTools.Workspace)).GetProperty("chosenConfiguration").GetString();
             string? chosen = await ChosenAsync();
             Assert.True(chosen is not null && chosen != head, $"The folder opened on {chosen} chosen");
@@ -44,39 +52,12 @@ public sealed class McpIosSimulatorTests : McpRig
             Assert.StartsWith($"{head} runs on {target.Name}", chose, StringComparison.Ordinal);
             Assert.Equal(chosen, await ChosenAsync());
 
-            // Longer than the build, the install and the start take: the answer comes at the start, not at the wait's end.
-            JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = head, ["waitSeconds"] = 3600 });
-            Assert.True(ran.GetProperty("stillRunning").GetBoolean() && ran.GetProperty("status").GetString()?.StartsWith($"Running {head}, ", StringComparison.Ordinal) == true,
-                $"run did not answer once the app started on {target.Name}: {ran}");
-            Assert.Equal(head, await ChosenAsync());
-            await Call(client, McpTools.Stop);
-        }
-        finally
-        {
-            await ShutDownAsync(target, tools);
-        }
-    }
-
-    /// <summary>An agent's Passenger that booted a simulator and ran the head there is killed as a test runner kills a hung
-    /// host, every process of its tree first, the deepest first, then itself: the app there, a process of this Mac that an
-    /// end of simctl's launch leaves running, still ends with it, and the simulator is shut down, as its watchdog, in no tree
-    /// of Passenger's, ends what it took on (#1792).</summary>
-    [Fact]
-    public async Task An_ios_heads_app_an_agents_passenger_ran_on_a_simulator_it_booted_ends_and_the_simulator_shuts_down_once_that_passenger_and_its_tree_are_killed()
-    {
-        (string folder, DeviceTarget target, AppleTools tools) = await PreparedAsync("mcp-avalonia-ios-killed-", shutDown: true);
-        string head = $"{Name}.iOS";
-        int? app = null;
-        try
-        {
-            McpClient client = await Start(["--mcp", folder], languageServer: false);
-            // Each program it takes on is in its log as it does.
-            await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["logEveryProgram"] = true } });
-            await Until(async () => (await Call(client, McpTools.Workspace)).GetProperty("runConfigurations").EnumerateArray().Any(c => c.GetString() == head),
-                "the head's run configuration");
-            await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ChooseRunTarget, ["input"] = $"{head}:{target.Name}" });
+            // Longer than the build, the boot, the install and the start take: the answer comes at the start, not at the wait's end.
             JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = head, ["waitSeconds"] = 3600 });
             string status = ran.GetProperty("status").GetString() ?? string.Empty;
+            Assert.True(ran.GetProperty("stillRunning").GetBoolean() && status.StartsWith($"Running {head}, ", StringComparison.Ordinal),
+                $"run did not answer once the app started on {target.Name}: {ran}");
+            Assert.Equal(head, await ChosenAsync());
             const string Said = " as process ";
             int at = status.LastIndexOf(Said, StringComparison.Ordinal);
             int launched = at >= 0 && int.TryParse(status.AsSpan(at + Said.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture,
