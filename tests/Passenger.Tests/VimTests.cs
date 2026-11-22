@@ -186,9 +186,6 @@ public sealed partial class VimTests
     private static string Said((string Mode, (int Line, int Column) Cursor)? visual) =>
         visual is { } shown ? $"{shown.Mode}, its cursor at {shown.Cursor}" : "none";
 
-    /// <summary>Why a difference is kept until #2096 fixes it.</summary>
-    private const string ToFix = "differs from Vim 9.2, to fix: #2096";
-
     /// <summary>The differences Passenger keeps, each with why: on purpose, or until it is fixed.</summary>
     private static readonly (string Why, Func<VimCase, VimEnd, VimEnd, bool> Holds)[] Kept =
     [
@@ -196,9 +193,19 @@ public sealed partial class VimTests
             + "on a line left blank and the blanks after the caret carried down, where Vim's autoindent copies the line's own and "
             + "drops the rest: in insert mode the editor types",
             (vimCase, _, _) => vimCase.Uses(TypedEnter) || vimCase.Uses(OpensLine)),
-        ($"is and as in visual mode, about an end mark or closer standing alone (opening the text, or after nothing but white "
-            + $"on its line), and on a text of white alone, which Vim's take each in a way of its own; {ToFix}",
-            (vimCase, _, _) => vimCase.Uses(SentenceObject)),
+        ("is and as on a text of end marks, closers and white alone, which Vim's take each in a way of its own: on \".\" they take "
+            + "\".\", on \".)\" the \")\", on \". \" the blank, on \".  \" is both blanks and as the last, on \"..\" and \"!?\" the whole text, "
+            + "and on \"  \" as takes one blank where on \" \" it takes the line",
+            (vimCase, _, passenger) => vimCase.Uses(SentenceObject) && passenger.Seen.Contains(MarksAlone)),
+        ("is and as from a line of blanks opening the text or a paragraph, which Vim's take over lines in a way of their own: "
+            + "from the \" \" opening \" \", \"\", \"\", \"a)\" as takes three lines and 2as all four, from the \"  \" opening \"  \", \"\", "
+            + "\"a'\" as takes one blank and 2as all three lines, and from the \" \" opening \" \", \"\", \" f.)\" as takes two lines",
+            (vimCase, _, passenger) => vimCase.Uses(SentenceObject) && passenger.Seen.Contains(BlankOpening)),
+        ("is and as about an end mark or closer standing alone, opening its line or after a blank, which Vim's take each in a way "
+            + "of its own: from the blank of \"a. . b\" as takes \" .\", where from that of \"a. .\" it takes nothing; from the \".\" opening "
+            + "\". a\" it takes \" a\", where from the \".\" opening the second line of \"a.\", \". b\" it takes nothing, and of \" x .\", \". \" "
+            + "the \" .\" ending the line before",
+            (vimCase, _, passenger) => vimCase.Uses(SentenceObject) && passenger.Seen.Contains(MarkWord)),
         (") over two lines in a row that each hold one sentence's end mark or closer alone, which Vim's ) takes each in a way of "
             + "its own: from the first '.' of \"x!\", \".\", \".\" it goes to the text's end, passing the second as no sentence's "
             + "start, where from the first '.' of \"x.\", \".\", \".\", \"a\" it passes the second '.' and the \"a\" after it alike, and "
@@ -207,14 +214,22 @@ public sealed partial class VimTests
         ("A characterwise visual change of one line made after $ and made again by . takes from the caret to its line's end, "
             + "as . makes a visual change again from the caret, where Vim's takes that only from the line's first two columns and "
             + "from any other the line's start to the caret, whatever the stretch was: Vim's . there follows no rule of its own",
-            (vimCase, _, _) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => made.command.Keys[0] == "v" && made.command.Keys.Contains("$")
+            (vimCase, _, _) => vimCase.Commands.Select((command, at) => (command, at)).Any(made => made.command.Keys[0] == "v"
+                && (made.command.Keys.Contains("$") || (made.at > 0 && vimCase.Commands[made.at - 1].Keys[^1] == "$"))
                 && vimCase.Commands.Skip(made.at).SelectMany(after => after.Keys).Contains("."))),
+        ("A block's < leaves Vim's cursor at the block's top left even past the end of a top line nothing shifted, where no "
+            + "normal-mode cursor of Vim mode stands: Passenger's settles on that line's last character",
+            (vimCase, vim, _) => vimCase.Commands.Any(command => command.Keys[0] == VimKeys.CtrlV && command.Keys.Contains("<"))
+                && vim.Cursor.Column > Math.Max(1, vim.Lines[vim.Cursor.Line - 1].Length)),
     ];
 
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
     private const string SentenceObject = "is or as";
     private const string LoneMarks = "two lines in a row each one sentence's end mark or closer alone";
+    private const string MarksAlone = "a text of end marks, closers and white alone";
+    private const string BlankOpening = "a line of blanks opening the text or a paragraph";
+    private const string MarkWord = "an end mark or closer standing alone";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -608,14 +623,22 @@ public sealed partial class VimTests
     private const string Asked = "asked the host";
 
     /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: two lines in a row that each hold one
-    /// sentence's end mark or closer alone.</summary>
+    /// sentence's end mark or closer alone, a text of end marks, closers and white alone, a line of blanks opening the text
+    /// or a paragraph, a word of end marks and closers alone.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
         seen.UnionWith(Enumerable.Range(1, Math.Max(0, text.LineCount - 1)).Any(line => LoneMark(text, line - 1) && LoneMark(text, line)) ? [LoneMarks] : []);
+        string all = text.ToString();
+        seen.UnionWith(all.Any(c => c != '\n') && all.All(c => EndMark(c) || c is ' ' or '\t' or '\n') ? [MarksAlone] : []);
+        seen.UnionWith(all.Split([' ', '\t', '\n']).Any(word => word.Length > 0 && word.All(EndMark)) ? [MarkWord] : []);
+        seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } blanks && TextNavigation.IndentEnd(text, blanks) == blanks.End
+            && (line == 0 || text.GetLine(line - 1).Length == 0)) ? [BlankOpening] : []);
     }
 
-    private static bool LoneMark(TextSnapshot text, int line) =>
-        text.GetLine(line) is { Length: 1 } span && text[span.Start] is '.' or '!' or '?' or ')' or ']' or '"' or '\'';
+    private static bool LoneMark(TextSnapshot text, int line) => text.GetLine(line) is { Length: 1 } span && EndMark(text[span.Start]);
+
+    /// <summary>Whether a character ends a sentence or closes one, as the cases' texts write them.</summary>
+    private static bool EndMark(char c) => c is '.' or '!' or '?' or ')' or ']' or '"' or '\'';
 
     /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>
     private static (TextSnapshot, SelectionSet) Applied(VimResult result, TextSnapshot text, SelectionSet carets, VimTextView view)
