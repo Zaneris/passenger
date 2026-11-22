@@ -30,6 +30,11 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `GodotPinsTests`' `Errors_stay_pinned_at_their_lines_with_their_counts_after_Stop_the_console_folds_them_and_an_edit_takes_a_pin_off`,
+  CI 44970786971 to 44995132904 (Windows gate shard 2): "Expected: 5704 Actual: 1000", 7752 in CI 44989932645. **The
+  test read wrong**: the headless game raises an error a frame, and on the Windows runner it ran thousands of frames
+  before Stop took, where a pin keeps the newest `GodotErrorPins.Kept` (1,000) occurrences, the earlier ones counted
+  alone; the test held the badge's list to the pin's whole count. It holds it to what a pin keeps (45b0b0bd6, #2103).
 - `Debugging.ProtocolTests`' `A_message_too_large_to_read_ends_the_conversation_saying_so` (its three cases) and
   `ContainersTests`' `A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so`, CI
   44968934038 to 44995132904 (every system's gate; Linux report shards 2 and 3): "The adapter's log does not say why the
