@@ -3886,7 +3886,8 @@ public sealed class StandInAppHost : SharedProject
     /// <summary><see cref="AskToStartApi"/> off the window's thread, as DCP asks again for a resource its AppHost restarts:
     /// the session's mode as DCP gives it, variables beside the resource's name, and its arguments (none by default);
     /// subscribed to the sessions' notifications unless <paramref name="subscribe"/> is false (DCP subscribes once, which a
-    /// second refuses). The IDE's answer is no status at all when it closed its endpoint as it stopped the AppHost.</summary>
+    /// second refuses), and reading them as DCP does until the socket closes. The IDE's answer is no status at all when it
+    /// closed its endpoint as it stopped the AppHost.</summary>
     internal async Task<(System.Net.WebSockets.ClientWebSocket Notified, System.Net.HttpStatusCode Answer)> StartApiAsync(string resource, string mode = "NoDebug",
         IReadOnlyDictionary<string, string>? environment = null, bool subscribe = true, string? projectPath = null, string[]? arguments = null)
     {
@@ -3900,6 +3901,8 @@ public sealed class StandInAppHost : SharedProject
         if (subscribe)
         {
             await notified.ConnectAsync(new Uri($"ws://{session[0]}/run_session/notify?api-version={version}"), CancellationToken.None);
+            // Unread, a service's logs fill the socket, and the IDE ends the AppHost's sessions once a send waits too long on it.
+            UnawaitedWork.Dismiss(Waiting.Apart(() => HearAsync(notified)));
         }
         // Past the waits on its answer, which say what the IDE was busy with as they give up; scaled, as they are.
         using HttpClient http = new() { Timeout = TimeSpan.FromMinutes(2).Scaled() };
@@ -3923,6 +3926,22 @@ public sealed class StandInAppHost : SharedProject
         catch (HttpRequestException)
         {
             return (notified, 0);
+        }
+    }
+
+    /// <summary>Reads the notifications <paramref name="notified"/> brings, passing over each, until it closes or is let go of.</summary>
+    private static async Task HearAsync(System.Net.WebSockets.ClientWebSocket notified)
+    {
+        byte[] buffer = new byte[16384];
+        try
+        {
+            while ((await notified.ReceiveAsync(buffer, CancellationToken.None)).MessageType != System.Net.WebSockets.WebSocketMessageType.Close)
+            {
+            }
+        }
+        catch (Exception closed) when (closed is System.Net.WebSockets.WebSocketException or ObjectDisposedException or OperationCanceledException)
+        {
+            // Let go of by the test, or closed by the IDE as it stopped the AppHost.
         }
     }
 

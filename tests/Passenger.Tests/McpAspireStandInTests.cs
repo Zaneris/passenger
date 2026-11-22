@@ -426,6 +426,9 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         int program = 0;
         Assert.True(await Waiting.UntilAsync(() => (program = Processes.ReadId(told)) > 0, TimeSpan.FromMinutes(1), Cancel), "The web service never said its process's id");
         OwnProcess own = OwnProcess.Of(program);
+        // Held while it runs, so how it ended reads should it end.
+        using System.Diagnostics.Process webProcess = System.Diagnostics.Process.GetProcessById(program);
+        Assert.False(webProcess.SafeHandle.IsInvalid, "The web service's process could not be held");
         port.LetGo(gate);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource
         {
@@ -443,11 +446,15 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             $"The IDE never heard that web runs its program.{Said()}");
         using CancellationTokenSource stopAsking = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
         int served = 0;
+        int sent = 0;
+        int slow = 0;
+        // Until the agent is told: one slower than the client waits (a loaded machine's first) is let go, web measuring it all the same.
         Task asking = Waiting.Apart(async () =>
         {
             using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(5) };
             while (!stopAsking.IsCancellationRequested)
             {
+                Interlocked.Increment(ref sent);
                 try
                 {
                     using HttpResponseMessage answered = await http.GetAsync(address, stopAsking.Token);
@@ -460,8 +467,13 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
                 {
                     // Not yet listening.
                 }
-                catch (OperationCanceledException) when (stopAsking.IsCancellationRequested)
+                catch (OperationCanceledException) when (!stopAsking.IsCancellationRequested)
                 {
+                    Interlocked.Increment(ref slow);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Stopped as the test ends.
                 }
                 await Waiting.ForAsync(TimeSpan.FromMilliseconds(100), "a request's pause", stopAsking.Token).Ended();
             }
@@ -496,11 +508,23 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             own.Kill();
         }
 
-        // How far web had come: the requests it answered, whether its program runs, and what its console says.
+        // How far web had come: the requests it was sent and answered, its program and what the agent's Passenger logged of it, its console.
         async Task<string> WebSaidAsync()
         {
             CallToolResult console = await Result(client, McpTools.Output, new() { ["resource"] = "web", ["lines"] = 40 });
-            return $"web answered {Volatile.Read(ref served)} requests, its program {program} {(Processes.IsRunning(program) ? "runs" : "has ended")}, and its console says:\n{Text(console)}";
+            string stopped = asking.IsFaulted ? $" (the requests stopped: {asking.Exception!.InnerException!.Message})" : string.Empty;
+            string log = Path.Combine(OwnState, "logs", "passenger.log");
+            string logged = string.Empty;
+            if (File.Exists(log))
+            {
+                using FileStream read = new(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                logged = string.Join("\n  ", new StreamReader(read).ReadToEnd().Split('\n').Where(line => line.Contains($"rocess {program}", StringComparison.Ordinal)).TakeLast(10));
+            }
+            string ran = !DotnetProcesses.Runs(webProcess)
+                ? $"began at {webProcess.StartTime:HH:mm:ss.fff} and ended at {webProcess.ExitTime:HH:mm:ss.fff} with exit code {webProcess.ExitCode}" : $"began at {webProcess.StartTime:HH:mm:ss.fff} and runs";
+            return $"web was sent {Volatile.Read(ref sent)} requests{stopped}, answered {Volatile.Read(ref served)} of them and was slower than 5 s to {Volatile.Read(ref slow)}, "
+                + $"its program {program} {ran} (the agent's Passenger logged {(logged.Length == 0 ? "nothing of it" : $"of it:\n  {logged}\n")}), "
+                + $"and its console says:\n{Text(console)}";
         }
     }
 
