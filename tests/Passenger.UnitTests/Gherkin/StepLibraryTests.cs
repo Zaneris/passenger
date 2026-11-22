@@ -22,62 +22,55 @@ public sealed class StepLibraryTests
     private static readonly StepBinding Answer = Binding(BindingKind.Then, "the answer is {int}", "ThenAnswer", parameters: new StepParameter("answer", Int));
 
     [Fact]
-    public void Each_definition_is_listed_once_by_its_kind_then_phrase_however_many_projects_see_it()
-    {
-        IReadOnlyList<LibraryStep> listed = StepLibrary.Definitions(
-            [Project("Specs", [Shown, Cleared, Answer, Added, First]), Project("Steps", [Cleared with { }])]);
-        Assert.Equal(
-            ["the first number is [int]", "the two numbers are added", "the answer is [int]", "the display shows \"[string]\"", "the calculator is cleared"],
-            listed.Select(s => s.Sample.Text));
-        Assert.Equal(["@display"], listed.Single(s => s.Binding == Shown).Tags);
-        Assert.All(listed, s => Assert.Null(s.Uses));
-    }
+    public void The_step_library_lists_each_definition_and_hook_once_counted_by_each_step_and_filtered_by_words_and_tags() => Cases.All(
+        ("each definition is listed once by its kind then phrase however many projects see it", () =>
+        {
+            IReadOnlyList<LibraryStep> listed = StepLibrary.Definitions(
+                [Project("Specs", [Shown, Cleared, Answer, Added, First]), Project("Steps", [Cleared with { }])]);
+            Assert.Equal(
+                ["the first number is [int]", "the two numbers are added", "the answer is [int]", "the display shows \"[string]\"", "the calculator is cleared"],
+                listed.Select(s => s.Sample.Text));
+            Assert.Equal(["@display"], listed.Single(s => s.Binding == Shown).Tags);
+            Assert.All(listed, s => Assert.Null(s.Uses));
+        }),
+        ("a definition is counted by each step binding it a step bound by two counting for both and an outlines once", () =>
+        {
+            IReadOnlyList<LibraryStep> listed = StepLibrary.Definitions([Project("Specs", [First, Added, Answer])]);
+            StepMatch outline = new(MatchStatus.Defined, [new BoundStep(First, []), new BoundStep(First with { }, [])]);
+            StepMatch plain = new(MatchStatus.Defined, [new BoundStep(First, [])]);
+            StepMatch ambiguous = new(MatchStatus.Ambiguous, [new BoundStep(First, []), new BoundStep(Added, [])]);
+            IReadOnlyList<LibraryStep> counted = StepLibrary.Counted(listed, StepLibrary.BoundBy([outline, plain, ambiguous]));
+            Assert.Equal([3, 1, 0], counted.Select(s => s.Uses ?? -1));
+        }),
+        ("two readings of one definition share its key and another method or expression does not", () =>
+        {
+            Assert.Equal(StepLibrary.KeyOf(First), StepLibrary.KeyOf(First with { Scopes = [new StepScope("x", null, null)] }));
+            Assert.True(First.SameAs(First with { }));
+            Assert.NotEqual(StepLibrary.KeyOf(First), StepLibrary.KeyOf(First with { Expression = "the first number is {float}" }));
+            Assert.NotEqual(StepLibrary.KeyOf(First), StepLibrary.KeyOf(First with { Method = "Other" }));
+            Assert.NotEqual(StepLibrary.KeyOf(Binding(BindingKind.Given, null, "M")), StepLibrary.KeyOf(Binding(BindingKind.Given, "", "M")));
+        }),
+        ("hooks are listed once in the order they run", () =>
+        {
+            StepHook after = new("AfterScenario", "Done", "Calc.Steps.Hooks", [], 0);
+            StepHook before = new("BeforeScenario", "Ready", "Calc.Steps.Hooks", [new StepScope("@calc", null, null)], 5);
+            StepHook earlier = new("BeforeScenario", "Warm", "Calc.Steps.Hooks", [], 1);
+            StepHook run = new("BeforeTestRun", "Start", "Calc.Steps.Hooks", [], 0);
+            IReadOnlyList<StepHook> listed = StepLibrary.Hooks([Project("Specs", [], [after, before, earlier]), Project("Steps", [], [run, before])]);
+            Assert.Equal(["Start", "Warm", "Ready", "Done"], listed.Select(h => h.Method));
+            Assert.Equal(["@calc"], StepLibrary.TagsOf(before.Scopes));
+            Assert.Equal("Before each scenario", StepLibrary.HookWords(before.Kind));
+        }),
+        ("the filter keeps what holds every word and is scoped to every tag", () => Cases.Each(
+        [
+            ("", "the first number is [int]|the two numbers are added|the display shows \"[string]\"", "Ready|Done"),
+            ("NUMBER", "the first number is [int]|the two numbers are added", ""),
+            ("ThenShown", "the display shows \"[string]\"", ""),
+            ("@display first", "", ""),
+            ("@calc", "", "Ready"),
+        ], row => Filtered(row.Item1, row.Item2, row.Item3))));
 
-    [Fact]
-    public void A_definition_is_counted_by_each_step_binding_it_a_step_bound_by_two_counting_for_both_and_an_outlines_once()
-    {
-        IReadOnlyList<LibraryStep> listed = StepLibrary.Definitions([Project("Specs", [First, Added, Answer])]);
-        StepMatch outline = new(MatchStatus.Defined, [new BoundStep(First, []), new BoundStep(First with { }, [])]);
-        StepMatch plain = new(MatchStatus.Defined, [new BoundStep(First, [])]);
-        StepMatch ambiguous = new(MatchStatus.Ambiguous, [new BoundStep(First, []), new BoundStep(Added, [])]);
-        IReadOnlyList<LibraryStep> counted = StepLibrary.Counted(listed, StepLibrary.BoundBy([outline, plain, ambiguous]));
-        Assert.Equal([3, 1, 0], counted.Select(s => s.Uses ?? -1));
-    }
-
-    [Fact]
-    public void Two_readings_of_one_definition_share_its_key_and_another_method_or_expression_does_not()
-    {
-        Assert.Equal(StepLibrary.KeyOf(First), StepLibrary.KeyOf(First with { Scopes = [new StepScope("x", null, null)] }));
-        Assert.True(First.SameAs(First with { }));
-        Assert.NotEqual(StepLibrary.KeyOf(First), StepLibrary.KeyOf(First with { Expression = "the first number is {float}" }));
-        Assert.NotEqual(StepLibrary.KeyOf(First), StepLibrary.KeyOf(First with { Method = "Other" }));
-        Assert.NotEqual(StepLibrary.KeyOf(Binding(BindingKind.Given, null, "M")), StepLibrary.KeyOf(Binding(BindingKind.Given, "", "M")));
-    }
-
-    [Fact]
-    public void Hooks_are_listed_once_in_the_order_they_run()
-    {
-        StepHook after = new("AfterScenario", "Done", "Calc.Steps.Hooks", [], 0);
-        StepHook before = new("BeforeScenario", "Ready", "Calc.Steps.Hooks", [new StepScope("@calc", null, null)], 5);
-        StepHook earlier = new("BeforeScenario", "Warm", "Calc.Steps.Hooks", [], 1);
-        StepHook run = new("BeforeTestRun", "Start", "Calc.Steps.Hooks", [], 0);
-        IReadOnlyList<StepHook> listed = StepLibrary.Hooks([Project("Specs", [], [after, before, earlier]), Project("Steps", [], [run, before])]);
-        Assert.Equal(["Start", "Warm", "Ready", "Done"], listed.Select(h => h.Method));
-        Assert.Equal(["@calc"], StepLibrary.TagsOf(before.Scopes));
-        Assert.Equal("Before each scenario", StepLibrary.HookWords(before.Kind));
-    }
-
-    [Theory]
-    [InlineData("", "the first number is [int]|the two numbers are added|the display shows \"[string]\"", "Ready|Done")]
-    [InlineData("NUMBER", "the first number is [int]|the two numbers are added", "")]
-    [InlineData("first number", "the first number is [int]", "")]
-    [InlineData("ThenShown", "the display shows \"[string]\"", "")]
-    [InlineData("@disp", "the display shows \"[string]\"", "")]
-    [InlineData("@display shows", "the display shows \"[string]\"", "")]
-    [InlineData("@display first", "", "")]
-    [InlineData("@calc", "", "Ready")]
-    [InlineData("after", "", "Done")]
-    public void The_filter_keeps_what_holds_every_word_and_is_scoped_to_every_tag(string typed, string steps, string hooks)
+    private static void Filtered(string typed, string steps, string hooks)
     {
         StepFilter filter = StepFilter.Parse(typed);
         LibraryStep[] listed = [.. StepLibrary.Definitions([Project("Specs", [First, Added, Shown])])];

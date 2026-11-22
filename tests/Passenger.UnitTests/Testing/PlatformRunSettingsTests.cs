@@ -34,72 +34,58 @@ public class PlatformRunSettingsTests
     private static string? Sources(XElement settings) => settings.Element("RunConfiguration")?.Element("CollectSourceInformation")?.Value;
 
     [Fact]
-    public void A_run_of_a_project_naming_no_run_settings_asks_nothing_of_its_host()
-    {
-        Dictionary<string, string> profile = new() { ["PROFILED_BY"] = "the profile" };
-        Assert.Same(profile, Given(null, looking: false, profile));
-        Assert.Null(Given(null, looking: false));
-    }
+    public void Run_settings_reach_a_Testing_Platform_host_as_its_project_and_the_person_give_them() => Cases.All(
+        ("a run of a project naming no run settings asks nothing of its host", () =>
+        {
+            Dictionary<string, string> profile = new() { ["PROFILED_BY"] = "the profile" };
+            Assert.Same(profile, Given(null, looking: false, profile));
+            Assert.Null(Given(null, looking: false));
+        }),
+        ("a host looking for tests is asked where each is with no run settings named", () =>
+        {
+            Assert.Equal("true", Sources(Read(Given(null, looking: true))));
+        }),
+        ("a host looking for tests keeps what its project's run settings say and is asked where each is", () =>
+        {
+            XElement read = Read(Given(Settled, looking: true));
+            Assert.Equal("true", Sources(read));
+            Assert.Equal("the parameter", read.Element("TestRunParameters")?.Element("Parameter")?.Attribute("value")?.Value);
+        }),
+        ("run settings saying no test is to say where it is stand", () =>
+        {
+            const string Unsaid = "<RunSettings><RunConfiguration><CollectSourceInformation>false</CollectSourceInformation></RunConfiguration></RunSettings>";
+            Assert.Equal("false", Sources(Read(Given(Unsaid, looking: true))));
+        }),
+        ("a run is given its project's run settings with nothing asked of where tests are", () =>
+        {
+            XElement read = Read(Given(Settled, looking: false));
+            Assert.Null(Sources(read));
+            Assert.NotNull(read.Element("TestRunParameters"));
+        }),
+        ("run settings variables go to the host's environment under the run's own and never to a bridge", () =>
+        {
+            IReadOnlyDictionary<string, string>? given = Given(Settled, looking: false, new Dictionary<string, string> { ["BOTH"] = "the profile", ["PROFILED_BY"] = "the profile" });
+            Assert.Equal(("the run settings", "the profile", "the profile"), (given!["SETTLED_BY"], given["BOTH"], given["PROFILED_BY"]));
+            Assert.True(Read(given).Element("RunConfiguration")!.Element("EnvironmentVariables") is null,
+                "A bridge given run settings with variables starts its tests in a process of its own, where a debugger never sees them");
+        }),
+        ("the file a project names is left as it was read", () =>
+        {
+            XElement settings = XElement.Parse(Settled);
+            PlatformRunSettings.Given(settings, looking: true, null, _ => null);
+            Assert.True(XNode.DeepEquals(XElement.Parse(Settled), settings), "Reading what a host is given changed the settings read, which the next host of the project takes");
+        }),
+        ("run settings a person gave a bridge stand in the place of the project's", () =>
+        {
+            Assert.Null(Given(Settled, looking: true, inherited: "<RunSettings />"));
+            Dictionary<string, string> content = new() { [Variable] = "<RunSettings />" };
+            Assert.Same(content, Given(Settled, looking: true, content));
+            Dictionary<string, string> file = new() { [FileVariable] = "their.runsettings" };
+            Assert.Same(file, Given(Settled, looking: false, file));
+        }),
+        ("a bridge's variable set empty gives it no run settings so the project's are given", () =>
+        {
+            Assert.NotNull(Read(Given(Settled, looking: false, inherited: string.Empty)).Element("TestRunParameters"));
+        }));
 
-    [Fact]
-    public void A_host_looking_for_tests_is_asked_where_each_is_with_no_run_settings_named()
-    {
-        Assert.Equal("true", Sources(Read(Given(null, looking: true))));
-    }
-
-    [Fact]
-    public void A_host_looking_for_tests_keeps_what_its_projects_run_settings_say_and_is_asked_where_each_is()
-    {
-        XElement read = Read(Given(Settled, looking: true));
-        Assert.Equal("true", Sources(read));
-        Assert.Equal("the parameter", read.Element("TestRunParameters")?.Element("Parameter")?.Attribute("value")?.Value);
-    }
-
-    [Fact]
-    public void Run_settings_saying_no_test_is_to_say_where_it_is_stand()
-    {
-        const string Unsaid = "<RunSettings><RunConfiguration><CollectSourceInformation>false</CollectSourceInformation></RunConfiguration></RunSettings>";
-        Assert.Equal("false", Sources(Read(Given(Unsaid, looking: true))));
-    }
-
-    [Fact]
-    public void A_run_is_given_its_projects_run_settings_with_nothing_asked_of_where_tests_are()
-    {
-        XElement read = Read(Given(Settled, looking: false));
-        Assert.Null(Sources(read));
-        Assert.NotNull(read.Element("TestRunParameters"));
-    }
-
-    [Fact]
-    public void Run_settings_variables_go_to_the_hosts_environment_under_the_runs_own_and_never_to_a_bridge()
-    {
-        IReadOnlyDictionary<string, string>? given = Given(Settled, looking: false, new Dictionary<string, string> { ["BOTH"] = "the profile", ["PROFILED_BY"] = "the profile" });
-        Assert.Equal(("the run settings", "the profile", "the profile"), (given!["SETTLED_BY"], given["BOTH"], given["PROFILED_BY"]));
-        Assert.True(Read(given).Element("RunConfiguration")!.Element("EnvironmentVariables") is null,
-            "A bridge given run settings with variables starts its tests in a process of its own, where a debugger never sees them");
-    }
-
-    [Fact]
-    public void The_file_a_project_names_is_left_as_it_was_read()
-    {
-        XElement settings = XElement.Parse(Settled);
-        PlatformRunSettings.Given(settings, looking: true, null, _ => null);
-        Assert.True(XNode.DeepEquals(XElement.Parse(Settled), settings), "Reading what a host is given changed the settings read, which the next host of the project takes");
-    }
-
-    [Fact]
-    public void Run_settings_a_person_gave_a_bridge_stand_in_the_place_of_the_projects()
-    {
-        Assert.Null(Given(Settled, looking: true, inherited: "<RunSettings />"));
-        Dictionary<string, string> content = new() { [Variable] = "<RunSettings />" };
-        Assert.Same(content, Given(Settled, looking: true, content));
-        Dictionary<string, string> file = new() { [FileVariable] = "their.runsettings" };
-        Assert.Same(file, Given(Settled, looking: false, file));
-    }
-
-    [Fact]
-    public void A_bridges_variable_set_empty_gives_it_no_run_settings_so_the_projects_are_given()
-    {
-        Assert.NotNull(Read(Given(Settled, looking: false, inherited: string.Empty)).Element("TestRunParameters"));
-    }
 }

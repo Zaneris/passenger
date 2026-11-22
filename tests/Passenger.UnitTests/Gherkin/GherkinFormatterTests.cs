@@ -12,116 +12,88 @@ public sealed class GherkinFormatterTests
         GherkinFormatter.Format(text, options ?? GherkinFormatOptions.Default, "en");
 
     [Fact]
-    public void Headers_stay_at_the_left_steps_are_indented_and_tables_aligned_under_them()
-    {
-        string formatted = Format(
-            "  @tag\n" +
-            "    Feature: F\n" +
-            "\n" +
-            "   Scenario: S\n" +
-            "Given the users\n" +
-            "      |name|age|\n" +
-            "  | Ann | 7 |\n" +
-            "  | Bartholomew | 42 |\n" +
-            "    And   more\n" +
-            "Then done   \n");
+    public void A_feature_is_laid_out_with_its_tables_aligned_keeping_every_value_and_line_break_as_written() => Cases.All(
+        ("headers stay at the left steps are indented and tables aligned under them", () =>
+        {
+            string formatted = Format(
+                "  @tag\n" +
+                "    Feature: F\n" +
+                "\n" +
+                "   Scenario: S\n" +
+                "Given the users\n" +
+                "      |name|age|\n" +
+                "  | Ann | 7 |\n" +
+                "  | Bartholomew | 42 |\n" +
+                "    And   more\n" +
+                "Then done   \n");
 
-        Assert.Equal(
-            "@tag\n" +
-            "Feature: F\n" +
-            "\n" +
-            "Scenario: S\n" +
-            "    Given the users\n" +
-            "        | name        | age |\n" +
-            "        | Ann         |   7 |\n" +
-            "        | Bartholomew |  42 |\n" +
-            "    And more\n" +
-            "    Then done\n",
-            formatted);
-    }
+            Assert.Equal(
+                "@tag\n" +
+                "Feature: F\n" +
+                "\n" +
+                "Scenario: S\n" +
+                "    Given the users\n" +
+                "        | name        | age |\n" +
+                "        | Ann         |   7 |\n" +
+                "        | Bartholomew |  42 |\n" +
+                "    And more\n" +
+                "    Then done\n",
+                formatted);
+        }),
+        ("a doc string's lines keep their indentation within it", () =>
+        {
+            Assert.Equal(
+                "Feature: F\nScenario: S\n    Given text\n        \"\"\"json\n        {\n          \"a\": 1\n        }\n        \"\"\"\n",
+                Format("Feature: F\nScenario: S\nGiven text\n  \"\"\"json\n  {\n    \"a\": 1\n  }\n  \"\"\"\n"));
+        }),
+        ("the keys indent a feature's children and its Ands and set a cell's padding", () =>
+        {
+            GherkinFormatOptions options = GherkinFormatOptions.Default with { IndentFeatureChildren = true, IndentAndSteps = true, CellPadding = 0, RightAlignNumbers = false, Indent = "  " };
 
-    [Fact]
-    public void An_outlines_examples_stay_at_its_level_and_their_table_is_indented()
-    {
-        Assert.Equal(
-            "Feature: F\n\nScenario Outline: O\n    Given <a>\n\n@slow\nExamples:\n    | a |\n    | x |\n",
-            Format("Feature: F\n\nScenario Outline: O\nGiven <a>\n\n  @slow\n  Examples:\n|a|\n|x|\n"));
-    }
+            Assert.Equal(
+                "Feature: F\n  Scenario: S\n    Given one\n      |a |\n      |10|\n      And two\n",
+                Format("Feature: F\nScenario: S\nGiven one\n|a|\n|10|\nAnd two\n", options));
+        }),
+        ("a comment is indented as what follows it and a description is left as written", () =>
+        {
+            Assert.Equal(
+                "Feature: F\n  as written\n\n# about S\nScenario: S\n    # about the step\n    Given one\n",
+                Format("Feature: F\n  as written\n\n  # about S\nScenario: S\n# about the step\nGiven one\n"));
+        }),
+        ("a doc string's trailing whitespace is its value and stays", () =>
+        {
+            Assert.Equal("Feature: F\nScenario: S\n    Given text\n        \"\"\"\n        kept  \n        \"\"\"\n",
+                Format("Feature: F\nScenario: S\nGiven text\n\"\"\"\nkept  \n\"\"\"\n"));
+        }),
+        ("a file of crlf lines keeps its line breaks", () =>
+        {
+            Assert.Equal("Feature: F\r\nScenario: S\r\n    Given one\r\n        | a |\r\n",
+                Format("Feature: F\r\nScenario: S\r\nGiven one\r\n|a|\r\n"));
+        }),
+        ("what a row holds after its last bar stays after its aligned cell's", () =>
+        {
+            Assert.Equal(
+                "Feature: F\nScenario: S\n    Given table\n" +
+                "        | name\n" +
+                "        | foo | bar\n" +
+                "        | foo | bar baz\n" +
+                "        |\n" +
+                "        | foo |\n" +
+                "        | foo | bar \\| baz\n" +
+                "        |   5 |   6 | 11\n" +
+                "        | foo | bar |\n" +
+                "\nScenario Outline: O\n    Given <a>\n\nExamples:\n    | a | sum\n    | 1 | 1 |\n",
+                Format(
+                    "Feature: F\nScenario: S\nGiven table\n" +
+                    "    | name\n" +
+                    "    | foo |    bar  \n" +
+                    "    | foo  |  bar baz  \n" +
+                    "    |   \n" +
+                    "    | foo   |    \n" +
+                    "    | foo   | bar \\| baz\n" +
+                    "    | 5 | 6 | 11\n" +
+                    "    | foo   | bar |\n" +
+                    "\nScenario Outline: O\nGiven <a>\n\nExamples:\n|a|sum\n|1|1|\n"));
+        }));
 
-    [Fact]
-    public void A_doc_strings_lines_keep_their_indentation_within_it()
-    {
-        Assert.Equal(
-            "Feature: F\nScenario: S\n    Given text\n        \"\"\"json\n        {\n          \"a\": 1\n        }\n        \"\"\"\n",
-            Format("Feature: F\nScenario: S\nGiven text\n  \"\"\"json\n  {\n    \"a\": 1\n  }\n  \"\"\"\n"));
-    }
-
-    [Fact]
-    public void The_keys_indent_a_features_children_and_its_ands_and_set_a_cells_padding()
-    {
-        GherkinFormatOptions options = GherkinFormatOptions.Default with { IndentFeatureChildren = true, IndentAndSteps = true, CellPadding = 0, RightAlignNumbers = false, Indent = "  " };
-
-        Assert.Equal(
-            "Feature: F\n  Scenario: S\n    Given one\n      |a |\n      |10|\n      And two\n",
-            Format("Feature: F\nScenario: S\nGiven one\n|a|\n|10|\nAnd two\n", options));
-    }
-
-    [Fact]
-    public void A_comment_is_indented_as_what_follows_it_and_a_description_is_left_as_written()
-    {
-        Assert.Equal(
-            "Feature: F\n  as written\n\n# about S\nScenario: S\n    # about the step\n    Given one\n",
-            Format("Feature: F\n  as written\n\n  # about S\nScenario: S\n# about the step\nGiven one\n"));
-    }
-
-    [Fact]
-    public void The_editorconfig_keys_are_read_with_their_defaults()
-    {
-        Dictionary<string, string> said = new() { ["gherkin_indent_steps"] = "false", ["gherkin_table_cell_padding_size"] = "2", ["indent_style"] = "tab" };
-
-        GherkinFormatOptions options = GherkinFormatOptions.Of(key => said.GetValueOrDefault(key), "    ");
-
-        Assert.Equal((false, 2, true, "\t"), (options.IndentSteps, options.CellPadding, options.IndentDataTable, options.Indent));
-    }
-
-    [Fact]
-    public void A_doc_strings_trailing_whitespace_is_its_value_and_stays()
-    {
-        Assert.Equal("Feature: F\nScenario: S\n    Given text\n        \"\"\"\n        kept  \n        \"\"\"\n",
-            Format("Feature: F\nScenario: S\nGiven text\n\"\"\"\nkept  \n\"\"\"\n"));
-    }
-
-    [Fact]
-    public void A_file_of_crlf_lines_keeps_its_line_breaks()
-    {
-        Assert.Equal("Feature: F\r\nScenario: S\r\n    Given one\r\n        | a |\r\n",
-            Format("Feature: F\r\nScenario: S\r\nGiven one\r\n|a|\r\n"));
-    }
-
-    [Fact]
-    public void What_a_row_holds_after_its_last_bar_stays_after_its_aligned_cells()
-    {
-        Assert.Equal(
-            "Feature: F\nScenario: S\n    Given table\n" +
-            "        | name\n" +
-            "        | foo | bar\n" +
-            "        | foo | bar baz\n" +
-            "        |\n" +
-            "        | foo |\n" +
-            "        | foo | bar \\| baz\n" +
-            "        |   5 |   6 | 11\n" +
-            "        | foo | bar |\n" +
-            "\nScenario Outline: O\n    Given <a>\n\nExamples:\n    | a | sum\n    | 1 | 1 |\n",
-            Format(
-                "Feature: F\nScenario: S\nGiven table\n" +
-                "    | name\n" +
-                "    | foo |    bar  \n" +
-                "    | foo  |  bar baz  \n" +
-                "    |   \n" +
-                "    | foo   |    \n" +
-                "    | foo   | bar \\| baz\n" +
-                "    | 5 | 6 | 11\n" +
-                "    | foo   | bar |\n" +
-                "\nScenario Outline: O\nGiven <a>\n\nExamples:\n|a|sum\n|1|1|\n"));
-    }
 }

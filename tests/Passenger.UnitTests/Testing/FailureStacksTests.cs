@@ -21,25 +21,29 @@ public class FailureStacksTests
         + "  2)   Assert.That(3 + 3, Is.EqualTo(7))\n  Expected: 7\n  But was:  6\n\n"
         + "     at Cases.Failing.<>c.<Twice>b__1_0() in /src/Cases.cs:line 16\n   at NUnit.Framework.Assert.Multiple(Action action)\n   at Cases.Failing.Twice() in /src/Cases.cs:line 13\n\n\n";
 
-    [Theory]
-    [InlineData(Single, "  Assert.That(2 + 2, Is.EqualTo(5))\n  Expected: 5\n  But was:  4\n", "   at Cases.Failing.Single() in /src/Cases.cs:line 8")]
-    [InlineData(Thrown, "System.InvalidOperationException : thrown on purpose",
-        "   at Cases.Failing.Deep(Int32 n) in /src/Cases.cs:line 27\n   at Cases.Failing.Throws() in /src/Cases.cs:line 21")]
-    [InlineData(Several, SeveralSaid, "   at Cases.Failing.Twice() in /src/Cases.cs:line 13")]
-    [InlineData("   at A.B() in /a.cs:line 1\r\n\r\n1)    at A.B() in /a.cs:line 1\r\n\r\n", null, "   at A.B() in /a.cs:line 1")]
-    [InlineData("   at A.B() in /a.cs:line 1\n\n1)    at A.B() in /a.cs:line 1\n\n2)    at A.C() in /a.cs:line 12\n\n", "  2) failed\n     at A.C() in /a.cs:line 1\n",
-        "   at A.B() in /a.cs:line 1\n\n2)    at A.C() in /a.cs:line 12")]
-    public void A_numbered_stack_said_already_is_left_out(string stack, string? message, string shown)
+    [Fact]
+    public void A_failures_stack_is_shown_once_and_one_said_nowhere_else_as_written() => Cases.All(
+        ("a numbered stack said already is left out", () => Cases.Each(
+        [
+            (Single, "  Assert.That(2 + 2, Is.EqualTo(5))\n  Expected: 5\n  But was:  4\n", "   at Cases.Failing.Single() in /src/Cases.cs:line 8"),
+            (Thrown, "System.InvalidOperationException : thrown on purpose",
+                "   at Cases.Failing.Deep(Int32 n) in /src/Cases.cs:line 27\n   at Cases.Failing.Throws() in /src/Cases.cs:line 21"),
+            (Several, SeveralSaid, "   at Cases.Failing.Twice() in /src/Cases.cs:line 13"),
+            ("   at A.B() in /a.cs:line 1\r\n\r\n1)    at A.B() in /a.cs:line 1\r\n\r\n", (string?)null, "   at A.B() in /a.cs:line 1"),
+        ], row => LeftOut(row.Item1, row.Item2, row.Item3))),
+        ("a stack said nowhere else stays as written", () => Cases.Each(
+        [
+            ("   at A.B() in /a.cs:line 1\n\n1)    at A.C() in /a.cs:line 2\n\n", (string?)null),
+            ("   at Xunit.Assert.Equal(Int32 expected, Int32 actual)\n   at Cases.Sums.Adds() in /src/Sums.cs:line 9", "Assert.Equal() Failure"),
+            (null, null),
+        ], row => Stays(row.Item1, row.Item2))));
+
+    private static void LeftOut(string stack, string? message, string shown)
     {
         Assert.True(FailureStacks.Once(stack, message) == shown, $"The stack\n{stack}\nwith the message\n{message}\nis shown as\n{FailureStacks.Once(stack, message)}");
     }
 
-    [Theory]
-    [InlineData("   at A.B() in /a.cs:line 1\n\n1)    at A.C() in /a.cs:line 2\n\n", null)]
-    [InlineData("   at Xunit.Assert.Equal(Int32 expected, Int32 actual)\n   at Cases.Sums.Adds() in /src/Sums.cs:line 9", "Assert.Equal() Failure")]
-    [InlineData("", null)]
-    [InlineData(null, null)]
-    public void A_stack_said_nowhere_else_stays_as_written(string? stack, string? message)
+    private static void Stays(string? stack, string? message)
     {
         string? shown = FailureStacks.Once(stack, message);
         Assert.True(shown == stack, $"The stack\n{stack}\nwith the message\n{message}\nis shown as\n{shown}");

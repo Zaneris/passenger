@@ -17,29 +17,27 @@ public class BrokenRunsTests
     private static AggregateException HostEndedFirst() => new([new OperationCanceledException()]);
 
     [Fact]
-    public void A_crash_heard_by_the_hosts_exit_first_is_said_as_one_heard_by_the_connections_end_naming_the_test_running()
-    {
-        Assert.Equal("One or more errors occurred. (The operation was canceled.)", HostEndedFirst().Message);
-        string said = $"{Crashed}, while {Running} ran";
-        Assert.Equal(said, BrokenRuns.Said(null, Crashed, [Running]));
-        Assert.Equal(said, BrokenRuns.Said(HostEndedFirst(), Crashed, [Running]));
-        Assert.Equal(said, BrokenRuns.Said(new OperationCanceledException(), Crashed, [Running]));
-    }
+    public void A_broken_run_is_said_naming_the_tests_running_and_why() => Cases.All(
+        ("a crash heard by the host's exit first is said as one heard by the connection's end naming the test running", () =>
+        {
+            Assert.Equal("One or more errors occurred. (The operation was canceled.)", HostEndedFirst().Message);
+            string said = $"{Crashed}, while {Running} ran";
+            Assert.Equal(said, BrokenRuns.Said(null, Crashed, [Running]));
+            Assert.Equal(said, BrokenRuns.Said(HostEndedFirst(), Crashed, [Running]));
+            Assert.Equal(said, BrokenRuns.Said(new OperationCanceledException(), Crashed, [Running]));
+        }),
+        ("an error of VSTest's own is said in place of what it logged each of an aggregate's by its words with the test running", () =>
+        {
+            AggregateException failed = new([new InvalidOperationException("Unable to read the test host's message"), new OperationCanceledException()]);
+            Assert.Equal($"Unable to read the test host's message; The operation was canceled., while {Running} ran", BrokenRuns.Said(failed, Crashed, [Running]));
+            Assert.Equal("Unable to read the test host's message", BrokenRuns.Said(new InvalidOperationException("Unable to read the test host's message"), Crashed, []));
+        }),
+        ("a run broken off with nothing said names only the tests running and with none running only why", () =>
+        {
+            Assert.Equal("while A.One, A.Two ran", BrokenRuns.Said(HostEndedFirst(), null, ["A.One", "A.Two"]));
+            Assert.Equal(Crashed, BrokenRuns.Said(HostEndedFirst(), Crashed, []));
+            Assert.Null(BrokenRuns.Said(null, null, []));
+            Assert.Null(BrokenRuns.Told(HostEndedFirst()));
+        }));
 
-    [Fact]
-    public void An_error_of_vstests_own_is_said_in_place_of_what_it_logged_each_of_an_aggregates_by_its_words_with_the_test_running()
-    {
-        AggregateException failed = new([new InvalidOperationException("Unable to read the test host's message"), new OperationCanceledException()]);
-        Assert.Equal($"Unable to read the test host's message; The operation was canceled., while {Running} ran", BrokenRuns.Said(failed, Crashed, [Running]));
-        Assert.Equal("Unable to read the test host's message", BrokenRuns.Said(new InvalidOperationException("Unable to read the test host's message"), Crashed, []));
-    }
-
-    [Fact]
-    public void A_run_broken_off_with_nothing_said_names_only_the_tests_running_and_with_none_running_only_why()
-    {
-        Assert.Equal("while A.One, A.Two ran", BrokenRuns.Said(HostEndedFirst(), null, ["A.One", "A.Two"]));
-        Assert.Equal(Crashed, BrokenRuns.Said(HostEndedFirst(), Crashed, []));
-        Assert.Null(BrokenRuns.Said(null, null, []));
-        Assert.Null(BrokenRuns.Told(HostEndedFirst()));
-    }
 }
