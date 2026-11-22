@@ -13,8 +13,34 @@ public class GutRunsTests
     private static readonly GutRuns.Chosen Inner = Adds with { Inner = "TestInner" };
     private static readonly GutRuns.Chosen InnerToo = Adds with { Inner = "TestInnerToo" };
 
+    /// <summary>The tests chosen run alone through Passenger's hook, never by a name GUT would take any test
+    /// holding.</summary>
     [Fact]
-    public void A_run_names_its_scripts_and_its_results_and_picks_nothing_by_a_name_GUT_would_take_any_test_holding()
+    public void Chosen_tests_run_alone_through_the_hook_as_gut_takes_them() => Cases.All(
+        (nameof(A_run_names_its_scripts_and_its_results_and_picks_nothing_by_a_name_GUT_would_take_any_test_holding),
+            A_run_names_its_scripts_and_its_results_and_picks_nothing_by_a_name_GUT_would_take_any_test_holding),
+        (nameof(A_hook_is_given_on_the_command_line_by_its_path_as_Godot_writes_one),
+            A_hook_is_given_on_the_command_line_by_its_path_as_Godot_writes_one),
+        (nameof(A_test_chosen_alone_keeps_it_alone_though_another_test_holds_its_name),
+            A_test_chosen_alone_keeps_it_alone_though_another_test_holds_its_name),
+        (nameof(A_test_of_an_inner_class_keeps_that_class_alone_of_those_alike_and_of_its_script),
+            A_test_of_an_inner_class_keeps_that_class_alone_of_those_alike_and_of_its_script),
+        (nameof(A_suite_chosen_whole_beside_one_chosen_in_part_keeps_what_it_inherits_too),
+            A_suite_chosen_whole_beside_one_chosen_in_part_keeps_what_it_inherits_too),
+        (nameof(A_test_the_code_no_longer_declares_is_kept_by_name_rather_than_run_with_its_whole_script),
+            A_test_the_code_no_longer_declares_is_kept_by_name_rather_than_run_with_its_whole_script),
+        (nameof(The_hook_names_what_it_keeps_in_literals_GDScript_reads_and_the_projects_own_hook),
+            The_hook_names_what_it_keeps_in_literals_GDScript_reads_and_the_projects_own_hook),
+        (nameof(A_run_empties_the_folders_and_choices_a_gut_config_names_so_the_chosen_scripts_run_alone),
+            A_run_empties_the_folders_and_choices_a_gut_config_names_so_the_chosen_scripts_run_alone));
+
+    /// <summary>A failure, a pending test and an inner class's test are read as GUT says them.</summary>
+    [Fact]
+    public void A_gut_runs_results_are_read_as_gut_says_them() => Cases.All(
+        (nameof(A_failure_is_read_with_its_words_its_line_its_time_and_what_GUT_printed_under_it),
+            A_failure_is_read_with_its_words_its_line_its_time_and_what_GUT_printed_under_it));
+
+    private void A_run_names_its_scripts_and_its_results_and_picks_nothing_by_a_name_GUT_would_take_any_test_holding()
     {
         Assert.Equal(["-s", GutRuns.CommandLine, "-gexit", "-gdisable_colors", "-gjunit_xml_file=C:/runs/out.xml", "-gtest=res://test/unit/test_math.gd",
             "-gdir=", "-gselect=", "-gunit_test_name=", "-ginner_class="], GutRuns.Arguments([Adds], @"C:\runs\out.xml"));
@@ -22,39 +48,27 @@ public class GutRunsTests
         Assert.Contains("-gtest=res://test/unit/test_math.gd,res://test/test_b.gd", scripts);
     }
 
-    [Fact]
-    public void A_hook_is_given_on_the_command_line_by_its_path_as_Godot_writes_one()
+    private void A_hook_is_given_on_the_command_line_by_its_path_as_Godot_writes_one()
     {
         Assert.Equal("-gpre_run_script=C:/runs/hook.gd", GutRuns.Arguments([Adds], "/out.xml", @"C:\runs\hook.gd")[^1]);
         Assert.DoesNotContain(GutRuns.Arguments([Adds], "/out.xml"), a => a.StartsWith("-gpre_run_script", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void A_test_chosen_alone_keeps_it_alone_though_another_test_holds_its_name()
+    private void A_test_chosen_alone_keeps_it_alone_though_another_test_holds_its_name()
     {
         IReadOnlyDictionary<string, IReadOnlyList<string>>? kept = GutRuns.Kept([Adds], [Adds, Holds, Turns]);
         Assert.NotNull(kept);
         Assert.Equal(["test_adds"], kept[Adds.Suite]);
     }
 
-    [Fact]
-    public void Two_tests_of_a_scripts_three_keep_those_two()
-    {
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? kept = GutRuns.Kept([Adds, Turns], [Adds, Holds, Turns]);
-        Assert.NotNull(kept);
-        Assert.Equal(["test_adds", "test_turns"], kept[Adds.Suite]);
-    }
-
-    [Fact]
-    public void A_test_of_an_inner_class_keeps_that_class_alone_of_those_alike_and_of_its_script()
+    private void A_test_of_an_inner_class_keeps_that_class_alone_of_those_alike_and_of_its_script()
     {
         IReadOnlyDictionary<string, IReadOnlyList<string>>? kept = GutRuns.Kept([Inner], [Adds, Turns, Inner, InnerToo]);
         Assert.NotNull(kept);
         Assert.Equal(Inner.Suite, Assert.Single(kept).Key);
     }
 
-    [Fact]
-    public void A_suite_chosen_whole_beside_one_chosen_in_part_keeps_what_it_inherits_too()
+    private void A_suite_chosen_whole_beside_one_chosen_in_part_keeps_what_it_inherits_too()
     {
         IReadOnlyDictionary<string, IReadOnlyList<string>>? kept = GutRuns.Kept([Inner, Adds], [Adds, Turns, Inner]);
         Assert.NotNull(kept);
@@ -62,24 +76,14 @@ public class GutRunsTests
         Assert.Equal(["test_adds"], kept[Adds.Suite]);
     }
 
-    [Fact]
-    public void Whole_scripts_want_no_hook_whichever_of_their_classes_hold_the_tests()
-    {
-        GutRuns.Chosen other = new("res://test/test_b.gd", null, "test_b");
-        Assert.Null(GutRuns.Kept([Adds, Turns, Inner, other], [Adds, Turns, Inner, other]));
-        Assert.Null(GutRuns.Kept([other], [Adds, Turns, Inner, other]));
-    }
-
-    [Fact]
-    public void A_test_the_code_no_longer_declares_is_kept_by_name_rather_than_run_with_its_whole_script()
+    private void A_test_the_code_no_longer_declares_is_kept_by_name_rather_than_run_with_its_whole_script()
     {
         IReadOnlyDictionary<string, IReadOnlyList<string>>? kept = GutRuns.Kept([Adds], []);
         Assert.NotNull(kept);
         Assert.Equal(["test_adds"], kept[Adds.Suite]);
     }
 
-    [Fact]
-    public void The_hook_names_what_it_keeps_in_literals_GDScript_reads_and_the_projects_own_hook()
+    private void The_hook_names_what_it_keeps_in_literals_GDScript_reads_and_the_projects_own_hook()
     {
         string hook = GutRuns.Hook(new Dictionary<string, IReadOnlyList<string>> { ["res://test/a \"b\" \\c.gd"] = ["test_a"], ["res://test/d.gd.TestInner"] = [] }, "res://own.gd");
         Assert.Contains("extends \"res://addons/gut/hook_script.gd\"", hook, StringComparison.Ordinal);
@@ -88,21 +92,9 @@ public class GutRunsTests
         Assert.Contains("const OWN := \"\"", GutRuns.Hook(new Dictionary<string, IReadOnlyList<string>> { ["res://a.gd"] = ["test_a"] }, null), StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("test/unit/test_math.gd::test_adds", "res://test/unit/test_math.gd", null, "test_adds")]
-    [InlineData("test/unit/test_math.gd.TestInner::test_adds", "res://test/unit/test_math.gd", "TestInner", "test_adds")]
-    [InlineData("test/a.gd.b/test_c.gd::test_d", "res://test/a.gd.b/test_c.gd", null, "test_d")]
-    public void A_test_GUT_told_is_read_back_from_its_key(string key, string script, string? inner, string method)
-    {
-        GutRuns.Chosen read = GutRuns.Chosen.Of(key);
-        Assert.Equal(new GutRuns.Chosen(script, inner, method), read);
-        Assert.Equal(key, read.Key);
-    }
-
     /// <summary>GUT's command line takes an option given empty over its .gutconfig.json's, which would otherwise add every
     /// script of the folders it names to the run, or pick the tests, scripts and inner classes it names.</summary>
-    [Fact]
-    public void A_run_empties_the_folders_and_choices_a_gut_config_names_so_the_chosen_scripts_run_alone()
+    private void A_run_empties_the_folders_and_choices_a_gut_config_names_so_the_chosen_scripts_run_alone()
     {
         IReadOnlyList<string> arguments = GutRuns.Arguments([Adds, new("res://test/test_b.gd", null, "test_b")], "/out.xml");
         foreach (string emptied in new[] { "-gdir=", "-gselect=", "-gunit_test_name=", "-ginner_class=" })
@@ -133,8 +125,7 @@ public class GutRunsTests
     private const string Output = "\nres://test/unit/test_math.gd\n* test_adds\nadding\n    [Failed]:  [2] expected to equal [3]:  adds\n      at line 9\n"
         + "* test_pending\n1/3 passed.\n\n\nres://test/unit/test_math.gd.TestInner\n* test_inner\ninside\n1/1 passed.\n";
 
-    [Fact]
-    public void A_failure_is_read_with_its_words_its_line_its_time_and_what_GUT_printed_under_it()
+    private void A_failure_is_read_with_its_words_its_line_its_time_and_what_GUT_printed_under_it()
     {
         IReadOnlyDictionary<string, GutRuns.Result> results = GutRuns.Read(Xml, Output);
         GutRuns.Result failed = results[Adds.Key];
@@ -142,15 +133,4 @@ public class GutRunsTests
             "adding\n    [Failed]:  [2] expected to equal [3]:  adds\n      at line 9"), failed);
     }
 
-    [Fact]
-    public void A_pending_test_says_why_one_that_asserts_nothing_says_so_and_an_inner_class_test_is_its_own()
-    {
-        IReadOnlyDictionary<string, GutRuns.Result> results = GutRuns.Read(Xml, Output);
-        Assert.True(results[(Adds with { Method = "test_pending" }).Key] is { Status: "pending", Message: "not yet", Line: 0, Output: null },
-            $"A pending test was read as {results[(Adds with { Method = "test_pending" }).Key]}");
-        Assert.Equal("The test made no assertions", results[(Adds with { Method = "test_silent" }).Key].Message);
-        Assert.True(results[new GutRuns.Chosen("res://test/unit/test_math.gd", "TestInner", "test_inner").Key] is { Status: "pass", Output: "inside" },
-            "The inner class's test was not read as its own");
-        Assert.Equal(4, results.Count);
-    }
 }

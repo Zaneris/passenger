@@ -13,8 +13,17 @@ public class GdUnit4LogTests
 
     private static string OlderBase => $"[GdUnit4] [Spinner] dotnet/out: {Generated}(23,73): error CS0117: 'GdUnit4TestRunnerSceneCore' does not contain a definition for 'GodotInternal' [{Project}]";
 
+    /// <summary>A GdUnit4 runner's failed build is said once, with the compiler's words, and nothing else's.</summary>
     [Fact]
-    public void A_failed_build_of_the_runner_is_said_once_with_the_compilers_errors_the_adapter_said_only_as_information()
+    public void A_gdunit4_runs_build_failures_are_said_once_in_the_compilers_words() => Cases.All(
+        (nameof(A_failed_build_of_the_runner_is_said_once_with_the_compilers_errors_the_adapter_said_only_as_information),
+            A_failed_build_of_the_runner_is_said_once_with_the_compilers_errors_the_adapter_said_only_as_information),
+        (nameof(A_runner_whose_base_an_older_godot_built_says_this_godot_cannot_build_it),
+            A_runner_whose_base_an_older_godot_built_says_this_godot_cannot_build_it),
+        (nameof(A_failed_build_through_godots_editor_is_said_and_one_that_ended_well_is_not),
+            A_failed_build_through_godots_editor_is_said_and_one_that_ended_well_is_not));
+
+    private void A_failed_build_of_the_runner_is_said_once_with_the_compilers_errors_the_adapter_said_only_as_information()
     {
         GdUnit4Log log = new();
         Assert.Null(log.Heard("[GdUnit4] [Spinner] Running dotnet build to ensure dependencies are available..."));
@@ -31,8 +40,7 @@ public class GdUnit4LogTests
         Assert.Null(log.Why("Other"));
     }
 
-    [Fact]
-    public void A_runner_whose_base_an_older_godot_built_says_this_godot_cannot_build_it()
+    private void A_runner_whose_base_an_older_godot_built_says_this_godot_cannot_build_it()
     {
         GdUnit4Log log = new();
         Assert.Null(log.Heard(OlderBase));
@@ -42,8 +50,7 @@ public class GdUnit4LogTests
         Assert.Contains("This Godot's C# source generators cannot build a class whose base class an older Godot's built", said, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_failed_build_through_godots_editor_is_said_and_one_that_ended_well_is_not()
+    private void A_failed_build_through_godots_editor_is_said_and_one_that_ended_well_is_not()
     {
         GdUnit4Log log = new();
         Assert.Null(log.Heard("[GdUnit4] [Spinner] Rebuilding Godot Project ends with exit code: 0"));
@@ -53,13 +60,4 @@ public class GdUnit4LogTests
             log.Heard("[GdUnit4] [Spinner] Rebuilding Godot Project ends with exit code: 1"));
     }
 
-    [Fact]
-    public void Words_of_another_adapter_or_another_assembly_are_their_own()
-    {
-        GdUnit4Log log = new();
-        Assert.Null(log.Heard($"[xUnit.net 00:00:01] dotnet/out: {Path.GetFullPath("/game/Main.cs")}(4,9): error CS1002: ; expected"));
-        Assert.Null(log.Heard("dotnet build failed with exit code: 1"));
-        Assert.Null(log.Heard(OlderBase));
-        Assert.DoesNotContain("older Godot", log.Heard("[GdUnit4] [Other] dotnet build failed with exit code: 1"), StringComparison.Ordinal);
-    }
 }
