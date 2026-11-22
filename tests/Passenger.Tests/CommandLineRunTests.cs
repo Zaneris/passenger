@@ -9,21 +9,33 @@ namespace Passenger.Tests;
 /// folder has is refused naming those it has, and nothing runs in its place.</summary>
 public sealed class CommandLineRunTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     /// <summary>A folder of one console project, Hello, with no solution, so its project comes only once the walk for it
     /// has landed, restored.</summary>
-    public CommandLineRunTests(RestoredFolders folders) => folder = folders.Take("command-line-run-", made =>
+    public CommandLineRunTests(RestoredFolders folders) => (this.folders, folder) = (folders, folders.Take("command-line-run-", made =>
     {
         TestFolders.Write(made, "Hello.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
         TestFolders.Write(made, "Program.cs", "Console.WriteLine(\"Hello from --run\");\n");
         return Path.Combine(made, "Hello.csproj");
-    });
+    }));
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A folder opened with --run builds its configuration and runs it in the Run window, and one naming a
+    /// configuration the folder lacks or one that cannot build runs nothing, saying why, as one flow, each step the
+    /// check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_folder_opened_with_run_builds_its_configuration_and_runs_it_in_the_Run_window()
+    public void Run_from_the_command_line_builds_and_runs_a_configuration_or_says_why_not()
+    {
+        Flow.StepApart("a folder opened with run builds its configuration and runs it in the Run window", () => new CommandLineRunTests(folders), t => t.A_folder_opened_with_run_builds_its_configuration_and_runs_it_in_the_Run_window());
+        Flow.StepApart("Run naming a configuration the folder lacks is refused naming those it has and runs nothing", () => new CommandLineRunTests(folders), t => t.Run_naming_a_configuration_the_folder_lacks_is_refused_naming_those_it_has_and_runs_nothing());
+        Flow.StepApart("Run of a configuration that cannot build says why in the log and the window and runs nothing", () => new CommandLineRunTests(folders), t => t.Run_of_a_configuration_that_cannot_build_says_why_in_the_log_and_the_window_and_runs_nothing());
+    }
+
+    private void A_folder_opened_with_run_builds_its_configuration_and_runs_it_in_the_Run_window()
     {
         MainWindow window = Start([folder, "--run"]);
         try
@@ -42,8 +54,7 @@ public sealed class CommandLineRunTests : IClassFixture<RestoredFolders>, IDispo
         }
     }
 
-    [AvaloniaFact]
-    public void Run_naming_a_configuration_the_folder_lacks_is_refused_naming_those_it_has_and_runs_nothing()
+    private void Run_naming_a_configuration_the_folder_lacks_is_refused_naming_those_it_has_and_runs_nothing()
     {
         MainWindow window = Start([folder, "--run", "Nope"]);
         try
@@ -65,8 +76,7 @@ public sealed class CommandLineRunTests : IClassFixture<RestoredFolders>, IDispo
     /// <summary>A configuration that can't build leaves the window open on its failure, as a person's Run does, its status bar
     /// and Problems saying so, and says why in the log too, its first error named, for whoever started it from a shell or a
     /// script that sees no window: nothing waits in silence for a run that will never come.</summary>
-    [AvaloniaFact]
-    public void Run_of_a_configuration_that_cannot_build_says_why_in_the_log_and_the_window_and_runs_nothing()
+    private void Run_of_a_configuration_that_cannot_build_says_why_in_the_log_and_the_window_and_runs_nothing()
     {
         File.WriteAllText(Path.Combine(folder, "Program.cs"), "manConsole.WriteLine(\"Hello from --run\");\n");
         MainWindow window = Start([folder, "--run", "Hello"]);

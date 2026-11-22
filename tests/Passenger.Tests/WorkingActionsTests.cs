@@ -15,13 +15,29 @@ namespace Passenger.Tests;
 /// each stage until the work is done, a second click starts nothing more, and Stop ends the start.</summary>
 public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<RestoredFolders>
 {
+    private readonly RestoredFolders folders;
+
     public WorkingActionsTests(RestoredFolders folders)
         : base(folders)
     {
+        this.folders = folders;
     }
 
+    /// <summary>Every toolbar button runs an action that shows its work, Run turns its ring and says its first stage at
+    /// once with a second click running nothing more, Stop as Run starts or during its build or Profile's ends it, and
+    /// Fetch says it is under way, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Every_toolbar_button_runs_an_action_so_it_shows_that_actions_work()
+    public void An_action_that_takes_a_while_shows_its_work_at_once_and_Stop_ends_it()
+    {
+        Flow.StepApart("every toolbar button runs an action so it shows that actions work", () => new WorkingActionsTests(folders), t => t.Every_toolbar_button_runs_an_action_so_it_shows_that_actions_work());
+        Flow.StepApart("a click on Run turns its ring and says the first stage at once and a second click runs nothing more", () => new WorkingActionsTests(folders), t => t.A_click_on_Run_turns_its_ring_and_says_the_first_stage_at_once_and_a_second_click_runs_nothing_more());
+        Flow.StepApart("Stop clicked as Run starts ends the start and nothing runs", () => new WorkingActionsTests(folders), t => t.Stop_clicked_as_Run_starts_ends_the_start_and_nothing_runs());
+        Flow.StepApart("Run stopped through its work during its build stops the build", () => new WorkingActionsTests(folders), t => t.Run_stopped_through_its_work_during_its_build_stops_the_build());
+        Flow.StepApart("profile stopped through its work during its build stops the build", () => new WorkingActionsTests(folders), t => t.Profile_stopped_through_its_work_during_its_build_stops_the_build());
+        Flow.StepApart("fetch says it is fetching at once and a second fetch says it is under way", () => new WorkingActionsTests(folders), t => t.Fetch_says_it_is_fetching_at_once_and_a_second_fetch_says_it_is_under_way());
+    }
+
+    private void Every_toolbar_button_runs_an_action_so_it_shows_that_actions_work()
     {
         MainWindow window = Open();
         Control end = window.FindControl<Control>("ToolbarEnd")!;
@@ -32,8 +48,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_click_on_Run_turns_its_ring_and_says_the_first_stage_at_once_and_a_second_click_runs_nothing_more()
+    private void A_click_on_Run_turns_its_ring_and_says_the_first_stage_at_once_and_a_second_click_runs_nothing_more()
     {
         MainWindow window = Open();
         Button run = Toolbar(window, "RunButton");
@@ -70,8 +85,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Stop_clicked_as_Run_starts_ends_the_start_and_nothing_runs()
+    private void Stop_clicked_as_Run_starts_ends_the_start_and_nothing_runs()
     {
         MainWindow window = Open();
         Button run = Toolbar(window, "RunButton");
@@ -88,11 +102,9 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Run_stopped_through_its_work_during_its_build_stops_the_build() => StoppedDuringBuild(window => window.RunAsync(), "Run");
+    private void Run_stopped_through_its_work_during_its_build_stops_the_build() => StoppedDuringBuild(window => window.RunAsync(), "Run");
 
-    [AvaloniaFact]
-    public void Profile_stopped_through_its_work_during_its_build_stops_the_build() => StoppedDuringBuild(window => window.ProfileAsync(), "Profile");
+    private void Profile_stopped_through_its_work_during_its_build_stops_the_build() => StoppedDuringBuild(window => window.ProfileAsync(), "Profile");
 
     /// <summary>Starts the program, and once its build is under way stops the starts the way an agent that gives up on its
     /// call does, through their work alone: the build is stopped there, not left to run to its end, and nothing runs.</summary>
@@ -112,8 +124,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Fetch_says_it_is_fetching_at_once_and_a_second_fetch_says_it_is_under_way()
+    private void Fetch_says_it_is_fetching_at_once_and_a_second_fetch_says_it_is_under_way()
     {
         string repository = TestFolders.Create("working-git-");
         File.WriteAllText(Path.Combine(repository, "readme.txt"), "a\n");

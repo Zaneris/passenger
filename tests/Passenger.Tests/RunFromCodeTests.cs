@@ -14,10 +14,13 @@ namespace Passenger.Tests;
 /// line and a launch profile runs its program, as Run of that configuration does, and so does its row in the Explorer.</summary>
 public sealed class RunFromCodeTests : IClassFixture<RestoredFolders>, IDisposable
 {
+    private readonly RestoredFolders folders;
+
     private readonly string folder;
 
     public RunFromCodeTests(RestoredFolders folders)
     {
+        this.folders = folders;
         folder = folders.Take("runhere-", made =>
         {
             // What the program builds lies in the folder, which the test removes, rather than in the SDK's cache of the person's.
@@ -54,8 +57,16 @@ public sealed class RunFromCodeTests : IClassFixture<RestoredFolders>, IDisposab
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A run icon beside Main, a program's first line and a launch profile runs each program, and a program's
+    /// Explorer row runs it, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_run_icon_beside_Main_a_programs_first_line_and_a_launch_profile_runs_each_program()
+    public void A_program_runs_from_its_code_and_its_Explorer_row()
+    {
+        Flow.StepApart("a run icon beside Main a programs first line and a launch profile runs each program", () => new RunFromCodeTests(folders), t => t.A_run_icon_beside_Main_a_programs_first_line_and_a_launch_profile_runs_each_program());
+        Flow.StepApart("a programs Explorer row runs it", () => new RunFromCodeTests(folders), t => t.A_programs_Explorer_row_runs_it());
+    }
+
+    private void A_run_icon_beside_Main_a_programs_first_line_and_a_launch_profile_runs_each_program()
     {
         MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Sample.slnx"), languageServer: false);
         try
@@ -86,8 +97,7 @@ public sealed class RunFromCodeTests : IClassFixture<RestoredFolders>, IDisposab
     }
 
     /// <summary>A program's row in the Explorer runs it from its menu, a project's and a file-based program's alike.</summary>
-    [AvaloniaFact]
-    public void A_programs_Explorer_row_runs_it()
+    private void A_programs_Explorer_row_runs_it()
     {
         MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Sample.slnx"), languageServer: false);
         try
