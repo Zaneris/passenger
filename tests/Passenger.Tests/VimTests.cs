@@ -563,6 +563,8 @@ public sealed partial class VimTests
             seen.UnionWith(result.Action is not null || result.Request is { Kind: not VimRequestKind.Commands } ? [Asked] : []);
             if (result.Replay is { } replay)
             {
+                // What the key did lands before the keys it presses, as the editor follows a result before replaying.
+                (text, carets) = Applied(result, text, carets, view);
                 (text, carets) = Drive(vim, text, carets, replay, view, seen);
                 continue;
             }
@@ -628,7 +630,7 @@ public sealed partial class VimTests
     {
         foreach (EditPlan edit in result.Edits ?? [])
         {
-            view.Follow(edit.Edits);
+            view.Follow(edit);
             (text, carets) = (text.Apply(edit.Edits), edit.Selections);
         }
         return result.Edits is not { Count: > 0 } && result.Selections is { } moved ? (text, moved) : (text, carets);

@@ -708,7 +708,6 @@ public sealed partial class Vim
         // An emptied text is the one empty line its final line break ends.
         TextEdit added = text.Length == 0 && breakEnds ? new TextEdit(0, 0, eol + eol)
             : put.Below < 0 ? new TextEdit(0, 0, lines + eol)
-            : under.BreakLength > 0 ? new TextEdit(under.EndIncludingBreak, 0, lines + eol)
             : new TextEdit(under.End, 0, eol + lines);
         List<TextEdit> edits = [added];
         if (move)
@@ -718,9 +717,12 @@ public sealed partial class Vim
             edits.Sort((a, b) => a.Start.CompareTo(b.Start));
         }
         TextSnapshot after = text.Apply(edits);
+        LineSpan moving = text.GetLine(first);
         EditPlan plan = new(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, landed, breakEnds)), EditKind.Other)
         {
-            Moved = move ? [new TextMove(top.Start, lines.Length, after.GetLineStart(below < first ? landed + 1 : first))] : [],
+            // The lines named go where they land as much as the lines between go past them.
+            Moved = move ? [new TextMove(top.Start, lines.Length, after.GetLineStart(below < first ? landed + 1 : first)),
+                new TextMove(moving.Start, text.GetLine(end).End - moving.Start, after.GetLineStart(landed - count + 1))] : [],
         };
         return new VimResult(true, Edits: [plan]);
     }

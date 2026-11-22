@@ -245,7 +245,10 @@ public sealed partial class CodeEditor
         }
         foreach (EditPlan plan in edits)
         {
+            // Marks on lines a plan moves (:m) go with them, where anchors would stay where the lines were taken.
+            IReadOnlyList<(char Name, int At, int LineStart, int Column)> carried = plan.Moved.Count > 0 ? vimView?.MarksMovedBy(plan.Moved) ?? [] : [];
             Apply(plan);
+            vimView?.SetMoved(carried);
         }
         if (oneStep)
         {
@@ -535,6 +538,25 @@ public sealed partial class CodeEditor
             int lineStart = VimMotions.LineOf(editor.document.Snapshot, at).Start;
             Marks.GetOrCreateValue(editor.document)[name] = new HeldMark(
                 editor.document.AnchorAt(at, AnchorGravity.Before), editor.document.AnchorAt(lineStart, AnchorGravity.Before), at - lineStart);
+        }
+
+        /// <summary>The marks on text a plan's moves take, at the places in the text after it they go to.</summary>
+        public IReadOnlyList<(char Name, int At, int LineStart, int Column)> MarksMovedBy(IReadOnlyList<TextMove> moves) =>
+            Marks.TryGetValue(editor.document, out Dictionary<char, HeldMark>? held)
+                ? [.. held.Where(mark => mark.Value.At.IsLive && VimMarks.MovedTo(mark.Value.At.Offset, moves) is not null)
+                    .Select(mark => (mark.Key, VimMarks.MovedTo(mark.Value.At.Offset, moves)!.Value,
+                        VimMarks.MovedTo(mark.Value.LineStart.Offset, moves) ?? VimMarks.MovedTo(mark.Value.At.Offset, moves)!.Value, mark.Value.Column))]
+                : [];
+
+        /// <summary>The marks a plan's moves took put where they went (<see cref="MarksMovedBy"/>).</summary>
+        public void SetMoved(IReadOnlyList<(char Name, int At, int LineStart, int Column)> moved)
+        {
+            foreach ((char name, int at, int lineStart, int column) in moved)
+            {
+                EraseMark(name);
+                Marks.GetOrCreateValue(editor.document)[name] = new HeldMark(
+                    editor.document.AnchorAt(at, AnchorGravity.Before), editor.document.AnchorAt(lineStart, AnchorGravity.Before), column);
+            }
         }
 
         public void EraseMark(char name)

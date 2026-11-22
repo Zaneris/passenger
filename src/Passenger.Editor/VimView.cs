@@ -115,12 +115,43 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
             marks[name] = (TextEditing.MapOffset(at, edits, afterInsertions: false), TextEditing.MapOffset(lineStart, edits, afterInsertions: false), column);
         }
     }
+
+    /// <summary>The marks carried through a plan, those on text it moves (<see cref="EditPlan.Moved"/>) going with it.</summary>
+    public void Follow(EditPlan plan)
+    {
+        Dictionary<char, (int, int, int)> moved = [];
+        foreach ((char name, (int at, int lineStart, int column)) in marks)
+        {
+            if (VimMarks.MovedTo(at, plan.Moved) is { } to)
+            {
+                moved[name] = (to, VimMarks.MovedTo(lineStart, plan.Moved) ?? to, column);
+            }
+        }
+        Follow(plan.Edits);
+        foreach ((char name, (int, int, int) held) in moved)
+        {
+            marks[name] = held;
+        }
+    }
 }
 
 /// <summary>Where Vim keeps a mark: on the line its character goes to, in the column it was set in whatever is put or
 /// taken before it on that line, but carried along when that line is joined to the one above.</summary>
 internal static class VimMarks
 {
+    /// <summary>Where a place in text a move takes goes, null where no move takes it.</summary>
+    public static int? MovedTo(int offset, IReadOnlyList<TextMove> moves)
+    {
+        foreach (TextMove move in moves)
+        {
+            if (offset >= move.From && offset <= move.From + move.Length)
+            {
+                return move.To + offset - move.From;
+            }
+        }
+        return null;
+    }
+
     /// <summary>A mark's place from its character's offset and its line's start, each carried through the edits since it
     /// was set (a line's start before text put there), and the column it was set in; never past its line's end.</summary>
     public static int Place(TextSnapshot text, int at, int lineStart, int column)

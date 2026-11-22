@@ -69,6 +69,7 @@ public sealed partial class Vim
             return Refused(why, SelectionSet.Create([.. stretches.Select(t => Selection.At(Settled(text, t.Landing, breakEnds)))], Math.Min(selections.PrimaryIndex, stretches.Count - 1)));
         }
         VimRegister taken = TakenBy(text, stretches, block, lines, view.Indent.TabWidth);
+        actedOnNothing = stretches.All(t => !t.Lines && t.End == t.Start);
         VimResult result = op switch
         {
             "d" => Delete(text, selections, stretches),

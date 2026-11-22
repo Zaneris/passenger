@@ -542,7 +542,8 @@ public sealed partial class Vim
             int landing = words && found.Linewise
                 ? VimTextObjects.WordsStart(text, caret, n, command.Name == "i", command.Argument == "W", breakEnds) ?? found.Start
                 : found.Start;
-            return (taken, landing, words);
+            // Words that end before their last place take an empty line's place no more than any other exclusive end.
+            return (taken, landing, words && !VimTextObjects.WordsExclusive(text, caret, n, command.Name == "i", command.Argument == "W", breakEnds));
         }
         if (op == "c" && command.Name is "w" or "W" && caret < text.Length && !char.IsWhiteSpace(text[caret]))
         {

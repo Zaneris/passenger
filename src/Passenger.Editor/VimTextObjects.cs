@@ -54,6 +54,10 @@ public static class VimTextObjects
     /// <summary>Where the run of one kind (word, punctuation, white) the offset is in begins on its line.</summary>
     public static int RunStart(TextSnapshot text, int offset, bool bigWord) => Run(text, offset, bigWord).Start;
 
+    /// <summary>Whether the text opens with an empty line or a run of one character.</summary>
+    public static bool RunOfOneAtStart(TextSnapshot text, bool bigWord) =>
+        VimMotions.LineOf(text, 0).Length == 0 || Run(text, 0, bigWord) is var run && run.End - run.Start == 1;
+
     private static int KindIn(TextSnapshot text, int offset, bool bigWord) => White(text[offset]) ? 0 : VimMotions.KindAt(text, offset, bigWord);
 
     /// <summary>iw, aw, iW and aW as an operator takes them: the places <see cref="WordsWalked"/> walks over, an end
@@ -85,6 +89,10 @@ public static class VimTextObjects
     /// <summary>Where iw, aw, iW or aW as an operator takes them begins in the text, before whole lines are made of it.</summary>
     public static int? WordsStart(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
         WordsWalked(text, caret, n, inner, bigWord, breakEnds, out _)?.Start;
+
+    /// <summary>Whether iw, aw, iW or aW as an operator takes them ends before its last place, as Vim's exclusive end.</summary>
+    public static bool WordsExclusive(TextSnapshot text, int caret, int n, bool inner, bool bigWord, bool breakEnds) =>
+        WordsWalked(text, caret, n, inner, bigWord, breakEnds, out _) is { Exclusive: true };
 
     /// <summary>Where a count of words cut short by the text's end left off, where the walk stopped; null where the
     /// object is found.</summary>
@@ -153,7 +161,7 @@ public static class VimTextObjects
         if (inner && EmptyLastLineReach(text, caret, breakEnds) is { } from)
         {
             // On an empty last line, iw reaches back to the line above's last place; a count of two takes nothing, more fail.
-            return n == 1 ? (from, caret, false) : n == 2 || visual ? (caret, caret, false) : null;
+            return n == 1 ? (from, caret, false) : visual ? (caret, caret, false) : n == 2 ? (caret, caret, true) : null;
         }
         int start = empty ? caret : Run(text, caret, bigWord).Start;
         int end = empty ? caret : RunLast(text, caret, bigWord);
@@ -461,13 +469,14 @@ public static class VimTextObjects
     private static VimSpan? Block(TextSnapshot text, int caret, int n, bool inner, char open, char close, bool ahead = true, bool pastOpen = false)
     {
         int at = caret < text.Length && text[caret] == close ? Match(text, caret, open, close, forward: false) : caret;
-        if (at < 0)
+        if (at < 0 && !ahead)
         {
             return null;
         }
-        int start = -1;
-        int from = at < text.Length && text[at] == open ? at : at - 1;
-        bool onward = false;
+        // On a closing bracket no block holds, the blocks ahead, as outside any.
+        bool onward = at < 0;
+        int start = onward ? caret : -1;
+        int from = at >= 0 && at < text.Length && text[at] == open ? at : at - 1;
         for (int i = 0; i < n; i++)
         {
             int found = onward ? Ahead(text, start + 1, open, close) : Unclosed(text, i == 0 ? from : start - 1, open, close);

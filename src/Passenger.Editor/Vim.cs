@@ -98,6 +98,9 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>Where the operator's object or motion that just failed left its caret, a count cut short; null where it stays.</summary>
     private int? ranOutAt;
 
+    /// <summary>Set where an operator acted over nothing (x on an empty line), which is a change made, not one that failed.</summary>
+    private bool actedOnNothing;
+
     /// <summary>The line an exclusive motion just ended at the start of, which the operator's stretch leaves out; null with none.</summary>
     private int? reachedPast;
 
@@ -223,7 +226,8 @@ public sealed partial class Vim(VimRegisters registers)
         VimResult result = command is null ? VimResult.Held
             : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
             : Run(command, text, selections, view);
-        if ((command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#" }
+        if ((command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
+                or "S" or "Y" or "s" or "x" or "X" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
             || (command is { Operator: not null, Name: not ("i" or "a" or "$") } && ReferenceEquals(result, VimResult.Held)))
         {
@@ -698,11 +702,13 @@ public sealed partial class Vim(VimRegisters registers)
                 carets = ShowVisual(text, view).Selections!;
             }
             List<string> typed = times > 0 ? [.. times.ToString(System.Globalization.CultureInfo.InvariantCulture).Select(c => c.ToString())] : [];
+            actedOnNothing = false;
             foreach (string key in typed.Concat(keys))
             {
                 Follow(Press(key, text, carets, view));
             }
-            if (plans.Count == 0 && Mode == VimMode.Normal && change.Visual is null)
+            // A change that fails keeps its own count; one whose operator finds nothing to change is made all the same.
+            if (plans.Count == 0 && !actedOnNothing && Mode == VimMode.Normal && change.Visual is null)
             {
                 // A change failing again keeps its count, and what it typed is pressed as normal mode's keys, as Vim's are.
                 lastChange = kept;

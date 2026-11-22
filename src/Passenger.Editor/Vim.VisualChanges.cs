@@ -60,9 +60,11 @@ public sealed partial class Vim
         (int Left, int Right) kept = (keptBlockLeft, keptBlockRight);
         bool toEnd = visualAims.Length > 0 && visualAims[Math.Clamp(visualPrimary, 0, visualAims.Length - 1)] == int.MaxValue;
         Region stretch = regions[0];
-        (keptBlockLeft, keptBlockRight) = block ? (left, right)
-            : toEnd ? (0, 0)
-            : lines || text.GetLineFromOffset(stretch.Low) != text.GetLineFromOffset(stretch.High) ? (0, stretch.Cursor < stretch.Anchor ? 0 : CaretColumn(text, stretch.High, tab))
+        (keptBlockLeft, keptBlockRight) = block && !lines ? (left, right)
+            : toEnd ? (keptBlockLeft, keptBlockRight)
+            : lines || text.GetLineFromOffset(stretch.Low) != text.GetLineFromOffset(stretch.High)
+                ? (0, stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab)
+                    : text.GetLineFromOffset(stretch.Low) == text.GetLineFromOffset(stretch.High) ? CaretColumn(text, stretch.Cursor, tab) : 0)
             : (CaretColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
         EditPlan? split = block && !lines && (op is "I" or "A" or "r" || basic is "d" or "c" or "y")
