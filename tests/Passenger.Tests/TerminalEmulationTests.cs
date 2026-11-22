@@ -68,7 +68,7 @@ public sealed class TerminalEmulationTests
     private sealed record Piece(string Text, string? Use = null);
 
     /// <summary>A screen's rows of text, their trailing blanks left out, and its cursor's column and row from 0.</summary>
-    private sealed record Screen(IReadOnlyList<string> Lines, (int Column, int Row) Cursor, bool Alternate)
+    private sealed record Screen(IReadOnlyList<string> Lines, (int Column, int Row) Cursor, bool Alternate, IReadOnlyList<string> Styles)
     {
         /// <summary>What Passenger's side came through on its way (<see cref="RunPassenger"/>); none of xterm's.</summary>
         public IReadOnlySet<string> Seen { get; init; } = new HashSet<string>();
@@ -85,6 +85,11 @@ public sealed class TerminalEmulationTests
         if (xterm.Cursor != passenger.Cursor)
         {
             differences.Add($"the cursor: xterm's at {xterm.Cursor}, Passenger's at {passenger.Cursor}");
+        }
+        if (!xterm.Styles.SequenceEqual(passenger.Styles))
+        {
+            int row = Enumerable.Range(0, Math.Min(xterm.Styles.Count, passenger.Styles.Count)).FirstOrDefault(r => xterm.Styles[r] != passenger.Styles[r]);
+            differences.Add($"the colours and flags of row {row}: xterm's {xterm.Styles.ElementAtOrDefault(row)}, Passenger's {passenger.Styles.ElementAtOrDefault(row)}");
         }
         if (xterm.Alternate != passenger.Alternate)
         {
@@ -104,6 +109,8 @@ public sealed class TerminalEmulationTests
         ("xterm.js keeps a pending wrap's cursor past the last column, so a tab, erase or move there acts from beyond the line, where "
             + "xterm and Passenger act on its last column", (_, _, passenger) => passenger.Seen.Contains(PendingWrap)),
         ("xterm.js keeps tab stops for each screen, where xterm and Passenger keep one set", (output, _, _) => output.Uses(TabStops) && output.Uses(Alternate)),
+        ("xterm.js fills the lines a scroll or an insert of lines brings in with the default background, where xterm and Passenger erase "
+            + "with the background set (BCE)", (output, _, _) => output.Uses(Scrolls) && output.Uses(Background)),
         ($"Setting a scroll region leaves the cursor where it was, where it goes home; {ToFix}", (output, _, _) => output.Uses(ScrollRegion)),
         ($"ESC # 8 (DECALN) leaves the cursor where it was, where it goes home; {ToFix}", (output, _, _) => output.Uses(Alignment)),
         ($"REP repeats, and moves the cursor, with no character before it to repeat; {ToFix}", (output, _, _) => output.Uses(Repeat)),
@@ -111,6 +118,8 @@ public sealed class TerminalEmulationTests
         ($"An insert, delete or erase of characters (ICH, DCH, EL, ED) at a wide character's second half leaves it whole; {ToFix}",
             (output, _, _) => output.Uses(Wide) && output.Uses(EditsCharacters)),
         ($"Insert mode (IRM) over a wide character splits it; {ToFix}", (output, _, _) => output.Uses(Wide) && output.Uses(InsertMode)),
+        ($"A restore of the cursor (ESC 8, CSI u) with nothing saved sets colour 0 on colour 0, where it restores the defaults; {ToFix}",
+            (_, _, passenger) => passenger.Seen.Contains(RestoredUnsaved)),
         ($"The alternate screen's switches: 1049 l off it restores a cursor, 1047 h on it clears it; {ToFix}", (output, _, _) => output.Uses(Alternate)),
     ];
 
@@ -125,6 +134,9 @@ public sealed class TerminalEmulationTests
     private const string EditsCharacters = "ICH, DCH, ECH, EL or ED";
     private const string InsertMode = "IRM";
     private const string PendingWrap = "a control after a write to the last column";
+    private const string RestoredUnsaved = "a restore of a cursor never saved";
+    private const string Scrolls = "SU, SD, IL or DL";
+    private const string Background = "a background colour";
 
     /// <summary>A case: a screen of one of a few sizes and 1 to 11 pieces of output.</summary>
     private static Output Make(Random random)
@@ -136,6 +148,10 @@ public sealed class TerminalEmulationTests
     private const string Escape = "\u001b";
 
     private static T Pick<T>(Random random, T[] from) => from[random.Next(from.Length)];
+
+    /// <summary>Colours and flags a program sets: each SGR Passenger reads, alone or with others.</summary>
+    private static readonly string[] Styles = ["", "0", "1", "2", "3", "4", "7", "8", "9", "22", "23", "24", "27", "28", "29", "31", "42", "39", "49",
+        "91", "104", "1;4;31", "38;5;196", "48;5;22", "38;2;255;128;0", "48;2;0;0;255", "7;33;44", "0;1"];
 
     private static string Number(Random random, int below) => random.Next(4) == 0 ? string.Empty : random.Next(below).ToString(CultureInfo.InvariantCulture);
 
@@ -162,7 +178,12 @@ public sealed class TerminalEmulationTests
                 return new($"{Escape}[{Number(random, 4)}{Pick(random, ["J", "K"])}", EditsCharacters);
             case 13:
                 string final = Pick(random, ["@", "P", "L", "M", "X", "S", "T", "b"]);
-                return new($"{Escape}[{Number(random, 5)}{final}", final switch { "P" or "@" or "X" => EditsCharacters, "b" => Repeat, _ => null });
+                return new($"{Escape}[{Number(random, 5)}{final}", final switch
+                {
+                    "P" or "@" or "X" => EditsCharacters,
+                    "b" => Repeat,
+                    _ => Scrolls,
+                });
             case 14:
                 return new($"{Escape}[{random.Next(1, rows + 2)};{random.Next(1, rows + 2)}r", ScrollRegion);
             case 15:
@@ -175,7 +196,8 @@ public sealed class TerminalEmulationTests
                 string tabs = Pick(random, ["g", "I", "Z"]);
                 return new($"{Escape}[{Number(random, 4)}{tabs}", tabs == "g" ? TabStops : null);
             case 18:
-                return new($"{Escape}[{random.Next(50)}m");
+                string style = Pick(random, Styles);
+                return new($"{Escape}[{style}m", style is "42" or "104" or "48;5;22" or "48;2;0;0;255" or "7;33;44" ? Background : null);
             case 19:
                 string set = Pick(random, ["4", "20"]);
                 return new($"{Escape}[{set}{Pick(random, ["h", "l"])}", set == "4" ? InsertMode : NewLineMode);
@@ -207,10 +229,26 @@ public sealed class TerminalEmulationTests
                 await new Promise(done => t.write(c.data, done));
                 const b = t.buffer.active;
                 const lines = [];
+                const styles = [];
+                const colour = (isDefault, isPalette, value) => isDefault ? 'd' : isPalette ? 'p' + value : 'r' + value.toString(16);
                 for (let y = 0; y < c.rows; y++) {
-                  lines.push(b.getLine(b.viewportY + y).translateToString(true));
+                  const line = b.getLine(b.viewportY + y);
+                  lines.push(line.translateToString(true));
+                  const row = [];
+                  for (let x = 0; x < c.cols; x++) {
+                    const cell = line.getCell(x);
+                    const back = colour(cell.isBgDefault(), cell.isBgPalette(), cell.getBgColor());
+                    if (cell.getChars() === '' && cell.getWidth() !== 0) {
+                      row.push('/' + back);
+                      continue;
+                    }
+                    const flags = (cell.isBold() ? 1 : 0) | (cell.isDim() ? 2 : 0) | (cell.isItalic() ? 4 : 0) | (cell.isUnderline() ? 8 : 0)
+                      | (cell.isInverse() ? 16 : 0) | (cell.isStrikethrough() ? 32 : 0) | (cell.isInvisible() ? 64 : 0);
+                    row.push(colour(cell.isFgDefault(), cell.isFgPalette(), cell.getFgColor()) + '/' + back + '/' + flags);
+                  }
+                  styles.push(row.join(' '));
                 }
-                out.push({ lines, x: b.cursorX, y: b.cursorY, alternate: b.type === 'alternate' });
+                out.push({ lines, styles, x: b.cursorX, y: b.cursorY, alternate: b.type === 'alternate' });
                 t.dispose();
               }
               fs.writeFileSync(process.argv[4], JSON.stringify(out));
@@ -223,7 +261,7 @@ public sealed class TerminalEmulationTests
             [.. JsonMembers.Texts(end, "lines").Select(line => line.TrimEnd())],
             // A cursor past the last column is xterm's own way of saying a write there wraps first.
             (Math.Min(JsonMembers.Number(end, "x") ?? 0, cases[i].Columns - 1), JsonMembers.Number(end, "y") ?? 0),
-            JsonMembers.Bool(end, "alternate") ?? false))];
+            JsonMembers.Bool(end, "alternate") ?? false, JsonMembers.Texts(end, "styles")))];
         Assert.True(screens.Count == cases.Count, $"xterm.js gave {screens.Count} results for {cases.Count} cases");
         return screens;
     }
@@ -236,14 +274,29 @@ public sealed class TerminalEmulationTests
 #pragma warning restore RS0030
         HashSet<string> seen = [];
         bool atLastColumn = false;
+        bool saved = false;
         foreach (Piece piece in output.Pieces)
         {
+            saved = piece.Text is $"{Escape}7" or $"{Escape}[s" or $"{Escape}[?1049h" || (saved && piece.Text != $"{Escape}c");
+            seen.UnionWith(!saved && piece.Text is $"{Escape}8" or $"{Escape}[u" ? [RestoredUnsaved] : []);
             bool printed = !char.IsControl(piece.Text[0]);
             seen.UnionWith(atLastColumn && !printed && piece.Text is not ("\r" or "\n") ? [PendingWrap] : []);
             screen.Feed(Encoding.UTF8.GetBytes(piece.Text));
             atLastColumn = printed && screen.CursorColumn == output.Columns - 1;
         }
-        return new Screen([.. screen.Lines.Select(line => line.Text().TrimEnd())], (screen.CursorColumn, screen.CursorRow), screen.IsAlternate) { Seen = seen };
+        return new Screen([.. screen.Lines.Select(line => line.Text().TrimEnd())], (screen.CursorColumn, screen.CursorRow), screen.IsAlternate,
+            [.. screen.Lines.Select(line => string.Join(' ', line.Cells.Select(Styled)))]) { Seen = seen };
+    }
+
+    /// <summary>A cell's colours and flags as the comparison writes them, xterm.js's way: a blank one's back colour alone.</summary>
+    private static string Styled(Cell cell)
+    {
+        static string Colour(int colour) => colour == CellStyle.Default ? "d"
+            : (colour & CellStyle.Rgb) != 0 ? "r" + (colour & 0xFFFFFF).ToString("x", CultureInfo.InvariantCulture)
+            : "p" + colour.ToString(CultureInfo.InvariantCulture);
+        CellStyle style = cell.Style;
+        return cell.IsBlank && cell.Width != 0 ? "/" + Colour(style.Back)
+            : $"{Colour(style.Fore)}/{Colour(style.Back)}/{(int)style.Flags}";
     }
 
     /// <summary>The smallest case that still differs, found by taking out a piece, or half a text piece, while the case
