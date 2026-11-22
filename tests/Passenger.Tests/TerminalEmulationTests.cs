@@ -118,7 +118,6 @@ public sealed class TerminalEmulationTests
             (output, _, _) => output.Uses(OriginMode) && output.Uses(ScrollRegion) && output.Uses(Moves)),
         ("xterm.js neither saves origin mode with the cursor nor restores it, where the VT510 and xterm save it with DECSC (and 1049) "
             + "and DECRC restores it, or turns it off with nothing saved", (output, _, _) => output.Uses(OriginMode) && (output.Uses(Restores) || output.Uses(Alternate))),
-        ($"REP repeats, and moves the cursor, with no character before it to repeat; {ToFix}", (output, _, _) => output.Uses(Repeat)),
         ($"Line feed/new line mode (LNM, CSI 20 h) is not followed: a line feed leaves the column as it was; {ToFix}", (output, _, _) => output.Uses(NewLineMode)),
         ($"An insert, delete or erase of characters (ICH, DCH, EL, ED) at a wide character's second half leaves it whole; {ToFix}",
             (output, _, _) => output.Uses(Wide) && output.Uses(EditsCharacters)),
@@ -294,7 +293,8 @@ public sealed class TerminalEmulationTests
         {
             saved = piece.Text is $"{Escape}7" or $"{Escape}[s" or $"{Escape}[?1049h" || (saved && piece.Text != $"{Escape}c");
             seen.UnionWith(!saved && piece.Text is $"{Escape}8" or $"{Escape}[u" ? [RestoredUnsaved] : []);
-            bool printed = !char.IsControl(piece.Text[0]);
+            // REP writes too.
+            bool printed = !char.IsControl(piece.Text[0]) || piece.Use == Repeat;
             seen.UnionWith(atLastColumn && !printed && piece.Text is not ("\r" or "\n") ? [PendingWrap] : []);
             screen.Feed(Encoding.UTF8.GetBytes(piece.Text));
             atLastColumn = printed && screen.CursorColumn == output.Columns - 1;

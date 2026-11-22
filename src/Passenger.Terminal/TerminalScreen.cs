@@ -56,7 +56,12 @@ public sealed class TerminalScreen
     /// <summary>Whether the decoder may hold the start of a character: the last bytes it took were not ASCII.</summary>
     private bool utf8Open;
 
+    /// <summary>The last character written, its whole grapheme where it is more than its first code point, and whether
+    /// it came just before what the output has now, so REP has it to repeat.</summary>
     private int lastRune = ' ';
+    private string? lastGrapheme;
+    private bool repeatable;
+
     private Saved saved;
     private Saved savedMain;
 
@@ -551,18 +556,35 @@ public sealed class TerminalScreen
     /// <summary>A character through the reader of control sequences, which tells the screen what it is or what it ends.</summary>
     private void Process(int rune) => sequences.Take(rune, new Reading(this));
 
-    /// <summary>What the reader finds, acted on by the screen.</summary>
+    /// <summary>What the reader finds, acted on by the screen. Anything but a character written leaves REP nothing to
+    /// repeat, as what precedes it is then no character written.</summary>
     private readonly struct Reading(TerminalScreen screen) : ISequenceActions
     {
         public void Print(int rune) => screen.Print(rune);
 
-        public void Control(int rune) => screen.Control(rune);
+        public void Control(int rune)
+        {
+            screen.repeatable = false;
+            screen.Control(rune);
+        }
 
-        public void Escape(SequenceReader sequence, char final) => screen.Escape(final);
+        public void Escape(SequenceReader sequence, char final)
+        {
+            screen.repeatable = false;
+            screen.Escape(final);
+        }
 
-        public void Csi(SequenceReader sequence, char final) => screen.Csi(final);
+        public void Csi(SequenceReader sequence, char final)
+        {
+            screen.Csi(final);
+            screen.repeatable = false;
+        }
 
-        public void Osc(ReadOnlySpan<char> text) => screen.Osc(text);
+        public void Osc(ReadOnlySpan<char> text)
+        {
+            screen.repeatable = false;
+            screen.Osc(text);
+        }
     }
 
     private void Control(int rune)
@@ -638,7 +660,7 @@ public sealed class TerminalScreen
             Overwrite(cells, CursorColumn + 1);
             cells[CursorColumn + 1] = new Cell { Rune = 0, Style = style, Width = 0 };
         }
-        lastRune = rune;
+        (lastRune, lastGrapheme, repeatable) = (rune, null, true);
         if (CursorColumn + width >= Columns)
         {
             CursorColumn = Columns - 1;
@@ -695,7 +717,7 @@ public sealed class TerminalScreen
                     Lines[CursorRow].SetLink(column + i, hyperlink);
                 }
             }
-            lastRune = written.Rune;
+            (lastRune, lastGrapheme, repeatable) = (written.Rune, null, true);
             if (column + take >= Columns)
             {
                 CursorColumn = Columns - 1;
@@ -733,6 +755,7 @@ public sealed class TerminalScreen
         int column = Previous();
         if (column < 0)
         {
+            repeatable = false;
             return;
         }
         TerminalLine line = Lines[CursorRow];
@@ -747,6 +770,27 @@ public sealed class TerminalScreen
             line.Writing()[column].Rune = ' ';
         }
         line.SetGrapheme(column, joined);
+        (lastRune, lastGrapheme, repeatable) = (line.Cells[column].Rune, joined, true);
+    }
+
+    /// <summary>REP: the last character written, its whole grapheme, written again as many times, where it is what came
+    /// just before (ECMA-48 leaves REP after anything else undefined, and it repeats nothing then).</summary>
+    private void Repeat(int count)
+    {
+        if (!repeatable)
+        {
+            return;
+        }
+        (int rune, string? grapheme) = (lastRune, lastGrapheme);
+        for (int i = 0; i < count; i++)
+        {
+            Print(rune);
+            if (grapheme is not null && Previous() is int column and >= 0 && Lines[CursorRow].Cells[column].Rune == rune)
+            {
+                Lines[CursorRow].SetGrapheme(column, grapheme);
+            }
+        }
+        lastGrapheme = grapheme;
     }
 
     /// <summary>The cell the last character went into: before the cursor, or under it while a wrap is pending, the
@@ -1057,10 +1101,7 @@ public sealed class TerminalScreen
                 wrapPending = false;
                 break;
             case 'b':
-                for (int i = 0, n = Math.Min(Get(0, 1), Columns * Rows); i < n; i++)
-                {
-                    Print(lastRune);
-                }
+                Repeat(Math.Min(Get(0, 1), Columns * Rows));
                 break;
             case 'c':
                 Reply?.Invoke("\x1b[?62;22c");
@@ -1437,6 +1478,7 @@ public sealed class TerminalScreen
         main = NewLines(Rows);
         alternate = null;
         Lines = main;
+        repeatable = false;
         CursorRow = 0;
         CursorColumn = 0;
         wrapPending = false;
