@@ -26,6 +26,20 @@
           "Microsoft.TestPlatform.TestHost": "18.12.0"
         }
       },
+      "Reqnroll": {
+        "type": "Direct",
+        "requested": "[3.3.4, )",
+        "resolved": "3.3.4",
+        "contentHash": "tFFx0xACekjT9F/aFZjQMNTbaxy7zNU4uXFXvU1Eybuko2Rx1RLCAzN+uPDiDxsGB/Nd0wZC0M8Ho5i9xm8Jdg==",
+        "dependencies": {
+          "Cucumber.CucumberExpressions": "17.1.0",
+          "Cucumber.HtmlFormatter": "22.2.0",
+          "Cucumber.Messages": "30.1.0",
+          "Gherkin": "35.0.0",
+          "Microsoft.Bcl.AsyncInterfaces": "9.0.6",
+          "Microsoft.Extensions.DependencyModel": "8.0.2"
+        }
+      },
       "StreamJsonRpc": {
         "type": "Direct",
         "requested": "[2.26.150, )",
@@ -85,10 +99,18 @@
           "Azure.Core": "1.53.0"
         }
       },
+      "Cucumber.HtmlFormatter": {
+        "type": "Transitive",
+        "resolved": "22.2.0",
+        "contentHash": "hlP9GGzRADDKh0/GEt2aWD9G08qEDD4z6TC6iqJt3xH8kiU3iAbg1rOCtorN13zNdaaVxdraHzznWTMT/DnM1g==",
+        "dependencies": {
+          "Cucumber.Messages": "30.1.0"
+        }
+      },
       "Cucumber.Messages": {
         "type": "Transitive",
-        "resolved": "29.0.1",
-        "contentHash": "R2oo/wR3mXrbdK04Yraf+KhB01f/lyBkLQZcdxYt9XKE6tV+Af45MEk+jfbsew1SVvrAO0WvkIRwGYUozKCJvQ=="
+        "resolved": "30.1.0",
+        "contentHash": "HDfIzDd7JFDEwiNHpgOHBPEiyVjXQws+CEnVb+Lwiq58jHNA/xYwmTswbqknOxcAejCRFP1de/hHHw+ZuTzV6A=="
       },
       "Humanizer.Core": {
         "type": "Transitive",
@@ -212,6 +234,11 @@
         "type": "Transitive",
         "resolved": "2.2.10",
         "contentHash": "zmGsm6b2y3STDa/Of7rdkkfTDV8VuGB8aCqIkLoJIQh5tL78K3zJ8OUyFKnfsaORXmGr9iOKwDkZfUjeXi+CwA=="
+      },
+      "Microsoft.Extensions.DependencyModel": {
+        "type": "Transitive",
+        "resolved": "8.0.2",
+        "contentHash": "mUBDZZRgZrSyFOsJ2qJJ9fXfqd/kXJwf3AiDoqLD9m6TjY5OO/vLNOb9fb4juC0487eq4hcGN/M2Rh/CKS7QYw=="
       },
       "Microsoft.Identity.Client": {
         "type": "Transitive",
@@ -499,7 +526,7 @@
       "passenger.dap": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )"
         }
       },
       "passenger.debugger": {
@@ -510,9 +537,9 @@
           "Microsoft.CodeAnalysis.CSharp": "[5.12.0, )",
           "Microsoft.Diagnostics.DbgShim": "[10.0.750501, )",
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Dap": "[0.4.0, )",
-          "Passenger.Debugger.Interop": "[0.4.0, )",
+          "Passenger.Core": "[0.4.1, )",
+          "Passenger.Dap": "[0.4.1, )",
+          "Passenger.Debugger.Interop": "[0.4.1, )",
           "ZLinq": "[1.6.1, )"
         }
       },
@@ -523,8 +550,8 @@
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.6, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )",
+          "Passenger.Text": "[0.4.1, )"
         }
       },
       "passenger.nodepackages": {
@@ -534,9 +561,9 @@
         "type": "Project",
         "dependencies": {
           "NuGet.Configuration": "[8.0.0, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )",
-          "Passenger.Workspace": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )",
+          "Passenger.Text": "[0.4.1, )",
+          "Passenger.Workspace": "[0.4.1, )"
         }
       },
       "passenger.profiler": {
@@ -545,28 +572,28 @@
           "Microsoft.Diagnostics.NETCore.Client": "[0.2.750501, )",
           "Microsoft.Diagnostics.Runtime": "[4.2.751201, )",
           "Microsoft.Diagnostics.Tracing.TraceEvent": "[4.0.0, )",
-          "Passenger.Core": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )"
         }
       },
       "passenger.terminal": {
         "type": "Project",
         "dependencies": {
           "Avalonia": "[12.1.6, )",
-          "Passenger.Editor": "[0.4.0, )",
+          "Passenger.Editor": "[0.4.1, )",
           "Porta.Pty": "[2.2.4, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )"
         }
       },
       "passenger.vcs": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )",
+          "Passenger.Text": "[0.4.1, )"
         }
       },
       "passenger.workspace": {
@@ -574,17 +601,17 @@
         "dependencies": {
           "Cucumber.CucumberExpressions": "[17.1.0, )",
           "Gherkin": "[35.0.0, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )",
+          "Passenger.Text": "[0.4.1, )"
         }
       },
       "passenger.xaml": {
         "type": "Project",
         "dependencies": {
           "Microsoft.CodeAnalysis.CSharp": "[5.12.0, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Packages": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )"
+          "Passenger.Core": "[0.4.1, )",
+          "Passenger.Packages": "[0.4.1, )",
+          "Passenger.Text": "[0.4.1, )"
         }
       },
       "Avalonia": {

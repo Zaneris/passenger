@@ -22,6 +22,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <!-- The JSON-RPC conversations Passenger.Lsp's formatter is held to, played in memory. -->
     <PackageReference Include="StreamJsonRpc" />
+    <!-- Reqnroll's argument converter, run in-process as the reference StepConversions is held to. -->
+    <PackageReference Include="Reqnroll" />
     <ProjectReference Include="../../src/Passenger.Core/Passenger.Core.csproj" />
     <ProjectReference Include="../../src/Passenger.Dap/Passenger.Dap.csproj" />
     <ProjectReference Include="../../src/Passenger.Debugger/Passenger.Debugger.csproj" />
