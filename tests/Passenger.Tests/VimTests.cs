@@ -207,9 +207,6 @@ public sealed partial class VimTests
             (vimCase, _, _) => vimCase.Keys.SkipWhile(key => key != "J").Contains(".")),
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
-        ($":m leaves the cursor where it was, and counts a destination's - and + from the range; {ToFix}", (vimCase, _, _) => vimCase.Uses(MovesLines)),
-        ($":g/pattern/d puts every line it deleted in one register; {ToFix}", (vimCase, _, _) => vimCase.Uses(DeletesWhereFound)),
-        ($":t. copies nothing; {ToFix}", (vimCase, _, _) => vimCase.Uses(CopiesLines)),
         ($"A delete or change into a named register leaves register 1 as it was; {ToFix}", (vimCase, _, _) => vimCase.Uses(NamedDelete)),
         ($"A change over a jump (`, (, ), {{, }}, %, G, gg) leaves register 1 as it was; {ToFix}", (vimCase, _, _) => vimCase.Uses(JumpChange)),
         ($"A count on * and # counts from another match; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedStar)),
@@ -236,9 +233,6 @@ public sealed partial class VimTests
             && Enumerable.Range('2', 8).All(name => vim.Registers[(char)name].Text == passenger.Registers[(char)(name - 1)].Text)
             && "0-abz".All(name => vim.Registers[name].Text == passenger.Registers[name].Text);
 
-    private const string MovesLines = ":m";
-    private const string DeletesWhereFound = ":g";
-    private const string CopiesLines = ":t";
     private const string NamedDelete = "a delete into a named register";
     private const string JumpChange = "a change over a jump";
     private const string CountedStar = "a count on * or #";
@@ -477,8 +471,6 @@ public sealed partial class VimTests
                 string command = Pick(random, ["s/o/0/", "s/o/0/g", "%s/a/-/g", "d", ".,+1d", "m0", "t.", "j", ">", "2,3d", "1,$y", "$m-2", "g/o/d"]);
                 keys.AddRange(Each(":" + command));
                 keys.Add(VimKeys.Enter);
-                uses.UnionWith(command.Contains('m', StringComparison.Ordinal) ? [MovesLines] : command.StartsWith('g') ? [DeletesWhereFound]
-                    : command.StartsWith('t') ? [CopiesLines] : []);
                 break;
             default:
                 string[] change = Pick(random, Changes);

@@ -128,6 +128,8 @@ public sealed partial class Vim
                 return Set(trimmed);
             case "d" or "de" or "del" or "delete" or "y" or "ya" or "yank":
                 return LinesCommand(name[0] == 'd' ? "d" : "y", trimmed, first, end, selections.Primary.Caret, text, view);
+            case "m" or "mo" or "move" or "t" or "co" or "cop" or "copy":
+                return MovedOrCopied(name[0] == 'm', trimmed, first, end, caretLine, text, view);
             case "j" or "join":
                 // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column.
                 return (bothEnds && first == end ? null : Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), spaced: !bang, Options.JoinSpaces)) is { } joined
@@ -637,8 +639,13 @@ public sealed partial class Vim
                     at = run + 1;
                 }
                 ChangeMade? keep = lastChange;
-                VimResult deleted = Act(new Command([], 0, null, "d", "line", null), "d", taken, text, SelectionSet.Single(text.GetLineStart(lines[^1])), view);
+                VimResult deleted = Act(new Command([], 0, '_', "d", "line", null), "d", taken, text, SelectionSet.Single(text.GetLineStart(lines[^1])), view);
                 lastChange = keep;
+                foreach (int line in lines)
+                {
+                    // Each line is deleted in turn, so register 1 holds the last and those before shift down.
+                    Registers.Delete(null, new VimRegister([Taken(text, Whole(text, line, line, 0))], true), false);
+                }
                 // The caret goes to the line after the last one deleted, as Vim's does.
                 return deleted.Edit is { } plan
                     ? new VimResult(true, Edits: [OnFirstNonBlank(text, plan, lines[^1] - (lines.Count - 1))]) { Highlight = SearchShown() }
@@ -660,6 +667,56 @@ public sealed partial class Vim
         VimResult result = Act(new Command([], 0, register, op, "line", null), op, [Whole(text, first, end, at) with { Landing = at }], text, SelectionSet.Single(at), view);
         lastChange = keep;
         return result;
+    }
+
+    /// <summary>:m and :t: the lines named moved, or copied, below the line the address after them names (0 for above the
+    /// first, its + and - counted from the caret's line), the caret on the first non-blank of the last line put; a move
+    /// into its own lines refused.</summary>
+    private VimResult MovedOrCopied(bool move, string args, int first, int end, int caretLine, TextSnapshot text, IVimView view)
+    {
+        int at = 0;
+        if (!Address(args, ref at, text, caretLine, view, out int? named, out string? problem))
+        {
+            return Said(problem!);
+        }
+        if (named is not { } below || args[at..].Trim().Length > 0)
+        {
+            return Said("E14: Invalid address");
+        }
+        if (below > VimMotions.LastLine(text, breakEnds))
+        {
+            return Said("E16: Invalid range");
+        }
+        if (move && below >= first && below < end)
+        {
+            return Said("E134: Cannot move a range of lines into itself");
+        }
+        int count = end - first + 1;
+        int landed = move && below >= end ? below : below + count;
+        if (move && (below == end || below == first - 1))
+        {
+            return new VimResult(true, SelectionSet.Single(VimMotions.FirstNonBlank(text, end, breakEnds)));
+        }
+        string eol = view.LineEnding;
+        LineSpan top = text.GetLine(first);
+        string lines = text.GetText(top.Start, text.GetLine(end).End - top.Start);
+        LineSpan under = below >= 0 ? text.GetLine(below) : default;
+        TextEdit put = below < 0 ? new TextEdit(0, 0, lines + eol)
+            : under.BreakLength > 0 ? new TextEdit(under.EndIncludingBreak, 0, lines + eol)
+            : new TextEdit(under.End, 0, eol + lines);
+        List<TextEdit> edits = [put];
+        if (move)
+        {
+            Stretch taken = Whole(text, first, end, top.Start);
+            edits.Add(new TextEdit(taken.Start, taken.End - taken.Start, string.Empty));
+            edits.Sort((a, b) => a.Start.CompareTo(b.Start));
+        }
+        TextSnapshot after = text.Apply(edits);
+        EditPlan plan = new(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, landed, breakEnds)), EditKind.Other)
+        {
+            Moved = move ? [new TextMove(top.Start, lines.Length, after.GetLineStart(landed - count + 1))] : [],
+        };
+        return new VimResult(true, Edits: [plan]);
     }
 
     /// <summary>:normal: its keys pressed on the caret's line, or at the start of each line named, each line found by
