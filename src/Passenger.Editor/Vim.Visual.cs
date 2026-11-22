@@ -246,6 +246,14 @@ public sealed partial class Vim
         return new VimResult(true, shownVisual);
     }
 
+    /// <summary>The character before a place: the line before's last before a line's first, or that line where empty.</summary>
+    private static int CharacterBefore(TextSnapshot text, int place)
+    {
+        LineSpan line = VimMotions.LineOf(text, place);
+        return place > line.Start ? VimMotions.StepBack(text, place)
+            : text.GetLine(line.Line - 1) is { Length: > 0 } prior ? VimMotions.StepBack(text, prior.End) : text.GetLineStart(line.Line - 1);
+    }
+
     /// <summary>Just past a character visual mode takes: the next one, or past the line break for a cursor on its line's end.</summary>
     private static int CharEnd(TextSnapshot text, int offset) => offset >= text.Length ? text.Length : TextNavigation.NextGrapheme(text, offset);
 
@@ -817,13 +825,42 @@ public sealed partial class Vim
             {
                 return null;
             }
+            int lastLine = VimMotions.LastLine(text, breakEnds);
+            if (inner && n == 1 && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } inRun && inRun.Line < lastLine && text.GetLine(inRun.Line + 1).Length == 0)
+            {
+                // From empty lines in a run the text goes on after, is takes them to the run's last.
+                int runLast = inRun.Line + 1;
+                while (runLast < lastLine && text.GetLine(runLast + 1).Length == 0)
+                {
+                    runLast++;
+                }
+                if (runLast < lastLine)
+                {
+                    return new Region(r.Cursor, text.GetLineStart(runLast));
+                }
+            }
+            if (VimMotions.LineOf(text, r.Cursor) is { Length: 0 } onEmpty && onEmpty.Line == lastLine && onEmpty.Line > 0
+                && text.GetLine(onEmpty.Line - 1) is var above)
+            {
+                int blanks = above.End;
+                while (blanks > above.Start && text[blanks - 1] is ' ' or '\t')
+                {
+                    blanks--;
+                }
+                // From the last empty line: as from before its sentence to it, is the blanks before it (one taking it too).
+                if (!inner && span.End > span.Start)
+                {
+                    return new Region(span.Start > 0 ? CharacterBefore(text, span.Start) : 0, r.Cursor);
+                }
+                if (inner && blanks < above.End)
+                {
+                    return new Region(blanks, above.End - blanks == 1 ? r.Cursor : above.End - 1);
+                }
+            }
             if (span.End == span.Start)
             {
                 // Nothing found: from the place before it to it.
-                LineSpan at = VimMotions.LineOf(text, span.Start);
-                int before = span.Start > at.Start ? VimMotions.StepBack(text, span.Start)
-                    : at.Line > 0 && text.GetLine(at.Line - 1) is { Length: > 0 } above ? VimMotions.StepBack(text, above.End) : span.Start;
-                return new Region(span.Start, before);
+                return new Region(span.Start, span.Start > 0 ? CharacterBefore(text, span.Start) : span.Start);
             }
             Region found = Spanned(text, OwnLine(text, span));
             // A sentence no bigger than the character already shown takes the white after it too.

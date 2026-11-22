@@ -792,8 +792,8 @@ public static class VimMotions
             if (emptyFirst && n == 1 && LineOf(text, from).Line > 0 && text.GetLine(LineOf(text, from).Line - 1) is { Length: > 0 } prior
                 && text[prior.End - 1] is ' ' or '\t' && TextNavigation.IndentEnd(text, prior) < prior.End)
             {
-                // An empty line after a line ending in blanks: those blanks and the break, short of the empty line.
-                return new VimSpan(WhiteBefore(text, from), from, false);
+                // An empty line after a line ending in blanks: those blanks and the break, the empty line's own cut off.
+                return new VimSpan(WhiteBefore(text, from), LineOf(text, from).EndIncludingBreak, false);
             }
             from = emptyFirst ? BlankLinesBefore(text, from) : WhiteBefore(text, from);
         }
@@ -904,6 +904,10 @@ public static class VimMotions
         if (line == last)
         {
             int here = text.GetLine(line).Start;
+            if (!inner && line > 0)
+            {
+                return AsFromLastEmpty(text, line, here);
+            }
             if (line == 0 || text.GetLine(line - 1) is not { Length: > 0 } before || n > 1 || !inner)
             {
                 return new VimSpan(here, here, false);
@@ -936,6 +940,74 @@ public static class VimMotions
         // Before a run of empty lines that ends the text, the sentence the text before it ends with.
         LineSpan previous = text.GetLine(first - 1);
         return SentenceObject(text, BlanksBack(text, previous.End, toEmpty: false), n, inner, breakEnds);
+    }
+
+    /// <summary>as on the text's last line, empty: after a line ending in one character after a blank, that character
+    /// with the blanks before it (alone on its line, those ending the line before); after empty lines, the blanks ending
+    /// the last line of text and its break, or that line where it is blank, to here; else nothing, from where white
+    /// ending the text begins.</summary>
+    private static VimSpan AsFromLastEmpty(TextSnapshot text, int line, int here)
+    {
+        // Where white ending the text begins, never past an empty line.
+        int white = here;
+        while (white > 0 && Dec(text, white) is var before && !EmptyAt(text, before) && CharAt(text, before) is ' ' or '\t')
+        {
+            white = before;
+        }
+        int lastChar = Dec(text, white);
+        if (lastChar < 0)
+        {
+            return new VimSpan(here, here, false);
+        }
+        if (EmptyAt(text, lastChar))
+        {
+            if (white < here)
+            {
+                return new VimSpan(white, white, false);
+            }
+            // Empty lines before: the blanks ending the last line of text and its break.
+            int above = LineOf(text, lastChar).Line;
+            while (above > 0 && text.GetLine(above).Length == 0)
+            {
+                above--;
+            }
+            LineSpan textLine = text.GetLine(above);
+            int ending = BlanksBefore(text, textLine, textLine.End);
+            return textLine.Length == 0 || ending == textLine.End ? new VimSpan(here, here, false)
+                : ending == textLine.Start ? new VimSpan(ending, here, false)
+                : new VimSpan(ending, text.GetLine(above + 1).EndIncludingBreak, false);
+        }
+        if (white < here)
+        {
+            // White ends the text: nothing, from where it begins.
+            return new VimSpan(white, white, false);
+        }
+        LineSpan last = LineOf(text, lastChar);
+        int word = lastChar;
+        while (word > last.Start && CharAt(text, word - 1) is not (' ' or '\t'))
+        {
+            word--;
+        }
+        if (word != lastChar)
+        {
+            return new VimSpan(here, here, false);
+        }
+        int from = BlanksBefore(text, last, word);
+        if (from == word && last.Line > 0 && text.GetLine(last.Line - 1) is { Length: > 0 } previous)
+        {
+            from = BlanksBefore(text, previous, previous.End) is var trailing && trailing < previous.End ? trailing : word;
+        }
+        return from < word ? new VimSpan(from, here, false) : new VimSpan(here, here, false);
+    }
+
+    /// <summary>Where the blanks just before <paramref name="end"/> on a line begin; <paramref name="end"/> with none.</summary>
+    private static int BlanksBefore(TextSnapshot text, LineSpan line, int end)
+    {
+        while (end > line.Start && text[end - 1] is ' ' or '\t')
+        {
+            end--;
+        }
+        return end;
     }
 
     /// <summary>Where the sentence at <paramref name="start"/> ends: a run of empty lines short of the last line at the
