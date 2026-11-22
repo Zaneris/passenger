@@ -123,6 +123,15 @@ public partial struct Brackets
     /// <summary>What was open before the string or comment being read, set back at its end.</summary>
     private Counts held;
 
+    /// <summary>The condition groups open that were read from their <c>#if</c>, outermost first (<see cref="ReadCode"/>).</summary>
+    private Groups groups;
+
+    /// <summary>How many of the conditions open, the outermost, are groups read from their <c>#if</c>.</summary>
+    private int grouped;
+
+    /// <summary>Whether a documentation comment's line ended at a slash, which may go on with it.</summary>
+    private bool docGoesOn;
+
     /// <summary>Whether C#'s links count as a statement's brackets do: each <c>?</c>, a pattern's <c>not</c> and a lambda's
     /// <c>=&gt;</c>, which a parser and a binder nest through with no bracket, and a type's <c>&lt;</c> closed by its
     /// <c>&gt;</c>, a <c>&lt;</c> before another or an <c>=</c> opening nothing, nor a <c>&gt;</c> after a <c>-</c>; and each
@@ -154,7 +163,7 @@ public partial struct Brackets
         SearchValues<char> marks = CSharp ? CSharpMarks : Marks;
         for (int at = text.IndexOfAny(marks); at >= 0 && !TooDeepToLex; at = text.IndexOfAny(marks))
         {
-            Mark(text, at, closes: true);
+            Mark(text, at, closes: true, endsLinks: true);
             consumed += at + 1;
             text = text[(at + 1)..];
         }
@@ -162,8 +171,9 @@ public partial struct Brackets
     }
 
     /// <summary>Counts a mark; a closer, a semicolon or an <c>#endif</c> only where it <paramref name="closes"/> what's open,
-    /// which nothing may lie in a string or a comment to do.</summary>
-    private void Mark(ReadOnlySpan<char> text, int at, bool closes)
+    /// which nothing may lie in a string or a comment to do, and the conditional accesses read ahead through only where it
+    /// <paramref name="endsLinks"/> too.</summary>
+    private void Mark(ReadOnlySpan<char> text, int at, bool closes, bool endsLinks)
     {
         switch (text[at])
         {
@@ -180,7 +190,7 @@ public partial struct Brackets
                 break;
             case ')' or ']' when closes:
                 counts.Statement = Math.Max(0, counts.Statement - 1);
-                Close();
+                Close(endsLinks);
                 break;
             case '<':
                 counts.Statement += Before(text, at) == '<' || After(text, at) is '<' or '=' ? 0 : 1;
@@ -206,7 +216,7 @@ public partial struct Brackets
             case '}' when closes:
                 counts.Braces = Math.Max(0, counts.Braces - 1);
                 counts.Holes = Math.Max(0, counts.Holes - 1);
-                Close();
+                Close(endsLinks);
                 break;
             case '$':
                 counts.Dollar = true;
@@ -217,7 +227,10 @@ public partial struct Brackets
                 break;
             case ';' when closes:
                 counts.Statement = 0;
-                EndLinks(counts.Depth);
+                if (endsLinks)
+                {
+                    EndLinks(counts.Depth);
+                }
                 break;
         }
         Check(consumed + at);
@@ -262,10 +275,14 @@ public partial struct Brackets
         counts.Linked++;
     }
 
-    private void Close()
+    /// <summary>A bracket closes, ending the links read ahead within it where it <paramref name="endsLinks"/>.</summary>
+    private void Close(bool endsLinks)
     {
-        counts.Depth = Math.Max(0, counts.Depth - 1);
-        EndLinks(counts.Depth + 1);
+        if (endsLinks)
+        {
+            counts.Depth = Math.Max(0, counts.Depth - 1);
+            EndLinks(counts.Depth + 1);
+        }
     }
 
     /// <summary>Ends the links read ahead from this depth and those within it.</summary>

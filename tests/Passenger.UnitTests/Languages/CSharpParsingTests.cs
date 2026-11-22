@@ -68,9 +68,9 @@ public class CSharpParsingTests
         }),
         ("an expression deeper than a stack holds is read on a stack of its own, and one past what the parser reads refused", DeepExpressionsReadOnAStackOfTheirOwn));
 
-    /// <summary>The shapes of real test and data files, whose brackets are only text, read whole; and what a string, a
-    /// character, a comment or a branch left out holds closes nothing, so brackets nested past what a parser is given around
-    /// it are still too deep.</summary>
+    /// <summary>The shapes of real test, data and generated files, whose brackets are only text or closed in each branch,
+    /// read whole; and what a string, a character, a comment or a branch left out holds closes nothing, so brackets nested
+    /// past what a parser is given around it are still too deep.</summary>
     [Fact]
     public void Strings_and_comments_open_and_close_nothing_however_many() => Cases.All(
         ("brackets that are only text read whole however many, the lexer handed what the text count doesn't know", () => Cases.Each(
@@ -105,6 +105,9 @@ public class CSharpParsingTests
             ("class C { object x = ", "(\"\"\"\n;)\n\"\"\" + ", ")"),
             ("class C { object x = ", "($$\"\"\"{{\";\"}};)\"\"\" + ", ")"),
             ("class C { object x = ", "(\n/// ;)\n", ")"),
+            ("class C { object x = ", "(\n/// a\n/// ;)\n", ")"),
+            ("class C { object x = ", "(\n#if NEVER\n)\n#endif\n", ")"),
+            ("class C { object x = ", "(\n#if NEVER\n;)\n#else\n#endif\n", ")"),
             ("class C { ", "A</*>*/", ">"),
         ], row =>
         {
@@ -128,6 +131,18 @@ public class CSharpParsingTests
             string text = Nested(before, "(", "1", ")", "; }", 100_000);
             SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
         })),
+        ("what a branch left out closes stays open once reading goes unsure within it", () =>
+        {
+            string text = "class C { object x = " + new string('(', 1_200) + "\n#if NEVER\n" + new string(')', 1_200) + "\n/*\n*/\n#endif\nint" + new string(')', 1_200) + " x; }\n";
+            SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
+        }),
+        ("a generated file past what a stack holds, its condition branches each closing what they open and its documentation comments of several lines holding brackets, reads whole by the text count alone (#2090)", () =>
+        {
+            string text = Generated();
+            Assert.False(DeepText.Holds(text.Length), "The generated file no longer reaches past what a stack holds, where the text count's word is final");
+            Assert.False(DeepText.TooDeep(text, csharp: true), "A generated file's condition branches or documentation comments added up as open, so the C# language server would be given none of it");
+            Assert.Null(CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
+        }),
         ("a file of strings each leaving a bracket open reads whole", () =>
         {
             string text = "class C { void M() {\n" + string.Concat(Enumerable.Repeat("    F(\"(\", '[');\n", 5_000)) + "} }\n";
@@ -267,6 +282,26 @@ public class CSharpParsingTests
     });
 
     private static string Links(int count) => string.Concat(Enumerable.Repeat("?[0]", count));
+
+    /// <summary>A file of messages as Protocol Buffers' C# generator writes them, past what a stack holds: each member's
+    /// body in a condition's branches, and documentation comments of several lines.</summary>
+    private static string Generated()
+    {
+        StringBuilder text = new("namespace Generated {\n");
+        for (int message = 0; DeepText.Holds(text.Length); message++)
+        {
+            text.Append("  /// <summary>\n  /// A session's state { \"rows\": [24, 80] } (see the protocol).\n  /// </summary>\n")
+                .Append("  public sealed partial class Message").Append(message).Append(" : IMessage\n")
+                .Append("  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE\n      , IBufferMessage\n  #endif\n  {\n")
+                .Append("    public void WriteTo(Output output) {\n    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE\n")
+                .Append("      output.WriteRawMessage(this);\n    #else\n      if (Rows != 0) {\n        output.WriteInt32(Rows);\n      }\n")
+                .Append("    #endif\n    }\n\n    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE\n")
+                .Append("    void IBufferMessage.InternalMergeFrom(ref Context input) {\n      uint tag;\n")
+                .Append("      while ((tag = input.ReadTag()) != 0) {\n        switch (tag) {\n          case 8: {\n")
+                .Append("            Rows = input.ReadInt32();\n            break;\n          }\n        }\n      }\n    }\n    #endif\n  }\n\n");
+        }
+        return text.Append("}\n").ToString();
+    }
 
     /// <summary>What measuring a key reads and allocates in a file of 4,000 methods is what it does in one of 40. Roslyn
     /// holds a method body's statements only weakly, so the tree's nodes are held while it is measured, and what is counted

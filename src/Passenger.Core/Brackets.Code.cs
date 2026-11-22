@@ -7,9 +7,11 @@ namespace Passenger.Core;
 /// <summary>A C# text as it stands, read for where it certainly is code, so nothing in a string or a comment closes what's
 /// open: comments, strings, characters, verbatim and raw strings, and interpolated ones of each kind nested four deep, are
 /// read as C#'s lexer reads them, and anything else (a shape the lexer reads as an error, a stretch of lines in a branch that
-/// may be left out) leaves the rest of the text unsure. Openers count everywhere; a closer, a semicolon or an <c>#endif</c> only in code outside every <c>#if</c>,
-/// whose branch may be text no lexer reads. What a string or a comment opens is set aside at its end, as the lexer's tokens
-/// leave it, but for what an unsure stretch opens, which stays.</summary>
+/// may be left out) leaves the rest of the text unsure. Openers count everywhere; a closer or a semicolon only in code, and
+/// within a condition only where each group open was read from its <c>#if</c>, as a branch may be text no lexer reads: each
+/// branch then reads on from what was open at the <c>#if</c>, and what follows the group from the most any branch, or none,
+/// left open (<see cref="Group"/>). What a string or a comment opens is set aside at its end, as the lexer's tokens leave it,
+/// but for what an unsure stretch opens, which stays.</summary>
 public partial struct Brackets
 {
     private const string Lines = "\r\n\u0085\u2028\u2029";
@@ -19,6 +21,9 @@ public partial struct Brackets
 
     /// <summary>The most brackets a hole's closers are kept for, two bits each.</summary>
     private const int MostNested = 32;
+
+    /// <summary>The most condition groups, one within another, whose branches are read from their <c>#if</c>.</summary>
+    private const int MostGroups = 8;
 
     private static readonly SearchValues<char> CodeMarks = SearchValues.Create("()[]{};<>?n\"'/@$#" + Lines);
 
@@ -111,11 +116,18 @@ public partial struct Brackets
         Format,
     }
 
+    /// <summary>What's open that a condition's branch reads on from.</summary>
+    private Open Opened
+    {
+        readonly get => new() { Statement = counts.Statement, Braces = counts.Braces, Holes = counts.Holes };
+        set => (counts.Statement, counts.Braces, counts.Holes) = (value.Statement, value.Braces, value.Holes);
+    }
+
     private void ReadCode(ReadOnlySpan<char> text)
     {
         if (!midLine && text.Length > 0 && place == Place.Code && Conflicted(text, 0))
         {
-            place = Place.Unsure;
+            GoUnsure();
         }
         for (int at = 0; at < text.Length && !TooDeepToLex;)
         {
@@ -158,15 +170,28 @@ public partial struct Brackets
                 return Unsure(text, at);
             case Place.Slash:
                 place = c switch { '/' => Place.SlashSlash, '*' => Place.SlashStar, _ => Place.Code };
+                if (place != Place.SlashSlash)
+                {
+                    EndDoc();
+                }
                 return place == Place.Code ? at : at + 1;
             case Place.SlashSlash:
+                if (c != '/')
+                {
+                    EndDoc();
+                }
                 place = c == '/' ? Place.SlashSlashSlash : Place.Line;
                 return c == '/' ? at + 1 : at;
             case Place.SlashSlashSlash:
-                if (c != '/')
+                if (c == '/')
+                {
+                    EndDoc();
+                }
+                else if (!docGoesOn)
                 {
                     Hold();
                 }
+                docGoesOn = false;
                 place = c == '/' ? Place.Line : Place.DocLine;
                 return c == '/' ? at + 1 : at;
             case Place.Line:
@@ -397,11 +422,11 @@ public partial struct Brackets
             case '\r' or '\n' or '\u0085' or '\u2028' or '\u2029':
                 if (at + 1 < text.Length && Conflicted(text, at + 1))
                 {
-                    place = Place.Unsure;
+                    GoUnsure();
                 }
                 break;
             default:
-                Mark(text, at, closes: counts.Conditions == 0);
+                Mark(text, at, closes: counts.Conditions == grouped, endsLinks: counts.Conditions == 0);
                 break;
         }
         return at + 1;
@@ -415,12 +440,27 @@ public partial struct Brackets
         {
             return text.Length;
         }
-        Mark(text, at + next, closes: false);
+        Mark(text, at + next, closes: false, endsLinks: false);
         return at + next + 1;
     }
 
     /// <summary>Reading becomes unsure here, for the rest of the text.</summary>
-    private int Lost(int at) => To(Place.Unsure, at);
+    private int Lost(int at)
+    {
+        GoUnsure();
+        return at;
+    }
+
+    /// <summary>Reading becomes unsure, for the rest of the text, where nothing closes: what's open is the most that's open
+    /// here whichever branches of the conditions read from their <c>#if</c> are taken.</summary>
+    private void GoUnsure()
+    {
+        for (int group = 0; group < grouped; group++)
+        {
+            Opened = Open.Most(Opened, groups[group].Began);
+        }
+        place = Place.Unsure;
+    }
 
     private int To(Place then, int at)
     {
@@ -452,12 +492,13 @@ public partial struct Brackets
         {
             return doc == Place.DocLine ? To(Place.AfterDoc, at) : counts.Conditions > 0 ? Lost(at) : at + 1;
         }
-        Mark(text, at, closes: false);
+        Mark(text, at, closes: false, endsLinks: false);
         return at + 1;
     }
 
     /// <summary>Past a documentation comment's line: another such line goes on with it, as the lexer's one trivia, and what
-    /// it opened is set aside only once code comes. Whatever a lexer may take for space is passed over.</summary>
+    /// it opened is set aside once anything else comes (<see cref="EndDoc"/>). Whatever a lexer may take for space is passed
+    /// over.</summary>
     private int AfterDoc(ReadOnlySpan<char> text, int at)
     {
         while (at < text.Length && char.IsWhiteSpace(text[at]))
@@ -473,6 +514,7 @@ public partial struct Brackets
         {
             Restore();
         }
+        docGoesOn = text[at] == '/';
         return column && Conflicted(text, at) ? Lost(at) : To(Place.Code, at);
     }
 
@@ -488,7 +530,8 @@ public partial struct Brackets
     }
 
     /// <summary>A directive's name: <c>#if</c> opens a condition, and <c>#endif</c> closes one, being one wherever it
-    /// lies, as reading stops being sure before anything could hide one.</summary>
+    /// lies, as reading stops being sure before anything could hide one; in a group read from its <c>#if</c>, each branch
+    /// reads on from what was open there, and what follows from the most any branch, or none, left open.</summary>
     private int InDirective(ReadOnlySpan<char> text, int at)
     {
         char c = text[at];
@@ -504,17 +547,35 @@ public partial struct Brackets
         }
         if (named == 2 && directive == If)
         {
+            if (counts.Conditions == grouped && grouped < MostGroups)
+            {
+                groups[grouped++] = new Group { Began = Opened, Most = Opened };
+            }
             counts.Conditions++;
             Check(directiveAt);
         }
         else if (named == 5 && directive == EndIf)
         {
+            if (grouped > 0 && counts.Conditions == grouped)
+            {
+                Opened = Open.Most(groups[--grouped].Most, Opened);
+            }
             counts.Conditions = Math.Max(0, counts.Conditions - 1);
+            Check(directiveAt);
         }
-        else if (named == 4 && (directive == Else || directive == Elif) && counts.Conditions == 0)
+        else if (named == 4 && (directive == Else || directive == Elif))
         {
-            // A text read from within a condition goes on into a branch left out.
-            counts.Conditions = 1;
+            if (counts.Conditions == 0)
+            {
+                // A text read from within a condition goes on into a branch left out.
+                counts.Conditions = 1;
+            }
+            else if (counts.Conditions == grouped)
+            {
+                ref Group group = ref groups[grouped - 1];
+                group.Most = Open.Most(group.Most, Opened);
+                Opened = group.Began;
+            }
         }
         return To(Place.DirectiveRest, at);
     }
@@ -713,7 +774,7 @@ public partial struct Brackets
             case '(' or '[' or '{' when hole.Nested < MostNested:
                 hole.Closers = (hole.Closers << 2) | (c == '(' ? 1UL : c == '[' ? 2UL : 3UL);
                 hole.Nested++;
-                Mark(text, at, closes: false);
+                Mark(text, at, closes: false, endsLinks: false);
                 return at + 1;
             case '}' when hole.Nested == 0:
                 return HoleEnded(at);
@@ -722,7 +783,7 @@ public partial struct Brackets
                 hole.Nested--;
                 return at + 1;
             case '<' or '>' or '?' or 'n':
-                Mark(text, at, closes: false);
+                Mark(text, at, closes: false, endsLinks: false);
                 return at + 1;
             case '\r' or '\n' or '\u0085' or '\u2028' or '\u2029' when counts.Conditions == 0:
                 return at + 1;
@@ -747,6 +808,16 @@ public partial struct Brackets
     private void Hold() => held = counts;
 
     private void Restore() => counts = held;
+
+    /// <summary>A documentation comment ends where its line is followed by a slash that starts no other such line.</summary>
+    private void EndDoc()
+    {
+        if (docGoesOn)
+        {
+            Restore();
+            docGoesOn = false;
+        }
+    }
 
     /// <summary>Whether a <c>#</c> is the first of its line but for spaces and tabs, where a lexer reads a directive.</summary>
     private readonly bool AtLineStart(ReadOnlySpan<char> text, int at)
@@ -792,5 +863,36 @@ public partial struct Brackets
     private struct Interpolations
     {
         private Interpolation first;
+    }
+
+    /// <summary>A condition group read from its <c>#if</c>: what was open there, which each branch reads on from, and the
+    /// most that the branches read so far, or none taken, left open, which what follows reads on from. A branch's
+    /// conditional accesses read ahead through stay open, as in a condition not read from its <c>#if</c>.</summary>
+    private struct Group
+    {
+        public Open Began;
+        public Open Most;
+    }
+
+    /// <summary>What's open that a condition's branch reads on from.</summary>
+    private struct Open
+    {
+        public int Statement;
+        public int Braces;
+        public int Holes;
+
+        /// <summary>The most of each that either leaves open.</summary>
+        public static Open Most(Open one, Open other) => new()
+        {
+            Statement = Math.Max(one.Statement, other.Statement),
+            Braces = Math.Max(one.Braces, other.Braces),
+            Holes = Math.Max(one.Holes, other.Holes),
+        };
+    }
+
+    [InlineArray(MostGroups)]
+    private struct Groups
+    {
+        private Group first;
     }
 }
