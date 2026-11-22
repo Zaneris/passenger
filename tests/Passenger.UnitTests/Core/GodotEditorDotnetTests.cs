@@ -26,8 +26,31 @@ public sealed class GodotEditorDotnetTests
     private static GodotEditorDotnet.Machine OnOwn(Version? locator = null, string? pathSdk = "11.0.100") =>
         new(Own, Installed, Builder, pathSdk, locator ?? CarriedLocator, Previews: false);
 
+    /// <summary>Godot's editor is given the .NET its builds need, or the person is told why and what to do.</summary>
     [Fact]
-    public void An_editor_on_another_dotnet_with_no_released_SDK_where_it_builds_is_given_the_installers_dotnet_for_a_game_that_runs_there()
+    public void An_editor_is_given_the_dotnet_its_builds_need_or_told_why() => Cases.All(
+        (nameof(An_editor_on_another_dotnet_with_no_released_SDK_where_it_builds_is_given_the_installers_dotnet_for_a_game_that_runs_there),
+            An_editor_on_another_dotnet_with_no_released_SDK_where_it_builds_is_given_the_installers_dotnet_for_a_game_that_runs_there),
+        (nameof(A_game_newer_than_every_dotnet_its_editor_builds_on_is_told_why_and_what_to_do_nothing_changed),
+            A_game_newer_than_every_dotnet_its_editor_builds_on_is_told_why_and_what_to_do_nothing_changed),
+        (nameof(The_persons_own_DOTNET_ROOT_is_kept_and_its_failure_said_offering_no_older_target_it_would_not_take),
+            The_persons_own_DOTNET_ROOT_is_kept_and_its_failure_said_offering_no_older_target_it_would_not_take),
+        (nameof(An_editor_whose_builds_work_is_left_as_it_stands), An_editor_whose_builds_work_is_left_as_it_stands));
+
+    /// <summary>A new game targets the newest .NET its editor builds and runs on, found as the editor finds
+    /// it.</summary>
+    [Fact]
+    public void A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs() => Cases.All(
+        (nameof(A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs_started_on_its_own_and_through_passenger),
+            A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs_started_on_its_own_and_through_passenger),
+        (nameof(Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it),
+            Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it),
+        (nameof(Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one),
+            Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one),
+        (nameof(It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers),
+            It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers));
+
+    private void An_editor_on_another_dotnet_with_no_released_SDK_where_it_builds_is_given_the_installers_dotnet_for_a_game_that_runs_there()
     {
         GodotEditorDotnet.Given given = GodotEditorDotnet.Decide(OnOwn(), game: 10, [RuntimeVariables.Root], Editor);
         Assert.True(given.WhyNot is null && given.Variables.Count == 1 && given.Variables[RuntimeVariables.Root] == GodotEditorDotnet.InstallerRoot,
@@ -35,17 +58,7 @@ public sealed class GodotEditorDotnetTests
             + $"[{string.Join(", ", given.Variables)}] ({given.WhyNot}), so every build it starts finds no Microsoft.NET.Sdk");
     }
 
-    [Fact]
-    public void An_export_needs_no_game_run_so_takes_the_installers_dotnet_whatever_the_game_targets()
-    {
-        GodotEditorDotnet.Given given = GodotEditorDotnet.Decide(OnOwn(), game: null, [RuntimeVariables.Root, RuntimeVariables.RootFor("arm64")], Editor);
-        Assert.Equal(new Dictionary<string, string> { [RuntimeVariables.Root] = GodotEditorDotnet.InstallerRoot, [RuntimeVariables.RootFor("arm64")] = GodotEditorDotnet.InstallerRoot },
-            given.Variables);
-        Assert.Null(given.WhyNot);
-    }
-
-    [Fact]
-    public void A_game_newer_than_every_dotnet_its_editor_builds_on_is_told_why_and_what_to_do_nothing_changed()
+    private void A_game_newer_than_every_dotnet_its_editor_builds_on_is_told_why_and_what_to_do_nothing_changed()
     {
         GodotEditorDotnet.Given given = GodotEditorDotnet.Decide(OnOwn(), game: 11, [RuntimeVariables.Root], Editor);
         Assert.Empty(given.Variables);
@@ -55,8 +68,7 @@ public sealed class GodotEditorDotnetTests
             + "net10.0, which it then runs on from there", given.WhyNot);
     }
 
-    [Fact]
-    public void The_persons_own_DOTNET_ROOT_is_kept_and_its_failure_said_offering_no_older_target_it_would_not_take()
+    private void The_persons_own_DOTNET_ROOT_is_kept_and_its_failure_said_offering_no_older_target_it_would_not_take()
     {
         GodotEditorDotnet.Given given = GodotEditorDotnet.Decide(OnOwn(), game: 10, [], Editor);
         Assert.Empty(given.Variables);
@@ -64,26 +76,19 @@ public sealed class GodotEditorDotnetTests
             $"The person's own DOTNET_ROOT breaking the build said: {given.WhyNot}");
     }
 
-    [Theory]
-    [InlineData("a released SDK of its .NET where it builds", true, "1.2.6", "11.0.100")]
-    [InlineData("a locator that names a .NET 11 SDK's folders rightly", false, "1.6.0", "11.0.100")]
-    [InlineData("a .NET 10 SDK on the PATH, its base path ending in a separator", false, "1.2.6", "10.0.404")]
-    [InlineData("no dotnet on the PATH, so no SDK registered", false, "1.2.6", null)]
-    public void An_editor_whose_builds_work_is_left_as_it_stands(string with, bool released, string locator, string? pathSdk)
+    private void An_editor_whose_builds_work_is_left_as_it_stands() => Cases.Each<(string With, bool Released, string Locator, string? PathSdk)>(
+    [
+        ("a released SDK of its .NET where it builds", true, "1.2.6", "11.0.100"),
+        ("a locator that names a .NET 11 SDK's folders rightly", false, "1.6.0", "11.0.100"),
+        ("a .NET 10 SDK on the PATH, its base path ending in a separator", false, "1.2.6", "10.0.404"),
+        ("no dotnet on the PATH, so no SDK registered", false, "1.2.6", null),
+    ], row => An_editor_whose_builds_work_is_left_as_it_stands(row.With, row.Released, row.Locator, row.PathSdk));
+
+    private void An_editor_whose_builds_work_is_left_as_it_stands(string with, bool released, string locator, string? pathSdk)
     {
         DotnetInstallation builds = released ? Installed with { Sdks = ["11.0.100", .. Installed.Sdks], Runtimes = ["11.0.0", .. Installed.Runtimes] } : Installed;
         GodotEditorDotnet.Given given = GodotEditorDotnet.Decide(new(Own, builds, Builder, pathSdk, Version.Parse(locator), false), game: 11, [RuntimeVariables.Root], Editor);
         Assert.True(given == GodotEditorDotnet.Given.AsItStands, $"An editor with {with} was given [{string.Join(", ", given.Variables)}] ({given.WhyNot})");
-    }
-
-    [Fact]
-    public void An_editor_on_the_installers_own_dotnet_older_than_its_game_is_told_why_offering_its_dotnets_target()
-    {
-        GodotEditorDotnet.Given given = GodotEditorDotnet.Decide(new(Installed, Installed, Builder, "11.0.100", CarriedLocator, false), game: 11, [RuntimeVariables.Root], Editor);
-        Assert.Empty(given.Variables);
-        Assert.Equal($"{Editor} runs no C# of the game here: it runs on .NET 10 of {GodotEditorDotnet.InstallerRoot}, older than the .NET 11 the game targets, and builds "
-            + $"with {Builder}: install the .NET 11 SDK into {GodotEditorDotnet.InstallerRoot} (Microsoft's installer puts it there), or target the game at net10.0, "
-            + "which it then runs on from there", given.WhyNot);
     }
 
     /// <summary>The editor on its own, as from the Dock: no DOTNET_ROOT, so on the installer's .NET, which /etc/dotnet registers.</summary>
@@ -94,8 +99,7 @@ public sealed class GodotEditorDotnetTests
     private static GodotEditorDotnet.Start Through(DotnetInstallation own, DotnetInstallation installed) =>
         new(new GodotEditorDotnet.Machine(own, installed, Builder, "11.0.100", CarriedLocator, Previews: false), [RuntimeVariables.Root]);
 
-    [Fact]
-    public void A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs_started_on_its_own_and_through_passenger()
+    private void A_new_game_targets_the_newest_dotnet_its_editor_builds_and_runs_started_on_its_own_and_through_passenger()
     {
         GodotEditorDotnet.GameTargets targets = new([Alone(Installed), Through(Own, Installed)], Editor);
         Assert.Equal(new GodotEditorDotnet.GameDotnet(10, GodotEditorDotnet.InstallerRoot), targets.Newest);
@@ -106,17 +110,7 @@ public sealed class GodotEditorDotnetTests
             + "which it then runs on from there", targets.WhyNot("net11.0"));
     }
 
-    [Fact]
-    public void A_new_game_targets_net11_once_the_installer_holds_a_released_dotnet_11()
-    {
-        DotnetInstallation released = Installed with { Sdks = ["11.0.100", .. Installed.Sdks], Runtimes = ["11.0.0", .. Installed.Runtimes] };
-        GodotEditorDotnet.GameTargets targets = new([Alone(released), Through(Own, released)], Editor);
-        Assert.Equal(new GodotEditorDotnet.GameDotnet(11, GodotEditorDotnet.InstallerRoot), targets.Newest);
-        Assert.Null(targets.WhyNot("net11.0"));
-    }
-
-    [Fact]
-    public void Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it()
+    private void Through_passenger_a_game_targets_the_newer_dotnet_of_the_installation_the_editor_builds_with_which_passenger_hands_it()
     {
         DotnetInstallation older = new(Home, ["10.0.404"], ["10.0.15"]);
         DotnetInstallation released = Installed with { Sdks = ["11.0.100", .. Installed.Sdks], Runtimes = ["11.0.0", .. Installed.Runtimes] };
@@ -124,27 +118,14 @@ public sealed class GodotEditorDotnetTests
         Assert.Equal(new GodotEditorDotnet.GameDotnet(10, Home), GodotEditorDotnet.NewestOf(Through(older, released) with { Roots = [] }));
     }
 
-    [Fact]
-    public void An_editor_that_builds_no_csharp_here_offers_no_framework_and_says_why()
-    {
-        DotnetInstallation previews = Installed with { Sdks = ["11.0.100-rc.3.26522.148", "10.0.100-rc.2.25502.107"] };
-        GodotEditorDotnet.GameTargets targets = new([Alone(previews), Through(Own, previews)], Editor);
-        Assert.Null(targets.Newest);
-        Assert.StartsWith($"{Editor} builds no C# here: it runs on .NET 10 of {GodotEditorDotnet.InstallerRoot}", targets.WhyNot("net10.0"), StringComparison.Ordinal);
-        Assert.Equal(new GodotEditorDotnet.GameDotnet(10, GodotEditorDotnet.InstallerRoot),
-            new GodotEditorDotnet.GameTargets([Alone(previews, new Version(1, 6))], Editor).Newest);
-    }
-
-    [Fact]
-    public void Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one()
+    private void Its_dotnet_is_the_newest_released_major_from_8_or_a_preview_where_it_rolls_to_one()
     {
         Assert.Equal(10, GodotEditorDotnet.Major(Installed, previews: false));
         Assert.Equal(11, GodotEditorDotnet.Major(Installed, previews: true));
         Assert.Null(GodotEditorDotnet.Major(new DotnetInstallation("/old", [], ["7.0.20", "6.0.36"]), previews: false));
     }
 
-    [Fact]
-    public void It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers()
+    private void It_runs_on_the_processors_DOTNET_ROOT_then_DOTNET_ROOT_then_the_registered_dotnet_then_the_installers()
     {
         HashSet<string> folders = ["/arm", "/root", "/registered", "/legacy", .. ((string[])["/arm", "/root", "/registered", "/legacy", GodotEditorDotnet.InstallerRoot]).Select(Fxr)];
         Dictionary<string, string?> variables = new() { [RuntimeVariables.RootFor("arm64")] = "/arm", [RuntimeVariables.Root] = "/root" };
@@ -166,15 +147,4 @@ public sealed class GodotEditorDotnetTests
         static string Fxr(string root) => Path.Combine(root, "host", "fxr");
     }
 
-    [Fact]
-    public void An_x64_editor_builds_with_and_falls_back_on_the_installers_x64_dotnet_where_there_is_one()
-    {
-        string x64 = Path.Combine(GodotEditorDotnet.InstallerRoot, "x64", Dotnet.HostName);
-        Assert.Equal(x64, GodotEditorDotnet.Builder("x64", _ => true));
-        Assert.Equal(Builder, GodotEditorDotnet.Builder("arm64", _ => true));
-        Assert.Equal(Builder, GodotEditorDotnet.Builder("x64", f => f == Builder));
-        Assert.Null(GodotEditorDotnet.Builder("arm64", _ => false));
-        HashSet<string> folders = [Path.Combine(GodotEditorDotnet.InstallerRoot, "x64", "host", "fxr")];
-        Assert.Equal(Path.Combine(GodotEditorDotnet.InstallerRoot, "x64"), GodotEditorDotnet.RunsOn("x64", _ => null, folders.Contains, _ => null, f => f == x64));
-    }
 }

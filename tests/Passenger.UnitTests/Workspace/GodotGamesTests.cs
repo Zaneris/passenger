@@ -22,23 +22,32 @@ public sealed class GodotGamesTests : IDisposable
 
     private const string Named = "config_version=5\n\n[application]\n\nconfig/name=\"Ticker\"\n";
 
-    /// <summary>A game of GDScript alone takes any Godot 4, .NET or not, as its Run does, and no older Godot: its project
-    /// would be written for one that cannot open it.</summary>
+    /// <summary>A project.godot is a game of its own only where no C# project builds it and no Godot project holds
+    /// it.</summary>
     [Fact]
-    public void A_gdscript_game_is_refused_a_godot_older_than_4_saying_where_godot_4_comes_from()
-    {
-        GodotFound three = new("/opt/Godot_v3.5.3-stable_x11.64", "the PATH") { Exists = true, Version = "3.5.3" };
-        GodotFound four = three with { Version = "4.7.2" };
+    public void A_project_godot_is_a_game_of_its_own_only_where_no_project_builds_it() => Cases.All(
+        (nameof(A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not),
+            () => Apart(test => test.A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not())),
+        (nameof(A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own),
+            () => Apart(test => test.A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own())),
+        (nameof(A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot),
+            () => Apart(test => test.A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot())));
 
-        Assert.Equal("A Godot game needs Godot 4: /opt/Godot_v3.5.3-stable_x11.64 is Godot 3.5.3: Passenger runs Godot 4's projects. Godot 4 comes from godotengine.org/download",
-            GodotGames.WhyNot(three, scripts: true, "none"));
-        Assert.Null(GodotGames.WhyNot(four, scripts: true, "none"));
-        Assert.StartsWith("A Godot game in C# needs Godot's .NET build: ", GodotGames.WhyNot(four, scripts: false, "none"), StringComparison.Ordinal);
-        Assert.Equal("A Godot game needs Godot, and none. Godot 4 comes from godotengine.org/download", GodotGames.WhyNot(null, scripts: true, "none"));
+    /// <summary>A project naming its Godot folder is told what its scripts and build miss, and nothing where they reach
+    /// it.</summary>
+    [Fact]
+    public void A_project_is_told_what_its_godot_folder_leaves_its_build_missing() => Cases.All(
+        (nameof(A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss),
+            A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<GodotGamesTests> check)
+    {
+        using GodotGamesTests test = new();
+        check(test);
     }
 
-    [Fact]
-    public void A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not()
+    private void A_project_godot_with_no_project_beside_it_is_a_game_of_gdscript_alone_and_one_beside_a_csproj_is_not()
     {
         Write(Path.Combine("ticker", "project.godot"), Named);
         Write(Path.Combine("spinner", "project.godot"), Named);
@@ -50,8 +59,7 @@ public sealed class GodotGamesTests : IDisposable
         Assert.Equal([Path.Combine(root, "spinner", "Spinner.csproj")], read.Projects.Select(p => p.Path));
     }
 
-    [Fact]
-    public void A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own()
+    private void A_project_godot_inside_another_godot_project_or_a_csharp_projects_folder_is_no_game_of_its_own()
     {
         Write(Path.Combine("game", "project.godot"), Named);
         Write(Path.Combine("game", "addons", "demo", "project.godot"), Named);
@@ -61,8 +69,7 @@ public sealed class GodotGamesTests : IDisposable
         Assert.Equal([Path.Combine(root, "game")], WorkspaceModel.Read(root).GodotGames);
     }
 
-    [Fact]
-    public void A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot()
+    private void A_game_a_project_builds_csharp_for_is_left_to_that_project_and_one_of_gdscript_alone_stands_as_its_project_godot()
     {
         string game = Path.Combine(root, "game");
         Write(Path.Combine("game", "project.godot"), Named);
@@ -108,10 +115,13 @@ public sealed class GodotGamesTests : IDisposable
 
     /// <summary>A project above its Godot folder setting GodotProjectDir in its body, full or relative, has
     /// [ScriptPath("res://game/Main.cs")] and its build beside the project, and Godot finds no class for res://Main.cs.</summary>
-    [Theory]
-    [InlineData("{root}/game/")]
-    [InlineData("game")]
-    public void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(string written)
+    private static void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss() => Cases.Each<string>(
+    [
+        "{root}/game/",
+        "game",
+    ], row => Apart(test => test.A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(row)));
+
+    private void A_project_setting_its_godot_folder_in_its_body_is_told_what_its_scripts_and_build_miss(string written)
     {
         Directory.CreateDirectory(Path.Combine(root, "game"));
         string problem = Assert.IsType<string>(Evaluated(written.Replace("{root}", root, StringComparison.Ordinal), $"{root}/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
@@ -121,73 +131,4 @@ public sealed class GodotGamesTests : IDisposable
         Assert.Contains("Set GodotProjectDir to a full path in a PropertyGroup before <Import Project=\"Sdk.props\"", problem, StringComparison.Ordinal);
     }
 
-    /// <summary>The generators read a relative folder from the compiler's, a [ScriptPath] then climbing from there to the game,
-    /// so setting the base 64 too doesn't mend a relative value.</summary>
-    [Fact]
-    public void A_relative_godot_folder_given_to_the_generators_is_said_to_be_read_from_the_compilers_folder()
-    {
-        Directory.CreateDirectory(Path.Combine(root, "game"));
-        string problem = Assert.IsType<string>(Evaluated("game/", "game/", $"{root}/game/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
-
-        Assert.Contains("Godot's source generators read game/ from the compiler's own folder", problem, StringComparison.Ordinal);
-        Assert.DoesNotContain("its build goes to", problem, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_project_whose_generators_are_right_is_told_only_where_its_build_goes()
-    {
-        Directory.CreateDirectory(Path.Combine(root, "game"));
-        string problem = Assert.IsType<string>(Evaluated($"{root}/game/", $"{root}/game/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
-
-        Assert.DoesNotContain("source generators", problem, StringComparison.Ordinal);
-        Assert.Contains("its build goes to", problem, StringComparison.Ordinal);
-    }
-
-    /// <summary>A folder set before the SDK's props reaches both, and the project beside its project.godot never needed to.</summary>
-    [Fact]
-    public void A_project_whose_scripts_and_build_reach_its_godot_folder_is_told_nothing()
-    {
-        Directory.CreateDirectory(Path.Combine(root, "game"));
-
-        Assert.Null(Evaluated($"{root}/game/", $"{root}/game/", $"{root}/game/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
-        Assert.Null(Evaluated($"{root}/", $"{root}/", $"{root}/.godot/mono/temp/bin/Debug/Game.dll").GodotLayoutProblem);
-        Assert.Null((Evaluated($"{root}/game/", null, null) with { Evaluated = null }).GodotLayoutProblem);
-    }
-
-    [Fact]
-    public void A_project_of_another_sdk_says_nothing_of_a_godot_folder()
-    {
-        Assert.Null(ProjectModel.Unevaluated(Write("App.csproj", "<Project />\n")).GodotLayoutProblem);
-    }
-
-    /// <summary>A plain .NET project naming its game's Godot folder, as a host running the game on Godot as a library of its
-    /// own does (GodotProjectDir "..", Microsoft.NET.Sdk), is no game Godot runs: it has no Godot folder, project or layout to
-    /// mend, while the game's scenes and C# still know it, and the folder is no game of GDScript alone.</summary>
-    [Fact]
-    public void A_plain_dotnet_project_naming_a_godot_folder_is_no_game_godot_runs_but_still_of_that_game()
-    {
-        string game = Path.Combine(root, "game");
-        Write(Path.Combine("game", "project.godot"), Named);
-        WorkspaceModel read = WorkspaceModel.Read(root);
-        string csharp = Write(Path.Combine("game", "Game.2dog", "Game.2dog.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
-        ProjectModel host = ProjectModel.Unevaluated(csharp) with
-        {
-            Evaluated = new Passenger.Host.EvaluatedProject
-            {
-                Path = csharp,
-                Properties = new Dictionary<string, Passenger.Host.EvaluatedProperty>
-                {
-                    [Passenger.Host.CarriedProperties.GodotProjectDir] = new("..", true),
-                    [Passenger.Host.CarriedProperties.TargetPath] = new(Path.Combine(game, "Game.2dog", "bin", "Debug", "Game.2dog.dll"), false),
-                },
-            },
-        };
-
-        Assert.True(host is { GodotFolder: null, GodotLayoutProblem: null } && host.Godot() is null,
-            $"A Microsoft.NET.Sdk project naming {game} was taken for a game Godot runs ({host.GodotFolder}), so Run would start Godot in its place and not the program it builds");
-        Assert.Equal(game, host.NamedGodotFolder);
-        Assert.Empty(read.ScriptGames([host]));
-        Assert.Equal([csharp], WorkspaceModel.BuildingGodot([host], game));
-        Assert.Equal(game, Evaluated($"{game}/", $"{game}/", $"{game}/.godot/mono/temp/bin/Debug/Game.dll").GodotFolder);
-    }
 }

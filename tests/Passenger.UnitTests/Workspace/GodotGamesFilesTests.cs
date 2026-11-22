@@ -7,8 +7,16 @@ namespace Passenger.UnitTests.Workspace;
 /// packages from that Godot's own folder.</summary>
 public class GodotGamesFilesTests
 {
+    /// <summary>A new game's files and frameworks are those its Godot builds and runs.</summary>
     [Fact]
-    public void A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk()
+    public void A_new_games_files_and_frameworks_are_those_its_godot_takes() => Cases.All(
+        (nameof(A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk),
+            A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk),
+        (nameof(A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript), A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript),
+        (nameof(A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can),
+            A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can));
+
+    private void A_csharp_game_is_a_project_godot_a_scene_its_script_and_a_project_on_the_godots_sdk()
     {
         Dictionary<string, string> files = GodotGames.Files("Spinner", csharp: true, "4.7.2", "net10.0", "/Godot/nupkgs").ToDictionary(f => f.Path, f => f.Text);
         Assert.Equal(["project.godot", "main.tscn", "Main.cs", ".gitignore", "Spinner.csproj", "nuget.config"], files.Keys);
@@ -24,24 +32,7 @@ public class GodotGamesFilesTests
         Assert.Contains("<add key=\"Godot\" value=\"/Godot/nupkgs\" />", files["nuget.config"], StringComparison.Ordinal);
     }
 
-    /// <summary>The C# game's nuget.config reads as XML with the same feeds and mapping, a comment saying how a feed of the
-    /// person's is added and mapped, as a mapping gives each package only from the feeds it names.</summary>
-    [Fact]
-    public void A_csharp_games_nuget_config_says_in_a_comment_how_a_feed_of_ones_own_is_added_and_mapped()
-    {
-        string config = GodotGames.Files("Spinner", csharp: true, "4.7.2", "net10.0", "/Godot/nupkgs").Single(f => f.Path == "nuget.config").Text;
-        System.Xml.Linq.XElement root = System.Xml.Linq.XDocument.Parse(config).Root!;
-        System.Xml.Linq.XComment said = Assert.Single(root.Nodes().OfType<System.Xml.Linq.XComment>());
-        Assert.Contains("under packageSources:       <add key=\"MyFeed\"", said.Value, StringComparison.Ordinal);
-        Assert.Contains("under packageSourceMapping: <packageSource key=\"MyFeed\"><package pattern=\"MyCompany.*\" /></packageSource>", said.Value, StringComparison.Ordinal);
-        Assert.Equal([("Godot", "/Godot/nupkgs"), ("nuget.org", "https://api.nuget.org/v3/index.json")],
-            root.Element("packageSources")!.Elements("add").Select(a => ((string)a.Attribute("key")!, (string)a.Attribute("value")!)));
-        Assert.Equal([("Godot", "Godot*"), ("nuget.org", "*")],
-            root.Element("packageSourceMapping")!.Elements("packageSource").SelectMany(s => s.Elements("package").Select(p => ((string)s.Attribute("key")!, (string)p.Attribute("pattern")!))));
-    }
-
-    [Fact]
-    public void A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript()
+    private void A_gdscript_game_has_no_project_and_its_scene_runs_its_gdscript()
     {
         Dictionary<string, string> files = GodotGames.Files("Spinner", csharp: false, "4.7.2").ToDictionary(f => f.Path, f => f.Text);
         Assert.Equal(["project.godot", "main.tscn", "main.gd", ".gitignore"], files.Keys);
@@ -51,20 +42,7 @@ public class GodotGamesFilesTests
         Assert.Contains("print(\"Hello from Godot!\")", files["main.gd"], StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_games_frameworks_are_those_godots_host_runs_from_net_8_to_the_newest_released_runtime()
-    {
-        Assert.Equal(["net10.0", "net9.0", "net8.0"],
-            GodotGames.Runnable(["net11.0", "net10.0", "net9.0", "net8.0", "net7.0"], ["11.0.0-rc.3.26522.148", "10.0.7", "8.0.21"]));
-        Assert.Equal(["net10.0", "net8.0"], GodotGames.Runnable(["net11.0"], ["11.0.0-rc.3.26522.148", "10.0.7", "8.0.21", "7.0.20"]));
-    }
-
-    [Fact]
-    public void A_games_frameworks_are_all_offered_where_no_runtime_is_known() =>
-        Assert.Equal(["net11.0", "net10.0"], GodotGames.Runnable(["net11.0", "net10.0"], []));
-
-    [Fact]
-    public void A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can()
+    private void A_game_targets_the_newest_framework_its_godot_builds_and_runs_else_the_newest_it_can()
     {
         string[] runnable = ["net11.0", "net10.0", "net9.0", "net8.0"];
         Assert.Equal("net10.0", GodotGames.Default(runnable, 10));

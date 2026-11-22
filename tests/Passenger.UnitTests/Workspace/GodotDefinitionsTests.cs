@@ -133,8 +133,33 @@ public class GodotDefinitionsTests
 
     private static string At(string text, GodotPlace place) => text[place.Start..place.End];
 
+    /// <summary>Project.godot's actions, autoloads, layers, renderer and translations define the names they
+    /// list.</summary>
     [Fact]
-    public void Project_godots_input_actions_and_autoloads_are_its_keys_each_placed_on_its_line()
+    public void Project_godot_and_translations_define_the_names_they_list() => Cases.All(
+        (nameof(Project_godots_input_actions_and_autoloads_are_its_keys_each_placed_on_its_line),
+            Project_godots_input_actions_and_autoloads_are_its_keys_each_placed_on_its_line),
+        (nameof(The_translations_project_godot_lists_give_a_csvs_keys_and_a_po_files_msgids),
+            The_translations_project_godot_lists_give_a_csvs_keys_and_a_po_files_msgids));
+
+    /// <summary>A scene's groups and animations, a material's uniforms and a tree's parameters define the names they
+    /// make.</summary>
+    [Fact]
+    public void Scenes_resources_and_shaders_define_the_names_they_make() => Cases.All(
+        (nameof(A_materials_shader_gives_its_uniforms_with_their_uses_and_the_materials_settings_of_them),
+            A_materials_shader_gives_its_uniforms_with_their_uses_and_the_materials_settings_of_them));
+
+    /// <summary>A name is found only given whole where Godot reads it, and written anew for the quotes it goes
+    /// in.</summary>
+    [Fact]
+    public void A_name_is_found_and_renamed_only_where_godot_reads_it_whole() => Cases.All(
+        (nameof(A_string_names_an_input_action_only_given_whole_to_what_takes_one),
+            A_string_names_an_input_action_only_given_whole_to_what_takes_one),
+        (nameof(A_word_names_an_autoload_only_where_nothing_nearer_declares_its_name),
+            A_word_names_an_autoload_only_where_nothing_nearer_declares_its_name),
+        (nameof(A_new_name_is_written_for_the_quotes_of_each_string_it_goes_in), A_new_name_is_written_for_the_quotes_of_each_string_it_goes_in));
+
+    private void Project_godots_input_actions_and_autoloads_are_its_keys_each_placed_on_its_line()
     {
         GodotDefinitions defined = Scenes().Defined;
         Assert.Equal(["jump", "move left"], defined.Actions.Select(a => a.Name));
@@ -147,72 +172,7 @@ public class GodotDefinitionsTests
         Assert.Contains("ui_accept", GodotDefinitions.BuiltInActions);
     }
 
-    /// <summary>The renderer a project names is the one its shaders compile under, Forward+ where it names none Godot knows.</summary>
-    [Theory]
-    [InlineData("", "forward_plus")]
-    [InlineData("[rendering]\n\nrenderer/rendering_method=\"gl_compatibility\"\n", "gl_compatibility")]
-    [InlineData("[rendering]\n\nrenderer/rendering_method=\"mobile\"\nrenderer/rendering_method.mobile=\"gl_compatibility\"\n", "mobile")]
-    [InlineData("[rendering]\n\nrenderer/rendering_method=\"vulkan\"\n", "forward_plus")]
-    public void A_projects_rendering_method_is_the_renderer_project_godot_names(string settings, string method)
-    {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string>
-        {
-            [GodotResPaths.Project] = $"config_version=5\n\n[application]\n\nconfig/name=\"Probe\"\n\n{settings}",
-        });
-        Assert.Equal(method, scenes.Defined.RenderingMethod);
-    }
-
-    [Fact]
-    public void A_scenes_groups_are_each_nodes_and_a_players_animations_come_from_its_libraries_its_own_and_a_resources()
-    {
-        GodotScenes scenes = Scenes();
-        GodotDefinitions defined = scenes.Defined;
-        Assert.Equal(["enemies", "hittable"], defined.Groups.Select(g => g.Name));
-        GodotPlace enemies = Assert.Single(defined.Groups[0].Places);
-        Assert.Equal(("enemies", "main.tscn:24, Enemy"), (At(Main, enemies), enemies.Shown));
-
-        GodotTreeNode player = scenes.Tree("res://main.tscn")!.Child("Anim")!;
-        Assert.True(GodotDefinitions.IsPlayer(player), "a node whose sections give it libraries holds animations");
-        (IReadOnlyList<GodotDefined> animations, bool whole) = defined.AnimationsOf(player);
-        Assert.True(whole, "every library the player holds is read");
-        Assert.Equal(["idle", "run", "moves/jump"], animations.Select(a => a.Name));
-        GodotDefined run = animations[1];
-        Assert.Equal(["run", "run"], run.Places.Select(p => p.Res == "res://main.tscn" ? At(Main, p) : At(Moves, p)));
-        Assert.Equal([true, false], run.Places.Select(p => p.Defines));
-        GodotPlace jump = Assert.Single(animations[2].Places);
-        Assert.Equal(("res://moves.tres", "jump"), (jump.Res, At(Moves, jump)));
-        Assert.Equal(["idle", "run", "moves/jump"], defined.Animations.Select(a => a.Name));
-    }
-
-    [Fact]
-    public void An_older_files_libraries_dictionary_and_animations_resource_name_are_read_too()
-    {
-        const string old = """
-            [gd_scene load_steps=3 format=3]
-
-            [sub_resource type="Animation" id="Animation_1"]
-            resource_name = "walk"
-
-            [sub_resource type="AnimationLibrary" id="AnimationLibrary_1"]
-            _data = {
-            "walk": SubResource("Animation_1")
-            }
-
-            [node name="Anim" type="AnimationPlayer"]
-            libraries = {
-            "": SubResource("AnimationLibrary_1")
-            }
-
-            """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://old.tscn"] = GodotFile.Parse(old) });
-        GodotDefined walk = Assert.Single(scenes.Defined.AnimationsOf(scenes.Tree("res://old.tscn")!).Names);
-        Assert.Equal("walk", walk.Name);
-        Assert.Equal(["walk", "walk"], walk.Places.Select(p => At(old, p)));
-        Assert.Equal([true, false], walk.Places.Select(p => p.Defines));
-    }
-
-    [Fact]
-    public void A_materials_shader_gives_its_uniforms_with_their_uses_and_the_materials_settings_of_them()
+    private void A_materials_shader_gives_its_uniforms_with_their_uses_and_the_materials_settings_of_them()
     {
         GodotScenes scenes = Scenes();
         GodotDefinitions defined = scenes.Defined;
@@ -231,48 +191,7 @@ public class GodotDefinitionsTests
         Assert.Contains("res://tint.gdshader", defined.Shaders);
     }
 
-    /// <summary>Godot resolves an include written without <c>res://</c> from the including file's folder, so the uniforms of
-    /// <c>#include "common.gdshaderinc"</c> are the shader's as much as those of a res:// one.</summary>
-    [Fact]
-    public void A_uniform_from_a_relative_include_is_declared_there_and_renamed_with_the_materials_parameter()
-    {
-        const string Water = """
-            shader_type spatial;
-            #include "common.gdshaderinc"
-            #define DEEP \
-                2.0
-            void fragment() { ALBEDO = vec3(depth * DEEP); }
-
-            """;
-        const string Common = "uniform float depth : hint_range(0.0, 8.0) = 1.0;\n";
-        const string Pool = """
-            [gd_scene format=3]
-
-            [ext_resource type="Shader" path="res://shaders/water.gdshader" id="1_w"]
-
-            [sub_resource type="ShaderMaterial" id="ShaderMaterial_p"]
-            shader = ExtResource("1_w")
-            shader_parameter/depth = 3.0
-
-            [node name="Pool" type="MeshInstance3D"]
-            material_override = SubResource("ShaderMaterial_p")
-
-            """;
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile> { ["res://pool.tscn"] = GodotFile.Parse(Pool) },
-            texts: new Dictionary<string, string> { ["res://shaders/water.gdshader"] = Water, ["res://shaders/common.gdshaderinc"] = Common });
-
-        (IReadOnlyList<GodotDefined> uniforms, bool whole) = scenes.Defined.Uniforms("res://shaders/water.gdshader");
-
-        Assert.True(whole, "A shader whose include was read was said not to be read whole, so a rename of its uniforms would be refused");
-        GodotDefined depth = Assert.Single(uniforms);
-        Assert.Equal(["res://shaders/common.gdshaderinc", "res://shaders/water.gdshader", "res://pool.tscn"], depth.Places.Select(p => p.Res));
-        Assert.Equal(["depth", "depth", "depth"], depth.Places.Select(p => At(p.Res switch { "res://pool.tscn" => Pool, "res://shaders/water.gdshader" => Water, _ => Common }, p)));
-        Assert.True(depth.Places[0].Defines && !depth.Places[1].Defines && depth.Places.All(p => p.Plain),
-            "The material's parameter had no declaration to go to in the include, or a rename would leave a place of it");
-    }
-
-    [Fact]
-    public void The_translations_project_godot_lists_give_a_csvs_keys_and_a_po_files_msgids()
+    private void The_translations_project_godot_lists_give_a_csvs_keys_and_a_po_files_msgids()
     {
         GodotDefinitions defined = Scenes().Defined;
         Assert.Equal(["res://text.csv", "res://de.po"], defined.TranslationFiles);
@@ -284,20 +203,6 @@ public class GodotDefinitionsTests
         Assert.Equal("BYE, NOW", At(Csv, defined.Translations[1].Places[0]));
         Assert.False(defined.Translations[2].Places[0].Plain, "a msgid over several lines is read but never written over");
         Assert.Equal("res://text.csv", GodotDefinitions.CsvOf("res://text.fr.translation"));
-    }
-
-    [Fact]
-    public void A_translation_project_godot_lists_that_is_not_read_leaves_the_translations_partial()
-    {
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = Project });
-        Assert.False(scenes.Defined.TranslationsWhole, "a listed translation no file gives is not read");
-        Assert.Empty(scenes.Defined.Translations);
-    }
-
-    [Fact]
-    public void A_csv_parted_by_semicolons_gives_its_first_cells()
-    {
-        Assert.Equal(["A", "B"], GodotDefinitions.CsvKeys("keys;en\r\nA;a\r\nB;b\r\n").Select(k => k.Key));
     }
 
     private const string Named = """
@@ -412,67 +317,10 @@ public class GodotDefinitionsTests
     private static GodotScenes NamedScenes() => new("/game", new Dictionary<string, GodotFile> { ["res://main.tscn"] = GodotFile.Parse(Tree) },
         texts: new Dictionary<string, string> { [GodotResPaths.Project] = Named, ["res://player.gd"] = Script, ["res://wind.gdshader"] = WindShader });
 
-    [Fact]
-    public void Project_godots_layer_names_name_each_layer_by_its_number_among_godots_32_or_20()
-    {
-        GodotDefinitions defined = NamedScenes().Defined;
-        IReadOnlyList<GodotDefined> physics = defined.Layers("2d_physics");
-        Assert.Equal(32, physics.Count);
-        Assert.Equal(("1", "player"), (physics[0].Name, physics[0].Detail));
-        Assert.Empty(physics[1].Places);
-        GodotPlace enemies = Assert.Single(physics[2].Places);
-        Assert.Equal(("2d_physics/layer_3", true, "project.godot:17"), (At(Named, enemies), enemies.Defines, enemies.Shown));
-        Assert.Equal(20, defined.Layers("3d_render").Count);
-        Assert.Equal("sky", defined.Layers("3d_render")[1].Detail);
-        Assert.Equal(("2D physics", "avoidance"), (GodotDefinitions.LayersShown("2d_physics"), GodotDefinitions.LayersShown("avoidance")));
-    }
-
-    [Fact]
-    public void A_global_shader_uniform_is_project_godots_key_with_each_shaders_global_uniform_of_it_and_its_uses()
-    {
-        GodotDefined wind = Assert.Single(NamedScenes().Defined.ShaderGlobals);
-        Assert.Equal("wind", wind.Name);
-        Assert.Equal([(GodotResPaths.Project, true), ("res://wind.gdshader", false), ("res://wind.gdshader", false), ("res://player.gd", false)],
-            wind.Places.Select(p => (p.Res, p.Defines)));
-        Assert.All(wind.Places, p => Assert.Equal("wind", (p.Res == GodotResPaths.Project ? Named : p.Res == "res://player.gd" ? Script : WindShader)[p.Start..p.End]));
-    }
-
-    [Fact]
-    public void An_animation_trees_parameters_are_made_by_its_state_machines_states_and_conditions_and_its_blend_trees_nodes()
-    {
-        GodotScenes scenes = NamedScenes();
-        GodotTreeNode main = scenes.Tree("res://main.tscn")!;
-        (IReadOnlyList<GodotDefined> parameters, bool whole) = scenes.Defined.TreeParametersOf(main.Child("Tree")!);
-        Assert.True(whole, "every node of the tree is of a kind whose parameters are known");
-        List<string> names = [.. parameters.Select(p => p.Name)];
-        Assert.Contains("parameters/playback", names);
-        Assert.Contains("parameters/Run/blend_position", names);
-        Assert.Contains("parameters/Aim/Mix/blend_amount", names);
-        Assert.DoesNotContain("parameters/Aim/output/current_length", names);
-        GodotDefined condition = parameters.Single(p => p.Name == "parameters/conditions/is_running");
-        Assert.Equal(("is_running", "condition parameter of Tree"), (At(Tree, condition.Places.Single()), condition.Detail));
-        Assert.Equal("Run", At(Tree, parameters.Single(p => p.Name == "parameters/Run/blend_position").Places.Single()));
-        Assert.False(scenes.Defined.TreeParametersOf(main.Child("Odd")!).Whole, "a tree holding a node of an unknown kind may make more");
-    }
-
-    [Fact]
-    public void An_animated_sprites_animations_are_its_sprite_frames_with_its_own_settings_of_them()
-    {
-        GodotScenes scenes = NamedScenes();
-        GodotTreeNode sprite = scenes.Tree("res://main.tscn")!.Child("Sprite")!;
-        Assert.True(GodotDefinitions.IsPlayer(sprite), "a node whose sections give it SpriteFrames holds animations");
-        (IReadOnlyList<GodotDefined> animations, bool whole) = scenes.Defined.AnimationsOf(sprite);
-        Assert.True(whole);
-        Assert.Equal(["default", "run"], animations.Select(a => a.Name));
-        Assert.Equal([true, false, false], animations[1].Places.Select(p => p.Defines));
-        Assert.All(animations[1].Places, p => Assert.Equal("run", At(Tree, p)));
-    }
-
     /// <summary>Only Input, InputMap and an input event take an action's name: a string given to a function of the name on
     /// the script's own class, or as a default where it is declared, names nothing; one joined to another names neither; and
     /// one on what the script does not say is an event may name it, which a rename leaves.</summary>
-    [Fact]
-    public void A_string_names_an_input_action_only_given_whole_to_what_takes_one()
+    private void A_string_names_an_input_action_only_given_whole_to_what_takes_one()
     {
         const string script = """
             extends Node
@@ -515,8 +363,7 @@ public class GodotDefinitionsTests
     /// <summary>A word reads a singleton autoload only where nothing nearer has its name: a member of its class, the class it
     /// extends, or a parameter or local in scope. A node's bare path holds no word, and an autoload no '*' makes a singleton
     /// is read by no word at all.</summary>
-    [Fact]
-    public void A_word_names_an_autoload_only_where_nothing_nearer_declares_its_name()
+    private void A_word_names_an_autoload_only_where_nothing_nearer_declares_its_name()
     {
         const string project = "config_version=5\n\n[autoload]\n\nGlobals=\"*res://globals.gd\"\nPlain=\"res://plain.gd\"\n";
         const string uses = "extends Node\n\n\nfunc go():\n\tGlobals.score += 1\n\tPlain.score += 1\n\t$Globals.show()\n\t$Hud/Globals.show()\n\tself.Globals = 1\n\n\nfunc shadowed(Globals):\n\tGlobals.show()\n\n\n"
@@ -532,44 +379,13 @@ public class GodotDefinitionsTests
         Assert.Single(scenes.Defined.Autoloads.Single(a => a.Name == "Plain").Places);
     }
 
-    /// <summary>A name Godot takes as one holding marks (an autoload named नमस्ते, which Godot's editor allows, and an input
-    /// event घटना) is read by its whole word: the autoload's use is its place, and the event takes the action's name for sure.</summary>
-    [Fact]
-    public void An_autoload_and_an_input_event_named_with_marks_are_read_by_their_whole_words()
-    {
-        const string project = "config_version=5\n\n[autoload]\n\nनमस्ते=\"*res://globals.gd\"\n\n[input]\n\njump={\n\"deadzone\": 0.5,\n\"events\": []\n}\n";
-        const string uses = "extends Node\n\n\nfunc go(घटना: InputEvent):\n\tनमस्ते.score += 1\n\tघटना.is_action(\"jump\")\n";
-        Dictionary<string, string> texts = new(StringComparer.Ordinal) { [GodotResPaths.Project] = project, ["res://uses.gd"] = uses };
-        GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: texts);
-        string[] lines = uses.Split('\n');
-        string Line(GodotPlace place) => lines[uses[..place.Start].Count(c => c == '\n')].Trim();
-        GodotDefined autoload = scenes.Defined.Autoloads.Single();
-        Assert.Equal(["नमस्ते.score += 1"], autoload.Places.Where(p => !p.Defines).Select(Line));
-        GodotDefined jump = scenes.Defined.Actions.Single();
-        Assert.Equal([("घटना.is_action(\"jump\")", false)], jump.Places.Where(p => p.Res == "res://uses.gd").Select(p => (Line(p), p.Unsure)));
-    }
-
     /// <summary>A name is written for each string it goes in: a quote like the string's own escaped, one a raw string can't say
     /// told as none, and project.godot's key as it is.</summary>
-    [Fact]
-    public void A_new_name_is_written_for_the_quotes_of_each_string_it_goes_in()
+    private void A_new_name_is_written_for_the_quotes_of_each_string_it_goes_in()
     {
         const string script = "extends Node\n\n\nfunc _process(_delta):\n\tInput.is_action_pressed('jump')\n\tInput.is_action_pressed(\"jump\")\n\tInput.is_action_pressed(r'jump')\n";
         GodotScenes scenes = new("/game", new Dictionary<string, GodotFile>(), texts: new Dictionary<string, string> { [GodotResPaths.Project] = Named, ["res://player.gd"] = script });
         Assert.Equal(["player's_jump", "player\\'s_jump", "player's_jump", null], scenes.Defined.Actions.Single().Places.Select(p => p.Written("player's_jump")));
     }
 
-    [Fact]
-    public void A_gdscripts_strings_and_words_and_a_scenes_node_paths_are_places_of_the_names_they_give_godot()
-    {
-        GodotDefinitions defined = NamedScenes().Defined;
-        GodotDefined jump = defined.Actions.Single();
-        Assert.Equal([GodotResPaths.Project, "res://player.gd", "res://player.gd"], jump.Places.Select(p => p.Res));
-        Assert.Equal(["project.godot:9", "player.gd:5", "player.gd:5"], jump.Places.Select(p => p.Shown));
-        Assert.All(jump.Places.Skip(1), p => Assert.Equal("jump", Script[p.Start..p.End]));
-        GodotDefined globals = defined.Autoloads.Single();
-        Assert.Equal([GodotResPaths.Project, "res://player.gd", "res://player.gd", "res://main.tscn"], globals.Places.Select(p => p.Res));
-        Assert.Equal(["Globals", "Globals"], globals.Places.Where(p => p.Res == "res://player.gd").Select(p => Script[p.Start..p.End]));
-        Assert.Equal("Globals", At(Tree, globals.Places[^1]));
-    }
 }

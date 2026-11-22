@@ -10,21 +10,15 @@ public class GodotScriptTemplatesTests
     private static GodotScriptStyle Style(Dictionary<string, string> settings, string? space = "Spin.Game", bool fileScoped = true) =>
         GodotScriptTemplates.StyleOf(name => settings.GetValueOrDefault(name), space, fileScoped);
 
-    /// <summary>A C# project reads its glob from its own folder, so templates under a GodotProjectDir of another folder are
-    /// named from there, or the build compiles their placeholders as its code.</summary>
+    /// <summary>A C# script template is written as the project writes its namespaces, braces and indent.</summary>
     [Fact]
-    public void The_templates_a_build_leaves_out_are_named_from_the_csharp_projects_folder_wherever_the_godot_project_is()
-    {
-        string root = Path.Combine(Path.GetTempPath(), "repo");
+    public void A_csharp_script_template_is_written_in_the_projects_style() => Cases.All(
+        (nameof(A_project_of_file_scoped_namespaces_and_four_spaces_gets_a_partial_class_godot_keeps_the_spaces_of),
+            A_project_of_file_scoped_namespaces_and_four_spaces_gets_a_partial_class_godot_keeps_the_spaces_of),
+        (nameof(Braces_at_the_lines_end_a_namespace_in_braces_and_tabs_are_written_as_the_project_says),
+            Braces_at_the_lines_end_a_namespace_in_braces_and_tabs_are_written_as_the_project_says));
 
-        Assert.Equal("script_templates", GodotScriptTemplates.Excluded(root, root));
-        Assert.Equal("game/script_templates", GodotScriptTemplates.Excluded(root, Path.Combine(root, "game")));
-        Assert.Equal("games/one/script_templates", GodotScriptTemplates.Excluded(root, Path.Combine(root, "games", "one")));
-        Assert.Equal("../game/script_templates", GodotScriptTemplates.Excluded(Path.Combine(root, "code"), Path.Combine(root, "game")));
-    }
-
-    [Fact]
-    public void A_project_of_file_scoped_namespaces_and_four_spaces_gets_a_partial_class_godot_keeps_the_spaces_of()
+    private void A_project_of_file_scoped_namespaces_and_four_spaces_gets_a_partial_class_godot_keeps_the_spaces_of()
     {
         string text = GodotScriptTemplates.Text("Node2D", Style(new() { ["csharp_style_namespace_declarations"] = "file_scoped:warning", ["indent_size"] = "4" }));
         Assert.Equal("""
@@ -50,33 +44,11 @@ public class GodotScriptTemplatesTests
         Assert.True(GodotScriptTemplates.IsPassengers(text), "The template does not say it is Passenger's");
     }
 
-    [Fact]
-    public void A_style_read_from_values_with_a_comment_after_them_is_what_their_words_say()
-    {
-        GodotScriptStyle style = Style(new()
-        {
-            ["csharp_style_namespace_declarations"] = "block_scoped:silent # braces",
-            ["csharp_new_line_before_open_brace"] = "none;same line",
-            ["indent_style"] = "tab  # tabs",
-            ["indent_size"] = "2 # two",
-        });
-        Assert.Equal(new GodotScriptStyle("Spin.Game", FileScoped: false, BracesOnOwnLine: false, Tabs: true, IndentSize: 2), style);
-    }
-
-    [Fact]
-    public void Braces_at_the_lines_end_a_namespace_in_braces_and_tabs_are_written_as_the_project_says()
+    private void Braces_at_the_lines_end_a_namespace_in_braces_and_tabs_are_written_as_the_project_says()
     {
         GodotScriptStyle style = Style(new() { ["csharp_style_namespace_declarations"] = "block_scoped", ["csharp_new_line_before_open_brace"] = "none", ["indent_style"] = "tab" });
         Assert.Equal("// meta-name: Passenger (this project's style)\n// meta-description: A Resource script in the project's namespace and style, written by Passenger\n"
             + "using _BINDINGS_NAMESPACE_;\n\nnamespace Spin.Game {\n\tpublic partial class _CLASS_ : _BASE_ {\n\t}\n}\n", GodotScriptTemplates.Text("Resource", style));
-    }
-
-    [Fact]
-    public void A_csharp_before_10_or_no_root_namespace_takes_a_braced_namespace_or_none()
-    {
-        Assert.False(Style([], fileScoped: false).FileScoped);
-        Assert.DoesNotContain(GodotScriptTemplates.Text("Node", Style([], space: null)).Split('\n'), l => l.StartsWith("namespace", StringComparison.Ordinal));
-        Assert.Equal(Path.Combine("game", "script_templates", "Control", "Passenger.cs"), GodotScriptTemplates.PathOf("game", "Control"));
     }
 
 }

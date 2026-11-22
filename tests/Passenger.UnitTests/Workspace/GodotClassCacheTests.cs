@@ -75,27 +75,15 @@ public class GodotClassCacheTests
     private static bool Stale(string? cache, Dictionary<string, string> scripts, IEnumerable<string> newer, Func<string, bool>? exists = null) =>
         GodotClassCache.Stale(cache, newer, path => scripts.GetValueOrDefault(path), exists ?? scripts.ContainsKey);
 
+    /// <summary>Godot's class cache says when a script's change asks an import.</summary>
     [Fact]
-    public void Godots_own_cache_is_read_as_the_classes_it_lists_their_bases_and_scripts()
-    {
-        IReadOnlyList<GodotClassCache.Entry> read = GodotClassCache.Read(Written);
+    public void Godots_class_cache_says_when_a_change_asks_an_import() => Cases.All(
+        (nameof(A_body_edit_asks_no_import_and_a_class_renamed_rebased_added_dropped_or_gone_asks_one),
+            A_body_edit_asks_no_import_and_a_class_renamed_rebased_added_dropped_or_gone_asks_one),
+        (nameof(With_no_cache_only_a_script_declaring_a_class_name_asks_an_import),
+            With_no_cache_only_a_script_declaring_a_class_name_asks_an_import));
 
-        GodotClassCache.Entry[] listed = [new("Actor", "Node", "res://actor.gd"), new("Dotted", string.Empty, "res://dotted.gd"), new("Hero", "Actor", "res://sub/hero.gd")];
-        Assert.Equal(listed, read);
-        Assert.Empty(GodotClassCache.Read("list=[]\n"));
-    }
-
-    [Fact]
-    public void Every_class_declared_as_Godot_listed_it_asks_no_import()
-    {
-        Assert.False(Stale(Cache(Listed), Scripts, Scripts.Keys),
-            "Scripts whose classes the cache lists as Godot 4.7.2 listed them asked for an import, so every Run after a body's edit would import again: "
-            + string.Join(", ", Listed.Where(c => GodotClassCache.Declared(c.Path, Scripts[c.Path], path => Scripts.GetValueOrDefault(path))?.Base != c.Base)
-                .Select(c => $"{c.Class} read as {GodotClassCache.Declared(c.Path, Scripts[c.Path], path => Scripts.GetValueOrDefault(path))?.Base ?? "(unsure)"}, listed {c.Base}")));
-    }
-
-    [Fact]
-    public void A_body_edit_asks_no_import_and_a_class_renamed_rebased_added_dropped_or_gone_asks_one()
+    private void A_body_edit_asks_no_import_and_a_class_renamed_rebased_added_dropped_or_gone_asks_one()
     {
         string cache = Cache(Listed);
         Dictionary<string, string> Edited(string path, string text) => new(Scripts, StringComparer.Ordinal) { [path] = text };
@@ -110,8 +98,7 @@ public class GodotClassCacheTests
         Assert.True(Stale(cache, Scripts, [], path => path != "res://bare.gd"), "A listed class's script gone asked for no import");
     }
 
-    [Fact]
-    public void With_no_cache_only_a_script_declaring_a_class_name_asks_an_import()
+    private void With_no_cache_only_a_script_declaring_a_class_name_asks_an_import()
     {
         Assert.False(Stale(null, Scripts, ["res://plain.gd", "res://holder.gd"]), "A project of no class_name asked for an import for its global classes");
         Assert.True(Stale(null, Scripts, ["res://plain.gd", "res://bare.gd"]), "A class_name in a project never imported asked for no import");

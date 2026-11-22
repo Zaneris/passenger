@@ -8,8 +8,18 @@ public class GodotWritesTests
 {
     private const string Project = "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\n\n[dotnet]\n\nproject/assembly_name=\"Spinner\"\n";
 
+    /// <summary>A setting, a group and a function are written where Godot writes them, line breaks kept.</summary>
     [Fact]
-    public void A_setting_goes_last_in_its_section_or_in_a_section_made_where_godot_sorts_it()
+    public void Godot_files_are_written_where_godot_writes_them() => Cases.All(
+        (nameof(A_setting_goes_last_in_its_section_or_in_a_section_made_where_godot_sorts_it),
+            A_setting_goes_last_in_its_section_or_in_a_section_made_where_godot_sorts_it),
+        (nameof(A_setting_keeps_the_files_line_breaks), A_setting_keeps_the_files_line_breaks),
+        (nameof(A_group_joins_a_nodes_groups_or_goes_before_the_scene_it_instances),
+            A_group_joins_a_nodes_groups_or_goes_before_the_scene_it_instances),
+        (nameof(A_function_is_made_last_in_a_gdscript_two_blank_lines_after_the_last_and_indented_as_the_script_is),
+            A_function_is_made_last_in_a_gdscript_two_blank_lines_after_the_last_and_indented_as_the_script_is));
+
+    private void A_setting_goes_last_in_its_section_or_in_a_section_made_where_godot_sorts_it()
     {
         string action = GodotWrites.WithSetting(Project, "input", "jump", GodotWrites.ActionValue("\n"))!;
         Assert.Equal(Project + "\n[input]\n\njump={\n\"deadzone\": 0.2,\n\"events\": []\n}\n", action);
@@ -20,16 +30,14 @@ public class GodotWritesTests
         Assert.Null(GodotWrites.WithSetting(second, "input", "jump", "{}"));
     }
 
-    [Fact]
-    public void A_setting_keeps_the_files_line_breaks()
+    private void A_setting_keeps_the_files_line_breaks()
     {
         string crlf = Project.Replace("\n", "\r\n", StringComparison.Ordinal);
         string made = GodotWrites.WithSetting(crlf, "input", "jump", GodotWrites.ActionValue(GodotWrites.NewlineOf(crlf)))!;
         Assert.DoesNotContain("\n", made.Replace("\r\n", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_group_joins_a_nodes_groups_or_goes_before_the_scene_it_instances()
+    private void A_group_joins_a_nodes_groups_or_goes_before_the_scene_it_instances()
     {
         string scene = "[gd_scene format=3]\n\n[node name=\"Main\" type=\"Node2D\"]\n\n[node name=\"Enemy\" type=\"Area2D\" parent=\".\" groups=[\"hittable\"]]\n\n"
             + "[node name=\"Player\" parent=\".\" instance=ExtResource(\"1\")]\n\n[node name=\"Empty\" parent=\".\" groups=[]]\n";
@@ -43,8 +51,7 @@ public class GodotWritesTests
         Assert.Equal("[node name=\"Main\" type=\"Node2D\" groups=[\"say \\\"hi\\\"\"]]", GodotWrites.GroupLine(scene, Start("Main"), "say \"hi\""));
     }
 
-    [Fact]
-    public void A_function_is_made_last_in_a_gdscript_two_blank_lines_after_the_last_and_indented_as_the_script_is()
+    private void A_function_is_made_last_in_a_gdscript_two_blank_lines_after_the_last_and_indented_as_the_script_is()
     {
         Assert.Equal("extends Node\n\nfunc _ready() -> void:\n    pass\n\n\nfunc _on_hit(body: Node2D) -> void:\n    pass\n",
             GodotWrites.WithFunction("extends Node\n\nfunc _ready() -> void:\n    pass\n\n", "_on_hit", ["body: Node2D"]));

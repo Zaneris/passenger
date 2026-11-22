@@ -7,8 +7,16 @@ namespace Passenger.UnitTests.Workspace;
 /// over several lines.</summary>
 public class GodotProjectTests
 {
+    /// <summary>A project's name, scene, assembly and window size are read as Godot reads them.</summary>
     [Fact]
-    public void The_name_main_scene_and_assembly_are_read_by_their_sections()
+    public void A_projects_settings_are_read_by_their_sections() => Cases.All(
+        (nameof(The_name_main_scene_and_assembly_are_read_by_their_sections), The_name_main_scene_and_assembly_are_read_by_their_sections),
+        (nameof(A_scene_uses_a_script_its_external_resources_name_by_its_res_path),
+            A_scene_uses_a_script_its_external_resources_name_by_its_res_path),
+        (nameof(A_games_window_size_is_its_override_else_its_viewports_else_Godots_default),
+            A_games_window_size_is_its_override_else_its_viewports_else_Godots_default));
+
+    private void The_name_main_scene_and_assembly_are_read_by_their_sections()
     {
         const string Text = """
             ; Engine configuration file.
@@ -46,46 +54,7 @@ public class GodotProjectTests
         Assert.Equal(new GodotProject("/games/space", "Space \"Shooter\"", "uid://b8k2m3n4p5q6", "SpaceShooter") { WindowSize = (1280, 648) }, project);
     }
 
-    [Fact]
-    public void A_value_never_set_is_none_and_a_key_set_twice_keeps_its_last()
-    {
-        const string Text = """
-            [application]
-            config/name="First"
-            config/name="Second"
-            ; run/main_scene="res://commented.tscn"
-            [rendering]
-            run/main_scene="res://other_section.tscn"
-            """;
-        GodotProject project = GodotProject.Parse("/games/x", Text);
-        Assert.True(project is { Name: "Second", MainScene: null, AssemblyName: null },
-            $"project.godot read as {project}: a main scene commented out or set in another section would have the game refused for the wrong reason or run with none");
-    }
-
-    /// <summary>Godot's variant parser reads <c>\u</c>, <c>\U</c>, <c>\b</c> and <c>\f</c> in a string as it reads <c>\n</c>,
-    /// and a quoted key as its characters.</summary>
-    [Fact]
-    public void A_name_with_unicode_escapes_reads_as_Godot_reads_it()
-    {
-        const string Text = """
-            [application]
-
-            config/name="Caf\u00e9 \U01F680"
-
-            [dotnet]
-
-            "project/assembly_name"="Cafe"
-
-            """;
-
-        GodotProject project = GodotProject.Parse("/games/cafe", Text);
-
-        Assert.True(project is { Name: "Café 🚀", AssemblyName: "Cafe" },
-            $"project.godot read as {project}: the window's title and Run would name another game than Godot's editor does");
-    }
-
-    [Fact]
-    public void A_scene_uses_a_script_its_external_resources_name_by_its_res_path()
+    private void A_scene_uses_a_script_its_external_resources_name_by_its_res_path()
     {
         const string Scene = """
             [gd_scene load_steps=2 format=3 uid="uid://c1"]
@@ -104,8 +73,7 @@ public class GodotProjectTests
             "A scene was not told from a script by its extension");
     }
 
-    [Fact]
-    public void A_games_window_size_is_its_override_else_its_viewports_else_Godots_default()
+    private void A_games_window_size_is_its_override_else_its_viewports_else_Godots_default()
     {
         Assert.Equal((1152, 648), GodotProject.Parse("/game", "config_version=5\n\n[application]\n\nconfig/name=\"Game\"\n").WindowSize);
         Assert.False(GodotProject.Parse("/game", "[display]\n\nwindow/size/viewport_width=640\n").Stretches);

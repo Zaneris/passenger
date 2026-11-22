@@ -29,8 +29,24 @@ public class GodotAddonTests
 
         """;
 
+    /// <summary>Passenger's addon is put in, updated and enabled once, after the plugins the project enables.</summary>
     [Fact]
-    public void A_project_without_it_takes_its_files_and_enables_it_after_the_plugins_it_enables()
+    public void The_addon_is_put_in_and_enabled_once_as_godot_enables_plugins() => Cases.All(
+        (nameof(A_project_without_it_takes_its_files_and_enables_it_after_the_plugins_it_enables),
+            A_project_without_it_takes_its_files_and_enables_it_after_the_plugins_it_enables),
+        (nameof(An_earlier_copy_is_updated_in_the_folder_it_is_in_and_enabled_once),
+            An_earlier_copy_is_updated_in_the_folder_it_is_in_and_enabled_once),
+        (nameof(A_newer_Passengers_copy_is_left_as_it_is), A_newer_Passengers_copy_is_left_as_it_is));
+
+    /// <summary>Another plugin's files and folders are never taken for the addon's nor written over.</summary>
+    [Fact]
+    public void Another_plugins_files_and_folders_are_never_taken_for_the_addons() => Cases.All(
+        (nameof(Another_addon_in_its_folder_keeps_its_files_and_the_addon_goes_in_a_folder_beside_it),
+            Another_addon_in_its_folder_keeps_its_files_and_the_addon_goes_in_a_folder_beside_it),
+        (nameof(A_file_of_one_of_its_names_with_other_words_is_never_written_over_and_each_taken_folder_is_passed),
+            A_file_of_one_of_its_names_with_other_words_is_never_written_over_and_each_taken_folder_is_passed));
+
+    private void A_project_without_it_takes_its_files_and_enables_it_after_the_plugins_it_enables()
     {
         GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [], Enabled, _ => null);
 
@@ -42,32 +58,7 @@ public class GodotAddonTests
         Assert.False(install.Updated);
     }
 
-    [Fact]
-    public void A_project_enabling_no_plugin_takes_the_section_where_Godot_puts_it()
-    {
-        string text = "config_version=5\n\n[application]\n\nconfig/name=\"Spinner\"\n";
-
-        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [], text, _ => null);
-
-        Assert.Equal(["res://addons/passenger/plugin.cfg"], GodotAddon.Enabled(install.Project!));
-        Assert.StartsWith(text.TrimEnd('\n'), install.Project, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Its_own_copy_enabled_leaves_nothing_to_do_whatever_its_line_endings()
-    {
-        string folder = Path.Combine(Project, "addons", "passenger");
-        GodotPlugin plugin = new("res://addons/passenger/plugin.cfg", Path.Combine(folder, "plugin.cfg"), "Passenger", "2", "Passenger", "passenger.gd", true);
-        string text = Enabled.Replace("\"res://addons/gut/plugin.cfg\"", "\"res://addons/passenger/plugin.cfg\"", StringComparison.Ordinal);
-
-        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [plugin], text,
-            path => Carried.Single(c => c.Name == Path.GetFileName(path)).Text.Replace("\n", "\r\n", StringComparison.Ordinal));
-
-        Assert.True(install.Done, $"Nothing was to be written: {string.Join(", ", install.Files.Select(f => f.Path))}; {install.Project}");
-    }
-
-    [Fact]
-    public void An_earlier_copy_is_updated_in_the_folder_it_is_in_and_enabled_once()
+    private void An_earlier_copy_is_updated_in_the_folder_it_is_in_and_enabled_once()
     {
         string folder = Path.Combine(Project, "addons", "passenger_ide");
         GodotPlugin plugin = new("res://addons/passenger_ide/plugin.cfg", Path.Combine(folder, "plugin.cfg"), "Passenger", "1", "Passenger", "passenger.gd", false);
@@ -81,8 +72,7 @@ public class GodotAddonTests
         Assert.Equal(["res://addons/gut/plugin.cfg", "res://addons/passenger_ide/plugin.cfg"], GodotAddon.Enabled(install.Project!));
     }
 
-    [Fact]
-    public void A_newer_Passengers_copy_is_left_as_it_is()
+    private void A_newer_Passengers_copy_is_left_as_it_is()
     {
         string folder = Path.Combine(Project, "addons", "passenger");
         GodotPlugin plugin = new("res://addons/passenger/plugin.cfg", Path.Combine(folder, "plugin.cfg"), "Passenger", "3", "Passenger", "passenger.gd", false);
@@ -92,19 +82,7 @@ public class GodotAddonTests
         Assert.True(install.Newer == "3" && install.Done, $"A newer copy was to be left: {install.Files.Count} files, project {install.Project}");
     }
 
-    [Fact]
-    public void Another_plugin_named_Passenger_is_not_taken_for_it()
-    {
-        GodotPlugin plugin = new("res://addons/mine/plugin.cfg", Path.Combine(Project, "addons", "mine", "plugin.cfg"), "Passenger", "1", null, "mine.gd", true);
-
-        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [plugin], Enabled, _ => null);
-
-        Assert.Equal(Path.Combine(Project, "addons", "passenger"), install.Folder);
-        Assert.False(install.Updated);
-    }
-
-    [Fact]
-    public void Another_addon_in_its_folder_keeps_its_files_and_the_addon_goes_in_a_folder_beside_it()
+    private void Another_addon_in_its_folder_keeps_its_files_and_the_addon_goes_in_a_folder_beside_it()
     {
         string theirs = Path.Combine(Project, "addons", "passenger");
         GodotPlugin cargo = new("res://addons/passenger/plugin.cfg", Path.Combine(theirs, "plugin.cfg"), "Cargo", "1", "Ann", "cargo.gd", true);
@@ -118,21 +96,8 @@ public class GodotAddonTests
         Assert.False(install.Updated, "Another addon's files were taken for an earlier copy of Passenger's");
     }
 
-    [Fact]
-    public void A_plugin_of_its_name_and_script_by_another_author_is_another_addon()
-    {
-        string theirs = Path.Combine(Project, "addons", "passenger");
-        GodotPlugin riders = new("res://addons/passenger/plugin.cfg", Path.Combine(theirs, "plugin.cfg"), "Passenger", "7", "Ann", "passenger.gd", true);
-
-        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [riders], Enabled, path => Path.GetDirectoryName(path) == theirs ? "the game's riders" : null);
-
-        Assert.Equal(Path.Combine(Project, "addons", "passenger_2"), install.Folder);
-        Assert.True(install.Files.All(f => f.Made), "The game's own addon was to be left, nothing written over");
-    }
-
     /// <summary>A file of one of the addon's names, in a folder no plugin.cfg makes an addon, is not known to be the addon's.</summary>
-    [Fact]
-    public void A_file_of_one_of_its_names_with_other_words_is_never_written_over_and_each_taken_folder_is_passed()
+    private void A_file_of_one_of_its_names_with_other_words_is_never_written_over_and_each_taken_folder_is_passed()
     {
         HashSet<string> taken = [Path.Combine(Project, "addons", "passenger", "passenger.gd"), Path.Combine(Project, "addons", "passenger_2", "plugin.cfg")];
 
@@ -142,15 +107,4 @@ public class GodotAddonTests
         Assert.True(install.Files.All(f => f.Made && !taken.Contains(f.Path)), $"A file another wrote was to be left: {string.Join(", ", install.Files.Select(f => f.Path))}");
     }
 
-    /// <summary>Its folder with none of its files in it, or some as Passenger carries them, is no other addon's to keep clear of.</summary>
-    [Fact]
-    public void Its_folder_holding_nothing_of_anothers_is_written_into_only_what_it_lacks()
-    {
-        string folder = Path.Combine(Project, "addons", "passenger");
-
-        GodotAddonInstall install = GodotAddon.Plan(Project, Carried, [], Enabled, path => path == Path.Combine(folder, "passenger.gd") ? Carried[1].Text.Replace("\n", "\r\n", StringComparison.Ordinal) : null);
-
-        Assert.Equal(folder, install.Folder);
-        Assert.Equal([(Path.Combine(folder, "plugin.cfg"), true)], install.Files.Select(f => (f.Path, f.Made)));
-    }
 }

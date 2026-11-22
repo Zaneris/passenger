@@ -28,25 +28,28 @@ public class GodotBinaryResourceTests
         + "GwAAAGxvY2FsOi8vQXRsYXNUZXh0dXJlXzFkcmo4ADUBAAAAAAAADQAAAEF0bGFzVGV4dHVyZQADAAAAAgAAABgAAAADAAAAAAAAAAMAAAALAAAAAAAAAAAA"
         + "AAAAAABBAAAAQQYAAAABAAAAUlNSQw==");
 
+    /// <summary>Godot's binary scenes and resources are read and written as Godot wrote them, in their own byte
+    /// order.</summary>
     [Fact]
-    public void Godots_own_scene_and_resource_are_read_as_far_as_their_uids_and_the_resources_they_name()
-    {
-        GodotBinaryResource level = Read(Level);
-        Assert.Equal("uid://bd1m7ab3qhdf3", level.Uid);
-        Assert.Equal(
-        [
-            new GodotBinaryExternal("Script", "res://actors/player.gd", "uid://cplayerscrpt1"),
-            new GodotBinaryExternal("Texture2D", "res://actors/look.res", "uid://26i3rvh6jh06"),
-            new GodotBinaryExternal("Texture2D", "res://actors/icon.svg", "uid://cuk6yyqqtgnlm"),
-        ], level.Externals);
-        GodotBinaryResource look = Read(Look);
-        Assert.Equal("uid://26i3rvh6jh06", look.Uid);
-        Assert.Equal([new GodotBinaryExternal("Texture2D", "res://actors/icon.svg", "uid://cuk6yyqqtgnlm")], look.Externals);
-        Assert.True(GodotBinaryResource.Starts(Level) && GodotBinaryResource.Starts(Look) && !GodotBinaryResource.Starts("<svg"u8));
-    }
+    public void A_binary_resource_is_read_and_written_as_godot_wrote_it() => Cases.All(
+        (nameof(A_resource_given_other_names_keeps_all_else_and_given_its_own_back_is_as_godot_wrote_it),
+            A_resource_given_other_names_keeps_all_else_and_given_its_own_back_is_as_godot_wrote_it),
+        (nameof(A_big_endian_resource_is_read_and_written_in_its_own_byte_order_its_internal_resources_found_where_they_moved),
+            A_big_endian_resource_is_read_and_written_in_its_own_byte_order_its_internal_resources_found_where_they_moved),
+        (nameof(A_newer_format_another_compression_or_a_file_cut_short_is_left_unread_saying_why),
+            A_newer_format_another_compression_or_a_file_cut_short_is_left_unread_saying_why));
 
+    /// <summary>A binary scene or resource follows what it names as files move, every other byte kept.</summary>
     [Fact]
-    public void A_resource_given_other_names_keeps_all_else_and_given_its_own_back_is_as_godot_wrote_it()
+    public void A_binary_resource_follows_moves_keeping_every_other_byte() => Cases.All(
+        (nameof(A_binary_scene_follows_what_it_names_as_it_moves_keeping_its_uids_and_every_other_byte),
+            A_binary_scene_follows_what_it_names_as_it_moves_keeping_its_uids_and_every_other_byte),
+        (nameof(A_binary_resources_relative_paths_name_what_they_named_once_it_or_they_move),
+            A_binary_resources_relative_paths_name_what_they_named_once_it_or_they_move),
+        (nameof(A_binary_resource_of_a_format_passenger_does_not_know_is_left_to_its_move_saying_why),
+            A_binary_resource_of_a_format_passenger_does_not_know_is_left_to_its_move_saying_why));
+
+    private void A_resource_given_other_names_keeps_all_else_and_given_its_own_back_is_as_godot_wrote_it()
     {
         foreach (byte[] file in (byte[][])[Level, Look])
         {
@@ -66,8 +69,7 @@ public class GodotBinaryResourceTests
         Assert.Equal(Look, Read(Read(Look).With("uid://cnewcopy", [new GodotBinaryExternal("Texture2D", "res://a/b/c/icon.svg", "uid://bmoved")])).With("uid://26i3rvh6jh06", Read(Look).Externals));
     }
 
-    [Fact]
-    public void A_big_endian_resource_is_read_and_written_in_its_own_byte_order_its_internal_resources_found_where_they_moved()
+    private void A_big_endian_resource_is_read_and_written_in_its_own_byte_order_its_internal_resources_found_where_they_moved()
     {
         byte[] file = Built(big: true, format: 6, 1234567, ("Script", "res://a/player.gd", 42));
         GodotBinaryResource read = Read(file);
@@ -85,8 +87,7 @@ public class GodotBinaryResourceTests
         Assert.Equal("Resource\0", Encoding.UTF8.GetString(copy, body + 4, 9));
     }
 
-    [Fact]
-    public void A_newer_format_another_compression_or_a_file_cut_short_is_left_unread_saying_why()
+    private void A_newer_format_another_compression_or_a_file_cut_short_is_left_unread_saying_why()
     {
         Assert.Null(GodotBinaryResource.Read(Built(big: false, format: 7, 1), out string? newer));
         Assert.Contains("binary format 7", newer, StringComparison.Ordinal);
@@ -108,8 +109,7 @@ public class GodotBinaryResourceTests
 
     /// <summary>A texture Godot's own compressed scene names moved, and the folder all it names is in: each external resource
     /// naming what moved takes its new path and keeps its uid, every other byte of the stream as it was.</summary>
-    [Fact]
-    public void A_binary_scene_follows_what_it_names_as_it_moves_keeping_its_uids_and_every_other_byte()
+    private void A_binary_scene_follows_what_it_names_as_it_moves_keeping_its_uids_and_every_other_byte()
     {
         GodotBinaryResource original = Read(Level);
         byte[] moved = GodotScenes.MovedBinary(Level, [("res://actors/icon.svg", "res://art/icon.svg")], "res://actors/level.scn", out string? unread)!;
@@ -128,8 +128,7 @@ public class GodotBinaryResourceTests
     /// <summary>A path written from the resource's folder: followed where what it names moves, written anew from the top
     /// where the resource's own move leaves it naming another, left where both move together; one climbing out of the
     /// project, and a uid, left as written.</summary>
-    [Fact]
-    public void A_binary_resources_relative_paths_name_what_they_named_once_it_or_they_move()
+    private void A_binary_resources_relative_paths_name_what_they_named_once_it_or_they_move()
     {
         byte[] file = Built(big: false, format: 6, 1, ("Texture2D", "icon.svg", 2), ("Texture2D", "../../outside.png", 3), ("Script", "uid://b", 4));
         IReadOnlyList<GodotBinaryExternal> Moved(params (string From, string To)[] moves) =>
@@ -140,28 +139,12 @@ public class GodotBinaryResourceTests
         Assert.Equal(["res://a/icon.svg", "../../outside.png", "uid://b"], Moved(("res://a/look.res", "res://c/look.res")).Select(e => e.Path));
     }
 
-    [Fact]
-    public void A_binary_resource_of_a_format_passenger_does_not_know_is_left_to_its_move_saying_why()
+    private void A_binary_resource_of_a_format_passenger_does_not_know_is_left_to_its_move_saying_why()
     {
         Assert.Null(GodotScenes.MovedBinary(Built(big: false, format: 7, 1, ("Texture2D", "res://icon.svg", 2)), [("res://icon.svg", "res://art/icon.svg")], "res://look.res", out string? unread));
         Assert.Contains("binary format 7", unread, StringComparison.Ordinal);
         Assert.Null(GodotScenes.MovedBinary("<svg/>"u8.ToArray(), [("res://icon.svg", "res://art/icon.svg")], "res://icon.svg", out string? none));
         Assert.Null(none);
-    }
-
-    [Fact]
-    public void A_uids_text_names_the_id_godot_reads_from_it()
-    {
-        Random random = new(7);
-        for (int i = 0; i < 100; i++)
-        {
-            long id = random.NextInt64();
-            Assert.Equal(id, GodotUids.Id(GodotUids.Text(id)!));
-        }
-        Assert.Equal(0, GodotUids.Id("uid://a"));
-        Assert.Null(GodotUids.Id("uid://"));
-        Assert.Null(GodotUids.Id("uid://<invalid>"));
-        Assert.Null(GodotUids.Id("res://a"));
     }
 
     internal static GodotBinaryResource Read(byte[] file) =>

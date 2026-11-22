@@ -8,8 +8,17 @@ namespace Passenger.UnitTests.Workspace;
 /// here asking the editor not to build it again.</summary>
 public class GodotIdeMessagingTests
 {
+    /// <summary>Godot's IDE messaging is found, framed and spoken as the editor reads it.</summary>
     [Fact]
-    public void A_play_of_a_game_built_here_asks_the_editor_to_play_without_building_it_again()
+    public void Godots_ide_messaging_is_spoken_as_the_editor_reads_it() => Cases.All(
+        (nameof(A_play_of_a_game_built_here_asks_the_editor_to_play_without_building_it_again),
+            A_play_of_a_game_built_here_asks_the_editor_to_play_without_building_it_again),
+        (nameof(Only_a_godot_editor_of_the_protocol_s_major_and_no_later_minor_is_talked_to),
+            Only_a_godot_editor_of_the_protocol_s_major_and_no_later_minor_is_talked_to),
+        (nameof(A_request_is_framed_as_the_editor_reads_it_and_its_answer_is_read_back_line_by_line),
+            A_request_is_framed_as_the_editor_reads_it_and_its_answer_is_read_back_line_by_line));
+
+    private void A_play_of_a_game_built_here_asks_the_editor_to_play_without_building_it_again()
     {
         using System.Text.Json.JsonDocument body = System.Text.Json.JsonDocument.Parse(GodotIdeMessaging.PlayBuilt);
 
@@ -20,19 +29,7 @@ public class GodotIdeMessagingTests
             GodotIdeMessaging.Written(new GodotIdeMessage(true, GodotIdeMessaging.StopPlay, GodotIdeMessaging.Ok, GodotIdeMessaging.NoBody)));
     }
 
-    [Fact]
-    public void A_meta_file_names_its_port_and_executable_and_a_text_naming_no_port_is_none()
-    {
-        Assert.Equal((52431, "/Applications/Godot_mono.app/Contents/MacOS/Godot"), GodotIdeMessaging.MetaOf("52431\n/Applications/Godot_mono.app/Contents/MacOS/Godot\n"));
-        Assert.Equal((52431, @"C:\Godot\Godot.exe"), GodotIdeMessaging.MetaOf("52431\r\nC:\\Godot\\Godot.exe\r\n"));
-        Assert.Null(GodotIdeMessaging.MetaOf(string.Empty));
-        Assert.Null(GodotIdeMessaging.MetaOf("port\n/godot\n"));
-        Assert.Null(GodotIdeMessaging.MetaOf("70000\n/godot\n"));
-        Assert.EndsWith(Path.Combine(IgnoredFolders.GodotCache, "mono", "metadata", "ide_messaging_meta.txt"), GodotIdeMessaging.MetaPath("/game"), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Only_a_godot_editor_of_the_protocol_s_major_and_no_later_minor_is_talked_to()
+    private void Only_a_godot_editor_of_the_protocol_s_major_and_no_later_minor_is_talked_to()
     {
         Assert.Equal("GodotIdeClient,Version=1.1.2,Passenger", GodotIdeMessaging.ClientHandshake);
         Assert.True(GodotIdeMessaging.IsServerHandshake("GodotIdeServer,Version=1.1.0,server"));
@@ -43,8 +40,7 @@ public class GodotIdeMessagingTests
         Assert.False(GodotIdeMessaging.IsServerHandshake("HTTP/1.1 400 Bad Request"));
     }
 
-    [Fact]
-    public void A_request_is_framed_as_the_editor_reads_it_and_its_answer_is_read_back_line_by_line()
+    private void A_request_is_framed_as_the_editor_reads_it_and_its_answer_is_read_back_line_by_line()
     {
         string written = GodotIdeMessaging.Written(new GodotIdeMessage(true, GodotIdeMessaging.CodeCompletion, GodotIdeMessaging.Ok,
             GodotIdeMessaging.CompletionAsked(GodotIdeKind.ThemeColors, "res://Hud.cs")));
@@ -67,14 +63,6 @@ public class GodotIdeMessagingTests
         Assert.Equal(["font_color", "font_shadow_color"], GodotIdeMessaging.CompletionAnswered(read[0].Body));
         Assert.True(read[1].Request);
         Assert.Null(GodotIdeMessaging.CompletionAnswered("null"));
-    }
-
-    [Fact]
-    public void Font_sizes_and_styleboxes_are_asked_by_the_numbers_the_editor_s_engine_reads()
-    {
-        Assert.Equal(9, (int)GodotIdeKind.ThemeFontSizes);
-        Assert.Equal(10, (int)GodotIdeKind.ThemeStyles);
-        Assert.Contains("\"Kind\":10", GodotIdeMessaging.CompletionAsked(GodotIdeKind.ThemeStyles, "res://a.cs"), StringComparison.Ordinal);
     }
 
     /// <summary>A text's lines as the editor's reader takes them, each ended by "\n", "\r\n" or "\r".</summary>

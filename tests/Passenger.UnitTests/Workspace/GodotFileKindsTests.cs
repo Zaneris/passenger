@@ -6,22 +6,23 @@ namespace Passenger.UnitTests.Workspace;
 /// case, as Godot's loaders take them.</summary>
 public sealed class GodotFileKindsTests
 {
-    [Theory]
-    [InlineData("res://main.tscn", "scene text")]
-    [InlineData("res://Main.TSCN", "scene text")]
-    [InlineData("res://level.scn", "scene")]
-    [InlineData("res://imported.escn", "scene textScene")]
-    [InlineData("res://theme.tres", "text")]
-    [InlineData("res://walk.res", "binary")]
-    [InlineData("res://walk.anim", "binary")]
-    [InlineData("res://player.gd", "script")]
-    [InlineData("res://Player.GD", "script")]
-    [InlineData("res://wind.gdshader", "shader")]
-    [InlineData("res://noise.gdshaderinc", "shader include")]
-    [InlineData("res://Noise.GDSHADERINC", "shader include")]
-    [InlineData("res://player.gd.uid", "")]
-    [InlineData("res://notes.txt", "")]
-    public void A_file_is_of_the_kinds_its_extension_names_in_any_letter_case(string path, string kinds)
+    /// <summary>A file is of the kinds its extension names, in any letter case.</summary>
+    [Fact]
+    public void A_files_kinds_are_those_its_extension_names() => Cases.All(
+        (nameof(A_file_is_of_the_kinds_its_extension_names_in_any_letter_case), A_file_is_of_the_kinds_its_extension_names_in_any_letter_case));
+
+    private void A_file_is_of_the_kinds_its_extension_names_in_any_letter_case() => Cases.Each<(string Path, string Kinds)>(
+    [
+        ("res://Main.TSCN", "scene text"),
+        ("res://imported.escn", "scene textScene"),
+        ("res://walk.res", "binary"),
+        ("res://player.gd", "script"),
+        ("res://noise.gdshaderinc", "shader include"),
+        ("res://player.gd.uid", ""),
+        ("res://notes.txt", ""),
+    ], row => A_file_is_of_the_kinds_its_extension_names_in_any_letter_case(row.Path, row.Kinds));
+
+    private void A_file_is_of_the_kinds_its_extension_names_in_any_letter_case(string path, string kinds)
     {
         string[] expected = kinds.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         string[] read =

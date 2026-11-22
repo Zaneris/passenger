@@ -9,17 +9,23 @@ namespace Passenger.UnitTests.Workspace;
 /// header first.</summary>
 public class GodotUidsTests
 {
+    /// <summary>Uids and their cache are read, moved and copied as Godot keeps them, every other byte kept.</summary>
     [Fact]
-    public void An_id_is_written_as_godot_writes_it()
-    {
-        // The id Godot's editor gave a script, with the uid it wrote in the script's .uid file.
-        Assert.Equal("uid://cel14ck1jyeh5", GodotUids.Text(5077935448757199916));
-        Assert.Equal("uid://a", GodotUids.Text(0));
-        Assert.Null(GodotUids.Text(-1));
-    }
+    public void Uids_are_read_written_and_copied_as_godot_keeps_them() => Cases.All(
+        (nameof(A_uid_and_an_import_file_give_the_file_beside_them_its_uid), A_uid_and_an_import_file_give_the_file_beside_them_its_uid),
+        (nameof(The_cache_names_files_moved_where_they_went_keeping_its_count_and_every_other_byte),
+            The_cache_names_files_moved_where_they_went_keeping_its_count_and_every_other_byte),
+        (nameof(Only_the_ids_given_are_moved_in_the_cache_and_one_cut_short_or_naming_none_moved_is_left),
+            Only_the_ids_given_are_moved_in_the_cache_and_one_cut_short_or_naming_none_moved_is_left),
+        (nameof(A_projects_scenes_lead_from_a_uid_to_its_file_a_scenes_own_header_first),
+            A_projects_scenes_lead_from_a_uid_to_its_file_a_scenes_own_header_first),
+        (nameof(A_folders_copy_takes_new_uids_and_its_scenes_name_the_files_copied_with_them_as_godots_duplicate_leaves_them),
+            A_folders_copy_takes_new_uids_and_its_scenes_name_the_files_copied_with_them_as_godots_duplicate_leaves_them),
+        (nameof(A_files_copy_takes_new_uids_and_names_what_its_original_named), A_files_copy_takes_new_uids_and_names_what_its_original_named),
+        (nameof(A_folders_copy_gives_its_binary_scenes_and_resources_uids_of_their_own_naming_the_files_copied_with_them),
+            A_folders_copy_gives_its_binary_scenes_and_resources_uids_of_their_own_naming_the_files_copied_with_them));
 
-    [Fact]
-    public void A_uid_and_an_import_file_give_the_file_beside_them_its_uid()
+    private void A_uid_and_an_import_file_give_the_file_beside_them_its_uid()
     {
         Assert.Equal("uid://cel14ck1jyeh5", GodotUids.OfBeside("/game/Main.cs.uid", "uid://cel14ck1jyeh5\n"));
         Assert.Equal("uid://bicon", GodotUids.OfBeside("/game/icon.svg.import", "[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\nuid=\"uid://bicon\"\npath=\"res://.godot/imported/icon.svg-1.ctex\"\n"));
@@ -29,17 +35,7 @@ public class GodotUidsTests
         Assert.False(GodotUids.IsBeside("/game/Main.cs"));
     }
 
-    [Fact]
-    public void The_cache_godots_editor_writes_is_read_entry_by_entry_and_one_cut_short_ends_it()
-    {
-        byte[] cache = Cache((5077935448757199916, "res://Main.cs"), (1, "res://main.tscn"));
-        Assert.Equal([("uid://cel14ck1jyeh5", "res://Main.cs"), ("uid://b", "res://main.tscn")], GodotUids.ReadCache(cache));
-        Assert.Equal([("uid://cel14ck1jyeh5", "res://Main.cs")], GodotUids.ReadCache(cache.AsSpan(0, cache.Length - 3)));
-        Assert.Empty(GodotUids.ReadCache([1, 2]));
-    }
-
-    [Fact]
-    public void The_cache_names_files_moved_where_they_went_keeping_its_count_and_every_other_byte()
+    private void The_cache_names_files_moved_where_they_went_keeping_its_count_and_every_other_byte()
     {
         // As Godot's editor leaves it: an id set anew appended after the count's entries, and bytes past them it never reads.
         byte[] cache = [.. Cache((1, "res://actors/icon.svg"), (2, "res://actors/Main.cs"), (3, "res://main.tscn"), (1, "res://actors/icon.svg")), 9, 9];
@@ -52,8 +48,7 @@ public class GodotUidsTests
         Assert.Equal(cache, GodotUids.CacheMoved(bytes, [("res://levels/actors/", "res://actors/"), ("res://Main scene ü.tscn", "res://main.tscn")])!.Value.Bytes);
     }
 
-    [Fact]
-    public void Only_the_ids_given_are_moved_in_the_cache_and_one_cut_short_or_naming_none_moved_is_left()
+    private void Only_the_ids_given_are_moved_in_the_cache_and_one_cut_short_or_naming_none_moved_is_left()
     {
         // Two ids of one path, as a file of one id moved over where a file of another was: a move taken back takes its own.
         byte[] cache = Cache((1, "res://levels/icon.svg"), (2, "res://levels/icon.svg"));
@@ -65,8 +60,7 @@ public class GodotUidsTests
         Assert.Null(GodotUids.CacheMoved([1, 2], [("res://icon.svg", "res://moved.svg")]));
     }
 
-    [Fact]
-    public void A_projects_scenes_lead_from_a_uid_to_its_file_a_scenes_own_header_first()
+    private void A_projects_scenes_lead_from_a_uid_to_its_file_a_scenes_own_header_first()
     {
         GodotScenes scenes = new(Path.GetFullPath("/game"), new Dictionary<string, GodotFile>
         {
@@ -79,8 +73,7 @@ public class GodotUidsTests
         Assert.True(scenes.KeepsUids);
     }
 
-    [Fact]
-    public void A_folders_copy_takes_new_uids_and_its_scenes_name_the_files_copied_with_them_as_godots_duplicate_leaves_them()
+    private void A_folders_copy_takes_new_uids_and_its_scenes_name_the_files_copied_with_them_as_godots_duplicate_leaves_them()
     {
         const string Scene = "[gd_scene load_steps=4 format=3 uid=\"uid://bplayer\"]\n\n"
             + "[ext_resource type=\"Script\" uid=\"uid://cscript\" path=\"res://a/player.gd\" id=\"1_s\"]\n"
@@ -120,8 +113,7 @@ public class GodotUidsTests
         Assert.EndsWith("[node name=\"Player\" type=\"Node2D\"]\nscript = ExtResource(\"1_s\")\n", copied[0].Text, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_files_copy_takes_new_uids_and_names_what_its_original_named()
+    private void A_files_copy_takes_new_uids_and_names_what_its_original_named()
     {
         const string Scene = "[gd_scene format=3 uid=\"uid://bplayer\"]\n\n[ext_resource type=\"Script\" uid=\"uid://cscript\" path=\"res://a/player.gd\" id=\"1_s\"]\n";
         IReadOnlyList<GodotCopy> copied = GodotUids.Copied([new GodotCopy("res://a/player.tscn", "res://a/player_2.tscn", Scene, null, null),
@@ -135,8 +127,7 @@ public class GodotUidsTests
         Assert.Equal("nothing\n", GodotUids.Copied([new GodotCopy("res://a/broken.gd", "res://b/broken.gd", null, "nothing\n", null)], within: false, _ => false, new Random(7))[0].Uid);
     }
 
-    [Fact]
-    public void A_folders_copy_gives_its_binary_scenes_and_resources_uids_of_their_own_naming_the_files_copied_with_them()
+    private void A_folders_copy_gives_its_binary_scenes_and_resources_uids_of_their_own_naming_the_files_copied_with_them()
     {
         const string Import = "[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\nuid=\"uid://cuk6yyqqtgnlm\"\npath=\"res://.godot/imported/icon.svg-1.ctex\"\n";
         byte[] newer = [.. GodotBinaryResourceTests.Look];
