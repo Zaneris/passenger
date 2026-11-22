@@ -19,7 +19,7 @@ public class CSharpParsingTests
     /// text's length; less, on a small stack, reads whole.</summary>
     [Fact]
     public void Nesting_past_what_a_parser_is_given_is_a_tree_of_nothing_the_texts_length_and_less_reads_whole() => Cases.All(
-        ("brackets past what a parser is given are a tree of nothing the text's length", () => Cases.Each(
+        ("brackets past what a parser is given, a condition's expression's among them, are a tree of nothing the text's length", () => Cases.Each(
         [
             ("class C { int x = ", "(", "1", ")", "; }"),
             ("class C { ", "(int a, ", "int b", ")", " x; }"),
@@ -28,6 +28,11 @@ public class CSharpParsingTests
             ("class C { [A(", "(", "1", ")", ")] int x; }"),
             ("", "#if A\n", "", "#endif\n", ""),
             ("/// <see cref=\"", "A{", "B", "}", "\"/>\nclass C { }\n"),
+            ("#if ", "(", "A", ")", "\nclass C { }\n#endif\n"),
+            ("#if ", "!", "A", "", "\nclass C { }\n#endif\n"),
+            ("#if A", " || A", "", "", "\nclass C { }\n#endif\n"),
+            ("class C { int x = 1 # if ", "!", "A", "", "\n; }\n"),
+            ("class C { string x = $\"\\u007D{\" + ", "(", "1", ")", " + \"}\"; }"),
         ], row => TreeOfNothing(Nested(row.Item1, row.Item2, row.Item3, row.Item4, row.Item5, 100_000)))),
         ("links past what a parser is given (a conditional access, a pattern's not, a type's arguments, a lambda's body) are a tree of nothing the text's length", () => Cases.Each(
         [
@@ -60,12 +65,16 @@ public class CSharpParsingTests
             string text = Nested(row.Item1, row.Item2, row.Item3, row.Item4, row.Item5, 900);
             SmallStack.Run(() => Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
         })),
-        ("a text past what a stack holds is too deep, as the lexer could run out reading it", () =>
+        ("a text past what a stack holds is too deep, as the lexer could run out reading it, an interpolation's brackets or a condition's negations", () => Cases.Each(
+        [
+            ("class C { string x = $\"{", "(", "1", ")", "}\"; }", 2_000_000),
+            ("#if ", "!", "A", "", "\nclass C { }\n#endif\n", 4_000_000),
+        ], row =>
         {
-            string text = Nested("class C { string x = $\"{", "(", "1", ")", "}\"; }", 2_000_000);
+            string text = Nested(row.Item1, row.Item2, row.Item3, row.Item4, row.Item5, row.Item6);
             Assert.False(DeepText.Holds(text.Length), "This text no longer reaches past what a stack holds");
             SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
-        }),
+        })),
         ("an expression deeper than a stack holds is read on a stack of its own, and one past what the parser reads refused", DeepExpressionsReadOnAStackOfTheirOwn));
 
     /// <summary>The shapes of real test, data and generated files, whose brackets are only text or closed in each branch,
@@ -83,11 +92,14 @@ public class CSharpParsingTests
             string text = Nested(row.Item1, row.Item2, row.Item3, string.Empty, row.Item4, 5_000);
             SmallStack.Run(() => Assert.NotEmpty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
         })),
-        ("a string, a character or a comment the text count reads as the lexer does opens nothing", () => Cases.Each(
+        ("a string, a character, a comment, a directive's expression or a branch's text the text count reads as the lexer does opens nothing", () => Cases.Each(
         [
             ("class C { string[] x = { ", "\"(\\\"{[\", "),
             ("class C { string[] x = { ", "$\"{F(\"(\")}({x:N2}\", "),
-        ], row => Assert.False(DeepText.TooDeep(row.Item1 + string.Concat(Enumerable.Repeat(row.Item2, 5_000)) + "}", csharp: true), "What a string or a comment holds counted as open"))),
+            ("class C { string[] x = { ", "$\"caf\\u00e9 ({x}) \\x1b[0m\\U0001F600\\x7Bb\", "),
+            ("class C {\n", "#if (A || !B) && C != false\n#endif\n"),
+            ("class C {\n", "#if NEVER\n/* a note (\n  of lines */ @\"(\n(\"\nIt's left out (\nx # (\n#endif\n"),
+        ], row => Assert.False(DeepText.TooDeep(row.Item1 + string.Concat(Enumerable.Repeat(row.Item2, 5_000)) + "}", csharp: true), "What a string, a comment, a directive or a branch left out holds counted as open"))),
         ("brackets around what closes nothing are still too deep, in the text and in an interpolated string's text read alone", () => Cases.Each(
         [
             ("class C { object x = ", "(\";\" + ", ")"),
@@ -109,6 +121,12 @@ public class CSharpParsingTests
             ("class C { object x = ", "(\n#if NEVER\n)\n#endif\n", ")"),
             ("class C { object x = ", "(\n#if NEVER\n;)\n#else\n#endif\n", ")"),
             ("class C { ", "A</*>*/", ">"),
+            ("class C { object x = ", "(\n#if NEVER\n/*\n;)\n*/ @\"\n;)\n\"\n#endif\n", ")"),
+            ("class C { object x = ", "(1 # ;)\n", ")"),
+            ("class C { object x = ", "($\"\\u00e9;){1}\" + ", ")"),
+            ("class C { object x = ", "(';) + \n", ")"),
+            ("class C { object x = ", "(\n\v#if NEVER\n;)\n#endif\n", ")"),
+            ("class C { object x = ", "(\n/** */ #if NEVER\n;)\n#endif\n", ")"),
         ], row =>
         {
             string text = row.Item1 + string.Concat(Enumerable.Repeat(row.Item2, 1_200)) + "int" + string.Concat(Enumerable.Repeat(row.Item3, 1_200)) + " x; }";
@@ -136,11 +154,11 @@ public class CSharpParsingTests
             string text = "class C { object x = " + new string('(', 1_200) + "\n#if NEVER\n" + new string(')', 1_200) + "\n/*\n*/\n#endif\nint" + new string(')', 1_200) + " x; }\n";
             SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
         }),
-        ("a generated file past what a stack holds, its condition branches each closing what they open and its documentation comments of several lines holding brackets, reads whole by the text count alone (#2090)", () =>
+        ("a generated file past what a stack holds, its condition branches each closing what they open, its documentation comments of several lines holding brackets, its interpolated strings escapes and its branches left out comments, strings and text, reads whole by the text count alone (#2090)", () =>
         {
             string text = Generated();
             Assert.False(DeepText.Holds(text.Length), "The generated file no longer reaches past what a stack holds, where the text count's word is final");
-            Assert.False(DeepText.TooDeep(text, csharp: true), "A generated file's condition branches or documentation comments added up as open, so the C# language server would be given none of it");
+            Assert.False(DeepText.TooDeep(text, csharp: true), "A generated file's condition branches, documentation comments, escapes or text left out added up as open, so the C# language server would be given none of it");
             Assert.Null(CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
         }),
         ("a file of strings each leaving a bracket open reads whole", () =>
@@ -284,7 +302,8 @@ public class CSharpParsingTests
     private static string Links(int count) => string.Concat(Enumerable.Repeat("?[0]", count));
 
     /// <summary>A file of messages as Protocol Buffers' C# generator writes them, past what a stack holds: each member's
-    /// body in a condition's branches, and documentation comments of several lines.</summary>
+    /// body in a condition's branches, documentation comments of several lines, an interpolated string with escapes, and a
+    /// branch left out holding a comment and a string of several lines and text that is no C#.</summary>
     private static string Generated()
     {
         StringBuilder text = new("namespace Generated {\n");
@@ -298,7 +317,10 @@ public class CSharpParsingTests
                 .Append("    #endif\n    }\n\n    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE\n")
                 .Append("    void IBufferMessage.InternalMergeFrom(ref Context input) {\n      uint tag;\n")
                 .Append("      while ((tag = input.ReadTag()) != 0) {\n        switch (tag) {\n          case 8: {\n")
-                .Append("            Rows = input.ReadInt32();\n            break;\n          }\n        }\n      }\n    }\n    #endif\n  }\n\n");
+                .Append("            Rows = input.ReadInt32();\n            break;\n          }\n        }\n      }\n    }\n    #endif\n")
+                .Append("    public override string ToString() => $\"caf\\u00e9 {Rows} \\x1b[0m({(Rows > 0 ? \"some\" : \"none\")})\";\n")
+                .Append("    #if NEVER\n    /* A note (on the rows)\n       of several lines */\n    string Text = @\"(\n\";\n    It's left out (for now\n")
+                .Append("    see the notes # (here)\n    #endif\n  }\n\n");
         }
         return text.Append("}\n").ToString();
     }

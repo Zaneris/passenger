@@ -96,8 +96,17 @@ public partial struct Brackets
     /// <summary>Where a C# text as it stands is read to (<see cref="ReadCode"/>).</summary>
     private Place place;
 
-    /// <summary>Whether the line a stretch starts in has more than spaces and tabs before it.</summary>
+    /// <summary>Whether the line a stretch starts in has more than white space before it.</summary>
     private bool lineWritten;
+
+    /// <summary>The character before a stretch of a C# text as it stands, which a mark is read after.</summary>
+    private char previous;
+
+    /// <summary>Where in all that was read the line a stretch starts in has its last character but white space, just past
+    /// it, and where the last documentation block comment ended, just past it; 0 for none.</summary>
+    private int writtenAfter;
+
+    private int docEnded;
 
     /// <summary>Whether a stretch starts past its line's first character.</summary>
     private bool midLine;
@@ -105,6 +114,17 @@ public partial struct Brackets
     private int directive;
     private int named;
     private int directiveAt;
+
+    /// <summary>The levels a directive's line opened, its expression's, set aside at its end.</summary>
+    private int levels;
+
+    /// <summary>Where a token taking lines reads on past a line's start within a condition (<see cref="Place.LineStart"/>).</summary>
+    private Place resume;
+
+    /// <summary>An interpolated string's escape read so far: its character, and how many hex digits it may take yet.</summary>
+    private uint escaped;
+
+    private int hexLeft;
 
     /// <summary>The interpolated strings read into, each within a hole of the one before.</summary>
     private Interpolations strings;
@@ -135,7 +155,8 @@ public partial struct Brackets
     /// <summary>Whether C#'s links count as a statement's brackets do: each <c>?</c>, a pattern's <c>not</c> and a lambda's
     /// <c>=&gt;</c>, which a parser and a binder nest through with no bracket, and a type's <c>&lt;</c> closed by its
     /// <c>&gt;</c>, a <c>&lt;</c> before another or an <c>=</c> opening nothing, nor a <c>&gt;</c> after a <c>-</c>; and each
-    /// <c>?[</c> once more as a conditional access (<see cref="MostLinks"/>). A stretch's first character has nothing before it.</summary>
+    /// <c>?[</c> once more as a conditional access (<see cref="MostLinks"/>). A stretch's first character has nothing before it
+    /// but in a C# text as it stands, where it has the last one read.</summary>
     public bool CSharp { get; init; }
 
     /// <summary>Whether what's read is a lexer's tokens, or text read as code on its own, every closer real.</summary>
@@ -222,7 +243,9 @@ public partial struct Brackets
                 counts.Dollar = true;
                 break;
             case '#':
-                counts.Conditions += text[(at + 1)..].StartsWith("if") ? 1 : closes && text[(at + 1)..].StartsWith("endif") ? -1 : 0;
+                // A stretch's end may cut the name, which then may be an if.
+                ReadOnlySpan<char> name = text[(at + 1)..];
+                counts.Conditions += (name.Length > 1 ? name.StartsWith("if") : "if".AsSpan().StartsWith(name)) ? 1 : closes && name.StartsWith("endif") ? -1 : 0;
                 counts.Conditions = Math.Max(0, counts.Conditions);
                 break;
             case ';' when closes:
@@ -303,13 +326,13 @@ public partial struct Brackets
     }
 
     /// <summary>Whether a text holds the word <c>not</c> at a place, as far as the text shows: a stretch's end may cut it.</summary>
-    private static bool Not(ReadOnlySpan<char> text, int at)
+    private readonly bool Not(ReadOnlySpan<char> text, int at)
     {
         ReadOnlySpan<char> from = text[at..];
         return !InWord(Before(text, at)) && (from.Length > 3 ? from.StartsWith("not") && !InWord(from[3]) : "not".AsSpan().StartsWith(from));
     }
 
-    private static char Before(ReadOnlySpan<char> text, int at) => at > 0 ? text[at - 1] : '\0';
+    private readonly char Before(ReadOnlySpan<char> text, int at) => at > 0 ? text[at - 1] : previous;
 
     private static char After(ReadOnlySpan<char> text, int at) => at + 1 < text.Length ? text[at + 1] : '\0';
 

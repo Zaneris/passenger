@@ -84,7 +84,7 @@ public static class CSharpParsing
         bool written = false;
         for (int at = lineStart; at < start && !written; at++)
         {
-            written = text[at] is not (' ' or '\t');
+            written = !SyntaxFacts.IsWhitespace(text[at]);
         }
         Brackets brackets = new() { CSharp = true, StartsMidLine = start > lineStart, StartsAfterText = written };
         char[] stretch = ArrayPool<char>.Shared.Rent(4096);

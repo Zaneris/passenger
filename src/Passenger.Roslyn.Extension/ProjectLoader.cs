@@ -174,8 +174,8 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     private RemoteProjectLoadResult Result(string projectPath, ProjectFileInfo[] infos, DiagnosticLogItem[] problems)
     {
         Dictionary<string, bool> deep = new(StringComparer.Ordinal);
-        ProjectFileInfo[] read = [.. infos.Select(info => info.Language == LanguageNames.CSharp && info.Documents.Any(d => TooDeep(d.FilePath, info, deep))
-            ? info with { Documents = [.. info.Documents.Where(d => !deep.GetValueOrDefault(d.FilePath))] }
+        ProjectFileInfo[] read = [.. infos.Select(info => info.Language == LanguageNames.CSharp
+            ? info with { Documents = [.. info.Documents.Where(d => !TooDeep(d.FilePath, info, deep))] }
             : info)];
         DiagnosticLogItem[] said = [.. problems, .. deep.Where(d => d.Value).Select(d => new DiagnosticLogItem(DiagnosticLogItemKind.Warning,
             $"{Path.GetFileName(d.Key)} is nested too deeply for the C# language server to read, so it is left out and what it declares reads as missing", projectPath))];

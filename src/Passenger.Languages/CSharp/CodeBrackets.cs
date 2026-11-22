@@ -112,9 +112,9 @@ internal static class CodeBrackets
         SyntaxKind before = SyntaxKind.None;
         foreach (SyntaxToken token in SyntaxFactory.ParseTokens(text, options: options))
         {
-            if ((DeepIn(token.LeadingTrivia, ref brackets) ?? DeepIn(token.TrailingTrivia, ref brackets)) is int inTrivia)
+            if (DeepIn(token.LeadingTrivia, ref brackets) is int inLeading)
             {
-                return inTrivia;
+                return inLeading;
             }
             if (before == SyntaxKind.CloseBraceToken && !GoesOn(token))
             {
@@ -140,6 +140,11 @@ internal static class CodeBrackets
             {
                 return token.SpanStart;
             }
+            // A directive past a token on its line is lexed with what that token closed already closed.
+            if (DeepIn(token.TrailingTrivia, ref brackets) is int inTrailing)
+            {
+                return inTrailing;
+            }
             before = token.Kind();
         }
         return null;
@@ -157,11 +162,18 @@ internal static class CodeBrackets
         _ => true,
     };
 
-    /// <summary>Reads the conditions among trivia into what's counted: where they or a documentation comment go too deep.</summary>
+    /// <summary>Reads the conditions among trivia into what's counted: where they, a directive's expression, read as the text
+    /// as it stands reads a directive's line, or a documentation comment go too deep. A directive past its line's start is
+    /// skipped tokens, its expression read all the same.</summary>
     private static int? DeepIn(SyntaxTriviaList trivia, ref Brackets brackets)
     {
         foreach (SyntaxTrivia one in trivia)
         {
+            bool skipped = one.IsKind(SyntaxKind.SkippedTokensTrivia);
+            if ((one.IsDirective || skipped) && DeepOnItsOwn(one.ToFullString(), brackets with { Tokens = false, StartsAfterText = skipped }))
+            {
+                return one.SpanStart;
+            }
             switch (one.Kind())
             {
                 case SyntaxKind.IfDirectiveTrivia or SyntaxKind.ElifDirectiveTrivia or SyntaxKind.EndIfDirectiveTrivia:
