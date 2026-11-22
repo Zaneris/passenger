@@ -98,10 +98,7 @@ public sealed class TerminalEmulationTests
         return differences.Count == 0 || Kept.Any(kept => kept.Holds(output, xterm, passenger)) ? null : string.Join("; ", differences);
     }
 
-    /// <summary>Why a difference is kept until #2098 fixes it.</summary>
-    private const string ToFix = "differs from xterm, to fix: #2098";
-
-    /// <summary>The differences kept, each with why: on purpose, or until it is fixed.</summary>
+    /// <summary>The differences kept, each with why: xterm.js's own ways, where Passenger does as xterm does.</summary>
     private static readonly (string Why, Func<Output, Screen, Screen, bool> Holds)[] Kept =
     [
         ("xterm.js measures an emoji with Unicode 6's widths, one cell, where Passenger takes Unicode's present widths, two, as "
@@ -121,15 +118,16 @@ public sealed class TerminalEmulationTests
             (output, _, _) => output.Uses(OriginMode) && output.Uses(ScrollRegion) && output.Uses(Moves)),
         ("xterm.js neither saves origin mode with the cursor nor restores it, where the VT510 and xterm save it with DECSC (and 1049) "
             + "and DECRC restores it, or turns it off with nothing saved", (output, _, _) => output.Uses(OriginMode) && (output.Uses(Restores) || output.Uses(Alternate))),
+        ("xterm.js, with autowrap off, writes over a wide character's second half in the last column and leaves its first, so the "
+            + "character hides what was written, where xterm and Passenger blank the half not written over",
+            (output, _, _) => output.Uses(Wide) && output.Uses(AutoWrap)),
         ("xterm.js keeps line feed/new line mode (LNM) over a full reset (RIS), where xterm and Passenger reset it",
             (output, _, _) => output.Uses(NewLineMode) && output.Uses(FullReset)),
-        ($"An insert, delete or erase of characters (ICH, DCH, EL, ED) at a wide character's second half leaves it whole; {ToFix}",
-            (output, _, _) => output.Uses(Wide) && output.Uses(EditsCharacters)),
-        ($"Insert mode (IRM) over a wide character splits it; {ToFix}", (output, _, _) => output.Uses(Wide) && output.Uses(InsertMode)),
     ];
 
     private const string Emoji = "an emoji";
     private const string Wide = "a wide character";
+    private const string AutoWrap = "DECAWM";
     private const string TabStops = "tab stops set or cleared";
     private const string Alternate = "the alternate screen";
     private const string ScrollRegion = "a scroll region";
@@ -140,8 +138,6 @@ public sealed class TerminalEmulationTests
     private const string Restores = "a restore of the cursor";
     private const string Repeat = "REP";
     private const string NewLineMode = "LNM";
-    private const string EditsCharacters = "ICH, DCH, ECH, EL or ED";
-    private const string InsertMode = "IRM";
     private const string PendingWrap = "a control after a write to the last column";
     private const string Scrolls = "SU, SD, IL or DL";
     private const string Background = "a background colour";
@@ -185,14 +181,14 @@ public sealed class TerminalEmulationTests
             case 11:
                 return new($"{Escape}[{random.Next(1, rows + 3)};{random.Next(1, columns + 5)}{Pick(random, ["H", "f"])}");
             case 12:
-                return new($"{Escape}[{Number(random, 4)}{Pick(random, ["J", "K"])}", EditsCharacters);
+                return new($"{Escape}[{Number(random, 4)}{Pick(random, ["J", "K"])}");
             case 13:
                 string final = Pick(random, ["@", "P", "L", "M", "X", "S", "T", "b"]);
                 return new($"{Escape}[{Number(random, 5)}{final}", final switch
                 {
-                    "P" or "@" or "X" => EditsCharacters,
+                    "L" or "M" or "S" or "T" => Scrolls,
                     "b" => Repeat,
-                    _ => Scrolls,
+                    _ => null,
                 });
             case 14:
                 return new($"{Escape}[{random.Next(1, rows + 2)};{random.Next(1, rows + 2)}r", ScrollRegion);
@@ -205,6 +201,7 @@ public sealed class TerminalEmulationTests
                 {
                     "1049" or "47" or "1047" => Alternate,
                     "6" => OriginMode,
+                    "7" => AutoWrap,
                     _ => null,
                 });
             case 17:
@@ -215,7 +212,7 @@ public sealed class TerminalEmulationTests
                 return new($"{Escape}[{style}m", style is "42" or "104" or "48;5;22" or "48;2;0;0;255" or "7;33;44" ? Background : null);
             case 19:
                 string set = Pick(random, ["4", "20"]);
-                return new($"{Escape}[{set}{Pick(random, ["h", "l"])}", set == "4" ? InsertMode : NewLineMode);
+                return new($"{Escape}[{set}{Pick(random, ["h", "l"])}", set == "20" ? NewLineMode : null);
             case 20:
                 string kept = Pick(random, ["s", "u", "r"]);
                 return new($"{Escape}[{kept}", kept switch { "r" => ScrollRegion, "u" => Restores, _ => null });
@@ -253,7 +250,12 @@ public sealed class TerminalEmulationTests
                   for (let x = 0; x < c.cols; x++) {
                     const cell = line.getCell(x);
                     const back = colour(cell.isBgDefault(), cell.isBgPalette(), cell.getBgColor());
-                    if (cell.getChars() === '' && cell.getWidth() !== 0) {
+                    if (x > 0 && line.getCell(x - 1).getWidth() === 2) {
+                      row.push('-');
+                      continue;
+                    }
+                    // A blank, as is a wide character's second half with no first before it, shows its back colour alone.
+                    if (cell.getChars() === '') {
                       row.push('/' + back);
                       continue;
                     }
@@ -298,10 +300,14 @@ public sealed class TerminalEmulationTests
             atLastColumn = printed && screen.CursorColumn == output.Columns - 1;
         }
         return new Screen([.. screen.Lines.Select(line => line.Text().TrimEnd())], (screen.CursorColumn, screen.CursorRow), screen.IsAlternate,
-            [.. screen.Lines.Select(line => string.Join(' ', line.Cells.Select(Styled)))]) { Seen = seen };
+            [.. screen.Lines.Select(line => string.Join(' ', line.Cells.Select((cell, i) => i > 0 && line.Cells[i - 1].Width == 2 ? "-" : Styled(cell))))])
+        {
+            Seen = seen,
+        };
     }
 
-    /// <summary>A cell's colours and flags as the comparison writes them, xterm.js's way: a blank one's back colour alone.</summary>
+    /// <summary>A cell's colours and flags as the comparison writes them, xterm.js's way: a blank one's back colour alone. The
+    /// cell a wide character covers is written "-" on both sides, its colours its first half's, as the character is drawn.</summary>
     private static string Styled(Cell cell)
     {
         static string Colour(int colour) => colour == CellStyle.Default ? "d"

@@ -660,9 +660,13 @@ public sealed class TerminalScreen
         Cell[] cells = Lines[CursorRow].Writing();
         if (insertMode)
         {
-            Array.Copy(cells, CursorColumn, cells, CursorColumn + width, Columns - CursorColumn - width);
+            // The cells the character goes into were pushed on, so nothing of theirs is left to overwrite.
+            PushRight(cells, CursorColumn, width, typed: true);
         }
-        Overwrite(cells, CursorColumn);
+        else
+        {
+            Overwrite(cells, CursorColumn);
+        }
         cells[CursorColumn] = new Cell { Rune = rune, Style = style, Width = (byte)width };
         if (hyperlink is not null)
         {
@@ -670,7 +674,10 @@ public sealed class TerminalScreen
         }
         if (width == 2)
         {
-            Overwrite(cells, CursorColumn + 1);
+            if (!insertMode)
+            {
+                Overwrite(cells, CursorColumn + 1);
+            }
             cells[CursorColumn + 1] = new Cell { Rune = 0, Style = style, Width = 0 };
         }
         (lastRune, lastGrapheme, repeatable) = (rune, null, true);
@@ -841,6 +848,40 @@ public sealed class TerminalScreen
         {
             cells[column + 1] = Cell.Blank(style);
         }
+    }
+
+    /// <summary>Room made at a column for <paramref name="count"/> cells, the row's rest pushed right and off its end, the
+    /// cells at the column left as they were for the caller to write. A wide character is never split: one the column
+    /// would split is blanked first, its second half, pushed on, erased where text is <paramref name="typed"/> in insert
+    /// mode and a blank in its own colours where ICH makes the room; one with half pushed off the end is erased.</summary>
+    private void PushRight(Cell[] cells, int column, int count, bool typed)
+    {
+        if (column > 0 && cells[column].Width == 0)
+        {
+            cells[column - 1] = Cell.Blank(Erasing);
+            cells[column] = Cell.Blank(typed ? Erasing : cells[column].Style);
+        }
+        Array.Copy(cells, column, cells, column + count, Columns - column - count);
+        if (cells[Columns - 1].Width == 2)
+        {
+            cells[Columns - 1] = Cell.Blank(Erasing);
+        }
+    }
+
+    /// <summary>Cells erased from a column up to another, the range taken out to the whole of a wide character either end
+    /// would split.</summary>
+    private void Erase(TerminalLine line, int from, int to)
+    {
+        Cell[] cells = line.Cells;
+        if (from > 0 && from < Columns && cells[from].Width == 0)
+        {
+            from--;
+        }
+        if (to > 0 && to < Columns && cells[to].Width == 0)
+        {
+            to++;
+        }
+        line.Clear(from, to, Erasing);
     }
 
     private void LineFeed()
@@ -1110,7 +1151,7 @@ public sealed class TerminalScreen
                 ScrollDown(Get(0, 1));
                 break;
             case 'X':
-                Lines[row].Clear(column, column + Get(0, 1), Erasing);
+                Erase(Lines[row], column, column + Get(0, 1));
                 wrapPending = false;
                 break;
             case 'b':
@@ -1392,7 +1433,7 @@ public sealed class TerminalScreen
         switch (how)
         {
             case 0:
-                Lines[CursorRow].Clear(column, Columns, Erasing);
+                Erase(Lines[CursorRow], column, Columns);
                 for (int r = CursorRow + 1; r < Rows; r++)
                 {
                     Lines[r] = new TerminalLine(Columns, Erasing);
@@ -1403,7 +1444,7 @@ public sealed class TerminalScreen
                 {
                     Lines[r] = new TerminalLine(Columns, Erasing);
                 }
-                Lines[CursorRow].Clear(0, column + 1, Erasing);
+                Erase(Lines[CursorRow], 0, column + 1);
                 break;
             case 2:
                 for (int r = 0; r < Rows; r++)
@@ -1425,11 +1466,11 @@ public sealed class TerminalScreen
         switch (how)
         {
             case 0:
-                line.Clear(column, Columns, Erasing);
+                Erase(line, column, Columns);
                 line.Wrapped = false;
                 break;
             case 1:
-                line.Clear(0, column + 1, Erasing);
+                Erase(line, 0, column + 1);
                 break;
             case 2:
                 line.Clear(0, Columns, Erasing);
@@ -1477,7 +1518,7 @@ public sealed class TerminalScreen
         int column = Math.Min(CursorColumn, Columns - 1);
         Cell[] cells = Lines[CursorRow].Writing();
         count = Math.Min(count, Columns - column);
-        Array.Copy(cells, column, cells, column + count, Columns - column - count);
+        PushRight(cells, column, count, typed: false);
         Lines[CursorRow].Clear(column, column + count, Erasing);
         wrapPending = false;
     }
@@ -1487,6 +1528,15 @@ public sealed class TerminalScreen
         int column = Math.Min(CursorColumn, Columns - 1);
         Cell[] cells = Lines[CursorRow].Writing();
         count = Math.Min(count, Columns - column);
+        // A wide character the deletion splits goes whole: a first half left before it, or a second half after it.
+        if (column > 0 && cells[column].Width == 0)
+        {
+            cells[column - 1] = Cell.Blank(Erasing);
+        }
+        if (column + count < Columns && cells[column + count].Width == 0)
+        {
+            cells[column + count] = Cell.Blank(Erasing);
+        }
         Array.Copy(cells, column + count, cells, column, Columns - column - count);
         Lines[CursorRow].Clear(Columns - count, Columns, Erasing);
         wrapPending = false;
