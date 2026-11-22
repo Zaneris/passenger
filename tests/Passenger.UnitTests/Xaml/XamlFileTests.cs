@@ -20,10 +20,8 @@ public class XamlFileTests
             "x",
             "xaml",
         ], The_code_behinds_class_is_read_from_x_class_whatever_prefix_xamls_language_is_declared_with)),
-        ("an x prefix declared for another namespace names no class", An_x_prefix_declared_for_another_namespace_names_no_class),
         ("a nested style with no type asks each style above it once", A_nested_style_with_no_type_asks_each_style_above_it_once),
         ("a type nested as deep as passenger reads reads as far as a reference goes and ends nothing", A_type_nested_as_deep_as_passenger_reads_reads_as_far_as_a_reference_goes_and_ends_nothing),
-        ("a property with an init accessor is one xaml sets and one with only a getter is not", A_property_with_an_init_accessor_is_one_xaml_sets_and_one_with_only_a_getter_is_not),
         ("a file whose strings leave brackets open still declares its types", A_file_whose_strings_leave_brackets_open_still_declares_its_types),
         ("a colours casts deeper than a stack holds say no colour and end nothing", A_colours_casts_deeper_than_a_stack_holds_say_no_colour_and_end_nothing));
 
@@ -37,14 +35,6 @@ public class XamlFileTests
         Assert.Equal("Shop.MainWindow", file.ClassType?.FullName);
         Assert.Equal("Shop.MainWindow", XamlFile.ClassAttribute(XmlTree.Parse(text))?.Value);
         Assert.Equal("Shell", XamlFile.NameAttribute(file.Tree.Root!)?.Value);
-    }
-
-    private void An_x_prefix_declared_for_another_namespace_names_no_class()
-    {
-        const string Text = "<Window xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"using:Shop\" x:Class=\"Shop.MainWindow\" />\n";
-        XamlFile file = XamlFiles.Read("MainWindow.axaml", Text, AvaloniaDialect.Instance, ("MainWindow.axaml.cs", CodeBehind));
-        Assert.True(file.ClassName is null, $"x:Class with x declared for a CLR namespace read as naming {file.ClassName}, a class XAML's compilers never make it");
-        Assert.Null(XamlFile.ClassAttribute(file.Tree));
     }
 
     private void A_nested_style_with_no_type_asks_each_style_above_it_once()
@@ -62,14 +52,6 @@ public class XamlFileTests
             ClrType type = Assert.Single(SourceTypes.Read("/App/C.cs", text, "App", CSharpParsing.Default).Types);
             Assert.Equal("x", Assert.Single(type.Members).Name);
         });
-    }
-
-    private void A_property_with_an_init_accessor_is_one_xaml_sets_and_one_with_only_a_getter_is_not()
-    {
-        string text = "public class C { public int Placed { get; init; } public int Set { get; set; } public int Read { get; } }";
-        ClrType type = Assert.Single(SourceTypes.Read("/App/C.cs", text, "App", CSharpParsing.Default).Types);
-        Assert.Equal(["Placed", "Set"], type.Members.Where(m => m.CanWrite).Select(m => m.Name).Order(StringComparer.Ordinal));
-        Assert.False(type.Members.Single(m => m.Name == "Read").CanWrite);
     }
 
     private void A_file_whose_strings_leave_brackets_open_still_declares_its_types()

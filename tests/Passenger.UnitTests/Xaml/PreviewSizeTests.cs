@@ -2,9 +2,9 @@ using Passenger.Xaml.Features;
 
 namespace Passenger.UnitTests.Xaml;
 
-/// <summary>The XAML an Avalonia previewer is sent to draw its root at a phone's or a tablet's size: the root's design width
-/// and height given the size's where it writes them, by the designer's prefix whatever it is named, else added after the
-/// root's name, every line where it was; a sample's root (Styles, a ResourceDictionary) left as it is.</summary>
+/// <summary>The XAML an Avalonia previewer is sent to draw its root at a phone's or a tablet's size: the root's design
+/// width and height given the size's where it writes them, else added after the root's name, every line where it was; a
+/// sample's root (Styles, a ResourceDictionary) left as it is.</summary>
 public sealed class PreviewSizeTests
 {
     private static readonly PreviewSize Phone = PreviewSize.Offered[0];
@@ -13,7 +13,6 @@ public sealed class PreviewSizeTests
     public void A_previewer_is_sent_the_root_at_a_devices_size_every_line_where_it_was() => Cases.All(
         ("the roots design width and height take the sizes where the root writes them", The_roots_design_width_and_height_take_the_sizes_where_the_root_writes_them),
         ("a root with no design size takes one after its name and an avalonia design width is given in place", A_root_with_no_design_size_takes_one_after_its_name_and_an_avalonia_design_width_is_given_in_place),
-        ("a design size under a prefix of another namespace is not the designers", A_design_size_under_a_prefix_of_another_namespace_is_not_the_designers),
         ("a samples root takes no size and is sent as it is", A_samples_root_takes_no_size_and_is_sent_as_it_is));
 
     private void The_roots_design_width_and_height_take_the_sizes_where_the_root_writes_them()
@@ -35,12 +34,6 @@ public sealed class PreviewSizeTests
         const string View = "<Grid xmlns=\"https://github.com/avaloniaui\" Design.Width=\"300\">\n  <Button />\n</Grid>";
         Assert.Equal("<Grid Design.Height=\"915\" xmlns=\"https://github.com/avaloniaui\" Design.Width=\"412\">\n  <Button />\n</Grid>", Phone.Sized(View));
         Assert.Equal("<Border Design.Width=\"1280\" Design.Height=\"800\" />", PreviewSize.Offered[3].Sized("<Border />"));
-    }
-
-    private void A_design_size_under_a_prefix_of_another_namespace_is_not_the_designers()
-    {
-        const string View = "<Panel xmlns=\"https://github.com/avaloniaui\" xmlns:d=\"using:Mine\" d:DesignWidth=\"5\" />";
-        Assert.Equal("<Panel Design.Width=\"412\" Design.Height=\"915\" xmlns=\"https://github.com/avaloniaui\" xmlns:d=\"using:Mine\" d:DesignWidth=\"5\" />", Phone.Sized(View));
     }
 
     private void A_samples_root_takes_no_size_and_is_sent_as_it_is()

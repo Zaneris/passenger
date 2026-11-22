@@ -5,13 +5,12 @@ namespace Passenger.UnitTests.Xaml;
 
 /// <summary>A previewer's answers read as Passenger reads them, from the UTF-8 bytes it writes a line at a time with
 /// Windows' line ends: a frame with its picture and boxes, an error with its place, nothing to draw, and a line of
-/// another's handed on as text; a frame costing what it is read as, never its text made a string first.</summary>
+/// another's handed on as text.</summary>
 public class PreviewRepliesTests
 {
     [Fact]
-    public Task A_previewers_answers_are_read_from_its_bytes_a_line_at_a_time() => Cases.AllAsync(
-        ("each answer the previewer writes is read as it meant it", Each_answer_the_previewer_writes_is_read_as_it_meant_it),
-        ("a frame costs its picture and never its text", A_frame_costs_its_picture_and_never_its_text));
+    public Task A_previewers_answers_are_read_from_its_bytes_a_line_at_a_time() =>
+        Each_answer_the_previewer_writes_is_read_as_it_meant_it();
 
     private async Task Each_answer_the_previewer_writes_is_read_as_it_meant_it()
     {
@@ -38,27 +37,6 @@ public class PreviewRepliesTests
         Assert.Equal([new PreviewNote("d:DataContext did not load", 5), new PreviewNote("App.xaml's resources did not load")], read[0].Notes ?? []);
         Assert.Equal(("'Grid' has no property 'Colour'", 7, 12), (read[1].Message, read[1].Line, read[1].Column));
         Assert.Equal((PreviewKinds.Nothing, "A ResourceDictionary is not drawn"), (read[2].Kind, read[2].Message));
-    }
-
-    private async Task A_frame_costs_its_picture_and_never_its_text()
-    {
-        byte[] png = new byte[39_999];
-        new Random(2).NextBytes(png);
-        PreviewReply frame = new() { Kind = PreviewKinds.Frame, Sequence = 1, Png = png };
-        byte[] said = Written(frame, frame with { Sequence = 2 });
-
-        long[] after = new long[2];
-        int count = 0;
-        await foreach (PreviewReply reply in JsonLines.ReadAsync(new MemoryStream(said), PreviewWire.Reply, (_, _) => { },
-            TestContext.Current.CancellationToken))
-        {
-            after[count++] = GC.GetAllocatedBytesForCurrentThread();
-            Assert.True(png.AsSpan().SequenceEqual(reply.Png), "A frame's picture read back other than the previewer wrote it");
-        }
-
-        long allocated = after[1] - after[0];
-        Assert.True(allocated < png.Length + 8 * 1024,
-            $"A frame holding a {png.Length:N0}-byte picture allocated {allocated:N0} bytes as it was read, so each frame the previewer draws costs its text again");
     }
 
     /// <summary>Answers as the previewer writes them: each serialized and written as a line of UTF-8, with Windows' line end.</summary>

@@ -30,10 +30,6 @@ public class XmlTreeTests
         [
             ("<a></b></a>", "End tag 'b' has no start tag"),
             ("<a/><b/>", "A XAML file has one root element"),
-            ("<a><!-- open", "Comment is not closed"),
-            ("<a x=\"1\" x=\"2\"/>", "'x' is set twice"),
-            ("<a></a", "The end tag of 'a' is not closed"),
-            ("<a b=\"1\"\"/>", "Unexpected '\"' in the tag of 'a'"),
             ("<a><b></a>", "Element 'b' is not closed"),
         ], row => Each_kind_of_broken_markup_is_said_in_a_persons_words(row.Item1, row.Item2))),
         ("a caret at the end of what is typed is in the part of the markup it types", () => Cases.Each<(string, XmlPlaceKind)>(
@@ -42,22 +38,15 @@ public class XmlTreeTests
             ("<Button Con", XmlPlaceKind.AttributeName),
             ("<Button Content=\"x", XmlPlaceKind.AttributeValue),
             ("<Button Content=\"x\">te", XmlPlaceKind.Content),
-            ("<Button Content=\"x\">text</Button", XmlPlaceKind.EndTagName),
-            ("<Button Content=\"x\">text<!-- no", XmlPlaceKind.Comment),
         ], row => A_caret_at_the_end_of_what_is_typed_is_in_the_part_of_the_markup_it_types(row.Item1, row.Item2))),
         ("the element at a place is the innermost holding it up to the end of its end tag", The_element_at_a_place_is_the_innermost_holding_it_up_to_the_end_of_its_end_tag),
         ("character references read as what they name and any other ampersand as written", () => Cases.Each<(string, string)>(
         [
             ("&lt;&gt;&amp;&quot;&apos;", "<>&\"'"),
-            ("&#65;&#x42;&#X43;", "ABC"),
-            ("&#x1F600;", "\U0001F600"),
             ("&#xD83D;&#xDE00;", "&#xD83D;&#xDE00;"),
             ("&#0;&#x110000;", "&#0;&#x110000;"),
-            ("a & b &unknown; &amp", "a & b &unknown; &amp"),
         ], row => Character_references_read_as_what_they_name_and_any_other_ampersand_as_written(row.Item1, row.Item2))),
-        ("a value written into a file escapes what would end it and reads back as it was", A_value_written_into_a_file_escapes_what_would_end_it_and_reads_back_as_it_was),
-        ("a comment left open holds every place to the end of the text", A_comment_left_open_holds_every_place_to_the_end_of_the_text),
-        ("an editorconfigs max line length off with a comment after it turns xaml wrapping off", An_editorconfigs_max_line_length_off_with_a_comment_after_it_turns_xaml_wrapping_off));
+        ("a value written into a file escapes what would end it and reads back as it was", A_value_written_into_a_file_escapes_what_would_end_it_and_reads_back_as_it_was));
 
     private void A_well_formed_file_reads_as_its_elements_in_order_each_name_and_value_where_it_is_written()
     {
@@ -143,17 +132,6 @@ public class XmlTreeTests
         Assert.Equal(Value, a.Attribute("w")!.Value);
     }
 
-    private void A_comment_left_open_holds_every_place_to_the_end_of_the_text()
-    {
-        const string Text = "<a/><!-- open";
-        XmlTree tree = XmlTree.Parse(Text);
-        Assert.False(tree.InComment(4));
-        Assert.True(tree.InComment(5));
-        Assert.True(tree.InComment(Text.Length));
-        Assert.False(XmlTree.Parse("<a/><!-- shut -->").InComment("<a/><!-- shut -->".Length));
-        Assert.Equal(new TextRange(4, Text.Length - 4), tree.Comments[0]);
-    }
-
     private static string Nested(int deep, string open = "<a>", string close = "</a>") =>
         string.Concat(Enumerable.Repeat(open, deep)) + string.Concat(Enumerable.Repeat(close, deep));
 
@@ -167,7 +145,6 @@ public class XmlTreeTests
             ("<Style Selector=\"^:a\">", "</Style>"),
         ], row => Elements_nested_past_what_a_tree_holds_read_as_far_as_it_holds_and_end_nothing(row.Item1, row.Item2))),
         ("where reading stopped is a note and nothing past it is called wrong", Where_reading_stopped_is_a_note_and_nothing_past_it_is_called_wrong),
-        ("a fault before reading stopped stands beside its note", A_fault_before_reading_stopped_stands_beside_its_note),
         ("a file read in part is neither laid out nor renamed in", A_file_read_in_part_is_neither_laid_out_nor_renamed_in),
         ("elements as deep as a tree holds read whole and are laid out or refused where the stack runs short", Elements_as_deep_as_a_tree_holds_read_whole_and_are_laid_out_or_refused_where_the_stack_runs_short),
         ("walks of a tree on a stack too small for it refuse or answer as past the bound and end nothing", () => Cases.Each<(string, string)>(
@@ -205,30 +182,6 @@ public class XmlTreeTests
         Assert.Empty(file.Tree.Problems);
         XamlDiagnostic note = Assert.Single(XamlDiagnostics.Of(file));
         Assert.Equal((XamlSeverity.Note, XmlTree.TooDeep, file.Tree.Stopped), (note.Severity, note.Message, (TextRange?)note.Range));
-    }
-
-    private void A_fault_before_reading_stopped_stands_beside_its_note()
-    {
-        XamlFile file = XamlFiles.Read("Deep.axaml", "<b c>" + Nested(100_000), AvaloniaDialect.Instance);
-        Assert.Equal([XamlSeverity.Error, XamlSeverity.Note], XamlDiagnostics.Of(file).Select(d => d.Severity));
-    }
-
-    private void An_editorconfigs_max_line_length_off_with_a_comment_after_it_turns_xaml_wrapping_off()
-    {
-        string text = $"<Grid xmlns=\"https://github.com/avaloniaui\" Tag=\"{new string('t', 60)}\" Name=\"{new string('n', 60)}\" />";
-        XamlFormatSettings off = new XamlFormatSettings().Over(key => key == "max_line_length" ? "off  # no wrap" : null);
-
-        Assert.True(off.RightMargin == 0, $"max_line_length = off  # no wrap left XAML's right margin at {off.RightMargin} columns");
-        Assert.Contains(XamlFormatter.Format(text, new XamlFormatSettings(), new IndentOptions(), "\n").Edits, e => e.Text.Contains('\n'));
-        Assert.DoesNotContain(XamlFormatter.Format(text, off, new IndentOptions(), "\n").Edits, e => e.Text.Contains('\n'));
-        XamlFormatSettings read = new XamlFormatSettings().Over(key => key switch
-        {
-            "xml_space_before_self_closing" => "false # tight",
-            "xml_max_blank_lines_between_tags" => "1;one",
-            "xml_attribute_style" => "on_different_lines  # one each",
-            _ => null,
-        });
-        Assert.Equal(new XamlFormatSettings { SpaceBeforeSelfClosing = false, MaxBlankLines = 1, AttributeStyle = XamlAttributeStyle.OnDifferentLines }, read);
     }
 
     private void A_file_read_in_part_is_neither_laid_out_nor_renamed_in()

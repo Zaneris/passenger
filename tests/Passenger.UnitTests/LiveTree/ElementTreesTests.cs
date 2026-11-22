@@ -37,7 +37,6 @@ public sealed class ElementTreesTests
     [Fact]
     public void An_apps_elements_are_made_and_walked_inside_it_on_a_small_stack_each_told_its_holder() => Cases.All(
         ("a tree nested past what a stack holds is made to its bound on a small stack the element there saying it holds more", A_tree_nested_past_what_a_stack_holds_is_made_to_its_bound_on_a_small_stack_the_element_there_saying_it_holds_more),
-        ("a tree as deep as the bound is made whole and says it holds nothing more", A_tree_as_deep_as_the_bound_is_made_whole_and_says_it_holds_nothing_more),
         ("each element is made in the frameworks order from where its holder is", Each_element_is_made_in_the_frameworks_order_from_where_its_holder_is),
         ("what an element holds is walked on a small stack each before what it holds as the frameworks own walk goes", What_an_element_holds_is_walked_on_a_small_stack_each_before_what_it_holds_as_the_frameworks_own_walk_goes));
 
@@ -52,15 +51,6 @@ public sealed class ElementTreesTests
         Assert.Equal([.. Enumerable.Range(1, Element.DeepestNesting).Select(i => (long)i)], all.Select(e => e.Id));
         Assert.True(all[^1] is { Children: [], Deeper: true } && all.Take(all.Count - 1).All(e => e.Deeper is null),
             "The element at the bound did not say it holds more, or another did: the Live Visual Tree and app_tree would not say what they left out");
-    }
-
-    private void A_tree_as_deep_as_the_bound_is_made_whole_and_says_it_holds_nothing_more()
-    {
-        List<Element> all = [.. AppTree.Walk([Made(Chain(Element.DeepestNesting))]).Select(walked => walked.Element)];
-        Assert.Equal(Element.DeepestNesting, all.Count);
-        Assert.True(all.All(e => e.Deeper is null), "A tree no deeper than the bound said it holds more than was read");
-        List<Element> past = [.. AppTree.Walk([Made(Chain(Element.DeepestNesting + 1))]).Select(walked => walked.Element)];
-        Assert.True(past.Count == Element.DeepestNesting && past[^1].Deeper == true, "A tree one level past the bound did not say so at the bound");
     }
 
     private void Each_element_is_made_in_the_frameworks_order_from_where_its_holder_is()

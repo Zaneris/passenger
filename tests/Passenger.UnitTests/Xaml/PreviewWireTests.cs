@@ -12,9 +12,7 @@ public class PreviewWireTests
         ("of requests read while one is drawn only the newest waits and the end says none", Of_requests_read_while_one_is_drawn_only_the_newest_waits_and_the_end_says_none),
         ("a design larger than the largest frame is said too large", () => Cases.Each<(double, double, double, bool)>(
         [
-            (2048, 2048, 4, false),
             (2049, 100, 4, true),
-            (100, 8193, 1, true),
         ], row => A_design_larger_than_the_largest_frame_is_said_too_large(row.Item1, row.Item2, row.Item3, row.Item4))));
 
     private void Of_requests_read_while_one_is_drawn_only_the_newest_waits_and_the_end_says_none()

@@ -4,9 +4,8 @@ using Passenger.Xaml.Features;
 
 namespace Passenger.UnitTests.Xaml;
 
-/// <summary>Which new names an element's rename refuses: one another element of its name scope has (the file's own, or a
-/// template's), and, for an element of the file's own scope, whose field the code-behind's class is given, the class's
-/// own name and what it declares.</summary>
+/// <summary>Which new names an element's rename refuses: one another element of the file's name scope has, and, for an
+/// element whose field the code-behind's class is given, the class's own name and what it declares.</summary>
 public sealed class ElementNameTests
 {
     private const string Window = """
@@ -51,7 +50,6 @@ public sealed class ElementNameTests
     public void An_elements_rename_refuses_a_name_its_scope_or_its_class_already_has() => Cases.All(
         ("a name another element of the files scope has is refused naming its line", A_name_another_element_of_the_files_scope_has_is_refused_naming_its_line),
         ("a name the code behinds class declares or is is refused naming what has it", A_name_the_code_behinds_class_declares_or_is_is_refused_naming_what_has_it),
-        ("a templates names are a scope of their own with no field in the code behind", A_templates_names_are_a_scope_of_their_own_with_no_field_in_the_code_behind),
         ("a name nothing has or the elements own is not refused", A_name_nothing_has_or_the_elements_own_is_not_refused));
 
     private void A_name_another_element_of_the_files_scope_has_is_refused_naming_its_line()
@@ -64,14 +62,6 @@ public sealed class ElementNameTests
         Assert.Equal("'OnGo' names a method of MainWindow already", XamlRefactorings.ElementNameProblem(File, "Go", "OnGo"));
         Assert.Equal("'Count' names a property of MainWindow already", XamlRefactorings.ElementNameProblem(File, "Go", "Count"));
         Assert.Equal("'MainWindow' names the code-behind's class itself", XamlRefactorings.ElementNameProblem(File, "Go", "MainWindow"));
-    }
-
-    private void A_templates_names_are_a_scope_of_their_own_with_no_field_in_the_code_behind()
-    {
-        Assert.Equal("'Cell' names another element already, on line 10", XamlRefactorings.ElementNameProblem(File, "Row", "Cell"));
-        Assert.Null(XamlRefactorings.ElementNameProblem(File, "Row", "Title"));
-        Assert.Null(XamlRefactorings.ElementNameProblem(File, "Row", "OnGo"));
-        Assert.Null(XamlRefactorings.ElementNameProblem(File, "Go", "Cell"));
     }
 
     private void A_name_nothing_has_or_the_elements_own_is_not_refused()

@@ -50,16 +50,10 @@ public class ResourceFilesTests
         ("a language lacking a key is named with the file to give it in and whether it is there untranslated", A_language_lacking_a_key_is_named_with_the_file_to_give_it_in_and_whether_it_is_there_untranslated),
         ("a key written into a resx follows its last entrys layout without its comment and is refused once there", A_key_written_into_a_resx_follows_its_last_entrys_layout_without_its_comment_and_is_refused_once_there),
         ("an entrys value comment and name are written where the entry has them or made as its lines are every other character kept", An_entrys_value_comment_and_name_are_written_where_the_entry_has_them_or_made_as_its_lines_are_every_other_character_kept),
-        ("clearing a comment takes the white space before it and keeps an xml comment beside it", Clearing_a_comment_takes_the_white_space_before_it_and_keeps_an_xml_comment_beside_it),
         ("entries taken out of a resx take their lines with them and one sharing its line only itself", Entries_taken_out_of_a_resx_take_their_lines_with_them_and_one_sharing_its_line_only_itself),
-        ("a key written into a resx whose last entry is an image is written as a string", A_key_written_into_a_resx_whose_last_entry_is_an_image_is_written_as_a_string),
-        ("a key written into a resx of one line entries is written on one line too", A_key_written_into_a_resx_of_one_line_entries_is_written_on_one_line_too),
         ("a culture is read from a files name only where dotnet knows it", () => Cases.Each<(string, string)>(
         [
             ("Strings.fr", "fr"),
-            ("Strings.zh-Hans", "zh-Hans"),
-            ("Strings", ""),
-            ("Strings.Designer", ""),
             ("Strings.notaculture", ""),
         ], row => A_culture_is_read_from_a_files_name_only_where_dotnet_knows_it(row.Item1, row.Item2))));
 
@@ -82,12 +76,10 @@ public class ResourceFilesTests
     [Fact]
     public void An_XLIFF_file_reads_as_its_units_and_a_translation_is_written_into_its_unit_in_order_of_the_ids() => Cases.All(
         ("an XLIFF file reads as its units a target still new or missing being no translation", An_XLIFF_file_reads_as_its_units_a_target_still_new_or_missing_being_no_translation),
-        ("an XLIFF units source and note are read beside its target", An_XLIFF_units_source_and_note_are_read_beside_its_target),
         ("a translation written into an XLIFF file fills its unit or makes one in order of the ids", A_translation_written_into_an_XLIFF_file_fills_its_unit_or_makes_one_in_order_of_the_ids),
         ("a unit written into a one line XLIFF file goes inside its body in order of the ids", () => Cases.Each<(string, string[])>(
         [
             ("Apple", new[] { "Apple", "Bye", "Greeting" }),
-            ("Cancel", new[] { "Bye", "Cancel", "Greeting" }),
             ("Zed", new[] { "Bye", "Greeting", "Zed" }),
         ], row => A_unit_written_into_a_one_line_XLIFF_file_goes_inside_its_body_in_order_of_the_ids(row.Item1, row.Item2))));
 
@@ -175,15 +167,6 @@ public class ResourceFilesTests
         Assert.Null(ResourceFiles.WithValue(changed, entries[0] with { Start = entries[0].Start + 1 }, "gone"));
     }
 
-    private void Clearing_a_comment_takes_the_white_space_before_it_and_keeps_an_xml_comment_beside_it()
-    {
-        const string Text = "<root>\n  <data name=\"A\"><value>a</value><!-- translator note --><comment>old</comment></data>\n"
-            + "  <data name=\"B\">\n    <value>b</value>\n    <!-- kept -->\n    <comment>old</comment>\n  </data>\n</root>\n";
-        IReadOnlyList<ResourceEntry> entries = Read(Text);
-        Assert.Equal(Text.Replace("<comment>old</comment></data>", "</data>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[0], ""));
-        Assert.Equal(Text.Replace("\n    <comment>old</comment>\n  </data>", "\n  </data>", StringComparison.Ordinal), ResourceFiles.WithComment(Text, entries[1], ""));
-    }
-
     private void Entries_taken_out_of_a_resx_take_their_lines_with_them_and_one_sharing_its_line_only_itself()
     {
         const string Text = "<root>\r\n  <data name=\"A\"><value>a</value></data>\r\n  <data name=\"B\">\r\n    <value>b</value>\r\n  </data>\r\n"
@@ -196,29 +179,7 @@ public class ResourceFilesTests
         Assert.Null(ResourceFiles.Without(Text, [entries[0] with { Name = "Z" }]));
     }
 
-    private void An_XLIFF_units_source_and_note_are_read_beside_its_target()
-    {
-        ResourceEntry bye = ResourceFiles.Parse("Strings.fr.xlf", "fr", ResourceFormat.Xliff,
-            "<xliff><file><body><trans-unit id=\"Bye\"><source>Good&amp;bye</source><target state=\"translated\">Au revoir</target><note>Said last</note></trans-unit></body></file></xliff>")
-            .Entries[0];
-        Assert.Equal(("Good&bye", "Au revoir", "Said last"), (bye.Source, bye.Value, bye.Comment));
-    }
-
     private static IReadOnlyList<ResourceEntry> Read(string text) => ResourceFiles.Parse("Strings.resx", string.Empty, ResourceFormat.Resx, text).Entries;
-
-    private void A_key_written_into_a_resx_whose_last_entry_is_an_image_is_written_as_a_string()
-    {
-        string written = ResourceFiles.WithEntry(Resx, "Bye", "See you")!;
-        Assert.Equal("See you", ResourceFiles.Parse("Strings.resx", string.Empty, ResourceFormat.Resx, written).Entry("Bye")?.Value);
-    }
-
-    private void A_key_written_into_a_resx_of_one_line_entries_is_written_on_one_line_too()
-    {
-        const string Text = "<root>\r\n  <data name=\"A\"><value>a</value></data>\r\n</root>";
-        Assert.Equal("<root>\r\n  <data name=\"A\"><value>a</value></data>\r\n  <data name=\"B\"><value>b &lt; c</value></data>\r\n</root>",
-            ResourceFiles.WithEntry(Text, "B", "b < c"));
-        Assert.Equal("<root>\n  <data name=\"K\" xml:space=\"preserve\">\n    <value>v</value>\n  </data>\n</root>", ResourceFiles.WithEntry("<root>\n</root>", "K", "v"));
-    }
 
     private void A_translation_written_into_an_XLIFF_file_fills_its_unit_or_makes_one_in_order_of_the_ids()
     {

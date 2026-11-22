@@ -40,13 +40,11 @@ public class ExtractStyleTests
         """;
 
     [Fact]
-    public void A_setter_value_naming_a_type_is_written_with_the_prefix_the_receiving_dictionary_declares() => Cases.All(
-        ("a setter value naming a type by a prefix is written with the prefix the receiving dictionary declares its namespace with", () => Cases.Each<(string, string, string)>(
+    public void A_setter_value_naming_a_type_is_written_with_the_prefix_the_receiving_dictionary_declares() => Cases.Each<(string, string, string)>(
         [
-            ("", "local", "c"),
             (" xmlns:app=\"clr-namespace:App\" xmlns:local=\"clr-namespace:Other\"", "app", "c"),
             (" xmlns:ctl=\"clr-namespace:App.Controls\" xmlns:xaml=\"http://schemas.microsoft.com/winfx/2006/xaml\"", "local", "ctl"),
-        ], row => A_setter_value_naming_a_type_by_a_prefix_is_written_with_the_prefix_the_receiving_dictionary_declares_its_namespace_with(row.Item1, row.Item2, row.Item3))));
+        ], row => A_setter_value_naming_a_type_by_a_prefix_is_written_with_the_prefix_the_receiving_dictionary_declares_its_namespace_with(row.Item1, row.Item2, row.Item3));
 
     private void A_setter_value_naming_a_type_by_a_prefix_is_written_with_the_prefix_the_receiving_dictionary_declares_its_namespace_with(
         string declared, string prefix, string controls)

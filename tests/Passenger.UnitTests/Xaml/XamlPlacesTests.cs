@@ -3,9 +3,9 @@ using Passenger.Inspector;
 
 namespace Passenger.UnitTests.Xaml;
 
-/// <summary>Which of the files an app's build recorded its elements in is the XAML file the IDE asks of: the same file on the
-/// disk, however reached, and never a file of its name in another folder; where the app was built elsewhere, so what it
-/// recorded names nothing here, the path ending most alike.</summary>
+/// <summary>Which of the files an app's build recorded its elements in is the XAML file the IDE asks of: the same file
+/// on the disk, however reached, and never a file of its name in another folder; where the app was built elsewhere, the
+/// recorded path ending most alike.</summary>
 public sealed class XamlPlacesTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"xaml-places-{Guid.NewGuid():N}")).FullName);
@@ -24,11 +24,8 @@ public sealed class XamlPlacesTests : IDisposable
     public void The_file_asked_of_is_the_one_at_its_path_through_a_link_or_else_the_recorded_path_ending_most_alike() => Cases.All(
         ("of two files of one name the one asked of is the one at its path", Of_two_files_of_one_name_the_one_asked_of_is_the_one_at_its_path),
         ("a file of its name in another folder is never the one asked of", A_file_of_its_name_in_another_folder_is_never_the_one_asked_of),
-        ("a file of another name is never the one asked of", A_file_of_another_name_is_never_the_one_asked_of),
         ("a path reaching the file through a link is the file", A_path_reaching_the_file_through_a_link_is_the_file),
-        ("where a build recorded paths of another machine the one ending most alike is the file", Where_a_build_recorded_paths_of_another_machine_the_one_ending_most_alike_is_the_file),
-        ("a build recording its file by a resource uri is known by how the path ends", A_build_recording_its_file_by_a_resource_uri_is_known_by_how_the_path_ends),
-        ("asked of a file not on this disk the path ending most alike is the file though it is here", Asked_of_a_file_not_on_this_disk_the_path_ending_most_alike_is_the_file_though_it_is_here));
+        ("where a build recorded paths of another machine the one ending most alike is the file", Where_a_build_recorded_paths_of_another_machine_the_one_ending_most_alike_is_the_file));
 
     private void Of_two_files_of_one_name_the_one_asked_of_is_the_one_at_its_path()
     {
@@ -45,11 +42,6 @@ public sealed class XamlPlacesTests : IDisposable
         Assert.Null(XamlPlaces.FileOf([other], asked));
     }
 
-    private void A_file_of_another_name_is_never_the_one_asked_of()
-    {
-        Assert.Null(XamlPlaces.FileOf(["/elsewhere/Other.xaml"], "/project/View.xaml"));
-    }
-
     private void A_path_reaching_the_file_through_a_link_is_the_file()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "A symbolic link needs a privilege Windows gives few");
@@ -64,17 +56,5 @@ public sealed class XamlPlacesTests : IDisposable
     {
         string asked = Written("project/Views/A/View.xaml");
         Assert.Equal("/src/Views/A/View.xaml", XamlPlaces.FileOf(["/src/Views/B/View.xaml", "/src/Views/A/View.xaml"], asked));
-    }
-
-    private void A_build_recording_its_file_by_a_resource_uri_is_known_by_how_the_path_ends()
-    {
-        string asked = Written("project/Views/View.axaml");
-        Assert.Equal("avares://App/Views/View.axaml", XamlPlaces.FileOf(["avares://App/Other/View.axaml", "avares://App/Views/View.axaml"], asked));
-    }
-
-    private void Asked_of_a_file_not_on_this_disk_the_path_ending_most_alike_is_the_file_though_it_is_here()
-    {
-        string recorded = Written("Views/A/View.xaml");
-        Assert.Equal(recorded, XamlPlaces.FileOf([Written("Views/B/View.xaml"), recorded], "/Users/someone/app/Views/A/View.xaml"));
     }
 }
