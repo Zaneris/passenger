@@ -114,10 +114,10 @@ public sealed class AndroidTargetChoiceTests : IDisposable
     }
 
     /// <summary>A run on an Android target lists Android's targets again on its way, which leaves every other platform's
-    /// listed: Choose Where It Runs opened at once after the run still offers this machine's head and, on a Mac, the iOS
-    /// simulators beside the emulator. The workload's emulator, the run's build and its install are the project's own
-    /// stand-ins (an emulator listed as running, a build of nothing, an install that fails once the run has listed), so no
-    /// device, SDK or JDK is needed. Skips, saying why, without the Android workload.</summary>
+    /// listed: Choose Where It Runs after the run still offers this machine's head and, on a Mac, the iOS simulators. The
+    /// emulator, the build and the install are the project's own stand-ins, so no device, SDK or JDK is needed. Skips,
+    /// saying why, without the Android workload, or where Android's is the only target listed (Linux runs no head of its
+    /// own and no simulator).</summary>
     [AvaloniaFact]
     public void After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered()
     {
@@ -144,7 +144,7 @@ public sealed class AndroidTargetChoiceTests : IDisposable
             {
                 Assert.Contains(DeviceTargets.Here(machine).Shown, listed);
             }
-            Assert.True(listed.Length > 1, $"Only {string.Join(", ", listed)} is listed, so a run's listing has nothing else to keep");
+            Assert.SkipWhen(listed.Length < 2, $"Only {string.Join(", ", listed)} is listed here, which runs no head of its own and no simulator, so a run has nothing else to keep");
             Ui.Choose(window.OpenContextMenu, emulator.Shown);
 
             Ui.Run(window, AppActions.RunProgram);

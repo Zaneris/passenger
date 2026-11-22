@@ -13,9 +13,9 @@ namespace Passenger.Tests;
 /// menu of where it runs offers this machine's head (Windows on Windows, Mac Catalyst on a Mac) beside Android, its
 /// devices and emulators or what Android lacks here. With all it needs here, it says nothing lacking but, off a Mac, that
 /// only a Mac makes its iOS and Mac Catalyst apps, and builds every head to what this machine makes of it. Run builds this
-/// machine's head: on Windows it runs as the WinUI app it is; on a Mac the system opens it hidden, never in front. What it
-/// writes is in the Run window, and Stop ends it; on Windows with Hot Reload, under dotnet watch, a saved edit reaches it
-/// as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for a build, without the
+/// machine's head: on Windows it runs as the WinUI app it is; on a Mac (<see cref="MauiCatalystTests"/>) the system opens it
+/// hidden, never in front. What it writes is in the Run window, and Stop ends it; on Windows with Hot Reload, under dotnet
+/// watch, a saved edit reaches it as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for a build, without the
 /// workload of any head the app's restore reads. Its packages come from nuget.org, as no restore of the solution's brings
 /// them, so it is never one of the gate's.</summary>
 public sealed class MauiTemplateRunTests
@@ -29,62 +29,102 @@ public sealed class MauiTemplateRunTests
     /// <summary>What the app writes once its main page is made, which the Run window shows.</summary>
     private const string Up = "MauiApp1's main page is up";
 
+    /// <summary>The app, made once, listed with this machine's head and Android to choose from, and built to what this
+    /// machine makes of each head.</summary>
     [AvaloniaFact]
-    public void The_maui_templates_app_is_listed_with_this_machines_head_and_android_to_choose_from_and_its_windows_head_runs_here()
+    public void The_maui_templates_app_is_listed_with_this_machines_head_and_android_and_builds_each_head_to_what_this_machine_makes()
     {
         string folder = Made();
         try
         {
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-            try
-            {
-                Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated) && window.Configurations.Count > 0,
-                    () => $"the app's project evaluated and its configurations made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
-                Assert.Equal(["MauiApp1"], window.Configurations.Select(c => c.Name));
-                Assert.Equal("MauiApp1", window.Session.Configurations.Chosen?.Name);
-
-                Ui.Click(window.FindControl<Button>("RunTargetButton")!);
-                Ui.WaitFor(() => window.OpenContextMenu is not null, () => $"the menu of where the app runs: {Ui.Said(window)}", Slow);
-                ContextMenu menu = window.OpenContextMenu!;
-                List<string> offered = [.. menu.Items.OfType<MenuItem>().Select(m => m.Header switch
-                {
-                    string words => words,
-                    TextBlock block => block.Text ?? string.Empty,
-                    _ => string.Empty,
-                })];
-                ProjectModel app = window.Session.Projects.Single();
-                IReadOnlyList<DeviceTarget> listed = window.Session.Targets.Listed(app);
-                Assert.True(listed.Any(t => t.Platform == TargetPlatform.Android) || offered.Any(o => o.Contains("Android", StringComparison.Ordinal)),
-                    $"The menu offers nothing of Android, neither a device or emulator nor what Android lacks here: {string.Join(" | ", offered)}");
-                if (OperatingSystem.IsMacOS())
-                {
-                    Assert.Contains(DeviceTargets.Here(TargetPlatform.MacCatalyst).Shown, offered);
-                }
-                if (!OperatingSystem.IsWindows())
-                {
-                    menu.Close();
-                    return;
-                }
-                Assert.Contains(DeviceTargets.Here(TargetPlatform.Windows).Shown, offered);
-                menu.Close();
-
-                Built(window);
-                Ui.Launched(window, window.RunAsync(), "the Windows head's build and start", Slow);
-                Assert.Equal("net11.0-windows10.0.19041.0", window.Session.RunPlan?.Framework);
-                Ui.WaitFor(() => Output(window).Contains(Up, StringComparison.Ordinal),
-                    () => $"the WinUI app to make its main page, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
-                Assert.True(window.Runner.IsRunning, $"The app ended once its page was up:\n{Output(window)}");
-                Ui.Run(window, AppActions.Stop);
-                Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app to end once stopped", TimeSpan.FromMinutes(1));
-            }
-            finally
-            {
-                window.Close();
-            }
+            Flow.Step("the MAUI template's app is listed with this machine's head and Android to choose from", () => Listed(folder));
+            Flow.Step("the MAUI template's app says nothing lacking but what only a Mac makes, and builds each head to what this machine makes of it",
+                () => BuildsEachHead(folder));
         }
         finally
         {
             TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>On Windows the app's Windows head runs as the WinUI app it is, and with Hot Reload a saved edit reaches it.</summary>
+    [AvaloniaFact]
+    public void On_windows_the_maui_apps_windows_head_runs_and_takes_a_saved_edit_with_hot_reload()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A .NET MAUI app's Windows head runs only on Windows");
+        }
+        string folder = Made();
+        try
+        {
+            Flow.Step("Run builds the MAUI app's Windows head and runs it as the WinUI app it is, and Stop ends it", () => RunsItsWindowsHead(folder));
+            Flow.Step("Run with Hot Reload on Windows applies a saved edit to the MAUI app's Windows head",
+                () => Run_with_hot_reload_on_windows_applies_a_saved_edit_to_the_maui_apps_windows_head(folder));
+        }
+        finally
+        {
+            TestFolders.Delete(folder);
+        }
+    }
+
+    private static void Listed(string folder)
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated) && window.Configurations.Count > 0,
+                () => $"the app's project evaluated and its configurations made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
+            Assert.Equal(["MauiApp1"], window.Configurations.Select(c => c.Name));
+            Assert.Equal("MauiApp1", window.Session.Configurations.Chosen?.Name);
+
+            Ui.Click(window.FindControl<Button>("RunTargetButton")!);
+            Ui.WaitFor(() => window.OpenContextMenu is not null, () => $"the menu of where the app runs: {Ui.Said(window)}", Slow);
+            ContextMenu menu = window.OpenContextMenu!;
+            List<string> offered = [.. menu.Items.OfType<MenuItem>().Select(m => m.Header switch
+            {
+                string words => words,
+                TextBlock block => block.Text ?? string.Empty,
+                _ => string.Empty,
+            })];
+            ProjectModel app = window.Session.Projects.Single();
+            IReadOnlyList<DeviceTarget> listed = window.Session.Targets.Listed(app);
+            Assert.True(listed.Any(t => t.Platform == TargetPlatform.Android) || offered.Any(o => o.Contains("Android", StringComparison.Ordinal)),
+                $"The menu offers nothing of Android, neither a device or emulator nor what Android lacks here: {string.Join(" | ", offered)}");
+            if (OperatingSystem.IsMacOS())
+            {
+                Assert.Contains(DeviceTargets.Here(TargetPlatform.MacCatalyst).Shown, offered);
+            }
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.Contains(DeviceTargets.Here(TargetPlatform.Windows).Shown, offered);
+            }
+            menu.Close();
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static void RunsItsWindowsHead(string folder)
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "MauiApp1"), () => $"the app's configuration: {Ui.Said(window)}", Slow);
+            Built(window);
+            Ui.Launched(window, window.RunAsync(), "the Windows head's build and start", Slow);
+            Assert.Equal("net11.0-windows10.0.19041.0", window.Session.RunPlan?.Framework);
+            Ui.WaitFor(() => Output(window).Contains(Up, StringComparison.Ordinal),
+                () => $"the WinUI app to make its main page, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
+            Assert.True(window.Runner.IsRunning, $"The app ended once its page was up:\n{Output(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app to end once stopped", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            window.Close();
         }
     }
 
@@ -93,67 +133,57 @@ public sealed class MauiTemplateRunTests
     /// program, on a Mac iOS's simulator app and Mac Catalyst's app, elsewhere their code alone. Where it names something
     /// lacking, the build checks it: a JDK, the Android SDK or Xcode lacking fails it, a simulator runtime, which only a run
     /// needs, does not, and the test skips saying what this machine lacks.</summary>
-    [AvaloniaFact]
-    public void The_maui_templates_app_says_nothing_lacking_but_what_only_a_mac_makes_and_builds_each_head_to_what_this_machine_makes_of_it()
+    private static void BuildsEachHead(string folder)
     {
-        string folder = Made();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-            try
+            Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated), () => $"the app's project to evaluate: {Ui.Said(window)}", Slow);
+            Built(window);
+            MobileWant want = window.MobileWant;
+            IReadOnlyList<string> heads = window.Session.Projects.Single().TargetFrameworks;
+            bool onMac = OperatingSystem.IsMacOS();
+            string[] apple = [.. heads.Select(FrameworkNames.PlatformOf).OfType<string>().Where(MobilePlatforms.IsApple).Select(MobilePlatforms.Named)];
+            Assert.Equal(onMac || apple.Length == 0 ? [] : [$"MauiApp1: {string.Join(", ", apple)}"],
+                want.AppleAppsOffMac.Select(p => $"{p.Project}: {string.Join(", ", p.Platforms)}"));
+            Assert.Equal(want.Said, window.MobileSaid);
+            string? said = (want with { AppleAppsOffMac = [] }).Said;
+            Assert.True(window.Perform(AppActions.Build), $"The app's build could not begin: {window.Status}");
+            Ui.WaitFor(() => !window.IsBuilding, () => $"the app's build to end: {window.Status}", Slow);
+            bool built = window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true;
+            if (said is not null)
             {
-                Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated), () => $"the app's project to evaluate: {Ui.Said(window)}", Slow);
-                Built(window);
-                MobileWant want = window.MobileWant;
-                IReadOnlyList<string> heads = window.Session.Projects.Single().TargetFrameworks;
-                bool onMac = OperatingSystem.IsMacOS();
-                string[] apple = [.. heads.Select(FrameworkNames.PlatformOf).OfType<string>().Where(MobilePlatforms.IsApple).Select(MobilePlatforms.Named)];
-                Assert.Equal(onMac || apple.Length == 0 ? [] : [$"MauiApp1: {string.Join(", ", apple)}"],
-                    want.AppleAppsOffMac.Select(p => $"{p.Project}: {string.Join(", ", p.Platforms)}"));
-                Assert.Equal(want.Said, window.MobileSaid);
-                string? said = (want with { AppleAppsOffMac = [] }).Said;
-                Assert.True(window.Perform(AppActions.Build), $"The app's build could not begin: {window.Status}");
-                Ui.WaitFor(() => !window.IsBuilding, () => $"the app's build to end: {window.Status}", Slow);
-                bool built = window.Status?.StartsWith("Build succeeded", StringComparison.Ordinal) == true;
-                if (said is not null)
-                {
-                    Assert.False(built && (want.Java is not null || want.NoAndroidSdk || want.Xcode is not null),
-                        $"The banner says the app lacks what its heads build with, yet every head built: {said}");
-                    Assert.Skip(built ? $"Every head built, but this machine lacks what the app runs with, as the banner says: {said}"
-                        : $"This machine lacks what the app builds with, as the banner says: {said}\n{Ui.Said(window)}");
-                }
-                Assert.True(built, $"The banner said nothing lacking, yet the app's build failed: {Ui.Said(window)}");
-                string output = Path.Combine(folder, "MauiApp1", "bin", "Debug");
-                foreach (string head in heads)
-                {
-                    string place = Path.Combine(output, head);
-                    string[] made = Directory.Exists(place) ? [.. Directory.EnumerateFileSystemEntries(place, "*", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>()] : [];
-                    string? platform = FrameworkNames.PlatformOf(head);
-                    bool ofApple = platform is not null && MobilePlatforms.IsApple(platform);
-                    string app = platform == FrameworkNames.Android ? $"{MauiApp.Package}-Signed.apk"
-                        : ofApple && onMac ? "MauiApp1.app"
-                        : "MauiApp1.dll";
-                    Assert.True(made.Contains(app), $"The build said it succeeded, but {head}'s head made no {app} in {place}");
-                    Assert.False(ofApple && !onMac && made.Contains("MauiApp1.app"), $"{head}'s head made an app off a Mac, which the banner says only a Mac makes");
-                }
+                Assert.False(built && (want.Java is not null || want.NoAndroidSdk || want.Xcode is not null),
+                    $"The banner says the app lacks what its heads build with, yet every head built: {said}");
+                Assert.Skip(built ? $"Every head built, but this machine lacks what the app runs with, as the banner says: {said}"
+                    : $"This machine lacks what the app builds with, as the banner says: {said}\n{Ui.Said(window)}");
             }
-            finally
+            Assert.True(built, $"The banner said nothing lacking, yet the app's build failed: {Ui.Said(window)}");
+            string output = Path.Combine(folder, "MauiApp1", "bin", "Debug");
+            foreach (string head in heads)
             {
-                window.Close();
+                string place = Path.Combine(output, head);
+                string[] made = Directory.Exists(place) ? [.. Directory.EnumerateFileSystemEntries(place, "*", SearchOption.AllDirectories).Select(Path.GetFileName).OfType<string>()] : [];
+                string? platform = FrameworkNames.PlatformOf(head);
+                bool ofApple = platform is not null && MobilePlatforms.IsApple(platform);
+                string app = platform == FrameworkNames.Android ? $"{MauiApp.Package}-Signed.apk"
+                    : ofApple && onMac ? "MauiApp1.app"
+                    : "MauiApp1.dll";
+                Assert.True(made.Contains(app), $"The build said it succeeded, but {head}'s head made no {app} in {place}");
+                Assert.False(ofApple && !onMac && made.Contains("MauiApp1.app"), $"{head}'s head made an app off a Mac, which the banner says only a Mac makes");
             }
         }
         finally
         {
-            TestFolders.Delete(folder);
+            window.Close();
         }
     }
 
     /// <summary>On a Mac, Run with nothing chosen builds the app's Mac Catalyst head and the system opens it as an app, hidden
     /// and never in front as nobody sees this window: what it writes is in the Run window while it runs, and Stop ends it,
     /// the app gone with its opener. Its Debug build trims .NET's own assemblies, so the Run window offers to keep them
-    /// whole, which writes MtouchLink None for its Debug build.</summary>
-    [AvaloniaFact]
-    public void On_a_mac_run_opens_the_maui_apps_mac_catalyst_head_hidden_its_output_in_the_run_window_and_stop_ends_it()
+    /// whole, which writes MtouchLink None for its Debug build. A step of <see cref="MauiCatalystTests"/>' flow.</summary>
+    internal static void On_a_mac_run_opens_the_maui_apps_mac_catalyst_head_hidden_its_output_in_the_run_window_and_stop_ends_it()
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -224,41 +254,28 @@ public sealed class MauiTemplateRunTests
     /// <summary>Run with Hot Reload on Windows runs the app's Windows head under dotnet watch, as a program of this machine:
     /// an edit of the method it calls each second, saved, reaches the running WinUI app, what it writes after being the
     /// edit's, in the Run window; Stop ends it.</summary>
-    [AvaloniaFact]
-    public void Run_with_hot_reload_on_windows_applies_a_saved_edit_to_the_maui_apps_windows_head()
+    private static void Run_with_hot_reload_on_windows_applies_a_saved_edit_to_the_maui_apps_windows_head(string folder)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Skip("A .NET MAUI app's Windows head runs only on Windows");
-        }
-        string folder = Made();
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        window.ApplySettings(window.Settings with { HotReload = true });
         try
         {
-            MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-            window.ApplySettings(window.Settings with { HotReload = true });
-            try
-            {
-                Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "MauiApp1"), () => $"the app's configuration: {Ui.Said(window)}", Slow);
-                Built(window);
-                Ui.Launched(window, window.RunAsync(), "the Windows head's start under dotnet watch", Slow);
-                Ui.WaitFor(() => Output(window).Contains(Ticks, StringComparison.Ordinal),
-                    () => $"the WinUI app to tick, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
-                window.OpenFile(Path.Combine(folder, "MauiApp1", "MainPage.xaml.cs"));
-                Typing.Replace(window, $"\"{Ticks}\"", "\"MauiApp1 ticks after Hot Reload\"");
-                Ui.Run(window, AppActions.SaveAll);
-                Ui.WaitFor(() => Output(window).Contains("MauiApp1 ticks after Hot Reload", StringComparison.Ordinal),
-                    () => $"the running app to tick as the saved edit does; the Run window shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
-                Ui.Run(window, AppActions.Stop);
-                Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app to end once stopped", TimeSpan.FromMinutes(1));
-            }
-            finally
-            {
-                window.Close();
-            }
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "MauiApp1"), () => $"the app's configuration: {Ui.Said(window)}", Slow);
+            Built(window);
+            Ui.Launched(window, window.RunAsync(), "the Windows head's start under dotnet watch", Slow);
+            Ui.WaitFor(() => Output(window).Contains(Ticks, StringComparison.Ordinal),
+                () => $"the WinUI app to tick, said in the Run window; it shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
+            window.OpenFile(Path.Combine(folder, "MauiApp1", "MainPage.xaml.cs"));
+            Typing.Replace(window, $"\"{Ticks}\"", "\"MauiApp1 ticks after Hot Reload\"");
+            Ui.Run(window, AppActions.SaveAll);
+            Ui.WaitFor(() => Output(window).Contains("MauiApp1 ticks after Hot Reload", StringComparison.Ordinal),
+                () => $"the running app to tick as the saved edit does; the Run window shows:\n{Output(window)}\n{Ui.Said(window)}", Slow);
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the app to end once stopped", TimeSpan.FromMinutes(1));
         }
         finally
         {
-            TestFolders.Delete(folder);
+            window.Close();
         }
     }
 

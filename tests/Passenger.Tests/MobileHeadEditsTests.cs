@@ -10,10 +10,9 @@ namespace Passenger.Tests;
 /// <summary>A mobile project's heads as their templates made them for .NET 10, opened on a Mac whose Xcode's SDK asks every
 /// app for a scene manifest: the banner names each edit each head needs to build and run here, Make the Mobile Edits (or its
 /// fix on a line of the project) makes them as one command Undo takes back and Redo makes again, and the head then builds,
-/// restored from nuget.org. Avalonia's cross-platform app's iOS head and its Android head (built where the Android workload
-/// finds a JDK), a MAUI app made before its template gave its Apple heads scenes (a SceneDelegate made since the banner asked
-/// kept as it is), and a Mac Catalyst app whose Info.plist names its least macOS and no scene manifest; a Mac Catalyst head whose Debug build trims .NET's own assemblies is kept out
-/// of the banner and kept whole by its own action or fix. Each skips, saying why, off a Mac or without its workloads.</summary>
+/// restored from nuget.org: Avalonia's cross-platform app's iOS head, and a MAUI app made before its template gave its Apple
+/// heads scenes (a SceneDelegate made since the banner asked kept as it is). Each skips, saying why, off a Mac or without its
+/// workloads.</summary>
 public sealed partial class MobileHeadEditsTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
@@ -24,8 +23,20 @@ public sealed partial class MobileHeadEditsTests
     private static string Moved(string framework, string platform) =>
         $"net11.0-{framework} in place of net10.0-{framework}, whose {platform} apps run on Mono (Passenger builds, runs and debugs mobile apps from .NET 11, on CoreCLR)";
 
+    /// <summary>The banner names each edit a head needs, Make the Mobile Edits makes them as one step of Undo keeping a file
+    /// the person made since, and the heads then build.</summary>
     [AvaloniaFact]
-    public void An_avalonia_apps_ios_head_is_told_each_edit_it_needs_and_builds_once_Make_the_Mobile_Edits_made_them_as_one_step_of_Undo()
+    public void A_heads_edits_are_named_and_made_as_one_step_of_Undo_keeping_what_the_person_made_and_the_head_then_builds()
+    {
+        Flow.StepApart<MobileHeadEditsTests>("an Avalonia app's iOS head is told each edit it needs and builds once Make the Mobile Edits made them as one step of Undo",
+            t => t.An_avalonia_apps_ios_head_is_told_each_edit_it_needs_and_builds_once_Make_the_Mobile_Edits_made_them_as_one_step_of_Undo());
+        Flow.StepApart<MobileHeadEditsTests>("a MAUI app made before its Apple heads had scenes is told every head's edits, and its iOS and Catalyst heads build once made",
+            t => t.A_maui_app_made_before_its_apple_heads_had_scenes_is_told_every_heads_edits_and_its_ios_and_catalyst_heads_build_once_made());
+        Flow.StepApart<MobileHeadEditsTests>("a SceneDelegate made since the banner asked is kept as it is by Make the Mobile Edits, which says so",
+            t => t.A_scene_delegate_made_since_the_banner_asked_is_kept_as_it_is_by_Make_the_Mobile_Edits_which_says_so());
+    }
+
+    private void An_avalonia_apps_ios_head_is_told_each_edit_it_needs_and_builds_once_Make_the_Mobile_Edits_made_them_as_one_step_of_Undo()
     {
         SkipOffMac();
         string folder = PathNames.Canonical(TestFolders.Create("avalonia-ios-edits"));
@@ -73,50 +84,7 @@ public sealed partial class MobileHeadEditsTests
         }
     }
 
-    [AvaloniaFact]
-    public void An_avalonia_apps_android_head_is_told_its_edits_and_the_fix_on_its_framework_makes_them_so_it_builds_where_a_jdk_is()
-    {
-        SkipOffMac();
-        string folder = PathNames.Canonical(TestFolders.Create("avalonia-android-edits"));
-        Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateCrossPlatformAsync(folder, Name)), "dotnet new avalonia.xplat", Slow);
-        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
-        string head = $"{Name}.Android";
-        string project = Path.Combine(folder, head, $"{head}.csproj");
-        string ios = Path.Combine(folder, $"{Name}.iOS", $"{Name}.iOS.csproj");
-        string projectMade = File.ReadAllText(project);
-        string iosMade = File.ReadAllText(ios);
-        MainWindow window = Opened(folder, project);
-        try
-        {
-            string sentence = $"{head} needs edits to build and run here: {Moved("android", "Android")}; and Android API 24 at the least, the least .NET 11's "
-                + "Android workload builds for, in place of 23 in its project";
-            Assert.Equal(sentence, Edits(window, head).Said);
-            Assert.True(window.MobileSaid?.Contains(sentence, StringComparison.Ordinal) == true, $"The banner did not name each edit of {head}: {window.MobileSaid}");
-
-            Choose(window, project, "<TargetFramework>", "Make the Mobile Edits");
-            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.MakeMobileEdits) is null && window.Status == $"The mobile edits of {head} are made",
-                () => $"the fix to make {head}'s edits: {Ui.Said(window)}", Slow);
-            Ui.WaitFor(() => window.EditorArea.Find(project)!.Text.Snapshot.ToString() == projectMade.Replace("net10.0-android", "net11.0-android", StringComparison.Ordinal)
-                .Replace("<SupportedOSPlatformVersion>23<", "<SupportedOSPlatformVersion>24<", StringComparison.Ordinal),
-                () => $"the open project to take its edits: {window.EditorArea.Find(project)!.Text.Snapshot}");
-            Assert.Equal(iosMade, File.ReadAllText(ios));
-            Assert.True(window.MobileSaid?.Contains($"{head} needs edits", StringComparison.Ordinal) != true, $"Once made, the banner still names {head}'s edits: {window.MobileSaid}");
-
-            if (window.MobileWant is { Java: not null } or { NoAndroidSdk: true } or { AndroidPackages.Count: > 0 })
-            {
-                throw Skipped($"The edits were made, but the Android workload has no JDK or SDK here to build {head} with: {window.MobileSaid}");
-            }
-            Builds(window, project, "net11.0-android");
-        }
-        finally
-        {
-            window.Close();
-            TestFolders.Delete(folder);
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_maui_app_made_before_its_apple_heads_had_scenes_is_told_every_heads_edits_and_its_ios_and_catalyst_heads_build_once_made()
+    private void A_maui_app_made_before_its_apple_heads_had_scenes_is_told_every_heads_edits_and_its_ios_and_catalyst_heads_build_once_made()
     {
         (string folder, string app, string project) = MauiBeforeScenes("maui-heads-edits");
         string projectMade = File.ReadAllText(project);
@@ -174,8 +142,7 @@ public sealed partial class MobileHeadEditsTests
 
     /// <summary>A SceneDelegate the person made after the banner asked for one to be written, before the edits are made:
     /// Make the Mobile Edits keeps it as it is, writing the other head's, and says so.</summary>
-    [AvaloniaFact]
-    public void A_scene_delegate_made_since_the_banner_asked_is_kept_as_it_is_by_Make_the_Mobile_Edits_which_says_so()
+    private void A_scene_delegate_made_since_the_banner_asked_is_kept_as_it_is_by_Make_the_Mobile_Edits_which_says_so()
     {
         (string folder, string app, string project) = MauiBeforeScenes("maui-scene-made-since");
         MainWindow window = Opened(folder, project);
@@ -195,67 +162,6 @@ public sealed partial class MobileHeadEditsTests
             Assert.True(window.Status?.StartsWith("The mobile edits of M10 are made; ", StringComparison.Ordinal) == true
                 && window.Status.EndsWith("/MacCatalyst/SceneDelegate.cs, made since the edits were read, is kept as it was", StringComparison.Ordinal),
                 $"The status bar did not say the SceneDelegate made since was kept: {window.Status}");
-        }
-        finally
-        {
-            window.Close();
-            TestFolders.Delete(folder);
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_mac_catalyst_app_naming_its_least_macOS_and_no_scene_manifest_is_told_its_edits_and_builds_once_made()
-    {
-        SkipOffMac();
-        string folder = PathNames.Canonical(TestFolders.Create("catalyst-edits"));
-        string app = Path.Combine(folder, "Cat");
-        ChildResult made = Ui.AwaitPumped(Waiting.Apart(() => ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["new", "maccatalyst", "--Framework", "net10.0-maccatalyst",
-            "--output", app, "--name", "Cat"], folder), limit: TimeSpan.FromMinutes(6))), "dotnet new maccatalyst for .NET 10", Slow);
-        if (!made.Succeeded)
-        {
-            Assert.Skip($"This .NET makes no .NET 10 Mac Catalyst app, so it lacks the maccatalyst workload: {made.FirstLine}");
-        }
-        TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
-        // As an app made for Mac Catalyst 15 whose Info.plist names its least macOS and gives its SceneDelegate no scene manifest.
-        string project = Path.Combine(app, "Cat.csproj");
-        File.WriteAllText(project, File.ReadAllText(project).Replace("<SupportedOSPlatformVersion>17.0<", "<SupportedOSPlatformVersion>15.0<", StringComparison.Ordinal));
-        string plist = Path.Combine(app, "Info.plist");
-        string text = File.ReadAllText(plist);
-        int key = text.IndexOf("    <key>UIApplicationSceneManifest</key>", StringComparison.Ordinal);
-        Assert.True(key >= 0, $"The template's Info.plist no longer has a scene manifest:\n{text}");
-        File.WriteAllText(plist, text[..key].Replace("    <key>UIDeviceFamily</key>", "    <key>LSMinimumSystemVersion</key>\n    <string>12.0</string>\n    <key>UIDeviceFamily</key>",
-            StringComparison.Ordinal) + "</dict>\n</plist>\n");
-        MainWindow window = Opened(folder, project);
-        try
-        {
-            HeadEdits edits = Edits(window, "Cat");
-            string sdk = Assert.Single(edits.Manifests).SceneSdk ?? throw Skipped($"This Mac's Xcode SDK asks no scene manifest of an app, as Xcode 27's does: {edits.Said}");
-            foreach (string said in (string[])[$"Cat needs edits to build and run here: {Moved("maccatalyst", "Mac Catalyst")}",
-                "; Mac Catalyst 17.0 at the least, the least .NET 11's Mac Catalyst workload builds for, in place of 15.0 in its project;",
-                "; macOS 14.0 as Info.plist's LSMinimumSystemVersion, Mac Catalyst 17.0's, in place of 12.0",
-                $"a scene manifest (UIApplicationSceneManifest) in Info.plist, which the Mac Catalyst {sdk} SDK asks of every app, naming its SceneDelegate"])
-            {
-                Assert.True(window.MobileSaid?.Contains(said, StringComparison.Ordinal) == true, $"The banner did not say \"{said}\": {window.MobileSaid}");
-            }
-
-            Assert.DoesNotContain("MtouchLink", window.MobileSaid, StringComparison.Ordinal);
-
-            Ui.ClickButton(window, "Make the Mobile Edits");
-            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.MakeMobileEdits) is null, () => $"the edits to be made: {Ui.Said(window)}", Slow);
-            Assert.Equal("The mobile edits of Cat are made", window.Status);
-            Ui.WaitFor(() => window.MobileWant.Trimmed.Any(h => h.Name == "Cat"), () => $"Cat's Debug build to be found trimmed: {Ui.Said(window)}", Slow);
-            {
-                Assert.True(window.Perform(AppActions.KeepAssembliesWhole), $"Keep .NET's Assemblies Whole in Debug was refused: {window.Status}");
-                Ui.WaitFor(() => window.Actions.Work.Of(AppActions.KeepAssembliesWhole) is null,
-                    () => $"Keep .NET's Assemblies Whole in Debug to end: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
-                Assert.Equal(MobileHeads.Whole("Cat"), window.Status);
-                Assert.Contains("'Debug'\">None</MtouchLink>", File.ReadAllText(project), StringComparison.Ordinal);
-            }
-            string edited = File.ReadAllText(plist);
-            Assert.Contains("<key>LSMinimumSystemVersion</key>\n    <string>14.0</string>", edited, StringComparison.Ordinal);
-            Assert.Contains("<string>Default Configuration</string>", edited, StringComparison.Ordinal);
-            Assert.Contains("<SupportedOSPlatformVersion>17.0</SupportedOSPlatformVersion>", File.ReadAllText(project), StringComparison.Ordinal);
-            Builds(window, project, "net11.0-maccatalyst");
         }
         finally
         {

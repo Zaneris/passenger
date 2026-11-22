@@ -19,8 +19,20 @@ public sealed class MauiRunTargetTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);
 
+    /// <summary>Where a mobile app runs: the target chosen beside its configuration says it, a desktop head runs here with
+    /// nothing chosen, and a device chosen outlasts the folder's state written again (<see cref="DeviceChoicesKeptTests"/>).</summary>
     [AvaloniaFact]
-    public void The_maui_templates_configuration_is_named_for_its_project_and_the_target_chosen_says_where_it_runs()
+    public void Where_a_mobile_app_runs_is_chosen_beside_its_configuration_said_and_kept_with_the_folder()
+    {
+        Flow.Step("a device chosen for a project outlasts the folder's state written again and is found by the next window",
+            DeviceChoicesKeptTests.A_device_chosen_for_a_project_outlasts_the_folders_state_written_again_and_is_found_by_the_next_window);
+        Flow.Step("the MAUI template's configuration is named for its project and the target chosen says where it runs",
+            The_maui_templates_configuration_is_named_for_its_project_and_the_target_chosen_says_where_it_runs);
+        Flow.Step("a MAUI app's Avalonia desktop head runs on this machine with nothing chosen, and again once chosen after a device",
+            A_maui_apps_avalonia_desktop_head_runs_on_this_machine_with_nothing_chosen_and_again_once_chosen_after_a_device);
+    }
+
+    private static void The_maui_templates_configuration_is_named_for_its_project_and_the_target_chosen_says_where_it_runs()
     {
         string folder = PathNames.Canonical(TestFolders.Create("maui-run-"));
         TestFolders.Write(folder, "MauiApp1/MauiApp1.csproj", Project);
@@ -102,8 +114,7 @@ public sealed class MauiRunTargetTests
     /// <summary>A MAUI app with an Avalonia desktop head (<c>net11.0</c> carrying Avalonia.Controls.Maui.Desktop) and an Android
     /// head runs its desktop head on this machine with nothing chosen, on every system, Linux too, where the template's app
     /// waits for a device: the widget names it, and chosen again after an Android emulator, it runs there again.</summary>
-    [AvaloniaFact]
-    public void A_maui_apps_avalonia_desktop_head_runs_on_this_machine_with_nothing_chosen_and_again_once_chosen_after_a_device()
+    private static void A_maui_apps_avalonia_desktop_head_runs_on_this_machine_with_nothing_chosen_and_again_once_chosen_after_a_device()
     {
         string folder = PathNames.Canonical(TestFolders.Create("maui-desktop-"));
         TestFolders.Write(folder, "MauiApp1/MauiApp1.csproj", DesktopProject);

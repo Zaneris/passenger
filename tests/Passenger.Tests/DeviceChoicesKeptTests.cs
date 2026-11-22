@@ -1,4 +1,3 @@
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Run.Devices;
 using Passenger.Workspace;
@@ -6,12 +5,10 @@ using Passenger.Workspace;
 namespace Passenger.Tests;
 
 /// <summary>Where a project was chosen to run is the folder's: it outlasts the window's own rewrites of the folder's state
-/// and a window opening the folder again finds it.</summary>
-[SameOnEverySystem]
-public sealed class DeviceChoicesKeptTests
+/// and a window opening the folder again finds it. A step of <see cref="MauiRunTargetTests"/>' flow.</summary>
+internal static class DeviceChoicesKeptTests
 {
-    [AvaloniaFact]
-    public void A_device_chosen_for_a_project_outlasts_the_folders_state_written_again_and_is_found_by_the_next_window()
+    internal static void A_device_chosen_for_a_project_outlasts_the_folders_state_written_again_and_is_found_by_the_next_window()
     {
         string folder = TestFolders.Create("device-kept-");
         string settings = TestFolders.Create("device-settings-");
