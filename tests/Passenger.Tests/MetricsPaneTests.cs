@@ -12,7 +12,8 @@ namespace Passenger.Tests;
 public sealed class MetricsPaneTests
 {
     /// <summary>A program paused in the debugger is said to be and read once it runs; a runtime that takes no session
-    /// is said and asked no more; a pane let go of while its start waits asks its runtime nothing more.</summary>
+    /// is said and asked no more; a pane let go of while its start waits asks its runtime nothing more; and one slow to
+    /// take its first session that answers at once after asked again, saying so, and charted.</summary>
     [AvaloniaFact]
     public void The_Stats_tab_reads_a_programs_metrics_only_while_it_can_and_asks_nothing_more_once_let_go()
     {
@@ -29,6 +30,11 @@ public sealed class MetricsPaneTests
         Flow.StepApart<MetricsPaneTests>("a pane let go of while its start waits asks its runtime nothing more", t =>
         {
             t.A_pane_let_go_of_while_its_start_waits_asks_its_runtime_nothing_more();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<MetricsPaneTests>("a runtime slow to take its first session that answers at once after is asked again saying so and charted", t =>
+        {
+            t.A_runtime_slow_to_take_its_first_session_that_answers_at_once_after_is_asked_again_saying_so_and_charted();
             OpenWindows.CloseAll();
         });
     }
@@ -98,8 +104,7 @@ public sealed class MetricsPaneTests
     /// <summary>A program whose runtime takes no session in its start's time but answers the next request at once (a port
     /// that holds the pane's first start and passes the rest to the runtime) is asked once more, the pane saying so as it
     /// asks, and charted: never said to have failed while its runtime answers.</summary>
-    [AvaloniaFact]
-    public void A_runtime_slow_to_take_its_first_session_that_answers_at_once_after_is_asked_again_saying_so_and_charted()
+    private void A_runtime_slow_to_take_its_first_session_that_answers_at_once_after_is_asked_again_saying_so_and_charted()
     {
         MetricsPane pane = new() { Paused = (_, _) => false };
         using SilentPort port = new(Environment.ProcessId, holding: 1);
