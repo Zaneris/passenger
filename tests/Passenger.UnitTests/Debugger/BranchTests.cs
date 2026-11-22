@@ -10,43 +10,32 @@ public class BranchTests
 {
     private static readonly double[] Operands = [double.NaN, 1.0, 2.0, double.PositiveInfinity, double.NegativeInfinity, -0.0, 0.0];
 
-    public static TheoryData<ILOpCode> Branches => new(
+    private static readonly ILOpCode[] Branches =
+    [
         ILOpCode.Beq, ILOpCode.Bne_un, ILOpCode.Bgt, ILOpCode.Bgt_un, ILOpCode.Blt, ILOpCode.Blt_un,
         ILOpCode.Bge, ILOpCode.Bge_un, ILOpCode.Ble, ILOpCode.Ble_un,
         ILOpCode.Beq_s, ILOpCode.Bne_un_s, ILOpCode.Bgt_s, ILOpCode.Bgt_un_s, ILOpCode.Blt_s, ILOpCode.Blt_un_s,
-        ILOpCode.Bge_s, ILOpCode.Bge_un_s, ILOpCode.Ble_s, ILOpCode.Ble_un_s);
+        ILOpCode.Bge_s, ILOpCode.Bge_un_s, ILOpCode.Ble_s, ILOpCode.Ble_un_s,
+    ];
 
-    [Theory]
-    [MemberData(nameof(Branches))]
-    public void A_branch_on_doubles_is_taken_where_the_runtimes_is(ILOpCode op)
+    [Fact]
+    public void A_branch_on_doubles_or_singles_is_taken_where_the_runtimes_is() => Cases.Each(Branches, op =>
     {
-        Func<double, double, bool> runtime = Emitted<double>(op);
+        Func<double, double, bool> doubles = Emitted<double>(op);
+        Func<float, float, bool> singles = Emitted<float>(op);
         foreach (double left in Operands)
         {
             foreach (double right in Operands)
             {
                 bool evaluated = CilNumerics.Branch(op, CilValue.FromPrimitive(left), CilValue.FromPrimitive(right));
-                Assert.True(runtime(left, right) == evaluated,
-                    $"{op} on {left} and {right} is {(evaluated ? "taken" : "not taken")} by the evaluator, where the program's runtime {(evaluated ? "does not take it" : "takes it")}");
+                Assert.True(doubles(left, right) == evaluated,
+                    $"{op} on the doubles {left} and {right} is {(evaluated ? "taken" : "not taken")} by the evaluator, where the program's runtime {(evaluated ? "does not take it" : "takes it")}");
+                bool single = CilNumerics.Branch(op, CilValue.FromPrimitive((float)left), CilValue.FromPrimitive((float)right));
+                Assert.True(singles((float)left, (float)right) == single,
+                    $"{op} on the singles {left} and {right} is {(single ? "taken" : "not taken")} by the evaluator, where the program's runtime {(single ? "does not take it" : "takes it")}");
             }
         }
-    }
-
-    [Theory]
-    [MemberData(nameof(Branches))]
-    public void A_branch_on_singles_is_taken_where_the_runtimes_is(ILOpCode op)
-    {
-        Func<float, float, bool> runtime = Emitted<float>(op);
-        foreach (float left in Operands.Select(o => (float)o))
-        {
-            foreach (float right in Operands.Select(o => (float)o))
-            {
-                bool evaluated = CilNumerics.Branch(op, CilValue.FromPrimitive(left), CilValue.FromPrimitive(right));
-                Assert.True(runtime(left, right) == evaluated,
-                    $"{op} on {left} and {right} is {(evaluated ? "taken" : "not taken")} by the evaluator, where the program's runtime {(evaluated ? "does not take it" : "takes it")}");
-            }
-        }
-    }
+    });
 
     /// <summary>A method that runs the branch on its two arguments and answers whether it was taken.</summary>
     private static Func<T, T, bool> Emitted<T>(ILOpCode op)

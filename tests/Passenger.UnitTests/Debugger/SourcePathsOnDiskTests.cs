@@ -17,39 +17,36 @@ public sealed class SourcePathsOnDiskTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_file_written_after_its_first_match_then_matches_its_document_by_its_canonical_name()
-    {
-        string folder = Path.Join(root, "real", "App");
-        Directory.CreateDirectory(folder);
-        Link(() => Directory.CreateSymbolicLink(Path.Join(root, "link"), Path.Join(root, "real")));
-        string file = Path.Join(folder, "Generated.cs");
-        string document = Path.Join(root, "link", "App", "Generated.cs");
-        Assert.True(SourcePaths.Match(file, document) is > 0 and < SourcePaths.Same, "A file not yet written matched as the same file, or not by the names it shares with its document");
+    public void A_file_written_after_its_first_match_binds_by_its_canonical_name() => Cases.All(
+        ("a file written after its first match then matches its document by its canonical name", () =>
+        {
+            string folder = Path.Join(root, "real", "App");
+            Directory.CreateDirectory(folder);
+            Link(() => Directory.CreateSymbolicLink(Path.Join(root, "link"), Path.Join(root, "real")));
+            string file = Path.Join(folder, "Generated.cs");
+            string document = Path.Join(root, "link", "App", "Generated.cs");
+            Assert.True(SourcePaths.Match(file, document) is > 0 and < SourcePaths.Same, "A file not yet written matched as the same file, or not by the names it shares with its document");
 
-        File.WriteAllText(file, "class Generated { }\n");
-        Assert.True(SourcePaths.Match(file, document) == SourcePaths.Same,
-            "A file written after its first match still matched its document only by the names they share, as a same-named file elsewhere would");
-    }
+            File.WriteAllText(file, "class Generated { }\n");
+            Assert.True(SourcePaths.Match(file, document) == SourcePaths.Same,
+                "A file written after its first match still matched its document only by the names they share, as a same-named file elsewhere would");
+        }),
+        ("a file a module first missed binds in that module once it is written", () =>
+        {
+            string folder = Path.Join(root, "module", "App");
+            Directory.CreateDirectory(folder);
+            Link(() => Directory.CreateSymbolicLink(Path.Join(root, "module-link"), folder));
+            string file = Path.Join(folder, "Generated.cs");
+            const string Code = "public static class Generated\n{\n    public static int One() => 1;\n}\n";
+            using ModuleMetadataReader module = Built(Path.Join(root, "module-link", "Generated.cs"), Code);
+            Assert.True((module.DocumentMatch(file), module.ResolveBreakpoint(file, 3)) == (0, null),
+                "Before the file was written, the module matched it to a document sharing no more than its file name with it");
 
-    /// <summary>A module whose symbols name its one file through a link renaming the file's folder matches no breakpoint of
-    /// the file while it is not written, and binds one once it is: what it worked out without the file is not kept.</summary>
-    [Fact]
-    public void A_file_a_module_first_missed_binds_in_that_module_once_it_is_written()
-    {
-        string folder = Path.Join(root, "real", "App");
-        Directory.CreateDirectory(folder);
-        Link(() => Directory.CreateSymbolicLink(Path.Join(root, "link"), folder));
-        string file = Path.Join(folder, "Generated.cs");
-        const string Code = "public static class Generated\n{\n    public static int One() => 1;\n}\n";
-        using ModuleMetadataReader module = Built(Path.Join(root, "link", "Generated.cs"), Code);
-        Assert.True((module.DocumentMatch(file), module.ResolveBreakpoint(file, 3)) == (0, null),
-            "Before the file was written, the module matched it to a document sharing no more than its file name with it");
-
-        File.WriteAllText(file, Code);
-        Assert.True(module.DocumentMatch(file) == SourcePaths.Same,
-            $"A file written after the module first missed it still matched its document {module.DocumentMatch(file)}, as when the file was not there");
-        Assert.True(module.ResolveBreakpoint(file, 3) is not null, "A breakpoint on the file's code, written after the module first missed it, binds nowhere in it");
-    }
+            File.WriteAllText(file, Code);
+            Assert.True(module.DocumentMatch(file) == SourcePaths.Same,
+                $"A file written after the module first missed it still matched its document {module.DocumentMatch(file)}, as when the file was not there");
+            Assert.True(module.ResolveBreakpoint(file, 3) is not null, "A breakpoint on the file's code, written after the module first missed it, binds nowhere in it");
+        }));
 
     /// <summary>A library compiled from one file's code, its symbols embedded, naming the file <paramref name="document"/>.</summary>
     private static ModuleMetadataReader Built(string document, string code)

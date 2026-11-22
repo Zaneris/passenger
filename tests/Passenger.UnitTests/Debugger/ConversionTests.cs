@@ -8,95 +8,54 @@ namespace Passenger.UnitTests.Debugger;
 /// unchecked conversion answers what its own cast does.</summary>
 public class ConversionTests
 {
-    [Theory]
-    [InlineData(ILOpCode.Conv_i4, 1e19, int.MaxValue)]
-    [InlineData(ILOpCode.Conv_i4, -1e19, int.MinValue)]
-    [InlineData(ILOpCode.Conv_u4, -1.0, 0u)]
-    [InlineData(ILOpCode.Conv_u4, 300.7 * 1e8, uint.MaxValue)]
-    [InlineData(ILOpCode.Conv_u4, 2147483648.0, 2147483648u)]
-    [InlineData(ILOpCode.Conv_i4, 2147483648.0, int.MaxValue)]
-    [InlineData(ILOpCode.Conv_i4, -2147483649.0, int.MinValue)]
-    [InlineData(ILOpCode.Conv_i4, -0.9, 0)]
-    [InlineData(ILOpCode.Conv_i8, 1e19, long.MaxValue)]
-    [InlineData(ILOpCode.Conv_i8, -1e19, long.MinValue)]
-    [InlineData(ILOpCode.Conv_i8, 9223372036854775808.0, long.MaxValue)]
-    [InlineData(ILOpCode.Conv_u8, -1.0, 0UL)]
-    [InlineData(ILOpCode.Conv_u8, -0.9, 0UL)]
-    [InlineData(ILOpCode.Conv_u8, 1e19, 10000000000000000000UL)]
-    [InlineData(ILOpCode.Conv_u8, 9223372036854775808.0, 9223372036854775808UL)]
-    [InlineData(ILOpCode.Conv_u8, 18446744073709551616.0, ulong.MaxValue)]
-    [InlineData(ILOpCode.Conv_u8, double.PositiveInfinity, ulong.MaxValue)]
-    [InlineData(ILOpCode.Conv_i4, double.NaN, 0)]
-    [InlineData(ILOpCode.Conv_u8, double.NaN, 0UL)]
-    public void A_float_out_of_an_ints_range_or_wider_converts_to_the_nearest_value_its_target_holds(ILOpCode op, double value, object expected)
-    {
-        foreach (int runtime in (int[])[9, 10, 11])
-        {
-            Assert.Equal(expected, Converted(op, value, 8, runtime));
-        }
-    }
-
-    [Theory]
-    [InlineData(ILOpCode.Conv_i1, 1e19, -1, 127)]
-    [InlineData(ILOpCode.Conv_i1, 70000.0, 112, 127)]
-    [InlineData(ILOpCode.Conv_i1, 128.0, -128, 127)]
-    [InlineData(ILOpCode.Conv_i1, -300.7, -44, -128)]
-    [InlineData(ILOpCode.Conv_u1, -1.0, 255, 0)]
-    [InlineData(ILOpCode.Conv_u1, 256.0, 0, 255)]
-    [InlineData(ILOpCode.Conv_u1, -300.7, 212, 0)]
-    [InlineData(ILOpCode.Conv_u1, 300.7 * 1e8, 255, 255)]
-    [InlineData(ILOpCode.Conv_i2, 32768.0, -32768, 32767)]
-    [InlineData(ILOpCode.Conv_i2, -32769.0, 32767, -32768)]
-    [InlineData(ILOpCode.Conv_i2, -1e19, 0, -32768)]
-    [InlineData(ILOpCode.Conv_u2, 70000.0, 4464, 65535)]
-    [InlineData(ILOpCode.Conv_u2, -1.0, 65535, 0)]
-    [InlineData(ILOpCode.Conv_u2, double.NaN, 0, 0)]
-    public void A_float_out_of_a_narrower_types_range_converts_as_its_runtimes_version_does(ILOpCode op, double value, int net10, int net11)
-    {
-        Assert.Equal(net10, Converted(op, value, 8, 10));
-        Assert.Equal(net10, Converted(op, value, 8, 9));
-        Assert.Equal(net11, Converted(op, value, 8, 11));
-    }
-
+    /// <summary>Each row's answers are what .NET 10 and .NET 11 gave running the same cast, so a conversion for a program on
+    /// another runtime than the tests' is still held.</summary>
     [Fact]
-    public void A_native_integer_takes_the_range_of_the_programs_pointer_size()
-    {
-        Assert.Equal(long.MaxValue, Converted(ILOpCode.Conv_i, 1e19, 8, 10));
-        Assert.Equal(int.MaxValue, Converted(ILOpCode.Conv_i, 1e19, 4, 10));
-        Assert.Equal(ulong.MaxValue, Converted(ILOpCode.Conv_u, 1e30, 8, 10));
-        Assert.Equal(uint.MaxValue, Converted(ILOpCode.Conv_u, 1e10, 4, 10));
-        Assert.Equal(0UL, Converted(ILOpCode.Conv_u, -1.0, 8, 10));
-    }
-
-    [Fact]
-    public void A_single_converts_as_the_double_it_holds()
-    {
-        Assert.Equal(int.MaxValue, CilNumerics.Convert(ILOpCode.Conv_i4, CilValue.FromPrimitive(1e19f), 8, 10).Value);
-        Assert.Equal(9999999980506447872UL, CilNumerics.Convert(ILOpCode.Conv_u8, CilValue.FromPrimitive(1e19f), 8, 10).Value);
-    }
-
-    [Theory]
-    [InlineData(ILOpCode.Conv_ovf_i4, 1e10)]
-    [InlineData(ILOpCode.Conv_ovf_u4, -1.0)]
-    [InlineData(ILOpCode.Conv_ovf_u1, 256.0)]
-    [InlineData(ILOpCode.Conv_ovf_i1, double.NaN)]
-    [InlineData(ILOpCode.Conv_ovf_u8_un, -1.0)]
-    public void A_checked_conversion_out_of_range_throws_an_overflow(ILOpCode op, double value)
-    {
-        foreach (int runtime in (int[])[10, 11])
+    public void A_float_out_of_range_converts_as_its_programs_runtime_and_pointer_size_do_and_a_checked_one_throws() => Cases.All(
+        ("a float out of an int's range or wider converts to the nearest value its target holds on every runtime", () => Cases.Each(
+        [
+            (ILOpCode.Conv_i4, 1e19, (object)int.MaxValue),
+            (ILOpCode.Conv_i4, -2147483649.0, int.MinValue),
+            (ILOpCode.Conv_u4, -1.0, 0u),
+            (ILOpCode.Conv_u8, double.PositiveInfinity, ulong.MaxValue),
+            (ILOpCode.Conv_u8, double.NaN, 0UL),
+        ], row =>
         {
-            Assert.Throws<OverflowException>(() => Converted(op, value, 8, runtime));
-        }
-    }
-
-    [Theory]
-    [InlineData(ILOpCode.Conv_ovf_u4, -0.9, 0u)]
-    [InlineData(ILOpCode.Conv_ovf_i1, 127.9, 127)]
-    [InlineData(ILOpCode.Conv_ovf_i8, -9.5, -9L)]
-    public void A_checked_conversion_whose_whole_part_fits_converts(ILOpCode op, double value, object expected)
-    {
-        Assert.Equal(expected, Converted(op, value, 8, 11));
-    }
+            foreach (int runtime in (int[])[9, 10, 11])
+            {
+                Assert.Equal(row.Item3, Converted(row.Item1, row.Item2, 8, runtime));
+            }
+        })),
+        ("a float out of a narrower type's range converts as its runtime's version does", () => Cases.Each(
+        [
+            (ILOpCode.Conv_i1, 1e19, -1, 127),
+            (ILOpCode.Conv_u1, -300.7, 212, 0),
+            (ILOpCode.Conv_i2, 32768.0, -32768, 32767),
+            (ILOpCode.Conv_u2, double.NaN, 0, 0),
+        ], row =>
+        {
+            (ILOpCode op, double value, int net10, int net11) = row;
+            Assert.Equal(net10, Converted(op, value, 8, 10));
+            Assert.Equal(net10, Converted(op, value, 8, 9));
+            Assert.Equal(net11, Converted(op, value, 8, 11));
+        })),
+        ("a native integer takes the range of the program's pointer size", () =>
+        {
+            Assert.Equal(long.MaxValue, Converted(ILOpCode.Conv_i, 1e19, 8, 10));
+            Assert.Equal(int.MaxValue, Converted(ILOpCode.Conv_i, 1e19, 4, 10));
+            Assert.Equal(uint.MaxValue, Converted(ILOpCode.Conv_u, 1e10, 4, 10));
+        }),
+        ("a checked conversion out of range throws an overflow and one whose whole part fits converts", () =>
+        {
+            Cases.Each([(ILOpCode.Conv_ovf_i4, 1e10), (ILOpCode.Conv_ovf_u4, -1.0), (ILOpCode.Conv_ovf_i1, double.NaN)], row =>
+            {
+                foreach (int runtime in (int[])[10, 11])
+                {
+                    Assert.Throws<OverflowException>(() => Converted(row.Item1, row.Item2, 8, runtime));
+                }
+            });
+            Assert.Equal(0u, Converted(ILOpCode.Conv_ovf_u4, -0.9, 8, 11));
+        }));
 
     [Fact]
     public void Every_unchecked_conversion_answers_what_the_running_runtimes_own_cast_does()

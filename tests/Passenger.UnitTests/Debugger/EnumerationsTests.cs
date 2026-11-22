@@ -11,29 +11,23 @@ public class EnumerationsTests
     private const int SFalse = 1;
 
     [Fact]
-    public void An_enumeration_failing_with_nothing_fetched_throws_its_failure_rather_than_ending_empty()
-    {
-        TypeParameters frame = new(new TypeEnum(Cor.CORDBG_E_OBJECT_NEUTERED));
-        COMException thrown = Assert.Throws<COMException>(() => frame.EnumerateTypeParameters().ToList());
-        Assert.True(thrown.HResult == Cor.CORDBG_E_OBJECT_NEUTERED, $"A neutered enumerator was thrown as {thrown.HResult:X8}, so its caller would hear another reason");
-    }
+    public void An_enumeration_ends_at_S_FALSE_and_a_failure_with_nothing_fetched_is_thrown_rather_than_ending_empty() => Cases.All(
+        ("an enumeration failing with nothing fetched throws its failure rather than ending empty", () =>
+        {
+            TypeParameters frame = new(new TypeEnum(Cor.CORDBG_E_OBJECT_NEUTERED));
+            COMException thrown = Assert.Throws<COMException>(() => frame.EnumerateTypeParameters().ToList());
+            Assert.True(thrown.HResult == Cor.CORDBG_E_OBJECT_NEUTERED, $"A neutered enumerator was thrown as {thrown.HResult:X8}, so its caller would hear another reason");
+        }),
+        ("an enumeration ending with nothing fetched ends its walk", () => Assert.Empty(new TypeParameters(new TypeEnum(SFalse)).EnumerateTypeParameters())),
+        ("a frame's values end before one it has no home for and throw any other failure", () =>
+        {
+            Value first = new();
+            ICorDebugValue[] read = new Frame(new ValueEnum(first, Cor.CORDBG_E_IL_VAR_NOT_AVAILABLE, new Value())).LocalVariables;
+            Assert.True(read is [{ } only] && only == first, $"A frame's locals read {read.Length} values where the first alone stands before one it has no home for");
 
-    [Fact]
-    public void An_enumeration_ending_with_nothing_fetched_ends_its_walk()
-    {
-        Assert.Empty(new TypeParameters(new TypeEnum(SFalse)).EnumerateTypeParameters());
-    }
-
-    [Fact]
-    public void A_frames_values_end_before_one_it_has_no_home_for_and_throw_any_other_failure()
-    {
-        Value first = new();
-        ICorDebugValue[] read = new Frame(new ValueEnum(first, Cor.CORDBG_E_IL_VAR_NOT_AVAILABLE, new Value())).LocalVariables;
-        Assert.True(read is [{ } only] && only == first, $"A frame's locals read {read.Length} values where the first alone stands before one it has no home for");
-
-        COMException thrown = Assert.Throws<COMException>(() => new Frame(new ValueEnum(first, Cor.CORDBG_E_PROCESS_TERMINATED)).LocalVariables);
-        Assert.True(thrown.HResult == Cor.CORDBG_E_PROCESS_TERMINATED, $"A frame's locals of a process gone were thrown as {thrown.HResult:X8}");
-    }
+            COMException thrown = Assert.Throws<COMException>(() => new Frame(new ValueEnum(first, Cor.CORDBG_E_PROCESS_TERMINATED)).LocalVariables);
+            Assert.True(thrown.HResult == Cor.CORDBG_E_PROCESS_TERMINATED, $"A frame's locals of a process gone were thrown as {thrown.HResult:X8}");
+        }));
 
     /// <summary>Next's answers in turn, each an element fetched or an HRESULT with nothing fetched; S_FALSE after the last.</summary>
     private abstract class Answers(object[] answers) : ICorDebugEnum

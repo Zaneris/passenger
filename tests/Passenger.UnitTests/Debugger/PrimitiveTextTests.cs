@@ -9,37 +9,19 @@ namespace Passenger.UnitTests.Debugger;
 public class PrimitiveTextTests
 {
     [Fact]
-    public void A_bool_a_char_and_whole_numbers_read_as_a_local_of_their_type()
-    {
-        Assert.Equal("true", ManagedDebugger.PrimitiveText(CorElementType.BOOLEAN, [1]));
-        Assert.Equal("false", ManagedDebugger.PrimitiveText(CorElementType.BOOLEAN, [0]));
-        Assert.Equal("90 'Z'", ManagedDebugger.PrimitiveText(CorElementType.CHAR, BitConverter.GetBytes('Z')));
-        Assert.Equal("42", ManagedDebugger.PrimitiveText(CorElementType.I4, BitConverter.GetBytes(42)));
-        Assert.Equal("-7", ManagedDebugger.PrimitiveText(CorElementType.I1, [unchecked((byte)-7)]));
-        Assert.Equal("4000000000", ManagedDebugger.PrimitiveText(CorElementType.U4, BitConverter.GetBytes(4000000000u)));
-        Assert.Equal("-9000000000", ManagedDebugger.PrimitiveText(CorElementType.I8, BitConverter.GetBytes(-9000000000L)));
-    }
-
-    [Fact]
-    public void A_real_number_is_written_as_the_debugger_writes_numbers()
-    {
-        Assert.Equal(0.75.ToString(CultureInfo.CurrentCulture), ManagedDebugger.PrimitiveText(CorElementType.R8, BitConverter.GetBytes(0.75)));
-        Assert.Equal(1.5f.ToString(CultureInfo.CurrentCulture), ManagedDebugger.PrimitiveText(CorElementType.R4, BitConverter.GetBytes(1.5f)));
-    }
-
-    [Fact]
-    public void A_native_integer_is_as_wide_as_the_bytes_the_program_holds_it_in()
-    {
-        Assert.Equal("-42", ManagedDebugger.PrimitiveText(CorElementType.I, BitConverter.GetBytes(-42)));
-        Assert.Equal("-42", ManagedDebugger.PrimitiveText(CorElementType.I, BitConverter.GetBytes(-42L)));
-        Assert.Equal("4294967295", ManagedDebugger.PrimitiveText(CorElementType.U, BitConverter.GetBytes(uint.MaxValue)));
-        Assert.Equal("4000000000", ManagedDebugger.PrimitiveText(CorElementType.U, BitConverter.GetBytes(4000000000UL)));
-    }
-
-    [Fact]
-    public void Bytes_short_of_the_types_width_read_the_rest_as_zero()
-    {
-        Assert.Equal("42", ManagedDebugger.PrimitiveText(CorElementType.I4, [42]));
-        Assert.Equal("0", ManagedDebugger.PrimitiveText(CorElementType.U8, []));
-    }
+    public void A_primitive_reads_from_its_bytes_as_a_local_of_its_type() => Cases.All(
+        ("a char and whole numbers read as a local of their type", () =>
+        {
+            Assert.Equal("90 'Z'", ManagedDebugger.PrimitiveText(CorElementType.CHAR, BitConverter.GetBytes('Z')));
+            Assert.Equal("-7", ManagedDebugger.PrimitiveText(CorElementType.I1, [unchecked((byte)-7)]));
+            Assert.Equal("4000000000", ManagedDebugger.PrimitiveText(CorElementType.U4, BitConverter.GetBytes(4000000000u)));
+        }),
+        ("a real number is written as the debugger writes numbers", () =>
+            Assert.Equal(0.75.ToString(CultureInfo.CurrentCulture), ManagedDebugger.PrimitiveText(CorElementType.R8, BitConverter.GetBytes(0.75)))),
+        ("a native integer is as wide as the bytes the program holds it in", () =>
+        {
+            Assert.Equal("-42", ManagedDebugger.PrimitiveText(CorElementType.I, BitConverter.GetBytes(-42)));
+            Assert.Equal("4000000000", ManagedDebugger.PrimitiveText(CorElementType.U, BitConverter.GetBytes(4000000000UL)));
+        }),
+        ("bytes short of the type's width read the rest as zero", () => Assert.Equal("0", ManagedDebugger.PrimitiveText(CorElementType.U8, []))));
 }

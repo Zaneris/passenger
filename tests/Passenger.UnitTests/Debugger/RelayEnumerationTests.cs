@@ -9,47 +9,44 @@ public class RelayEnumerationTests
     private const int Failure = unchecked((int)0x80131304);
 
     [Fact]
-    public void Elements_read_many_at_a_time_come_one_at_a_time_as_the_apps_enumerator_would_give_them()
-    {
-        Random random = new(1544);
-        for (int round = 0; round < 200; round++)
+    public void An_enumerator_read_many_at_a_time_gives_what_the_apps_own_would_and_lets_go_of_what_it_passes_over() => Cases.All(
+        ("elements read many at a time come one at a time as the app's enumerator would give them", () =>
         {
-            int?[] items = [.. Enumerable.Range(0, random.Next(0, 40)).Select(i => random.Next(6) == 0 ? (int?)null : i)];
-            int each = random.Next(1, 4);
-            List<(int Hr, int? Element)> alone = Walk(new AppEnumerator(items), null, each);
-            AppEnumerator batched = new(items);
-            List<(int Hr, int? Element)> read = Walk(batched, new EnumBuffer<int>(), each);
-            Assert.True(alone.SequenceEqual(read), $"Round {round}: read in batches the walk gave {string.Join(" ", read)} where the app's enumerator gives {string.Join(" ", alone)}");
-            Assert.True(batched.Asked <= 1 + items.Count(each => each is null) + items.Length / 8,
-                $"Round {round}: {batched.Asked} round trips for {items.Length} elements, where a batch of 8 needs one per failure and per 8");
-        }
-    }
-
-    [Fact]
-    public void Skipping_lets_go_of_what_it_passes_over_and_counts_a_failure_held_as_one()
-    {
-        AppEnumerator app = new([0, 1, null, 3, 4]);
-        EnumBuffer<int> buffer = new();
-        Span<int> one = stackalloc int[1];
-        Assert.Equal(EnumBuffer<int>.S_OK, buffer.Next(1, one, out _, app.Next, 8));
-        List<int> letGo = [];
-        Assert.Equal(EnumBuffer<int>.S_OK, buffer.Skip(2, letGo.Add, app.Skip));
-        Assert.Equal([1], letGo);
-        Assert.Equal(EnumBuffer<int>.S_OK, buffer.Next(1, one, out int fetched, app.Next, 8));
-        Assert.True(fetched == 1 && one[0] == 3, $"After skipping an element and a failure the next element was {one[0]} ({fetched} fetched), not 3");
-    }
-
-    [Fact]
-    public void Clearing_lets_go_of_every_element_held()
-    {
-        EnumBuffer<int> buffer = new();
-        Span<int> one = stackalloc int[1];
-        buffer.Next(1, one, out _, new AppEnumerator([0, 1, 2, 3]).Next, 8);
-        List<int> letGo = [];
-        buffer.Clear(letGo.Add);
-        Assert.Equal([1, 2, 3], letGo);
-        Assert.Equal(0, buffer.HeldCount);
-    }
+            Random random = new(1544);
+            for (int round = 0; round < 200; round++)
+            {
+                int?[] items = [.. Enumerable.Range(0, random.Next(0, 40)).Select(i => random.Next(6) == 0 ? (int?)null : i)];
+                int each = random.Next(1, 4);
+                List<(int Hr, int? Element)> alone = Walk(new AppEnumerator(items), null, each);
+                AppEnumerator batched = new(items);
+                List<(int Hr, int? Element)> read = Walk(batched, new EnumBuffer<int>(), each);
+                Assert.True(alone.SequenceEqual(read), $"Round {round}: read in batches the walk gave {string.Join(" ", read)} where the app's enumerator gives {string.Join(" ", alone)}");
+                Assert.True(batched.Asked <= 1 + items.Count(each => each is null) + items.Length / 8,
+                    $"Round {round}: {batched.Asked} round trips for {items.Length} elements, where a batch of 8 needs one per failure and per 8");
+            }
+        }),
+        ("skipping lets go of what it passes over and counts a failure held as one", () =>
+        {
+            AppEnumerator app = new([0, 1, null, 3, 4]);
+            EnumBuffer<int> buffer = new();
+            Span<int> one = stackalloc int[1];
+            Assert.Equal(EnumBuffer<int>.S_OK, buffer.Next(1, one, out _, app.Next, 8));
+            List<int> letGo = [];
+            Assert.Equal(EnumBuffer<int>.S_OK, buffer.Skip(2, letGo.Add, app.Skip));
+            Assert.Equal([1], letGo);
+            Assert.Equal(EnumBuffer<int>.S_OK, buffer.Next(1, one, out int fetched, app.Next, 8));
+            Assert.True(fetched == 1 && one[0] == 3, $"After skipping an element and a failure the next element was {one[0]} ({fetched} fetched), not 3");
+        }),
+        ("clearing lets go of every element held", () =>
+        {
+            EnumBuffer<int> buffer = new();
+            Span<int> one = stackalloc int[1];
+            buffer.Next(1, one, out _, new AppEnumerator([0, 1, 2, 3]).Next, 8);
+            List<int> letGo = [];
+            buffer.Clear(letGo.Add);
+            Assert.Equal([1, 2, 3], letGo);
+            Assert.Equal(0, buffer.HeldCount);
+        }));
 
     private static List<(int Hr, int? Element)> Walk(AppEnumerator app, EnumBuffer<int>? buffer, int each)
     {

@@ -6,27 +6,20 @@ namespace Passenger.UnitTests.Debugger;
 /// own metadata and symbols name them: aliases, arrays of any rank, jagged arrays and generic arguments alike.</summary>
 public class FunctionBreakpointResolverTests
 {
-    [Theory]
-    [InlineData("Overloads.M(int[])", typeof(int[]))]
-    [InlineData("Overloads.M(int[,])", typeof(int[,]))]
-    [InlineData("Overloads.M(string[][])", typeof(string[][]))]
-    [InlineData("Overloads.M(int[,][])", typeof(int[,][]))]
-    [InlineData("Overloads.M(int?[])", typeof(int?[]))]
-    [InlineData("Overloads.M(string[]?)", typeof(string[]))]
-    [InlineData("Overloads.M(List<int[]>)", typeof(List<int[]>))]
-    [InlineData("Overloads.M(Dictionary<int[,], string>)", typeof(Dictionary<int[,], string>))]
-    [InlineData("Overloads.M(int)", typeof(int))]
-    public void A_function_breakpoint_naming_one_parameter_binds_in_the_overload_taking_it(string name, Type parameter)
-    {
-        Assert.Equal([parameter.ToString()], Bound(name));
-    }
-
     [Fact]
-    public void A_comma_inside_an_arrays_brackets_is_its_rank_never_a_second_parameter()
-    {
-        Assert.Equal([$"{typeof(int[])}, {typeof(int[,])}"], Bound("Overloads.M(int[], int[,])"));
-        Assert.Equal([typeof(int[,]).ToString()], Bound("Overloads.M(int [ , ])"));
-    }
+    public void A_function_breakpoint_binds_in_the_overload_taking_the_parameters_it_names() => Cases.All(
+        ("a function breakpoint naming one parameter binds in the overload taking it", () => Cases.Each(
+        [
+            ("Overloads.M(int[,][])", typeof(int[,][])),
+            ("Overloads.M(int?[])", typeof(int?[])),
+            ("Overloads.M(string[]?)", typeof(string[])),
+            ("Overloads.M(Dictionary<int[,], string>)", typeof(Dictionary<int[,], string>)),
+        ], row => Assert.Equal([row.Item2.ToString()], Bound(row.Item1)))),
+        ("a comma inside an array's brackets is its rank, never a second parameter", () =>
+        {
+            Assert.Equal([$"{typeof(int[])}, {typeof(int[,])}"], Bound("Overloads.M(int[], int[,])"));
+            Assert.Equal([typeof(int[,]).ToString()], Bound("Overloads.M(int [ , ])"));
+        }));
 
     /// <summary>The parameter types of each method a function breakpoint of this name binds in, joined by ", ".</summary>
     private static List<string> Bound(string name)

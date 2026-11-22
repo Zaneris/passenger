@@ -14,27 +14,20 @@ namespace Passenger.UnitTests.Debugger;
 public class DeviceMetadataTests
 {
     [Fact]
-    public void A_compilers_metadata_is_opened()
-    {
-        byte[] metadata = Metadata();
-        Assert.True(DeviceMetadata.Refused(metadata) is null, $"A compiler's metadata was refused: {DeviceMetadata.Refused(metadata)}");
-    }
-
-    [Theory]
-    [InlineData("its storage flags say it has extra data before its stream headers")]
-    [InlineData("its #GUID stream is named #JTD, a minimal delta's")]
-    [InlineData("its #Blob stream is named #blob")]
-    [InlineData("its #US stream is named #~, a second stream of tables")]
-    [InlineData("its #Blob stream runs past its end")]
-    [InlineData("it says it has one stream more than its headers")]
-    [InlineData("its version string has no end")]
-    [InlineData("its TypeDef table has more rows than its stream holds")]
-    [InlineData("it is cut short in its tables")]
-    public void Metadata_whose_layout_runs_past_what_was_sent_or_reads_otherwise_is_refused(string how)
-    {
-        byte[] metadata = Malformed(Metadata(), how);
-        Assert.True(DeviceMetadata.Refused(metadata) is not null, $"Metadata where {how} was opened by the host's reader");
-    }
+    public void A_compilers_metadata_is_opened_and_one_whose_layout_runs_past_what_was_sent_or_reads_otherwise_is_refused() => Cases.All(
+        ("a compiler's metadata is opened", () => Assert.True(DeviceMetadata.Refused(Metadata()) is null, $"A compiler's metadata was refused: {DeviceMetadata.Refused(Metadata())}")),
+        ("metadata whose layout runs past what was sent or reads otherwise is refused", () => Cases.Each(
+        [
+            "its storage flags say it has extra data before its stream headers",
+            "its #GUID stream is named #JTD, a minimal delta's",
+            "its #Blob stream is named #blob",
+            "its #US stream is named #~, a second stream of tables",
+            "its #Blob stream runs past its end",
+            "it says it has one stream more than its headers",
+            "its version string has no end",
+            "its TypeDef table has more rows than its stream holds",
+            "it is cut short in its tables",
+        ], how => Assert.True(DeviceMetadata.Refused(Malformed(Metadata(), how)) is not null, $"Metadata where {how} was opened by the host's reader"))));
 
     /// <summary><paramref name="metadata"/> changed as <paramref name="how"/> says.</summary>
     private static byte[] Malformed(byte[] metadata, string how)

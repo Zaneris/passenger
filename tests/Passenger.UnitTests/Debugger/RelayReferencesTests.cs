@@ -26,234 +26,250 @@ namespace Passenger.UnitTests.Debugger;
 public class RelayReferencesTests
 {
     [Fact]
-    public void A_stops_objects_are_let_go_in_the_app_once_the_engine_lets_go_of_them()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint thread = session.Take(new RemotePointer(0x1000, 0x1000), RemoteInterfaces.Of(typeof(ICorDebugThread)));
-        nint value = session.Take(new RemotePointer(0x2000, 0x2000), RemoteInterfaces.Of(typeof(ICorDebugValue)));
-        Marshal.AddRef(thread);
-        Marshal.Release(value);
-        Marshal.Release(thread);
-        Assert.True(app.Released.SequenceEqual([0x2000ul]), $"With a value let go and a thread still held, the app was told to let go of {string.Join(", ", app.Released)}");
-        Marshal.Release(thread);
-        Assert.True(app.Released.SequenceEqual([0x2000ul, 0x1000ul]), "The thread was not let go in the app once the engine let go of it");
-        Assert.True(session.ObjectsHeld == 0, $"{session.ObjectsHeld} objects are still held once the engine let go of all of them");
-    }
-
-    [Fact]
-    public void A_second_pointer_to_an_interface_held_lets_its_reference_go_at_once()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint first = session.Take(new RemotePointer(0x2000, 0x2008), RemoteInterfaces.Of(typeof(ICorDebugValue)));
-        nint second = session.Take(new RemotePointer(0x2000, 0x2008), RemoteInterfaces.Of(typeof(ICorDebugValue)));
-        Assert.True(first == second && app.Released.SequenceEqual([0x2000ul]), "A second pointer to a value held kept its reference in the app");
-        Marshal.Release(first);
-        Marshal.Release(second);
-        Assert.True(app.Released.SequenceEqual([0x2000ul, 0x2000ul]), "The value's own reference was not let go");
-    }
-
-    [Fact]
-    public void A_class_is_held_for_the_session_and_its_token_asked_of_the_app_once()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x3000, 0x3000), RemoteInterfaces.Of(typeof(ICorDebugClass)));
-        ICorDebugClass @class = (ICorDebugClass)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        Assert.Equal(0, @class.TryGetToken(out mdTypeDef first));
-        session.EndStop();
-        Assert.Equal(0, @class.TryGetToken(out mdTypeDef second));
-        Assert.True(first == second && app.Asked(typeof(ICorDebugClass), nameof(ICorDebugClass.TryGetToken)) == 1, $"A class's token was asked of the app {app.Asked(typeof(ICorDebugClass), nameof(ICorDebugClass.TryGetToken))} times");
-        Marshal.Release(block);
-        Assert.True(app.Released.Count == 0, "A class the app's debugger keeps for its module was let go, losing what it said");
-    }
-
-    [Fact]
-    public void What_a_value_said_holds_until_the_program_runs()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x4000, 0x4000), RemoteInterfaces.Of(typeof(ICorDebugValue)));
-        ICorDebugValue value = (ICorDebugValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        Assert.Equal(0, value.TryGetType(out _));
-        Assert.Equal(0, value.TryGetType(out _));
-        Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetType)) == 1, "A value's type was asked of the app again within one stop");
-        session.EndStop();
-        Assert.Equal(0, value.TryGetType(out _));
-        Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetType)) == 2, "A value's type was not asked again once the program ran");
-    }
-
-    [Fact]
-    public void Two_methods_at_one_slot_of_two_interfaces_of_a_value_are_remembered_apart()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x4000, 0x4000), RemoteInterfaces.Of(typeof(ICorDebugValue)));
-        ICorDebugValue value = (ICorDebugValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        Assert.Equal(0, value.TryGetType(out _));
-        int exact = ((ICorDebugValue2)value).TryGetExactType(out ICorDebugType type);
-        Assert.True(exact == 0 && type is not null, $"A value's exact type, at the slot its type takes in another interface, answered {exact:X8}");
-    }
-
-    [Fact]
-    public void An_enumerators_elements_are_read_in_one_round_trip_and_each_let_go_with_the_engines_hold()
-    {
-        App app = new() { Frames = 3 };
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x5000, 0x5000), RemoteInterfaces.Of(typeof(ICorDebugFrameEnum)));
-        ICorDebugFrameEnum frames = (ICorDebugFrameEnum)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        List<ICorDebugFrame> walked = [];
-        while (true)
+    public void The_engine_holds_an_apps_objects_as_long_as_it_holds_them_and_asks_what_they_said_once_for_as_long_as_it_holds() => Cases.All(
+        ("a stop's objects are let go in the app once the engine lets go of them", () =>
         {
-            ICorDebugFrame[] one = new ICorDebugFrame[1];
-            int hr = frames.TryNext(1, one, out uint fetched);
-            if (fetched == 0)
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint thread = session.Take(new RemotePointer(0x1000, 0x1000), RemoteInterfaces.Of(typeof(ICorDebugThread)));
+            nint value = session.Take(new RemotePointer(0x2000, 0x2000), RemoteInterfaces.Of(typeof(ICorDebugValue)));
+            Marshal.AddRef(thread);
+            Marshal.Release(value);
+            Marshal.Release(thread);
+            Assert.True(app.Released.SequenceEqual([0x2000ul]), $"With a value let go and a thread still held, the app was told to let go of {string.Join(", ", app.Released)}");
+            Marshal.Release(thread);
+            Assert.True(app.Released.SequenceEqual([0x2000ul, 0x1000ul]), "The thread was not let go in the app once the engine let go of it");
+            Assert.True(session.ObjectsHeld == 0, $"{session.ObjectsHeld} objects are still held once the engine let go of all of them");
+        }),
+        ("a second pointer to an interface held lets its reference go at once", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint first = session.Take(new RemotePointer(0x2000, 0x2008), RemoteInterfaces.Of(typeof(ICorDebugValue)));
+            nint second = session.Take(new RemotePointer(0x2000, 0x2008), RemoteInterfaces.Of(typeof(ICorDebugValue)));
+            Assert.True(first == second && app.Released.SequenceEqual([0x2000ul]), "A second pointer to a value held kept its reference in the app");
+            Marshal.Release(first);
+            Marshal.Release(second);
+            Assert.True(app.Released.SequenceEqual([0x2000ul, 0x2000ul]), "The value's own reference was not let go");
+        }),
+        ("a class is held for the session and its token asked of the app once", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint block = session.Take(new RemotePointer(0x3000, 0x3000), RemoteInterfaces.Of(typeof(ICorDebugClass)));
+            ICorDebugClass @class = (ICorDebugClass)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            Assert.Equal(0, @class.TryGetToken(out mdTypeDef first));
+            session.EndStop();
+            Assert.Equal(0, @class.TryGetToken(out mdTypeDef second));
+            Assert.True(first == second && app.Asked(typeof(ICorDebugClass), nameof(ICorDebugClass.TryGetToken)) == 1, $"A class's token was asked of the app {app.Asked(typeof(ICorDebugClass), nameof(ICorDebugClass.TryGetToken))} times");
+            Marshal.Release(block);
+            Assert.True(app.Released.Count == 0, "A class the app's debugger keeps for its module was let go, losing what it said");
+        }),
+        ("what a value said holds until the program runs", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint block = session.Take(new RemotePointer(0x4000, 0x4000), RemoteInterfaces.Of(typeof(ICorDebugValue)));
+            ICorDebugValue value = (ICorDebugValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            Assert.Equal(0, value.TryGetType(out _));
+            Assert.Equal(0, value.TryGetType(out _));
+            Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetType)) == 1, "A value's type was asked of the app again within one stop");
+            session.EndStop();
+            Assert.Equal(0, value.TryGetType(out _));
+            Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetType)) == 2, "A value's type was not asked again once the program ran");
+        }),
+        ("two methods at one slot of two interfaces of a value are remembered apart", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint block = session.Take(new RemotePointer(0x4000, 0x4000), RemoteInterfaces.Of(typeof(ICorDebugValue)));
+            ICorDebugValue value = (ICorDebugValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            Assert.Equal(0, value.TryGetType(out _));
+            int exact = ((ICorDebugValue2)value).TryGetExactType(out ICorDebugType type);
+            Assert.True(exact == 0 && type is not null, $"A value's exact type, at the slot its type takes in another interface, answered {exact:X8}");
+        }),
+        ("a value's size is asked of the app once and its bytes are read at that size alone", () =>
+        {
+            App app = new() { Sizes = [4, 64] };
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint block = session.Take(new RemotePointer(0x7000, 0x7000), RemoteInterfaces.Of(typeof(ICorDebugGenericValue)));
+            ICorDebugGenericValue value = (ICorDebugGenericValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            Assert.True(value.TryGetSize(out uint size) == 0 && size == 4, $"The value's size came back as {size}, not the 4 the app first said");
+            session.EndStop();
+            nint room = Marshal.AllocHGlobal(4 + 16);
+            try
             {
-                Assert.Equal(1, hr);
-                break;
+                for (int i = 0; i < 4 + 16; i++)
+                {
+                    Marshal.WriteByte(room, i, 0xAB);
+                }
+                Assert.Equal(0, value.TryGetValue(room));
+                byte[] read = new byte[4 + 16];
+                Marshal.Copy(room, read, 0, read.Length);
+                Assert.True(read.AsSpan(0, 4).IndexOfAnyExcept((byte)7) < 0 && read.AsSpan(4).IndexOfAnyExcept((byte)0xAB) < 0,
+                    $"The value's bytes were written as {Convert.ToHexString(read)}: past the 4 the engine made room for, where the app said another size later");
             }
-            walked.Add(one[0]);
-        }
-        Assert.True(walked.Count == 3 && app.Asked(typeof(ICorDebugFrameEnum), nameof(ICorDebugFrameEnum.TryNext)) == 1,
-            $"Walking 3 frames gave {walked.Count} in {app.Asked(typeof(ICorDebugFrameEnum), nameof(ICorDebugFrameEnum.TryNext))} round trips, where one brings them all");
-    }
-
-    [Fact]
-    public void An_update_has_the_apps_debugger_make_its_own_copy_of_the_modules_metadata_first_and_lets_the_importer_go()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
-        ICorDebugModule2 module = (ICorDebugModule2)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        Assert.Equal(0, module.TryApplyChanges(2, [1, 2], 1, [3]));
-        int made = app.Calls.FindIndex(c => c == (0x6000ul, RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetMetaDataInterface))));
-        int applied = app.Calls.FindIndex(c => c.Slot == RelaySession.SlotOf(typeof(ICorDebugModule2), nameof(ICorDebugModule2.TryApplyChanges)) && c.Object != 0x6000);
-        Assert.True(made >= 0 && applied > made, $"The app's debugger was not asked for the module's metadata before the update, which its ApplyChanges takes to hold: "
-            + string.Join(", ", app.Calls.Select(c => $"0x{c.Object:x} slot {c.Slot}")));
-        Assert.True(app.Released.Count == 1, $"The importer the app's debugger handed back was not let go, or more was: {string.Join(", ", app.Released)}");
-    }
-
-    [Fact]
-    public void A_function_found_by_its_token_is_asked_of_the_app_again_after_an_update_and_a_class_is_not()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
-        ICorDebugModule module = (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        mdMethodDef method = new(0x06000001u);
-        mdTypeDef type = new(0x02000002u);
-        uint functionSlot = RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetFunctionFromToken));
-        uint classSlot = RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetClassFromToken));
-        int Asked(uint slot) => app.Calls.Count(c => c == (0x6000ul, slot));
-        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction built));
-        Assert.Equal(0, module.TryGetClassFromToken(type, out ICorDebugClass _));
-        session.EndStop();
-        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction stillBuilt));
-        Assert.True(Asked(functionSlot) == 1 && ReferenceEquals(built, stillBuilt), $"A method's function was asked of the app {Asked(functionSlot)} times before any update, where it holds until one");
-
-        Assert.Equal(0, ((ICorDebugModule2)module).TryApplyChanges(2, [1, 2], 1, [3]));
-
-        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction updated));
-        Assert.True(Asked(functionSlot) == 2 && !ReferenceEquals(built, updated), "After an update the method's function was answered as the app gave it before, "
-            + "its old version, so a breakpoint bound in it after the update sits in code that no longer runs");
-        Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction stillUpdated));
-        Assert.True(Asked(functionSlot) == 2 && ReferenceEquals(updated, stillUpdated), $"The updated method's function was asked of the app {Asked(functionSlot)} times, where it holds until the next update");
-        Assert.Equal(0, module.TryGetClassFromToken(type, out ICorDebugClass _));
-        Assert.True(Asked(classSlot) == 1, "A class, which an update leaves the same object, was asked of the app again after it");
-    }
-
-    [Fact]
-    public void A_values_size_is_asked_of_the_app_once_and_its_bytes_are_read_at_that_size_alone()
-    {
-        App app = new() { Sizes = [4, 64] };
-        RelaySession session = new(app, new DeviceModules(null), null);
-        nint block = session.Take(new RemotePointer(0x7000, 0x7000), RemoteInterfaces.Of(typeof(ICorDebugGenericValue)));
-        ICorDebugGenericValue value = (ICorDebugGenericValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-        Assert.True(value.TryGetSize(out uint size) == 0 && size == 4, $"The value's size came back as {size}, not the 4 the app first said");
-        session.EndStop();
-        nint room = Marshal.AllocHGlobal(4 + 16);
-        try
-        {
-            for (int i = 0; i < 4 + 16; i++)
+            finally
             {
-                Marshal.WriteByte(room, i, 0xAB);
+                Marshal.FreeHGlobal(room);
             }
-            Assert.Equal(0, value.TryGetValue(room));
-            byte[] read = new byte[4 + 16];
-            Marshal.Copy(room, read, 0, read.Length);
-            Assert.True(read.AsSpan(0, 4).IndexOfAnyExcept((byte)7) < 0 && read.AsSpan(4).IndexOfAnyExcept((byte)0xAB) < 0,
-                $"The value's bytes were written as {Convert.ToHexString(read)}: past the 4 the engine made room for, where the app said another size later");
-        }
-        finally
+            Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize)) == 1,
+                $"The value's size was asked of the app {app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize))} times, so it could answer the engine one size and the read another");
+        }),
+        ("a write of fewer bytes than the app says its value takes is refused and nothing is sent", () =>
         {
-            Marshal.FreeHGlobal(room);
-        }
-        Assert.True(app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize)) == 1,
-            $"The value's size was asked of the app {app.Asked(typeof(ICorDebugValue), nameof(ICorDebugValue.TryGetSize))} times, so it could answer the engine one size and the read another");
-    }
+            App app = new() { Sizes = [64] };
+            ICorDebugGenericValue value = GenericValue(new RelaySession(app, new DeviceModules(null), null));
+            Assert.Throws<InvalidOperationException>(() => value.SetValue(BitConverter.GetBytes(42)));
+            Assert.True(app.Asked(typeof(ICorDebugGenericValue), nameof(ICorDebugGenericValue.TrySetValue)) == 0 && app.Sent.Count == 0,
+                $"An int written to a value the app says takes 64 bytes was sent as {string.Join(", ", app.Sent.Select(Convert.ToHexString))}: 60 bytes of the debugger's memory past the int's");
+        }),
+        ("a write sends the app as many bytes as its value takes and no more", () =>
+        {
+            App app = new() { Sizes = [4] };
+            ICorDebugGenericValue value = GenericValue(new RelaySession(app, new DeviceModules(null), null));
+            value.SetValue([1, 2, 3, 4, 5, 6, 7, 8]);
+            Assert.True(app.Sent.Count == 1 && app.Sent[0].SequenceEqual(new byte[] { 1, 2, 3, 4 }),
+                $"Writing a 4-byte value sent the app {string.Join(", ", app.Sent.Select(Convert.ToHexString))}, where its 4 bytes alone are its");
+        }),
+        ("an update has the app's debugger make its own copy of the module's metadata first and lets the importer go", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
+            ICorDebugModule2 module = (ICorDebugModule2)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            Assert.Equal(0, module.TryApplyChanges(2, [1, 2], 1, [3]));
+            int made = app.Calls.FindIndex(c => c == (0x6000ul, RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetMetaDataInterface))));
+            int applied = app.Calls.FindIndex(c => c.Slot == RelaySession.SlotOf(typeof(ICorDebugModule2), nameof(ICorDebugModule2.TryApplyChanges)) && c.Object != 0x6000);
+            Assert.True(made >= 0 && applied > made, $"The app's debugger was not asked for the module's metadata before the update, which its ApplyChanges takes to hold: "
+                + string.Join(", ", app.Calls.Select(c => $"0x{c.Object:x} slot {c.Slot}")));
+            Assert.True(app.Released.Count == 1, $"The importer the app's debugger handed back was not let go, or more was: {string.Join(", ", app.Released)}");
+        }),
+        ("a function found by its token is asked of the app again after an update and a class is not", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
+            ICorDebugModule module = (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+            mdMethodDef method = new(0x06000001u);
+            mdTypeDef type = new(0x02000002u);
+            uint functionSlot = RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetFunctionFromToken));
+            uint classSlot = RelaySession.SlotOf(typeof(ICorDebugModule), nameof(ICorDebugModule.TryGetClassFromToken));
+            int Asked(uint slot) => app.Calls.Count(c => c == (0x6000ul, slot));
+            Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction built));
+            Assert.Equal(0, module.TryGetClassFromToken(type, out ICorDebugClass _));
+            session.EndStop();
+            Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction stillBuilt));
+            Assert.True(Asked(functionSlot) == 1 && ReferenceEquals(built, stillBuilt), $"A method's function was asked of the app {Asked(functionSlot)} times before any update, where it holds until one");
 
-    [Fact]
-    public void A_write_of_fewer_bytes_than_the_app_says_its_value_takes_is_refused_and_nothing_is_sent()
-    {
-        App app = new() { Sizes = [64] };
-        ICorDebugGenericValue value = GenericValue(new RelaySession(app, new DeviceModules(null), null));
-        Assert.Throws<InvalidOperationException>(() => value.SetValue(BitConverter.GetBytes(42)));
-        Assert.True(app.Asked(typeof(ICorDebugGenericValue), nameof(ICorDebugGenericValue.TrySetValue)) == 0 && app.Sent.Count == 0,
-            $"An int written to a value the app says takes 64 bytes was sent as {string.Join(", ", app.Sent.Select(Convert.ToHexString))}: 60 bytes of the debugger's memory past the int's");
-    }
+            Assert.Equal(0, ((ICorDebugModule2)module).TryApplyChanges(2, [1, 2], 1, [3]));
 
-    [Fact]
-    public void A_write_sends_the_app_as_many_bytes_as_its_value_takes_and_no_more()
-    {
-        App app = new() { Sizes = [4] };
-        ICorDebugGenericValue value = GenericValue(new RelaySession(app, new DeviceModules(null), null));
-        value.SetValue([1, 2, 3, 4, 5, 6, 7, 8]);
-        Assert.True(app.Sent.Count == 1 && app.Sent[0].SequenceEqual(new byte[] { 1, 2, 3, 4 }),
-            $"Writing a 4-byte value sent the app {string.Join(", ", app.Sent.Select(Convert.ToHexString))}, where its 4 bytes alone are its");
-    }
+            Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction updated));
+            Assert.True(Asked(functionSlot) == 2 && !ReferenceEquals(built, updated), "After an update the method's function was answered as the app gave it before, "
+                + "its old version, so a breakpoint bound in it after the update sits in code that no longer runs");
+            Assert.Equal(0, module.TryGetFunctionFromToken(method, out ICorDebugFunction stillUpdated));
+            Assert.True(Asked(functionSlot) == 2 && ReferenceEquals(updated, stillUpdated), $"The updated method's function was asked of the app {Asked(functionSlot)} times, where it holds until the next update");
+            Assert.Equal(0, module.TryGetClassFromToken(type, out ICorDebugClass _));
+            Assert.True(Asked(classSlot) == 1, "A class, which an update leaves the same object, was asked of the app again after it");
+        }),
+        ("an update the app took is applied to the host's copy of the module's metadata so a method it added is read", () =>
+        {
+            string folder = Directory.CreateTempSubdirectory("relay-update").FullName;
+            try
+            {
+                (byte[] image, byte[] delta) = AddingMethod("static class Greeter { static string Greet() => \"Hello\"; }",
+                    "static class Greeter { static string Greet() => \"Hello\"; static string Added() => \"Added\"; }", "Added");
+                File.WriteAllBytes(Path.Combine(folder, "Greeting.dll"), image);
+                App app = new() { ModuleName = "/data/user/0/com.shop/files/.__override__/arm64-v8a/Greeting.dll" };
+                RelaySession session = new(app, new DeviceModules(folder), null);
+                nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
+                ICorDebugModule module = (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
+                Guid import = typeof(IMetaDataImport).GUID;
+                Assert.Equal(0, module.TryGetMetaDataInterface(ref import, out object? _));
+
+                Assert.Equal(0, ((ICorDebugModule2)module).TryApplyChanges((uint)delta.Length, delta, 0, []));
+
+                Guid emitting = typeof(IMetaDataEmit).GUID;
+                Assert.Equal(0, module.TryGetMetaDataInterface(ref emitting, out object? emitter));
+                IMetaDataEmit emit = (IMetaDataEmit)emitter!;
+                Assert.Equal(0, emit.TryGetSaveSize(0, out uint size));
+                byte[] saved = new byte[size];
+                Assert.Equal(0, emit.TrySaveToMemory(saved, size));
+                string[] methods = Methods(saved);
+                Assert.True(methods.Contains("Added"), $"The host's copy of the module's metadata does not have the method the update added, so an expression calling it "
+                    + $"finds no such method: it has {string.Join(", ", methods)}");
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }));
 
     private static ICorDebugGenericValue GenericValue(RelaySession session) =>
         (ICorDebugGenericValue)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(
             session.Take(new RemotePointer(0x7000, 0x7000), RemoteInterfaces.Of(typeof(ICorDebugGenericValue))), CreateObjectFlags.UniqueInstance);
 
     [Fact]
-    public void A_modules_metadata_read_from_the_apps_memory_is_opened_on_the_host()
-    {
-        (byte[] image, Guid mvid) = Plugin();
-        App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image };
-        ICorDebugModule module = Module(new RelaySession(app, new DeviceModules(null), null));
-        Guid import = typeof(IMetaDataImport).GUID;
-        int opened = module.TryGetMetaDataInterface(ref import, out object? importer);
-        Assert.True(opened == 0 && importer is IMetaDataImport metadata && metadata.ScopeProps.pmvid == mvid,
-            $"The metadata of a module the host has no copy of was not opened from the app's memory (0x{opened:X8}), so nothing is read of its types");
-    }
+    public void What_the_app_sends_is_read_only_as_laid_out_and_a_relay_sending_otherwise_is_refused_or_ends_the_session() => Cases.All(
+        ("a module's metadata read from the app's memory is opened on the host", () =>
+        {
+            (byte[] image, Guid mvid) = Plugin();
+            App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image };
+            ICorDebugModule module = Module(new RelaySession(app, new DeviceModules(null), null));
+            Guid import = typeof(IMetaDataImport).GUID;
+            int opened = module.TryGetMetaDataInterface(ref import, out object? importer);
+            Assert.True(opened == 0 && importer is IMetaDataImport metadata && metadata.ScopeProps.pmvid == mvid,
+                $"The metadata of a module the host has no copy of was not opened from the app's memory (0x{opened:X8}), so nothing is read of its types");
+        }),
+        ("a module's metadata the app sends malformed is refused once and the session goes on", () =>
+        {
+            (byte[] image, _) = Plugin();
+            int guids = image.AsSpan().IndexOf("#GUID\0\0\0"u8);
+            "#JTD\0\0\0\0"u8.CopyTo(image.AsSpan(guids));
+            App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image };
+            List<string> said = [];
+            RelaySession session = new(app, new DeviceModules(null), said.Add);
+            ICorDebugModule module = Module(session);
+            Guid import = typeof(IMetaDataImport).GUID;
+            int first = module.TryGetMetaDataInterface(ref import, out object? _);
+            int reads = app.Reads;
+            int again = module.TryGetMetaDataInterface(ref import, out object? _);
+            Assert.True(first < 0 && again == first, $"Metadata whose tables the host's reader would lay out past its end was opened: 0x{first:X8}, then 0x{again:X8}");
+            Assert.True(app.Reads == reads && said.Count(each => each.Contains("is not opened", StringComparison.Ordinal)) == 1,
+                $"The refused module's memory was read again ({app.Reads - reads} reads) or its refusal said other than once: {string.Join(" | ", said)}");
+            ICorDebugGenericValue value = GenericValue(session);
+            Assert.True(app.BrokenBy is null && value.TryGetType(out _) == 0, $"The session did not go on past the refused module: {app.BrokenBy}");
+        }),
+        ("a callback read as the relay sends it is handed on and one running past its frame ends the session", () =>
+        {
+            App app = new();
+            RelaySession session = new(app, new DeviceModules(null), null);
+            session.HandOn(LogMessage(message: "Hello"u8.Length * 2, sent: "Hello"u8.Length * 2));
+            // The app domain is one the app's debugger keeps, the thread let go once handed on.
+            Assert.True(app.BrokenBy is null && app.Released.SequenceEqual([0x9000ul]),
+                $"A log message as the relay sends one was taken for a broken relay's ({app.BrokenBy}), or its thread not let go: {string.Join(", ", app.Released)}");
 
-    [Fact]
-    public void A_modules_metadata_the_app_sends_malformed_is_refused_once_and_the_session_goes_on()
-    {
-        (byte[] image, _) = Plugin();
-        int guids = image.AsSpan().IndexOf("#GUID\0\0\0"u8);
-        "#JTD\0\0\0\0"u8.CopyTo(image.AsSpan(guids));
-        App app = new() { ModuleName = "/data/user/0/com.shop/files/plugins/Plugin.dll", Image = image };
-        List<string> said = [];
-        RelaySession session = new(app, new DeviceModules(null), said.Add);
-        ICorDebugModule module = Module(session);
-        Guid import = typeof(IMetaDataImport).GUID;
-        int first = module.TryGetMetaDataInterface(ref import, out object? _);
-        int reads = app.Reads;
-        int again = module.TryGetMetaDataInterface(ref import, out object? _);
-        Assert.True(first < 0 && again == first, $"Metadata whose tables the host's reader would lay out past its end was opened: 0x{first:X8}, then 0x{again:X8}");
-        Assert.True(app.Reads == reads && said.Count(each => each.Contains("is not opened", StringComparison.Ordinal)) == 1,
-            $"The refused module's memory was read again ({app.Reads - reads} reads) or its refusal said other than once: {string.Join(" | ", said)}");
-        ICorDebugGenericValue value = GenericValue(session);
-        Assert.True(app.BrokenBy is null && value.TryGetType(out _) == 0, $"The session did not go on past the refused module: {app.BrokenBy}");
-    }
+            session.HandOn(LogMessage(message: 4096, sent: 10));
+            Assert.True(app.BrokenBy is not null && app.Released.Count == 1,
+                "A log message naming 4096 bytes where its frame holds 10 was handed on, its message read past what the relay sent");
+        }),
+        ("a callback's block of bytes is read only at the size its next argument says", () =>
+        {
+            byte[] body = new byte[16 + 16 + 4 + 8 + 8];
+            BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(32), 8);
+            BinaryPrimitives.WriteInt64LittleEndian(body.AsSpan(44), 8);
+            Assert.Null(RelaySession.Misread("oobi", body, 0));
+            BinaryPrimitives.WriteInt64LittleEndian(body.AsSpan(44), 4096);
+            Assert.True(RelaySession.Misread("oobi", body, 0) is not null, "A data breakpoint's context of 8 bytes was handed on as 4096, so the engine would read past it");
+        }),
+        ("an in-memory module said to take 2 GB is refused saying why with nothing held for it and the session goes on", () => Cases.Each(
+            [(false, "past the"), (true, "could not be read past")], row => ModuleSaidToTake2GB(row.Item1, row.Item2))),
+        ("a module's metadata its header says takes 100 MB is refused once saying why with nothing held for it and the session goes on", () => Cases.Each(
+            [(false, "past the image's"), (true, "could not be read past")], row => MetadataSaidToTake100MB(row.Item1, row.Item2))),
+        ("a callback's arguments short of what its kinds take are misread", () => Cases.Each(
+            [("ooiss", 16 + 16 + 8 + 4 + 2, "a string cut short"), ("oo", 16 + 8, "an object cut short")], row => CallbackShort(row.Item1, row.Item2, row.Item3))));
 
-    [Theory]
-    [InlineData(false, "past the")]
-    [InlineData(true, "could not be read past")]
-    public void An_in_memory_module_said_to_take_2_GB_is_refused_saying_why_with_nothing_held_for_it_and_the_session_goes_on(bool laidOut, string why)
+    private static void ModuleSaidToTake2GB(bool laidOut, string why)
     {
         // The app's memory holds the image and 8 KB after it, then ends.
         byte[] image = [.. Plugin().Image, .. new byte[8192]];
@@ -276,10 +292,7 @@ public class RelayReferencesTests
         Assert.True(app.BrokenBy is null, $"The session did not go on past the refused module: {app.BrokenBy}");
     }
 
-    [Theory]
-    [InlineData(false, "past the image's")]
-    [InlineData(true, "could not be read past")]
-    public void A_modules_metadata_its_header_says_takes_100_MB_is_refused_once_saying_why_with_nothing_held_for_it_and_the_session_goes_on(bool laidOut, string why)
+    private static void MetadataSaidToTake100MB(bool laidOut, string why)
     {
         // The app's memory holds the image and 8 KB after it, then ends; the image's CLI header says its metadata takes 100 MB.
         (byte[] plugin, _) = Plugin();
@@ -330,25 +343,7 @@ public class RelayReferencesTests
         return (bytes, reader.GetGuid(reader.GetModuleDefinition().Mvid));
     }
 
-    [Fact]
-    public void A_callback_read_as_the_relay_sends_it_is_handed_on_and_one_running_past_its_frame_ends_the_session()
-    {
-        App app = new();
-        RelaySession session = new(app, new DeviceModules(null), null);
-        session.HandOn(LogMessage(message: "Hello"u8.Length * 2, sent: "Hello"u8.Length * 2));
-        // The app domain is one the app's debugger keeps, the thread let go once handed on.
-        Assert.True(app.BrokenBy is null && app.Released.SequenceEqual([0x9000ul]),
-            $"A log message as the relay sends one was taken for a broken relay's ({app.BrokenBy}), or its thread not let go: {string.Join(", ", app.Released)}");
-
-        session.HandOn(LogMessage(message: 4096, sent: 10));
-        Assert.True(app.BrokenBy is not null && app.Released.Count == 1,
-            "A log message naming 4096 bytes where its frame holds 10 was handed on, its message read past what the relay sent");
-    }
-
-    [Theory]
-    [InlineData("ooiss", 16 + 16 + 8 + 4 + 2, "a string cut short")]
-    [InlineData("oo", 16 + 8, "an object cut short")]
-    public void A_callbacks_arguments_short_of_what_its_kinds_take_are_misread(string kinds, int length, string what)
+    private static void CallbackShort(string kinds, int length, string what)
     {
         byte[] body = new byte[length];
         if (kinds == "ooiss")
@@ -356,17 +351,6 @@ public class RelayReferencesTests
             BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(40), 6);
         }
         Assert.True(RelaySession.Misread(kinds, body, 0) is not null, $"A callback with {what} was read as the relay sends one");
-    }
-
-    [Fact]
-    public void A_callbacks_block_of_bytes_is_read_only_at_the_size_its_next_argument_says()
-    {
-        byte[] body = new byte[16 + 16 + 4 + 8 + 8];
-        BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(32), 8);
-        BinaryPrimitives.WriteInt64LittleEndian(body.AsSpan(44), 8);
-        Assert.Null(RelaySession.Misread("oobi", body, 0));
-        BinaryPrimitives.WriteInt64LittleEndian(body.AsSpan(44), 4096);
-        Assert.True(RelaySession.Misread("oobi", body, 0) is not null, "A data breakpoint's context of 8 bytes was handed on as 4096, so the engine would read past it");
     }
 
     /// <summary>A log message's callback as the relay sends it: its two objects, a level, an empty switch name and a message
@@ -381,40 +365,6 @@ public class RelayReferencesTests
         BinaryPrimitives.WriteUInt64LittleEndian(body.AsSpan(28), 0x9000);
         BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(48), message);
         return new RelayEvent(1, 15, body, 4);
-    }
-
-    [Fact]
-    public void An_update_the_app_took_is_applied_to_the_hosts_copy_of_the_modules_metadata_so_a_method_it_added_is_read()
-    {
-        string folder = Directory.CreateTempSubdirectory("relay-update").FullName;
-        try
-        {
-            (byte[] image, byte[] delta) = AddingMethod("static class Greeter { static string Greet() => \"Hello\"; }",
-                "static class Greeter { static string Greet() => \"Hello\"; static string Added() => \"Added\"; }", "Added");
-            File.WriteAllBytes(Path.Combine(folder, "Greeting.dll"), image);
-            App app = new() { ModuleName = "/data/user/0/com.shop/files/.__override__/arm64-v8a/Greeting.dll" };
-            RelaySession session = new(app, new DeviceModules(folder), null);
-            nint block = session.Take(new RemotePointer(0x6000, 0x6000), RemoteInterfaces.Of(typeof(ICorDebugModule)));
-            ICorDebugModule module = (ICorDebugModule)new StrategyBasedComWrappers().GetOrCreateObjectForComInstance(block, CreateObjectFlags.UniqueInstance);
-            Guid import = typeof(IMetaDataImport).GUID;
-            Assert.Equal(0, module.TryGetMetaDataInterface(ref import, out object? _));
-
-            Assert.Equal(0, ((ICorDebugModule2)module).TryApplyChanges((uint)delta.Length, delta, 0, []));
-
-            Guid emitting = typeof(IMetaDataEmit).GUID;
-            Assert.Equal(0, module.TryGetMetaDataInterface(ref emitting, out object? emitter));
-            IMetaDataEmit emit = (IMetaDataEmit)emitter!;
-            Assert.Equal(0, emit.TryGetSaveSize(0, out uint size));
-            byte[] saved = new byte[size];
-            Assert.Equal(0, emit.TrySaveToMemory(saved, size));
-            string[] methods = Methods(saved);
-            Assert.True(methods.Contains("Added"), $"The host's copy of the module's metadata does not have the method the update added, so an expression calling it "
-                + $"finds no such method: it has {string.Join(", ", methods)}");
-        }
-        finally
-        {
-            Directory.Delete(folder, recursive: true);
-        }
     }
 
     /// <summary>A module's image built from <paramref name="before"/>, and the metadata of the update that makes it

@@ -53,56 +53,66 @@ public sealed class UpdateHandlersTests
         (int)assembly.GetType(typeof(UpdateHandlerProbe).FullName!, throwOnError: true)!.GetProperty(count)!.GetValue(null)!;
 
     [Fact]
-    public void An_assembly_loaded_in_two_contexts_has_the_handlers_of_both_called()
-    {
-        (Assembly first, Assembly second, Action unload) = LoadedTwice(typeof(UpdateHandlerProbe).Assembly);
-        try
+    public void An_update_reaches_every_load_contexts_handlers_in_the_order_references_ask_for() => Cases.All(
+        ("an assembly loaded in two contexts has the handlers of both called", () =>
         {
-            Assert.Empty(Handlers.Run([first, second]));
-            foreach (Assembly each in (Assembly[])[first, second])
+            (Assembly first, Assembly second, Action unload) = LoadedTwice(typeof(UpdateHandlerProbe).Assembly);
+            try
             {
-                Assert.True((Read(each, nameof(UpdateHandlerProbe.Cleared)), Read(each, nameof(UpdateHandlerProbe.Updated))) == (1, 1),
-                    $"The load in {AssemblyLoadContext.GetLoadContext(each)?.Name} kept its stale state: an update never reached its handlers");
+                Assert.Empty(Handlers.Run([first, second]));
+                foreach (Assembly each in (Assembly[])[first, second])
+                {
+                    Assert.True((Read(each, nameof(UpdateHandlerProbe.Cleared)), Read(each, nameof(UpdateHandlerProbe.Updated))) == (1, 1),
+                        $"The load in {AssemblyLoadContext.GetLoadContext(each)?.Name} kept its stale state: an update never reached its handlers");
+                }
             }
-        }
-        finally
-        {
-            unload();
-        }
-    }
-
-    [Fact]
-    public void Changed_types_reach_both_callbacks_in_every_load_context()
-    {
-        Type probe = typeof(UpdateHandlerProbe);
-        (Assembly first, Assembly second, Action unload) = LoadedTwice(probe.Assembly);
-        try
-        {
-            ChangedTypes changes = new();
-            string line = Wire.TypeLine(probe.Module.ModuleVersionId, probe.MetadataToken);
-            changes.Add(line);
-            changes.Add(line);
-            Type[] expected = [first.GetType(probe.FullName!)!, second.GetType(probe.FullName!)!];
-            Type[]? resolved = changes.Take([first, second]);
-            Assert.Equal(expected, resolved);
-            Assert.Empty(Handlers.Run([first, second], resolved));
-            foreach (Type loaded in expected)
+            finally
             {
-                Assert.Equal(expected, (Type[]?)loaded.GetProperty(nameof(UpdateHandlerProbe.ClearedTypes))!.GetValue(null));
-                Assert.Equal(expected, (Type[]?)loaded.GetProperty(nameof(UpdateHandlerProbe.UpdatedTypes))!.GetValue(null));
+                unload();
             }
-            Assert.Empty(changes.Take([first, second])!);
-        }
-        finally
+        }),
+        ("changed types reach both callbacks in every load context", () =>
         {
-            unload();
-        }
-    }
+            Type probe = typeof(UpdateHandlerProbe);
+            (Assembly first, Assembly second, Action unload) = LoadedTwice(probe.Assembly);
+            try
+            {
+                ChangedTypes changes = new();
+                string line = Wire.TypeLine(probe.Module.ModuleVersionId, probe.MetadataToken);
+                changes.Add(line);
+                changes.Add(line);
+                Type[] expected = [first.GetType(probe.FullName!)!, second.GetType(probe.FullName!)!];
+                Type[]? resolved = changes.Take([first, second]);
+                Assert.Equal(expected, resolved);
+                Assert.Empty(Handlers.Run([first, second], resolved));
+                foreach (Type loaded in expected)
+                {
+                    Assert.Equal(expected, (Type[]?)loaded.GetProperty(nameof(UpdateHandlerProbe.ClearedTypes))!.GetValue(null));
+                    Assert.Equal(expected, (Type[]?)loaded.GetProperty(nameof(UpdateHandlerProbe.UpdatedTypes))!.GetValue(null));
+                }
+                Assert.Empty(changes.Take([first, second])!);
+            }
+            finally
+            {
+                unload();
+            }
+        }),
+        ("each load of a referenced assembly comes before what references it", () =>
+        {
+            Assembly referencing = typeof(UpdateHandlerProbe).Assembly;
+            (Assembly first, Assembly second, Action unload) = LoadedTwice(typeof(Product).Assembly);
+            try
+            {
+                Assert.Equal([first, second, referencing], Handlers.Ordered([referencing, first, second]));
+            }
+            finally
+            {
+                unload();
+            }
+        }),
+        ("unresolved types invalidate all caches and do not leak into the next batch", () => Cases.Each([true, false], UnresolvedTypes, missing => missing ? "a module missing" : "a type missing")));
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Unresolved_types_invalidate_all_caches_and_do_not_leak_into_the_next_batch(bool missingModule)
+    private static void UnresolvedTypes(bool missingModule)
     {
         Type probe = typeof(UpdateHandlerProbe);
         ChangedTypes changes = new();
@@ -112,18 +122,4 @@ public sealed class UpdateHandlersTests
         Assert.Equal([probe], changes.Take([probe.Assembly]));
     }
 
-    [Fact]
-    public void Each_load_of_a_referenced_assembly_comes_before_what_references_it()
-    {
-        Assembly referencing = typeof(UpdateHandlerProbe).Assembly;
-        (Assembly first, Assembly second, Action unload) = LoadedTwice(typeof(Product).Assembly);
-        try
-        {
-            Assert.Equal([first, second, referencing], Handlers.Ordered([referencing, first, second]));
-        }
-        finally
-        {
-            unload();
-        }
-    }
 }

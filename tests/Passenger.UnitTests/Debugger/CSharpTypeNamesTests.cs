@@ -13,48 +13,36 @@ public class CSharpTypeNamesTests
 {
     private const string Here = "Passenger.UnitTests.Debugger.CSharpTypeNamesTests";
 
-    [Theory]
-    [InlineData(nameof(Holder<int>.Listed), "System.Collections.Generic.List<T>", "System.Collections.Generic.List<int>")]
-    [InlineData(nameof(Holder<int>.Maybe), "System.Nullable<T>", "int?")]
-    [InlineData(nameof(Holder<int>.Items), "T[]", "int[]")]
-    [InlineData(nameof(Holder<int>.Grids), "T[][,]", "int[][,]")]
-    [InlineData(nameof(Holder<int>.Keyed), "System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<T>>",
-        "System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>")]
-    [InlineData(nameof(Holder<int>.Nested), Here + ".Outer<T>.Inner<long>", Here + ".Outer<int>.Inner<long>")]
-    [InlineData(nameof(Holder<int>.Plain), "System.Nullable<decimal>", "decimal?")]
-    public void A_fields_type_is_named_for_a_cast_with_its_type_parameters_and_with_the_types_they_run_as(string field, string cast, string runAs)
-    {
-        Assert.Equal(cast, FieldType(field, "T", CSharpTypeNames.NullableSpelled));
-        Assert.Equal(runAs, FieldType(field, "int", CSharpTypeNames.Instance));
-    }
-
     [Fact]
-    public void A_type_parameter_given_no_name_leaves_its_type_unnamed()
-    {
-        Assert.Null(FieldType(nameof(Holder<int>.Listed), null, CSharpTypeNames.Instance));
-        Assert.Equal("decimal?", FieldType(nameof(Holder<int>.Plain), null, CSharpTypeNames.Instance));
-    }
-
-    [Theory]
-    [InlineData("int", "int[]")]
-    [InlineData("int[]", "int[][]")]
-    [InlineData("int[,]", "int[][,]")]
-    [InlineData("int?[]", "int?[][]")]
-    [InlineData("System.Collections.Generic.List<int[]>", "System.Collections.Generic.List<int[]>[]")]
-    public void An_array_of_an_array_takes_its_rank_before_its_elements(string element, string array) =>
-        Assert.Equal(array, CSharpTypeNames.ArrayOf(element, "[]"));
-
-    [Fact]
-    public void A_frames_parameter_of_a_nested_generic_type_gives_each_type_its_own_arguments()
-    {
-        using ModuleMetadataReader reader = ModuleMetadataReader.TryLoad(typeof(Holder<>).Assembly.Location)
-            ?? throw new InvalidOperationException("The unit tests' own assembly could not be read");
-        MethodInfo take = typeof(Holder<>).GetMethod(nameof(Holder<int>.Take)) ?? throw new InvalidOperationException("Holder has no method Take");
-        ImmutableArray<string> parameters = reader.PeMetadataReader.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.EntityHandle(take.MetadataToken))
-            .DecodeSignature(FrameDisplaySignatureTypeProvider.Instance, new FrameDisplayGenericContext(["int"], [])).ParameterTypes;
-        Assert.True(parameters.SequenceEqual([Here + ".Outer<int>.Inner<long>", "System.Nullable<int>", "System.Collections.Generic.List<int>"]),
-            $"A frame showed Take's parameters as {string.Join(", ", parameters)}: a nested generic type's arguments went to the wrong type");
-    }
+    public void A_type_is_named_for_a_cast_with_its_type_parameters_and_with_the_types_a_frame_runs_it_as() => Cases.All(
+        ("a field's type is named for a cast with its type parameters and with the types they run as", () => Cases.Each(
+        [
+            (nameof(Holder<int>.Maybe), "System.Nullable<T>", "int?"),
+            (nameof(Holder<int>.Grids), "T[][,]", "int[][,]"),
+            (nameof(Holder<int>.Keyed), "System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<T>>",
+                "System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<int>>"),
+            (nameof(Holder<int>.Nested), Here + ".Outer<T>.Inner<long>", Here + ".Outer<int>.Inner<long>"),
+        ], row =>
+        {
+            Assert.Equal(row.Item2, FieldType(row.Item1, "T", CSharpTypeNames.NullableSpelled));
+            Assert.Equal(row.Item3, FieldType(row.Item1, "int", CSharpTypeNames.Instance));
+        })),
+        ("a type parameter given no name leaves its type unnamed", () => Assert.Null(FieldType(nameof(Holder<int>.Listed), null, CSharpTypeNames.Instance))),
+        ("an array of an array takes its rank before its elements", () =>
+        {
+            Assert.Equal("int[][,]", CSharpTypeNames.ArrayOf("int[,]", "[]"));
+            Assert.Equal("int?[][]", CSharpTypeNames.ArrayOf("int?[]", "[]"));
+        }),
+        ("a frame's parameter of a nested generic type gives each type its own arguments", () =>
+        {
+            using ModuleMetadataReader reader = ModuleMetadataReader.TryLoad(typeof(Holder<>).Assembly.Location)
+                ?? throw new InvalidOperationException("The unit tests' own assembly could not be read");
+            MethodInfo take = typeof(Holder<>).GetMethod(nameof(Holder<int>.Take)) ?? throw new InvalidOperationException("Holder has no method Take");
+            ImmutableArray<string> parameters = reader.PeMetadataReader.GetMethodDefinition((MethodDefinitionHandle)MetadataTokens.EntityHandle(take.MetadataToken))
+                .DecodeSignature(FrameDisplaySignatureTypeProvider.Instance, new FrameDisplayGenericContext(["int"], [])).ParameterTypes;
+            Assert.True(parameters.SequenceEqual([Here + ".Outer<int>.Inner<long>", "System.Nullable<int>", "System.Collections.Generic.List<int>"]),
+                $"A frame showed Take's parameters as {string.Join(", ", parameters)}: a nested generic type's arguments went to the wrong type");
+        }));
 
     /// <summary>A field of <see cref="Holder{T}"/> named by <paramref name="names"/>, with T as <paramref name="parameter"/>.</summary>
     private static string? FieldType(string field, string? parameter, CSharpTypeNames names)

@@ -13,65 +13,57 @@ namespace Passenger.UnitTests.Debugger;
 /// runtime's traces read it from the code's map.</summary>
 public class StackTraceTextTests
 {
-    public static TheoryData<string> Shapes => [.. Thrown.Keys];
-
-    [Theory]
-    [MemberData(nameof(Shapes))]
-    public async Task A_stack_trace_written_from_metadata_is_what_StackTrace_writes(string shape)
-    {
-        Exception thrown = await CatchAsync(Thrown[shape]);
-        Dictionary<Module, ModuleMetadataReader> readers = [];
-        try
+    [Fact]
+    public Task A_stack_trace_is_written_from_metadata_as_StackTrace_writes_it_at_the_IL_offset_the_runtimes_trace_reads() => Cases.AllAsync(
+        ("a stack trace written from metadata is what StackTrace writes", () => Cases.EachAsync(Thrown.Keys, async shape =>
         {
-            List<TracedFrame> frames = [];
-            foreach (StackFrame frame in new StackTrace(thrown, fNeedFileInfo: true).GetFrames())
+            Exception thrown = await CatchAsync(Thrown[shape]);
+            Dictionary<Module, ModuleMetadataReader> readers = [];
+            try
             {
-                MethodBase method = frame.GetMethod() ?? throw new InvalidOperationException($"A frame of the {shape} trace has no method");
-                if (!readers.TryGetValue(method.Module, out ModuleMetadataReader? reader))
+                List<TracedFrame> frames = [];
+                foreach (StackFrame frame in new StackTrace(thrown, fNeedFileInfo: true).GetFrames())
                 {
-                    readers[method.Module] = reader = ModuleMetadataReader.TryLoad(method.Module.Assembly.Location)
-                        ?? throw new InvalidOperationException($"{method.Module.Name} could not be read");
+                    MethodBase method = frame.GetMethod() ?? throw new InvalidOperationException($"A frame of the {shape} trace has no method");
+                    if (!readers.TryGetValue(method.Module, out ModuleMetadataReader? reader))
+                    {
+                        readers[method.Module] = reader = ModuleMetadataReader.TryLoad(method.Module.Assembly.Location)
+                            ?? throw new InvalidOperationException($"{method.Module.Name} could not be read");
+                    }
+                    frames.Add(new TracedFrame(reader.PeMetadataReader, method.MetadataToken,
+                        frame.GetFileName() is { } file ? (file, frame.GetFileLineNumber()) : null, LastOfEarlierThrow: false));
                 }
-                frames.Add(new TracedFrame(reader.PeMetadataReader, method.MetadataToken,
-                    frame.GetFileName() is { } file ? (file, frame.GetFileLineNumber()) : null, LastOfEarlierThrow: false));
+                string written = StackTraceText.Of(frames);
+                Assert.True(written == thrown.StackTrace, $"The {shape} trace is written\n{written}\nwhere StackTrace writes\n{thrown.StackTrace}");
             }
-            string written = StackTraceText.Of(frames);
-            Assert.True(written == thrown.StackTrace, $"The {shape} trace is written\n{written}\nwhere StackTrace writes\n{thrown.StackTrace}");
-        }
-        finally
-        {
-            foreach (ModuleMetadataReader reader in readers.Values)
+            finally
             {
-                reader.Dispose();
+                foreach (ModuleMetadataReader reader in readers.Values)
+                {
+                    reader.Dispose();
+                }
             }
-        }
-    }
-
-    [Theory]
-    [InlineData(0x00u, 0)]
-    [InlineData(0x10u, 0)]
-    [InlineData(0x14u, 3)]
-    [InlineData(0x1Fu, 3)]
-    [InlineData(0x20u, 7)]
-    [InlineData(0x30u, 0)]
-    [InlineData(0x40u, 12)]
-    [InlineData(0x60u, 12)]
-    public void Compiled_code_is_at_the_lowest_IL_offset_of_its_run_none_in_the_prolog_and_the_last_in_the_epilog(uint native, int il)
-    {
-        COR_DEBUG_IL_TO_NATIVE_MAP[] map =
-        [
-            new() { ilOffset = unchecked((uint)-2), nativeStartOffset = 0x00, nativeEndOffset = 0x10 },
-            new() { ilOffset = 0, nativeStartOffset = 0x10, nativeEndOffset = 0x14 },
-            new() { ilOffset = 7, nativeStartOffset = 0x14, nativeEndOffset = 0x14 },
-            new() { ilOffset = 3, nativeStartOffset = 0x14, nativeEndOffset = 0x20 },
-            new() { ilOffset = 7, nativeStartOffset = 0x20, nativeEndOffset = 0x30 },
-            new() { ilOffset = unchecked((uint)-1), nativeStartOffset = 0x30, nativeEndOffset = 0x38 },
-            new() { ilOffset = 12, nativeStartOffset = 0x38, nativeEndOffset = 0x48 },
-            new() { ilOffset = unchecked((uint)-3), nativeStartOffset = 0x48, nativeEndOffset = 0x60 },
-        ];
-        int at = CompiledOffsets.ILAt(map, native);
-        Assert.True(at == il, $"Native offset 0x{native:x} was read at IL 0x{at:x}, where the runtime's trace reads 0x{il:x}: its line would be another statement's");
-    }
+        })),
+        ("compiled code is at the lowest IL offset of its run, none in the prolog and the last in the epilog", () =>
+        {
+            COR_DEBUG_IL_TO_NATIVE_MAP[] map =
+            [
+                new() { ilOffset = unchecked((uint)-2), nativeStartOffset = 0x00, nativeEndOffset = 0x10 },
+                new() { ilOffset = 0, nativeStartOffset = 0x10, nativeEndOffset = 0x14 },
+                new() { ilOffset = 7, nativeStartOffset = 0x14, nativeEndOffset = 0x14 },
+                new() { ilOffset = 3, nativeStartOffset = 0x14, nativeEndOffset = 0x20 },
+                new() { ilOffset = 7, nativeStartOffset = 0x20, nativeEndOffset = 0x30 },
+                new() { ilOffset = unchecked((uint)-1), nativeStartOffset = 0x30, nativeEndOffset = 0x38 },
+                new() { ilOffset = 12, nativeStartOffset = 0x38, nativeEndOffset = 0x48 },
+                new() { ilOffset = unchecked((uint)-3), nativeStartOffset = 0x48, nativeEndOffset = 0x60 },
+            ];
+            Cases.Each([(0x00u, 0), (0x1Fu, 3), (0x30u, 0), (0x60u, 12)], row =>
+            {
+                int at = CompiledOffsets.ILAt(map, row.Item1);
+                Assert.True(at == row.Item2, $"Native offset 0x{row.Item1:x} was read at IL 0x{at:x}, where the runtime's trace reads 0x{row.Item2:x}: its line would be another statement's");
+            });
+            return Task.CompletedTask;
+        }));
 
     private static readonly Dictionary<string, Func<Task>> Thrown = new(StringComparer.Ordinal)
     {

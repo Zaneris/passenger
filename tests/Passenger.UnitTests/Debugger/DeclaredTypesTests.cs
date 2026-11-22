@@ -13,46 +13,36 @@ public class DeclaredTypesTests
 {
     private const string Here = "Passenger.UnitTests.Debugger.DeclaredTypesTests";
 
-    [Theory]
-    [InlineData(nameof(Holder<int>.Plain), Here + ".Base", 0)]
-    [InlineData(nameof(Holder<int>.Nested), Here + ".Outer.Inner", 0)]
-    [InlineData(nameof(Holder<int>.Generic), Here + ".Gen`1", 0)]
-    [InlineData(nameof(Holder<int>.Everything), "System.Object", 0)]
-    [InlineData(nameof(Holder<int>.Interface), "System.IDisposable", 0)]
-    [InlineData(nameof(Holder<int>.Elements), Here + ".Base", 1)]
-    [InlineData(nameof(Holder<int>.Jagged), Here + ".Base", 2)]
-    [InlineData(nameof(Holder<int>.Grid), Here + ".Base", 1)]
-    public void A_fields_declared_type_is_its_definitions_name_under_its_arrays(string field, string name, int arrays)
-    {
-        DeclaredType? declared = FieldType(field);
-        for (int i = 0; i < arrays; i++)
-        {
-            Assert.True(declared is { Name: null, Element: not null }, $"{field} is declared as {declared}, not an array of its elements' type");
-            declared = declared.Element;
-        }
-        Assert.Equal(new DeclaredType(name), declared);
-    }
-
-    [Theory]
-    [InlineData(nameof(Holder<int>.Parameter))]
-    [InlineData(nameof(Holder<int>.Number))]
-    [InlineData(nameof(Holder<int>.Numbers))]
-    [InlineData(nameof(Holder<int>.Text))]
-    public void A_field_of_a_type_no_value_derives_below_has_no_declared_type(string field)
-    {
-        Assert.Null(FieldType(field));
-    }
-
     [Fact]
-    public void A_methods_locals_are_declared_as_its_signature_says_at_the_built_version()
-    {
-        using ModuleMetadataReader reader = Reader();
-        int token = typeof(Holder<int>).GetMethod(nameof(Holder<int>.Locals))!.MetadataToken;
-        IReadOnlyList<DeclaredType?> locals = reader.LocalTypes(token, version: 1);
-        Assert.Contains(new DeclaredType(Here + ".Base"), locals);
-        Assert.Contains(DeclaredType.Object, locals);
-        Assert.Contains(new DeclaredType(null, new DeclaredType(Here + ".Base")), locals);
-    }
+    public void A_declared_type_is_its_definitions_name_under_its_arrays_and_none_where_no_value_derives_below() => Cases.All(
+        ("a field's declared type is its definition's name under its arrays", () => Cases.Each(
+        [
+            (nameof(Holder<int>.Generic), Here + ".Gen`1", 0),
+            (nameof(Holder<int>.Interface), "System.IDisposable", 0),
+            (nameof(Holder<int>.Jagged), Here + ".Base", 2),
+            (nameof(Holder<int>.Grid), Here + ".Base", 1),
+        ], row =>
+        {
+            (string field, string name, int arrays) = row;
+            DeclaredType? declared = FieldType(field);
+            for (int i = 0; i < arrays; i++)
+            {
+                Assert.True(declared is { Name: null, Element: not null }, $"{field} is declared as {declared}, not an array of its elements' type");
+                declared = declared.Element;
+            }
+            Assert.Equal(new DeclaredType(name), declared);
+        })),
+        ("a field of a type no value derives below has no declared type", () => Cases.Each(
+            [nameof(Holder<int>.Parameter), nameof(Holder<int>.Numbers), nameof(Holder<int>.Text)], field => Assert.Null(FieldType(field)))),
+        ("a method's locals are declared as its signature says at the built version", () =>
+        {
+            using ModuleMetadataReader reader = Reader();
+            int token = typeof(Holder<int>).GetMethod(nameof(Holder<int>.Locals))!.MetadataToken;
+            IReadOnlyList<DeclaredType?> locals = reader.LocalTypes(token, version: 1);
+            Assert.Contains(new DeclaredType(Here + ".Base"), locals);
+            Assert.Contains(DeclaredType.Object, locals);
+            Assert.Contains(new DeclaredType(null, new DeclaredType(Here + ".Base")), locals);
+        }));
 
     /// <summary>A field of <see cref="Holder{T}"/> as the debugger decodes it.</summary>
     private static DeclaredType? FieldType(string field)

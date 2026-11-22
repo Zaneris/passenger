@@ -22,27 +22,25 @@ public class RuntimeThreadsTests
     }
 
     [Fact]
-    public void A_frame_record_returning_into_the_routine_tells_the_thread_started_there()
-    {
-        Assert.True(RuntimeThreads.ReturnsInto(Stack((0x118, From + 0x148), (0x120, Routine.Start + 0x28)), From, Routine));
-    }
+    public void A_frame_record_returning_into_the_routine_and_only_one_tells_the_thread_started_there() => Cases.All(
+        ("a frame record returning into the routine tells the thread started there", () =>
+        {
+            Assert.True(RuntimeThreads.ReturnsInto(Stack((0x118, From + 0x148), (0x120, Routine.Start + 0x28)), From, Routine));
+        }),
+        ("a return outside the routine or beside no saved frame pointer above it tells nothing", () =>
+        {
+            Assert.False(RuntimeThreads.ReturnsInto(Stack((0x118, From + 0x148), (0x120, Routine.End)), From, Routine));
+            Assert.False(RuntimeThreads.ReturnsInto(Stack((0x118, From + 0x118), (0x120, Routine.Start)), From, Routine));
+            Assert.False(RuntimeThreads.ReturnsInto(Stack((0x120, Routine.Start + 0x28)), From, Routine));
+            Assert.False(RuntimeThreads.ReturnsInto([], From, Routine));
+        }),
+        ("a stack read from an address off eight bytes is read by the words the stack keeps", () =>
+        {
+            byte[] stack = new byte[516];
+            BinaryPrimitives.WriteUInt64LittleEndian(stack.AsSpan(0x11C), From + 0x148);
+            BinaryPrimitives.WriteUInt64LittleEndian(stack.AsSpan(0x124), Routine.Start);
+            Assert.True(RuntimeThreads.ReturnsInto(stack, From - 4, Routine));
+            Assert.False(RuntimeThreads.ReturnsInto(stack, From - 8, Routine));
+        }));
 
-    [Fact]
-    public void A_return_outside_the_routine_or_beside_no_saved_frame_pointer_above_it_tells_nothing()
-    {
-        Assert.False(RuntimeThreads.ReturnsInto(Stack((0x118, From + 0x148), (0x120, Routine.End)), From, Routine));
-        Assert.False(RuntimeThreads.ReturnsInto(Stack((0x118, From + 0x118), (0x120, Routine.Start)), From, Routine));
-        Assert.False(RuntimeThreads.ReturnsInto(Stack((0x120, Routine.Start + 0x28)), From, Routine));
-        Assert.False(RuntimeThreads.ReturnsInto([], From, Routine));
-    }
-
-    [Fact]
-    public void A_stack_read_from_an_address_off_eight_bytes_is_read_by_the_words_the_stack_keeps()
-    {
-        byte[] stack = new byte[516];
-        BinaryPrimitives.WriteUInt64LittleEndian(stack.AsSpan(0x11C), From + 0x148);
-        BinaryPrimitives.WriteUInt64LittleEndian(stack.AsSpan(0x124), Routine.Start);
-        Assert.True(RuntimeThreads.ReturnsInto(stack, From - 4, Routine));
-        Assert.False(RuntimeThreads.ReturnsInto(stack, From - 8, Routine));
-    }
 }

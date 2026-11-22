@@ -10,30 +10,30 @@ namespace Passenger.UnitTests.Dap;
 public class InProcessEndTests
 {
     [Fact]
-    public async Task An_event_sent_as_the_adapter_ends_is_let_go_and_one_sent_before_reaches_the_session()
-    {
-        InProcessEnd end = new("adapter");
-        DapConnection adapter = new(end.AdapterInput, end.AdapterOutput);
-        end.SendEvent(adapter, DapEvents.Output, new Words("before"));
-        byte[] buffer = new byte[4096];
-        int read = await end.FromAdapter.ReadAsync(buffer, TestContext.Current.CancellationToken);
-        Assert.Contains("\"before\"", Encoding.UTF8.GetString(buffer, 0, read), StringComparison.Ordinal);
+    public Task An_event_reaches_the_session_while_the_adapter_runs_and_is_let_go_only_where_the_adapter_ended() => Cases.AllAsync(
+        ("an event sent as the adapter ends is let go and one sent before reaches the session", async () =>
+        {
+            InProcessEnd end = new("adapter");
+            DapConnection adapter = new(end.AdapterInput, end.AdapterOutput);
+            end.SendEvent(adapter, DapEvents.Output, new Words("before"));
+            byte[] buffer = new byte[4096];
+            int read = await end.FromAdapter.ReadAsync(buffer, TestContext.Current.CancellationToken);
+            Assert.Contains("\"before\"", Encoding.UTF8.GetString(buffer, 0, read), StringComparison.Ordinal);
 
-        end.SendEvent(adapter, DapEvents.Output, new Ending(end));
-        Assert.True(end.HasEnded, "The event's body did not end the adapter as it was written");
-        end.SendEvent(adapter, DapEvents.Terminated, null);
-        Assert.Throws<IOException>(() => adapter.SendEvent(DapEvents.Terminated));
-    }
-
-    [Fact]
-    public void A_write_that_fails_while_the_adapter_runs_is_not_let_go()
-    {
-        InProcessEnd end = new("adapter");
-        DapConnection adapter = new(end.AdapterInput, end.AdapterOutput);
-        Exception thrown = Assert.ThrowsAny<Exception>(() => end.SendEvent(adapter, DapEvents.Output, new Failing()));
-        Assert.True((thrown as IOException ?? thrown.InnerException as IOException)?.Message == Failing.Said, $"The failure came as {thrown}");
-        Assert.False(end.HasEnded);
-    }
+            end.SendEvent(adapter, DapEvents.Output, new Ending(end));
+            Assert.True(end.HasEnded, "The event's body did not end the adapter as it was written");
+            end.SendEvent(adapter, DapEvents.Terminated, null);
+            Assert.Throws<IOException>(() => adapter.SendEvent(DapEvents.Terminated));
+        }),
+        ("a write that fails while the adapter runs is not let go", () =>
+        {
+            InProcessEnd end = new("adapter");
+            DapConnection adapter = new(end.AdapterInput, end.AdapterOutput);
+            Exception thrown = Assert.ThrowsAny<Exception>(() => end.SendEvent(adapter, DapEvents.Output, new Failing()));
+            Assert.True((thrown as IOException ?? thrown.InnerException as IOException)?.Message == Failing.Said, $"The failure came as {thrown}");
+            Assert.False(end.HasEnded);
+            return Task.CompletedTask;
+        }));
 
     private sealed record Words(string Text);
 

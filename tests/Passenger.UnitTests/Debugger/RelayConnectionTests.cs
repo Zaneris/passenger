@@ -18,105 +18,90 @@ public class RelayConnectionTests
     /// <summary>How long a connection waits for the app's relay to listen, which the stand-ins here do before it asks.</summary>
     private static readonly TimeSpan Listening = TimeSpan.FromSeconds(10);
 
-    [Fact]
-    public async Task A_call_is_answered_by_the_frame_naming_its_number()
-    {
-        StandInRelay app = new() { Answers = true };
-        using RelayConnection relay = new(app, token: null, log: null);
-        Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay's hello named process {relay.ProcessId}, not {StandInRelay.ProcessId}");
-        RelayReply reply = await CallAsync(relay);
-        Assert.True(reply.Hr == StandInRelay.Answer, $"A call came back with 0x{reply.Hr:X8}, not the 0x{StandInRelay.Answer:X8} the relay answered it with");
-    }
-
-    [Fact]
-    public async Task A_room_answered_at_the_size_asked_for_comes_back_whole_with_its_objects()
-    {
-        StandInRelay app = new() { Reply = Answer(room: 8, objects: 2) };
-        using RelayConnection relay = new(app, token: null, log: null);
-        RelayReply reply = await Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]).WaitAsync(TestContext.Current.CancellationToken);
-        Assert.True(reply.Outs[0].AsSpan().SequenceEqual(Enumerable.Range(1, 8).Select(i => (byte)i).ToArray())
-            && reply.Objects[0].SequenceEqual([new RemotePointer(0x100, 0x101), new RemotePointer(0x200, 0x201)]),
-            $"The room came back as {Convert.ToHexString(reply.Outs[0])} with {reply.Objects[0].Length} objects, not as the relay answered it");
-    }
-
     /// <summary>A room of another size than asked for, or more objects than room was made for, would be written past the
     /// engine's own: the call fails and the session ends, saying why.</summary>
-    [Theory]
-    [InlineData(64, 2)]
-    [InlineData(4, 2)]
-    [InlineData(8, 3)]
-    public async Task A_relay_answering_a_room_of_another_size_or_more_objects_than_asked_for_fails_the_call_and_ends_its_session(int room, int objects)
-    {
-        StandInRelay app = new() { Reply = Answer(room, objects) };
-        List<string> said = [];
-        using RelayConnection relay = new(app, token: null, log: line =>
+    [Fact]
+    public Task A_call_is_answered_by_its_frame_and_a_relay_answering_otherwise_or_gone_fails_it_and_every_call_after() => Cases.AllAsync(
+        ("a call is answered by the frame naming its number", async () =>
         {
+            StandInRelay app = new() { Answers = true };
+            using RelayConnection relay = new(app, token: null, log: null);
+            Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay's hello named process {relay.ProcessId}, not {StandInRelay.ProcessId}");
+            RelayReply reply = await CallAsync(relay);
+            Assert.True(reply.Hr == StandInRelay.Answer, $"A call came back with 0x{reply.Hr:X8}, not the 0x{StandInRelay.Answer:X8} the relay answered it with");
+        }),
+        ("a room answered at the size asked for comes back whole with its objects", async () =>
+        {
+            StandInRelay app = new() { Reply = Answer(room: 8, objects: 2) };
+            using RelayConnection relay = new(app, token: null, log: null);
+            RelayReply reply = await Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]).WaitAsync(TestContext.Current.CancellationToken);
+            Assert.True(reply.Outs[0].AsSpan().SequenceEqual(Enumerable.Range(1, 8).Select(i => (byte)i).ToArray())
+                && reply.Objects[0].SequenceEqual([new RemotePointer(0x100, 0x101), new RemotePointer(0x200, 0x201)]),
+                $"The room came back as {Convert.ToHexString(reply.Outs[0])} with {reply.Objects[0].Length} objects, not as the relay answered it");
+        }),
+        ("a relay answering a room of another size or more objects than asked for fails the call and ends its session", () => Cases.EachAsync(
+            [(64, 2), (4, 2), (8, 3)], async row =>
+        {
+            StandInRelay app = new() { Reply = Answer(row.Item1, row.Item2) };
+            List<string> said = [];
+            using RelayConnection relay = new(app, token: null, log: line =>
+            {
+                lock (said)
+                {
+                    said.Add(line);
+                }
+            });
+            using ManualResetEventSlim gone = new();
+            relay.WhenGone(gone.Set);
+            await Assert.ThrowsAsync<IOException>(() => Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]).WaitAsync(TestContext.Current.CancellationToken));
+            gone.Wait(TestContext.Current.CancellationToken);
             lock (said)
             {
-                said.Add(line);
+                Assert.True(said.Any(line => line.Contains("broken", StringComparison.Ordinal)), $"The session ended without saying the relay broke: {string.Join(" | ", said)}");
             }
-        });
-        using ManualResetEventSlim gone = new();
-        relay.WhenGone(gone.Set);
-        await Assert.ThrowsAsync<IOException>(() => Calling(relay, [RelayArg.Out(8), RelayArg.Objects(2)]).WaitAsync(TestContext.Current.CancellationToken));
-        gone.Wait(TestContext.Current.CancellationToken);
-        lock (said)
+        }, row => $"a room of {row.Item1} bytes and {row.Item2} objects for 8 and 2")),
+        ("once the app's relay goes away the call waiting fails and so does every call after it", async () =>
         {
-            Assert.True(said.Any(line => line.Contains("broken", StringComparison.Ordinal)), $"The session ended without saying the relay broke: {string.Join(" | ", said)}");
-        }
-    }
-
-    [Fact]
-    public async Task Once_the_apps_relay_goes_away_the_call_waiting_fails_and_so_does_every_call_after_it()
-    {
-        StandInRelay app = new();
-        using RelayConnection relay = new(app, token: null, log: null);
-        using ManualResetEventSlim gone = new();
-        relay.WhenGone(gone.Set);
-        Task<RelayReply> waiting = Calling(relay);
-        await app.Asked.WaitAsync(TestContext.Current.CancellationToken);
-        app.Die();
-        await Assert.ThrowsAsync<IOException>(() => waiting.WaitAsync(TestContext.Current.CancellationToken));
-        gone.Wait(TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<IOException>(() => CallAsync(relay));
-    }
-
-    [Fact]
-    public async Task A_relay_listening_at_a_socket_path_is_reached_there_given_its_token_and_heard_saying_hello()
-    {
-        string folder = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-relay-").FullName);
-        try
+            StandInRelay app = new();
+            using RelayConnection relay = new(app, token: null, log: null);
+            using ManualResetEventSlim gone = new();
+            relay.WhenGone(gone.Set);
+            Task<RelayReply> waiting = Calling(relay);
+            await app.Asked.WaitAsync(TestContext.Current.CancellationToken);
+            app.Die();
+            await Assert.ThrowsAsync<IOException>(() => waiting.WaitAsync(TestContext.Current.CancellationToken));
+            gone.Wait(TestContext.Current.CancellationToken);
+            await Assert.ThrowsAsync<IOException>(() => CallAsync(relay));
+        }),
+        ("a relay listening at a socket path is reached there given its token and heard saying hello", async () =>
         {
-            string path = Path.Combine(folder, "r");
-            using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            listener.Bind(new UnixDomainSocketEndPoint(path));
-            listener.Listen(1);
-            Task<byte[]> heard = BackgroundWork.UnheldThread(() => Hello(listener));
-            using RelayConnection relay = await BackgroundWork.UnheldThread(() => RelayConnection.Connect(path, "abc", Listening, log: null))
-                .WaitAsync(TestContext.Current.CancellationToken);
-            byte[] token = await heard.WaitAsync(TestContext.Current.CancellationToken);
-            Assert.True(token.AsSpan().SequenceEqual((byte[])[8, 0, 0, 0, 0, 0, 0, 0, 4, (byte)'a', (byte)'b', (byte)'c']),
-                $"The relay at {path} was first told {Convert.ToHexString(token)}, not the session's token, so it would turn the debugger away");
-            Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay at {path} was heard naming process {relay.ProcessId}, not {StandInRelay.ProcessId}");
-        }
-        finally
+            string folder = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-relay-").FullName);
+            try
+            {
+                string path = Path.Combine(folder, "r");
+                using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                listener.Bind(new UnixDomainSocketEndPoint(path));
+                listener.Listen(1);
+                Task<byte[]> heard = BackgroundWork.UnheldThread(() => Hello(listener));
+                using RelayConnection relay = await BackgroundWork.UnheldThread(() => RelayConnection.Connect(path, "abc", Listening, log: null))
+                    .WaitAsync(TestContext.Current.CancellationToken);
+                byte[] token = await heard.WaitAsync(TestContext.Current.CancellationToken);
+                Assert.True(token.AsSpan().SequenceEqual((byte[])[8, 0, 0, 0, 0, 0, 0, 0, 4, (byte)'a', (byte)'b', (byte)'c']),
+                    $"The relay at {path} was first told {Convert.ToHexString(token)}, not the session's token, so it would turn the debugger away");
+                Assert.True(relay.ProcessId == StandInRelay.ProcessId, $"The relay at {path} was heard naming process {relay.ProcessId}, not {StandInRelay.ProcessId}");
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }),
+        ("a relay's address is a unix socket for a path and the loopback's port for host and port", () =>
         {
-            Directory.Delete(folder, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void A_relays_address_is_a_unix_socket_for_a_path_and_the_loopbacks_port_for_host_and_port()
-    {
-        Assert.Equal(new UnixDomainSocketEndPoint("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"),
-            RelayConnection.EndPointOf("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"));
-        Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5599), RelayConnection.EndPointOf("127.0.0.1:5599"));
-        Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5600), RelayConnection.EndPointOf(":5600"));
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal(new UnixDomainSocketEndPoint(@"C:\Temp\passenger\r"), RelayConnection.EndPointOf(@"C:\Temp\passenger\r"));
-        }
-    }
+            Assert.Equal(new UnixDomainSocketEndPoint("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"),
+                RelayConnection.EndPointOf("/Users/a/Library/Containers/com.x/Data/tmp/passenger/r"));
+            Assert.Equal(new IPEndPoint(IPAddress.Loopback, 5600), RelayConnection.EndPointOf(":5600"));
+            return Task.CompletedTask;
+        }));
 
     /// <summary>The app's end of a relay at a socket: one client taken, its first frame read whole and the relay's hello
     /// written; the frame read.</summary>

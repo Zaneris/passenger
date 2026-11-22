@@ -12,55 +12,41 @@ namespace Passenger.UnitTests.Debugger;
 /// the frame runs with given to the type, the method and the local function each declaring them.</summary>
 public class FrameNamesTests
 {
-    [Theory]
-    [InlineData("var app = new Router();\napp.MapGet(\"/add/{a}/{b}\", (int a, int b) => a + b);\nclass Router { public void MapGet(string route, System.Func<int, int, int> handler) { } }",
-        "", "Program.<Main>$.lambda(int a, int b)")]
-    [InlineData("namespace Shop;\nclass Basket { int Total(int[] prices) { int tax = 2; return prices.Sum(p => p + tax); } }", "", "Shop.Basket.Total.lambda(int p)")]
-    [InlineData("class Basket { int rate; System.Func<int, int> Rated() => p => p * rate; }", "", "Basket.Rated.lambda(int p)")]
-    [InlineData("class Basket { System.Func<System.Func<int>> Nested() => () => () => 1; }", "", "Basket.Nested.lambda()|Basket.Nested.lambda()")]
-    [InlineData("class Basket { System.Func<int, Task<int>> Later() => async p => { await Task.Yield(); return p; }; }", "", "Basket.Later.lambda(int p)")]
-    [InlineData("class Basket { int Twice(int x) { return Double(x); static int Double(int y) => y * 2; } }", "", "Basket.Twice.Double(int y)")]
-    [InlineData("class Basket { int Sum(int x) { int k = 1; return Add(x); int Add(int y) => y + k; } }", "", "Basket.Sum.Add(int y)")]
-    [InlineData("class Box<T> { public List<U> Paired<U>(T[] items, U with) => items.Select(i => with).ToList(); }", "int,string", "Box<int>.Paired<string>.lambda(int i)")]
-    [InlineData("class Box<T> { public T Kept(T item) { return Same(item); static V Same<V>(V v) => v; } }", "int,int", "Box<int>.Kept.Same<int>(int v)")]
-    [InlineData("class Box<T> { public U Made<U>(T item) where U : new() { return New<int>(1); static U New<V>(V v) => new U(); } }", "int,string,long", "Box<int>.Made<string>.New<long>(long v)")]
-    [InlineData("class Box<T> { public void Made<U>() { System.Action a = () => { }; } public void Made<U, V>() { } }", "int,string", "Box<int>.Made.lambda()")]
-    public void A_lambda_and_a_local_function_are_named_by_the_method_they_are_written_in(string code, string arguments, string expected)
-    {
-        using PEReader image = Built(code);
-        MetadataReader reader = image.GetMetadataReader();
-        string[] given = arguments.Length == 0 ? [] : arguments.Split(',');
-        List<string> named = [.. reader.MethodDefinitions
-            .Where(handle => reader.GetString(reader.GetMethodDefinition(handle).Name) is ['<', ..] name && (name.Contains(">b__", StringComparison.Ordinal) || name.Contains(">g__", StringComparison.Ordinal)))
-            .Select(handle => Named(reader, handle, given))
-            .Order(StringComparer.Ordinal)];
-        Assert.True(string.Join('|', named) == expected, $"The compiler's methods of\n{code}\nare named [{string.Join(", ", named)}], where the code names them [{expected.Replace('|', ',')}]");
-    }
-
-    [Theory]
-    [InlineData("namespace Shop;\nclass Basket { int Total(int[] prices) => prices.Length; }", "Total", "", "Shop.Basket.Total(int[] prices)")]
-    [InlineData("class Box<T> { public U Map<U>(T value) => default!; }", "Map", "int,string", "Box<int>.Map<string>(int value)")]
-    [InlineData("class Outer<T> { public class Inner { public void Run(T value) { } } }", "Run", "int", "Outer<int>.Inner.Run(int value)")]
-    public void A_method_of_the_codes_own_is_named_by_its_type_and_its_name(string code, string method, string arguments, string expected)
-    {
-        using PEReader image = Built(code);
-        MetadataReader reader = image.GetMetadataReader();
-        MethodDefinitionHandle handle = reader.MethodDefinitions.Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, method));
-        Assert.Equal(expected, Named(reader, handle, arguments.Length == 0 ? [] : arguments.Split(',')));
-    }
-
-    [Theory]
-    [InlineData("struct Point { public int X; }\nclass Reader { int Read(in Point point, ref int count, out int sum, ref readonly int limit) { sum = 0; return 0; } }",
-        "Reader.Read(in Point point, ref int count, out int sum, ref readonly int limit)")]
-    [InlineData("abstract class Reader { public abstract int Read(in int a, out string b, ref readonly long c); }", "Reader.Read(in int a, out string b, ref readonly long c)")]
-    [InlineData("class Reader { void Read([System.Runtime.InteropServices.In, System.Runtime.InteropServices.Out] ref int both) { } }", "Reader.Read(ref int both)")]
-    public void A_by_reference_parameter_is_named_in_out_ref_readonly_or_ref_as_declared(string code, string expected)
-    {
-        using PEReader image = Built(code);
-        MetadataReader reader = image.GetMetadataReader();
-        MethodDefinitionHandle handle = reader.MethodDefinitions.Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, "Read"));
-        Assert.Equal(expected, Named(reader, handle, []));
-    }
+    [Fact]
+    public void A_frames_method_is_named_as_its_code_names_it() => Cases.All(
+        ("a lambda and a local function are named by the method they are written in", () => Cases.Each(
+        [
+            ("var app = new Router();\napp.MapGet(\"/add/{a}/{b}\", (int a, int b) => a + b);\nclass Router { public void MapGet(string route, System.Func<int, int, int> handler) { } }",
+                "", "Program.<Main>$.lambda(int a, int b)"),
+            ("namespace Shop;\nclass Basket { int Total(int[] prices) { int tax = 2; return prices.Sum(p => p + tax); } }", "", "Shop.Basket.Total.lambda(int p)"),
+            ("class Basket { System.Func<System.Func<int>> Nested() => () => () => 1; }", "", "Basket.Nested.lambda()|Basket.Nested.lambda()"),
+            ("class Basket { int Sum(int x) { int k = 1; return Add(x); int Add(int y) => y + k; } }", "", "Basket.Sum.Add(int y)"),
+            ("class Box<T> { public U Made<U>(T item) where U : new() { return New<int>(1); static U New<V>(V v) => new U(); } }", "int,string,long", "Box<int>.Made<string>.New<long>(long v)"),
+        ], row =>
+        {
+            (string code, string arguments, string expected) = row;
+            using PEReader image = Built(code);
+            MetadataReader reader = image.GetMetadataReader();
+            string[] given = arguments.Length == 0 ? [] : arguments.Split(',');
+            List<string> named = [.. reader.MethodDefinitions
+                .Where(handle => reader.GetString(reader.GetMethodDefinition(handle).Name) is ['<', ..] name && (name.Contains(">b__", StringComparison.Ordinal) || name.Contains(">g__", StringComparison.Ordinal)))
+                .Select(handle => Named(reader, handle, given))
+                .Order(StringComparer.Ordinal)];
+            Assert.True(string.Join('|', named) == expected, $"The compiler's methods of\n{code}\nare named [{string.Join(", ", named)}], where the code names them [{expected.Replace('|', ',')}]");
+        }, row => row.Item3)),
+        ("a method of the code's own is named by its type and its name, a by-reference parameter as declared", () => Cases.Each(
+        [
+            ("class Outer<T> { public class Inner { public void Run(T value) { } } }", "Run", "int", "Outer<int>.Inner.Run(int value)"),
+            ("struct Point { public int X; }\nclass Reader { int Read(in Point point, ref int count, out int sum, ref readonly int limit) { sum = 0; return 0; } }",
+                "Read", "", "Reader.Read(in Point point, ref int count, out int sum, ref readonly int limit)"),
+        ], row =>
+        {
+            (string code, string method, string arguments, string expected) = row;
+            using PEReader image = Built(code);
+            MetadataReader reader = image.GetMetadataReader();
+            MethodDefinitionHandle handle = reader.MethodDefinitions.Single(h => reader.StringComparer.Equals(reader.GetMethodDefinition(h).Name, method));
+            Assert.Equal(expected, Named(reader, handle, arguments.Length == 0 ? [] : arguments.Split(',')));
+        }, row => row.Item4)));
 
     /// <summary>A method named with the type arguments given, the first its type's and the rest its own.</summary>
     private static string Named(MetadataReader reader, MethodDefinitionHandle handle, string[] arguments)
