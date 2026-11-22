@@ -111,8 +111,13 @@ public sealed class TerminalEmulationTests
         ("xterm.js keeps tab stops for each screen, where xterm and Passenger keep one set", (output, _, _) => output.Uses(TabStops) && output.Uses(Alternate)),
         ("xterm.js fills the lines a scroll or an insert of lines brings in with the default background, where xterm and Passenger erase "
             + "with the background set (BCE)", (output, _, _) => output.Uses(Scrolls) && output.Uses(Background)),
-        ($"Setting a scroll region leaves the cursor where it was, where it goes home; {ToFix}", (output, _, _) => output.Uses(ScrollRegion)),
-        ($"ESC # 8 (DECALN) leaves the cursor where it was, where it goes home; {ToFix}", (output, _, _) => output.Uses(Alignment)),
+        ("xterm.js keeps the scroll region over ESC # 8 (DECALN), where xterm and the VT510 set the margins to the screen's edges",
+            (output, _, _) => output.Uses(Alignment) && output.Uses(ScrollRegion)),
+        ("xterm.js counts the scroll region's top twice as CUU, CUD, CUF, CUB, CNL, CPL, CHA, HPA, HPR or VPR moves the cursor in origin "
+            + "mode, so CUU there moves it down, where xterm moves it from where it stands",
+            (output, _, _) => output.Uses(OriginMode) && output.Uses(ScrollRegion) && output.Uses(Moves)),
+        ("xterm.js neither saves origin mode with the cursor nor restores it, where the VT510 and xterm save it with DECSC (and 1049) "
+            + "and DECRC restores it, or turns it off with nothing saved", (output, _, _) => output.Uses(OriginMode) && (output.Uses(Restores) || output.Uses(Alternate))),
         ($"REP repeats, and moves the cursor, with no character before it to repeat; {ToFix}", (output, _, _) => output.Uses(Repeat)),
         ($"Line feed/new line mode (LNM, CSI 20 h) is not followed: a line feed leaves the column as it was; {ToFix}", (output, _, _) => output.Uses(NewLineMode)),
         ($"An insert, delete or erase of characters (ICH, DCH, EL, ED) at a wide character's second half leaves it whole; {ToFix}",
@@ -129,6 +134,9 @@ public sealed class TerminalEmulationTests
     private const string Alternate = "the alternate screen";
     private const string ScrollRegion = "a scroll region";
     private const string Alignment = "DECALN";
+    private const string OriginMode = "origin mode";
+    private const string Moves = "CUU, CUD, CUF, CUB, CNL, CPL, CHA, HPA, HPR or VPR";
+    private const string Restores = "a restore of the cursor";
     private const string Repeat = "REP";
     private const string NewLineMode = "LNM";
     private const string EditsCharacters = "ICH, DCH, ECH, EL or ED";
@@ -171,7 +179,9 @@ public sealed class TerminalEmulationTests
             case 9:
                 return new("\t");
             case 10:
-                return new($"{Escape}[{Number(random, 5)}{Pick(random, ["A", "B", "C", "D", "E", "F", "G", "d", "`", "a", "e"])}");
+                string count = Number(random, 5);
+                string move = Pick(random, ["A", "B", "C", "D", "E", "F", "G", "d", "`", "a", "e"]);
+                return new($"{Escape}[{count}{move}", move == "d" ? null : Moves);
             case 11:
                 return new($"{Escape}[{random.Next(1, rows + 3)};{random.Next(1, columns + 5)}{Pick(random, ["H", "f"])}");
             case 12:
@@ -188,10 +198,15 @@ public sealed class TerminalEmulationTests
                 return new($"{Escape}[{random.Next(1, rows + 2)};{random.Next(1, rows + 2)}r", ScrollRegion);
             case 15:
                 string escaped = Pick(random, ["7", "8", "D", "M", "E", "H", "c", "#8"]);
-                return new(Escape + escaped, escaped == "#8" ? Alignment : null);
+                return new(Escape + escaped, escaped switch { "#8" => Alignment, "8" => Restores, _ => null });
             case 16:
                 string mode = Pick(random, ["7", "6", "1049", "47", "1047", "25"]);
-                return new($"{Escape}[?{mode}{Pick(random, ["h", "l"])}", mode is "1049" or "47" or "1047" ? Alternate : null);
+                return new($"{Escape}[?{mode}{Pick(random, ["h", "l"])}", mode switch
+                {
+                    "1049" or "47" or "1047" => Alternate,
+                    "6" => OriginMode,
+                    _ => null,
+                });
             case 17:
                 string tabs = Pick(random, ["g", "I", "Z"]);
                 return new($"{Escape}[{Number(random, 4)}{tabs}", tabs == "g" ? TabStops : null);
@@ -203,7 +218,7 @@ public sealed class TerminalEmulationTests
                 return new($"{Escape}[{set}{Pick(random, ["h", "l"])}", set == "4" ? InsertMode : NewLineMode);
             case 20:
                 string kept = Pick(random, ["s", "u", "r"]);
-                return new($"{Escape}[{kept}", kept == "r" ? ScrollRegion : null);
+                return new($"{Escape}[{kept}", kept switch { "r" => ScrollRegion, "u" => Restores, _ => null });
             default:
                 string text = Pick(random, ["\u00e9", "e\u0301", "\u4e2d\u6587", "\U0001F600", "\u2588", "a\u0308b"]);
                 return new(text, text switch { "\U0001F600" => Emoji, "\u4e2d\u6587" => Wide, _ => null });

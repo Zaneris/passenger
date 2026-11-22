@@ -859,15 +859,18 @@ public sealed class TerminalScreen
         }
         if (sequences.Only('#') && final == '8')
         {
-            // DECALN: the screen filled with Es, for aligning a display.
+            // DECALN: the screen filled with Es, for aligning a display; the margins go to the screen's edges, the cursor home.
             foreach (TerminalLine line in Lines)
             {
                 Cell[] cells = line.Writing();
                 for (int i = 0; i < Columns; i++)
                 {
-                    cells[i] = new Cell { Rune = 'E', Style = CellStyle.Plain, Width = 1 };
+                    cells[i] = new Cell { Rune = 'E', Style = style, Width = 1 };
                 }
+                line.Wrapped = false;
             }
+            (top, bottom) = (0, Rows - 1);
+            MoveTo(0, 0);
             return;
         }
         if (sequences.Intermediates > 0)
@@ -997,8 +1000,12 @@ public sealed class TerminalScreen
             case 'A':
                 MoveTo(row - Get(0, 1), column, clampToRegion: true);
                 break;
-            case 'B' or 'e':
+            case 'B':
                 MoveTo(row + Get(0, 1), column, clampToRegion: true);
+                break;
+            case 'e':
+                // VPR moves as VPA does, past the scroll region's bottom where it is not origin mode's.
+                MoveTo(row + Get(0, 1), column);
                 break;
             case 'C' or 'a':
                 MoveTo(row, column + Get(0, 1));
@@ -1094,9 +1101,10 @@ public sealed class TerminalScreen
                 }
                 break;
             case 'r':
+                // A bottom past the screen's last row is its last row: the region is at most the screen.
                 int first = Get(0, 1) - 1;
-                int last = Get(1, Rows) - 1;
-                if (last > first && last < Rows)
+                int last = Math.Min(Get(1, Rows), Rows) - 1;
+                if (last > first)
                 {
                     top = first;
                     bottom = last;
@@ -1256,10 +1264,13 @@ public sealed class TerminalScreen
         }
     }
 
+    /// <summary>The cursor put at a row and column, within the scroll region in origin mode. A move <paramref
+    /// name="clampToRegion"/> (CUU, CUD, CNL, CPL) up stops at the region's top unless it starts above it, and one down
+    /// at its bottom unless it starts below it.</summary>
     private void MoveTo(int row, int column, bool clampToRegion = false)
     {
-        int low = originMode || (clampToRegion && CursorRow >= top && CursorRow <= bottom) ? top : 0;
-        int high = originMode || (clampToRegion && CursorRow >= top && CursorRow <= bottom) ? bottom : Rows - 1;
+        int low = originMode || (clampToRegion && CursorRow >= top) ? top : 0;
+        int high = originMode || (clampToRegion && CursorRow <= bottom) ? bottom : Rows - 1;
         CursorRow = Math.Clamp(row, low, high);
         CursorColumn = Math.Clamp(column, 0, Columns - 1);
         wrapPending = false;
