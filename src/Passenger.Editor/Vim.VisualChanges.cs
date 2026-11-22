@@ -60,11 +60,14 @@ public sealed partial class Vim
         (int Left, int Right) kept = (keptBlockLeft, keptBlockRight);
         bool toEnd = visualAims.Length > 0 && visualAims[Math.Clamp(visualPrimary, 0, visualAims.Length - 1)] == int.MaxValue;
         Region stretch = regions[0];
+        bool overLines = text.GetLineFromOffset(stretch.Low) != text.GetLineFromOffset(stretch.High);
+        bool inserts = op is "I" or "A";
         (keptBlockLeft, keptBlockRight) = block && !lines ? (left, right)
             : toEnd ? (keptBlockLeft, keptBlockRight)
-            : lines || text.GetLineFromOffset(stretch.Low) != text.GetLineFromOffset(stretch.High)
-                ? (0, stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab)
-                    : text.GetLineFromOffset(stretch.Low) == text.GetLineFromOffset(stretch.High) ? CaretColumn(text, stretch.Cursor, tab) : 0)
+            : inserts && !lines ? (0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
+            : lines || overLines
+                ? (inserts && overLines ? keptBlockLeft : 0,
+                    stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab) : !overLines ? CaretColumn(text, stretch.Cursor, tab) : 0)
             : (CaretColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
         EditPlan? split = block && !lines && (op is "I" or "A" or "r" || basic is "d" or "c" or "y")
@@ -329,7 +332,8 @@ public sealed partial class Vim
                 LineSpan cursorLine = VimMotions.LineOf(text, cursor);
                 bool onIt = cursorLine.Line == anchorLine.Line ? column == 0
                     : kept.Left <= TextNavigation.VisualColumn(text, cursorLine.End, tab) && (aim == kept.Left || (aim > kept.Left && column < kept.Left));
-                bool afterFirst = above && kept.Left != 0 && anchorLine.Length > 0;
+                // Back over lines A passes the first character where the kept columns start past it, or after $ widen.
+                bool afterFirst = above && (aim == int.MaxValue ? kept.Left < kept.Right : kept.Left != 0) && anchorLine.Length > 0;
                 int place = !after ? (above ? r.Cursor : anchorLine.Start)
                     : above ? (afterFirst ? TextNavigation.NextGrapheme(text, anchorLine.Start) : anchorLine.Start)
                     : aim == int.MaxValue ? (kept.Left == kept.Right ? Settled(text, r.Cursor, breakEnds)

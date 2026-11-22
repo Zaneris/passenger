@@ -91,6 +91,9 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>Set while . makes the last change again, which records nothing.</summary>
     private bool replaying;
 
+    /// <summary>Set while . makes the last change again with a count of its own.</summary>
+    private bool replayingCounted;
+
     /// <summary>Whether the file keeps a final line break (<see cref="IVimView.KeepsFinalLineBreak"/>), as the view said
     /// for what is being done: where it keeps none, a final line break begins an empty last line.</summary>
     private bool breakEnds = true;
@@ -681,6 +684,7 @@ public sealed partial class Vim(VimRegisters registers)
         VimRequest? asked = null;
         IReadOnlyList<string>? pressedAfter = null;
         replaying = true;
+        replayingCounted = count > 0;
         try
         {
             if (change.Visual is { Again: not InsertAgain.None } again)
@@ -740,6 +744,7 @@ public sealed partial class Vim(VimRegisters registers)
         finally
         {
             replaying = false;
+            replayingCounted = false;
             blockAgain = null;
             pending.Clear();
         }

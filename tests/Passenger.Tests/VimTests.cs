@@ -203,13 +203,6 @@ public sealed partial class VimTests
             + "start, where from the first '.' of \"x.\", \".\", \".\", \"a\" it passes the second '.' and the \"a\" after it alike, and "
             + "from the '.' of \"x!\", \".\", \")\" it stays, the ')' carrying the '.''s end",
             (vimCase, _, passenger) => vimCase.Keys.Contains(")") && passenger.Seen.Contains(LoneMarks)),
-        ($"iw and a( over a visual stretch by lines, which Vim's carry on or not, and keep by lines or not, by rules of their own; {ToFix}",
-            (vimCase, _, _) => vimCase.Commands.Any(command => (command.Keys[0] == "V" || command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "p")))
-                && command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "w") or ("a", "(")))),
-        ($"A over a visual stretch after another visual I or A, which Vim's places by columns that I or A keeps otherwise than the "
-            + $"stretch it took; {ToFix}",
-            (vimCase, _, _) => vimCase.Commands.Where((command, at) => command.Uses.Contains(VisualInsert)
-                && vimCase.Commands.Take(at).Any(before => before.Uses.Contains(VisualInsert))).Any()),
         ("A characterwise visual change of one line made after $ and made again by . takes from the caret to its line's end, "
             + "as . makes a visual change again from the caret, where Vim's takes that only from the line's first two columns and "
             + "from any other the line's start to the caret, whatever the stretch was: Vim's . there follows no rule of its own",
@@ -221,7 +214,6 @@ public sealed partial class VimTests
     private const string OpensLine = "o or O";
     private const string SentenceObject = "is or as";
     private const string LoneMarks = "two lines in a row each one sentence's end mark or closer alone";
-    private const string VisualInsert = "I or A in visual mode";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -380,7 +372,6 @@ public sealed partial class VimTests
                 {
                     string does = Pick(random, ["d", "y", "c", ">", "<", "~", "u", "U", "J", "x", "p", "r", "I", "A", "C", "S"]);
                     keys.AddRange(Each(register + does));
-                    uses.UnionWith(does is "I" or "A" ? [VisualInsert] : []);
                     if (does is "r")
                     {
                         keys.Add("-");

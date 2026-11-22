@@ -297,8 +297,8 @@ public sealed partial class Vim
     }
 
     /// <summary>J or gJ done. Lines joined are kept for . as a count of that many, fewer than asked where the text ended
-    /// first; on the last line, with nothing below to join, a count past two takes each caret to its line's start and is
-    /// kept for . as asked, and any smaller count fails.</summary>
+    /// first; on the last line, with nothing below to join, a count past two takes each caret to its line's start (but
+    /// for such a J made again by . with no count) and is kept for . as asked, and any smaller count fails.</summary>
     private VimResult Joined(Command command, EditPlan? plan, TextSnapshot text, SelectionSet selections)
     {
         int asked = Math.Max(command.Count, 2);
@@ -306,10 +306,10 @@ public sealed partial class Vim
         {
             int first = text.GetLineFromOffset(selections.Primary.Caret);
             int joined = Math.Max(2, Math.Min(asked, VimMotions.LastLine(text, breakEnds) - first + 1));
-            if (replaying && joined < asked && lastChange is { } again)
+            if (replaying && lastChange is { } again)
             {
                 // Made again with a count past the text's end, . keeps the lines it joined.
-                lastChange = again with { Count = joined };
+                lastChange = again with { Count = joined < asked ? joined : again.Count, JoinedNothing = false };
             }
             return Changed(joined < asked ? command with { Count = joined } : command, plan);
         }
@@ -317,8 +317,11 @@ public sealed partial class Vim
         {
             return VimResult.Held;
         }
+        bool stays = replaying && !replayingCounted && lastChange is { JoinedNothing: true };
         Remember(command);
-        return new VimResult(true, selections.With(s => Selection.At(VimMotions.LineOf(text, s.Caret).Start)));
+        lastChange = lastChange is null ? null : lastChange with { JoinedNothing = true };
+        actedOnNothing = true;
+        return new VimResult(true, stays ? selections : selections.With(s => Selection.At(VimMotions.LineOf(text, s.Caret).Start)));
     }
 
     /// <summary>A change made, kept for . to make again; nothing changed where there is no plan.</summary>
