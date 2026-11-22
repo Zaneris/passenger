@@ -83,6 +83,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   CI 45000646248 (Linux, report shard 1): "Only Passenger Relisted is listed, so a run's listing has nothing else to
   keep". **The test held a Mac's or Windows' targets**, as on 2026-11-21: on Linux, which runs no head of its own and no
   simulator, Android's stand-in is the only target, and the test now skips there saying so (156281110, #2095).
+- `AspireStandInTests`' `Debug_of_one_replica_says_the_next_run_debugs_every_replica_which_it_does`, CI 44989932645
+  (macOS and Linux, report shard 3), and `McpAspireStandInTests`' `An_agents_debug_start_of_one_replica_debugs_that_replicas_own_program`
+  on the Mac: "left programs' runtime files … dotnet-diagnostic-…-socket". **The IDE**: the debugger, ending a program it
+  had attached to (a replica held at its start), took no runtime files, only those of a program it launched, so each Stop
+  of such a session left the program's diagnostic socket; the debugger's fix for #2097 holds it, taking the files of any
+  program it ends (be547a6a4, #2092).
+- `McpAspireTests`' `An_AppHosts_session_container_a_crashed_Passenger_left_is_removed_as_the_next_one_starts_and_a_persistent_one_stays`,
+  CI 44989932645 (Linux, report shard 2): "left programs' runtime files … clr-debug-pipe-…". **The test's own doing**: the
+  crash it makes kills Passenger, its watchdog and the orchestrator alone, which leaves their runtimes' files with nobody
+  to take them; the test now reads them before the kill and takes them once gone (4b39672c7, #2103).
+- `AspireExternalDataTests`' `An_external_AppHost_is_found_and_its_environment_values_are_masked_in_the_window`, CI
+  44989932645 (macOS and Linux, report shard 2): "left programs' runtime files … clr-debug-pipe-…". **Another program's
+  doing**: the external AppHost's orchestrator ends the services it started as the AppHost goes, leaving their debugger
+  pipes; the test reads each program's files while it runs and takes them once it has gone (4b39672c7, #2103).
 
 ## 2026-11-21
 
