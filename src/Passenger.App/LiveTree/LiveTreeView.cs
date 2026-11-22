@@ -122,7 +122,8 @@ public sealed class LiveTreeView : DockPanel
         top.Children.Add(status);
         Children.Add(ToolBars.Top(top));
 
-        monitors = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+        // One line however narrow the window, its words whole in its tip, so what lies under it never moves as they change.
+        monitors = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         ChartsLink = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = ShowChartsWords, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
         ToolTip.SetTip(ChartsLink, ChartsTip);
         ChartsLink.Click += (_, _) => ChartsRequested?.Invoke(this, EventArgs.Empty);
@@ -580,6 +581,7 @@ public sealed class LiveTreeView : DockPanel
     {
         monitorsText = text;
         monitors.Text = text ?? (coming ? MonitorsComing : null);
+        ToolTip.SetTip(monitors, text);
         monitorsRow.IsVisible = text is not null || coming;
         ToolButtons.Grey(ChartsLink, text is null ? "The game's monitors have not come yet" : null, ChartsTip);
         charts.IsVisible = text is not null && charts.Content is not null;
