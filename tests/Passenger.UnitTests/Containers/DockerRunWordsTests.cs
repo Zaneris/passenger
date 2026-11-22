@@ -10,7 +10,14 @@ public sealed class DockerRunWordsTests
     private static readonly string Folder = Path.Combine(Path.GetTempPath(), "web");
 
     [Fact]
-    public void Options_joined_to_their_values_set_the_environment_port_and_memory_limit()
+    public void A_runs_docker_run_words_become_its_compose_services_keys_in_every_form_and_a_word_with_no_place_is_named() => Cases.All(
+        ("options joined to their values set the environment port and memory limit", Options_joined_to_their_values_set_the_environment_port_and_memory_limit),
+        ("each form of an option reads alike and one letter flags join", Each_form_of_an_option_reads_alike_and_one_letter_flags_join),
+        ("limits hosts and published exposed ports are carried and a name alone takes its value from where compose runs", Limits_hosts_and_published_exposed_ports_are_carried_and_a_name_alone_takes_its_value_from_where_compose_runs),
+        ("an option compose has no place for is named with its value", An_option_compose_has_no_place_for_is_named_with_its_value),
+        ("the service takes the keys and the words environment over the configurations", The_service_takes_the_keys_and_the_words_environment_over_the_configurations));
+
+    private void Options_joined_to_their_values_set_the_environment_port_and_memory_limit()
     {
         DockerRunWords read = DockerRunWords.Read(["--env=MODE=prod", "--publish=8080:80", "--memory=512m"], [], Folder);
         Assert.Equal("""{"MODE":"prod"}""", read.Environment.ToJsonString());
@@ -18,8 +25,7 @@ public sealed class DockerRunWordsTests
         Assert.Empty(read.Uncarried);
     }
 
-    [Fact]
-    public void Each_form_of_an_option_reads_alike_and_one_letter_flags_join()
+    private void Each_form_of_an_option_reads_alike_and_one_letter_flags_join()
     {
         DockerRunWords spaced = DockerRunWords.Read(["-p", "8080:80", "-e", "A=1", "-m", "1g", "-v", "data:/data", "--env-file", "web.env", "-i", "-t"], [], Folder);
         DockerRunWords joined = DockerRunWords.Read(["-p8080:80", "-eA=1", "-m1g", "--volume=data:/data", "--env-file=web.env", "-it"], [], Folder);
@@ -29,8 +35,7 @@ public sealed class DockerRunWordsTests
         Assert.True(joined.Keys["tty"]!.GetValue<bool>() && joined.Keys["stdin_open"]!.GetValue<bool>(), joined.Keys.ToJsonString());
     }
 
-    [Fact]
-    public void Limits_hosts_and_published_exposed_ports_are_carried_and_a_name_alone_takes_its_value_from_where_compose_runs()
+    private void Limits_hosts_and_published_exposed_ports_are_carried_and_a_name_alone_takes_its_value_from_where_compose_runs()
     {
         DockerRunWords read = DockerRunWords.Read(["--cpus", "1.5", "--add-host=db:10.0.0.2", "-P", "-e", "TOKEN", "--rm", "-d", "--network", "host"], [8080, 8081], Folder);
         Assert.Equal("""{"cpus":"1.5","extra_hosts":["db:10.0.0.2"],"ports":["8080","8081"],"network_mode":"host"}""", read.Keys.ToJsonString());
@@ -38,16 +43,14 @@ public sealed class DockerRunWordsTests
         Assert.Empty(read.Uncarried);
     }
 
-    [Fact]
-    public void An_option_compose_has_no_place_for_is_named_with_its_value()
+    private void An_option_compose_has_no_place_for_is_named_with_its_value()
     {
         DockerRunWords read = DockerRunWords.Read(["--gpus", "all", "--ulimit=nofile=1024", "-p", "80", "--network", "backend", "--sig-proxy", "-x", "stray"], [], Folder);
         Assert.Equal(["--gpus all", "--ulimit=nofile=1024", "--network=backend", "--sig-proxy", "-x", "stray"], read.Uncarried);
         Assert.Equal("""{"ports":["80"]}""", read.Keys.ToJsonString());
     }
 
-    [Fact]
-    public void The_service_takes_the_keys_and_the_words_environment_over_the_configurations()
+    private void The_service_takes_the_keys_and_the_words_environment_over_the_configurations()
     {
         JsonObject service = new() { ["image"] = "web" };
         JsonObject environment = new() { ["MODE"] = "dev", ["KEEP"] = "1" };

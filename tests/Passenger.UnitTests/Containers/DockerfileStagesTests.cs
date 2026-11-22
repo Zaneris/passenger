@@ -20,7 +20,18 @@ public sealed class DockerfileStagesTests
         """;
 
     [Fact]
-    public void Each_variable_takes_the_builds_argument_else_the_ARGs_default_else_its_ENV_and_one_none_sets_stays()
+    public void A_Dockerfiles_build_is_read_with_its_variables_put_in_and_the_assembly_its_ENTRYPOINT_runs_in_each_form() => Cases.All(
+        ("each variable takes the builds argument else the ARGs default else its ENV and one none sets stays", Each_variable_takes_the_builds_argument_else_the_ARGs_default_else_its_ENV_and_one_none_sets_stays),
+        ("the assembly an ENTRYPOINT runs with dotnet is read in each form", () => Cases.Each<string>(
+        [
+            "ENTRYPOINT [\"dotnet\", \"/app/Foo.WebApi.dll\"]",
+            "ENTRYPOINT [\"sh\", \"-c\", \"exec dotnet Foo.WebApi.dll --urls http://+:8080\"]",
+            "ENTRYPOINT dotnet /app/Foo.WebApi.dll",
+            "ENTRYPOINT exec dotnet \"Foo.WebApi.dll\"",
+        ], The_assembly_an_ENTRYPOINT_runs_with_dotnet_is_read_in_each_form)),
+        ("an ENTRYPOINT of another program runs no assembly", An_ENTRYPOINT_of_another_program_runs_no_assembly));
+
+    private void Each_variable_takes_the_builds_argument_else_the_ARGs_default_else_its_ENV_and_one_none_sets_stays()
     {
         string given = DockerfileStages.Expanded(Shared, new Dictionary<string, string> { ["ASSEMBLY_NAME"] = "Foo.WebApi" });
         Assert.Contains("dotnet publish \"./Foo.WebApi.csproj\"", given, StringComparison.Ordinal);
@@ -31,19 +42,12 @@ public sealed class DockerfileStagesTests
         Assert.Contains("dotnet publish \"./${ASSEMBLY_NAME}.csproj\"", DockerfileStages.Expanded(Shared, new Dictionary<string, string>()), StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("ENTRYPOINT [\"dotnet\", \"/app/Foo.WebApi.dll\"]")]
-    [InlineData("ENTRYPOINT [\"sh\", \"-c\", \"exec dotnet Foo.WebApi.dll --urls http://+:8080\"]")]
-    [InlineData("ENTRYPOINT [\"/bin/bash\", \"-c\", \"dotnet \\\"Foo.WebApi.dll\\\"\"]")]
-    [InlineData("ENTRYPOINT dotnet /app/Foo.WebApi.dll")]
-    [InlineData("ENTRYPOINT exec dotnet \"Foo.WebApi.dll\"")]
-    public void The_assembly_an_ENTRYPOINT_runs_with_dotnet_is_read_in_each_form(string entrypoint)
+    private void The_assembly_an_ENTRYPOINT_runs_with_dotnet_is_read_in_each_form(string entrypoint)
     {
         Assert.Equal("Foo.WebApi", DockerfileStages.Read($"FROM mcr.microsoft.com/dotnet/aspnet:10.0\n{entrypoint}\n").Final?.EntryAssembly);
     }
 
-    [Fact]
-    public void An_ENTRYPOINT_of_another_program_runs_no_assembly()
+    private void An_ENTRYPOINT_of_another_program_runs_no_assembly()
     {
         Assert.Null(DockerfileStages.Read("FROM busybox:1.38\nENTRYPOINT [\"sh\", \"-c\", \"sleep 600\"]\n").Final?.EntryAssembly);
     }

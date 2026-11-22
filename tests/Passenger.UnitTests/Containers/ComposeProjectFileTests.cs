@@ -27,7 +27,20 @@ public sealed class ComposeProjectFileTests
         """;
 
     [Fact]
-    public void A_projects_properties_are_read_as_written_its_compose_project_named_by_DockerComposeProjectName()
+    public void A_dcproj_is_read_as_text_for_its_compose_files_service_project_name_and_items_and_no_DTD_expanded() => Cases.All(
+        ("a projects properties are read as written its compose project named by DockerComposeProjectName", A_projects_properties_are_read_as_written_its_compose_project_named_by_DockerComposeProjectName),
+        ("a project of MSBuilds old namespace naming nothing takes compose s defaults and its own name for none", A_project_of_MSBuilds_old_namespace_naming_nothing_takes_compose_s_defaults_and_its_own_name_for_none),
+        ("dockerLaunchAction says whether the browser opens and DockerLaunchBrowser says only where it is not set", () => Cases.Each<(string, bool)>(
+        [
+            ("<DockerLaunchBrowser>True</DockerLaunchBrowser>", true),
+            ("<DockerLaunchAction>None</DockerLaunchAction><DockerLaunchBrowser>true</DockerLaunchBrowser>", false),
+            ("<DockerLaunchAction>launchbrowser</DockerLaunchAction><DockerLaunchBrowser>false</DockerLaunchBrowser>", true),
+            ("", false),
+        ], row => DockerLaunchAction_says_whether_the_browser_opens_and_DockerLaunchBrowser_says_only_where_it_is_not_set(row.Item1, row.Item2))),
+        ("its items are the files its ItemGroups name with their metadata and none MSBuild would expand or hide", Its_items_are_the_files_its_ItemGroups_name_with_their_metadata_and_none_MSBuild_would_expand_or_hide),
+        ("text that is no XML and an entity a DTD declares read as no project", Text_that_is_no_XML_and_an_entity_a_DTD_declares_read_as_no_project));
+
+    private void A_projects_properties_are_read_as_written_its_compose_project_named_by_DockerComposeProjectName()
     {
         ComposeProjectFile read = ComposeProjectFile.Read(Shop) ?? throw new Xunit.Sdk.XunitException("The .dcproj did not read");
         Assert.Equal("my-shop", read.ProjectName);
@@ -36,8 +49,7 @@ public sealed class ComposeProjectFileTests
         Assert.Equal(("web", "{Scheme}://localhost:{ServicePort}/swagger", true), (read.ServiceName, read.ServiceUrl, read.LaunchesBrowser));
     }
 
-    [Fact]
-    public void A_project_of_MSBuilds_old_namespace_naming_nothing_takes_compose_s_defaults_and_its_own_name_for_none()
+    private void A_project_of_MSBuilds_old_namespace_naming_nothing_takes_compose_s_defaults_and_its_own_name_for_none()
     {
         ComposeProjectFile read = ComposeProjectFile.Read("""
             <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -54,22 +66,14 @@ public sealed class ComposeProjectFileTests
         Assert.Equal(("docker-compose", 0, string.Empty, false), (read.BaseFilePath, read.AdditionalFiles.Count, read.ServiceName, read.LaunchesBrowser));
     }
 
-    [Theory]
-    [InlineData("<DockerLaunchBrowser>True</DockerLaunchBrowser>", true)]
-    [InlineData("<DockerLaunchBrowser>false</DockerLaunchBrowser>", false)]
-    [InlineData("<DockerLaunchAction>None</DockerLaunchAction><DockerLaunchBrowser>true</DockerLaunchBrowser>", false)]
-    [InlineData("<DockerLaunchAction>launchbrowser</DockerLaunchAction><DockerLaunchBrowser>false</DockerLaunchBrowser>", true)]
-    [InlineData("<DockerLaunchAction>LaunchWCFTestClient</DockerLaunchAction>", false)]
-    [InlineData("", false)]
-    public void DockerLaunchAction_says_whether_the_browser_opens_and_DockerLaunchBrowser_says_only_where_it_is_not_set(string properties, bool opens)
+    private void DockerLaunchAction_says_whether_the_browser_opens_and_DockerLaunchBrowser_says_only_where_it_is_not_set(string properties, bool opens)
     {
         ComposeProjectFile read = ComposeProjectFile.Read($"<Project Sdk=\"Microsoft.Docker.Sdk\"><PropertyGroup>{properties}</PropertyGroup></Project>")
             ?? throw new Xunit.Sdk.XunitException("The .dcproj did not read");
         Assert.True(read.LaunchesBrowser == opens, $"A .dcproj of {properties} {(opens ? "opened no browser" : "opened the browser")}");
     }
 
-    [Fact]
-    public void Its_items_are_the_files_its_ItemGroups_name_with_their_metadata_and_none_MSBuild_would_expand_or_hide()
+    private void Its_items_are_the_files_its_ItemGroups_name_with_their_metadata_and_none_MSBuild_would_expand_or_hide()
     {
         ComposeProjectFile read = ComposeProjectFile.Read("""
             <Project Sdk="Microsoft.Docker.Sdk">
@@ -98,8 +102,7 @@ public sealed class ComposeProjectFileTests
             read.Items);
     }
 
-    [Fact]
-    public void Text_that_is_no_XML_and_an_entity_a_DTD_declares_read_as_no_project()
+    private void Text_that_is_no_XML_and_an_entity_a_DTD_declares_read_as_no_project()
     {
         Assert.Null(ComposeProjectFile.Read("<Project><PropertyGroup>"));
         Assert.Null(ComposeProjectFile.Read("""

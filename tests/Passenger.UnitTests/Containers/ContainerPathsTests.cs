@@ -9,7 +9,12 @@ public sealed class ContainerPathsTests
     private static readonly string Context = Path.Combine(Path.GetTempPath(), "shop");
 
     [Fact]
-    public void A_copy_of_a_dot_folder_maps_the_images_folder_to_the_contexts_dot_folder()
+    public void A_containers_paths_map_to_the_files_its_Dockerfile_copied_from_the_context() => Cases.All(
+        ("a copy of a dot folder maps the images folder to the contexts dot folder", A_copy_of_a_dot_folder_maps_the_images_folder_to_the_contexts_dot_folder),
+        ("a source from the contexts root maps alike written with or without its leading dot slash", A_source_from_the_contexts_root_maps_alike_written_with_or_without_its_leading_dot_slash),
+        ("a workspace files container path keeps a backslash its name holds where the system takes it as a letter", A_workspace_files_container_path_keeps_a_backslash_its_name_holds_where_the_system_takes_it_as_a_letter));
+
+    private void A_copy_of_a_dot_folder_maps_the_images_folder_to_the_contexts_dot_folder()
     {
         ContainerPaths map = Map("COPY .config/ /app/.config/\n");
         Assert.Contains(("/app/.config/", Path.Combine(Context, ".config")), map.Pairs);
@@ -17,8 +22,7 @@ public sealed class ContainerPathsTests
         Assert.Equal("/app/.config/settings.json", map.ToContainer(Path.Combine(Context, ".config", "settings.json")));
     }
 
-    [Fact]
-    public void A_source_from_the_contexts_root_maps_alike_written_with_or_without_its_leading_dot_slash()
+    private void A_source_from_the_contexts_root_maps_alike_written_with_or_without_its_leading_dot_slash()
     {
         foreach (string source in (string[])["src/", "./src/", "/src/", "././src/"])
         {
@@ -31,8 +35,7 @@ public sealed class ContainerPathsTests
 
     /// <summary>A backslash parts a path's names only on Windows: on macOS and Linux it is a letter of a file's name, which
     /// the container's path keeps, where a slash would name another file.</summary>
-    [Fact]
-    public void A_workspace_files_container_path_keeps_a_backslash_its_name_holds_where_the_system_takes_it_as_a_letter()
+    private void A_workspace_files_container_path_keeps_a_backslash_its_name_holds_where_the_system_takes_it_as_a_letter()
     {
         string file = Path.Combine(Context, "wwwroot", @"site\app.css");
         string expected = OperatingSystem.IsWindows() ? "/app/wwwroot/site/app.css" : @"/app/wwwroot/site\app.css";
