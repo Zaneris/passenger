@@ -593,10 +593,13 @@ public static class VimMotions
             return PastEmptyLines(text, last, p);
         }
         int start = SentenceStartOf(text, last, p, p, top: false);
-        if (EmptyAt(text, start) && start > p)
-        {
-            return start;
-        }
+        return EmptyAt(text, start) && start > p ? start : StartAfter(text, last, start);
+    }
+
+    /// <summary>The start of the sentence after the one starting at <paramref name="start"/>: past its first end, or the
+    /// first empty line after it; -1 where neither comes.</summary>
+    private static int StartAfter(TextSnapshot text, int last, int start)
+    {
         for (int q = start; q >= 0; q = Inc(text, last, q))
         {
             if (q != start && EmptyAt(text, q))
@@ -609,6 +612,345 @@ public static class VimMotions
             }
         }
         return -1;
+    }
+
+    /// <summary>is and as: <paramref name="n"/> of the sentences and the runs of white between them, from the one the
+    /// caret is in; the outer one takes each sentence with the white after it, or before where none is after.</summary>
+    public static VimSpan? SentenceObject(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
+    {
+        int last = LastLine(text, breakEnds);
+        int textEnd = text.GetLine(last).End;
+        caret = Math.Min(caret, textEnd);
+        if (!EmptyAt(text, caret) && EndsSentenceAt(text, caret) && Dec(text, caret) is var above && above >= 0 && EmptyAt(text, above))
+        {
+            // An end mark opening a paragraph stands for the empty line before it.
+            caret = above;
+        }
+        if ((!inner || n > 1) && !EmptyAt(text, caret) && LeadingBlank(text, last, caret))
+        {
+            // In blank lines opening the text, as and a count of is take its first place alone.
+            LineSpan first = text.GetLine(0);
+            return new VimSpan(0, first.Length > 1 ? 1 : first.EndIncludingBreak, false);
+        }
+        int start = -1;
+        int end;
+        int next;
+        bool white = false;
+        if (EmptyAt(text, caret))
+        {
+            LineSpan line = LineOf(text, caret);
+            int runEnd = line.Line;
+            while (runEnd < last && text.GetLine(runEnd + 1).Length == 0)
+            {
+                runEnd++;
+            }
+            if (line.Line == last || runEnd == last)
+            {
+                return EmptyEnd(text, last, line.Line, n, inner, breakEnds);
+            }
+            start = text.GetLine(runEnd).Start;
+            end = SentenceEnd(text, last, start);
+            next = Math.Max(end, Forward(text, last, start));
+        }
+        else
+        {
+            int mark = EndMarkBehind(text, last, caret, out int gap);
+            int following = mark >= 0 && mark < caret ? StartAfterEnd(text, last, mark) : -1;
+            if (following > caret && CharAt(text, caret) is ' ' or '\t')
+            {
+                // In the white after a sentence's end.
+                int whiteStart = mark + 1;
+                while (IsCloser(CharAt(text, whiteStart)))
+                {
+                    whiteStart++;
+                }
+                (end, next, white) = (TextEndBefore(text, last, mark, whiteStart), following, true);
+            }
+            else if (following >= 0 && following < caret)
+            {
+                // Among the marks and closers an end carries over from the line before: that end's sentence.
+                int before = Dec(text, mark);
+                start = before < 0 ? SentenceStartOf(text, last, mark, mark, top: true)
+                    : EmptyAt(text, before) ? before : SentenceStartOf(text, last, before, mark, top: true);
+                next = following;
+                end = TextEndBefore(text, last, start, next);
+            }
+            else if (BlankParagraph(text, last, caret) is { } blank)
+            {
+                // Blank lines opening a paragraph with no text: their white.
+                (end, next, white) = (blank.Start, blank.End, true);
+            }
+            else
+            {
+                start = Math.Max(0, SentenceBack(text, last, Inc(text, last, caret) is var after && after >= 0 ? after : caret));
+                if (EmptyAt(text, start) && start < caret && LineOf(text, start).Line != LineOf(text, caret).Line)
+                {
+                    start = FirstText(text, last, text.GetLine(LineOf(text, start).Line + 1).Start);
+                }
+                bool gapBeforeText = gap >= 0 && gap < textEnd && !EmptyAt(text, gap);
+                if ((gap < 0 || gapBeforeText) && Forward(text, last, start) == caret)
+                {
+                    // At the next sentence's start, that sentence.
+                    start = caret;
+                }
+                if (start == caret && gapBeforeText && IsSentenceEnd(CharAt(text, caret)))
+                {
+                    // A lone end mark before text is no start of its own.
+                    start = FirstText(text, last, gap);
+                }
+                next = Forward(text, last, start);
+                if (next <= start)
+                {
+                    // A sentence ) cannot pass: nothing, at its start.
+                    return new VimSpan(start, start, false);
+                }
+                end = SentenceEnd(text, last, start);
+                white = end <= caret && caret < next;
+            }
+        }
+        int from = white ? end : start;
+        int to = from;
+        if (!inner && white)
+        {
+            // as from white: n times the white and the sentence after it.
+            for (int i = 0; i < n; i++)
+            {
+                int sentence = next;
+                int textUntil = SentenceEnd(text, last, sentence);
+                int after = Math.Max(textUntil, Forward(text, last, sentence));
+                if (textUntil < after || after < textEnd && EndsWithMark(text, sentence, textUntil))
+                {
+                    (to, next) = (textUntil, after);
+                    continue;
+                }
+                // With no white after it: taken at the text's end but for a last word after a blank, else not taken.
+                if (after < textEnd || text.GetLine(last).Length == 0)
+                {
+                    return new VimSpan(from, i == 0 ? from : to, false);
+                }
+                int lastChar = textEnd - 1;
+                int cut = Dec(text, lastChar);
+                bool blanks = cut > sentence && CharAt(text, cut) is ' ' or '\t';
+                while (cut > sentence && CharAt(text, cut) is ' ' or '\t')
+                {
+                    cut = Dec(text, cut);
+                }
+                int until = blanks ? cut + 1 : lastChar > sentence ? textEnd : sentence;
+                return new VimSpan(from, until > sentence ? until : i == 0 ? from : to, false);
+            }
+            return new VimSpan(from, to, false);
+        }
+        bool emptyFirst = !white && EmptyAt(text, start);
+        bool lastWhiteEmpty = false;
+        // Each unit is a sentence or the white after it; is takes n of them, as n sentences with their white.
+        bool onWhite = white;
+        for (int i = 0; i < (inner ? n : 2 * n); i++)
+        {
+            if (i > 0 && !onWhite && start >= textEnd)
+            {
+                // A count of is running past the text's end fails; of as, it takes what there is.
+                if (inner)
+                {
+                    return null;
+                }
+                break;
+            }
+            to = onWhite ? next : end;
+            lastWhiteEmpty = onWhite && next == end;
+            if (onWhite)
+            {
+                start = next;
+                end = SentenceEnd(text, last, start);
+                next = Math.Max(end, Forward(text, last, start));
+            }
+            onWhite = !onWhite;
+        }
+        if (!inner && lastWhiteEmpty)
+        {
+            if (emptyFirst && n == 1 && LineOf(text, from).Line > 0 && text.GetLine(LineOf(text, from).Line - 1) is { Length: > 0 } prior
+                && text[prior.End - 1] is ' ' or '\t' && TextNavigation.IndentEnd(text, prior) < prior.End)
+            {
+                // An empty line after a line ending in blanks: those blanks and the break, short of the empty line.
+                return new VimSpan(WhiteBefore(text, from), from, false);
+            }
+            from = emptyFirst ? BlankLinesBefore(text, from) : WhiteBefore(text, from);
+        }
+        return new VimSpan(from, Math.Max(from, to), false);
+    }
+
+    /// <summary>The lines of blanks the place is on where they open a paragraph after an empty line with no text before
+    /// the next empty line or the text's end: from their start to there; null otherwise.</summary>
+    private static TextRange? BlankParagraph(TextSnapshot text, int last, int caret)
+    {
+        LineSpan line = LineOf(text, caret);
+        int top = line.Line;
+        while (top > 0 && text.GetLine(top - 1) is { Length: > 0 } above && TextNavigation.IndentEnd(text, above) == above.End)
+        {
+            top--;
+        }
+        if (top == 0 || text.GetLine(top - 1).Length > 0 || TextNavigation.IndentEnd(text, line) < line.End)
+        {
+            return null;
+        }
+        int paragraph = text.GetLine(top).Start;
+        int first = FirstText(text, last, paragraph);
+        return first >= text.GetLine(last).End || EmptyAt(text, first) ? TextRange.FromBounds(paragraph, first) : null;
+    }
+
+    /// <summary>Whether the place is on the lines of blanks alone that open the text, with no text before an empty line
+    /// or the text's end.</summary>
+    private static bool LeadingBlank(TextSnapshot text, int last, int caret)
+    {
+        int line = 0;
+        while (line <= last && text.GetLine(line) is { Length: > 0 } span && TextNavigation.IndentEnd(text, span) == span.End)
+        {
+            line++;
+        }
+        return line > LineOf(text, caret).Line && (line > last || text.GetLine(line).Length == 0);
+    }
+
+    /// <summary>Whether the text from <paramref name="start"/> to <paramref name="end"/> ends with a sentence's end mark
+    /// and the closers after it.</summary>
+    private static bool EndsWithMark(TextSnapshot text, int start, int end)
+    {
+        int q = end;
+        while (q > start && text[q - 1] is '\n' or '\r')
+        {
+            q--;
+        }
+        while (q > start && IsCloser(text[q - 1]))
+        {
+            q--;
+        }
+        return q > start && IsSentenceEnd(text[q - 1]);
+    }
+
+    /// <summary>Back from a sentence's start over the blanks before it, on through line breaks after lines that end in a
+    /// blank, never past an empty line.</summary>
+    private static int WhiteBefore(TextSnapshot text, int from)
+    {
+        while (from > 0)
+        {
+            LineSpan line = LineOf(text, from);
+            if (from > line.Start && text[from - 1] is ' ' or '\t')
+            {
+                from--;
+            }
+            else if (from == line.Start && line.Line > 0 && text.GetLine(line.Line - 1) is { Length: > 0 } above && text[above.End - 1] is ' ' or '\t')
+            {
+                from = above.End;
+            }
+            else
+            {
+                break;
+            }
+        }
+        return from;
+    }
+
+    /// <summary>Back from an empty line over the whole lines of blanks before it.</summary>
+    private static int BlankLinesBefore(TextSnapshot text, int from)
+    {
+        int line = LineOf(text, from).Line;
+        while (line > 0 && text.GetLine(line - 1) is { Length: > 0 } above && TextNavigation.IndentEnd(text, above) == above.End)
+        {
+            line--;
+        }
+        return text.GetLine(line).Start;
+    }
+
+    /// <summary>The first mark that ends a sentence in the end ) takes the place back to (<see cref="SentenceTailBack"/>),
+    /// -1 where none does.</summary>
+    private static int EndMarkBehind(TextSnapshot text, int last, int caret, out int gap)
+    {
+        int first = SentenceTailBack(text, last, caret, out gap);
+        int upTo = BlanksBack(text, caret, toEmpty: false);
+        for (int q = first; IsSentenceEnd(CharAt(text, first)) && q >= 0 && q <= upTo; q = Inc(text, last, q))
+        {
+            if (EndsSentenceAt(text, q))
+            {
+                return q;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>is and as on a run of empty lines that ends the text, or on its last line: the sentence before the run as
+    /// whole lines, or the white the line before ends with.</summary>
+    private static VimSpan? EmptyEnd(TextSnapshot text, int last, int line, int n, bool inner, bool breakEnds)
+    {
+        if (line == last)
+        {
+            int here = text.GetLine(line).Start;
+            if (line == 0 || text.GetLine(line - 1) is not { Length: > 0 } before || n > 1 || !inner)
+            {
+                return new VimSpan(here, here, false);
+            }
+            int blank = before.End;
+            while (blank > before.Start && text[blank - 1] is ' ' or '\t')
+            {
+                blank--;
+            }
+            if (blank > before.Start)
+            {
+                return blank == before.End ? new VimSpan(here, here, false) : new VimSpan(blank, before.End, false);
+            }
+            int top = before.Line;
+            while (top > 0 && text.GetLine(top - 1) is { Length: > 0 } above && TextNavigation.IndentEnd(text, above) == above.End)
+            {
+                top--;
+            }
+            return new VimSpan(text.GetLine(top).Start, before.Start, true);
+        }
+        int first = line;
+        while (first > 0 && text.GetLine(first - 1).Length == 0)
+        {
+            first--;
+        }
+        if (first == 0)
+        {
+            return new VimSpan(0, text.GetLine(last - 1).Start, true);
+        }
+        // Before a run of empty lines that ends the text, the sentence the text before it ends with.
+        LineSpan previous = text.GetLine(first - 1);
+        return SentenceObject(text, BlanksBack(text, previous.End, toEmpty: false), n, inner, breakEnds);
+    }
+
+    /// <summary>Where the sentence at <paramref name="start"/> ends: a run of empty lines short of the last line at the
+    /// next line's start, else its text's end.</summary>
+    private static int SentenceEnd(TextSnapshot text, int last, int start)
+    {
+        LineSpan line = LineOf(text, start);
+        if (line.Length > 0)
+        {
+            return TextEndBefore(text, last, start, Forward(text, last, start));
+        }
+        int run = line.Line;
+        while (run + 1 < last && text.GetLine(run + 1).Length == 0)
+        {
+            run++;
+        }
+        return run < last ? text.GetLine(run + 1).Start : line.End;
+    }
+
+    /// <summary>Where one ) goes from a place, the last line's end where it goes past the last sentence.</summary>
+    private static int Forward(TextSnapshot text, int last, int p)
+    {
+        int next = SentenceForward(text, last, p);
+        return next < 0 ? text.GetLine(last).End : next;
+    }
+
+    /// <summary>Where the text of a sentence from <paramref name="start"/> ends before <paramref name="next"/>: back over
+    /// blanks and line ends; at a line's end, the next line's start.</summary>
+    private static int TextEndBefore(TextSnapshot text, int last, int start, int next)
+    {
+        int end = next;
+        while (end > start && text[end - 1] is ' ' or '\t' or '\n' or '\r')
+        {
+            end--;
+        }
+        LineSpan line = LineOf(text, end);
+        return end == line.End && end > start && line.Line < last ? text.GetLine(line.Line + 1).Start : end;
     }
 
     /// <summary>Where ) goes from a place in a gap: nowhere further before the text's end, from an empty line past its
