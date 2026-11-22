@@ -11,7 +11,12 @@ public class StoredReadTests
     private const int Large = 20 * 1024 * 1024;
 
     [Fact]
-    public async Task A_large_binary_file_is_compared_and_counted_through_buffers_never_held_whole()
+    public Task A_revisions_file_is_read_beside_the_disks_a_binary_one_through_buffers_never_held_whole() => Cases.AllAsync(
+        ("a large binary file is compared and counted through buffers never held whole", A_large_binary_file_is_compared_and_counted_through_buffers_never_held_whole),
+        ("a binary file new or deleted is counted and two text files are read no further than their probes", A_binary_file_new_or_deleted_is_counted_and_two_text_files_are_read_no_further_than_their_probes),
+        ("a revisions text is read whole and a binary files bytes only counted", A_revisions_text_is_read_whole_and_a_binary_files_bytes_only_counted));
+
+    private async Task A_large_binary_file_is_compared_and_counted_through_buffers_never_held_whole()
     {
         byte[] stored = Binary(Large, seed: 1);
         byte[] changed = (byte[])stored.Clone();
@@ -30,8 +35,7 @@ public class StoredReadTests
         Assert.True(most < 256 * 1024, $"Comparing two {Large}-byte binary files allocated {most} bytes, so a large asset's diff costs its size");
     }
 
-    [Fact]
-    public async Task A_binary_file_new_or_deleted_is_counted_and_two_text_files_are_read_no_further_than_their_probes()
+    private async Task A_binary_file_new_or_deleted_is_counted_and_two_text_files_are_read_no_further_than_their_probes()
     {
         byte[] asset = Binary(100_000, seed: 2);
         Assert.Equal(new BinaryChange(null, asset.Length, false), await StoredRead.CompareAsync(null, Piecewise(asset)));
@@ -47,8 +51,7 @@ public class StoredReadTests
         Assert.Null(await StoredRead.CompareAsync(null, Piecewise(text)));
     }
 
-    [Fact]
-    public async Task A_revisions_text_is_read_whole_and_a_binary_files_bytes_only_counted()
+    private async Task A_revisions_text_is_read_whole_and_a_binary_files_bytes_only_counted()
     {
         byte[] text = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("café au lait\n", 30_000)));
         StoredBytes read = await StoredRead.ReadAsync(Piecewise(text));

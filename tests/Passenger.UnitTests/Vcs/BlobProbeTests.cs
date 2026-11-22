@@ -10,7 +10,11 @@ namespace Passenger.UnitTests.Vcs;
 public class BlobProbeTests
 {
     [Fact]
-    public async Task Each_blob_is_looked_at_by_at_most_the_probes_bytes_however_large_it_is()
+    public Task A_conflicts_blobs_are_told_binary_by_their_first_bytes_alone_and_an_answer_cut_short_read_up_to_it() => Cases.AllAsync(
+        ("each blob is looked at by at most the probes bytes however large it is", Each_blob_is_looked_at_by_at_most_the_probes_bytes_however_large_it_is),
+        ("an answer cut short or not a blobs leaves it and those after it unanswered", An_answer_cut_short_or_not_a_blobs_leaves_it_and_those_after_it_unanswered));
+
+    private async Task Each_blob_is_looked_at_by_at_most_the_probes_bytes_however_large_it_is()
     {
         byte[] large = new byte[3 * 1024 * 1024];
         large.AsSpan().Fill((byte)'x');
@@ -32,8 +36,7 @@ public class BlobProbeTests
         Assert.Equal(new Dictionary<string, bool> { ["aaaa"] = false, ["bbbb"] = false, ["cccc"] = true, ["dddd"] = false, ["eeee"] = false }, found);
     }
 
-    [Fact]
-    public async Task An_answer_cut_short_or_not_a_blobs_leaves_it_and_those_after_it_unanswered()
+    private async Task An_answer_cut_short_or_not_a_blobs_leaves_it_and_those_after_it_unanswered()
     {
         byte[] whole = Answers(("aaaa", [1, 0, 2]), ("bbbb", new byte[100]));
         byte[] cut = whole[..^40];

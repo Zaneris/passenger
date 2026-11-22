@@ -10,7 +10,12 @@ public class CommitSignatureTests
     private const string Tree = "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor A <a@example.org> 1700000000 +0000\ncommitter A <a@example.org> 1700000000 +0000\n";
 
     [Fact]
-    public void A_batch_names_the_signed_commits_by_their_armour_and_passes_over_the_unsigned_missing_and_unknown()
+    public void A_commits_signature_is_found_by_its_armour_and_gits_verdict_said_with_what_it_is_worth() => Cases.All(
+        ("a batch names the signed commits by their armour and passes over the unsigned missing and unknown", A_batch_names_the_signed_commits_by_their_armour_and_passes_over_the_unsigned_missing_and_unknown),
+        ("gits verdicts are read for the signed and said with the signer and key", Gits_verdicts_are_read_for_the_signed_and_said_with_the_signer_and_key),
+        ("each verdict has its state and words", Each_verdict_has_its_state_and_words));
+
+    private void A_batch_names_the_signed_commits_by_their_armour_and_passes_over_the_unsigned_missing_and_unknown()
     {
         string batch = Object("1111", Tree + "gpgsig -----BEGIN SSH SIGNATURE-----\n U1NIU0lH\n -----END SSH SIGNATURE-----\n\nSigned\n")
             + Object("2222", Tree + "\nUnsigned, though its message says\ngpgsig -----BEGIN PGP SIGNATURE-----\n")
@@ -22,8 +27,7 @@ public class CommitSignatureTests
         Assert.Equal(["1111 Ssh", "4444 OpenPgp", "5555 X509"], formats.Select(f => $"{f.Key} {f.Value}").Order(StringComparer.Ordinal));
     }
 
-    [Fact]
-    public void Gits_verdicts_are_read_for_the_signed_and_said_with_the_signer_and_key()
+    private void Gits_verdicts_are_read_for_the_signed_and_said_with_the_signer_and_key()
     {
         Dictionary<string, SigningFormat> formats = new() { ["1111"] = SigningFormat.Ssh, ["2222"] = SigningFormat.Ssh, ["3333"] = SigningFormat.OpenPgp, ["4444"] = SigningFormat.OpenPgp };
         string output = string.Concat(new[]
@@ -45,8 +49,7 @@ public class CommitSignatureTests
             (verdicts["4444"].State, verdicts["4444"].Said));
     }
 
-    [Fact]
-    public void Each_verdict_has_its_state_and_words()
+    private void Each_verdict_has_its_state_and_words()
     {
         CommitSignature Of(char verdict) => new(SigningFormat.OpenPgp, verdict, "Me", "ABCD");
         Assert.Equal(

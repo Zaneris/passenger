@@ -7,19 +7,22 @@ namespace Passenger.UnitTests.Vcs;
 /// that adds or takes it away makes a change, and taking that change gives the result the side's ending.</summary>
 public class ThreeWayMergeTests
 {
-    [Theory]
-    [InlineData("a\nb", "a\nb\n", "a\nb", "a\nb\n")]
-    [InlineData("a\nb\n", "a\nb", "a\nb\n", "a\nb")]
-    [InlineData("a\r\nb", "a\r\nb\r\n", "a\r\nb", "a\r\nb\r\n")]
-    [InlineData("a\nb", "a\nb", "a\nB\n", "a\nB\n")]
-    [InlineData("a\nb", "a\n", "a\nb", "a\n")]
-    [InlineData("a\nb\nc", "a\nb\nc\nd\n", "a\nb\nc", "a\nb\nc\nd\n")]
-    [InlineData("x\na\nb", "x\na\nb\n", "y\na\nb", "y\na\nb\n")]
-    public void A_change_only_one_side_made_to_the_last_line_break_is_a_change_and_taking_it_gives_that_sides_ending(string common, string left, string right, string merged) =>
+    [Fact]
+    public void The_merge_window_takes_a_change_to_the_last_line_break_as_any_other_and_a_conflict_where_both_sides_differ() => Cases.All(
+        ("a change only one side made to the last line break is a change and taking it gives that sides ending", () => Cases.Each<(string, string, string, string)>(
+        [
+            ("a\nb", "a\nb\n", "a\nb", "a\nb\n"),
+            ("a\nb\n", "a\nb", "a\nb\n", "a\nb"),
+            ("a\r\nb", "a\r\nb\r\n", "a\r\nb", "a\r\nb\r\n"),
+            ("a\nb", "a\n", "a\nb", "a\n"),
+            ("a\nb\nc", "a\nb\nc\nd\n", "a\nb\nc", "a\nb\nc\nd\n"),
+        ], row => A_change_only_one_side_made_to_the_last_line_break_is_a_change_and_taking_it_gives_that_sides_ending(row.Item1, row.Item2, row.Item3, row.Item4))),
+        ("both sides adding the last break alike is no conflict and one adding it where the other changed the line is one", Both_sides_adding_the_last_break_alike_is_no_conflict_and_one_adding_it_where_the_other_changed_the_line_is_one));
+
+    private void A_change_only_one_side_made_to_the_last_line_break_is_a_change_and_taking_it_gives_that_sides_ending(string common, string left, string right, string merged) =>
         Assert.Equal(merged, Merged(common, left, right));
 
-    [Fact]
-    public void Both_sides_adding_the_last_break_alike_is_no_conflict_and_one_adding_it_where_the_other_changed_the_line_is_one()
+    private void Both_sides_adding_the_last_break_alike_is_no_conflict_and_one_adding_it_where_the_other_changed_the_line_is_one()
     {
         Assert.DoesNotContain(Chunks("a\nb", "a\nb\n", "a\nb\n"), c => c.IsConflict);
         Assert.Contains(Chunks("a\nb", "a\nb\n", "a\nc"), c => c.IsConflict);

@@ -8,7 +8,12 @@ namespace Passenger.UnitTests.Text;
 public class LargeDiffTests
 {
     [Fact]
-    public void A_file_changed_on_one_line_in_five_and_short_of_another_diffs_to_each_change_past_the_edits_searched_for()
+    public void Texts_differing_by_more_edits_than_a_comparison_searches_still_diff_to_each_change_at_a_bounded_cost() => Cases.All(
+        ("a file changed on one line in five and short of another diffs to each change past the edits searched for", A_file_changed_on_one_line_in_five_and_short_of_another_diffs_to_each_change_past_the_edits_searched_for),
+        ("texts with no line alike diff to one change within the comparisons budget", Texts_with_no_line_alike_diff_to_one_change_within_the_comparisons_budget),
+        ("searches that never meet split where they got furthest and find every change", Searches_that_never_meet_split_where_they_got_furthest_and_find_every_change));
+
+    private void A_file_changed_on_one_line_in_five_and_short_of_another_diffs_to_each_change_past_the_edits_searched_for()
     {
         string[] before = Numbered(8160);
         string[] after = Edited(before);
@@ -22,8 +27,7 @@ public class LargeDiffTests
         Assert.True(visited <= 8_000_000, $"Diffing 8,160 lines edited all over visited {visited:N0} points, more than two searches of 2,000 steps that never meet");
     }
 
-    [Fact]
-    public void Texts_with_no_line_alike_diff_to_one_change_within_the_comparisons_budget()
+    private void Texts_with_no_line_alike_diff_to_one_change_within_the_comparisons_budget()
     {
         string[] before = Numbered(3000);
         string[] after = [.. before.Select(line => line + " rewritten")];
@@ -34,8 +38,7 @@ public class LargeDiffTests
         Assert.True(visited <= (8 * 32 * 32) + 200, $"3,000 lines with none alike visited {visited:N0} points, where a comparison searching 64 edits stops near {8 * 32 * 32:N0}");
     }
 
-    [Fact]
-    public void Searches_that_never_meet_split_where_they_got_furthest_and_find_every_change()
+    private void Searches_that_never_meet_split_where_they_got_furthest_and_find_every_change()
     {
         string[] before = Numbered(150);
         string[] after = Edited(before);

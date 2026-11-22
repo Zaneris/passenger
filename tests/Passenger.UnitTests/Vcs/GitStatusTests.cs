@@ -10,7 +10,14 @@ public class GitStatusTests
     private static readonly string Root = Path.Combine(Path.GetTempPath(), "repo");
 
     [Fact]
-    public void Each_kind_of_entry_is_read_as_the_file_change_git_means()
+    public void A_status_is_read_from_gits_bytes_as_the_changes_conflicts_and_branch_git_names_each_file_costing_no_more_than_its_path() => Cases.All(
+        ("each kind of entry is read as the file change git means", Each_kind_of_entry_is_read_as_the_file_change_git_means),
+        ("how much of each change the index holds is read with a move held alone", How_much_of_each_change_the_index_holds_is_read_with_a_move_held_alone),
+        ("a first commit to come and a detached head name no commit and no branch", A_first_commit_to_come_and_a_detached_head_name_no_commit_and_no_branch),
+        ("a branchs upstream is read with whether HEAD is its commit and none said where it is gone", A_branchs_upstream_is_read_with_whether_HEAD_is_its_commit_and_none_said_where_it_is_gone),
+        ("a status of thousands of files costs each file no more than its path", A_status_of_thousands_of_files_costs_each_file_no_more_than_its_path));
+
+    private void Each_kind_of_entry_is_read_as_the_file_change_git_means()
     {
         string written = string.Join('\0',
             "# branch.oid 0123456789abcdef0123456789abcdef01234567",
@@ -50,8 +57,7 @@ public class GitStatusTests
 
     /// <summary>How much of each change the index holds is read from its two letters: nothing, part (the working tree changed
     /// it further) or all of it; a rename whose blob and mode are the last commit's holds the move alone.</summary>
-    [Fact]
-    public void How_much_of_each_change_the_index_holds_is_read_with_a_move_held_alone()
+    private void How_much_of_each_change_the_index_holds_is_read_with_a_move_held_alone()
     {
         string written = string.Join('\0',
             "1 .M N... 100644 100644 100644 aaaa aaaa src/Unstaged.cs",
@@ -75,16 +81,14 @@ public class GitStatusTests
         ], read.Changes.Select(c => (c.Staged, c.MovedOnlyInIndex, c.HoldsStaged)));
     }
 
-    [Fact]
-    public void A_first_commit_to_come_and_a_detached_head_name_no_commit_and_no_branch()
+    private void A_first_commit_to_come_and_a_detached_head_name_no_commit_and_no_branch()
     {
         Git.StatusRead read = Git.StatusOf("# branch.oid (initial)\0# branch.head (detached)\0"u8, new Git.DiskNames(Root));
         Assert.Equal((null, null), (read.Branch, read.Head));
         Assert.Empty(read.Changes);
     }
 
-    [Fact]
-    public void A_branchs_upstream_is_read_with_whether_HEAD_is_its_commit_and_none_said_where_it_is_gone()
+    private void A_branchs_upstream_is_read_with_whether_HEAD_is_its_commit_and_none_said_where_it_is_gone()
     {
         Assert.Equal(("origin/main", true), Upstream("# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\0"u8));
         Assert.Equal(("origin/main", false), Upstream("# branch.head main\0# branch.upstream origin/main\0# branch.ab +? -?\0"u8));
@@ -99,8 +103,7 @@ public class GitStatusTests
         }
     }
 
-    [Fact]
-    public void A_status_of_thousands_of_files_costs_each_file_no_more_than_its_path()
+    private void A_status_of_thousands_of_files_costs_each_file_no_more_than_its_path()
     {
         byte[] few = Untracked(200);
         byte[] many = Untracked(2_200);

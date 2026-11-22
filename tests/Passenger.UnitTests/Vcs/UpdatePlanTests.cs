@@ -8,13 +8,17 @@ namespace Passenger.UnitTests.Vcs;
 public class UpdatePlanTests
 {
     [Fact]
-    public void Nothing_set_merges_and_says_so()
+    public void Update_Project_merges_or_rebases_as_gits_config_says_the_branchs_own_setting_first() => Cases.All(
+        ("nothing set merges and says so", Nothing_set_merges_and_says_so),
+        ("pull rebase rebases and the branchs own setting comes first", Pull_rebase_rebases_and_the_branchs_own_setting_comes_first),
+        ("pull ff says how a merge may fast forward", Pull_ff_says_how_a_merge_may_fast_forward));
+
+    private void Nothing_set_merges_and_says_so()
     {
         Assert.Equal(new UpdatePlan(Rebase: false, RebaseMerges: false, FastForward: null, Configured: false), UpdatePlan.Of(string.Empty, "main"));
     }
 
-    [Fact]
-    public void Pull_rebase_rebases_and_the_branchs_own_setting_comes_first()
+    private void Pull_rebase_rebases_and_the_branchs_own_setting_comes_first()
     {
         UpdatePlan rebases = new(Rebase: true, RebaseMerges: false, FastForward: null, Configured: true);
         Assert.Equal(rebases, UpdatePlan.Of("pull.rebase\ntrue\0", "main"));
@@ -25,8 +29,7 @@ public class UpdatePlanTests
         Assert.Equal(rebases with { Rebase = false, Configured = false }, UpdatePlan.Of("branch.Feature.rebase\ntrue\0", "feature"));
     }
 
-    [Fact]
-    public void Pull_ff_says_how_a_merge_may_fast_forward()
+    private void Pull_ff_says_how_a_merge_may_fast_forward()
     {
         Assert.Equal("--ff-only", UpdatePlan.Of("pull.ff\nonly\0", "main").FastForward);
         Assert.Equal("--no-ff", UpdatePlan.Of("pull.ff\nfalse\0", "main").FastForward);

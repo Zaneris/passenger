@@ -8,7 +8,12 @@ namespace Passenger.UnitTests.Vcs;
 public class GitQuestionTests
 {
     [Fact]
-    public void Gits_login_is_a_user_then_a_password_for_the_url_with_that_user()
+    public void What_git_and_ssh_ask_is_read_from_the_prompt_and_named_by_its_place_a_secret_kept_secret() => Cases.All(
+        ("gits login is a user then a password for the url with that user", Gits_login_is_a_user_then_a_password_for_the_url_with_that_user),
+        ("sshs passphrase password and host question name the key the user and the host", Sshs_passphrase_password_and_host_question_name_the_key_the_user_and_the_host),
+        ("any other prompt is asked in its own words and kept secret", Any_other_prompt_is_asked_in_its_own_words_and_kept_secret));
+
+    private void Gits_login_is_a_user_then_a_password_for_the_url_with_that_user()
     {
         GitQuestion user = GitQuestion.Of("Username for 'https://git.example.com:8443': ");
         Assert.Equal(new GitQuestion(GitQuestionKind.User, "Username for 'https://git.example.com:8443': ", "https://git.example.com:8443"), user);
@@ -28,8 +33,7 @@ public class GitQuestionTests
         Assert.Equal((GitQuestionKind.Password, null, "the password for 127.0.0.1:48765"), (bare.Kind, bare.User, bare.Asks));
     }
 
-    [Fact]
-    public void Sshs_passphrase_password_and_host_question_name_the_key_the_user_and_the_host()
+    private void Sshs_passphrase_password_and_host_question_name_the_key_the_user_and_the_host()
     {
         GitQuestion key = GitQuestion.Of("Enter passphrase for key '/Users/me/.ssh/id_ed25519': ");
         Assert.Equal((GitQuestionKind.Passphrase, "/Users/me/.ssh/id_ed25519", "id_ed25519"), (key.Kind, key.About, key.Place));
@@ -47,8 +51,7 @@ public class GitQuestionTests
         Assert.False(host.IsSecret);
     }
 
-    [Fact]
-    public void Any_other_prompt_is_asked_in_its_own_words_and_kept_secret()
+    private void Any_other_prompt_is_asked_in_its_own_words_and_kept_secret()
     {
         GitQuestion other = GitQuestion.Of("Benutzername für 'https://git.example.com': ");
         Assert.Equal((GitQuestionKind.Other, null, "the remote"), (other.Kind, other.About, other.Place));
