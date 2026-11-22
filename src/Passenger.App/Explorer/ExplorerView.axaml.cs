@@ -165,8 +165,8 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>Reads the folder again, keeping the folders that were open open and the chosen row chosen, and the filter
-    /// as it was.</summary>
+    /// <summary>Reads the folder again in the view asked for, keeping the folders that were open open and the chosen row
+    /// chosen, and the filter as it was.</summary>
     public void Refresh()
     {
         static string Key(ExplorerNode row) => (row.Kind == NodeKind.SolutionFolder ? row.SolutionPath : row.Path) ?? $"{row.Owner}/{row.Depth}/{row.Kind}/{row.Name}";
@@ -175,7 +175,7 @@ public partial class ExplorerView : UserControl
         HashSet<string> open = new(Tree.Rows.Where(r => r.IsExpanded).Select(Key), StringComparer.Ordinal);
         string? chosen = Selected is { } selected ? Key(selected) : null;
         ExplorerNode? again = null;
-        Show(Tree.IsSolutionView);
+        Show(viewAsked == ExplorerViewKind.Solution);
         // Down the rows as they open: a folder's rows come in after it, so each folder is reached once its holder is open.
         for (int at = 0; at < Tree.Rows.Count; at++)
         {
@@ -232,11 +232,16 @@ public partial class ExplorerView : UserControl
     /// <summary>The project opened alone, which the Solution view shows at its top.</summary>
     private ProjectModel? project;
 
+    /// <summary>The view asked for, which a read finding no solution shows the folder's files in place of, until a read
+    /// finds one again.</summary>
+    private ExplorerViewKind viewAsked = ExplorerViewKind.Solution;
+
     /// <summary>Shows a workspace in the view asked for: its folder's files, or the Solution view where it has a solution
     /// (or was opened as a project), else its files.</summary>
     public void Load(WorkspaceModel workspace, ExplorerViewKind view)
     {
         folder = workspace.Folder;
+        viewAsked = view;
         Take(workspace);
         Show(solutionView: view == ExplorerViewKind.Solution);
         Rows.IsVisible = true;
@@ -363,9 +368,11 @@ public partial class ExplorerView : UserControl
     public ExplorerViewKind ViewShown => Tree.IsSolutionView ? ExplorerViewKind.Solution : ExplorerViewKind.Files;
 
     /// <summary>Shows a view, its rows made anew and narrowed to the filter's files, the keys kept on the rows if they had
-    /// them; nothing while it shows already, or with no Solution view to switch to.</summary>
+    /// them; nothing while it shows already, or with no Solution view to switch to, the view asked for kept even
+    /// then.</summary>
     public void ShowView(ExplorerViewKind view)
     {
+        viewAsked = view;
         if (folder is null || !HasSolutionView || view == ViewShown)
         {
             return;

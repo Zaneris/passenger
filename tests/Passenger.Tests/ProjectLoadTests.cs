@@ -299,6 +299,8 @@ public sealed class ProjectLoadTests : IDisposable
         Ui.WaitFor(() => window.WorkspaceModel is { Solution: not null, Unread: null }, "the folder to open by Shop.slnx once it reads");
         Assert.True(window.WorkspaceModel!.Solution!.Projects.Select(p => p.Path).SequenceEqual([PathNames.Canonical(project)]),
             "Shop.slnx read again does not hold its project");
+        Assert.True(window.ExplorerView.ViewShown == Passenger.App.Explorer.ExplorerViewKind.Solution,
+            "Once Shop.slnx reads, the Explorer still shows the folder's files it showed in the solution's place, not the Solution view the folder opened in");
         Assert.True(window.Status?.Contains("does not read", StringComparison.Ordinal) != true, $"The status bar still says \"{window.Status}\" once Shop.slnx reads");
         window.Close();
     }
