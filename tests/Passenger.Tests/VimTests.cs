@@ -207,8 +207,6 @@ public sealed partial class VimTests
             (vimCase, _, _) => vimCase.Keys.SkipWhile(key => key != "J").Contains(".")),
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
-        ($"A delete or change into a named register leaves register 1 as it was; {ToFix}", (vimCase, _, _) => vimCase.Uses(NamedDelete)),
-        ($"A change over a jump (`, (, ), {{, }}, %, G, gg) leaves register 1 as it was; {ToFix}", (vimCase, _, _) => vimCase.Uses(JumpChange)),
         ($"A count on * and # counts from another match; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedStar)),
         ($"An operator over words with a count reaching the text's end takes whole lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedWords)),
         ($"A line command with a count past the text's last line does what it can where Vim does nothing; {ToFix}", (vimCase, _, _) => vimCase.Uses(CountedLines)),
@@ -233,8 +231,6 @@ public sealed partial class VimTests
             && Enumerable.Range('2', 8).All(name => vim.Registers[(char)name].Text == passenger.Registers[(char)(name - 1)].Text)
             && "0-abz".All(name => vim.Registers[name].Text == passenger.Registers[name].Text);
 
-    private const string NamedDelete = "a delete into a named register";
-    private const string JumpChange = "a change over a jump";
     private const string CountedStar = "a count on * or #";
     private const string CountedWords = "an operator over words with a count";
     private const string CountedLines = "a line command with a count";
@@ -319,12 +315,6 @@ public sealed partial class VimTests
 
     private static readonly string[] Motions = ["h", "j", "k", "l", "w", "b", "e", "W", "B", "E", "ge", "0", "^", "$", "gg", "G", "%", "{", "}", "(", ")", "_", "+", "-"];
 
-    /// <summary>The motions Vim counts as jumps, after which a delete or change writes register 1 whatever it took.</summary>
-    private static readonly string[] Jumps = ["`", "'", "(", ")", "{", "}", "%", "G", "gg"];
-
-    /// <summary>The keys that delete what they act on, in normal or visual mode.</summary>
-    private static readonly string[] Deleting = ["d", "c", "x", "X", "D", "C", "s", "S", "dd"];
-
     private static readonly string[] Objects = ["iw", "aw", "iW", "aW", "i(", "a(", "i\"", "a\"", "i'", "a'", "i{", "a{", "i[", "a[", "ip", "ap", "is", "as", "ib"];
 
     /// <summary>Changes for . to make again.</summary>
@@ -357,12 +347,7 @@ public sealed partial class VimTests
         {
             keys.AddRange(motion.Keys);
             uses.UnionWith(motion.Motion is "(" or ")" ? [SentenceMotion] : []);
-            uses.UnionWith(by == "c" && Jumps.Contains(motion.Motion) ? [JumpChange] : []);
             uses.UnionWith(by is not null && count.Length > 0 && motion.Motion is "w" or "W" or "b" or "B" or "e" or "E" or "ge" ? [CountedWords] : []);
-        }
-        void Deletes(string what)
-        {
-            uses.UnionWith(register.Length > 0 && Deleting.Contains(what) ? [NamedDelete] : []);
         }
         switch (random.Next(15))
         {
@@ -374,7 +359,6 @@ public sealed partial class VimTests
             case 3:
                 string op = Pick(random, ["d", "y", "c", ">", "<", "g~", "gu", "gU"]);
                 keys.AddRange(Each(register + count + op));
-                Deletes(op);
                 if (random.Next(2) == 0)
                 {
                     Moved(Motion(random, text), op);
@@ -393,7 +377,6 @@ public sealed partial class VimTests
             case 4:
                 string acts = Pick(random, ["dd", "yy", ">>", "<<", "x", "X", "D", "Y", "J", "gJ", "~", "p", "P", "gp", "gP"]);
                 keys.AddRange(Each(register + count + acts));
-                Deletes(acts);
                 uses.UnionWith(count.Length > 0 && acts is "dd" or "yy" or ">>" or "<<" or "J" or "gJ" or "D" or "Y" ? [CountedLines] : []);
                 break;
             case 5:
@@ -429,7 +412,6 @@ public sealed partial class VimTests
                 {
                     string does = Pick(random, ["d", "y", "c", ">", "<", "~", "u", "U", "J", "x", "p", "r", "I", "A", "C", "S"]);
                     keys.AddRange(Each(register + does));
-                    Deletes(does);
                     uses.UnionWith(does is "I" or "A" ? [VisualInsert] : []);
                     if (does is "r")
                     {
@@ -463,7 +445,6 @@ public sealed partial class VimTests
                 uses.UnionWith(back[0] is 'c' or 'd' ? [MarkChange] : []);
                 if (back[0] == 'c')
                 {
-                    uses.Add(JumpChange);
                     keys.AddRange(Typing(random));
                 }
                 break;

@@ -7,8 +7,9 @@ namespace Passenger.Editor;
 /// and change case over what a motion or object spans; put, replace, join and toggle case.</summary>
 public sealed partial class Vim
 {
-    /// <summary>The motions whose delete always goes to register 1, however little it takes.</summary>
-    private static readonly HashSet<string> Jumps = ["%", "(", ")", "{", "}"];
+    /// <summary>The motions whose delete or change always goes to register 1, however little it takes: the searches among
+    /// them (n and N standing for / and ? too) as well.</summary>
+    private static readonly HashSet<string> Jumps = ["%", "(", ")", "{", "}", "`", "n", "N", "*", "#", "g*", "g#"];
 
     /// <summary>One caret's stretch for an operator: the text from <see cref="Start"/> to <see cref="End"/>, or the lines
     /// <see cref="First"/> to <see cref="Last"/> when <see cref="Lines"/>; <see cref="Reached"/> the line after it an exclusive
