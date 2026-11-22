@@ -31,7 +31,7 @@ test filter="" processes="" *args:
 comments *paths:
     python3 -I tools/check-comments.py {{paths}}
 
-# Rewrite TestTimes.json, by which CI deals each system's tests to its shards, from CI runs' results: just test-times RUN...
+# Rewrite TestTimes.json, by which CI deals each system's tests to its shards, from CI runs: just test-times NEWEST [RUN...]
 test-times +runs:
     python3 -I tools/test-shards.py update {{runs}}
 

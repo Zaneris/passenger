@@ -1306,15 +1306,16 @@ def hang(arguments):
 
 
 def update(arguments):
-    """TestTimes.json from runs' results: each class's seconds on each system for its tests in each lane, the mean of the
-    runs that ran every test of it in that lane, each as a lone test process takes it (a run's beside another's at once
-    by its system's PACED); one a shard did not reach, its seconds from before, or what the runs measured of it in that
-    lane on another system at this one's pace where more, as its seconds from before may be a skip's. A lane the runs
-    did not list keeps its seconds from before."""
+    """TestTimes.json from runs' results, the newest first: each class's seconds on each system for its tests in each lane
+    as the newest run listing the lane lists them, the mean of the runs that ran every one of them and listed no other,
+    each as a lone test process takes it (a run's beside another's at once by its system's PACED); one a shard did not
+    reach, its seconds from before, or what the runs measured of it in that lane on another system at this one's pace
+    where more. A lane the runs did not list keeps its seconds from before."""
     old = load(arguments.times, {})
     spent = {}
     suites = {}
     partly = {}
+    changed = {}
     for source in arguments.runs:
         folder = source if os.path.isdir(source) else download(source) if source.isdigit() else None
         if folder is None:
@@ -1348,11 +1349,16 @@ def update(arguments):
                     del classes[test_class]
         for system, entry in listed.items():
             for lane, counts in entry["listed"].items():
-                suites.setdefault(system, {}).setdefault(lane, Counter()).update(
-                    {name: count for name, count in counts.items() if name not in suites[system].get(lane, {})})
+                suites.setdefault(system, {}).setdefault(lane, counts)
         for system, lanes in this.items():
             for lane, classes in lanes.items():
+                newest = suites.get(system, {}).get(lane)
+                here = listed.get(system, {}).get("listed", {}).get(lane)
                 for test_class, seconds in classes.items():
+                    # A run listing other tests of the class in the lane than the newest is no measure of them.
+                    if newest is not None and here is not None and here.get(test_class, 0) != newest.get(test_class, 0):
+                        changed.setdefault(system, {}).setdefault(lane, set()).add(test_class)
+                        continue
                     spent.setdefault(system, {}).setdefault(lane, {}).setdefault(test_class, []).append(seconds)
     every = {system: {lane: {name: round(sum(values) / len(values), 1) for name, values in classes.items()}
                       for lane, classes in lanes.items()} for system, lanes in spent.items()}
@@ -1387,9 +1393,12 @@ def update(arguments):
                     for name in listed[lane] if name not in measured and (seconds := earlier(name)) is not None}
             times[system][lane] = dict(sorted({**kept, **measured}.items()))
             unmeasured = partly.get(system, {}).get(lane, set()) - set(measured)
+            since = changed.get(system, {}).get(lane, set())
             said.append(f"{len(measured)} classes measured in the {lane} lane" + (f", {len(kept)} kept from before"
                                                                                   if kept else "")
-                        + (f" ({len(unmeasured)} ran only in part)" if unmeasured else ""))
+                        + (f" ({len(unmeasured)} ran only in part)" if unmeasured else "")
+                        + (f" ({len(since)} measured only where their tests in it were as in the newest run)"
+                           if since else ""))
         print(f"{system}: {'; '.join(said)}")
     with open(arguments.times, "w", encoding="utf-8", newline="\n") as file:
         file.write(json.dumps(times, indent=2) + "\n")
@@ -1486,7 +1495,8 @@ def main():
     command.set_defaults(run=hang)
 
     command = commands.add_parser("update", help="rewrite TestTimes.json from CI runs' results")
-    command.add_argument("runs", nargs="+", help="a CI run's number (downloaded with gh), or a folder of its artifacts")
+    command.add_argument("runs", nargs="+", help="CI runs' numbers (downloaded with gh) or folders of their artifacts, the "
+                         "newest first")
     command.add_argument("--times", default=TIMES)
     command.set_defaults(run=update)
 
