@@ -211,6 +211,24 @@ public static class ChildProcesses
         return TakingDotnet(start, folder);
     }
 
+    /// <summary>A helper's start that runs the .NET command line it finds on its PATH alone, never DOTNET_HOST_PATH's (Roslyn's
+    /// server, for its restores and the programs it runs), given the folder's (<see cref="Dotnet.Host"/>) first on its PATH
+    /// through <see cref="Dotnet.PathFolder"/>, whatever this process's PATH names yet; as it was where there is none, or no
+    /// folder of the user's own lends it. Off the window's thread.</summary>
+    public static ProcessStartInfo FindingDotnet(ProcessStartInfo start, string? folder, string state)
+    {
+        try
+        {
+            string first = Dotnet.PathFolder(Dotnet.Root(folder), state);
+            start.Environment["PATH"] = Programs.FirstOnPath(start.Environment.TryGetValue("PATH", out string? path) ? path ?? string.Empty : string.Empty, first);
+        }
+        catch (Exception unlent) when (unlent is IOException or UnauthorizedAccessException)
+        {
+            // No .NET command line, or no folder of the user's own: the PATH finds what it finds.
+        }
+        return start;
+    }
+
     /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand(IEnumerable{string}, string?)"/>).</summary>
     private static ProcessStartInfo AsDotnet(ProcessStartInfo start)
     {
