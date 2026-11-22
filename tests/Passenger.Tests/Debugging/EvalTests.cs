@@ -549,12 +549,13 @@ public class EvalTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("System.Int32", evaluateResponse4.Result);
     }
 
+    /// <summary>A LINQ watch at the entry of a program that has loaded no System.Linq, which the expression loads, within
+    /// the run's short limit on an evaluation scaled for this session alone, as a loaded machine's first LINQ call may take
+    /// most of it.</summary>
     [Gate]
     [Fact]
     public async Task A_LINQ_watch_evaluates_in_a_program_that_has_called_no_LINQ_method_yet()
     {
-        // At the entry of a program that has loaded no System.Linq, which the expression loads: the run's short limit, scaled
-        // for this session alone, as a loaded machine's first LINQ call may take most of it.
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper, environment: DebugSession.ScaledEvaluations);
         await host
             .InitializeAsync()
