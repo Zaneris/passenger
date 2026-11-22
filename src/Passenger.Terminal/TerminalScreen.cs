@@ -65,8 +65,12 @@ public sealed class TerminalScreen
     private string? lastGrapheme;
     private bool repeatable;
 
-    private Saved saved;
-    private Saved savedMain;
+    /// <summary>The cursor each screen saved (DECSC), each screen its own.</summary>
+    private Saved savedMain = Saved.Unsaved;
+    private Saved savedAlternate = Saved.Unsaved;
+
+    /// <summary>The main screen's scroll region while the alternate one is shown.</summary>
+    private (int Top, int Bottom) mainMargins;
 
     /// <summary>The kitty keyboard protocol's flags each screen's programs pushed, kept apart as the protocol asks.</summary>
     private readonly KeyboardStack mainKeyboard = new();
@@ -79,6 +83,7 @@ public sealed class TerminalScreen
         main = NewLines(Rows);
         Lines = main;
         bottom = Rows - 1;
+        mainMargins = (top, bottom);
         tabStops = Stops(Columns);
     }
 
@@ -317,6 +322,7 @@ public sealed class TerminalScreen
         Rows = rows;
         top = 0;
         bottom = rows - 1;
+        mainMargins = (top, bottom);
         tabStops = Stops(columns);
         if (shown)
         {
@@ -1195,19 +1201,46 @@ public sealed class TerminalScreen
             case 25:
                 CursorVisible = on;
                 break;
-            case 47 or 1047:
-                Alternate(on, clear: mode == 1047 && on);
+            case 47:
+                ShowAlternate(on);
                 break;
-            case 1049:
+            case 1047:
+                // The alternate screen is cleared as it goes.
+                if (!on && IsAlternate)
+                {
+                    ClearAlternate();
+                }
+                ShowAlternate(on);
+                break;
+            case 1048:
                 if (on)
                 {
-                    savedMain = Capture();
-                    Alternate(true, clear: true);
+                    SaveCursor();
                 }
                 else
                 {
-                    Alternate(false, clear: false);
-                    Restore(savedMain);
+                    RestoreCursor();
+                }
+                break;
+            case 1049:
+                // 1047's switch with 1048's save before it and restore after, the alternate screen cleared as it comes too.
+                if (on)
+                {
+                    SaveCursor();
+                    if (!IsAlternate)
+                    {
+                        ShowAlternate(true);
+                        ClearAlternate();
+                    }
+                }
+                else
+                {
+                    if (IsAlternate)
+                    {
+                        ClearAlternate();
+                        ShowAlternate(false);
+                    }
+                    RestoreCursor();
                 }
                 break;
             case 1000:
@@ -1228,29 +1261,38 @@ public sealed class TerminalScreen
         }
     }
 
-    private void Alternate(bool on, bool clear)
+    /// <summary>The alternate screen shown, or the main one again; a switch to the screen shown changes nothing. The
+    /// alternate comes up with the whole screen its scroll region, and the main one comes back with its own.</summary>
+    private void ShowAlternate(bool on)
     {
+        if (on == IsAlternate)
+        {
+            return;
+        }
         if (on)
         {
-            if (!IsAlternate)
-            {
-                // A program coming to the alternate screen asks for its keys afresh, whatever one left there asked.
-                alternateKeyboard.Clear();
-            }
+            // A program coming to the alternate screen asks for its keys afresh, whatever one left there asked.
+            alternateKeyboard.Clear();
             alternate ??= NewLines(Rows);
-            if (clear)
-            {
-                alternate = NewLines(Rows);
-            }
+            mainMargins = (top, bottom);
             Lines = alternate;
+            (top, bottom) = (0, Rows - 1);
         }
         else
         {
             Lines = main;
+            (top, bottom) = mainMargins;
         }
-        top = 0;
-        bottom = Rows - 1;
         wrapPending = false;
+    }
+
+    /// <summary>The alternate screen erased, as the erase of a whole screen does: its rows blank in the background set.</summary>
+    private void ClearAlternate()
+    {
+        foreach (TerminalLine line in alternate!)
+        {
+            line.Reuse(Columns, Erasing);
+        }
     }
 
     /// <summary>An OSC's text read where it was kept: a string is made only for a title or a folder that is new.</summary>
@@ -1450,9 +1492,21 @@ public sealed class TerminalScreen
         wrapPending = false;
     }
 
-    private void SaveCursor() => saved = Capture();
+    /// <summary>DECSC: the cursor saved for the screen shown.</summary>
+    private void SaveCursor()
+    {
+        if (IsAlternate)
+        {
+            savedAlternate = Capture();
+        }
+        else
+        {
+            savedMain = Capture();
+        }
+    }
 
-    private void RestoreCursor() => Restore(saved);
+    /// <summary>DECRC: the cursor the screen shown saved, or, with none saved, home in the default colours.</summary>
+    private void RestoreCursor() => Restore(IsAlternate ? savedAlternate : savedMain);
 
     private Saved Capture() => new(CursorRow, CursorColumn, style, originMode, wrapPending, lineDrawing);
 
@@ -1479,7 +1533,14 @@ public sealed class TerminalScreen
         bottom = Rows - 1;
         style = CellStyle.Plain;
         lineDrawing = false;
-        saved = default;
+        if (IsAlternate)
+        {
+            savedAlternate = Saved.Unsaved;
+        }
+        else
+        {
+            savedMain = Saved.Unsaved;
+        }
     }
 
     private void Reset()
@@ -1489,6 +1550,7 @@ public sealed class TerminalScreen
         main = NewLines(Rows);
         alternate = null;
         Lines = main;
+        (savedMain, savedAlternate, mainMargins) = (Saved.Unsaved, Saved.Unsaved, (top, bottom));
         newLineMode = false;
         repeatable = false;
         CursorRow = 0;
@@ -1532,7 +1594,11 @@ public sealed class TerminalScreen
         0x03C0, 0x2260, 0x00A3, 0x00B7,
     ];
 
-    private readonly record struct Saved(int Row, int Column, CellStyle Style, bool Origin, bool WrapPending, bool LineDrawing);
+    private readonly record struct Saved(int Row, int Column, CellStyle Style, bool Origin, bool WrapPending, bool LineDrawing)
+    {
+        /// <summary>What a restore with nothing saved takes: home, the default colours, origin mode off, ASCII.</summary>
+        public static readonly Saved Unsaved = new(0, 0, CellStyle.Plain, false, false, false);
+    }
 
     /// <summary>A screen's kitty keyboard flags: those set with nothing pushed, under at most <see cref="Most"/> pushed
     /// over them, a push past which drops the oldest; a pop that empties the stack resets every flag.</summary>

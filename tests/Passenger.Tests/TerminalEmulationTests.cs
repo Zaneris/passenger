@@ -111,6 +111,9 @@ public sealed class TerminalEmulationTests
         ("xterm.js keeps tab stops for each screen, where xterm and Passenger keep one set", (output, _, _) => output.Uses(TabStops) && output.Uses(Alternate)),
         ("xterm.js fills the lines a scroll or an insert of lines brings in with the default background, where xterm and Passenger erase "
             + "with the background set (BCE)", (output, _, _) => output.Uses(Scrolls) && output.Uses(Background)),
+        ("xterm.js clears the alternate screen in the background set each time it comes up, where xterm clears it only as 1049 brings "
+            + "it up and 1047 takes it down, so 47 and 1047 bring up what it held",
+            (output, _, _) => output.Pieces.Any(piece => piece.Text is $"{Escape}[?47h" or $"{Escape}[?1047h")),
         ("xterm.js keeps the scroll region over ESC # 8 (DECALN), where xterm and the VT510 set the margins to the screen's edges",
             (output, _, _) => output.Uses(Alignment) && output.Uses(ScrollRegion)),
         ("xterm.js counts the scroll region's top twice as CUU, CUD, CUF, CUB, CNL, CPL, CHA, HPA, HPR or VPR moves the cursor in origin "
@@ -123,14 +126,11 @@ public sealed class TerminalEmulationTests
         ($"An insert, delete or erase of characters (ICH, DCH, EL, ED) at a wide character's second half leaves it whole; {ToFix}",
             (output, _, _) => output.Uses(Wide) && output.Uses(EditsCharacters)),
         ($"Insert mode (IRM) over a wide character splits it; {ToFix}", (output, _, _) => output.Uses(Wide) && output.Uses(InsertMode)),
-        ($"A restore of the cursor (ESC 8, CSI u) with nothing saved sets colour 0 on colour 0, where it restores the defaults; {ToFix}",
-            (_, _, passenger) => passenger.Seen.Contains(RestoredUnsaved)),
-        ($"The alternate screen's switches: 1049 l off it restores a cursor, 1047 h on it clears it; {ToFix}", (output, _, _) => output.Uses(Alternate)),
     ];
 
     private const string Emoji = "an emoji";
     private const string Wide = "a wide character";
-    private const string TabStops = "tab stops cleared";
+    private const string TabStops = "tab stops set or cleared";
     private const string Alternate = "the alternate screen";
     private const string ScrollRegion = "a scroll region";
     private const string Alignment = "DECALN";
@@ -143,7 +143,6 @@ public sealed class TerminalEmulationTests
     private const string EditsCharacters = "ICH, DCH, ECH, EL or ED";
     private const string InsertMode = "IRM";
     private const string PendingWrap = "a control after a write to the last column";
-    private const string RestoredUnsaved = "a restore of a cursor never saved";
     private const string Scrolls = "SU, SD, IL or DL";
     private const string Background = "a background colour";
 
@@ -199,7 +198,7 @@ public sealed class TerminalEmulationTests
                 return new($"{Escape}[{random.Next(1, rows + 2)};{random.Next(1, rows + 2)}r", ScrollRegion);
             case 15:
                 string escaped = Pick(random, ["7", "8", "D", "M", "E", "H", "c", "#8"]);
-                return new(Escape + escaped, escaped switch { "#8" => Alignment, "c" => FullReset, "8" => Restores, _ => null });
+                return new(Escape + escaped, escaped switch { "#8" => Alignment, "c" => FullReset, "H" => TabStops, "8" => Restores, _ => null });
             case 16:
                 string mode = Pick(random, ["7", "6", "1049", "47", "1047", "25"]);
                 return new($"{Escape}[?{mode}{Pick(random, ["h", "l"])}", mode switch
@@ -290,11 +289,8 @@ public sealed class TerminalEmulationTests
 #pragma warning restore RS0030
         HashSet<string> seen = [];
         bool atLastColumn = false;
-        bool saved = false;
         foreach (Piece piece in output.Pieces)
         {
-            saved = piece.Text is $"{Escape}7" or $"{Escape}[s" or $"{Escape}[?1049h" || (saved && piece.Text != $"{Escape}c");
-            seen.UnionWith(!saved && piece.Text is $"{Escape}8" or $"{Escape}[u" ? [RestoredUnsaved] : []);
             // REP writes too.
             bool printed = !char.IsControl(piece.Text[0]) || piece.Use == Repeat;
             seen.UnionWith(atLastColumn && !printed && piece.Text is not ("\r" or "\n") ? [PendingWrap] : []);
