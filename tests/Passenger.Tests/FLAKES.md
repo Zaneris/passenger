@@ -30,6 +30,33 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `LongFileAssistTests`' `A_key_in_a_file_of_twenty_thousand_lines_costs_what_it_changed_…`, CI 45033982948 (Windows
+  report shard 3) and 44984656678 (Windows gate shard 1): "A ';' allocated 144,008 bytes on the UI thread in a file of
+  20,000 lines, against 76,896 in a short one: it read the file there" (156,424 against 75,272), and in 1 of 2 runs on
+  the Mac. **The test**: it counted from the key's change to the end of Avalonia's headless `KeyTextInput`, which after
+  the key runs the work come due and draws until nothing more is pending, two to four frames of the editor and, in most
+  rounds, the language server's layout of the statement landing, about 100 KB more in a round where the layout landed
+  within it, in the short file as in the long, so the least of three rounds differed by when the server answered; the
+  key itself costs 22 KB in either. It now counts the key to the end of its routed event and what the input runs after
+  it as frames, each its share (5407eeb2b).
+- `MauiSimulatorTests`' `A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_…`, CI
+  45033982948 (macOS report shard 1): "The IDE was not quiet within 180 s" at Apply Hot Reload Changes in the stopped
+  app, the language server's `EmitHotReload` unanswered for 2.6 minutes and the server then ended as not responding and
+  started again. **Outside the code**: the runner starved. The server answered a folding request 55 s late and its
+  check 100 s late, and the IDE's own timers ran as late: the check's 20 s, from 15:21:05, was judged run out only at
+  15:23:27, and the long wait's words were written a minute after they were measured; the run's other macOS jobs' free
+  memory fell to 0.7 to 2.0 GB of 7 (this job's figure missing, as it ran out its time) with a simulator booted here. On
+  the Mac the same emit takes about a second, the test 1:10, and the test's own programs 1 to 2 GB. The jobs now end the
+  compiler server and MSBuild nodes their build leaves before the tests begin, which held them into the tests (713c6d8ad).
+- `AvaloniaSimulatorTests`' `An_avalonia_apps_ios_head_on_a_simulator_shows_its_tree_takes_a_xaml_edit_and_…`, CI
+  45033982948 (macOS report shard 1): "Waited 0 s for the saved XAML's TextBlock in the app's tree in place of its
+  TextBox", the app started on the simulator 9 minutes 18 s into the test, leaving the edit's wait none of the test's
+  9.5 minutes. **The test, at its limit on a slow runner**: it took 6:50 to 8:02 of those 9.5 minutes on CI's runner in
+  the runs before (1:10 to 1:28 on the Mac), and this job ran about a quarter slower, as starved as the MAUI step above
+  (`MauiSimulatorTests`' run 6:50 against 4:41 to 5:51 before). Which step took the time was not said; a wait of such a
+  test that gives up now says the test's time was spent and ends with the IDE's log, which times each program the steps
+  ran (a6ed48d5b), and the jobs end their build's servers before the tests (713c6d8ad); the flow, a Run and a Debug
+  start of minutes each, keeps little margin within the limit either way.
 - `GodotEditorCompletionTests`' `An_open_godot_editors_unsaved_names_complete_until_it_ends` (the gate), CI 45027932334
   (Linux gate shard 2), at 8f0cca610, passing on its retry: "Completion never offered editor_dash, which only Godot's
   editor holds", a client of the test's own answered with it at once. **A race in the IDE**: Godot's editor at times
