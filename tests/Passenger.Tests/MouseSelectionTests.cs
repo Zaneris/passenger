@@ -14,7 +14,6 @@ namespace Passenger.Tests;
 /// <summary>A selection made with the mouse, in the editor and in the Run and Debug consoles, as a person sees and uses it:
 /// drawn in the selection's colour wherever a drag or a key grows it, and copied by every key the keymap in force gives
 /// Copy, in each keymap.</summary>
-[SameOnEverySystem]
 public sealed class MouseSelectionTests : IDisposable
 {
     private const string Lines = "first line of the notes\nalpha beta gamma delta epsilon zeta eta theta\niota kappa lambda mu nu xi omicron pi\nrho sigma tau upsilon phi chi psi omega\n";

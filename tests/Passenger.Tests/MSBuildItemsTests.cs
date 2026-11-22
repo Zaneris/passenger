@@ -12,7 +12,6 @@ namespace Passenger.Tests;
 /// wildcard, <c>*</c>, <c>?</c> and <c>**</c>, read as an Include (a glob unescaped twice) or an Exclude (once). A
 /// difference is shrunk to its smallest value and said with its seed and the files it differs on.</summary>
 [Collection(Beside.Name)]
-[SameOnEverySystem]
 public sealed class MSBuildItemsTests
 {
     /// <summary>The differences kept on purpose, each with why: none.</summary>

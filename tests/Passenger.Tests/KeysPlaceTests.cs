@@ -11,7 +11,6 @@ namespace Passenger.Tests;
 /// <summary>The keys go where the person is: a popup closing gives them back to what had them as it opened, a tool
 /// window's keys give it the keys, Escape in one gives them back to the editor, and the menu key opens a row's menu at
 /// the row.</summary>
-[SameOnEverySystem]
 public sealed class KeysPlaceTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("keys-place-");
