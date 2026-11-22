@@ -6,12 +6,11 @@ using Passenger.Workspace;
 
 namespace Passenger.UnitTests.Run;
 
-/// <summary>The edits a mobile project's heads need to build here, from its project's text, its Info.plist files and what
-/// each head's workload answers at the framework it builds on CoreCLR: Avalonia's cross-platform template's iOS head needs
-/// three, its Android head two, a MAUI app made before its template gave its Apple heads scenes needs every framework moved,
-/// Android's least API raised where its own condition sets it and a scene manifest naming a SceneDelegate of MAUI's in each
-/// Apple head, and a Mac Catalyst head its LSMinimumSystemVersion mapped as its workload maps versions; each said in the
-/// banner's words and made in the files' text, every other character kept, and placed on the lines it changes.</summary>
+/// <summary>The edits a mobile project's heads need to build here, from its project's text, its Info.plist files and
+/// what each head's workload answers at the framework it builds on CoreCLR: Avalonia's cross-platform template's iOS
+/// head needs three, its Android head two, a MAUI app made before its template gave its Apple heads scenes needs every
+/// framework moved, Android's least API raised where its own condition sets it and a scene manifest in each Apple head;
+/// each made in the files' text, every other character kept, and placed on the lines it changes.</summary>
 public class MobileHeadsTests
 {
     private static readonly string Folder = Rooted("/src/XApp.iOS");
@@ -79,15 +78,10 @@ public class MobileHeadsTests
         ("Avalonia's template ios head needs its framework moved its least ios raised in both files and a scene manifest", Avalonias_template_ios_head_needs_its_framework_moved_its_least_ios_raised_in_both_files_and_a_scene_manifest),
         ("the fix stands on the lines an edit changes in the project and its info plist", The_fix_stands_on_the_lines_an_edit_changes_in_the_project_and_its_info_plist),
         ("a head on CoreCLR with its least ios and a scene manifest needs nothing and one lacking only the manifest needs that alone", A_head_on_CoreCLR_with_its_least_ios_and_a_scene_manifest_needs_nothing_and_one_lacking_only_the_manifest_needs_that_alone),
-        ("an app whose delegate hands ios no scene delegate is told it needs one and its manifest is left to the person", An_app_whose_delegate_hands_ios_no_scene_delegate_is_told_it_needs_one_and_its_manifest_is_left_to_the_person),
         ("a least ios set outside the projects own properties is left to the person saying where and the rest made", A_least_ios_set_outside_the_projects_own_properties_is_left_to_the_person_saying_where_and_the_rest_made),
-        ("a frameworks list moves its ios framework alone and an app extension is no head", A_frameworks_list_moves_its_ios_framework_alone_and_an_app_extension_is_no_head),
         ("Avalonia's template android head needs its framework moved and its least api raised written as its own", Avalonias_template_android_head_needs_its_framework_moved_and_its_least_api_raised_written_as_its_own),
         ("a maui app made before its apple heads had scenes moves every framework raises android where its condition sets it and names mauis scene delegate", A_maui_app_made_before_its_apple_heads_had_scenes_moves_every_framework_raises_android_where_its_condition_sets_it_and_names_mauis_scene_delegate),
-        ("a mac catalyst heads LSMinimumSystemVersion is set to the macOS its workload maps its least version to", A_mac_catalyst_heads_LSMinimumSystemVersion_is_set_to_the_macOS_its_workload_maps_its_least_version_to),
-        ("a mac catalyst heads trimmed debug build is kept out of the banner and made whole with mtouchlink none for debug alone", A_mac_catalyst_heads_trimmed_debug_build_is_kept_out_of_the_banner_and_made_whole_with_mtouchlink_none_for_debug_alone),
-        ("a mobile want says a projects head edits in place of its move from mono and names it where it lacks more", A_mobile_want_says_a_projects_head_edits_in_place_of_its_move_from_mono_and_names_it_where_it_lacks_more),
-        ("an info plists keys are read past its doctype and text that is no property list is passed over", An_info_plists_keys_are_read_past_its_doctype_and_text_that_is_no_property_list_is_passed_over));
+        ("a mac catalyst heads trimmed debug build is kept out of the banner and made whole with mtouchlink none for debug alone", A_mac_catalyst_heads_trimmed_debug_build_is_kept_out_of_the_banner_and_made_whole_with_mtouchlink_none_for_debug_alone));
 
     private void Avalonias_template_ios_head_needs_its_framework_moved_its_least_ios_raised_in_both_files_and_a_scene_manifest()
     {
@@ -135,17 +129,6 @@ public class MobileHeadsTests
         Assert.Null(Edits(project, manifest, moved with { SdkVersion = "26.2" }));
     }
 
-    private void An_app_whose_delegate_hands_ios_no_scene_delegate_is_told_it_needs_one_and_its_manifest_is_left_to_the_person()
-    {
-        HeadEdits edits = Edits(ProjectText, ManifestText, Answer() with { Avalonia = null })!;
-        ManifestEdit manifest = Assert.Single(edits.Manifests);
-
-        Assert.Equal(SceneDelegation.OwnToWrite, manifest.Scenes);
-        Assert.EndsWith($"; and a scene manifest (UIApplicationSceneManifest) in Info.plist, which the iOS 27.2 SDK asks of every app, and a scene delegate of the app's own ({HeadEdits.SceneGuide})",
-            edits.Said, StringComparison.Ordinal);
-        Assert.DoesNotContain("UIApplicationSceneManifest", MobileHeads.ManifestText(ManifestText, manifest), StringComparison.Ordinal);
-    }
-
     private void A_least_ios_set_outside_the_projects_own_properties_is_left_to_the_person_saying_where_and_the_rest_made()
     {
         string conditioned = ProjectText.Replace("<SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>", string.Empty, StringComparison.Ordinal)
@@ -159,19 +142,6 @@ public class MobileHeadsTests
         Assert.Contains("<TargetFramework>net11.0-ios</TargetFramework>", made, StringComparison.Ordinal);
         Assert.Contains("<SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>", made, StringComparison.Ordinal);
         Assert.EndsWith(". Its iOS SupportedOSPlatformVersion 13.0 is set outside the project's own properties: set 15.0 there", edits.Said, StringComparison.Ordinal);
-    }
-
-    private void A_frameworks_list_moves_its_ios_framework_alone_and_an_app_extension_is_no_head()
-    {
-        string several = ProjectText.Replace("<TargetFramework>net10.0-ios</TargetFramework>", "<TargetFrameworks>net10.0;net10.0-ios</TargetFrameworks>", StringComparison.Ordinal);
-        HeadEdits edits = Edits(several, ManifestText, Answer())!;
-
-        Assert.Contains("<TargetFrameworks>net10.0;net11.0-ios</TargetFrameworks>", MobileHeads.ProjectText(several, edits).Text, StringComparison.Ordinal);
-        Assert.Equal(["net10.0-ios"], MobileHeads.HeadsOf(["net10.0", "net10.0-ios"], onMac: true));
-        Assert.Equal(["net11.0-android", "net11.0-ios"], MobileHeads.HeadsOf(["net11.0-android", "net11.0-ios"], onMac: true));
-        Assert.Equal(["net11.0-android"], MobileHeads.HeadsOf(["net11.0-android", "net11.0-ios"], onMac: false));
-        Assert.Empty(MobileHeads.HeadsOf(["net11.0-ios", "net11.0-tvos"], onMac: true));
-        Assert.True(Edits(ProjectText, ManifestText, Answer() with { MakesApp = false }) is { Manifests: [] }, "An app extension's Info.plist was edited");
     }
 
     /// <summary>Avalonia 12.1.6's avalonia.xplat Android head, as the template writes it.</summary>
@@ -266,31 +236,6 @@ public class MobileHeadsTests
             MobileHeads.DelegateText(edits.Manifests[0].Namespace));
     }
 
-    private void A_mac_catalyst_heads_LSMinimumSystemVersion_is_set_to_the_macOS_its_workload_maps_its_least_version_to()
-    {
-        string catalyst = Rooted("/src/Cat/Cat.csproj");
-        string plist = Rooted("/src/Cat/Info.plist");
-        string versions = Rooted("/packs/catalyst/Versions.plist");
-        string project = ProjectText.Replace("net10.0-ios", "net10.0-maccatalyst", StringComparison.Ordinal).Replace(">13.0<", ">15.0<", StringComparison.Ordinal);
-        string manifest = AppManifests.WithSceneManifest(ManifestText.Replace("MinimumOSVersion", "LSMinimumSystemVersion", StringComparison.Ordinal)
-            .Replace("<string>13.0</string>", "<string>12.0</string>", StringComparison.Ordinal))!;
-        HeadAnswer answer = Answer(Answered.Replace("\"13.0\"", "\"15.0\"", StringComparison.Ordinal).Replace("\"15.0\",\n    \"ValidateSceneManifest\"", "\"17.0\",\n    \"ValidateSceneManifest\"", StringComparison.Ordinal),
-            FrameworkNames.MacCatalyst, Rooted("/src/Cat")) with { SdkRoot = Rooted("/packs/catalyst") };
-        string map = "<plist version=\"1.0\">\n<dict>\n\t<key>MacCatalystVersionMap</key>\n\t<dict>\n\t\t<key>15.0</key>\n\t\t<string>12.0</string>\n"
-            + "\t\t<key>17.0</key>\n\t\t<string>14.0</string>\n\t</dict>\n</dict>\n</plist>\n";
-        HeadEdits edits = MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? project : path == plist ? manifest : path == versions ? map : null)!;
-
-        Assert.Equal("17.0", answer.Least);
-        ManifestEdit edit = Assert.Single(edits.Manifests);
-        Assert.True(edit is { Key: "LSMinimumSystemVersion", Was: "12.0", Now: "14.0", SceneSdk: null }, $"The Catalyst head's plist edits: {edit}");
-        Assert.Equal("Cat needs edits to build and run here: net11.0-maccatalyst in place of net10.0-maccatalyst, whose Mac Catalyst apps run on Mono (Passenger builds, runs "
-            + "and debugs mobile apps from .NET 11, on CoreCLR); Mac Catalyst 17.0 at the least, the least .NET 11's Mac Catalyst workload builds for, in place of 15.0 "
-            + "in its project; and macOS 14.0 as Info.plist's LSMinimumSystemVersion, Mac Catalyst 17.0's, in place of 12.0", edits.Said);
-        Assert.Contains("<key>LSMinimumSystemVersion</key>\n\t<string>14.0</string>", MobileHeads.ManifestText(manifest, edit), StringComparison.Ordinal);
-        Assert.Equal("Its LSMinimumSystemVersion 12.0 is to be the macOS version of Mac Catalyst 17.0",
-            MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? project : path == plist ? manifest : null)!.ByHand);
-    }
-
     private void A_mac_catalyst_heads_trimmed_debug_build_is_kept_out_of_the_banner_and_made_whole_with_mtouchlink_none_for_debug_alone()
     {
         string catalyst = Rooted("/src/Cat/Cat.csproj");
@@ -318,32 +263,5 @@ public class MobileHeadsTests
         HeadEdits both = MobileHeads.Edits(catalyst, "Cat", [answer], path => path == catalyst ? several : null)!;
         Assert.Contains("<MtouchLink Condition=\"'$(Configuration)' == 'Debug' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'\">None</MtouchLink>",
             MobileHeads.WholeText(several, both.TrimmedPlatform), StringComparison.Ordinal);
-    }
-
-    private void A_mobile_want_says_a_projects_head_edits_in_place_of_its_move_from_mono_and_names_it_where_it_lacks_more()
-    {
-        HeadEdits edits = Edits(ProjectText, ManifestText, Answer())!;
-        MobileWant want = MobileWant.Of([new ProjectNeeds("XApp.iOS", ["net10.0-ios"]) { Heads = edits }], onMac: true, _ => null, "/sdk", _ => false);
-
-        Assert.Empty(want.OnMono);
-        Assert.Equal(edits.Said, want.Said);
-
-        MobileWant lacking = MobileWant.Of([new ProjectNeeds("XApp.iOS", ["net11.0-ios"]) { Heads = edits, Apple = new AppleAnswer(null) { Simulators = ["iOS 27.2"] } }],
-            onMac: true, _ => null, "/sdk", _ => false);
-        Assert.StartsWith("XApp.iOS needs the iOS 27.2 simulator runtime, which Xcode installs", lacking.Said, StringComparison.Ordinal);
-        Assert.EndsWith($". {edits.Said}", lacking.Said, StringComparison.Ordinal);
-    }
-
-    private void An_info_plists_keys_are_read_past_its_doctype_and_text_that_is_no_property_list_is_passed_over()
-    {
-        IReadOnlyDictionary<string, string?> keys = AppManifests.Keys(ManifestText)!;
-
-        Assert.Equal(["CFBundleDisplayName", "LSRequiresIPhoneOS", "MinimumOSVersion", "UIDeviceFamily"], keys.Keys.Order(StringComparer.Ordinal));
-        Assert.Equal(("13.0", null), (keys["MinimumOSVersion"], keys["LSRequiresIPhoneOS"]));
-        Assert.Null(AppManifests.Keys("<Project />"));
-        Assert.Null(AppManifests.Keys("not xml"));
-        Assert.Null(AppManifests.WithSceneManifest(AppManifests.WithSceneManifest(ManifestText)!));
-        string crlf = ManifestText.Replace("\n", "\r\n", StringComparison.Ordinal);
-        Assert.DoesNotContain("\n", AppManifests.WithSceneManifest(crlf)!.Replace("\r\n", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
     }
 }

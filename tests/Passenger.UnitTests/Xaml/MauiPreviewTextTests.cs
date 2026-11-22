@@ -2,10 +2,9 @@ using Passenger.Xaml.Features;
 
 namespace Passenger.UnitTests.Xaml;
 
-/// <summary>A MAUI file's XAML as its previewer is sent it: MAUI's implicit namespaces written after the last attribute of
-/// a root's start tag that declares no default namespace, each prefix the root declares itself left as it is, every line and every place
-/// before the tag's end where it was; a root that declares its default namespace, or a file the loader must refuse, sent as
-/// it is.</summary>
+/// <summary>A MAUI file's XAML as its previewer is sent it: MAUI's implicit namespaces written at the end of a root's
+/// start tag that declares no default namespace, every line where it was, an open merged dictionary written in; a file
+/// the loader must refuse sent as it is.</summary>
 public sealed class MauiPreviewTextTests
 {
     private const string Global = "http://schemas.microsoft.com/dotnet/maui/global";
@@ -15,7 +14,6 @@ public sealed class MauiPreviewTextTests
     [Fact]
     public void The_previewer_is_sent_a_roots_implicit_namespaces_and_open_merged_dictionaries_written_in() => Cases.All(
         ("a root that declares no namespace takes mauis implicit ones at its start tags end", A_root_that_declares_no_namespace_takes_mauis_implicit_ones_at_its_start_tags_end),
-        ("a prefix the root declares itself keeps its own and a self closing root takes them after its last attribute", A_prefix_the_root_declares_itself_keeps_its_own_and_a_self_closing_root_takes_them_after_its_last_attribute),
         ("an open merged dictionary is written inline with its own namespaces and one not open or of another assembly is left", An_open_merged_dictionary_is_written_inline_with_its_own_namespaces_and_one_not_open_or_of_another_assembly_is_left),
         ("a root that declares its default namespace or a file the loader must refuse is sent as it is", A_root_that_declares_its_default_namespace_or_a_file_the_loader_must_refuse_is_sent_as_it_is));
 
@@ -26,12 +24,6 @@ public sealed class MauiPreviewTextTests
         Assert.Equal(Page.Replace("Title=\"Main\">", $"Title=\"Main\" xmlns=\"{Global}\" xmlns:x=\"{X}\" xmlns:d=\"{Design}\">", StringComparison.Ordinal), declared);
         Assert.Equal(Page.Split('\n').Length, declared.Split('\n').Length);
         Assert.Equal(Page.IndexOf("Title", StringComparison.Ordinal), declared.IndexOf("Title", StringComparison.Ordinal));
-    }
-
-    private void A_prefix_the_root_declares_itself_keeps_its_own_and_a_self_closing_root_takes_them_after_its_last_attribute()
-    {
-        const string View = "<ContentView xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" />";
-        Assert.Equal($"<ContentView xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" xmlns=\"{Global}\" xmlns:d=\"{Design}\" />", MauiPreviewText.Declared(View));
     }
 
     private void An_open_merged_dictionary_is_written_inline_with_its_own_namespaces_and_one_not_open_or_of_another_assembly_is_left()

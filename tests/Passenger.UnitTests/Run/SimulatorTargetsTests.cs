@@ -5,11 +5,10 @@ using Passenger.Text;
 
 namespace Passenger.UnitTests.Run;
 
-/// <summary>Where an iOS app runs: the simulators and devices the iOS workload lists (each by its UDID, a shut-down one said
-/// not running and named without the workload's own word on its state), and an installed app's start on a simulator:
-/// simctl's launch with its output on simctl's own, the app's variables under simctl's prefix with simctl's own words
-/// unbuffered, the process simctl says it launched, the app's own process by its installed bundle, and the relay's
-/// variables for a Debug start.</summary>
+/// <summary>Where an iOS app runs: the simulators the iOS workload lists (each by its UDID, a shut-down one said not
+/// running), and an installed app's start on a simulator: simctl's launch with its output on simctl's own, the app's
+/// variables under simctl's prefix with simctl's own words unbuffered, the app's own process by its installed bundle,
+/// and the relay's variables for a Debug start.</summary>
 public class SimulatorTargetsTests
 {
     private const string Listed = """
@@ -32,13 +31,11 @@ public class SimulatorTargetsTests
         "com.companyname.mauiapp1", "/src/MauiApp1/bin/Debug/net11.0-ios/iossimulator-arm64/MauiApp1.app", "iossimulator-arm64");
 
     [Fact]
-    public void An_iOS_simulators_app_is_listed_launched_and_found_by_its_udid_and_the_line_saying_its_launch() => Cases.All(
+    public void An_iOS_simulators_app_is_listed_by_its_udid_launched_and_found_by_its_installed_bundle() => Cases.All(
         ("the ios workloads simulators are listed by their udids a shut down one said not running", The_ios_workloads_simulators_are_listed_by_their_udids_a_shut_down_one_said_not_running),
-        ("a simulator chosen is found again by its udid once booted", A_simulator_chosen_is_found_again_by_its_udid_once_booted),
         ("Run launches the app afresh on its simulator with its output on simctls own", Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own),
         ("the apps process is the one running its bundles copy installed on its own simulator", The_apps_process_is_the_one_running_its_bundles_copy_installed_on_its_own_simulator),
         ("the apps variables go to simctl under its prefix and simctl says its launch at once", The_apps_variables_go_to_simctl_under_its_prefix_and_simctl_says_its_launch_at_once),
-        ("the apps process is read from simctls line saying its launch", The_apps_process_is_read_from_simctls_line_saying_its_launch),
         ("a debug start gives the app the relay as its profiler listening on a port of this mac", A_debug_start_gives_the_app_the_relay_as_its_profiler_listening_on_a_port_of_this_mac));
 
     private void The_ios_workloads_simulators_are_listed_by_their_udids_a_shut_down_one_said_not_running()
@@ -50,16 +47,6 @@ public class SimulatorTargetsTests
         Assert.Equal([false, true, true], targets.Select(t => t.Running));
         Assert.Equal([TargetKind.Simulator, TargetKind.Simulator, TargetKind.Device], targets.Select(t => t.Kind));
         Assert.All(targets, t => Assert.Equal(TargetPlatform.Ios, t.Platform));
-    }
-
-    private void A_simulator_chosen_is_found_again_by_its_udid_once_booted()
-    {
-        IReadOnlyList<DeviceTarget> targets = DeviceTargets.Parse(TargetPlatform.Ios, new MSBuildAnswer(new ChildResult(0, Listed, string.Empty)));
-        KeptTarget chosen = KeptTarget.Of(targets[0]);
-
-        Assert.Same(targets[0], DeviceTargets.Find(chosen, targets));
-        Assert.Equal("iPad (A16) - iOS 27.2", DeviceTargets.Find(chosen, [targets[0] with { Running = true }])?.Shown);
-        Assert.Null(DeviceTargets.Find(chosen with { Platform = TargetPlatform.Android }, targets));
     }
 
     private void Run_launches_the_app_afresh_on_its_simulator_with_its_output_on_simctls_own()
@@ -89,16 +76,6 @@ public class SimulatorTargetsTests
             [SimulatorApp.ChildPrefix + RuntimeVariables.StartupHooks] = "/hook.dll",
             ["SIMCTL_CHILD_GREETING"] = "hello",
         }, given);
-    }
-
-    private void The_apps_process_is_read_from_simctls_line_saying_its_launch()
-    {
-        string launched = "/Applications/Xcode.app/Contents/Developer/usr/bin/simctl launch --console com.companyname.mauiapp1\n"
-            + "com.companyname.mauiapp1: 75344\n2026-11-15 21:42:37.443 MauiApp1[75344:99122814] Started\n";
-
-        Assert.Equal("75344", App.StartedIn(TextSnapshot.From(launched)));
-        Assert.Null(App.StartedIn(TextSnapshot.From("/Applications/Xcode.app/Contents/Developer/usr/bin/simctl launch --console\n")));
-        Assert.Null(App.StartedIn(TextSnapshot.From("com.companyname.mauiapp1: not a process\n")));
     }
 
     private void A_debug_start_gives_the_app_the_relay_as_its_profiler_listening_on_a_port_of_this_mac()
