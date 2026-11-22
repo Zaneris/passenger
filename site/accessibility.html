@@ -127,6 +127,20 @@
                         profiler's calls are trees to a screen reader: each row's level, its place among the rows beside it,
                         and whether it is open.</dd>
                 </div>
+                <div>
+                    <dt>Read as Text</dt>
+                    <dd>Ctrl+Alt+R (Ctrl+Cmd+R on the Mac) opens what the part with the keys says as plain text to read
+                        line by line: the problems on the caret's line and its card, the terminal's last command and its
+                        output, a diff's changes, a test's result, the problem chosen in Problems or the last message.
+                        Escape gives the keys back.</dd>
+                </div>
+                <div>
+                    <dt>Sound cues</dt>
+                    <dd>A short tone as the caret reaches a line with an error, a warning, a breakpoint, a fold or a change,
+                        and as a build or a test run passes or fails, the debugger stops your program, a command fails in
+                        the terminal or a save is refused. They play while a screen reader runs, or always, and Settings
+                        &rsaquo; Accessibility turns each on or off.</dd>
+                </div>
             </dl>
         </section>
 
@@ -170,6 +184,19 @@
                         icons, the caret, focus rings and fields' edges, held by a test.</dd>
                 </div>
                 <div>
+                    <dt>High Contrast</dt>
+                    <dd>A High Contrast theme, dark and light, puts every word at WCAG AAA's 7:1 and every mark and edge at
+                        4.5:1, and takes over while Windows' contrast themes, macOS's Increase contrast or GNOME's High
+                        Contrast is on.</dd>
+                </div>
+                <div>
+                    <dt>Not by colour alone</dt>
+                    <dd>Errors, warnings and suggestions are underlined in shapes of their own, added, changed and
+                        conflicted lines are marked in different shapes, a diff signs its lines and a changed file shows its
+                        letter. Settings &rsaquo; Accessibility &rsaquo; Colours of states lays a colour-blind safe palette
+                        over any theme.</dd>
+                </div>
+                <div>
                     <dt>Where you are</dt>
                     <dd>The chosen row, the open tab and the open tool window carry an accent mark at 3:1 beside their
                         tinted ground, never the tint alone.</dd>
@@ -190,22 +217,12 @@
 
         <section id="limits">
             <h2>Not there yet</h2>
-            <p class="intro">What a screen reader user still meets in 0.4.1. If something else stands in your way, please
+            <p class="intro">What a screen reader user still meets in 0.4.2. If something else stands in your way, please
                 <a href="https://github.com/Zaneris/passenger/issues">open an issue</a> naming your system and screen
                 reader.</p>
             <ul class="limits">
                 <li><strong>On Linux</strong>, reading by character and word, following the selection, and hearing what
                     Passenger tells you for certain.</li>
-                <li><strong>Sounds.</strong> Nothing yet sounds as the caret reaches a line with an error, a breakpoint or a
-                    change, or as a build or a test run ends
-                    (<a href="https://github.com/Zaneris/passenger/issues/1849">#1849</a>).</li>
-                <li><strong>Plain text of rich content.</strong> A hover card, a problem's details or a notification can't
-                    yet be opened as plain text to read line by line
-                    (<a href="https://github.com/Zaneris/passenger/issues/1850">#1850</a>).</li>
-                <li><strong>Colour alone.</strong> An error and a warning in the margin, a passing and a failing test, and a
-                    diff's added and removed lines are told apart mainly by colour, and there is no high-contrast theme yet,
-                    nor is Windows' high-contrast mode followed
-                    (<a href="https://github.com/Zaneris/passenger/issues/1851">#1851</a>).</li>
             </ul>
         </section>
     </div>

@@ -64,15 +64,15 @@
         "type": "Project",
         "dependencies": {
           "NuGet.Configuration": "[8.0.0, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )",
-          "Passenger.Workspace": "[0.4.0, )"
+          "Passenger.Core": "[0.4.2, )",
+          "Passenger.Text": "[0.4.2, )",
+          "Passenger.Workspace": "[0.4.2, )"
         }
       },
       "passenger.text": {
         "type": "Project",
         "dependencies": {
-          "Passenger.Core": "[0.4.0, )"
+          "Passenger.Core": "[0.4.2, )"
         }
       },
       "passenger.workspace": {
@@ -80,8 +80,8 @@
         "dependencies": {
           "Cucumber.CucumberExpressions": "[17.1.0, )",
           "Gherkin": "[35.0.0, )",
-          "Passenger.Core": "[0.4.0, )",
-          "Passenger.Text": "[0.4.0, )"
+          "Passenger.Core": "[0.4.2, )",
+          "Passenger.Text": "[0.4.2, )"
         }
       },
       "Cucumber.CucumberExpressions": {
