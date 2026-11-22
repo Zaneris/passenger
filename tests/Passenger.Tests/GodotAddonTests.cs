@@ -295,6 +295,12 @@ public sealed class GodotAddonTests : IDisposable
         Flow.StepApart<GodotAddonTests>(nameof(A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused),
             test => test.A_rename_over_a_scene_Godot_holds_unsaved_asks_the_person_and_an_agents_is_refused());
         OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused),
+            test => test.A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused());
+        OpenWindows.CloseAll();
+        Flow.StepApart<GodotAddonTests>(nameof(An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them),
+            test => test.An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them());
+        OpenWindows.CloseAll();
         Flow.StepApart<GodotAddonTests>(nameof(A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline),
             test => test.A_scene_Godot_has_open_is_read_again_after_a_write_here_and_its_selection_shows_in_the_outline());
         OpenWindows.CloseAll();
@@ -719,8 +725,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>With Godot's editor holding the scene unsaved, a Replace in Files whose one match is in that scene, open here
     /// and so changed only in its editor, asks the person at once, before any text changes, and declined changes nothing; an
     /// agent's is refused, asking nobody; and a node's property edited in the scene's outline asks the same.</summary>
-    [AvaloniaFact]
-    public void A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused()
+    private void A_replace_in_an_open_scene_alone_asks_at_once_where_Godot_holds_it_unsaved_and_an_agents_is_refused()
     {
         MainWindow window = Opened();
         try
@@ -776,8 +781,7 @@ public sealed class GodotAddonTests : IDisposable
     /// <summary>Godot's editor answering as one before 4.7 (the addon's own words, as such a Godot has no word for a scene
     /// held unsaved), with the scene open there: a replace in it, open here, asks at once saying the editor cannot say
     /// whether it holds edits; and with a resource open in its inspector, a replace in that resource asks saying so.</summary>
-    [AvaloniaFact]
-    public void An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them()
+    private void An_older_Godots_open_scene_and_a_resource_in_its_inspector_each_ask_in_their_own_words_before_a_replace_in_them()
     {
         MainWindow window = Opened(files: [("look.tres", "[gd_resource type=\"StyleBoxFlat\" format=3]\n\n[resource]\nbg_color = Color(0.2, 0.3, 0.4, 1)\n")]);
         try
@@ -1409,7 +1413,7 @@ public sealed class GodotAddonTests : IDisposable
             lines.Insert(5, "modulate = Color(1, 0, 0, 1)");
             Written(window, lines, "the colour picked");
 
-            ComboBox pace = Assert.IsType<ComboBox>(shown().EditorOf("Speed"));
+            ToolDropDown pace = Assert.IsType<ToolDropDown>(shown().EditorOf("Speed"));
             Ui.Settle();
             Ui.Click(pace);
             Ui.WaitFor(() => pace.IsDropDownOpen, "Speed's choices to open");

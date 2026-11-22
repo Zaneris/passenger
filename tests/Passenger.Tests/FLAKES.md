@@ -45,7 +45,8 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 - `GodotAddonTests`' `A_scene_nodes_position_colour_and_exported_enum_edited_in_its_outline_each_write_its_line_alone_one_step_of_Undo_each`,
   CI 44970786971 (Windows, report shard 4): "Expected: typeof(Avalonia.Controls.ComboBox) Actual:
   typeof(Passenger.App.ToolDropDown)". **The test was written before what it reads**: 37bd7bca4 made a scene node's enum
-  a ToolDropDown while no Godot test ran on CI, the first run with Godot (#2095). Left to Godot's batch.
+  a ToolDropDown while no Godot test ran on CI, the first run with Godot (#2095). The flow now reads it as one, and runs
+  whole with Godot 4.7.2 on the Mac and Linux (#2095).
 - `ContainersTests`' `A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so`, CI
   44970786971 (Linux, report shard 2): "Not found: "more than the 1073741824 the IDE reads of one"". **The test was
   written before what it reads**: since #2091 the container tools' limit is said through `Numbers.Said`
