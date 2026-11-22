@@ -67,11 +67,11 @@ public sealed class ProjectEvaluationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    /// <summary>The gate's eight window checks of a project's evaluation, as one flow, to take their place once it has
-    /// its record on CI: its files and packages as MSBuild evaluates them, an edit on disk, a host that does not read
-    /// ended and replaced, a folder opened again, a Directory.Build file come above, a first restore and folder links.
-    /// A run whose window closed stays a test of its own, as it dispatches each window to the session's thread, which a
-    /// flow's window test holds.</summary>
+    /// <summary>The gate's eight window checks of a project's evaluation, as one flow: its files and packages as
+    /// MSBuild evaluates them, an edit on disk, a host that does not read ended and replaced, a folder opened again, a
+    /// Directory.Build file come above, a first restore and folder links. A run whose window closed stays a test of its
+    /// own, as it dispatches each window to the session's thread, which a flow's window test holds.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_project_evaluations_hold_as_one_flow()
     {
@@ -95,9 +95,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         Flow.StepApart<ProjectEvaluationTests>("the project of the file shown and those it references load in the language server before the rest", t => t.The_project_of_the_file_shown_and_those_it_references_load_in_the_language_server_before_the_rest());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_shows_its_files_and_packages_as_MSBuild_evaluates_its_conditions_imports_wildcards_and_central_versions()
+    private void A_project_shows_its_files_and_packages_as_MSBuild_evaluates_its_conditions_imports_wildcards_and_central_versions()
     {
         MainWindow window = Open();
         Assert.Equal(TestProjects.Framework, Row(window, NodeKind.Project, "App").Detail);
@@ -110,9 +108,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_file_edited_on_disk_shows_what_it_says_now()
+    private void A_project_file_edited_on_disk_shows_what_it_says_now()
     {
         MainWindow window = Open();
         Assert.Contains("Serilog", Children(window, "Dependencies"));
@@ -141,9 +137,7 @@ public sealed class ProjectEvaluationTests : IDisposable
 
     /// <summary>A host whose answer does not read, as one of another build's could write, is ended and the evaluation asked
     /// of it fails; the next change is evaluated by a host started anew.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_host_whose_answer_does_not_read_is_ended_and_the_next_change_is_evaluated_by_a_new_one()
+    private void A_project_host_whose_answer_does_not_read_is_ended_and_the_next_change_is_evaluated_by_a_new_one()
     {
         MainWindow window = Open();
         Assert.Contains("Serilog", Children(window, "Dependencies"));
@@ -163,9 +157,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_folder_opened_again_shows_its_projects_from_their_last_evaluation_before_any_is_evaluated_again()
+    private void A_folder_opened_again_shows_its_projects_from_their_last_evaluation_before_any_is_evaluated_again()
     {
         string settings = TestFolders.Create("settings-");
         MainWindow first = new() { Width = 1200, Height = 800, StateFolder = settings };
@@ -202,9 +194,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         third.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_directory_build_file_made_above_an_open_project_shows_what_it_adds()
+    private void A_directory_build_file_made_above_an_open_project_shows_what_it_adds()
     {
         MainWindow window = Open();
         Assert.DoesNotContain("Newtonsoft.Json", Children(window, "Dependencies"));
@@ -215,9 +205,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_folder_opened_again_evaluates_a_project_whose_directory_build_file_came_while_it_was_closed()
+    private void A_folder_opened_again_evaluates_a_project_whose_directory_build_file_came_while_it_was_closed()
     {
         string settings = TestFolders.Create("settings-");
         MainWindow first = Keeping(settings, languageServer: false);
@@ -232,9 +220,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         second.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_is_evaluated_again_once_its_first_restore_writes_what_it_imports_and_kept_so()
+    private void A_project_is_evaluated_again_once_its_first_restore_writes_what_it_imports_and_kept_so()
     {
         // Never restored: the language server restores it as it loads it, after its first evaluation.
         string settings = TestFolders.Create("settings-");
@@ -248,9 +234,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         second.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_holding_folder_links_back_up_its_own_tree_keeps_its_real_folders_alone_as_what_its_evaluation_and_build_read()
+    private void A_project_holding_folder_links_back_up_its_own_tree_keeps_its_real_folders_alone_as_what_its_evaluation_and_build_read()
     {
         // Links to the folder each is in and to those above it: a walk that followed them would go round the tree.
         string app = Path.Combine(folder, "App");
@@ -311,8 +295,9 @@ public sealed class ProjectEvaluationTests : IDisposable
     }
 
     /// <summary>A run whose window closed as it began working out what App runs, the SDK App's folder picks still being
-    /// asked, leaves the project host to every window after it: one opened on App's folder shows App as MSBuild evaluates
-    /// it. Each window's loop here never runs again once its window has gone, as a window test's does once it is over.</summary>
+    /// asked, leaves the project host to every window after it: one opened on App's folder shows App as MSBuild
+    /// evaluates it. Each window's loop here never runs again once its window has gone, as a window test's does once it
+    /// is over.</summary>
     [Gate]
     [Fact]
     public async Task A_run_whose_window_closed_as_it_began_leaves_the_project_host_to_the_windows_after_it()

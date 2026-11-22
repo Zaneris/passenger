@@ -119,6 +119,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// window of its own that asks first, an older protocol answered in its own version, a call given up taking the
     /// window's question away, and Settings giving each agent its setup, each step the gate test it names in an
     /// instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_attached_agent_opens_its_folder_in_a_window_of_its_own_asking_first_in_its_own_protocol()
     {
@@ -132,6 +133,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// allow, one let in asked again once the person opens another in its window, one set up in a folder going on
     /// there, and a folder let in always staying when another window's settings take back a different one, each step
     /// the gate test it names in an instance of its own.</summary>
+    [Gate]
     [AvaloniaFact]
     public void An_attached_agent_is_let_into_a_folder_only_as_the_person_allows_and_asked_again_for_another()
     {
@@ -169,9 +171,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         Flow.StepApart("an agents open or edit of a closed file gives it a tab behind the persons which keeps the keys", () => new McpAttachTests(restored), t => t.An_agents_open_or_edit_of_a_closed_file_gives_it_a_tab_behind_the_persons_which_keeps_the_keys());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_agents_first_call_has_the_running_Passenger_open_its_folder_in_a_window_of_its_own_which_asks_first()
+    private void An_agents_first_call_has_the_running_Passenger_open_its_folder_in_a_window_of_its_own_which_asks_first()
     {
         string wanted = Plain("mcp-wanted-");
         string unrelated = Plain("mcp-unrelated-");
@@ -253,9 +253,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent that agreed an older protocol version with --mcp-attach (OpenCode's 2025-11-25) is answered in
     /// that version: the window is joined in it, so nothing of a later one (a result's serverInfo and resultType) reaches
     /// an agent that never asked for it.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_on_an_older_protocol_is_answered_in_its_own_version_through_attach()
+    private void An_agent_on_an_older_protocol_is_answered_in_its_own_version_through_attach()
     {
         string older = Plain("mcp-older-");
         MainWindow window = Ui.OpenFolder(older, languageServer: false);
@@ -308,9 +306,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_giving_up_on_its_call_takes_the_windows_question_away()
+    private void An_agent_giving_up_on_its_call_takes_the_windows_question_away()
     {
         string unattended = Plain("mcp-given-up-");
         MainWindow window = new() { Width = 1200, Height = 800, AgentAnswerLimit = TimeSpan.FromMinutes(10), StartsLanguageServer = false };
@@ -377,9 +373,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Settings' MCP Server page gives each agent its setup for this copy of Passenger, as the person pastes it: the
     /// running program's own path in every command and configuration, Claude Desktop's with the window's folder after
     /// --mcp-attach, the configurations JSON and TOML that read, and each Copy putting its text on the clipboard whole.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Settings_gives_each_agent_its_setup_for_this_copy_and_copies_it_whole()
+    private void Settings_gives_each_agent_its_setup_for_this_copy_and_copies_it_whole()
     {
         string project = Plain("mcp-setup-");
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = OwnState, StartsLanguageServer = false };
@@ -437,9 +431,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_agents_open_of_another_folder_is_the_persons_to_allow_on_their_window_and_not_asked_on_the_agents_own()
+    private void An_agents_open_of_another_folder_is_the_persons_to_allow_on_their_window_and_not_asked_on_the_agents_own()
     {
         string theirs = Plain("mcp-theirs-");
         string elsewhere = Plain("mcp-elsewhere-");
@@ -482,9 +474,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent let in on one folder works there alone: the person opening another in its window shuts it out, and its
     /// next call is asked again, changing nothing in the folder the person opened meanwhile. The agent's own open of a
     /// folder, which the person allows, keeps it let in there, though its first change there is asked for again.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_let_in_on_one_folder_is_asked_again_once_the_person_opens_another_in_its_window()
+    private void An_agent_let_in_on_one_folder_is_asked_again_once_the_person_opens_another_in_its_window()
     {
         string first = Plain("mcp-first-");
         string second = Plain("mcp-second-");
@@ -1019,9 +1009,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>With Enable MCP Server on, a window keeps its agents as the person opens another folder there, but an agent
     /// set up in the first goes on in it: --mcp-attach joins a window on its own folder again (the running Passenger opening
     /// one), never the window now on the other.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void An_agent_set_up_in_a_folder_goes_on_there_once_its_window_opens_another()
+    private void An_agent_set_up_in_a_folder_goes_on_there_once_its_window_opens_another()
     {
         string own = Plain("mcp-own-");
         string other = Plain("mcp-other-");
@@ -1055,9 +1043,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A folder let in always from one window stays let in when another window's Settings, open since before, take
     /// back a different one: the list merges what each changed.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void A_folder_let_in_always_from_one_window_stays_when_another_windows_settings_take_back_a_different_one()
+    private void A_folder_let_in_always_from_one_window_stays_when_another_windows_settings_take_back_a_different_one()
     {
         string taken = Plain("mcp-taken-");
         string kept = Plain("mcp-kept-");
