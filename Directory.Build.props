@@ -19,6 +19,11 @@
          only what it names. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+    <!-- No restore source but nuget.config's, never the folder of library packs a workload puts beside the .NET that
+         builds (MAUI's), which nuget.config's mapping keeps from giving any package: named among a restore's sources, it
+         would make each workload installed or removed rewrite every project's restore, and the next build restore and
+         compile them all again. -->
+    <DisableImplicitLibraryPacksFolder>true</DisableImplicitLibraryPacksFolder>
     <!-- Every system Passenger is published for (the musl pair for the container tools alone), so each lock file holds
          their packages and a publish restores what is locked, which CI's locked restore needs, and builds every library
          for its system, Roslyn's server included. Their runtime and host packs download only for a publish, and ASP.NET
