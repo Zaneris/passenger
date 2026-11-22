@@ -22,8 +22,36 @@ namespace Passenger.Tests;
 /// followed by every other and kept whole in settings.json, another Passenger's too.</summary>
 public sealed class ProjectWindowsTests : ProjectWindowsFolders
 {
+    /// <summary>A window closed, after an agent's call, before its server's first colours or with its first load never
+    /// ended, and a folder opened over another, each let go of the sessions before it, as one flow, each step the check
+    /// one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Two_solutions_open_in_windows_of_their_own_each_with_its_explorer_language_server_colours_diagnostics_build_and_run()
+    public void A_solution_window_closed_or_opened_over_lets_go_of_its_session()
+    {
+        Flow.StepApart<ProjectWindowsTests>("a window closed is let go with its session", t => t.A_window_closed_is_let_go_with_its_session());
+        Flow.StepApart<ProjectWindowsTests>("a window closed after an agents call kept its file is let go", t => t.A_window_closed_after_an_agents_call_kept_its_file_is_let_go());
+        Flow.StepApart<ProjectWindowsTests>("a window closed before its csharp servers first colours is let go", t => t.A_window_closed_before_its_csharp_servers_first_colours_is_let_go());
+        Flow.StepApart<ProjectWindowsTests>("a window whose first projects load never ended is let go once closed", t => t.A_window_whose_first_projects_load_never_ended_is_let_go_once_closed());
+        Flow.StepApart<ProjectWindowsTests>("a folder opened over another in its window lets go of the sessions before it", t => t.A_folder_opened_over_another_in_its_window_lets_go_of_the_sessions_before_it());
+    }
+
+    /// <summary>Two solutions open in windows of their own each with its explorer, server, build and run, Open asks
+    /// where unless told, the Window menu steps between them, quitting reopens each on its own layout even past a
+    /// question of a read-only file, a solution the system hands opens in front, and a setting changed in one shows in
+    /// the other, as one flow, each step in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void Solutions_open_in_windows_of_their_own_and_come_back_each_on_its_own_layout()
+    {
+        Flow.StepApart<ProjectWindowsTests>("two solutions open in windows of their own each with its explorer language server colours diagnostics build and run", t => t.Two_solutions_open_in_windows_of_their_own_each_with_its_explorer_language_server_colours_diagnostics_build_and_run());
+        Flow.StepApart<ProjectWindowsTests>("Open asks This Window or New Window and Dont ask again makes the answer the setting every window follows", t => t.Open_asks_This_Window_or_New_Window_and_Dont_ask_again_makes_the_answer_the_setting_every_window_follows());
+        Flow.StepApart<ProjectWindowsTests>("the Window menu lists the solution windows and Next and Previous Solution Window step between them", t => t.The_Window_menu_lists_the_solution_windows_and_Next_and_Previous_Solution_Window_step_between_them());
+        Flow.StepApart<ProjectWindowsTests>("quitting closes every window and a start reopens each on its own layout but not one closed alone", t => t.Quitting_closes_every_window_and_a_start_reopens_each_on_its_own_layout_but_not_one_closed_alone());
+        Flow.StepApart<ProjectWindowsTests>("a solution the system hands Passenger opens from a second window in front whose solution was closed", t => t.A_solution_the_system_hands_Passenger_opens_from_a_second_window_in_front_whose_solution_was_closed());
+        Flow.StepApart<ProjectWindowsTests>("a quit that asks about a read only files changes carries on once answered and a start reopens every window", t => t.A_quit_that_asks_about_a_read_only_files_changes_carries_on_once_answered_and_a_start_reopens_every_window());
+        Flow.StepApart<ProjectWindowsTests>("a setting changed in one window shows in the other and both changes are kept in settings json", t => t.A_setting_changed_in_one_window_shows_in_the_other_and_both_changes_are_kept_in_settings_json());
+    }
+
+    private void Two_solutions_open_in_windows_of_their_own_each_with_its_explorer_language_server_colours_diagnostics_build_and_run()
     {
         Project(alpha, "Alpha");
         Project(beta, "Beta");
@@ -70,8 +98,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
 
     /// <summary>A second window closed with a file open and tool windows shown (the Terminal's shell, Git, Problems, Local
     /// History, Find): the window and its session go, held by nothing the first window or the process keeps.</summary>
-    [AvaloniaFact]
-    public void A_window_closed_is_let_go_with_its_session()
+    private void A_window_closed_is_let_go_with_its_session()
     {
         File.WriteAllText(Path.Combine(beta, "One.cs"), "class One { }\n");
         MainWindow first = Started(LaunchOptions.Empty with { Folder = alpha }, languageServer: false);
@@ -109,8 +136,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
 
     /// <summary>A second window closed just after an agent's edit in it, which keeps the file for the agent's next call: the
     /// window goes at once, held by nothing the kept file's idle wait carries (#1445).</summary>
-    [AvaloniaFact]
-    public void A_window_closed_after_an_agents_call_kept_its_file_is_let_go()
+    private void A_window_closed_after_an_agents_call_kept_its_file_is_let_go()
     {
         File.WriteAllText(Path.Combine(beta, "One.cs"), "class One { }\n");
         MainWindow first = Started(LaunchOptions.Empty with { Folder = alpha }, languageServer: false);
@@ -139,8 +165,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
 
     /// <summary>A second window on a C# project closed once its language server has loaded and before any file is coloured,
     /// none being open: the window goes at once, held by nothing the wait for the server's first colours leaves (#1445).</summary>
-    [AvaloniaFact]
-    public void A_window_closed_before_its_csharp_servers_first_colours_is_let_go()
+    private void A_window_closed_before_its_csharp_servers_first_colours_is_let_go()
     {
         Project(beta, "Beta");
         Restore.Run(beta);
@@ -173,8 +198,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
     /// <summary>A second window on a solution of two C# projects whose language server ends as it loads the project of the
     /// file shown (its design-time build held off), before the other is opened, then closed with the server started again in
     /// its place: the window goes at once, held by nothing the wait for that first load leaves (#1445).</summary>
-    [AvaloniaFact]
-    public void A_window_whose_first_projects_load_never_ended_is_let_go_once_closed()
+    private void A_window_whose_first_projects_load_never_ended_is_let_go_once_closed()
     {
         string shop = TestFolders.Create("shop-");
         TestFolders.Write(shop, "Shop.slnx", "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Other/Other.csproj\" />\n</Solution>\n");
@@ -222,8 +246,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
 
     /// <summary>A folder opened over another in its window: every session the window had before it (the empty one it began
     /// with, the first folder's) goes, held by nothing the window keeps for the sessions after them.</summary>
-    [AvaloniaFact]
-    public void A_folder_opened_over_another_in_its_window_lets_go_of_the_sessions_before_it()
+    private void A_folder_opened_over_another_in_its_window_lets_go_of_the_sessions_before_it()
     {
         File.WriteAllText(Path.Combine(alpha, "One.cs"), "class One { }\n");
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
@@ -260,8 +283,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         return [empty, opened];
     }
 
-    [AvaloniaFact]
-    public void Open_asks_This_Window_or_New_Window_and_Dont_ask_again_makes_the_answer_the_setting_every_window_follows()
+    private void Open_asks_This_Window_or_New_Window_and_Dont_ask_again_makes_the_answer_the_setting_every_window_follows()
     {
         string gamma = TestFolders.Create("gamma-");
         MainWindow window = Started(LaunchOptions.Empty with { Folder = alpha });
@@ -329,8 +351,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         TestFolders.Delete(gamma);
     }
 
-    [AvaloniaFact]
-    public void The_Window_menu_lists_the_solution_windows_and_Next_and_Previous_Solution_Window_step_between_them()
+    private void The_Window_menu_lists_the_solution_windows_and_Next_and_Previous_Solution_Window_step_between_them()
     {
         MainWindow first = Started(LaunchOptions.Empty with { Folder = alpha });
         MainWindow second = InNewWindow(first, beta);
@@ -373,8 +394,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         first.Close();
     }
 
-    [AvaloniaFact]
-    public void Quitting_closes_every_window_and_a_start_reopens_each_on_its_own_layout_but_not_one_closed_alone()
+    private void Quitting_closes_every_window_and_a_start_reopens_each_on_its_own_layout_but_not_one_closed_alone()
     {
         MainWindow first = Started(LaunchOptions.Empty with { Folder = alpha });
         MainWindow second = InNewWindow(first, beta);
@@ -420,8 +440,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
     /// <summary>A solution the system hands a running Passenger (the Finder's Open, a drop on the Dock's icon) opens from the
     /// window in front, a second window whose solution was closed as much as the first; and a folder an agent asks Passenger
     /// to open (AppSocket's open, a new window from the one in front) opens there too, whatever folder it had before.</summary>
-    [AvaloniaFact]
-    public void A_solution_the_system_hands_Passenger_opens_from_a_second_window_in_front_whose_solution_was_closed()
+    private void A_solution_the_system_hands_Passenger_opens_from_a_second_window_in_front_whose_solution_was_closed()
     {
         string gamma = TestFolders.Create("gamma-");
         try
@@ -453,8 +472,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
     /// <summary>Quitting, a window holding a read-only file's changes asks what to do with them: Cancel keeps every window
     /// open, and Close Without Saving carries the quit on, closing every window and keeping each one's solution, whether
     /// Passenger quits (File, Exit; Restart to Update) or the system asks it to (the application menu's Quit on macOS).</summary>
-    [AvaloniaFact]
-    public void A_quit_that_asks_about_a_read_only_files_changes_carries_on_once_answered_and_a_start_reopens_every_window()
+    private void A_quit_that_asks_about_a_read_only_files_changes_carries_on_once_answered_and_a_start_reopens_every_window()
     {
         string locked = Path.Combine(beta, "Locked.cs");
         File.WriteAllText(locked, "class Locked { }\n");
@@ -513,8 +531,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         }
     }
 
-    [AvaloniaFact]
-    public void A_setting_changed_in_one_window_shows_in_the_other_and_both_changes_are_kept_in_settings_json()
+    private void A_setting_changed_in_one_window_shows_in_the_other_and_both_changes_are_kept_in_settings_json()
     {
         using IDisposable theme = TestsTheme();
         MainWindow first = Started(LaunchOptions.Empty with { Folder = alpha });
@@ -572,11 +589,21 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
 [Collection(Alone.Name)]
 public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
 {
+    /// <summary>Opening another folder in a window ends what the first ran and Run runs the second's own, and a window
+    /// that debugged with Hot Reload is let go once it opens another folder or closes, as one flow, each step the check
+    /// one test made in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_window_that_ran_or_debugged_lets_go_of_it_as_another_folder_opens_or_it_closes()
+    {
+        Flow.StepApart<ProjectWindowDebuggingTests>("opening another folder in this window ends what the first ran and Run runs the seconds own", t => t.Opening_another_folder_in_this_window_ends_what_the_first_ran_and_Run_runs_the_seconds_own());
+        Flow.StepApart<ProjectWindowDebuggingTests>("a window that debugged with hot reload then opened another folder is let go once closed", t => t.A_window_that_debugged_with_hot_reload_then_opened_another_folder_is_let_go_once_closed());
+        Flow.StepApart<ProjectWindowDebuggingTests>("a window closed as it debugs with hot reload is let go", t => t.A_window_closed_as_it_debugs_with_hot_reload_is_let_go());
+    }
+
     /// <summary>A folder's program running, another of its programs paused at a breakpoint, its build's warning in
     /// Problems; another folder opened in the same window: both programs are gone, the Run, Debug and Problems windows show
     /// nothing of the first folder, and Run runs the second folder's own configuration rather than saying one runs.</summary>
-    [AvaloniaFact]
-    public void Opening_another_folder_in_this_window_ends_what_the_first_ran_and_Run_runs_the_seconds_own()
+    private void Opening_another_folder_in_this_window_ends_what_the_first_ran_and_Run_runs_the_seconds_own()
     {
         File.WriteAllText(Path.Combine(alpha, "Alpha.csproj"),
             $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n"
@@ -631,8 +658,7 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
     /// <summary>A program debugged with Hot Reload, held at its start so its update handlers' hook never reaches the window;
     /// another folder opened over it in its window, then the window closed: the window goes, held by nothing the first
     /// folder's debugger left listening for the program (#1450).</summary>
-    [AvaloniaFact]
-    public void A_window_that_debugged_with_hot_reload_then_opened_another_folder_is_let_go_once_closed()
+    private void A_window_that_debugged_with_hot_reload_then_opened_another_folder_is_let_go_once_closed()
     {
         using Debugging.Helpers.StartHold hold = new();
         string gamma = Folders();
@@ -651,8 +677,7 @@ public sealed class ProjectWindowDebuggingTests : ProjectWindowsFolders
     /// <summary>A program debugged with Hot Reload, held at its start so its update handlers' hook never reaches the window,
     /// and the window closed as it debugs: the window goes, held by nothing its debugger left listening for the program
     /// (#1450).</summary>
-    [AvaloniaFact]
-    public void A_window_closed_as_it_debugs_with_hot_reload_is_let_go()
+    private void A_window_closed_as_it_debugs_with_hot_reload_is_let_go()
     {
         using Debugging.Helpers.StartHold hold = new();
         string gamma = Folders();

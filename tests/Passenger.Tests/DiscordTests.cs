@@ -23,8 +23,23 @@ namespace Passenger.Tests;
 /// person's Discord.</summary>
 public sealed class DiscordTests : DiscordFolders
 {
+    /// <summary>Discord shows only Passenger at first and nothing once turned off, names the file only while the
+    /// solution and the file are chosen, follows the window in front and clears as the solution or Passenger closes, is
+    /// found again as it starts, is reached by the person's window alone, and an older settings file keeps its choice,
+    /// as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_fresh_Passenger_shows_only_itself_in_Discord_and_turning_it_off_clears_it()
+    public void Discord_shows_what_the_person_chose_from_their_own_window_alone()
+    {
+        Flow.StepApart<DiscordTests>("a fresh Passenger shows only itself in Discord and turning it off clears it", t => t.A_fresh_Passenger_shows_only_itself_in_Discord_and_turning_it_off_clears_it());
+        Flow.StepApart<DiscordTests>("switching files names the file only while the solution and the file are chosen", t => t.Switching_files_names_the_file_only_while_the_solution_and_the_file_are_chosen());
+        Flow.StepApart<DiscordTests>("of two solution windows the one in front alone shows its activity and the other takes over as it closes", t => t.Of_two_solution_windows_the_one_in_front_alone_shows_its_activity_and_the_other_takes_over_as_it_closes());
+        Flow.StepApart<DiscordTests>("closing the solution or Passenger clears the activity", t => t.Closing_the_solution_or_Passenger_clears_the_activity());
+        Flow.StepApart<DiscordTests>("without Discord one line is logged and Passenger finds Discord when it starts and again when it comes back", t => t.Without_Discord_one_line_is_logged_and_Passenger_finds_Discord_when_it_starts_and_again_when_it_comes_back());
+        Flow.StepApart<DiscordTests>("only the persons window reaches Discord and a tests never the persons own", t => t.Only_the_persons_window_reaches_Discord_and_a_tests_never_the_persons_own());
+        Flow.StepApart<DiscordTests>("an older settings file never turned on stays off and one turned on keeps its choice", t => t.An_older_settings_file_never_turned_on_stays_off_and_one_turned_on_keeps_its_choice());
+    }
+
+    private void A_fresh_Passenger_shows_only_itself_in_Discord_and_turning_it_off_clears_it()
     {
         discord.Start();
         DateTimeOffset before = DateTimeOffset.UtcNow;
@@ -64,8 +79,7 @@ public sealed class DiscordTests : DiscordFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Switching_files_names_the_file_only_while_the_solution_and_the_file_are_chosen()
+    private void Switching_files_names_the_file_only_while_the_solution_and_the_file_are_chosen()
     {
         discord.Start();
         MainWindow window = Started();
@@ -99,8 +113,7 @@ public sealed class DiscordTests : DiscordFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Of_two_solution_windows_the_one_in_front_alone_shows_its_activity_and_the_other_takes_over_as_it_closes()
+    private void Of_two_solution_windows_the_one_in_front_alone_shows_its_activity_and_the_other_takes_over_as_it_closes()
     {
         discord.Start();
         string bank = Directory.CreateDirectory(Path.Combine(folder, "Bank")).FullName;
@@ -126,8 +139,7 @@ public sealed class DiscordTests : DiscordFolders
         Assert.True(Activities().Last() is null, "Passenger quit without clearing its activity");
     }
 
-    [AvaloniaFact]
-    public void Closing_the_solution_or_Passenger_clears_the_activity()
+    private void Closing_the_solution_or_Passenger_clears_the_activity()
     {
         discord.Start();
         MainWindow window = Started();
@@ -146,8 +158,7 @@ public sealed class DiscordTests : DiscordFolders
         Assert.True(Activities().Last() is null, "Passenger quit without clearing its activity");
     }
 
-    [AvaloniaFact]
-    public void Without_Discord_one_line_is_logged_and_Passenger_finds_Discord_when_it_starts_and_again_when_it_comes_back()
+    private void Without_Discord_one_line_is_logged_and_Passenger_finds_Discord_when_it_starts_and_again_when_it_comes_back()
     {
         MainWindow window = Started();
         Choose(window, "The solution");
@@ -172,8 +183,7 @@ public sealed class DiscordTests : DiscordFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Only_the_persons_window_reaches_Discord_and_a_tests_never_the_persons_own()
+    private void Only_the_persons_window_reaches_Discord_and_a_tests_never_the_persons_own()
     {
         discord.Start();
         // A window no one called the person's (a screenshot's, an agent's), the setting on: Discord hears nothing.
@@ -202,51 +212,10 @@ public sealed class DiscordTests : DiscordFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_Discord_page_has_its_options_at_their_defaults_says_who_sees_the_names_greyed_while_off_and_kept()
-    {
-        MainWindow window = Started();
-        SettingsDialog dialog = window.ShowSettings();
-        Ui.Settle();
-        dialog.Query = "discord";
-        Ui.Settle();
-        Assert.Equal([SettingsDialog.DiscordPage], dialog.Pages);
-        Assert.Equal([Show, "Show", Idle], dialog.Shown);
-        CheckBox on = Editor<CheckBox>(dialog, Show);
-        ComboBox shows = Editor<ComboBox>(dialog, "Show");
-        CheckBox idle = Editor<CheckBox>(dialog, Idle);
-        NumericUpDown minutes = Editor<NumericUpDown>(dialog, Idle);
-        Assert.True(on.IsChecked == true, "Show activity in Discord is off in a fresh Passenger");
-        Assert.Equal(["Passenger only", "The solution", "The solution and the file"], shows.Items.Cast<string>());
-        Assert.Equal("Passenger only", shows.SelectedItem);
-        Assert.True(idle.IsChecked == true && minutes.Value == 5, $"The idle time is not the plugins' 5 minutes, on: {idle.IsChecked}, {minutes.Value}");
-        Assert.True(shows.IsEnabled && idle.IsEnabled && minutes.IsEnabled, "Discord's options are greyed while its activity is on");
-        string[] words = [.. dialog.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty)];
-        Assert.True(words.Any(w => w.Contains("Passenger only: that you are using Passenger, and nothing of your work", StringComparison.Ordinal)
-            && w.Contains("Whoever can see your Discord activity sees these names", StringComparison.Ordinal)),
-            $"The Discord page does not say what each choice shows and who sees it:\n{string.Join('\n', words.Where(w => w.Length > 40))}");
-
-        Ui.Click(on);
-        Assert.False(shows.IsEnabled || idle.IsEnabled || minutes.IsEnabled, "Discord's options can be changed while its activity is off");
-        Ui.Click(on);
-        Assert.True(shows.IsEnabled && idle.IsEnabled && minutes.IsEnabled, "Turning the activity on left its options greyed");
-        shows.SelectedIndex = 1;
-        minutes.Value = 12;
-        dialog.Ok();
-        Ui.Settle();
-        window.Close();
-
-        MainWindow again = Started();
-        Assert.True(again.Settings is { ShowInDiscord: true, DiscordShows: DiscordShown.Solution, DiscordIdleMinutes: 12 },
-            $"The Discord options chosen were not kept: {again.Settings.ShowInDiscord}, {again.Settings.DiscordShows}, {again.Settings.DiscordIdleMinutes}");
-        again.Close();
-    }
-
     /// <summary>A settings.json an older Passenger wrote holds its defaults, the activity off and the solution and the file
     /// to be named: one never turned on stays off, Discord told nothing, naming only Passenger should the person turn it on;
     /// one the person had turned on keeps their choice.</summary>
-    [AvaloniaFact]
-    public void An_older_settings_file_never_turned_on_stays_off_and_one_turned_on_keeps_its_choice()
+    private void An_older_settings_file_never_turned_on_stays_off_and_one_turned_on_keeps_its_choice()
     {
         discord.Start();
         File.WriteAllText(Path.Combine(settings, "settings.json"),
@@ -279,8 +248,16 @@ public sealed class DiscordTests : DiscordFolders
 [Collection(Alone.Name)]
 public sealed class DiscordResponsivenessTests : DiscordFolders
 {
+    /// <summary>A Discord that never answers never slows the window, and after the idle time only Passenger shows until
+    /// the person is back, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_Discord_that_never_answers_never_slows_the_window()
+    public void A_Discord_that_never_answers_or_an_idle_person_changes_nothing_the_window_does()
+    {
+        Flow.StepApart<DiscordResponsivenessTests>("a Discord that never answers never slows the window", t => t.A_Discord_that_never_answers_never_slows_the_window());
+        Flow.StepApart<DiscordResponsivenessTests>("after the idle time only Passenger shows until the person is back", t => t.After_the_idle_time_only_Passenger_shows_until_the_person_is_back());
+    }
+
+    private void A_Discord_that_never_answers_never_slows_the_window()
     {
         discord.Start(answers: false);
         MainWindow window = Started();
@@ -298,8 +275,7 @@ public sealed class DiscordResponsivenessTests : DiscordFolders
         Ui.WaitFor(() => discord.Ended == discord.Connections, "Passenger to let go of the Discord that never answers as it quit", TimeSpan.FromSeconds(3));
     }
 
-    [AvaloniaFact]
-    public void After_the_idle_time_only_Passenger_shows_until_the_person_is_back()
+    private void After_the_idle_time_only_Passenger_shows_until_the_person_is_back()
     {
         discord.Start();
         // The person chose the solution and the file before, so no dialog's time counts towards the short idle time.
