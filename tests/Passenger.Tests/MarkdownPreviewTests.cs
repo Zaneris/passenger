@@ -216,9 +216,13 @@ public sealed class MarkdownPreviewTests
         Control[] before = [.. preview.Blocks];
         editor.Focus();
         Ui.PlaceAfter(editor, "inside.png)\n\n");
-        window.KeyTextInput("## Typed heading");
-        Ui.Press(window, "ENTER");
-        Ui.Press(window, "ENTER");
+        // Typing's pause held open, so the heading and its line breaks come within it however slow the machine.
+        using (preview.HoldTypingOpen())
+        {
+            window.KeyTextInput("## Typed heading");
+            Ui.Press(window, "ENTER");
+            Ui.Press(window, "ENTER");
+        }
         Ui.Settle();
         Assert.True(preview.GetLogicalDescendants().OfType<MarkdownText>().Any(w => w.Classes.Contains(StyleClasses.MdHeading2) && w.Shown == "Typed heading"),
             $"The heading typed does not show in the preview:\n{preview.Text}");
