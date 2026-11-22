@@ -11,7 +11,8 @@ namespace Passenger.Core;
 /// group of its own, and a watchdog shell reading a pipe only Passenger writes kills every group still alive once that
 /// pipe closes, which it does however Passenger's process ends. The watchdog is no process of Passenger's tree, so a kill
 /// of the tree (a test runner's of a hung host) leaves it to end what lives outside it, an app the system started for
-/// Passenger among them. Linux is treated as macOS is.</summary>
+/// Passenger among them. What a child starts apart from its group, which ends it itself, is followed for its runtime's
+/// files alone (<see cref="LineageVariable"/>). Linux is treated as macOS is.</summary>
 internal static partial class Lifeline
 {
     private const int SigKill = 9;
@@ -105,6 +106,23 @@ internal static partial class Lifeline
 
     private static Timer? following;
 
+    /// <summary>The variable each child is given naming this process and its start (<see cref="Lineage"/>), which what the
+    /// child starts apart from its group keeps (an orchestrator detached into a session of its own, the programs it runs):
+    /// those of them that are .NET programs have their runtime files followed as a group's processes' are, never killed.</summary>
+    [IdentifierHome]
+    private const string LineageVariable = "PASSENGER_LINEAGE";
+
+    /// <summary>This process's id and start, as <see cref="LineageVariable"/> gives them.</summary>
+    private static readonly Lazy<string> Lineage = new(() => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+        $"{Environment.ProcessId}-{DotnetProcesses.StartKey(Environment.ProcessId)}"));
+
+    /// <summary>Whether each .NET process found outside the groups, by its id and start, is of this process's lineage:
+    /// asked once each, and forgotten once its files are no longer there.</summary>
+    private static readonly Dictionary<(int Id, long Started), bool> Lineages = [];
+
+    /// <summary>Set while the runtime files are looked through, so a look that outlasts the timer's period is not run twice.</summary>
+    private static int looking;
+
     /// <summary>Sets a child up, before it starts, to end with Passenger.</summary>
     public static void Prepare(ProcessStartInfo start)
     {
@@ -114,6 +132,7 @@ internal static partial class Lifeline
             return;
         }
         start.StartDetached = true;
+        start.Environment[LineageVariable] = Lineage.Value;
         lock (Gate)
         {
             Watchdog();
@@ -333,10 +352,27 @@ internal static partial class Lifeline
         }
     }
 
-    /// <summary>Tells the watchdog the runtime files of each process of a group listed, and of Passenger's own, as they come,
-    /// so a kill of Passenger leaves none of them; and takes those of each that has gone (one killed by another, or as it
-    /// ended), striking it off. Read outside the gate, as a process's environment is a call into the system.</summary>
+    /// <summary>Tells the watchdog the runtime files of each process of a group listed, of Passenger's own and of each of its
+    /// lineage started apart (<see cref="StartedApart"/>), as they come, so a kill of Passenger leaves none of them; and
+    /// takes those of each that has gone (one killed by another, or as it ended), striking it off. Read outside the gate,
+    /// as a process's environment is a call into the system.</summary>
     private static void FollowRuntimeFiles()
+    {
+        if (Interlocked.Exchange(ref looking, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            FollowRuntimeFilesNow();
+        }
+        finally
+        {
+            Volatile.Write(ref looking, 0);
+        }
+    }
+
+    private static void FollowRuntimeFilesNow()
     {
         int[] groups;
         Dictionary<int, long> told;
@@ -348,7 +384,8 @@ internal static partial class Lifeline
         // Gone, or its id another process's now.
         HashSet<int> gone = [.. told.Where(entry => DotnetProcesses.StartKey(entry.Key) != entry.Value).Select(entry => entry.Key)];
         Dictionary<int, RuntimeFiles> come = [];
-        foreach (int id in groups.SelectMany(DotnetProcesses.InGroup).Prepend(Environment.ProcessId).Distinct())
+        HashSet<int> grouped = [.. groups.SelectMany(DotnetProcesses.InGroup).Prepend(Environment.ProcessId)];
+        foreach (int id in grouped.Concat(StartedApart(grouped, told)))
         {
             if ((!told.ContainsKey(id) || gone.Contains(id)) && Followable(id) is { } files)
             {
@@ -376,6 +413,36 @@ internal static partial class Lifeline
         {
             files.Remove();
         }
+    }
+
+    /// <summary>The .NET processes with runtime files that no group listed holds but that a child started apart, told by the
+    /// <see cref="LineageVariable"/> each started with: each asked once by its id and start, unless followed already.</summary>
+    private static List<int> StartedApart(HashSet<int> grouped, Dictionary<int, long> told)
+    {
+        List<int> apart = [];
+        HashSet<(int Id, long Started)> found = [];
+        foreach ((int id, long started) in DotnetProcesses.WithRuntimeFiles())
+        {
+            if (grouped.Contains(id) || told.TryGetValue(id, out long followed) && followed == started)
+            {
+                continue;
+            }
+            found.Add((id, started));
+            if (!Lineages.TryGetValue((id, started), out bool ours))
+            {
+                ours = DotnetProcesses.VariableOf(id, LineageVariable) == Lineage.Value;
+                Lineages[(id, started)] = ours;
+            }
+            if (ours)
+            {
+                apart.Add(id);
+            }
+        }
+        foreach ((int, long) forgotten in Lineages.Keys.Where(key => !found.Contains(key)).ToList())
+        {
+            Lineages.Remove(forgotten);
+        }
+        return apart;
     }
 
     /// <summary>A process's runtime files, where the watchdog can be told them, a line each; null where they cannot be read.

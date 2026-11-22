@@ -84,13 +84,10 @@ public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<A
                 && (command.Contains("dotnet run", StringComparison.Ordinal) || command.Contains("/bin/Debug/", StringComparison.Ordinal));
             IEnumerable<int> Ours() => Processes.Listed().Where(process => ended.Contains(process.Key) || Service(process.Value)
                 || process.Value.Contains(AspireCli.Home, StringComparison.Ordinal)).Select(process => process.Key);
-            // What the orchestrator ends as the AppHost goes leaves its runtime's files, as DCP's doing, not Passenger's: read while each runs.
-            RuntimeFiles[] theirs = [.. Ours().SelectMany(LeftRuntimeFiles.Of)];
             ChildProcesses.Kill(run);
             string[] Left() => [.. Ours().Select(id => $"{id}: {Processes.Listed().GetValueOrDefault(id)}")];
             Assert.True(Waiting.Until(() => Left().Length == 0, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(1)),
                 $"What the CLI's run started outlived the test:\n{string.Join("\n", Left())}");
-            LeftRuntimeFiles.TakeOnceGone(theirs);
         }
     }
 

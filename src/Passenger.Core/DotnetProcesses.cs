@@ -574,6 +574,27 @@ public static partial class DotnetProcesses
         }
     }
 
+    /// <summary>Each process whose runtime has its files (<see cref="RuntimeFiles"/>) in this process's temporary folder, its
+    /// diagnostic socket or its debugger's pipe, with the start they are named for: asked by those names, as
+    /// <see cref="Candidates"/> asks, so the folder's other files are never read. None on Windows.</summary>
+    internal static IEnumerable<(int Id, long Started)> WithRuntimeFiles()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            yield break;
+        }
+        string folder = Path.GetTempPath();
+        foreach (int id in Listed())
+        {
+            if (StartKey(id) is long started
+                && (File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"dotnet-diagnostic-{id}-{started}-socket")))
+                    || File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"clr-debug-pipe-{id}-{started}-in")))))
+            {
+                yield return (id, started);
+            }
+        }
+    }
+
     /// <summary>Every process the system lists now, on macOS and Linux.</summary>
     private static unsafe IReadOnlyList<int> Listed()
     {

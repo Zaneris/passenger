@@ -160,15 +160,13 @@ public sealed class AspirePackageAppHostTests(AspirePackageApp project) : IClass
         }
         finally
         {
-            // What the orchestrator ends after this test's check (its dashboard, killed) leaves its runtime's files, the bundle's doing: read while each runs.
-            string bundle = Environment.GetEnvironmentVariable("ASPIRE_HOME") ?? throw new InvalidOperationException("The run has no Aspire home of its own");
-            IEnumerable<int> Orchestrated() => Processes.Listed().Where(process => process.Value.Contains(bundle, StringComparison.Ordinal)).Select(process => process.Key);
-            RuntimeFiles[] theirs = [.. Orchestrated().SelectMany(LeftRuntimeFiles.Of)];
             Ui.Await(window.AspireRuntime.StopAllAsync(), "the AppHost to stop");
             window.Close();
+            // Once the orchestrator has ended its dashboard, the run holds what the two left in its folder against this test.
+            string bundle = Environment.GetEnvironmentVariable("ASPIRE_HOME") ?? throw new InvalidOperationException("The run has no Aspire home of its own");
+            IEnumerable<int> Orchestrated() => Processes.Listed().Where(process => process.Value.Contains(bundle, StringComparison.Ordinal)).Select(process => process.Key);
             Assert.True(Waiting.Until(() => !Orchestrated().Any(), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(1)),
                 $"The orchestrator and its dashboard outlived their AppHost:\n{string.Join("\n", Orchestrated().Select(Processes.Describe))}");
-            LeftRuntimeFiles.TakeOnceGone(theirs);
         }
     }
 }
