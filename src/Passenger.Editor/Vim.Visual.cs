@@ -563,8 +563,11 @@ public sealed partial class Vim
             }
             if (moved is not { } reached)
             {
-                // A $ that cannot go its count of lines still aims at the line's end.
+                // A $ cut short still aims at the line's end; any other stuck motion but j, k and a find aims a block at the cursor.
                 visualAims[i] = command.Name == "$" && !block ? int.MaxValue : visualAims[i];
+                blockColumns = !block || command.Name is "j" or "k" or "gj" or "gk" or "f" or "F" or "t" or "T" or ";" or "," ? blockColumns
+                    : command.Name == "$" ? blockColumns with { ToEnd = true }
+                    : blockColumns with { ToEnd = false, Cursor = TextNavigation.VisualColumn(text, cursor, tab) };
                 continue;
             }
             // Past the last line a visual cursor stands at its end, after its last character.
@@ -677,8 +680,9 @@ public sealed partial class Vim
             any |= got is not null;
             taken.Add(got ?? r);
         }
-        // Found or not, the column the cursor aims at is its own again.
+        // Found or not, the column the cursor aims at is its own again, and a block's is the cursor's.
         visualAims = [.. regions.Select(_ => -1)];
+        blockColumns = Mode == VimMode.VisualBlock ? blockColumns with { ToEnd = false, Cursor = TextNavigation.VisualColumn(text, regions[0].Cursor, view.Indent.TabWidth) } : blockColumns;
         if (!any)
         {
             return VimResult.Held;

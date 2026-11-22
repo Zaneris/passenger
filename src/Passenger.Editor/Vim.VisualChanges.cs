@@ -101,12 +101,12 @@ public sealed partial class Vim
             blockChange = block && !lines && basic == "c" && stretches.Count > 0;
             if (stretches.Count == 0)
             {
-                // A block of more than one line with nothing in its columns still takes a piece for each.
-                if (block && bottom > top && basic == "y")
+                // A block with nothing in its columns still yanks and changes, and over more than one line deletes, a piece for each line.
+                if (block && basic == "y")
                 {
                     Registers.Yank(command.Register, BlockTaken(text, stretches, (top, bottom, left, right), tab));
                 }
-                else if (block && bottom > top && basic == "d")
+                else if (block && (basic == "c" || (bottom > top && basic == "d")))
                 {
                     Registers.Delete(command.Register, BlockTaken(text, stretches, (top, bottom, left, right), tab), always: false);
                 }

@@ -460,6 +460,15 @@ public sealed partial class Vim(VimRegisters registers)
             }
             (blockCorner, blockChange) = (null, false);
         }
+        if (blockStart is { } padded && typed is "" && selections.Count == padded.Pads.Length && padded.Pads.Skip(1).Any(pad => pad > 0))
+        {
+            // A block's A that typed nothing pads only its first line.
+            List<TextEdit> unpadded = [.. selections.Items.Skip(1).Select((c, i) => (c.Caret, Pad: padded.Pads[i + 1])).Where(p => p.Pad > 0)
+                .Select(p => new TextEdit(p.Caret - p.Pad, p.Pad, string.Empty))];
+            EditPlan kept = new(unpadded, TextEditing.MapThrough(selections, unpadded), EditKind.Joined);
+            plans.Add(kept);
+            (text, selections) = (text.Apply(kept.Edits), kept.Selections);
+        }
         blockStart = null;
         // A line the session indented and left blank loses its indent, as Vim's autoindent takes back.
         bool indents = session is { How: "o" or "O" or "cc" } && typed == string.Empty || typed is not null && BlankAfterBreak(typed);
@@ -500,9 +509,11 @@ public sealed partial class Vim(VimRegisters registers)
                 : new ChangeMade(begun.Keys, begun.Count, typed ?? string.Empty, changeExtent);
         }
         changeExtent = null;
+        SelectionSet stepped = selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start), breakEnds)));
+        // A block's insert that typed nothing steps back from its first line's place, as any insert's Escape does.
         SelectionSet back = blockCorner is { } corner && corner <= text.Length
-            ? SelectionSet.Single(Settled(text, corner, breakEnds))
-            : selections.With(c => Selection.At(Settled(text, Math.Max(VimMotions.StepBack(text, c.Caret), VimMotions.LineOf(text, c.Caret).Start), breakEnds)));
+            ? typed is "" ? SelectionSet.Single(stepped.Items.MinBy(c => c.Caret)) : SelectionSet.Single(Settled(text, corner, breakEnds))
+            : stepped;
         if (blockChange)
         {
             // A block's change leaves its one cursor where typing ended on the first line it changed.

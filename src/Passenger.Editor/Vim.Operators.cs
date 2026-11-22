@@ -74,8 +74,8 @@ public sealed partial class Vim
             "gq" or "gw" => Wrap(op == "gw", text, selections, stretches, view),
             _ => Case(command, op, text, selections, stretches, view),
         };
-        // Nothing taken leaves them, but a change of an empty line's place empties one and a block of lines takes a piece each.
-        bool empty = !(block && lines is { } over && over.Bottom > over.Top)
+        // Nothing taken leaves them, but a change of an empty line's place empties one, and a block's change or lines take pieces.
+        bool empty = !(block && (op == "c" || (lines is { } over && over.Bottom > over.Top)))
             && ((VimMotions.LastLine(text, breakEnds) == 0 && text.GetLine(0).Length == 0)
                 || stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0)));
         if (op is "d" or "c" && !empty)

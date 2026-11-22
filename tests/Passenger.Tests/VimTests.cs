@@ -204,7 +204,6 @@ public sealed partial class VimTests
             + $"by a sentence's end, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
         ($"( and ) about a paragraph opened by a sentence's end; {ToFix}",
             (vimCase, _, passenger) => vimCase.Keys.Any(key => key is "(" or ")") && passenger.Seen.Contains(OpenedByAnEnd)),
-        ($"Visual block mode's corners: a block over a line's last character, its I and A, ~ and J after o; {ToFix}", (vimCase, _, _) => vimCase.Uses(Block)),
         ($"A over a visual stretch by characters or lines after another visual operator, which Vim's places by where that "
             + $"operator's stretch began; {ToFix}",
             (vimCase, _, _) => vimCase.Commands.Where((command, at) => command.Uses.Contains(VisualInsert)
@@ -224,7 +223,6 @@ public sealed partial class VimTests
             && Enumerable.Range('2', 8).All(name => vim.Registers[(char)name].Text == passenger.Registers[(char)(name - 1)].Text)
             && "0-abz".All(name => vim.Registers[name].Text == passenger.Registers[name].Text);
 
-    private const string Block = "visual block mode";
     private const string VisualInsert = "I or A in visual mode";
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
@@ -373,7 +371,6 @@ public sealed partial class VimTests
             case 8:
                 string visual = Pick(random, ["v", "V", VimKeys.CtrlV]);
                 keys.Add(visual);
-                uses.UnionWith(visual == VimKeys.CtrlV ? [Block] : []);
                 for (int i = random.Next(1, 3); i > 0; i--)
                 {
                     if (random.Next(4) == 0)
