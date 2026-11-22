@@ -100,12 +100,11 @@ public partial class MainWindow
         ToolButtons.Grey(shown.NewSolutionButton, newSolutionWhyNot);
     }
 
-    /// <summary>Opens what File, Open Solution or Open Folder chose (or a recent one, the system's, a new solution or a
-    /// clone): a solution (.sln, .slnx) or C# project (.csproj) as the workspace over its folder, or a folder, here or in
-    /// another window as Settings says or the person answers (<see cref="Asking"/>); a file-based program with no folder
-    /// open, its folder with it in a tab; any other file in a tab here. Null once open or asked where, else why not, which
-    /// the status bar and the Welcome screen say; <paramref name="then"/> is told the window a workspace opened in once
-    /// begun.</summary>
+    /// <summary>Opens what File, Open Solution or Open Folder chose (a recent one, the system's, a new solution, a clone): a
+    /// solution (.sln, .slnx) or C# project (.csproj) as the workspace over its folder, or a folder, here or in another window
+    /// as Settings says or the person answers (<see cref="Asking"/>); a file-based program with no folder open, its folder
+    /// with it in a tab; any other file in a tab here. Null once open or asked where, else why not, said in the status bar
+    /// and on the Welcome screen; <paramref name="then"/> is told the window a workspace opened in once begun.</summary>
     public string? Open(string path, Action<MainWindow>? then = null)
     {
         string full = PathNames.Canonical(path);

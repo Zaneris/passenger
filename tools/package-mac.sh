@@ -183,8 +183,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$publish/." "$app/Contents/MacOS/"
 # The web servers go in Resources, since codesign takes a dotted folder under Contents/MacOS for a nested bundle.
 mv "$app/Contents/MacOS/web" "$app/Contents/Resources/web"
-# The debug relays too, files Passenger copies to where an app loads them: Gatekeeper refuses a notarized app carrying
-# another platform's Mach-O (an iOS simulator's relay) among its code.
+# The debug relays too, which Passenger copies out: Gatekeeper refuses a notarized app with an iOS simulator's code in it.
 relays="$app/Contents/Resources/debugger/relay"
 if [ -d "$app/Contents/MacOS/debugger/relay" ]; then
     mkdir -p "$(dirname "$relays")"
