@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `AvaloniaSimulatorTests`' `An_avalonia_apps_ios_head_debugged_on_a_simulator_stops_at_a_breakpoint_in_its_shared_…`,
+  CI 45062369510 (macOS report shard 3, a 7 GB runner), at 5d54a9074: "The IDE was not quiet while waiting 547.7685194 s
+  for the build, the install and the debugged start on the simulator", the IDE's log timing the simulator's boot at 2.3
+  minutes and the question of which app the build made (`_ReadAppManifest`) at 3.5, begun 1.5 minutes after the boot
+  ended. **The IDE, slow on a loaded machine**: a start asked that question only once the simulator had booted, while
+  its system goes on starting, and MSBuild asked then takes many times as long: 1.2 to 5.5 s in the 20 s after a boot on
+  the Mac against 0.4 s, and on the runners 3.5 minutes here and 1.6 in CI 45033982948's MAUI Debug start, where their
+  other questions took 1 to 4 s. A start reads the app before any boot (e3dbbbeb8); AvaloniaSimulatorTests,
+  MauiSimulatorTests and McpIosSimulatorTests pass on the Mac.
 - `SelfDebuggingTests`' `Passenger_opened_on_its_repository_debugs_itself_on_a_state_of_its_own_stopping_stepping_and_evaluating_in_its_ui_code`,
   CI 45055574992 (Linux report shard 1), at 9350b8538: "Building Passenger rewrote the checkout's restore of 30 projects
   … Passenger.Analyzers.csproj.nuget.dgspec.json, line 25, read "https://api.nuget.org/v3/index.json": {}" and now reads
