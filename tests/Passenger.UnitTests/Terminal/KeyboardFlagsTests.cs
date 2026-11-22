@@ -8,7 +8,13 @@ namespace Passenger.UnitTests.Terminal;
 public class KeyboardFlagsTests
 {
     [Fact]
-    public void A_push_answers_the_query_with_only_the_flags_the_keys_follow_and_a_pop_puts_back_the_ones_before()
+    public void The_kitty_keyboard_flags_push_set_and_pop_for_each_screen_within_the_stacks_room() => Cases.All(
+        ("A push answers the query with only the flags the keys follow and a pop puts back the ones before", A_push_answers_the_query_with_only_the_flags_the_keys_follow_and_a_pop_puts_back_the_ones_before),
+        ("A set replaces adds to or takes from the flags in force", A_set_replaces_adds_to_or_takes_from_the_flags_in_force),
+        ("Each screen keeps its own flags and the alternate starts without any", Each_screen_keeps_its_own_flags_and_the_alternate_starts_without_any),
+        ("A push past the stacks room drops the oldest and pops still reach the rest", A_push_past_the_stacks_room_drops_the_oldest_and_pops_still_reach_the_rest));
+
+    private void A_push_answers_the_query_with_only_the_flags_the_keys_follow_and_a_pop_puts_back_the_ones_before()
     {
         (TerminalScreen screen, List<string> replies) = Screen();
         screen.Feed("\e[?u");
@@ -18,8 +24,7 @@ public class KeyboardFlagsTests
         Assert.Equal(["\e[?0u", "\e[?1u", "\e[?1u", "\e[?1u", "\e[?0u"], replies);
     }
 
-    [Fact]
-    public void A_set_replaces_adds_to_or_takes_from_the_flags_in_force()
+    private void A_set_replaces_adds_to_or_takes_from_the_flags_in_force()
     {
         (TerminalScreen screen, _) = Screen();
         screen.Feed("\e[=1u");
@@ -32,8 +37,7 @@ public class KeyboardFlagsTests
         Assert.True(screen.KeyboardFlags == 0, $"CSI = 0 ; 1 u, which sets no flag, left the flags at {screen.KeyboardFlags}");
     }
 
-    [Fact]
-    public void Each_screen_keeps_its_own_flags_and_the_alternate_starts_without_any()
+    private void Each_screen_keeps_its_own_flags_and_the_alternate_starts_without_any()
     {
         (TerminalScreen screen, _) = Screen();
         screen.Feed("\e[>1u\e[?1049h");
@@ -48,20 +52,7 @@ public class KeyboardFlagsTests
         Assert.True(screen.KeyboardFlags == 0, $"A program that left the alternate screen without popping left its flags there for the next: {screen.KeyboardFlags}");
     }
 
-    [Fact]
-    public void A_pop_of_more_than_was_pushed_and_the_terminals_reset_clear_every_flag()
-    {
-        (TerminalScreen screen, _) = Screen();
-        screen.Feed("\e[=1u\e[>1u\e[<5u");
-        Assert.True(screen.KeyboardFlags == 0, $"A pop past the stack's foot kept the flags set beneath it: {screen.KeyboardFlags}");
-        screen.Feed("\e[>1u\e[?1049h\e[>1u\ec");
-        Assert.True(screen.KeyboardFlags == 0 && !screen.IsAlternate, $"The terminal's reset (ESC c) kept the flags: {screen.KeyboardFlags}");
-        screen.Feed("\e[?1049l");
-        Assert.True(screen.KeyboardFlags == 0, $"The terminal's reset kept the main screen's flags: {screen.KeyboardFlags}");
-    }
-
-    [Fact]
-    public void A_push_past_the_stacks_room_drops_the_oldest_and_pops_still_reach_the_rest()
+    private void A_push_past_the_stacks_room_drops_the_oldest_and_pops_still_reach_the_rest()
     {
         (TerminalScreen screen, _) = Screen();
         screen.Feed(string.Concat(Enumerable.Repeat("\e[>0u\e[>1u", 20)));

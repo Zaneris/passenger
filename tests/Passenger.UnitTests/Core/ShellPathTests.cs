@@ -14,7 +14,13 @@ public class ShellPathTests
     private static readonly Func<string, bool> NoneThere = _ => false;
 
     [Fact]
-    public void Zsh_takes_them_in_its_zshrc_beside_ZDOTDIR_when_it_is_set()
+    public void Each_shell_takes_passengers_lines_in_its_own_startup_file_a_link_kept_a_link() => Cases.All(
+        ("Zsh takes them in its zshrc beside ZDOTDIR when it is set", Zsh_takes_them_in_its_zshrc_beside_ZDOTDIR_when_it_is_set),
+        ("Bash on macOS takes them in the first login file it reads that is there and elsewhere in its bashrc", Bash_on_macOS_takes_them_in_the_first_login_file_it_reads_that_is_there_and_elsewhere_in_its_bashrc),
+        ("Fish takes its own words in a file of its conf d", Fish_takes_its_own_words_in_a_file_of_its_conf_d),
+        ("A startup file that is a link stays one and the file it names takes the lines", A_startup_file_that_is_a_link_stays_one_and_the_file_it_names_takes_the_lines));
+
+    private void Zsh_takes_them_in_its_zshrc_beside_ZDOTDIR_when_it_is_set()
     {
         (string file, string lines) = ShellPath.Of(ShellKind.Zsh, Home, Installed, macOS: true, zdotdir: null, NoneThere);
         Assert.Equal(Path.Combine(Home, ".zshrc"), file);
@@ -22,8 +28,7 @@ public class ShellPathTests
         Assert.Equal(Path.Combine(Home, "zsh", ".zshrc"), ShellPath.Of(ShellKind.Zsh, Home, Installed, macOS: true, zdotdir: Path.Combine(Home, "zsh"), NoneThere).File);
     }
 
-    [Fact]
-    public void Bash_on_macOS_takes_them_in_the_first_login_file_it_reads_that_is_there_and_elsewhere_in_its_bashrc()
+    private void Bash_on_macOS_takes_them_in_the_first_login_file_it_reads_that_is_there_and_elsewhere_in_its_bashrc()
     {
         string Chosen(params string[] there) =>
             Path.GetFileName(ShellPath.Of(ShellKind.Bash, Home, Installed, macOS: true, zdotdir: null, f => there.Any(t => f == Path.Combine(Home, t))).File);
@@ -35,8 +40,7 @@ public class ShellPathTests
         Assert.Equal(Path.Combine(Home, ".profile"), ShellPath.Of(ShellKind.Posix, Home, Installed, macOS: false, zdotdir: null, NoneThere).File);
     }
 
-    [Fact]
-    public void Fish_takes_its_own_words_in_a_file_of_its_conf_d()
+    private void Fish_takes_its_own_words_in_a_file_of_its_conf_d()
     {
         (string file, string lines) = ShellPath.Of(ShellKind.Fish, Home, Installed, macOS: false, zdotdir: null, NoneThere);
         Assert.Equal(Path.Combine(Home, ".config", "fish", "conf.d", "dotnet.fish"), file);
@@ -44,15 +48,19 @@ public class ShellPathTests
     }
 
     [Fact]
-    public void An_installation_outside_home_is_named_whole_and_quoted()
+    public void The_lines_name_the_installation_whole_escaped_and_its_commands_first_on_the_PATH() => Cases.All(
+        ("An installation outside home is named whole and quoted", An_installation_outside_home_is_named_whole_and_quoted),
+        ("What a shell reads inside quotes is escaped so it takes the path as written", What_a_shell_reads_inside_quotes_is_escaped_so_it_takes_the_path_as_written),
+        ("A commands folder goes first on the PATH in the same startup file and fish takes a file of its own", A_commands_folder_goes_first_on_the_PATH_in_the_same_startup_file_and_fish_takes_a_file_of_its_own));
+
+    private void An_installation_outside_home_is_named_whole_and_quoted()
     {
         Assert.Contains("export DOTNET_ROOT=\"/opt/dot net\"\n", ShellPath.Of(ShellKind.Zsh, Home, "/opt/dot net", macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
     }
 
     /// <summary>A $, a backtick, a backslash and a quote, which a shell reads inside double quotes, each escaped; fish's
     /// backtick left as it is, as fish reads none there; $HOME the one expansion meant.</summary>
-    [Fact]
-    public void What_a_shell_reads_inside_quotes_is_escaped_so_it_takes_the_path_as_written()
+    private void What_a_shell_reads_inside_quotes_is_escaped_so_it_takes_the_path_as_written()
     {
         string odd = "/opt/a$b`c\\d\"e";
         Assert.Contains(@"export DOTNET_ROOT=""/opt/a\$b\`c\\d\""e""", ShellPath.Of(ShellKind.Bash, Home, odd, macOS: false, zdotdir: null, NoneThere).Lines, StringComparison.Ordinal);
@@ -63,8 +71,7 @@ public class ShellPathTests
 
     /// <summary>A command's folder (passenger-ide's ~/.local/bin) goes first on the PATH alone, no variable named, in the same
     /// startup file .NET's lines take; fish's in a file of conf.d named after the command, beside .NET's.</summary>
-    [Fact]
-    public void A_commands_folder_goes_first_on_the_PATH_in_the_same_startup_file_and_fish_takes_a_file_of_its_own()
+    private void A_commands_folder_goes_first_on_the_PATH_in_the_same_startup_file_and_fish_takes_a_file_of_its_own()
     {
         string bin = Path.Combine(Home, ".local", "bin");
         (string file, string lines) = ShellPath.CommandsOf(ShellKind.Zsh, Home, bin, "passenger-ide", macOS: true, zdotdir: null, NoneThere);
@@ -80,8 +87,7 @@ public class ShellPathTests
 
     /// <summary>A .zshrc linked into a dotfiles folder, as a dotfiles manager links one (by a relative path), stays that link,
     /// the file it names taking the lines after what it held.</summary>
-    [Fact]
-    public void A_startup_file_that_is_a_link_stays_one_and_the_file_it_names_takes_the_lines()
+    private void A_startup_file_that_is_a_link_stays_one_and_the_file_it_names_takes_the_lines()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows takes the change in the user's Path, never in a startup file");
         string home = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);

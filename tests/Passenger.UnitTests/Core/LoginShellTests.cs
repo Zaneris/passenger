@@ -7,15 +7,18 @@ namespace Passenger.UnitTests.Core;
 public class LoginShellTests
 {
     [Fact]
-    public void With_SHELL_unset_on_Linux_the_login_shell_is_bash_where_it_is_installed_and_else_sh()
+    public void The_login_shell_is_SHELL_where_it_names_a_file_else_bash_on_linux_or_sh() => Cases.All(
+        ("With SHELL unset on Linux the login shell is bash where it is installed and else sh", With_SHELL_unset_on_Linux_the_login_shell_is_bash_where_it_is_installed_and_else_sh),
+        ("A SHELL naming a file is the login shell and one naming none is passed over", A_SHELL_naming_a_file_is_the_login_shell_and_one_naming_none_is_passed_over));
+
+    private void With_SHELL_unset_on_Linux_the_login_shell_is_bash_where_it_is_installed_and_else_sh()
     {
         Assert.Equal("/bin/bash", ShellEnvironment.LoginShell(null, file => file is "/bin/bash" or "/bin/sh", macOS: false));
         Assert.Equal("/bin/bash", ShellEnvironment.LoginShell("", file => file is "/bin/bash" or "/bin/sh", macOS: false));
         Assert.Equal("/bin/sh", ShellEnvironment.LoginShell(null, file => file is "/bin/sh", macOS: false));
     }
 
-    [Fact]
-    public void A_SHELL_naming_a_file_is_the_login_shell_and_one_naming_none_is_passed_over()
+    private void A_SHELL_naming_a_file_is_the_login_shell_and_one_naming_none_is_passed_over()
     {
         Assert.Equal("/usr/bin/fish", ShellEnvironment.LoginShell("/usr/bin/fish", file => file is "/usr/bin/fish" or "/bin/bash", macOS: false));
         Assert.Equal("/bin/bash", ShellEnvironment.LoginShell("/usr/bin/gone", file => file is "/bin/bash", macOS: false));

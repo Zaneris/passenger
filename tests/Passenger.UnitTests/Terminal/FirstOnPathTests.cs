@@ -28,7 +28,13 @@ public class FirstOnPathTests
     }
 
     [Fact]
-    public void Any_shell_finds_the_folder_first_on_the_path_once_and_has_the_installation_as_its_variable()
+    public void Each_shell_finds_the_installations_folder_first_on_its_path() => Cases.All(
+        ("Any shell finds the folder first on the path once and has the installation as its variable", Any_shell_finds_the_folder_first_on_the_path_once_and_has_the_installation_as_its_variable),
+        ("A path set for the start is the one the folder goes first on", A_path_set_for_the_start_is_the_one_the_folder_goes_first_on),
+        ("Zsh reads passengers zshenv first which is given the persons own zdotdir", Zsh_reads_passengers_zshenv_first_which_is_given_the_persons_own_zdotdir),
+        ("Bash runs it again at its first prompt before the prompt command it had", Bash_runs_it_again_at_its_first_prompt_before_the_prompt_command_it_had));
+
+    private void Any_shell_finds_the_folder_first_on_the_path_once_and_has_the_installation_as_its_variable()
     {
         Dictionary<string, string> environment = [];
         First.Give("/bin/sh", environment, Inherited());
@@ -39,16 +45,14 @@ public class FirstOnPathTests
         Assert.True(environment.Count == 2, $"A shell that reads nothing of Passenger's after its startup files was given more: {string.Join(", ", environment.Keys)}");
     }
 
-    [Fact]
-    public void A_path_set_for_the_start_is_the_one_the_folder_goes_first_on()
+    private void A_path_set_for_the_start_is_the_one_the_folder_goes_first_on()
     {
         Dictionary<string, string> environment = new() { ["PATH"] = "/given" };
         First.Give("/bin/sh", environment, Inherited());
         Assert.Equal(string.Join(Separator, Folder, "/given"), environment["PATH"]);
     }
 
-    [Fact]
-    public void Zsh_reads_passengers_zshenv_first_which_is_given_the_persons_own_zdotdir()
+    private void Zsh_reads_passengers_zshenv_first_which_is_given_the_persons_own_zdotdir()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "zsh's startup files are read on macOS and Linux alone");
         Dictionary<string, string> environment = [];
@@ -64,8 +68,7 @@ public class FirstOnPathTests
         Assert.False(homes.ContainsKey(FirstOnPath.ZdotdirVariable), "With no ZDOTDIR of the person's, zsh would be given an empty one, and read no startup file of theirs");
     }
 
-    [Fact]
-    public void Bash_runs_it_again_at_its_first_prompt_before_the_prompt_command_it_had()
+    private void Bash_runs_it_again_at_its_first_prompt_before_the_prompt_command_it_had()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "bash's startup files are read on macOS and Linux alone");
         Dictionary<string, string> environment = [];

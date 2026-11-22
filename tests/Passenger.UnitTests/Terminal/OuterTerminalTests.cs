@@ -16,7 +16,12 @@ public class OuterTerminalTests
     };
 
     [Fact]
-    public void Each_variable_of_the_outer_terminal_passenger_inherited_is_taken_away_from_a_shell()
+    public void An_outer_terminals_variables_passenger_inherited_are_taken_from_a_shell_and_a_runs_own_reach_it() => Cases.All(
+        ("Each variable of the outer terminal passenger inherited is taken away from a shell", Each_variable_of_the_outer_terminal_passenger_inherited_is_taken_away_from_a_shell),
+        ("A runs inherited value is taken away and a value of its own reaches its program", A_runs_inherited_value_is_taken_away_and_a_value_of_its_own_reaches_its_program),
+        ("A variable passenger never inherited is left alone", A_variable_passenger_never_inherited_is_left_alone));
+
+    private void Each_variable_of_the_outer_terminal_passenger_inherited_is_taken_away_from_a_shell()
     {
         Dictionary<string, string> environment = new() { ["TERM"] = "xterm-256color" };
         TerminalSession.WithoutOuterTerminal(environment, Inherited.GetValueOrDefault);
@@ -25,8 +30,7 @@ public class OuterTerminalTests
             $"A shell in the Terminal takes itself for a pane of the outer tmux or screen: {Listed(environment)}");
     }
 
-    [Fact]
-    public void A_runs_inherited_value_is_taken_away_and_a_value_of_its_own_reaches_its_program()
+    private void A_runs_inherited_value_is_taken_away_and_a_value_of_its_own_reaches_its_program()
     {
         Dictionary<string, string> environment = new()
         {
@@ -39,8 +43,7 @@ public class OuterTerminalTests
             $"A run's program in the Terminal got the outer tmux's pane, or lost what its configuration gave it: {Listed(environment)}");
     }
 
-    [Fact]
-    public void A_variable_passenger_never_inherited_is_left_alone()
+    private void A_variable_passenger_never_inherited_is_left_alone()
     {
         Dictionary<string, string> environment = [];
         TerminalSession.WithoutOuterTerminal(environment, _ => null);

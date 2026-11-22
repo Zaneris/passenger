@@ -7,15 +7,20 @@ namespace Passenger.UnitTests.Terminal;
 public class MouseReportsTests
 {
     [Fact]
-    public void A_click_at_column_96_reaches_the_program_as_the_byte_0x80()
+    public void A_mouse_report_names_its_button_and_place_in_the_original_form_and_in_SGRs() => Cases.All(
+        ("A click at column 96 reaches the program as the byte 0x80", A_click_at_column_96_reaches_the_program_as_the_byte_0x80),
+        ("The original forms last place is column and row 223 and a release names no button", The_original_forms_last_place_is_column_and_row_223_and_a_release_names_no_button),
+        ("An SGR report names its place in digits past column 223", An_SGR_report_names_its_place_in_digits_past_column_223),
+        ("A move adds 32 to the button held or to 3 with none", A_move_adds_32_to_the_button_held_or_to_3_with_none));
+
+    private void A_click_at_column_96_reaches_the_program_as_the_byte_0x80()
     {
         byte[]? report = MouseReports.Of(0, 96, 1, release: false, sgr: false);
         Assert.True(report is [0x1b, 0x5b, 0x4d, 0x20, 0x80, 0x21],
             $"A press at column 96, row 1 was written {Hex(report)}: the program reads the click somewhere else");
     }
 
-    [Fact]
-    public void The_original_forms_last_place_is_column_and_row_223_and_a_release_names_no_button()
+    private void The_original_forms_last_place_is_column_and_row_223_and_a_release_names_no_button()
     {
         byte[]? report = MouseReports.Of(2, 223, 223, release: true, sgr: false);
         Assert.True(report is [0x1b, 0x5b, 0x4d, 0x23, 0xff, 0xff], $"A release at column and row 223 was written {Hex(report)}");
@@ -23,15 +28,13 @@ public class MouseReportsTests
             "A press at column 224, which the original form's byte cannot hold, was reported somewhere else");
     }
 
-    [Fact]
-    public void An_SGR_report_names_its_place_in_digits_past_column_223()
+    private void An_SGR_report_names_its_place_in_digits_past_column_223()
     {
         Assert.Equal("\e[<0;300;2M", System.Text.Encoding.ASCII.GetString(MouseReports.Of(0, 300, 2, release: false, sgr: true)!));
         Assert.Equal("\e[<2;5;7m", System.Text.Encoding.ASCII.GetString(MouseReports.Of(2, 5, 7, release: true, sgr: true)!));
     }
 
-    [Fact]
-    public void A_move_adds_32_to_the_button_held_or_to_3_with_none()
+    private void A_move_adds_32_to_the_button_held_or_to_3_with_none()
     {
         Assert.Equal("\e[<32;4;2M", System.Text.Encoding.ASCII.GetString(MouseReports.Of(0 + MouseReports.Motion, 4, 2, release: false, sgr: true)!));
         Assert.Equal("\e[<35;4;2M", System.Text.Encoding.ASCII.GetString(MouseReports.Of(MouseReports.NoButton + MouseReports.Motion, 4, 2, release: false, sgr: true)!));

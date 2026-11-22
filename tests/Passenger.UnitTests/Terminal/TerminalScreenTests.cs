@@ -8,7 +8,11 @@ namespace Passenger.UnitTests.Terminal;
 public class TerminalScreenTests
 {
     [Fact]
-    public void A_sequence_keeps_its_first_32_parameters_and_drops_the_rest()
+    public void A_sequences_parameters_are_capped_at_32_and_a_million_leave_nothing_held() => Cases.All(
+        ("A sequence keeps its first 32 parameters and drops the rest", A_sequence_keeps_its_first_32_parameters_and_drops_the_rest),
+        ("A sequence of a million parameters is capped and leaves nothing held", A_sequence_of_a_million_parameters_is_capped_and_leaves_nothing_held));
+
+    private void A_sequence_keeps_its_first_32_parameters_and_drops_the_rest()
     {
         TerminalScreen screen = new(80, 24);
         screen.Feed($"\e[{Repeated("0;", 31)}4mA\e[m\e[{Repeated("0;", 32)}4mB\e[m");
@@ -16,8 +20,7 @@ public class TerminalScreenTests
         Assert.True(Flags(screen, 0, 1) == CellFlags.None, $"A sequence's 33rd parameter was taken: B is drawn {Flags(screen, 0, 1)}");
     }
 
-    [Fact]
-    public void A_sequence_of_a_million_parameters_is_capped_and_leaves_nothing_held()
+    private void A_sequence_of_a_million_parameters_is_capped_and_leaves_nothing_held()
     {
         TerminalScreen screen = new(80, 24);
         // Bold a million times, then underline past the cap.

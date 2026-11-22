@@ -9,7 +9,14 @@ namespace Passenger.UnitTests.Terminal;
 public class ShellWordsTests
 {
     [Fact]
-    public void PowerShell_takes_a_path_in_single_quotes_each_quote_in_it_doubled_so_nothing_in_it_runs()
+    public void A_dropped_path_is_quoted_for_its_shell_so_nothing_in_it_runs() => Cases.All(
+        ("PowerShell takes a path in single quotes each quote in it doubled so nothing in it runs", PowerShell_takes_a_path_in_single_quotes_each_quote_in_it_doubled_so_nothing_in_it_runs),
+        ("Cmd takes a path in double quotes each percent behind a caret outside them", Cmd_takes_a_path_in_double_quotes_each_percent_behind_a_caret_outside_them),
+        ("Sh takes a path in single quotes each quote closed escaped and opened again", Sh_takes_a_path_in_single_quotes_each_quote_closed_escaped_and_opened_again),
+        ("Fish escapes each backslash and quote in single quotes and Nushell takes a raw string", Fish_escapes_each_backslash_and_quote_in_single_quotes_and_Nushell_takes_a_raw_string),
+        ("A path with nothing a shell reads in it is written bare", A_path_with_nothing_a_shell_reads_in_it_is_written_bare));
+
+    private void PowerShell_takes_a_path_in_single_quotes_each_quote_in_it_doubled_so_nothing_in_it_runs()
     {
         Assert.Equal("'$(x) it''s.txt'", ShellWords.Quoted("$(x) it's.txt", ShellKind.PowerShell));
         Assert.True(ShellWords.Quoted("C:\\a\\it\u2019s $env:HOME.txt", ShellKind.PowerShell) == "'C:\\a\\it\u2019\u2019s $env:HOME.txt'",
@@ -17,8 +24,7 @@ public class ShellWordsTests
         Assert.True(ShellWords.Quoted("C:\\a,b.txt", ShellKind.PowerShell) == "'C:\\a,b.txt'", "A comma left bare makes PowerShell pass two words");
     }
 
-    [Fact]
-    public void Cmd_takes_a_path_in_double_quotes_each_percent_behind_a_caret_outside_them()
+    private void Cmd_takes_a_path_in_double_quotes_each_percent_behind_a_caret_outside_them()
     {
         Assert.True(ShellWords.Quoted("C:\\a b\\%PATH%.txt", ShellKind.Cmd) == "\"C:\\a b\\\\\"^%\"PATH\"^%\".txt\"",
             $"cmd's form of a name holding %PATH% is {ShellWords.Quoted("C:\\a b\\%PATH%.txt", ShellKind.Cmd)}: cmd expands it into another path, "
@@ -27,8 +33,7 @@ public class ShellWordsTests
         Assert.Equal("\"C:\\a b\\\\\"", ShellWords.Quoted("C:\\a b\\", ShellKind.Cmd));
     }
 
-    [Fact]
-    public void Sh_takes_a_path_in_single_quotes_each_quote_closed_escaped_and_opened_again()
+    private void Sh_takes_a_path_in_single_quotes_each_quote_closed_escaped_and_opened_again()
     {
         Assert.Equal("'/tmp/$(touch ran) it'\\''s.txt'", ShellWords.Quoted("/tmp/$(touch ran) it's.txt", ShellKind.Posix));
         Assert.True(ShellWords.Quoted("/tmp/a\\b", ShellKind.Posix) == "'/tmp/a\\b'", "A backslash left bare is taken by sh as an escape, and the path loses it");
@@ -36,36 +41,37 @@ public class ShellWordsTests
 
     /// <summary>Names holding what fish's single quotes and Nushell's strings read: quotes, backslashes, a backslash at
     /// the end, a quote followed by #s, and a command.</summary>
-    public static readonly TheoryData<string> Awkward = new()
-    {
+    private static readonly string[] Awkward =
+    [
         "/tmp/it's.txt",
         "/tmp/a\\\\b",
         "/tmp/a b\\",
         "/tmp/x'#y'##z.txt",
         "/tmp/$(touch ran) 'it'.txt",
         "/tmp/\\'",
-    };
+    ];
 
-    [Theory]
-    [MemberData(nameof(Awkward))]
-    public void Fish_reads_a_dropped_path_back_as_it_is(string path)
+    [Fact]
+    public void Each_shell_reads_a_dropped_path_back_as_it_is() => Cases.All(
+        ("Fish reads a dropped path back as it is", Fish_reads_a_dropped_path_back_as_it_is),
+        ("Nushell reads a dropped path back as it is", Nushell_reads_a_dropped_path_back_as_it_is),
+        ("Zsh and bash take a word as sh does", Zsh_and_bash_take_a_word_as_sh_does));
+
+    private void Fish_reads_a_dropped_path_back_as_it_is() => Cases.Each(Awkward, path =>
     {
         string word = ShellWords.Quoted(path, ShellKind.Fish);
         Assert.True(FishReads(word) == path,
             $"fish reads {word} as {FishReads(word) ?? "an unfinished quote"}, not the dropped file's path {path}: a backslash or quote in it is lost or ends the quote");
-    }
+    });
 
-    [Theory]
-    [MemberData(nameof(Awkward))]
-    public void Nushell_reads_a_dropped_path_back_as_it_is(string path)
+    private void Nushell_reads_a_dropped_path_back_as_it_is() => Cases.Each(Awkward, path =>
     {
         string word = ShellWords.Quoted(path, ShellKind.Nushell);
         Assert.True(NushellReads(word) == path,
             $"Nushell reads {word} as {NushellReads(word) ?? "a malformed line"}, not the dropped file's path {path}");
-    }
+    });
 
-    [Fact]
-    public void Fish_escapes_each_backslash_and_quote_in_single_quotes_and_Nushell_takes_a_raw_string()
+    private void Fish_escapes_each_backslash_and_quote_in_single_quotes_and_Nushell_takes_a_raw_string()
     {
         Assert.Equal("'/tmp/it\\'s a\\\\b\\\\'", ShellWords.Quoted("/tmp/it's a\\b\\", ShellKind.Fish));
         Assert.Equal("r#'/tmp/it's a\\b'#", ShellWords.Quoted("/tmp/it's a\\b", ShellKind.Nushell));
@@ -73,8 +79,7 @@ public class ShellWordsTests
         Assert.True(ShellWords.Quoted("10kb", ShellKind.Nushell) == "r#'10kb'#", "A name Nushell reads as a file size was left bare");
     }
 
-    [Fact]
-    public void A_path_with_nothing_a_shell_reads_in_it_is_written_bare()
+    private void A_path_with_nothing_a_shell_reads_in_it_is_written_bare()
     {
         Assert.Equal("C:\\Users\\me\\Program.cs", ShellWords.Quoted("C:\\Users\\me\\Program.cs", ShellKind.PowerShell));
         Assert.Equal("C:\\Users\\me\\Program.cs", ShellWords.Quoted("C:\\Users\\me\\Program.cs", ShellKind.Cmd));
@@ -83,14 +88,15 @@ public class ShellWordsTests
         Assert.Equal("/Users/me/my-app_1.0.cs", ShellWords.Quoted("/Users/me/my-app_1.0.cs", ShellKind.Nushell));
     }
 
-    [Theory]
-    [InlineData(ShellKind.Zsh)]
-    [InlineData(ShellKind.Bash)]
-    public void Zsh_and_bash_take_a_word_as_sh_does(ShellKind shell)
+    private void Zsh_and_bash_take_a_word_as_sh_does() => Cases.Each<ShellKind>(
+    [
+        ShellKind.Zsh,
+        ShellKind.Bash,
+    ], shell =>
     {
         Assert.Equal(ShellWords.Quoted("/tmp/$(touch ran) it's.txt", ShellKind.Posix), ShellWords.Quoted("/tmp/$(touch ran) it's.txt", shell));
         Assert.Equal("/Users/me/my-app_1.0+b@x,y=z%.cs", ShellWords.Quoted("/Users/me/my-app_1.0+b@x,y=z%.cs", shell));
-    }
+    });
 
     /// <summary>A word as fish reads it: in single quotes, a backslash escapes a backslash or a quote and is kept before
     /// anything else; null where the quote is never closed or the word goes on after it.</summary>

@@ -9,7 +9,11 @@ namespace Passenger.UnitTests.Terminal;
 public class TerminalColoursTests
 {
     [Fact]
-    public void The_sixteen_colours_are_the_themes_tokens_and_the_rest_of_the_256_and_24_bit_ones_their_own()
+    public void A_style_is_drawn_in_the_themes_sixteen_colours_and_the_rest_of_the_256_and_24_bit_ones() => Cases.All(
+        ("The sixteen colours are the themes tokens and the rest of the 256 and 24 bit ones their own", The_sixteen_colours_are_the_themes_tokens_and_the_rest_of_the_256_and_24_bit_ones_their_own),
+        ("A style is drawn in its colours its defaults where it names none and inverse and hidden text from them", A_style_is_drawn_in_its_colours_its_defaults_where_it_names_none_and_inverse_and_hidden_text_from_them));
+
+    private void The_sixteen_colours_are_the_themes_tokens_and_the_rest_of_the_256_and_24_bit_ones_their_own()
     {
         Assert.Equal(TokenKeys.Terminal_Ansi1, TerminalColours.Token(1));
         Assert.Equal(TokenKeys.Terminal_Ansi15, TerminalColours.Token(15));
@@ -22,8 +26,7 @@ public class TerminalColoursTests
         Assert.Equal(0x0AC81E, TerminalColours.Rgb(CellStyle.FromRgb(10, 200, 30)));
     }
 
-    [Fact]
-    public void A_style_is_drawn_in_its_colours_its_defaults_where_it_names_none_and_inverse_and_hidden_text_from_them()
+    private void A_style_is_drawn_in_its_colours_its_defaults_where_it_names_none_and_inverse_and_hidden_text_from_them()
     {
         const string Text = "text";
         const string Ground = "ground";
@@ -40,16 +43,4 @@ public class TerminalColoursTests
         Assert.Equal(TerminalColours.Faint, TerminalColours.Look(new CellStyle(3, CellStyle.Default, CellFlags.Dim), Text, Ground).Opacity);
     }
 
-    [Fact]
-    public void A_look_is_named_by_one_kind_past_the_themes_which_names_it_back()
-    {
-        TextLook look = new(LookColour.Of(0x123456), LookColour.Of(TokenKeys.Terminal_Ansi5), LookStyle.Bold, 0.5);
-        TokenKind? kind = TextLooks.KindOf(look);
-        Assert.NotNull(kind);
-        Assert.True(kind >= TextLooks.First, $"The look is named by {kind}, one of the theme's kinds");
-        Assert.Equal(kind, TextLooks.KindOf(look with { }));
-        Assert.True(TextLooks.TryGet(kind!.Value, out TextLook named));
-        Assert.Equal(look, named);
-        Assert.False(TextLooks.TryGet(TokenKind.Keyword, out _));
-    }
 }

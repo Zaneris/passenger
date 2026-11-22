@@ -11,7 +11,12 @@ public class UnsettingTests
     private static readonly Dictionary<string, string> NoLoader = [];
 
     [Fact]
-    public void Env_unsets_each_variable_taken_away_and_then_runs_the_program_as_given()
+    public void Env_takes_away_each_variable_and_runs_the_program_as_given_whatever_its_names() => Cases.All(
+        ("Env unsets each variable taken away and then runs the program as given", Env_unsets_each_variable_taken_away_and_then_runs_the_program_as_given),
+        ("A name no environment can hold is never given to env which would refuse it and run nothing", A_name_no_environment_can_hold_is_never_given_to_env_which_would_refuse_it_and_run_nothing),
+        ("A program named with an equals sign is run by shs exec never taken by env for a variable", A_program_named_with_an_equals_sign_is_run_by_shs_exec_never_taken_by_env_for_a_variable));
+
+    private void Env_unsets_each_variable_taken_away_and_then_runs_the_program_as_given()
     {
         Dictionary<string, string> environment = [];
         (string app, string[] arguments) = TerminalSession.Unsetting([GitVariables.Dir, "-odd"], "/bin/prog", ["a", "b=c"], environment, NoLoader);
@@ -21,15 +26,13 @@ public class UnsettingTests
         Assert.True(environment.Count == 0, "A start with no loader variables was given variables to carry");
     }
 
-    [Fact]
-    public void A_name_no_environment_can_hold_is_never_given_to_env_which_would_refuse_it_and_run_nothing()
+    private void A_name_no_environment_can_hold_is_never_given_to_env_which_would_refuse_it_and_run_nothing()
     {
         Assert.True(TerminalSession.Unsetting(["A=B", ""], "/bin/prog", ["a"], new Dictionary<string, string>(), NoLoader) is ("/bin/prog", ["a"]),
             "env was given a name holding '=' or an empty one: it refuses to unset it and the program never runs");
     }
 
-    [Fact]
-    public void A_program_named_with_an_equals_sign_is_run_by_shs_exec_never_taken_by_env_for_a_variable()
+    private void A_program_named_with_an_equals_sign_is_run_by_shs_exec_never_taken_by_env_for_a_variable()
     {
         (string app, string[] arguments) = TerminalSession.Unsetting([GitVariables.Dir], "/tmp/a=b/prog", ["x"], new Dictionary<string, string>(), NoLoader);
         Assert.True(app == "/usr/bin/env" && arguments.SequenceEqual(["-u", GitVariables.Dir, "--", "/bin/sh", "-c", "exec \"$0\" \"$@\"", "/tmp/a=b/prog", "x"]),
@@ -37,7 +40,14 @@ public class UnsettingTests
     }
 
     [Fact]
-    public void A_loader_variable_env_would_lose_is_carried_in_the_environment_and_set_again_by_sh_its_value_on_no_command_line()
+    public void A_programs_loader_variables_reach_it_past_env_and_dash_and_on_no_command_line() => Cases.All(
+        ("A loader variable env would lose is carried in the environment and set again by sh its value on no command line", A_loader_variable_env_would_lose_is_carried_in_the_environment_and_set_again_by_sh_its_value_on_no_command_line),
+        ("A loader variable with nothing taken away reaches the program as it is", A_loader_variable_with_nothing_taken_away_reaches_the_program_as_it_is),
+        ("A loader name sh cannot set is left out of its line which would otherwise run nothing", A_loader_name_sh_cannot_set_is_left_out_of_its_line_which_would_otherwise_run_nothing),
+        ("Given a terminal the program is run by dash which takes it first its loader variables carried past dash", Given_a_terminal_the_program_is_run_by_dash_which_takes_it_first_its_loader_variables_carried_past_dash),
+        ("A programs loader variables are those inherited set over by the starts own less those it takes away", A_programs_loader_variables_are_those_inherited_set_over_by_the_starts_own_less_those_it_takes_away));
+
+    private void A_loader_variable_env_would_lose_is_carried_in_the_environment_and_set_again_by_sh_its_value_on_no_command_line()
     {
         Dictionary<string, string> environment = new() { ["TMUX"] = "" };
         Dictionary<string, string> loader = new() { ["DYLD_X"] = "/secret/value", ["DYLD_LIBRARY_PATH"] = "/lib's" };
@@ -53,16 +63,14 @@ public class UnsettingTests
             $"A loader variable's value went on a command line, where any user's ps reads it: {string.Join(' ', arguments)}");
     }
 
-    [Fact]
-    public void A_loader_variable_with_nothing_taken_away_reaches_the_program_as_it_is()
+    private void A_loader_variable_with_nothing_taken_away_reaches_the_program_as_it_is()
     {
         Dictionary<string, string> environment = new() { ["DYLD_X"] = "value" };
         Assert.True(TerminalSession.Unsetting([], "/bin/prog", ["a"], environment, new Dictionary<string, string> { ["DYLD_X"] = "value" }) is ("/bin/prog", ["a"])
             && environment.Count == 1, "A start taking nothing away no longer runs its program as it is");
     }
 
-    [Fact]
-    public void A_loader_name_sh_cannot_set_is_left_out_of_its_line_which_would_otherwise_run_nothing()
+    private void A_loader_name_sh_cannot_set_is_left_out_of_its_line_which_would_otherwise_run_nothing()
     {
         Dictionary<string, string> environment = [];
         (_, string[] arguments) = TerminalSession.Unsetting(["TMUX"], "/bin/prog", [], environment, new Dictionary<string, string> { ["DYLD_A-B"] = "x" });
@@ -70,8 +78,7 @@ public class UnsettingTests
             $"sh was told to set a name that is no identifier, a syntax error that runs nothing: {string.Join(' ', arguments)}");
     }
 
-    [Fact]
-    public void Given_a_terminal_the_program_is_run_by_dash_which_takes_it_first_its_loader_variables_carried_past_dash()
+    private void Given_a_terminal_the_program_is_run_by_dash_which_takes_it_first_its_loader_variables_carried_past_dash()
     {
         Dictionary<string, string> environment = [];
         (string app, string[] arguments) = TerminalSession.Unsetting([], "zsh", ["-l"], environment, new Dictionary<string, string> { ["DYLD_X"] = "value" }, "/dev/ttys003");
@@ -83,8 +90,7 @@ public class UnsettingTests
             "A program with no loader variables was not run by the shell that takes its terminal");
     }
 
-    [Fact]
-    public void A_programs_loader_variables_are_those_inherited_set_over_by_the_starts_own_less_those_it_takes_away()
+    private void A_programs_loader_variables_are_those_inherited_set_over_by_the_starts_own_less_those_it_takes_away()
     {
         Dictionary<string, string> inherited = new()
         {

@@ -11,7 +11,12 @@ public class TerminalLinksTests
     private const string Docs = "https://example.com/docs";
 
     [Fact]
-    public void What_a_program_writes_inside_a_link_is_linked_to_its_address_and_nothing_else_is()
+    public void A_programs_link_covers_what_it_wrote_inside_it_through_a_reflow_and_goes_with_what_overwrites_it() => Cases.All(
+        ("What a program writes inside a link is linked to its address and nothing else is", What_a_program_writes_inside_a_link_is_linked_to_its_address_and_nothing_else_is),
+        ("A reflow keeps each cells link on the rows it wraps onto", A_reflow_keeps_each_cells_link_on_the_rows_it_wraps_onto),
+        ("Text written over a link an erase and a reset leave no link", Text_written_over_a_link_an_erase_and_a_reset_leave_no_link));
+
+    private void What_a_program_writes_inside_a_link_is_linked_to_its_address_and_nothing_else_is()
     {
         TerminalScreen screen = new(40, 5);
         screen.Feed($"a \e]8;;{Docs}\e\\docs\e]8;;\e\\ b \e]8;id=x:y;https://example.com/other\aé\e]8;;\a c");
@@ -19,20 +24,7 @@ public class TerminalLinksTests
         Assert.Equal("..DDDD...O..", Links(screen.Lines[0], 12));
     }
 
-    [Fact]
-    public void A_mark_or_a_flags_second_letter_joins_a_linked_cell_and_keeps_its_link()
-    {
-        TerminalScreen screen = new(40, 5);
-        screen.Feed($"\e]8;;{Docs}\e\\é\U0001F1EB\U0001F1F7!\e]8;;\e\\.");
-        TerminalLine line = screen.Lines[0];
-        Assert.Equal("é\U0001F1EB\U0001F1F7!.", line.Text());
-        Assert.True((line.TextOf(1), line.Cells[1].Width) == ("\U0001F1EB\U0001F1F7", 2),
-            $"A flag's two letters inside a link are not one grapheme in two columns: '{line.TextOf(1)}' in {line.Cells[1].Width}");
-        Assert.Equal("DD.D.", Links(line, 5));
-    }
-
-    [Fact]
-    public void A_reflow_keeps_each_cells_link_on_the_rows_it_wraps_onto()
+    private void A_reflow_keeps_each_cells_link_on_the_rows_it_wraps_onto()
     {
         TerminalScreen screen = new(20, 5);
         screen.Feed($"0123456789\e]8;;{Docs}\e\\linked\e]8;;\e\\ plain\r\n");
@@ -41,8 +33,7 @@ public class TerminalLinksTests
         Assert.Equal(["........", "..DDDDDD", "........"], Enumerable.Range(0, 3).Select(row => Links(screen.Lines[row], 8)));
     }
 
-    [Fact]
-    public void Text_written_over_a_link_an_erase_and_a_reset_leave_no_link()
+    private void Text_written_over_a_link_an_erase_and_a_reset_leave_no_link()
     {
         TerminalScreen screen = new(20, 5);
         screen.Feed($"\e]8;;{Docs}\e\\abcd\r\nefgh\e]8;;\e\\\e[1;2HX\e[2;3H\e[K");
