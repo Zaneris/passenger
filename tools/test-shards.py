@@ -4,11 +4,11 @@
 A lane is a part of the suite: the gate's [Gate] tests and the unit tests, the report lane's every other test (off
 ONE_SYSTEM, but its classes marked [SameOnEverySystem]), or all. `list` writes a lane as `dotnet test --list-tests`
 prints it, asking again while a project names no test or says discovery failed, and fails above the suite's most tests.
-`split` deals its classes by their seconds on that system in TestTimes.json (else the others'), the longest first, each
-where its shard ends soonest by its kinds of class (one in another lane's job from that one's end, one in a job building
-the check first from that build's end), and to one of a job's test processes, the same in every shard; `check` fails
-unless every test is in exactly one. `test` runs a hand, keeping its console as it comes; `ended` names the classes it did not run whole; `cover`
-fails unless every test has one result; `failures` tables misses; `update` rewrites TestTimes.json."""
+`split` deals its classes by their seconds in the lane on that system in TestTimes.json (else the others'), the longest
+first, each where its shard ends soonest by its kinds of class (one in another lane's job from that one's end, one in a
+job building the check first from that build's end), and to one of a job's test processes, the same in every shard;
+`check` fails unless every test is in exactly one. `test` runs a hand; `ended` names the classes it did not run whole;
+`cover` fails unless every test has one result; `failures` tables misses; `update` rewrites TestTimes.json."""
 import argparse
 import ctypes
 import glob
@@ -94,17 +94,18 @@ TOGETHER = {
 }
 # What one shard's job alone gives the machine (test.yml), by what a class's source names, so every class needing it is
 # dealt to that shard: .NET's mobile workloads, with the debug relays, an Android emulator or Xcode's simulators, and
-# MAUI's packages for a mobile platform, the first shard's, its classes there apart from the rest (--apart), as their
-# devices' times are their own; Aspire's dashboard and orchestrator, with the run's own aspire CLI, which the build
-# downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too (--second).
+# MAUI's packages for a mobile platform, the first shard's, its classes there first and apart from the rest dealt to it
+# (--apart), as their devices' times are their own; Aspire's dashboard and orchestrator, with the run's own aspire CLI,
+# which the build downloads (PassengerAspireRuntime), the second shard's, beside the classes dealt there too (--second).
 SET_UPS = {
     "aspire": re.compile(r"\bAspire(?:Functions)?App\.(?:IsUnavailable|Unavailable|IsCliUnavailable|CliUnavailable"
                          r"|AppHostSkipped|CliSkipped)\b|\bAspirePackageApp\.RunSkipped\b"),
     "mobile": re.compile(r"\bAndroidDevices\.\w|\bAppleSimulators\.\w|\bSimulatorApp\b|\bMacCatalystApp\b"
                          r"|does not restore here from the package cache alone|lacks a workload of the app's heads"),
 }
-# The classes a deal gave the first shard apart from the rest, which run in one test process, each Alone class in a dotnet
-# test of its own (runs_of), and those it gave the second shard, by name, beside its settings (split, read by cover).
+# The classes a deal gave the first shard apart from the rest, which run first in one test process, each Alone class in a
+# dotnet test of its own (runs_of), and those it gave the second shard, by name, beside its settings (split, read by
+# cover).
 APART = "apart.json"
 # The collections that run beside the window tests' own in a process (Collections.cs).
 BESIDE = ("Collection(DebugSession.Collection)", "Collection(Beside.Name)")
@@ -398,32 +399,56 @@ def shares(chosen, whole):
     return {name: min(1.0, count / whole[name]) if whole.get(name) else 1.0 for name, count in chosen.items()}
 
 
+def lanes_of(entry):
+    """A system's seconds in TestTimes.json, each lane's by class; one kept before there were lanes, its classes' whole
+    seconds as all's."""
+    return entry if all(isinstance(value, dict) for value in entry.values()) else {"all": entry}
+
+
+def lane_seconds(times, system, name, lane):
+    """A class's seconds on a system for its tests in a lane, None where TestTimes.json has none."""
+    return lanes_of(times.get(system, {})).get(lane, {}).get(name)
+
+
+def class_seconds(times, system, name):
+    """A class's seconds on a system for all its tests, every lane's together, None where TestTimes.json has none."""
+    found = [seconds[name] for seconds in lanes_of(times.get(system, {})).values() if name in seconds]
+    return sum(found) if found else None
+
+
 def pace(times, system, other):
     """How long a class takes on this system for each of its seconds on the other: the median of the two systems' ratios
     over the classes both have, of a second or more on each."""
-    mine, theirs = times.get(system, {}), times.get(other, {})
+    mine, theirs = ({name: class_seconds(times, s, name) for lane in lanes_of(times.get(s, {})).values() for name in lane}
+                    for s in (system, other))
     ratios = sorted(mine[c] / theirs[c] for c in mine.keys() & theirs.keys() if mine[c] >= 1 and theirs[c] >= 1)
     return ratios[len(ratios) // 2] if ratios else 1.0
 
 
-def weights(classes, system, times, share):
-    """Each class's seconds on this system times its share of its tests, and the classes borrowed and guessed: one
-    TestTimes.json lacks here (it only ever ran in shards that ran out of time) by its seconds on the other systems, each
-    at this system's pace, else by a guess."""
-    known = times.get(system, {})
+def weights(classes, system, times, share, lane):
+    """Each class's seconds on this system for its tests in the lane, and the classes borrowed and guessed. One whose
+    tests in the lane TestTimes.json has no seconds for (they came from the other lane since) weighs its whole class's
+    seconds times its share of its tests; one it lacks here (it only ever ran in shards that ran out of time) weighs its
+    seconds on the other systems the same way, each at this system's pace, else a guess."""
     paces = {other: pace(times, system, other) for other in SYSTEMS if other != system}
+
+    def on(system, name):
+        own = lane_seconds(times, system, name, lane)
+        whole = class_seconds(times, system, name)
+        return own if own is not None else whole * share.get(name, 1.0) if whole is not None else None
+
     seconds, borrowed, guessed = {}, [], []
     for name in classes:
-        elsewhere = [paces[other] * times[other][name] for other in paces if name in times.get(other, {})]
-        if name in known:
-            seconds[name] = known[name]
+        elsewhere = [paces[other] * spent for other in paces if (spent := on(other, name)) is not None]
+        if (here := on(system, name)) is not None:
+            seconds[name] = here
         elif elsewhere:
             seconds[name] = sum(elsewhere) / len(elsewhere)
             borrowed.append(name)
         else:
-            seconds[name] = guess(name)
+            seconds[name] = guess(name) * share.get(name, 1.0)
             guessed.append(name)
-    return {name: spent * share.get(name, 1.0) for name, spent in seconds.items()}, borrowed, guessed
+    return seconds, borrowed, guessed
 
 
 def deal(weighed, count):
@@ -462,8 +487,9 @@ def paced(system, processes):
 
 def empty_hand(processes, pace=1.0):
     """A hand's seconds by kind before any class is dealt to it: its window and Beside classes' by process, which run at
-    the pace given (paced)."""
-    return {"window": [0.0] * processes, "beside": [0.0] * processes, "alone": 0.0, "unit": 0.0, "pace": pace}
+    the pace given (paced), and those of the classes it runs apart before them (deal_apart)."""
+    return {"window": [0.0] * processes, "beside": [0.0] * processes, "alone": 0.0, "unit": 0.0, "pace": pace,
+            "apart": 0.0}
 
 
 def with_class(part, kind, seconds, process):
@@ -482,11 +508,11 @@ def total(part, kind):
 
 
 def hand_time(part):
-    """A shard's seconds from its kinds' seconds: in each of its processes, its window classes', or its Beside ones' run
-    at once with them where longer, at its processes' pace, the slowest process's; then its Alone classes', then its unit
-    tests'."""
+    """A shard's seconds from its kinds' seconds: its classes apart first; then in each of its processes, its window
+    classes', or its Beside ones' run at once with them where longer, at its processes' pace, the slowest process's; then
+    its Alone classes', then its unit tests'."""
     first = max(max(window, beside) for window, beside in zip(part["window"], part["beside"]))
-    return first * part["pace"] + part["alone"] + part["unit"]
+    return part["apart"] + first * part["pace"] + part["alone"] + part["unit"]
 
 
 def deal_shards(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, held=(), held_to=0):
@@ -541,37 +567,47 @@ def deal_shards(weighed, kind, count, starts=None, processes=1, pace=1.0, togeth
 
 
 def deal_apart(weighed, kind, count, starts=None, processes=1, pace=1.0, together=None, apart=(), second=()):
-    """deal_shards with the classes apart (those needing what the first shard's job alone sets up) in the first hand and
-    no other class there, in one test process (runs_of), those needing what the second shard's job sets up in the second
-    with others; as deal_shards where none is apart or held there, or there is one hand."""
+    """deal_shards with the classes apart (those needing what the first shard's job alone sets up) first in the first
+    hand, in one test process with nothing beside them (runs_of), and every other class dealt after them, that hand
+    beginning its share once they end; those needing what the second shard's job sets up held to the second; as
+    deal_shards where none is apart or held there, or there is one hand."""
     first = [name for name in weighed if name in apart]
     if count < 2 or not first and not set(second) & set(weighed):
         return deal_shards(weighed, kind, count, starts, processes, pace, together)
-    if not first:
-        return deal_shards(weighed, kind, count, starts, processes, pace, together, second, 1)
-    starts = starts or [0.0] * count
-    hands, parts, places = deal_shards({name: weighed[name] for name in first}, kind, 1, starts[:1], 1, 1.0, together)
-    others = deal_shards({name: spent for name, spent in weighed.items() if name not in apart}, kind, count - 1,
-                         starts[1:], processes, pace, together, second, 0)
-    return hands + others[0], parts + others[1], {**places, **others[2]}
+    starts = list(starts or [0.0] * count)
+    held, before, places = deal_shards({name: weighed[name] for name in first}, kind, 1, starts[:1], 1, 1.0, together)
+    first_time = hand_time(before[0])
+    starts[0] += first_time
+    hands, parts, others = deal_shards({name: spent for name, spent in weighed.items() if name not in apart}, kind, count,
+                                       starts, processes, pace, together, second, 1)
+    hands[0] = held[0] + hands[0]
+    parts[0]["apart"] = first_time
+    return hands, parts, {**places, **others}
 
 
-def parts_of(seconds, kind, places, processes, pace=1.0):
-    """A hand's seconds by kind, from its classes' seconds and the process each window or Beside class ran in."""
+def parts_of(seconds, kind, places, processes, pace=1.0, apart=()):
+    """A hand's seconds by kind, from its classes' seconds and the process each window or Beside class ran in; those of
+    its classes apart (deal_apart) as one process's before the rest."""
     part = empty_hand(processes, pace)
+    first = empty_hand(1)
     for name, spent in seconds.items():
-        part = with_class(part, kind[name], spent, places.get(name, 0))
+        if name in apart:
+            first = with_class(first, kind[name], spent, 0)
+        else:
+            part = with_class(part, kind[name], spent, places.get(name, 0))
+    part["apart"] = hand_time(first)
     return part
 
 
 def said_hand(part):
     """A hand's seconds by kind as the deal says them: in a job of several processes, each one's first."""
+    before = f"{part['apart'] / 60:.1f} apart first; " if part["apart"] else ""
     if len(part["window"]) == 1:
-        return ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k))
+        return before + ", ".join(f"{total(part, k) / 60:.1f} {k}" for k in KINDS if total(part, k))
     each = "; ".join(f"process {p + 1}: {part['window'][p] / 60:.1f} window, {part['beside'][p] / 60:.1f} beside"
                      for p in range(len(part["window"])))
     after = ", ".join(f"{part[k] / 60:.1f} {k}" for k in ("alone", "unit") if part[k])
-    return f"{each}, each at {part['pace']:g} times a lone process's pace" + (f"; then {after}" if after else "")
+    return before + f"{each}, each at {part['pace']:g} times a lone process's pace" + (f"; then {after}" if after else "")
 
 
 def run_settings(classes, *filters):
@@ -588,17 +624,17 @@ def hand_projects(classes):
     return [project for project in (PROJECT, UNIT_PROJECT) if any(project_of(name) == project for name in classes)]
 
 
-def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=(), seconds_ups=()):
+def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=(), seconds_ups=(), lane="all"):
     """A lane's tests, as a listing names them, dealt to count shards of so many test processes each (deal_apart: the
-    classes needing set_ups apart in the first, those needing seconds_ups in the second), each class weighed by its share
-    of its tests in whole (the listing of all, by class; none for the lane's own): the tests by class, each class's
-    seconds, the classes borrowed and guessed, each class's kind, the hands with their seconds by kind, each window or
-    Beside class's process, and the classes held to the first and second shards."""
+    classes needing set_ups apart first in the first, those needing seconds_ups in the second), each weighed by its
+    seconds in the lane (weights, by whole: the listing of all by class, none for the lane's own): the tests by class,
+    each class's seconds, the classes borrowed and guessed, each class's kind, the hands with their seconds by kind, each
+    window or Beside class's process, and the classes held to the first and second shards."""
     classes = sorted(set(owner(test) for test in tests))
     if count < 1 or len(classes) < count:
         sys.exit(f"test-shards: {len(classes)} classes cannot be dealt to {count} shards")
     counts = Counter(owner(test) for test in tests)
-    seconds, borrowed, guessed = weights(classes, system, times, shares(counts, whole or counts))
+    seconds, borrowed, guessed = weights(classes, system, times, shares(counts, whole or counts), lane)
     kind = kinds(classes)
     declared = sources()
     together = {name: declared[name]["together"][0] for name in classes if declared.get(name, {}).get("together")}
@@ -609,30 +645,30 @@ def dealt(tests, whole, system, times, count, starts=None, processes=1, set_ups=
     return counts, seconds, borrowed, guessed, kind, hands, parts, places, {"first": sorted(apart), "second": sorted(second)}
 
 
-def runs_of(number, hand, kind, places, processes, apart=False):
-    """A shard's runs of dotnet test, in steps, each step's runs at once: one of each project its hand holds in a job of
-    one process (its Alone classes last in it); in a job of more, the window and Beside classes of each process's share
-    at once, then the Alone classes in one, then the unit tests; a hand apart, its Alone classes each in a run of its own,
-    so one that hangs takes no other with it. Each run is named (its .trx and console log), with its project, its
-    settings' file, how many ran at once and its classes."""
+def runs_of(number, hand, kind, places, processes, apart=()):
+    """A shard's runs of dotnet test, in steps, each step's runs at once: first its classes apart (deal_apart), their
+    window and Beside classes in one run and each Alone one in a run of its own, so one that hangs takes no other with
+    it; then in a job of one process one of each project (its Alone classes last), or in a job of more, the window and
+    Beside classes of each process's share at once, then the Alone classes in one, then the unit tests. Each run is named
+    (its .trx and console log), with its project, its settings' file, how many ran at once and its classes."""
     def run(name, project, classes, together, process=0):
         return {"name": name, "project": shown(project), "settings": f"shard-{number}.{name}.runsettings",
                 "together": together, "process": process, "classes": sorted(classes)}
 
-    tests = [name for name in hand if project_of(name) == PROJECT]
-    units = [name for name in hand if project_of(name) == UNIT_PROJECT]
+    held = [name for name in hand if name in apart]
+    tests = [name for name in hand if project_of(name) == PROJECT and name not in apart]
+    units = [name for name in hand if project_of(name) == UNIT_PROJECT and name not in apart]
     leaf = os.path.basename(PROJECT)
-    if apart:
-        shared = [name for name in tests if kind[name] in SHARED_OUT]
-        steps = ([[run(f"{leaf}-1", PROJECT, shared, 1)]] if shared else []) \
-            + [[run(f"{leaf}-{name}", PROJECT, [name], 1)] for name in sorted(tests) if kind[name] not in SHARED_OUT]
-    elif processes == 1:
-        steps = [[run(leaf, PROJECT, tests, 1)]] if tests else []
+    shared = [name for name in held if kind[name] in SHARED_OUT]
+    steps = ([[run(f"{leaf}-apart", PROJECT, shared, 1)]] if shared else []) \
+        + [[run(f"{leaf}-{name}", PROJECT, [name], 1)] for name in sorted(held) if kind[name] not in SHARED_OUT]
+    if processes == 1:
+        steps += [[run(leaf, PROJECT, tests, 1)]] if tests else []
     else:
         shared = [[name for name in tests if kind[name] in SHARED_OUT and places[name] == p] for p in range(processes)]
         shared = [(p, classes) for p, classes in enumerate(shared) if classes]
         alone_ones = [name for name in tests if kind[name] not in SHARED_OUT]
-        steps = ([[run(f"{leaf}-{p + 1}", PROJECT, classes, len(shared), p) for p, classes in shared]] if shared else []) \
+        steps += ([[run(f"{leaf}-{p + 1}", PROJECT, classes, len(shared), p) for p, classes in shared]] if shared else []) \
             + ([[run(f"{leaf}-alone", PROJECT, alone_ones, 1)]] if alone_ones else [])
     return steps + ([[run(os.path.basename(UNIT_PROJECT), UNIT_PROJECT, units, 1)]] if units else [])
 
@@ -652,15 +688,17 @@ def split(arguments):
             sys.exit(f"test-shards: the last {arguments.after_of} of {arguments.of} shards cannot each follow a shard "
                      "of the lane run first")
         begun = checked + [0.0] * (arguments.after_of - 1)
-        first = dealt(listing(arguments.after), whole, arguments.system, times, arguments.after_of, begun, processes)[6]
+        first = dealt(listing(arguments.after), whole, arguments.system, times, arguments.after_of, begun, processes,
+                      lane=arguments.after_lane)[6]
         starts[arguments.of - arguments.after_of:] = [start + hand_time(part) for start, part in zip(begun, first)]
     else:
         starts[0] = checked[0]
     counts, seconds, borrowed, guessed, kind, hands, parts, places, held = dealt(
-        tests, whole, arguments.system, times, arguments.of, starts, processes, arguments.apart or (), arguments.second or ())
+        tests, whole, arguments.system, times, arguments.of, starts, processes, arguments.apart or (), arguments.second or (),
+        arguments.lane)
     whole = whole or counts
     lane = "" if arguments.lane == "all" else f" of the {arguments.lane} lane"
-    shared = "" if arguments.lane == "all" else "; a class with tests outside the lane by its share of them"
+    shared = "" if arguments.lane == "all" else "; a class with tests outside the lane by its seconds in it"
     print(f"{len(tests)} tests in {len(seconds)} classes{lane}, dealt to {arguments.of} shards by their seconds on "
           f"{arguments.system} (TestTimes.json; a class it lacks by the other systems', else a guess{shared}), a shard "
           + ("taking its window classes' time or its Beside classes' beside them" if processes == 1 else
@@ -671,8 +709,8 @@ def split(arguments):
           + (f"; the last {arguments.after_of} each in the job of a shard of the lane {arguments.after} lists, once "
              "that shard's tests end" if arguments.after else "")
           + (f"; the classes marked [{SAME}] only on {ONE_SYSTEM}" if arguments.lane == "report" else "")
-          + (f"; the classes needing {' or '.join(arguments.apart)}, which the first shard's job alone sets up, in it "
-             "apart from the rest" if arguments.apart else "")
+          + (f"; the classes needing {' or '.join(arguments.apart)}, which the first shard's job alone sets up, first in "
+             "it, apart from the rest" if arguments.apart else "")
           + (f"; those needing {' or '.join(arguments.second)}, which the second shard's job alone sets up, in it"
              if arguments.second else ""))
     for number, (hand, part, start) in enumerate(zip(hands, parts, starts), 1):
@@ -682,7 +720,7 @@ def split(arguments):
                  f", its job building the check first (about {start / 60:.1f} minutes)" if start > 0 else "")
               + f": {len(hand)} classes, {sum(counts[c] for c in hand)} tests, about {hand_time(part) / 60:.1f} minutes ("
               + said_hand(part) + ")"
-              + (f", the classes needing {' or '.join(arguments.apart)} apart" if number == 1 and held["first"] else "")
+              + (f", the classes needing {' or '.join(arguments.apart)} apart first" if number == 1 and held["first"] else "")
               + (f", the classes needing {' or '.join(arguments.second)} in it" if number == 2 and held["second"] else "")
               + (f", ending about {(start + hand_time(part)) / 60:.1f} minutes into the jobs' tests" if start > 0 else ""))
         for name in hand:
@@ -709,7 +747,7 @@ def split(arguments):
             with open(os.path.join(arguments.out, f"shard-{number}.classes"), "w", encoding="utf-8",
                       newline="\n") as file:
                 file.write("".join(name + "\n" for name in sorted(hand)))
-            steps = runs_of(number, hand, kind, places, processes, apart=number == 1 and bool(held["first"]))
+            steps = runs_of(number, hand, kind, places, processes, apart=held["first"] if number == 1 else ())
             for each in (run for step in steps for run in step):
                 with open(os.path.join(arguments.out, each["settings"]), "w", encoding="utf-8") as file:
                     file.write(run_settings(each["classes"], chosen))
@@ -1064,9 +1102,8 @@ def cover(arguments):
     hands = {}
     places = {}
     ratios = []
-    times = load(TIMES, {}).get(system, {})
-    whole = next((Counter(owner(test) for test in tests_in(read(path)) or []) for path in
-                  (os.path.join(folder, "whole.txt") for folder in folders.values()) if os.path.exists(path)), Counter())
+    times = load(TIMES, {})
+    in_lane = Counter(owner(test) for test in (suite or Counter()).elements())
     processes = 1
     for number, folder in folders.items():
         hand = hands.setdefault(number, {})
@@ -1084,9 +1121,11 @@ def cover(arguments):
                 for test_class, _, seconds, _, _ in (result for result in found if result[0] in run["classes"]):
                     spent[test_class] += seconds
                     tests[test_class] += 1
-                # Only a class whose every test ran here, as TestTimes.json's seconds are its whole class's.
-                ratios += [spent[name] / times[name] for name in spent
-                          if times.get(name, 0) >= 10 and tests[name] >= whole.get(name, 0)]
+                # Only a class whose every test of the lane ran here, as TestTimes.json's seconds are all of them.
+                kept = {name: lane_seconds(times, system, name, arguments.lane) if arguments.lane != "all"
+                        else class_seconds(times, system, name) for name in spent}
+                ratios += [spent[name] / kept[name] for name in spent
+                          if (kept[name] or 0) >= 10 and tests[name] >= in_lane[name]]
     if suite is None:
         problems.append(f"No shard on {where} left its listing of the suite, so nothing says which tests should have "
                         "run")
@@ -1114,13 +1153,14 @@ def cover(arguments):
                        if os.path.exists(path)), None)
         starts = starts if starts and len(starts) == len(hands) else [0.0] * len(hands)
         pace = paced(system, processes)
-        slowest = max(start + hand_time(parts_of(hands[number], kind, places, processes, pace))
-                      for start, number in zip(starts, sorted(hands)))
-        declared = sources()
-        together = {name: declared[name]["together"][0] for name in seconds if declared.get(name, {}).get("together")}
         # The classes the deal held to the first and second shards, which a deal from this run's times holds there too.
         held = next((load(path, {}) for path in (os.path.join(folder, "shards", APART) for folder in folders.values())
                      if os.path.exists(path)), {})
+        slowest = max(start + hand_time(parts_of(hands[number], kind, places, processes, pace,
+                                                 held.get("first", ()) if number == 1 else ()))
+                      for start, number in zip(starts, sorted(hands)))
+        declared = sources()
+        together = {name: declared[name]["together"][0] for name in seconds if declared.get(name, {}).get("together")}
         _, parts, _ = deal_apart(seconds, kind, len(hands), starts, processes, pace, together, held.get("first", ()),
                                  held.get("second", ()))
         best = max(start + hand_time(part) for start, part in zip(starts, parts))
@@ -1209,14 +1249,14 @@ def listings(folder):
     return found
 
 
-def held_whole(entry):
-    """The classes a system's results hold whole, None for all of them: a run of every lane (or from before there were
-    lanes) holds each; a run of one lane, only those with no test outside it, by its listings of the lane and of all."""
-    if entry is None or "all" in entry["lanes"] or {"gate", "report"} <= entry["lanes"]:
-        return None
-    whole = entry["listed"].get("all", Counter())
-    ran = sum((entry["listed"].get(lane, Counter()) for lane in entry["lanes"]), Counter())
-    return {name for name, count in ran.items() if count >= whole[name] > 0}
+def lane_of(file):
+    """The lane a result ran in: its shard's, by the SHARD_STATE beside it, else by the folder its artifact was downloaded
+    to (test-results-macOS-gate-1); all where neither says, as from before there were lanes."""
+    folder = os.path.dirname(os.path.abspath(file))
+    if os.path.exists(os.path.join(folder, SHARD_STATE)):
+        return load(os.path.join(folder, SHARD_STATE), {}).get("lane", "all")
+    named = re.search(r"-(gate|report)(?:-\d+)?$", os.path.basename(folder))
+    return named[1] if named else "all"
 
 
 def logged_results(folder):
@@ -1237,22 +1277,12 @@ def logged_results(folder):
     return found
 
 
-def ran_whole(name, ran, entry):
-    """Whether a run's results on a system hold a class whole: a result for each of its tests in the listing of every
-    lane, so a class whose report shard ran out of time is no measure by its gate tests alone; by its lanes where the
-    run left no such listing."""
-    every = entry["listed"].get("all") if entry else None
-    if every:
-        return ran[name] >= every.get(name, 0)
-    whole = held_whole(entry)
-    return whole is None or name in whole
-
-
 def update(arguments):
-    """TestTimes.json from runs' results: each class's seconds on each system, the mean of the runs that ran it whole,
-    each as a lone test process takes it (a run's beside another's at once by its system's PACED); one a shard did not
-    reach, its seconds from before, or what the runs measured of it on another system at this one's pace where more, as
-    its seconds from before may be a skip's."""
+    """TestTimes.json from runs' results: each class's seconds on each system for its tests in each lane, the mean of the
+    runs that ran every test of it in that lane, each as a lone test process takes it (a run's beside another's at once
+    by its system's PACED); one a shard did not reach, its seconds from before, or what the runs measured of it in that
+    lane on another system at this one's pace where more, as its seconds from before may be a skip's. A lane the runs
+    did not list keeps its seconds from before."""
     old = load(arguments.times, {})
     spent = {}
     suites = {}
@@ -1272,39 +1302,67 @@ def update(arguments):
             if system not in SYSTEMS:
                 sys.exit(f"test-shards: nothing says which system {file} ran on: no shard.json beside it, and no "
                          "test-results-SYSTEM folder over it")
+            if (lane := lane_of(file)) not in LANES[:2]:
+                sys.exit(f"test-shards: nothing says which lane {file} ran in, as in a run from before there were lanes, "
+                         "and TestTimes.json keeps each lane's seconds")
             # A lone process's seconds, where the run ran beside others at once.
             pace_here = paced(system, together_of(file))
             for test_class, _, seconds, _ in results:
-                this.setdefault(system, {}).setdefault(test_class, 0.0)
-                this[system][test_class] += seconds / pace_here
-                ran.setdefault(system, Counter())[test_class] += 1
-        for system, classes in this.items():
-            for test_class in [name for name in classes if not ran_whole(name, ran[system], listed.get(system))]:
-                partly.setdefault(system, set()).add(test_class)
-                del classes[test_class]
+                this.setdefault(system, {}).setdefault(lane, {}).setdefault(test_class, 0.0)
+                this[system][lane][test_class] += seconds / pace_here
+                ran.setdefault(system, {}).setdefault(lane, Counter())[test_class] += 1
+        for system, lanes in this.items():
+            for lane, classes in lanes.items():
+                # A class whose every test of the lane has a result, by the lane's listing where the run left one.
+                every = listed.get(system, {}).get("listed", {}).get(lane)
+                for test_class in [name for name in classes if every and ran[system][lane][name] < every.get(name, 0)]:
+                    partly.setdefault(system, {}).setdefault(lane, set()).add(test_class)
+                    del classes[test_class]
         for system, entry in listed.items():
-            suites.setdefault(system, set()).update(name for counts in entry["listed"].values() for name in counts)
-        for system, classes in this.items():
-            for test_class, seconds in classes.items():
-                spent.setdefault(system, {}).setdefault(test_class, []).append(seconds)
+            for lane, counts in entry["listed"].items():
+                suites.setdefault(system, {}).setdefault(lane, Counter()).update(
+                    {name: count for name, count in counts.items() if name not in suites[system].get(lane, {})})
+        for system, lanes in this.items():
+            for lane, classes in lanes.items():
+                for test_class, seconds in classes.items():
+                    spent.setdefault(system, {}).setdefault(lane, {}).setdefault(test_class, []).append(seconds)
+    every = {system: {lane: {name: round(sum(values) / len(values), 1) for name, values in classes.items()}
+                      for lane, classes in lanes.items()} for system, lanes in spent.items()}
     times = {}
-    every = {system: {name: round(sum(values) / len(values), 1) for name, values in classes.items()}
-             for system, classes in spent.items()}
     for system in SYSTEMS:
         if system not in spent:
             if system in old:
                 times[system] = old[system]
             continue
-        measured = every[system]
-        # Unreported (its shard stopped early), a class keeps its seconds from before, or, where more, another system's.
-        kept = {name: round(max([seconds] + [pace(every, system, other) * every[other][name] for other in every
-                                             if other != system and name in every[other]]), 1)
-                for name, seconds in old.get(system, {}).items()
-                if name not in measured and name in suites.get(system, set())}
-        times[system] = dict(sorted({**kept, **measured}.items()))
-        unmeasured = partly.get(system, set()) - set(measured)
-        print(f"{system}: {len(measured)} classes measured" + (f", {len(kept)} kept from before" if kept else "")
-              + (f" ({len(unmeasured)} ran only in part, in a run of one lane)" if unmeasured else ""))
+        before = lanes_of(old.get(system, {}))
+        listed = suites.get(system, {})
+        times[system] = {}
+        said = []
+        for lane in LANES[:2]:
+            measured = every[system].get(lane, {})
+            if lane not in listed:
+                times[system][lane] = dict(before.get(lane, {}))
+                said.append(f"the {lane} lane's {len(times[system][lane])} classes kept from before, as the runs listed "
+                            "none of it")
+                continue
+
+            def earlier(name):
+                # From before there were lanes, a class's whole seconds by its share of its tests in this lane.
+                if name in before.get(lane, {}):
+                    return before[lane][name]
+                whole = before.get("all", {}).get(name)
+                return whole * shares({name: listed[lane][name]}, listed.get("all", {}))[name] if whole is not None else None
+
+            # Unreported (its shard stopped early), a class keeps its seconds from before, or, where more, another system's.
+            kept = {name: round(max([seconds] + [pace(every, system, other) * every[other][lane][name] for other in every
+                                                 if other != system and name in every[other].get(lane, {})]), 1)
+                    for name in listed[lane] if name not in measured and (seconds := earlier(name)) is not None}
+            times[system][lane] = dict(sorted({**kept, **measured}.items()))
+            unmeasured = partly.get(system, {}).get(lane, set()) - set(measured)
+            said.append(f"{len(measured)} classes measured in the {lane} lane" + (f", {len(kept)} kept from before"
+                                                                                  if kept else "")
+                        + (f" ({len(unmeasured)} ran only in part)" if unmeasured else ""))
+        print(f"{system}: {'; '.join(said)}")
     with open(arguments.times, "w", encoding="utf-8", newline="\n") as file:
         file.write(json.dumps(times, indent=2) + "\n")
     print(f"Wrote {os.path.relpath(arguments.times, ROOT)}: commit it, and every shard deals by it")
@@ -1329,8 +1387,8 @@ def main():
     command = commands.add_parser("split", help="deal a system's test classes to its shards, their settings to --out")
     command.add_argument("suite", help="what dotnet test --list-tests printed for the lane")
     command.add_argument("--lane", choices=LANES, default="all", help="the lane listed, which the shards' settings select")
-    command.add_argument("--whole", help="what it printed for all, by which a class with tests outside the lane weighs "
-                         "its share of its seconds")
+    command.add_argument("--whole", help="what it printed for all, by which a class with tests outside the lane that "
+                         "TestTimes.json has no seconds in the lane for weighs its share of its seconds")
     command.add_argument("--system", required=True, choices=SYSTEMS)
     command.add_argument("--of", type=int, required=True, help="how many shards")
     command.add_argument("--processes", type=int, default=1, choices=PROCESSES, help="how many test processes each "
@@ -1339,6 +1397,8 @@ def main():
                          "last shards, one of its shards in each, so each of them begins once that one would end")
     command.add_argument("--after-of", type=int, default=0, help="how many shards that lane is dealt to: the last so many "
                          "of these follow them, in order")
+    command.add_argument("--after-lane", choices=LANES, default="gate", help="the lane --after lists, whose seconds weigh "
+                         "its classes")
     command.add_argument("--checks-first", action="store_true", help="the job of the first shard of the lane run first "
                          "(--after's, else this one's) builds the solution's check before its tests, so begins them "
                          "CHECKED_FIRST later")
@@ -1347,7 +1407,8 @@ def main():
     command.add_argument("--second", action="append", choices=sorted(SET_UPS), help="a set-up only the second shard's "
                          "job makes (SET_UPS): every class needing it is dealt to that shard, beside others")
     command.add_argument("--apart", action="append", choices=sorted(SET_UPS), help="a set-up only the first shard's "
-                         "job makes (SET_UPS): every class needing it is dealt to that shard, and no other class")
+                         "job makes (SET_UPS): every class needing it is dealt to that shard, run first and apart from "
+                         "the others dealt there")
     command.add_argument("--times", default=TIMES)
     command.add_argument("--check", action="store_true", help="then list what each shard's settings select and fail "
                          "unless every test of the lane is in exactly one, as check does: one shard of a commit's does")
