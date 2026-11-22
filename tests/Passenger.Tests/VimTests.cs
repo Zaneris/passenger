@@ -198,8 +198,11 @@ public sealed partial class VimTests
             (vimCase, _, _) => vimCase.Uses(TypedEnter) || vimCase.Uses(OpensLine)),
         ($"is and as from an empty line or a run of them, from blanks before or after the text's last sentence, and about a line "
             + $"opened by a sentence's end, which Vim's take each in a way of its own; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
-        ($"( and ) about a line opened by a sentence's end or a closing bracket or quote; {ToFix}",
-            (vimCase, _, passenger) => vimCase.Keys.Any(key => key is "(" or ")") && passenger.Seen.Contains(OpenedByAnEnd)),
+        (") over two lines in a row that each hold one sentence's end mark or closer alone, which Vim's ) takes each in a way of "
+            + "its own: from the first '.' of \"x!\", \".\", \".\" it goes to the text's end, passing the second as no sentence's "
+            + "start, where from the first '.' of \"x.\", \".\", \".\", \"a\" it passes the second '.' and the \"a\" after it alike, and "
+            + "from the '.' of \"x!\", \".\", \")\" it stays, the ')' carrying the '.''s end",
+            (vimCase, _, passenger) => vimCase.Keys.Contains(")") && passenger.Seen.Contains(LoneMarks)),
         ($"iw and a( over a visual stretch by lines, which Vim's carry on or not, and keep by lines or not, by rules of their own; {ToFix}",
             (vimCase, _, _) => vimCase.Commands.Any(command => (command.Keys[0] == "V" || command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "p")))
                 && command.Keys.Zip(command.Keys.Skip(1)).Any(pair => pair is ("i", "w") or ("a", "(")))),
@@ -217,7 +220,7 @@ public sealed partial class VimTests
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
     private const string SentenceObject = "is or as";
-    private const string OpenedByAnEnd = "a line opened by a sentence's end or a closer";
+    private const string LoneMarks = "two lines in a row each one sentence's end mark or closer alone";
     private const string VisualInsert = "I or A in visual mode";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
@@ -610,13 +613,15 @@ public sealed partial class VimTests
     /// <summary>A key that asked the host for what only a window does.</summary>
     private const string Asked = "asked the host";
 
-    /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: a line opened by a sentence's end or
-    /// a closing bracket or quote.</summary>
+    /// <summary>What Passenger's side came through that <see cref="Kept"/> may name: two lines in a row that each hold one
+    /// sentence's end mark or closer alone.</summary>
     private static void Observe(TextSnapshot text, HashSet<string> seen)
     {
-        seen.UnionWith(Enumerable.Range(0, text.LineCount).Any(line => text.GetLine(line) is { Length: > 0 } span
-            && text[span.Start] is '.' or '!' or '?' or ')' or ']' or '"' or '\'' && VimMotions.EndsSentence(text, span.Start, out _)) ? [OpenedByAnEnd] : []);
+        seen.UnionWith(Enumerable.Range(1, Math.Max(0, text.LineCount - 1)).Any(line => LoneMark(text, line - 1) && LoneMark(text, line)) ? [LoneMarks] : []);
     }
+
+    private static bool LoneMark(TextSnapshot text, int line) =>
+        text.GetLine(line) is { Length: 1 } span && text[span.Start] is '.' or '!' or '?' or ')' or ']' or '"' or '\'';
 
     /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>
     private static (TextSnapshot, SelectionSet) Applied(VimResult result, TextSnapshot text, SelectionSet carets, VimTextView view)

@@ -626,15 +626,21 @@ public sealed partial class Vim
         return at == cursor ? null : at;
     }
 
-    /// <summary>) in visual mode: from a line's end, past its last character, first the text after the blanks and line
-    /// breaks after it, as from an empty line; past the last sentence the last line's end; null where it cannot move.</summary>
+    /// <summary>) in visual mode: from a line's end, past its last character, first past the empty lines right after it
+    /// and on to the text after the blanks and line breaks, an empty line stopping it; past the last sentence the last
+    /// line's end; null where it cannot move.</summary>
     private int? SentenceOrTextEnd(TextSnapshot text, int cursor, int n)
     {
         int end = LineEndOf(text, VimMotions.LastLine(text, breakEnds));
         int at = cursor;
         if (VimMotions.LineOf(text, at) is { Length: > 0 } line && at == line.End)
         {
-            while (at < end && char.IsWhiteSpace(text[at]))
+            at = Math.Min(end, at + line.BreakLength);
+            while (at < end && VimMotions.LineOf(text, at) is { Length: 0 } empty)
+            {
+                at = empty.End + empty.BreakLength;
+            }
+            while (at < end && char.IsWhiteSpace(text[at]) && VimMotions.LineOf(text, at).Length > 0)
             {
                 at++;
             }
