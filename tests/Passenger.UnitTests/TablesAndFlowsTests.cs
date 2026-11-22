@@ -30,6 +30,24 @@ public sealed class TablesAndFlowsTests
             Assert.Equal(1, row);
         }));
         Assert.True(Said(waited).Contains("The row 2 failed", StringComparison.Ordinal), $"A waiting table's failed row went unnamed: {Said(waited)}");
+        List<string> joined = [];
+        Exception all = Assert.ThrowsAny<Exception>(() => Cases.All(
+            ("a sum holds", () => joined.Add("sum")),
+            ("a difference holds", () =>
+            {
+                joined.Add("difference");
+                Assert.Equal(1, 2);
+            }),
+            ("a product holds", () => joined.Add("product"))));
+        Assert.True(joined.SequenceEqual(["sum", "difference", "product"]) && Said(all).Contains("The row a difference holds failed", StringComparison.Ordinal)
+            && !Said(all).Contains("a sum holds", StringComparison.Ordinal),
+            $"Checks joined into one test did not all run, or the failed one went unnamed by what it holds: {Said(all)}");
+        Exception allWaited = await Assert.ThrowsAnyAsync<Exception>(() => Cases.AllAsync(("a waiting check holds", async () =>
+        {
+            await Task.Yield();
+            Assert.Equal(1, 2);
+        })));
+        Assert.True(Said(allWaited).Contains("The row a waiting check holds failed", StringComparison.Ordinal), $"A waiting joined check's failure went unnamed: {Said(allWaited)}");
 
         Flow.Step("the first step holds", () => { });
         Assert.Equal(4, Flow.Step("a step hands on what it made", () => 4));

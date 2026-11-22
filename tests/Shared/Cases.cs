@@ -26,6 +26,14 @@ public static class Cases
         return Assert.MultipleAsync(checks);
     }
 
+    /// <summary>Several checks joined into one test, where each was a test of its own: a table whose rows are the checks,
+    /// each named by what it holds.</summary>
+    public static void All(params (string Holds, Action Check)[] checks) => Each(checks, check => check.Check(), check => check.Holds);
+
+    /// <summary><see cref="All"/> for checks that wait: each in turn.</summary>
+    public static Task AllAsync(params (string Holds, Func<Task> Check)[] checks) =>
+        EachAsync(checks, check => check.Check(), check => check.Holds);
+
     private static void Run<T>(T row, Func<T, string>? name, Action check)
     {
         try
