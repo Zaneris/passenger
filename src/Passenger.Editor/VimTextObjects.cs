@@ -305,7 +305,7 @@ public static class VimTextObjects
     }
 
     /// <summary>is and as: the sentence the caret is in, or the white after it; the outer one takes the white after, or
-    /// before where none is after. On a run of empty lines the sentence is the run's last line.</summary>
+    /// before where none is after. On a run of empty lines the sentence is the run's last line short of the text's last.</summary>
     private static VimSpan? Sentence(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
     {
         LineSpan on = VimMotions.LineOf(text, caret);
@@ -334,7 +334,7 @@ public static class VimTextObjects
         if (on.Length == 0)
         {
             int runEnd = on.Line;
-            while (runEnd + 1 < text.LineCount && text.GetLine(runEnd + 1).Length == 0 && text.GetLineStart(runEnd + 1) < text.Length)
+            while (runEnd + 1 < VimMotions.LastLine(text, breakEnds) && text.GetLine(runEnd + 1).Length == 0)
             {
                 runEnd++;
             }
