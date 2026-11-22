@@ -159,9 +159,10 @@ public sealed class MauiCatalystTests : McpRig
         }
     }
 
-    /// <summary>The same app debugged and run at once, each start opening an instance of its own: each is told from the other
-    /// by its start's own token, so the debugged one's end ends it alone and Run's runs on until its own Stop, and neither
-    /// leaves its opener's pipes behind, though each opener is killed.</summary>
+    /// <summary>The same app debugged and run at once, by two configurations of it (Run of the one debugged would end its
+    /// session first), each start opening an instance of its own: each is told from the other by its start's own token, so
+    /// the debugged one's end ends it alone and Run's runs on until its own Stop, and neither leaves its opener's pipes
+    /// behind, though each opener is killed.</summary>
     private static void A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start()
     {
         (string folder, _) = Prepared("maui-catalyst-both", whole: false);
@@ -177,6 +178,8 @@ public sealed class MauiCatalystTests : McpRig
                 () => $"the debugged app to run and its start to find its process; the debugger is {window.Debugger.Session?.State.ToString() ?? "not debugging"}, "
                     + $"the start found {debugged?.Process.Id?.ToString() ?? "no process"}: {Ui.Said(window)}\n{Console(window)}", Slow);
             int first = debugged!.Process.Id!.Value;
+            Passenger.App.Run.RunConfiguration twin = window.Configurations.Single(c => c.Name == MauiApp.Name) with { Name = $"{MauiApp.Name} twin", Generated = false };
+            window.SetConfigurations([twin], twin.Name);
             Ui.Launched(window, window.RunAsync(), "Run's opening of a second instance while the first is debugged", Slow);
             MacCatalystApp ran = Opened(window);
             Ui.WaitFor(() => ran.Process.Id is not null, () => $"Run's start to find its own process: {Ui.Said(window)}\n{Output(window)}", TimeSpan.FromMinutes(1));
