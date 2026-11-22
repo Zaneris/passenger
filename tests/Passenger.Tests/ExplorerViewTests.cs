@@ -42,8 +42,18 @@ public sealed class ExplorerViewTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>The files view chosen comes back as the folder opens again and after a restart, each folder in the view
+    /// chosen last in it, and a folder an older Passenger kept in the solution view, as one flow, each step the check
+    /// one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void The_files_view_chosen_by_the_switch_comes_back_as_the_folder_opens_again_and_after_a_restart()
+    public void Each_folder_opens_in_the_Explorer_view_chosen_last_in_it()
+    {
+        Flow.StepApart<ExplorerViewTests>("the files view chosen by the switch comes back as the folder opens again and after a restart", t => t.The_files_view_chosen_by_the_switch_comes_back_as_the_folder_opens_again_and_after_a_restart());
+        Flow.StepApart<ExplorerViewTests>("each folder opens in the view chosen last in it and one never switched in the solution view", t => t.Each_folder_opens_in_the_view_chosen_last_in_it_and_one_never_switched_in_the_solution_view());
+        Flow.StepApart<ExplorerViewTests>("a folders state an older passenger wrote without the view opens in the solution view", t => t.A_folders_state_an_older_passenger_wrote_without_the_view_opens_in_the_solution_view());
+    }
+
+    private void The_files_view_chosen_by_the_switch_comes_back_as_the_folder_opens_again_and_after_a_restart()
     {
         MainWindow window = Keeping(shop);
         Assert.Equal(ExplorerViewKind.Solution, Shown(window));
@@ -62,8 +72,7 @@ public sealed class ExplorerViewTests : IDisposable
         restarted.Close();
     }
 
-    [AvaloniaFact]
-    public void Each_folder_opens_in_the_view_chosen_last_in_it_and_one_never_switched_in_the_solution_view()
+    private void Each_folder_opens_in_the_view_chosen_last_in_it_and_one_never_switched_in_the_solution_view()
     {
         MainWindow window = Keeping(shop);
         Ui.Click(window.ExplorerView.ViewSwitchButton);
@@ -89,63 +98,7 @@ public sealed class ExplorerViewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Also: an agent's switch shows, but is not kept as the person's choice; a folder with no solution or
-    /// project, whose Explorer has only its files, says why it cannot switch.</summary>
-    [AvaloniaFact]
-    public void Switch_explorer_view_runs_from_a_persons_own_key_and_find_action_each_switch_kept_as_the_folders_view()
-    {
-        MainWindow window = Keeping(shop);
-        string keys = OperatingSystem.IsMacOS() ? "meta alt shift K" : "control alt shift K";
-        window.ApplySettings(window.Settings with { Shortcuts = new() { [AppActions.SwitchExplorerView] = [keys] } });
-        try
-        {
-            Shortcut bound = Assert.Single(window.Actions.Keymap.ShortcutsFor(AppActions.SwitchExplorerView));
-            Assert.True(ToolTip.GetTip(window.ExplorerView.ViewSwitchButton) is string tip && tip.Contains(bound.Display(), StringComparison.Ordinal),
-                $"The view switch's tip does not name the key the person gave Switch Explorer View, {bound.Display()}: '{ToolTip.GetTip(window.ExplorerView.ViewSwitchButton)}'");
-            Ui.Press(window, bound.First.Notation());
-            Assert.Equal(ExplorerViewKind.Files, Shown(window));
-            Reopen(window);
-            Assert.True(Shown(window) == ExplorerViewKind.Files, "The Files view switched to by the person's key was not kept with the folder");
-
-            Assert.True(window.Perform(AppActions.FindAction));
-            Ui.Settle();
-            ActionPopup popup = Assert.IsType<ActionPopup>(window.Popup);
-            popup.Query = "Solution View";
-            Ui.Settle();
-            int row = popup.Rows.ToList().FindIndex(a => a.Id == AppActions.SwitchExplorerView);
-            Assert.True(row >= 0, $"Find Action does not list Switch Explorer View for 'Solution View': [{string.Join(", ", popup.Rows.Select(a => a.Title))}]");
-            for (int down = 0; down < row; down++)
-            {
-                Ui.Press(window, "DOWN");
-            }
-            Ui.Press(window, "ENTER");
-            Assert.Equal(ExplorerViewKind.Solution, Shown(window));
-            Reopen(window);
-            Assert.True(Shown(window) == ExplorerViewKind.Solution, "The Solution view switched to from Find Action was not kept with the folder");
-
-            Assert.Null(window.Actions.RunForAgent(AppActions.SwitchExplorerView));
-            Ui.Settle();
-            Assert.Equal(ExplorerViewKind.Files, Shown(window));
-            Reopen(window);
-            Assert.True(Shown(window) == ExplorerViewKind.Solution, "An agent's switch to the Files view was kept as the view the person opens the folder in");
-
-            window.OpenFolder(loose);
-            Ui.Settle();
-            Assert.Equal(Refusals.NoSolutionView, window.Actions.WhyNot(AppActions.SwitchExplorerView, window.Actions.Context()));
-            Ui.Press(window, bound.First.Notation());
-            Assert.True(window.Status == Refusals.NoSolutionView && window.ExplorerView.ViewShown == ExplorerViewKind.Files && !window.ExplorerView.ViewSwitchButton.IsVisible,
-                $"In a folder of files alone, Switch Explorer View said '{window.Status}', the Explorer showing its {window.ExplorerView.ViewShown} view");
-        }
-        finally
-        {
-            // The keymap the views without a window read is the process's; the next test starts on the platform's own.
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void A_folders_state_an_older_passenger_wrote_without_the_view_opens_in_the_solution_view()
+    private void A_folders_state_an_older_passenger_wrote_without_the_view_opens_in_the_solution_view()
     {
         TestFolders.Write(ProjectState.FolderOf(settings, shop), "workspace.json", JsonSerializer.Serialize(new
         {

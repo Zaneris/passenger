@@ -37,8 +37,17 @@ public sealed class MissingSdkTests : IDisposable
     /// <summary>The words the want of the SDK is said in, where the folder open has the global.json.</summary>
     private const string Missing = "The .NET SDK 1.0.100 that global.json asks for is not installed: install it, or have global.json name one that is";
 
+    /// <summary>A folder whose global.json asks for an SDK not installed says so in the status bar, the Solution view
+    /// and Run's refusal until it asks for one there, and New Solution refuses in dotnet's own words, as one flow, each
+    /// step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_folder_whose_global_json_asks_for_an_SDK_not_installed_says_so_in_the_status_bar_the_Solution_view_and_Runs_refusal_until_it_asks_for_one_there_is()
+    public void A_global_json_asking_for_an_SDK_not_installed_is_said_wherever_it_stops_something()
+    {
+        Flow.StepApart<MissingSdkTests>("a folder whose global json asks for an SDK not installed says so in the status bar the Solution view and Runs refusal until it asks for one there is", t => t.A_folder_whose_global_json_asks_for_an_SDK_not_installed_says_so_in_the_status_bar_the_Solution_view_and_Runs_refusal_until_it_asks_for_one_there_is());
+        Flow.StepApart<MissingSdkTests>("New Solution where global json asks for an SDK not installed refuses with dotnets words whole", t => t.New_Solution_where_global_json_asks_for_an_SDK_not_installed_refuses_with_dotnets_words_whole());
+    }
+
+    private void A_folder_whose_global_json_asks_for_an_SDK_not_installed_says_so_in_the_status_bar_the_Solution_view_and_Runs_refusal_until_it_asks_for_one_there_is()
     {
         TestFolders.Write(root, "Shop/global.json", Pinned);
         MainWindow window = Ui.OpenFolder(Path.Combine(root, "Shop", "Shop.slnx"));
@@ -68,8 +77,7 @@ public sealed class MissingSdkTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void New_Solution_where_global_json_asks_for_an_SDK_not_installed_refuses_with_dotnets_words_whole()
+    private void New_Solution_where_global_json_asks_for_an_SDK_not_installed_refuses_with_dotnets_words_whole()
     {
         // Over the folder the solution is in, where New Solution puts the next one.
         TestFolders.Write(root, "global.json", Pinned);

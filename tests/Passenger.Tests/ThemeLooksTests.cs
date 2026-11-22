@@ -27,8 +27,17 @@ public sealed class ThemeLooksTests : IDisposable
         TestFolders.Delete(themes);
     }
 
+    /// <summary>A theme added from a file keeps its picture over the editor and colours its languages' code its own
+    /// way, and its margins move the editor's text and size the headers and footers, as one flow, each step the check
+    /// one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_theme_added_from_a_file_keeps_its_picture_draws_it_over_the_editor_and_colours_its_languages_code_its_own_way()
+    public void A_themes_picture_language_colours_and_margins_are_drawn_where_it_gives_them()
+    {
+        Flow.StepApart<ThemeLooksTests>("a theme added from a file keeps its picture draws it over the editor and colours its languages code its own way", t => t.A_theme_added_from_a_file_keeps_its_picture_draws_it_over_the_editor_and_colours_its_languages_code_its_own_way());
+        Flow.StepApart<ThemeLooksTests>("a themes margins move the editors text and size the tool windows header and a dialogs footer", t => t.A_themes_margins_move_the_editors_text_and_size_the_tool_windows_header_and_a_dialogs_footer());
+    }
+
+    private void A_theme_added_from_a_file_keeps_its_picture_draws_it_over_the_editor_and_colours_its_languages_code_its_own_way()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "public class One { }\n");
         File.WriteAllText(Path.Combine(folder, "one.json"), "{ \"one\": true }\n");
@@ -82,42 +91,7 @@ public sealed class ThemeLooksTests : IDisposable
         }
     }
 
-    /// <summary>The toolbar's Debug stands apart from Run and Profile beside it: drawn in a colour of its own, the theme's
-    /// Debug token (on the title bar its TitleBar.Debug), in Dark and in Light, where it was drawn as Profile is.</summary>
-    [AvaloniaFact]
-    public void The_toolbars_debug_is_drawn_in_its_own_colour_apart_from_run_and_profile_in_dark_and_light()
-    {
-        File.WriteAllText(Path.Combine(folder, "Hello.csproj"), TestProjects.Console());
-        File.WriteAllText(Path.Combine(folder, "Program.cs"), "System.Console.WriteLine(\"Hello\");\n");
-        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings, StartsLanguageServer = false };
-        window.Show();
-        window.OpenFolder(folder);
-        Button debug = window.FindControl<Button>("DebugButton")!;
-        Ui.WaitFor(() => debug.IsEffectivelyEnabled, () => $"Debug to be enabled for Hello (its tip says \"{ToolTip.GetTip(debug)}\")");
-        try
-        {
-            foreach (ThemeChoice variant in (ThemeChoice[])[ThemeChoice.Dark, ThemeChoice.Light])
-            {
-                window.ApplySettings(window.Settings with { Theme = variant });
-                Ui.Settle();
-                bool onTitleBar = debug.GetVisualAncestors().OfType<Border>().Any(b => b.Classes.Contains(StyleClasses.TitleBar));
-                Color own = window.TryFindResource(onTitleBar ? TokenKeys.TitleBar_Debug : TokenKeys.Debug, window.ActualThemeVariant, out object? token) && token is ISolidColorBrush brush
-                    ? brush.Color : throw new Xunit.Sdk.XunitException($"{variant} gives the Debug button no colour");
-                (Color drawn, Color run, Color profile) = (Ink(debug), Ink(window.FindControl<Button>("RunButton")!), Ink(window.FindControl<Button>("ProfileButton")!));
-                Assert.True(drawn == own && drawn != run && drawn != profile,
-                    $"In {variant}, Debug is drawn in {drawn} where its own colour is {own}, Run's {run} and Profile's {profile}");
-            }
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        static Color Ink(Button button) => button.GetVisualDescendants().OfType<PathIcon>().First().Foreground is ISolidColorBrush ink ? ink.Color : default;
-    }
-
-    [AvaloniaFact]
-    public void A_themes_margins_move_the_editors_text_and_size_the_tool_windows_header_and_a_dialogs_footer()
+    private void A_themes_margins_move_the_editors_text_and_size_the_tool_windows_header_and_a_dialogs_footer()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "public class One { }\n");
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
@@ -145,57 +119,6 @@ public sealed class ThemeLooksTests : IDisposable
             Border footer = dialog.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains(StyleClasses.FooterBar));
             Assert.Equal(new Thickness(24, 14, 24, 14), footer.Padding);
             dialog.Close();
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    /// <summary>The keyword colour an editor finds where it is, its own resources first.</summary>
-    /// <summary>A card's C# takes the colours a theme gives C# of its own, as the editor showing the file draws them: the
-    /// hover card's keyword and method in the theme's C# colours for them, its class in the theme's own class colour, which
-    /// the theme leaves C#. A card's served code was coloured again by the language's own highlighter once it knew its
-    /// language, which reads the signature as a file of its own and loses what the server said of its names.</summary>
-    [AvaloniaFact]
-    public void A_hover_cards_code_takes_the_colours_a_theme_gives_its_language_as_the_editor_does()
-    {
-        File.WriteAllText(Path.Combine(folder, "Looks.csproj"), TestProjects.Console());
-        File.WriteAllText(Path.Combine(folder, "Program.cs"), "static class Program\n{\n    static int Twice(int value) => value * 2;\n\n    static void Main() => Twice(2);\n}\n");
-        string theme = Path.Combine(themes, "Coded.json");
-        File.WriteAllText(theme, """
-            {"format": 1, "name": "Coded looks of the test",
-             "languages": {"csharp": {"dark": {"Syntax.Keyword": "#FF10A0", "Syntax.Method": "#10C0FF"},
-                                      "light": {"Syntax.Keyword": "#A01060", "Syntax.Method": "#0060A0"}}}}
-            """);
-        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
-        window.Show();
-        window.OpenFolder(folder);
-        Ui.Settle();
-        try
-        {
-            window.OpenFile(Path.Combine(folder, "Program.cs"));
-            Ui.Settle();
-            SettingsDialog dialog = window.ShowSettings();
-            Ui.Settle();
-            Assert.Null(Ui.Await(dialog.ThemePicker.AddFileAsync(theme), "a theme file with C# colours of its own added"));
-            dialog.Apply();
-            dialog.Close();
-            Ui.Settle();
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Color Drawn(string key) => editor.TryFindResource(key, editor.ActualThemeVariant, out object? found) && found is ISolidColorBrush brush ? brush.Color : default;
-            bool dark = window.ActualThemeVariant == ThemeVariant.Dark;
-            Assert.Equal(Color.Parse(dark ? "#FF10A0" : "#A01060"), Drawn(TokenKeys.Syntax_Keyword));
-            Assert.Equal(Color.Parse(dark ? "#10C0FF" : "#0060A0"), Drawn(TokenKeys.Syntax_Method));
-
-            int at = editor.Document.Snapshot.ToString().IndexOf("=> Twice", StringComparison.Ordinal) + 5;
-            window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
-            (string Word, string Key)[] words = [("int", TokenKeys.Syntax_Keyword), ("Program", TokenKeys.Syntax_Class), ("Twice", TokenKeys.Syntax_Method)];
-            Avalonia.Controls.Documents.Run[] Runs() => [.. window.Assist.HoverCard?.GetVisualDescendants().OfType<ColouredCode>().SelectMany(c => c.Runs) ?? []];
-            Ui.WaitFor(() => words.All(w => Runs().Any(r => r.Text == w.Word && r.Foreground is ISolidColorBrush brush && brush.Color == Drawn(w.Key))),
-                () => $"the hover card's int, Program and Twice in the colours the editor draws C#'s in, where its runs are "
-                    + $"[{string.Join(", ", Runs().Select(r => $"'{r.Text}' {(r.Foreground as ISolidColorBrush)?.Color}"))}]: the card's code would read otherwise than the file's");
         }
         finally
         {

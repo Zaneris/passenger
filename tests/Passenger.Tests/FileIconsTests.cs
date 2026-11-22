@@ -45,8 +45,17 @@ public sealed class FileIconsTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Each kind of file is drawn in a shape and colour of its own in the Explorer, the tabs and the Commit
+    /// window, a row's icon pixel for pixel as a PathIcon draws it, as one flow, each step the check one test made in
+    /// an instance of its own.</summary>
     [AvaloniaFact]
-    public void Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window()
+    public void Each_kind_of_file_is_drawn_in_its_own_icon_as_a_PathIcon_draws_it()
+    {
+        Flow.StepApart<FileIconsTests>("each kind of file is drawn in a shape and colour of its own in the Explorer the tabs and the Commit window", t => t.Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window());
+        Flow.StepApart<FileIconsTests>("a rows icon draws every icon of the theme pixel for pixel as a PathIcon draws it", t => t.A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it());
+    }
+
+    private void Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
@@ -99,8 +108,7 @@ public sealed class FileIconsTests : IDisposable
     /// file icon, at 16 and 14 and as a 10-square chevron turned and not, draws pixel for pixel as a PathIcon in its place
     /// draws it, at scale 1, 1.5 and 2, dark and light, in the theme's icon colour and in a brush given; and the Explorer's
     /// RowGlyphs as its chevron's column and icon did, each a PathIcon.</summary>
-    [AvaloniaFact]
-    public void A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it()
+    private void A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it()
     {
         Application app = Application.Current!;
         List<(string Key, Geometry Icon)> icons = [];

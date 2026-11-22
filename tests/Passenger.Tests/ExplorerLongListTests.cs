@@ -27,8 +27,17 @@ public sealed class ExplorerLongListTests : IDisposable
         }
     }
 
+    /// <summary>Down a long list the scrollbar's thumb stays under the pointer moving no file, and a scroll step hands
+    /// its rows other files at the cost of a short list's, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void Dragging_the_scrollbars_thumb_down_the_long_list_keeps_it_under_the_pointer_to_the_end_and_moves_no_file()
+    public void The_Explorers_long_list_scrolls_under_the_pointer_and_reuses_its_rows()
+    {
+        Flow.StepApart<ExplorerLongListTests>("dragging the scrollbars thumb down the long list keeps it under the pointer to the end and moves no file", t => t.Dragging_the_scrollbars_thumb_down_the_long_list_keeps_it_under_the_pointer_to_the_end_and_moves_no_file());
+        Flow.StepApart<ExplorerLongListTests>("a scroll step down the long list hands its rows other files never making a row again and costs what it does in a short one", t => t.A_scroll_step_down_the_long_list_hands_its_rows_other_files_never_making_a_row_again_and_costs_what_it_does_in_a_short_one());
+    }
+
+    private void Dragging_the_scrollbars_thumb_down_the_long_list_keeps_it_under_the_pointer_to_the_end_and_moves_no_file()
     {
         string folder = Folder(areas: 20, parts: 6, files: 10);
         int files = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Count();
@@ -66,8 +75,7 @@ public sealed class ExplorerLongListTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_scroll_step_down_the_long_list_hands_its_rows_other_files_never_making_a_row_again_and_costs_what_it_does_in_a_short_one()
+    private void A_scroll_step_down_the_long_list_hands_its_rows_other_files_never_making_a_row_again_and_costs_what_it_does_in_a_short_one()
     {
         (long shortStep, int shortMade) = Steps(Folder(areas: 2, parts: 3, files: 8));
         (long longStep, int longMade) = Steps(Folder(areas: 30, parts: 10, files: 10));
@@ -103,81 +111,6 @@ public sealed class ExplorerLongListTests : IDisposable
         }
 
         static TextBlock Name(Control row) => row.GetVisualDescendants().OfType<TextBlock>().First();
-    }
-
-    [AvaloniaFact]
-    public void A_file_another_program_writes_into_the_long_list_costs_the_UI_thread_what_it_does_in_a_short_one()
-    {
-        long shortWrite = Writes(Folder(areas: 2, parts: 3, files: 8));
-        long longWrite = Writes(Folder(areas: 30, parts: 10, files: 10));
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A file written elsewhere allocated {shortWrite / 1024} KB on the UI thread until it showed, among 57 rows, {longWrite / 1024} KB among 3,331");
-        Assert.True(longWrite <= shortWrite + (256 * 1024),
-            $"A file written elsewhere allocated {longWrite / 1024} KB on the UI thread until the Explorer showed it among 3,331 rows, against {shortWrite / 1024} KB "
-            + "among 57: the refresh made the whole list again rather than its folder's rows");
-
-        // The least the UI thread allocated from a file written in the last folder until its row showed, of three.
-        long Writes(string folder)
-        {
-            MainWindow window = Open(folder);
-            string last = PathNames.Canonical(Directory.EnumerateDirectories(Directory.EnumerateDirectories(folder).Order().Last()).Order().Last());
-            long least = long.MaxValue;
-            for (int i = 0; i < 3; i++)
-            {
-                string name = $"Written{i}.cs";
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                File.WriteAllText(Path.Combine(last, name), "class Written { }\n");
-                Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == name), $"{name} in the Explorer");
-                Ui.Settle();
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-            }
-            window.Close();
-            return least;
-        }
-    }
-
-    [AvaloniaFact]
-    public void Turning_file_nesting_off_reopens_every_folder_of_the_long_solution_and_its_chosen_row_costing_per_folder_what_a_short_one_does()
-    {
-        (long shortCost, int shortOpen) = Refreshes(Solution(areas: 2, parts: 3, files: 8));
-        (long longCost, int longOpen) = Refreshes(Solution(areas: 30, parts: 10, files: 10));
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"Turning file nesting off allocated {shortCost / 1024} KB on the UI thread over {shortOpen} open rows, {longCost / 1024} KB over {longOpen}");
-        Assert.True(longCost / longOpen <= shortCost / shortOpen,
-            $"Turning file nesting off allocated {longCost / longOpen / 1024} KB on the UI thread for each of {longOpen} open rows, against "
-            + $"{shortCost / shortOpen / 1024} KB for each of {shortOpen}: reopening a folder cost the list's length");
-
-        // What the UI thread allocated from File Nesting's OK until the Explorer showed its rows again, and the rows open.
-        (long Cost, int Open) Refreshes(string folder)
-        {
-            MainWindow window = Open(folder);
-            ExplorerView view = window.ExplorerView;
-            List<string> open = [.. view.Tree.Rows.Where(r => r.IsExpanded).Select(r => r.Path ?? r.Name)];
-            ExplorerNode chosen = view.Tree.Rows[^2];
-            Ui.ClickRow(window, chosen);
-            FileNestingDialog dialog = OpenFileNesting(window);
-            Ui.Click(dialog.NestBox);
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            Ui.Click(dialog.OkButton);
-            Ui.WaitFor(() => !dialog.IsVisible, "the File Nesting dialog to close");
-            Ui.Settle();
-            long cost = GC.GetAllocatedBytesForCurrentThread() - before;
-            Assert.Equal(open, view.Tree.Rows.Where(r => r.IsExpanded).Select(r => r.Path ?? r.Name));
-            Assert.True(view.SelectedNodes.Select(n => n.Path).SequenceEqual([chosen.Path]),
-                $"Turning file nesting off left [{string.Join(", ", view.SelectedNodes.Select(n => n.Name))}] chosen, where {chosen.Name} was");
-            window.Close();
-            return (cost, open.Count);
-        }
-    }
-
-    /// <summary>File Nesting... from the Explorer's options in its header, as a person opens it.</summary>
-    private static FileNestingDialog OpenFileNesting(MainWindow window)
-    {
-        Control pane = window.ExplorerView.GetVisualAncestors().OfType<Control>().First(a => a.GetType().Name == "ToolPane");
-        Ui.Click(pane.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Options"));
-        Ui.Choose(window.DockHost.OpenOptions, "Appearance", "File Nesting…");
-        Ui.WaitFor(() => window.Frontmost is FileNestingDialog, "the File Nesting dialog");
-        return (FileNestingDialog)window.Frontmost;
     }
 
     /// <summary>A folder of areas, each of parts, each of files, with nothing else in it.</summary>

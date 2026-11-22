@@ -28,8 +28,20 @@ public sealed class ThemeSourcesTests : IDisposable
         TestFolders.Delete(sources);
     }
 
+    /// <summary>A folder or an address added as a source lists its themes, one chosen is drawn before Apply and kept
+    /// through a restart with the address gone, a source that cannot be read changes nothing, and a choice of 0.3 is
+    /// the same from the themes' repository, never dropped, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void A_folder_source_added_in_Settings_lists_its_themes_by_name_and_source_and_one_chosen_is_kept_drawn_before_Apply_and_taken_anew_only_on_Refresh()
+    public void A_theme_source_lists_its_themes_and_one_chosen_is_kept_however_its_source_answers()
+    {
+        Flow.StepApart<ThemeSourcesTests>("a folder source added in Settings lists its themes by name and source and one chosen is kept drawn before Apply and taken anew only on Refresh", t => t.A_folder_source_added_in_Settings_lists_its_themes_by_name_and_source_and_one_chosen_is_kept_drawn_before_Apply_and_taken_anew_only_on_Refresh());
+        Flow.StepApart<ThemeSourcesTests>("an address source is read through its index and a theme chosen from it draws at the next start with the address gone", t => t.An_address_source_is_read_through_its_index_and_a_theme_chosen_from_it_draws_at_the_next_start_with_the_address_gone());
+        Flow.StepApart<ThemeSourcesTests>("a source or a file that cannot be read says why and changes nothing", t => t.A_source_or_a_file_that_cannot_be_read_says_why_and_changes_nothing());
+        Flow.StepApart<ThemeSourcesTests>("a theme chosen in 0 3 is the same from the themes repository said while it is fetched and one out of reach is said never dropped", t => t.A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped());
+    }
+
+    private void A_folder_source_added_in_Settings_lists_its_themes_by_name_and_source_and_one_chosen_is_kept_drawn_before_Apply_and_taken_anew_only_on_Refresh()
     {
         string source = Path.Combine(sources, "mine");
         CarriedThemes.CopyTo(source, "Moss", "Phosphor");
@@ -90,8 +102,7 @@ public sealed class ThemeSourcesTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void An_address_source_is_read_through_its_index_and_a_theme_chosen_from_it_draws_at_the_next_start_with_the_address_gone()
+    private void An_address_source_is_read_through_its_index_and_a_theme_chosen_from_it_draws_at_the_next_start_with_the_address_gone()
     {
         string served = Path.Combine(sources, "served");
         CarriedThemes.CopyTo(served, "Sorbet");
@@ -159,8 +170,7 @@ public sealed class ThemeSourcesTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_source_or_a_file_that_cannot_be_read_says_why_and_changes_nothing()
+    private void A_source_or_a_file_that_cannot_be_read_says_why_and_changes_nothing()
     {
         string later = Path.Combine(sources, "later");
         Directory.CreateDirectory(later);
@@ -242,8 +252,7 @@ public sealed class ThemeSourcesTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped()
+    private void A_theme_chosen_in_0_3_is_the_same_from_the_themes_repository_said_while_it_is_fetched_and_one_out_of_reach_is_said_never_dropped()
     {
         foreach ((bool code, string name) in ((bool, string)[])[(false, "Orbit"), (true, ThemeSource.FormerScheme)])
         {

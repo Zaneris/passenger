@@ -22,9 +22,38 @@ public sealed class JumpListTests
 
     private readonly string appId = "Passenger.Tests.JumpList." + Guid.NewGuid().ToString("N");
 
+    /// <summary>On Windows each recent one is a link starting Passenger on its path, two of one name told apart, beside
+    /// New Window, and with recent items turned off the list keeps New Window alone, as one flow of Windows's steps,
+    /// each in an instance of its own.</summary>
     [Fact]
+    public async Task Windows_jump_list_links_each_recent_one_and_follows_the_systems_choice()
+    {
+        await Flow.StepApartAsync("each recent one is a link starting Passenger on its path two of one name told apart by their folders beside New Window", () => new JumpListTests(), async t =>
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                await t.Each_recent_one_is_a_link_starting_Passenger_on_its_path_two_of_one_name_told_apart_by_their_folders_beside_New_Window();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Windows alone");
+            }
+        });
+        await Flow.StepApartAsync("with recent items turned off in Windows the list keeps New Window and leaves out the recent ones saying nothing", () => new JumpListTests(), async t =>
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                await t.With_recent_items_turned_off_in_Windows_the_list_keeps_New_Window_and_leaves_out_the_recent_ones_saying_nothing();
+            }
+            else
+            {
+                Assert.Skip("This step runs on Windows alone");
+            }
+        });
+    }
+
     [SupportedOSPlatform("windows")]
-    public async Task Each_recent_one_is_a_link_starting_Passenger_on_its_path_two_of_one_name_told_apart_by_their_folders_beside_New_Window()
+    private async Task Each_recent_one_is_a_link_starting_Passenger_on_its_path_two_of_one_name_told_apart_by_their_folders_beside_New_Window()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The taskbar's jump list is Windows'");
         string folder = TestFolders.Create("jump-list-");
@@ -58,9 +87,8 @@ public sealed class JumpListTests
         Assert.True(Waiting.Until(() => Kept(folder) is null, TimeSpan.FromSeconds(10)), $"The test's jump list is still kept in {CustomDestinations} after it was deleted");
     }
 
-    [Fact]
     [SupportedOSPlatform("windows")]
-    public async Task With_recent_items_turned_off_in_Windows_the_list_keeps_New_Window_and_leaves_out_the_recent_ones_saying_nothing()
+    private async Task With_recent_items_turned_off_in_Windows_the_list_keeps_New_Window_and_leaves_out_the_recent_ones_saying_nothing()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The taskbar's jump list is Windows'");
         Assert.SkipUnless(OnRunner, "The test turns Windows' recent items on and off, which it does only on a CI runner, never on a person's machine");

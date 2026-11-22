@@ -24,8 +24,16 @@ public sealed class WindowsTrashTests : IDisposable
         Trash.Folder = null;
     }
 
+    /// <summary>On Windows a file goes to the Recycle Bin and is put back as it was, and one another program holds is
+    /// refused at once with no dialog, as one flow of Windows's steps, each in an instance of its own.</summary>
     [Fact]
-    public async Task A_file_goes_to_the_Recycle_Bin_and_is_put_back_as_it_was()
+    public async Task On_Windows_a_file_goes_to_the_Recycle_Bin_and_back_or_is_refused_at_once()
+    {
+        await Flow.StepApartAsync("a file goes to the Recycle Bin and is put back as it was", () => new WindowsTrashTests(), t => t.A_file_goes_to_the_Recycle_Bin_and_is_put_back_as_it_was());
+        await Flow.StepApartAsync("a file another program holds is refused at once with no dialog for nobody to answer", () => new WindowsTrashTests(), t => t.A_file_another_program_holds_is_refused_at_once_with_no_dialog_for_nobody_to_answer());
+    }
+
+    private async Task A_file_goes_to_the_Recycle_Bin_and_is_put_back_as_it_was()
     {
         UseRecycleBin();
         string file = Path.Combine(folder, "Shop.cs");
@@ -39,8 +47,7 @@ public sealed class WindowsTrashTests : IDisposable
         Assert.Equal("class Shop { }\n", File.ReadAllText(file));
     }
 
-    [Fact]
-    public async Task A_file_another_program_holds_is_refused_at_once_with_no_dialog_for_nobody_to_answer()
+    private async Task A_file_another_program_holds_is_refused_at_once_with_no_dialog_for_nobody_to_answer()
     {
         UseRecycleBin();
         string file = Path.Combine(folder, "Held.cs");

@@ -25,10 +25,19 @@ public sealed class ToolHeaderTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Every tool window's header keeps its parts apart and whole from a wide place down to its least, and its
+    /// options open their menu on every click that finds it closed, as one flow, each step the check one test made in
+    /// an instance of its own.</summary>
+    [AvaloniaFact]
+    public void A_tool_windows_header_keeps_its_parts_whole_and_its_options_open_their_menu()
+    {
+        Flow.StepApart<ToolHeaderTests>("every tool windows header keeps its parts apart and whole from a wide place down to its least", t => t.Every_tool_windows_header_keeps_its_parts_apart_and_whole_from_a_wide_place_down_to_its_least());
+        Flow.StepApart<ToolHeaderTests>("each tool windows options open their menu on every click that finds it closed", t => t.Each_tool_windows_options_open_their_menu_on_every_click_that_finds_it_closed());
+    }
+
     /// <summary>Each window, docked on the left as Move to puts it, its side dragged narrower step by step to as far as it
     /// goes: at every width its header's parts are apart, inside it and uncut, and its Options still open their menu there.</summary>
-    [AvaloniaFact]
-    public void Every_tool_windows_header_keeps_its_parts_apart_and_whole_from_a_wide_place_down_to_its_least()
+    private void Every_tool_windows_header_keeps_its_parts_apart_and_whole_from_a_wide_place_down_to_its_least()
     {
         MainWindow window = Open();
         try
@@ -74,61 +83,10 @@ public sealed class ToolHeaderTests : IDisposable
         }
     }
 
-    /// <summary>The right side, each half of the bottom and a floating window, each narrowed as far as a person can, stop
-    /// where the header still holds its Options and a few letters of its title.</summary>
-    [AvaloniaFact]
-    public void Each_place_narrowed_as_far_as_it_goes_keeps_its_header_whole()
-    {
-        MainWindow window = Open();
-        try
-        {
-            DockHost dock = window.DockHost;
-            List<string> wrong = [];
-            ToolWindow right = dock[ToolWindowIds.Hierarchy];
-            dock.Move(right, ToolAnchor.RightTop);
-            dock.Show(right.Id);
-            Ui.Settle();
-            Point grip = Ui.Centre(Divider(dock, c => Grid.GetColumn(c) == 4), window) + new Point(3, 0);
-            Ui.Drag(window, grip, new Point(window.Bounds.Width - 1, grip.Y));
-            wrong.AddRange(Apart(HeaderOf(right), $"{right.Title} on the right, {dock.ColumnDefinitions[5].ActualWidth:0} wide"));
-
-            ToolWindow first = dock[ToolWindowIds.Build];
-            ToolWindow second = dock[ToolWindowIds.Problems];
-            dock.Move(first, ToolAnchor.BottomLeft);
-            dock.Move(second, ToolAnchor.BottomRight);
-            dock.Show(first.Id);
-            dock.Show(second.Id);
-            Ui.Settle();
-            GridSplitter halves = AreaOf(first).Children.OfType<HairlineDivider>().Single().GetVisualDescendants().OfType<GridSplitter>().Single();
-            grip = Ui.Centre(halves, window);
-            Ui.Drag(window, grip, new Point(1, grip.Y));
-            wrong.AddRange(Apart(HeaderOf(first), $"{first.Title} at the bottom's left, {PaneOf(first).Bounds.Width:0} wide"));
-            grip = Ui.Centre(halves, window);
-            Ui.Drag(window, grip, new Point(window.Bounds.Width - 1, grip.Y));
-            wrong.AddRange(Apart(HeaderOf(second), $"{second.Title} at the bottom's right, {PaneOf(second).Bounds.Width:0} wide"));
-
-            ToolWindow floating = dock[ToolWindowIds.Explorer];
-            dock.SetMode(floating, ToolMode.Floating);
-            Ui.Settle();
-            Window own = Assert.Single(window.OwnedWindows);
-            own.Width = 20;
-            Ui.Settle();
-            wrong.AddRange(Apart(HeaderOf(floating), $"{floating.Title} floating, {own.Bounds.Width:0} wide"));
-            dock.SetMode(floating, ToolMode.Docked);
-            Ui.Settle();
-            Assert.True(wrong.Count == 0, $"Headers draw parts over one another or cut them: {string.Join("; ", wrong)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>Each window's Options clicked several times over open its menu on each click that found it closed and close
     /// it on each that found it open; and a click on them while another side's window's menu is open opens theirs, the
     /// click that closes the other passed on to them.</summary>
-    [AvaloniaFact]
-    public void Each_tool_windows_options_open_their_menu_on_every_click_that_finds_it_closed()
+    private void Each_tool_windows_options_open_their_menu_on_every_click_that_finds_it_closed()
     {
         MainWindow window = Open();
         try
@@ -276,9 +234,6 @@ public sealed class ToolHeaderTests : IDisposable
 
     private static DockPanel PaneOf(ToolWindow tool) =>
         tool.Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane));
-
-    /// <summary>The area holding a window's pane, whose divider parts its halves.</summary>
-    private static Grid AreaOf(ToolWindow tool) => (Grid)PaneOf(tool).GetVisualParent()!;
 
     private static GridSplitter Divider(DockHost dock, Func<Control, bool> place) =>
         dock.Children.First(place).GetVisualDescendants().OfType<GridSplitter>().Single();

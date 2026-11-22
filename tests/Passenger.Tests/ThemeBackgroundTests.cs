@@ -28,8 +28,17 @@ public sealed class ThemeBackgroundTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>A picture shows over each place it names at the theme's opacity and tint and nowhere else, and a key in
+    /// a large file beneath it allocates what one in a small file does, never drawing it again, as one flow, each step
+    /// the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_picture_shows_over_each_place_it_names_at_the_themes_opacity_and_tint_and_nowhere_else()
+    public void A_themes_picture_shows_where_it_names_and_costs_a_key_nothing()
+    {
+        Flow.StepApart<ThemeBackgroundTests>("a picture shows over each place it names at the themes opacity and tint and nowhere else", t => t.A_picture_shows_over_each_place_it_names_at_the_themes_opacity_and_tint_and_nowhere_else());
+        Flow.StepApart<ThemeBackgroundTests>("a key in a large file with a picture shown allocates what one in a small file does and never draws the picture again", t => t.A_key_in_a_large_file_with_a_picture_shown_allocates_what_one_in_a_small_file_does_and_never_draws_the_picture_again());
+    }
+
+    private void A_picture_shows_over_each_place_it_names_at_the_themes_opacity_and_tint_and_nowhere_else()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
         MainWindow welcome = Open(null);
@@ -64,8 +73,7 @@ public sealed class ThemeBackgroundTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_key_in_a_large_file_with_a_picture_shown_allocates_what_one_in_a_small_file_does_and_never_draws_the_picture_again()
+    private void A_key_in_a_large_file_with_a_picture_shown_allocates_what_one_in_a_small_file_does_and_never_draws_the_picture_again()
     {
         StringBuilder text = new();
         for (int i = 0; i < 20_000; i++)

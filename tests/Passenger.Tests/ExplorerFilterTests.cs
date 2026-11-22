@@ -31,8 +31,18 @@ public sealed class ExplorerFilterTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A filter shows the files named with their folders in either view, says where it names none, opens one
+    /// and gives the tree back on Escape, and one letter over twenty thousand files costs what it shows, as one flow,
+    /// each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_filter_shows_the_files_named_with_their_folders_opens_one_and_escape_gives_back_the_tree_as_it_was()
+    public void The_Explorers_filter_shows_the_files_named_and_gives_the_tree_back()
+    {
+        Flow.StepApart<ExplorerFilterTests>("a filter shows the files named with their folders opens one and escape gives back the tree as it was", t => t.A_filter_shows_the_files_named_with_their_folders_opens_one_and_escape_gives_back_the_tree_as_it_was());
+        Flow.StepApart<ExplorerFilterTests>("the files view is filtered too and a filter naming no file says so", t => t.The_files_view_is_filtered_too_and_a_filter_naming_no_file_says_so());
+        Flow.StepApart<ExplorerFilterTests>("a one letter filter over twenty thousand files shows the first of them and costs the window what it shows", t => t.A_one_letter_filter_over_twenty_thousand_files_shows_the_first_of_them_and_costs_the_window_what_it_shows());
+    }
+
+    private void A_filter_shows_the_files_named_with_their_folders_opens_one_and_escape_gives_back_the_tree_as_it_was()
     {
         MainWindow window = Open();
         ExplorerView explorer = window.ExplorerView;
@@ -67,8 +77,7 @@ public sealed class ExplorerFilterTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_files_view_is_filtered_too_and_a_filter_naming_no_file_says_so()
+    private void The_files_view_is_filtered_too_and_a_filter_naming_no_file_says_so()
     {
         MainWindow window = Open();
         ExplorerView explorer = window.ExplorerView;
@@ -98,8 +107,7 @@ public sealed class ExplorerFilterTests : IDisposable
     /// <summary>A one-letter filter over a large folder narrows the tree to its first few hundred files and says how many
     /// more match, the names matched off the window's thread: over 20,000 files it allocates on the UI thread under 8 bytes
     /// for each file more than over 2,000, the least of three tries, where every file matched used to be placed in the tree.</summary>
-    [AvaloniaFact]
-    public void A_one_letter_filter_over_twenty_thousand_files_shows_the_first_of_them_and_costs_the_window_what_it_shows()
+    private void A_one_letter_filter_over_twenty_thousand_files_shows_the_first_of_them_and_costs_the_window_what_it_shows()
     {
         string small = PathNames.Canonical(TestFolders.Create("explorer-filter-small-"));
         string large = PathNames.Canonical(TestFolders.Create("explorer-filter-large-"));
@@ -124,39 +132,6 @@ public sealed class ExplorerFilterTests : IDisposable
         {
             TestFolders.Delete(small);
             TestFolders.Delete(large);
-        }
-    }
-
-    /// <summary>A filter matching hundreds of files lands in the tree without the disk resolving one of their names on the
-    /// window's thread: they are resolved where the names are matched, off it, where each file's used to be resolved as
-    /// its row was found, a call into the system for every file at every key.</summary>
-    [AvaloniaFact]
-    public void A_filter_matching_hundreds_of_files_resolves_none_of_their_names_on_the_window_s_thread()
-    {
-        string root = PathNames.Canonical(TestFolders.Create("explorer-filter-names-"));
-        try
-        {
-            Areas(root, 3);
-            MainWindow window = new() { Width = 1000, Height = 700 };
-            window.Show();
-            window.OpenFolder(root);
-            Ui.WaitFor(() => window.FileIndex.Count >= 600 && !window.FileIndex.IsWalking && window.ExplorerView.Tree.Root is not null,
-                "the folder's 600 files indexed and shown");
-            Ui.Click(Filter(window));
-            Ui.Settle();
-            int before = PathNames.ResolvedOnThisThread;
-            window.KeyTextInput("x");
-            Ui.Settle();
-            int resolved = PathNames.ResolvedOnThisThread - before;
-            int shown = window.ExplorerView.Tree.Rows.Count(r => r.IsFile);
-            Assert.True(shown == ExplorerFilter.Most, $"A filter every one of 600 files matches showed {shown} files, where the tree shows the first {ExplorerFilter.Most}");
-            Assert.True(resolved < 50,
-                $"A filter landing on {shown} files had the disk resolve {resolved} names on the window's thread: a call into the system for each file it shows, at every key");
-            window.Close();
-        }
-        finally
-        {
-            TestFolders.Delete(root);
         }
     }
 

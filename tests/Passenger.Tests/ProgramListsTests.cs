@@ -27,8 +27,18 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
         lots.Reset();
     }
 
+    /// <summary>A scroll step down an object's thousand fields, a profile's thousand methods and a heap snapshot's
+    /// thousand objects hands its rows other items, never making a row again, as one flow, each step the check one test
+    /// made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_scroll_step_down_an_objects_thousand_fields_in_variables_hands_the_rows_other_fields_never_making_one_again()
+    public void A_scroll_step_down_a_thousand_rows_hands_the_rows_others_never_making_one_again()
+    {
+        Flow.StepApart("a scroll step down an objects thousand fields in variables hands the rows other fields never making one again", () => new ProgramListsTests(lots), t => t.A_scroll_step_down_an_objects_thousand_fields_in_variables_hands_the_rows_other_fields_never_making_one_again());
+        Flow.StepApart("a scroll step down a profiles thousand methods and types hands the rows others never making one again", () => new ProgramListsTests(lots), t => t.A_scroll_step_down_a_profiles_thousand_methods_and_types_hands_the_rows_others_never_making_one_again());
+        Flow.StepApart("a scroll step down a heap snapshots thousand objects of a type hands the rows other objects never making one again", () => new ProgramListsTests(lots), t => t.A_scroll_step_down_a_heap_snapshots_thousand_objects_of_a_type_hands_the_rows_other_objects_never_making_one_again());
+    }
+
+    private void A_scroll_step_down_an_objects_thousand_fields_in_variables_hands_the_rows_other_fields_never_making_one_again()
     {
         MainWindow window = lots.Open(lots.PathOf("Program.cs"), languageServer: false);
         try
@@ -57,8 +67,7 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
         }
     }
 
-    [AvaloniaFact]
-    public void A_scroll_step_down_a_profiles_thousand_methods_and_types_hands_the_rows_others_never_making_one_again()
+    private void A_scroll_step_down_a_profiles_thousand_methods_and_types_hands_the_rows_others_never_making_one_again()
     {
         MainWindow window = lots.Open(null, languageServer: false);
         try
@@ -99,8 +108,7 @@ public sealed class ProgramListsTests : IClassFixture<ProgramListsTests.Lots>
         }
     }
 
-    [AvaloniaFact]
-    public void A_scroll_step_down_a_heap_snapshots_thousand_objects_of_a_type_hands_the_rows_other_objects_never_making_one_again()
+    private void A_scroll_step_down_a_heap_snapshots_thousand_objects_of_a_type_hands_the_rows_other_objects_never_making_one_again()
     {
         MainWindow window = lots.Open(null, languageServer: false);
         try

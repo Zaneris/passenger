@@ -39,8 +39,27 @@ public sealed class PassengerCommandTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    /// <summary>On macOS the Tools menu adds the passenger-ide command, which a terminal runs to open a file at a line,
+    /// and removes it, leaving another program's command of that name, as one flow of macOS's steps, each in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void On_macOS_the_Tools_menu_adds_the_command_a_terminal_runs_it_from_a_folder_to_open_a_file_at_a_line_and_the_menu_removes_it()
+    public void On_macOS_the_passenger_ide_command_is_added_run_and_removed_leaving_another_programs()
+    {
+        Flow.StepApart<PassengerCommandTests>("on macOS another programs passenger ide stays and a link to another Passengers is replaced", t => t.On_macOS_another_programs_passenger_ide_stays_and_a_link_to_another_Passengers_is_replaced());
+        Flow.StepApart<PassengerCommandTests>("on macOS the Tools menu adds the command a terminal runs it from a folder to open a file at a line and the menu removes it", t => t.On_macOS_the_Tools_menu_adds_the_command_a_terminal_runs_it_from_a_folder_to_open_a_file_at_a_line_and_the_menu_removes_it());
+    }
+
+    /// <summary>On Windows the installer's hooks put the command's folder on the person's Path once and take it off,
+    /// and the command hands a folder, file and caret to the running Passenger, as one flow of Windows's steps, each in
+    /// an instance of its own.</summary>
+    [AvaloniaFact]
+    public void On_Windows_the_passenger_ide_command_is_on_the_Path_and_hands_its_launch_to_the_running_Passenger()
+    {
+        Flow.StepApart<PassengerCommandTests>("on Windows the installers hooks put the commands folder on the users Path once keeping the rest and its kind and take it off", t => t.On_Windows_the_installers_hooks_put_the_commands_folder_on_the_users_Path_once_keeping_the_rest_and_its_kind_and_take_it_off());
+        Flow.StepApart<PassengerCommandTests>("on Windows the command alone in its folder hands a relative folder file and caret to the running Passenger and ends at once", t => t.On_Windows_the_command_alone_in_its_folder_hands_a_relative_folder_file_and_caret_to_the_running_Passenger_and_ends_at_once());
+    }
+
+    private void On_macOS_the_Tools_menu_adds_the_command_a_terminal_runs_it_from_a_folder_to_open_a_file_at_a_line_and_the_menu_removes_it()
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -92,8 +111,7 @@ public sealed class PassengerCommandTests : IDisposable
 
     /// <summary>Another program of the command's name, or a link to one, stays as it was and the command is not added; a link
     /// to another Passenger's launcher (an app moved since, or another copy) is Passenger's to replace.</summary>
-    [AvaloniaFact]
-    public void On_macOS_another_programs_passenger_ide_stays_and_a_link_to_another_Passengers_is_replaced()
+    private void On_macOS_another_programs_passenger_ide_stays_and_a_link_to_another_Passengers_is_replaced()
     {
         if (!OperatingSystem.IsMacOS())
         {
@@ -120,8 +138,7 @@ public sealed class PassengerCommandTests : IDisposable
     /// <summary>The hooks' change of the user's Path, over a key of the test's own: the folder put at its end once however
     /// often the hook runs (an install, then each update), every other entry kept as written, an empty one too, and the
     /// value's kind kept; the uninstall's taking it off leaves the value as it was. A Path made for it alone goes with it.</summary>
-    [Fact]
-    public void On_Windows_the_installers_hooks_put_the_commands_folder_on_the_users_Path_once_keeping_the_rest_and_its_kind_and_take_it_off()
+    private void On_Windows_the_installers_hooks_put_the_commands_folder_on_the_users_Path_once_keeping_the_rest_and_its_kind_and_take_it_off()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -179,8 +196,7 @@ public sealed class PassengerCommandTests : IDisposable
     /// <summary>The program the installer's Path names, alone in its folder, run from the folder above the project with the
     /// project's name holding a space, an ampersand and a percent sign as written: it ends at once, and the running Passenger
     /// opens the file at the line.</summary>
-    [AvaloniaFact]
-    public void On_Windows_the_command_alone_in_its_folder_hands_a_relative_folder_file_and_caret_to_the_running_Passenger_and_ends_at_once()
+    private void On_Windows_the_command_alone_in_its_folder_hands_a_relative_folder_file_and_caret_to_the_running_Passenger_and_ends_at_once()
     {
         if (!OperatingSystem.IsWindows())
         {

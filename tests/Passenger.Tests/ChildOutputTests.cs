@@ -10,11 +10,20 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class ChildOutputTests
 {
+    /// <summary>A child killed and disposed as it writes has both streams read to their end with no read faulted, and
+    /// its process disposed leaves its streams heard until it has gone, as one flow, each step the check one test made
+    /// in an instance of its own.</summary>
+    [Fact]
+    public async Task A_childs_streams_are_read_to_their_end_however_it_is_killed_or_disposed()
+    {
+        await Flow.StepApartAsync("a child killed and disposed as it writes has both streams read to their end with no read faulted", () => new ChildOutputTests(), t => t.A_child_killed_and_disposed_as_it_writes_has_both_streams_read_to_their_end_with_no_read_faulted());
+        await Flow.StepApartAsync("a childs process disposed as it writes leaves its streams heard until the child has gone", () => new ChildOutputTests(), t => t.A_childs_process_disposed_as_it_writes_leaves_its_streams_heard_until_the_child_has_gone());
+    }
+
     /// <summary>A child writing to its output and its errors without pause, killed and disposed fifty times at a moment
     /// after its first line (as the IDE ends a previewer or a server), beside two busy processes, has each stream read to
     /// its end every time, every line whole: no read faults as the child goes.</summary>
-    [Fact]
-    public async Task A_child_killed_and_disposed_as_it_writes_has_both_streams_read_to_their_end_with_no_read_faulted()
+    private async Task A_child_killed_and_disposed_as_it_writes_has_both_streams_read_to_their_end_with_no_read_faulted()
     {
         List<Process> busy = Busy();
         try
@@ -53,8 +62,7 @@ public sealed class ChildOutputTests
 
     /// <summary>A child's process disposed while the child writes on leaves its streams heard: what it writes after is still
     /// read, and each stream ends only once the child has gone, so disposing a process never closes a read under it.</summary>
-    [Fact]
-    public async Task A_childs_process_disposed_as_it_writes_leaves_its_streams_heard_until_the_child_has_gone()
+    private async Task A_childs_process_disposed_as_it_writes_leaves_its_streams_heard_until_the_child_has_gone()
     {
         Process child = Chatter();
         // Read before its process is disposed below, for the test's own end of it.

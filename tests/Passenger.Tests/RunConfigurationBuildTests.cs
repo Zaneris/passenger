@@ -33,8 +33,17 @@ public sealed class RunConfigurationBuildTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A configuration set to Release profiles the Release build while Run stays on the folder's Debug and
+    /// dotnet watch takes its platform, and Hot Reload of one building otherwise applies nothing saying why, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void A_configuration_set_to_release_profiles_the_release_build_while_run_stays_on_the_folders_debug_and_dotnet_watch_takes_its_platform()
+    public void A_configuration_building_unlike_the_folder_profiles_and_hot_reloads_as_it_builds()
+    {
+        Flow.StepApart<RunConfigurationBuildTests>("a configuration set to release profiles the release build while run stays on the folders debug and dotnet watch takes its platform", t => t.A_configuration_set_to_release_profiles_the_release_build_while_run_stays_on_the_folders_debug_and_dotnet_watch_takes_its_platform());
+        Flow.StepApart<RunConfigurationBuildTests>("Hot reload of a debugged configuration building as another than the folder applies nothing saying why until the folder builds as it", t => t.Hot_reload_of_a_debugged_configuration_building_as_another_than_the_folder_applies_nothing_saying_why_until_the_folder_builds_as_it());
+    }
+
+    private void A_configuration_set_to_release_profiles_the_release_build_while_run_stays_on_the_folders_debug_and_dotnet_watch_takes_its_platform()
     {
         // x64 only puts the build in a folder of its own: the program still runs on any processor.
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Platforms>AnyCPU;x64</Platforms>", "<PlatformTarget>AnyCPU</PlatformTarget>"));
@@ -128,8 +137,7 @@ public sealed class RunConfigurationBuildTests : IDisposable
 
         """;
 
-    [AvaloniaFact]
-    public void Hot_reload_of_a_debugged_configuration_building_as_another_than_the_folder_applies_nothing_saying_why_until_the_folder_builds_as_it()
+    private void Hot_reload_of_a_debugged_configuration_building_as_another_than_the_folder_applies_nothing_saying_why_until_the_folder_builds_as_it()
     {
         TestFolders.Write(folder, "Hello/Hello.csproj", TestProjects.Console("<Platforms>AnyCPU;x64</Platforms>", "<PlatformTarget>AnyCPU</PlatformTarget>",
             "<DefineConstants Condition=\"'$(Platform)' == 'x64'\">$(DefineConstants);X64</DefineConstants>"));

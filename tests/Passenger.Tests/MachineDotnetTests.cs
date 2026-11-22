@@ -53,8 +53,19 @@ public sealed class MachineDotnetTests : IDisposable
         Environment.SetEnvironmentVariable(RuntimeVariables.Root, found is null ? null : Path.GetDirectoryName(found));
     }
 
+    /// <summary>With no dotnet found the language server still colours a lone file, and a Passenger translated by
+    /// Rosetta says it needs an x64 SDK, offering this computer's download and installing none it cannot load, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void With_no_dotnet_found_the_language_server_starts_and_colours_a_lone_cs_file()
+    public void The_language_server_and_a_translated_Passenger_need_only_the_dotnet_they_can_load()
+    {
+        Flow.StepApart<MachineDotnetTests>("with no dotnet found the language server starts and colours a lone cs file", t => t.With_no_dotnet_found_the_language_server_starts_and_colours_a_lone_cs_file());
+        Flow.StepApart<MachineDotnetTests>("a translated passenger whose only sdk is the systems own says in the window that it needs an x64 one", t => t.A_translated_passenger_whose_only_sdk_is_the_systems_own_says_in_the_window_that_it_needs_an_x64_one());
+        Flow.StepApart<MachineDotnetTests>("a translated passenger whose x64 dotnet holds a runtime alone beside the systems own sdk offers this computers download", t => t.A_translated_passenger_whose_x64_dotnet_holds_a_runtime_alone_beside_the_systems_own_sdk_offers_this_computers_download());
+        Flow.StepApart<MachineDotnetTests>("a translated passenger with no dotnet offers this computers download and installs no sdk it cannot load", t => t.A_translated_passenger_with_no_dotnet_offers_this_computers_download_and_installs_no_sdk_it_cannot_load());
+    }
+
+    private void With_no_dotnet_found_the_language_server_starts_and_colours_a_lone_cs_file()
     {
         Find(null);
         TestFolders.Write(folder, "Hello.cs", "var greeting = \"hi\";\n\n");
@@ -106,8 +117,7 @@ public sealed class MachineDotnetTests : IDisposable
     /// <summary>An x64 Passenger the system translates (Rosetta, Windows' emulation) whose only .NET SDK is built for the
     /// system's own processor, whose MSBuild its project host would end loading, says in the banner and the status bar that
     /// it needs an x64 SDK and that the system's own build of Passenger suits the computer.</summary>
-    [AvaloniaFact]
-    public void A_translated_passenger_whose_only_sdk_is_the_systems_own_says_in_the_window_that_it_needs_an_x64_one()
+    private void A_translated_passenger_whose_only_sdk_is_the_systems_own_says_in_the_window_that_it_needs_an_x64_one()
     {
         string arm = Installation("arm64", 0x0100000C, "11.0.100");
         Find(Path.Combine(arm, DotnetName));
@@ -131,8 +141,7 @@ public sealed class MachineDotnetTests : IDisposable
     /// the system's own holds an SDK, says that it needs an x64 SDK and that Passenger for this computer's processor suits
     /// it, in the banner, the status bar and the refusals of what needs an SDK, never that only a runtime is installed; the
     /// banner's link and a click on the status bar download that Passenger.</summary>
-    [AvaloniaFact]
-    public void A_translated_passenger_whose_x64_dotnet_holds_a_runtime_alone_beside_the_systems_own_sdk_offers_this_computers_download()
+    private void A_translated_passenger_whose_x64_dotnet_holds_a_runtime_alone_beside_the_systems_own_sdk_offers_this_computers_download()
     {
         string x64 = Installation("x64", 0x01000007);
         string systems = Installation("arm64", 0x0100000C, "11.0.100");
@@ -177,8 +186,7 @@ public sealed class MachineDotnetTests : IDisposable
     /// on the status bar download it. Install .NET SDK, which would install the computer's own SDK this build cannot load, is
     /// no link in the banner and refuses saying so, to the person and to an agent, asking Microsoft's release metadata
     /// nothing and installing nothing; an agent's workspace says the want with the download's address.</summary>
-    [AvaloniaFact]
-    public void A_translated_passenger_with_no_dotnet_offers_this_computers_download_and_installs_no_sdk_it_cannot_load()
+    private void A_translated_passenger_with_no_dotnet_offers_this_computers_download_and_installs_no_sdk_it_cannot_load()
     {
         Find(null);
         Dotnet.TranslatedStandIn = true;
@@ -221,33 +229,6 @@ public sealed class MachineDotnetTests : IDisposable
             Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name);
             window.StatusPlace!.Go();
             Assert.Equal([Releases.ThisSystemsDownload, Releases.ThisSystemsDownload], window.Browsed);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>An x64 Passenger the system translates whose x64 dotnet holds a runtime alone, with no SDK of the system's
-    /// own either, says so on the Welcome screen with the download of Passenger for this computer, never Install .NET SDK,
-    /// and New Solution refuses in those words.</summary>
-    [AvaloniaFact]
-    public void A_translated_passenger_whose_x64_dotnet_holds_a_runtime_alone_says_so_on_the_Welcome_screen_with_this_computers_download()
-    {
-        string x64 = Installation("x64", 0x01000007);
-        Find(Path.Combine(x64, DotnetName));
-        Dotnet.TranslatedStandIn = true;
-        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
-        window.Show();
-        try
-        {
-            string said = Refusals.TranslatedWithoutSdk(x64);
-            Ui.WaitFor(() => window.DotnetSaid == said, () => $"the Welcome screen's banner to say Passenger for this computer suits it; it says \"{window.DotnetSaid}\"");
-            string[] links = BannerLinks(window);
-            Assert.True(!links.Contains("Install .NET SDK…") && links.Contains(SystemsOwnLink), $"The banner offers [{string.Join(", ", links)}]");
-            Assert.True(!window.Welcome.NewSolutionButton.IsEnabled && ToolTip.GetTip(window.Welcome.NewSolutionButton) as string == said,
-                $"The Welcome screen's New Solution is {(window.Welcome.NewSolutionButton.IsEnabled ? "not greyed" : "greyed")}, its tip saying {ToolTip.GetTip(window.Welcome.NewSolutionButton)}");
-            Assert.Equal(Refusals.InstallsOnlyNative, window.Actions.WhyNot(AppActions.InstallDotnetSdk, window.Actions.Context()));
         }
         finally
         {

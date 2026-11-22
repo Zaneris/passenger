@@ -21,8 +21,17 @@ public sealed partial class AboutTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>About names the version, commit and runtime and opens the notices and licence beside the app, which
+    /// carries every package's notice with its licence text, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void About_names_the_version_the_commit_and_the_runtime_and_opens_the_notices_and_the_licence_beside_the_app()
+    public void About_and_the_app_carry_the_version_the_licence_and_every_packages_notice()
+    {
+        Flow.StepApart<AboutTests>("About names the version the commit and the runtime and opens the notices and the licence beside the app", t => t.About_names_the_version_the_commit_and_the_runtime_and_opens_the_notices_and_the_licence_beside_the_app());
+        Flow.StepApart<AboutTests>("the app carries its licence and the notices of every package it carries each with its licence text", t => t.The_app_carries_its_licence_and_the_notices_of_every_package_it_carries_each_with_its_licence_text());
+    }
+
+    private void About_names_the_version_the_commit_and_the_runtime_and_opens_the_notices_and_the_licence_beside_the_app()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
@@ -61,8 +70,7 @@ public sealed partial class AboutTests : IDisposable
         }
     }
 
-    [Fact]
-    public void The_app_carries_its_licence_and_the_notices_of_every_package_it_carries_each_with_its_licence_text()
+    private void The_app_carries_its_licence_and_the_notices_of_every_package_it_carries_each_with_its_licence_text()
     {
         string beside = AppContext.BaseDirectory;
         Assert.True(File.Exists(Path.Combine(beside, "LICENSE.txt")), $"The app carries no LICENSE.txt beside it, in {beside}");

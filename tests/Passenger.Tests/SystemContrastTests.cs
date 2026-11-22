@@ -21,8 +21,17 @@ public sealed class SystemContrastTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(state);
 
+    /// <summary>While the system asks for high contrast High Contrast shows in its dark or light until it no longer
+    /// asks, the system's own ask read whatever stands in for it, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
-    public void While_the_system_asks_for_high_contrast_High_Contrast_shows_in_its_dark_or_light_until_it_no_longer_asks()
+    public void High_Contrast_follows_the_systems_own_ask_whatever_stands_in_for_it()
+    {
+        Flow.StepApart<SystemContrastTests>("while the system asks for high contrast High Contrast shows in its dark or light until it no longer asks", t => t.While_the_system_asks_for_high_contrast_High_Contrast_shows_in_its_dark_or_light_until_it_no_longer_asks());
+        Flow.StepApart<SystemContrastTests>("the systems own high contrast is read whatever stands in for it", t => t.The_systems_own_high_contrast_is_read_whatever_stands_in_for_it());
+    }
+
+    private void While_the_system_asks_for_high_contrast_High_Contrast_shows_in_its_dark_or_light_until_it_no_longer_asks()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = state, StartsLanguageServer = false };
         window.Show();
@@ -75,8 +84,7 @@ public sealed class SystemContrastTests : IDisposable
     public const string ExpectedVariable = "PASSENGER_TEST_SYSTEM_CONTRAST";
 
     /// <summary>The system's own high contrast is read whatever stands in for it, and is what a run that set it says it set.</summary>
-    [AvaloniaFact]
-    public void The_systems_own_high_contrast_is_read_whatever_stands_in_for_it()
+    private void The_systems_own_high_contrast_is_read_whatever_stands_in_for_it()
     {
         ContrastAsked read = Ui.Await(SystemContrast.ReadSystemAsync(), "the system's high contrast");
         TestContext.Current.TestOutputHelper?.WriteLine($"{Environment.OSVersion}: the system asks for {read}");

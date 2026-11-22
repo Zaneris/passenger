@@ -30,8 +30,18 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
         }
     }
 
+    /// <summary>A solution's launch profile runs each project in its own profile, debugs the one set to Start beside
+    /// the others, Stop ending them all, and a project that collects its logs says why none come with no engine, as one
+    /// flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
-    public void Run_of_a_launch_profile_runs_each_project_in_its_launch_profile_and_Stop_ends_them_all()
+    public void A_solutions_launch_profile_runs_and_debugs_each_project_and_Stop_ends_them_all()
+    {
+        Flow.StepApart("Run of a launch profile runs each project in its launch profile and Stop ends them all", () => new SolutionLaunchProfileTests(folders), t => t.Run_of_a_launch_profile_runs_each_project_in_its_launch_profile_and_Stop_ends_them_all());
+        Flow.StepApart("Debug of a launch profile debugs the project set to Start runs the other and Stop ends both", () => new SolutionLaunchProfileTests(folders), t => t.Debug_of_a_launch_profile_debugs_the_project_set_to_Start_runs_the_other_and_Stop_ends_both());
+        Flow.StepApart("a project that collects its logs and traces says why none come with no engine as the profile starts it", () => new SolutionLaunchProfileTests(folders), t => t.A_project_that_collects_its_logs_and_traces_says_why_none_come_with_no_engine_as_the_profile_starts_it());
+    }
+
+    private void Run_of_a_launch_profile_runs_each_project_in_its_launch_profile_and_Stop_ends_them_all()
     {
         MainWindow window = Open();
         try
@@ -52,8 +62,7 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
         }
     }
 
-    [AvaloniaFact]
-    public void Debug_of_a_launch_profile_debugs_the_project_set_to_Start_runs_the_other_and_Stop_ends_both()
+    private void Debug_of_a_launch_profile_debugs_the_project_set_to_Start_runs_the_other_and_Stop_ends_both()
     {
         MainWindow window = Open();
         try
@@ -84,8 +93,7 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
     /// <summary>The window on the test's restored Shop, its profile chosen in the toolbar, listed after the projects' own.</summary>
     /// <summary>With no container engine, Api, whose own configuration collects its logs and traces, says so as the profile
     /// starts it, run or debugged, as it does started alone, and runs as it would; Worker, which collects none, says nothing.</summary>
-    [AvaloniaFact]
-    public void A_project_that_collects_its_logs_and_traces_says_why_none_come_with_no_engine_as_the_profile_starts_it()
+    private void A_project_that_collects_its_logs_and_traces_says_why_none_come_with_no_engine_as_the_profile_starts_it()
     {
         MainWindow window = Open(new ContainerEngine(cli: null, search: false));
         const string Without = "Api: second runs without its logs and traces collected: No docker command was found";
