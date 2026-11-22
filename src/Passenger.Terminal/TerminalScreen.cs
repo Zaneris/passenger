@@ -53,6 +53,9 @@ public sealed class TerminalScreen
     private bool insertMode;
     private bool lineDrawing;
 
+    /// <summary>Line feed/new line mode (LNM): a line feed, vertical tab or form feed also returns to the first column.</summary>
+    private bool newLineMode;
+
     /// <summary>Whether the decoder may hold the start of a character: the last bytes it took were not ASCII.</summary>
     private bool utf8Open;
 
@@ -602,6 +605,10 @@ public sealed class TerminalScreen
                 Tab(1);
                 break;
             case 0x0a or 0x0b or 0x0c:
+                if (newLineMode)
+                {
+                    CursorColumn = 0;
+                }
                 LineFeed();
                 break;
             case 0x0d:
@@ -1126,6 +1133,10 @@ public sealed class TerminalScreen
                     {
                         insertMode = final == 'h';
                     }
+                    else if (groups[group, 0] == 20)
+                    {
+                        newLineMode = final == 'h';
+                    }
                 }
                 break;
             case 'm':
@@ -1478,6 +1489,7 @@ public sealed class TerminalScreen
         main = NewLines(Rows);
         alternate = null;
         Lines = main;
+        newLineMode = false;
         repeatable = false;
         CursorRow = 0;
         CursorColumn = 0;

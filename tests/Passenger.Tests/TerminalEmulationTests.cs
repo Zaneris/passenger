@@ -118,7 +118,8 @@ public sealed class TerminalEmulationTests
             (output, _, _) => output.Uses(OriginMode) && output.Uses(ScrollRegion) && output.Uses(Moves)),
         ("xterm.js neither saves origin mode with the cursor nor restores it, where the VT510 and xterm save it with DECSC (and 1049) "
             + "and DECRC restores it, or turns it off with nothing saved", (output, _, _) => output.Uses(OriginMode) && (output.Uses(Restores) || output.Uses(Alternate))),
-        ($"Line feed/new line mode (LNM, CSI 20 h) is not followed: a line feed leaves the column as it was; {ToFix}", (output, _, _) => output.Uses(NewLineMode)),
+        ("xterm.js keeps line feed/new line mode (LNM) over a full reset (RIS), where xterm and Passenger reset it",
+            (output, _, _) => output.Uses(NewLineMode) && output.Uses(FullReset)),
         ($"An insert, delete or erase of characters (ICH, DCH, EL, ED) at a wide character's second half leaves it whole; {ToFix}",
             (output, _, _) => output.Uses(Wide) && output.Uses(EditsCharacters)),
         ($"Insert mode (IRM) over a wide character splits it; {ToFix}", (output, _, _) => output.Uses(Wide) && output.Uses(InsertMode)),
@@ -133,6 +134,7 @@ public sealed class TerminalEmulationTests
     private const string Alternate = "the alternate screen";
     private const string ScrollRegion = "a scroll region";
     private const string Alignment = "DECALN";
+    private const string FullReset = "RIS";
     private const string OriginMode = "origin mode";
     private const string Moves = "CUU, CUD, CUF, CUB, CNL, CPL, CHA, HPA, HPR or VPR";
     private const string Restores = "a restore of the cursor";
@@ -197,7 +199,7 @@ public sealed class TerminalEmulationTests
                 return new($"{Escape}[{random.Next(1, rows + 2)};{random.Next(1, rows + 2)}r", ScrollRegion);
             case 15:
                 string escaped = Pick(random, ["7", "8", "D", "M", "E", "H", "c", "#8"]);
-                return new(Escape + escaped, escaped switch { "#8" => Alignment, "8" => Restores, _ => null });
+                return new(Escape + escaped, escaped switch { "#8" => Alignment, "c" => FullReset, "8" => Restores, _ => null });
             case 16:
                 string mode = Pick(random, ["7", "6", "1049", "47", "1047", "25"]);
                 return new($"{Escape}[?{mode}{Pick(random, ["h", "l"])}", mode switch
