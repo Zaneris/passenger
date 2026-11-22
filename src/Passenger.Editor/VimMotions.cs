@@ -759,7 +759,11 @@ public static class VimMotions
                     cut = Dec(text, cut);
                 }
                 int kept = blanks ? cut + 1 : lastChar > sentence ? lastChar + 1 : sentence;
-                return new VimSpan(from, kept > sentence ? kept : i == 0 ? from : to, false);
+                // Taken whole up to an empty last line, it ends at that line, which takes whole lines from an indent.
+                LineSpan keptLine = LineOf(text, kept);
+                int keptTo = kept == keptLine.End && keptLine.Line == last - 1 && text.GetLine(last).Length == 0
+                    ? keptLine.EndIncludingBreak : kept;
+                return new VimSpan(from, kept > sentence ? keptTo : i == 0 ? from : to, false);
             }
             return new VimSpan(from, to, false);
         }

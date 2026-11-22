@@ -62,11 +62,13 @@ public sealed partial class Vim
         Region stretch = regions[0];
         bool overLines = text.GetLineFromOffset(stretch.Low) != text.GetLineFromOffset(stretch.High);
         bool inserts = op is "I" or "A";
-        (keptBlockLeft, keptBlockRight) = block && !lines ? (left, right)
+        // A block reaching each line's end over lines too short to reach keeps no width.
+        bool reachesNothing = right == int.MaxValue && Enumerable.Range(top, bottom - top + 1).All(l => TextNavigation.VisualColumn(text, text.GetLine(l).End, tab) <= left);
+        (keptBlockLeft, keptBlockRight) = block && !lines ? (left, reachesNothing ? left : right)
             : toEnd ? (keptBlockLeft, keptBlockRight)
             : inserts && !lines ? (0, stretch.Cursor < stretch.Anchor && overLines ? 0 : CaretColumn(text, stretch.Cursor, tab))
             : lines || overLines
-                ? ((inserts || (block && op is "S" or "R")) && overLines ? keptBlockLeft : 0,
+                ? (overLines ? keptBlockLeft : 0,
                     stretch.Cursor >= stretch.Anchor || !lines ? CaretColumn(text, stretch.High, tab) : !overLines ? CaretColumn(text, stretch.Cursor, tab) : 0)
             : (CaretColumn(text, stretch.Low, tab), CaretColumn(text, stretch.High, tab));
         // A tab the block's edge cuts in two (r: any tab it takes) is first made the spaces it shows.
@@ -338,8 +340,8 @@ public sealed partial class Vim
                 LineSpan cursorLine = VimMotions.LineOf(text, cursor);
                 bool onIt = cursorLine.Line == anchorLine.Line ? column == 0
                     : kept.Left <= TextNavigation.VisualColumn(text, cursorLine.End, tab) && (aim == kept.Left || (aim > kept.Left && column < kept.Left));
-                // Back over lines A passes the first character where the kept columns start past it, or after $ widen.
-                bool afterFirst = above && (aim == int.MaxValue ? kept.Left < kept.Right : kept.Left != 0) && anchorLine.Length > 0;
+                // Back over lines A passes the first character where the kept columns start past it, or after $ differ.
+                bool afterFirst = above && (aim == int.MaxValue ? kept.Left != kept.Right : kept.Left != 0) && anchorLine.Length > 0;
                 int place = !after ? (above ? r.Cursor : anchorLine.Start)
                     : above ? (afterFirst ? TextNavigation.NextGrapheme(text, anchorLine.Start) : anchorLine.Start)
                     : aim == int.MaxValue ? (kept.Left == kept.Right ? Settled(text, r.Cursor, breakEnds)
@@ -353,8 +355,7 @@ public sealed partial class Vim
                     {
                         Again = !after ? InsertAgain.AtCursor
                             : aim == int.MaxValue && !above ? InsertAgain.OnLastBelow
-                            : (above && !afterFirst) || (!above && onIt) ? InsertAgain.AtColumnBelow
-                            : InsertAgain.AfterColumnBelow,
+                            : InsertAgain.AtColumnBelow,
                     };
                 }
             }
@@ -426,13 +427,10 @@ public sealed partial class Vim
             }
             int line = (int)Math.Min(text.GetLineFromOffset(c.Caret) + (long)extent.Lines, VimMotions.LastLine(text, breakEnds));
             int last = LastCharOf(text, text.GetLineStart(line));
-            if (extent.Again == InsertAgain.OnLastBelow)
-            {
-                return Selection.At(last);
-            }
-            // The column is the caret's place in its line, counted in characters, not cells.
-            int at = Math.Min(text.GetLineStart(line) + (c.Caret - VimMotions.LineOf(text, c.Caret).Start), last);
-            return Selection.At(extent.Again == InsertAgain.AfterColumnBelow ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
+            // The column is the caret's place in its line, counted in characters, not cells; after $ the line's last.
+            int at = extent.Again == InsertAgain.OnLastBelow ? last : Math.Min(text.GetLineStart(line) + (c.Caret - VimMotions.LineOf(text, c.Caret).Start), last);
+            // A goes past that character where the columns the last visual change kept widen, on it otherwise.
+            return Selection.At(keptBlockLeft < keptBlockRight ? Math.Min(CharEnd(text, at), text.GetLine(line).End) : at);
         });
         return Insert(text, places, command, extent.Again == InsertAgain.AtCursor ? "I" : "A");
     }

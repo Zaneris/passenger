@@ -82,9 +82,10 @@ public sealed partial class Vim
         };
         // An emptied text gives the registers nothing, as Vim's empty buffer gives them nothing.
         bool emptied = text.Length == 0 || intoEmptied;
-        // Nothing taken leaves them, but a change of an empty line's place empties one, and a block's change or lines take pieces.
+        // Nothing taken leaves them, but changing an empty line's place (or one empty line's sentence) empties one; blocks take pieces.
         bool empty = emptied || !(block && (op == "c" || (lines is { } over && over.Bottom > over.Top)))
-            && stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && t.Inclusive && VimMotions.LineOf(text, t.Start).Length == 0));
+            && stretches.All(t => !t.Lines && t.End == t.Start && !(op == "c" && VimMotions.LineOf(text, t.Start).Length == 0
+                && (t.Inclusive || (command.Name is "i" or "a" && command.Argument == "s" && VimMotions.LastLine(text, breakEnds) == 0))));
         if (op is "d" or "c" && !empty)
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));

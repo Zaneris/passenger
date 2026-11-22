@@ -22,14 +22,13 @@ public sealed partial class Vim
 
     /// <summary>Where . types again what I or A over characters or lines typed: at the caret, as I did (and A over a
     /// cursor above where the stretch began, unless its last block began past the first column, or on a single place in
-    /// the first column), else as many lines below as the stretch had, at the caret's place in its line, after the
-    /// character there, as A after a character did, or on that line's last character, as A after $ did.</summary>
+    /// the first column), else as many lines below as the stretch had, at the caret's place in its line or, as A after $
+    /// did, that line's last character, past it where the columns the last visual change kept widen.</summary>
     private enum InsertAgain
     {
         None,
         AtCursor,
         AtColumnBelow,
-        AfterColumnBelow,
         OnLastBelow,
     }
 
@@ -586,8 +585,9 @@ public sealed partial class Vim
             }
             if (moved is not { } reached)
             {
-                // A $ cut short still aims at the line's end; a word's start or end, sentence, paragraph or search the cursor.
-                bool resets = command.Name is "b" or "B" or "e" or "E" or "ge" or "gE" or "(" or ")" or "{" or "}" or "n" or "N";
+                // A $ cut short still aims at the line's end; a word (w in an emptied text), sentence, paragraph or search the cursor.
+                bool resets = command.Name is "b" or "B" or "e" or "E" or "ge" or "gE" or "(" or ")" or "{" or "}" or "n" or "N"
+                    || (command.Name is "w" or "W" && text.Length == 0);
                 visualAims[i] = resets ? -1 : block ? visualAims[i] : command.Name == "$" ? int.MaxValue : visualAims[i];
                 blockColumns = !block ? blockColumns
                     : command.Name == "$" ? blockColumns with { ToEnd = true }
