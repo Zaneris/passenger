@@ -49,13 +49,11 @@ jobs:
         exclude:
           - lane: gate
             shard: 3
-        # time_scale multiplies every test's wall-clock limit (PASSENGER_TEST_TIME_SCALE), each written as the Mac's
-        # time: to the nearest half, the 90th percentile of how much longer a test of a second or more took on the
-        # system's runner (in October, macOS 2.23, Windows 2.64, Linux 1.96). processes is how many test processes a
-        # job runs its window and Beside classes in at once, its Alone classes after them in one: two on macOS's runner
-        # of three processors and 7 GB, where two kept at least 1.4 GB free and ended no process, and on Linux's, whose
-        # jobs end well within the others'; three on Windows', of four processors and 16 GB, where two ran each class
-        # only 7% slower than one alone and left 7 GB free.
+        # time_scale multiplies every test's wall-clock limit, written as the Mac's time (PASSENGER_TEST_TIME_SCALE):
+        # the 90th percentile, to the nearest half, of how much longer a test of 1 s or more took on the runner
+        # (October: macOS 2.23, Windows 2.64, Linux 1.96). processes is how many test processes run a job's window and
+        # Beside classes at once, its Alone classes after them in one: two on macOS (3 processors, 7 GB: two kept 1.4 GB
+        # free, ending none) and Linux; three on Windows (4 processors, 16 GB: two ran each class 7% slower than one).
         include:
           - system: macOS
             name: macOS (arm64)
@@ -286,12 +284,11 @@ jobs:
           "$RUNNER_TEMP/func/func" --version
           echo "$RUNNER_TEMP/func" >> "$GITHUB_PATH"
 
-      # The build's check, every analyzer and code-style rule with warnings as errors, is the gate's first shard's on each
-      # system, which every run has; the others build the same code without running the analyzers (generators still
-      # run), which change nothing that is built and take about half the build's time. Both deals give that job's
-      # shards the less to run for the minutes the check takes (--checks-first). The compiler server and MSBuild nodes
-      # the build leaves end with it, so the tests start with the memory they hold, which on a 7 GB runner a booted
-      # simulator, the language servers and the tests' own builds need.
+      # The build's check, every analyzer and code-style rule with warnings as errors, is the gate's first shard's on
+      # each system, which every run has; the others skip the analyzers (generators still run), which change nothing
+      # built and take about half the build's time, and both deals give that job's shards less to run for it
+      # (--checks-first). The compiler server and MSBuild nodes the build leaves end with it, handing the tests their
+      # memory, which on a 7 GB runner a booted simulator, the language servers and the tests' own builds need.
       - name: Build
         env:
           CHECKS: ${{ matrix.lane == 'gate' && matrix.shard == 1 }}
