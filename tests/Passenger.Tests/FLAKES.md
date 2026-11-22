@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `DebuggerTests`' `A_debugger_killed_while_its_program_is_paused_takes_the_program_with_it`, CI 44989932645 and
+  44995132904 (Linux report shard 2, macOS report shard 3): "left programs' runtime files … dotnet-diagnostic-…-socket,
+  clr-debug-pipe-…-in, -out". **A race in the IDE**: the files were the debug adapter's, which the test kills a moment
+  after the program stops, as a crash would; Lifeline followed a child group's runtime files only as it looked through
+  the groups once a second, so an adapter killed before that look was never followed and its files stayed. A probe of
+  Lifeline's looks found the adapter unfollowed in each failing run on the Mac (about one in three). A group's leader is
+  now followed as it is adopted; the test passed 5 of 5 on the Mac and on the Linux VM (19195764b, #2097).
 - `GodotPinsTests`' `Errors_stay_pinned_at_their_lines_with_their_counts_after_Stop_the_console_folds_them_and_an_edit_takes_a_pin_off`,
   CI 44970786971 to 44995132904 (Windows gate shard 2): "Expected: 5704 Actual: 1000", 7752 in CI 44989932645. **The
   test read wrong**: the headless game raises an error a frame, and on the Windows runner it ran thousands of frames
