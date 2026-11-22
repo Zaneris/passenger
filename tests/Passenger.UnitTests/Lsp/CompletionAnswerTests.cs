@@ -12,7 +12,14 @@ public class CompletionAnswerTests
     private const string Uri = "file:///work/src/Program.cs";
 
     [Fact]
-    public void A_list_with_its_range_format_and_data_said_once_reads_as_the_same_list_sent_whole()
+    public void A_completion_answer_reads_once_as_the_same_list_sent_whole_its_items_given_the_lists_defaults() => Cases.All(
+        ("a list with its range format and data said once reads as the same list sent whole", A_list_with_its_range_format_and_data_said_once_reads_as_the_same_list_sent_whole),
+        ("each item reads how well it fits from the runs beside the list and never sends it back", Each_item_reads_how_well_it_fits_from_the_runs_beside_the_list_and_never_sends_it_back),
+        ("each item reads what it names and its type from beside the list and never sends them back", Each_item_reads_what_it_names_and_its_type_from_beside_the_list_and_never_sends_them_back),
+        ("an item answered again is the same item whatever its answers own and one of its name another", An_item_answered_again_is_the_same_item_whatever_its_answers_own_and_one_of_its_name_another),
+        ("an answer of items alone or of nothing reads as the protocol says", An_answer_of_items_alone_or_of_nothing_reads_as_the_protocol_says));
+
+    private void A_list_with_its_range_format_and_data_said_once_reads_as_the_same_list_sent_whole()
     {
         string range = """{"start":{"line":4,"character":8},"end":{"line":4,"character":10}}""";
         string data = $$$"""{"ResultId":3,"TextDocument":{"uri":"{{{Uri}}}"}}""";
@@ -48,8 +55,7 @@ public class CompletionAnswerTests
         Assert.Equal([".", ";"], said.ItemDefaults?.CommitCharacters);
     }
 
-    [Fact]
-    public void Each_item_reads_how_well_it_fits_from_the_runs_beside_the_list_and_never_sends_it_back()
+    private void Each_item_reads_how_well_it_fits_from_the_runs_beside_the_list_and_never_sends_it_back()
     {
         int[] priorities = [0, 0, 600, 600, 600, 0, int.MaxValue / 2, int.MinValue / 2, 0];
         int[] runs = Passenger.Roslyn.Extension.CompletionPriorities.Runs(priorities.Length, i => priorities[i])!;
@@ -68,8 +74,7 @@ public class CompletionAnswerTests
 
     /// <summary>What each item names where its kind says too little, and the type it gives, read from beside the list's
     /// items by their places, never sent back; kinds that miscount the list say nothing.</summary>
-    [Fact]
-    public void Each_item_reads_what_it_names_and_its_type_from_beside_the_list_and_never_sends_them_back()
+    private void Each_item_reads_what_it_names_and_its_type_from_beside_the_list_and_never_sends_them_back()
     {
         Passenger.Roslyn.Extension.CompletionKind[] kinds =
         [
@@ -96,8 +101,7 @@ public class CompletionAnswerTests
     /// <summary>A list asked again as a name is typed lists its items anew, each with that answer's sort text, range and
     /// data: an item is the one chosen before by what it is, and two of one name are told apart by what else the server
     /// says of them.</summary>
-    [Fact]
-    public void An_item_answered_again_is_the_same_item_whatever_its_answers_own_and_one_of_its_name_another()
+    private void An_item_answered_again_is_the_same_item_whatever_its_answers_own_and_one_of_its_name_another()
     {
         CompletionList first = Read("""
             {"isIncomplete":true,"itemDefaults":{"editRange":{"start":{"line":4,"character":15},"end":{"line":4,"character":16}},"data":{"ResultId":3}},"items":[
@@ -124,8 +128,7 @@ public class CompletionAnswerTests
         Assert.True(CompletionItem.Same(null, null), "No item is not the same as no item");
     }
 
-    [Fact]
-    public void An_answer_of_items_alone_or_of_nothing_reads_as_the_protocol_says()
+    private void An_answer_of_items_alone_or_of_nothing_reads_as_the_protocol_says()
     {
         CompletionList items = Read("""[{"label":"Main","kind":2}]""");
         Assert.False(items.IsIncomplete);

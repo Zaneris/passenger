@@ -9,7 +9,13 @@ namespace Passenger.UnitTests.Lsp;
 public class CompletionOrderTests
 {
     [Fact]
-    public void A_list_of_more_than_ten_thousand_sorts_in_the_servers_order_once_widened_each_ending_as_the_server_wrote_it()
+    public void A_lists_sort_texts_keep_the_servers_order_each_ending_as_the_server_wrote_it() => Cases.All(
+        ("a list of more than ten thousand sorts in the servers order once widened each ending as the server wrote it", A_list_of_more_than_ten_thousand_sorts_in_the_servers_order_once_widened_each_ending_as_the_server_wrote_it),
+        ("a list of ten thousand or fewer is sent as the server wrote it", A_list_of_ten_thousand_or_fewer_is_sent_as_the_server_wrote_it),
+        ("a list whose sort texts do not begin with their places is sent as the server wrote it", A_list_whose_sort_texts_do_not_begin_with_their_places_is_sent_as_the_server_wrote_it),
+        ("a later parts sort texts sort after any first parts and before the postfix templates each ending as the server wrote it", A_later_parts_sort_texts_sort_after_any_first_parts_and_before_the_postfix_templates_each_ending_as_the_server_wrote_it));
+
+    private void A_list_of_more_than_ten_thousand_sorts_in_the_servers_order_once_widened_each_ending_as_the_server_wrote_it()
     {
         string[] written = ServersSortTexts(12_345);
         Assert.NotEqual(Enumerable.Range(0, written.Length), SortedPlaces(written));
@@ -23,16 +29,14 @@ public class CompletionOrderTests
         }
     }
 
-    [Fact]
-    public void A_list_of_ten_thousand_or_fewer_is_sent_as_the_server_wrote_it()
+    private void A_list_of_ten_thousand_or_fewer_is_sent_as_the_server_wrote_it()
     {
         Assert.Null(CompletionOrder.Widened(ServersSortTexts(10_000)));
         Assert.Null(CompletionOrder.Widened(ServersSortTexts(3)));
         Assert.Null(CompletionOrder.Widened([]));
     }
 
-    [Fact]
-    public void A_list_whose_sort_texts_do_not_begin_with_their_places_is_sent_as_the_server_wrote_it()
+    private void A_list_whose_sort_texts_do_not_begin_with_their_places_is_sent_as_the_server_wrote_it()
     {
         string[] wide = [.. Enumerable.Range(0, 10_001).Select(i => i.ToString("D5", CultureInfo.InvariantCulture) + Own(i))];
         Assert.Null(CompletionOrder.Widened(wide));
@@ -41,8 +45,7 @@ public class CompletionOrderTests
         Assert.Null(CompletionOrder.Widened(unsorted));
     }
 
-    [Fact]
-    public void A_later_parts_sort_texts_sort_after_any_first_parts_and_before_the_postfix_templates_each_ending_as_the_server_wrote_it()
+    private void A_later_parts_sort_texts_sort_after_any_first_parts_and_before_the_postfix_templates_each_ending_as_the_server_wrote_it()
     {
         foreach ((int inScope, int notImported) in new[] { (77, 8_577), (12_345, 321), (2_038, 12_448), (0, 5) })
         {

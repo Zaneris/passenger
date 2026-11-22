@@ -18,7 +18,12 @@ public sealed class DeclarationsOutlineTests
         + "    private class Drawer\n    {\n        private int Count() => 0;\n    }\n}\n";
 
     [Fact]
-    public void A_files_outline_names_each_namespace_type_and_member_nested_with_its_kind_and_line()
+    public void A_files_outline_names_each_declaration_nested_as_declared_with_its_kind_and_line() => Cases.All(
+        ("a files outline names each namespace type and member nested with its kind and line", A_files_outline_names_each_namespace_type_and_member_nested_with_its_kind_and_line),
+        ("a files rows nest as declared so a line finds the member type and namespace it is in", A_files_rows_nest_as_declared_so_a_line_finds_the_member_type_and_namespace_it_is_in),
+        ("a file declaring nothing has an empty outline", A_file_declaring_nothing_has_an_empty_outline));
+
+    private void A_files_outline_names_each_namespace_type_and_member_nested_with_its_kind_and_line()
     {
         string outline = Declarations.Outline(new ParsedText(CSharpSyntaxTree.ParseText(Shop, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(Shop)));
         Assert.Equal("""
@@ -53,8 +58,7 @@ public sealed class DeclarationsOutlineTests
     /// spanning its declaration, so the caret's line finds the member it is in, the type it is in between members and the
     /// namespace above the types; a type's members are its rows' own, and the file read again unchanged is the outline it
     /// had, which the bar then leaves as it is.</summary>
-    [Fact]
-    public void A_files_rows_nest_as_declared_so_a_line_finds_the_member_type_and_namespace_it_is_in()
+    private void A_files_rows_nest_as_declared_so_a_line_finds_the_member_type_and_namespace_it_is_in()
     {
         ParsedText parsed = new(CSharpSyntaxTree.ParseText(Shop, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(Shop));
         Outline<string> rows = Declarations.Rows(parsed, Row, cancel: TestContext.Current.CancellationToken);
@@ -80,8 +84,7 @@ public sealed class DeclarationsOutlineTests
             $"{depth} {declared.Name} {declared.Kind}{(declared.Type is { } type ? $": {type}" : string.Empty)}";
     }
 
-    [Fact]
-    public void A_file_declaring_nothing_has_an_empty_outline()
+    private void A_file_declaring_nothing_has_an_empty_outline()
     {
         const string Statements = "Console.WriteLine(1);\n";
         Assert.Equal(string.Empty, Declarations.Outline(new ParsedText(CSharpSyntaxTree.ParseText(Statements, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(Statements))));

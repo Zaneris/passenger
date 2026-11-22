@@ -32,7 +32,12 @@ public class ContiguousWriterTests
     ];
 
     [Fact]
-    public async Task A_conversation_is_written_as_a_pipe_writes_it_and_a_large_request_rents_no_buffer_of_its_length()
+    public Task A_conversation_is_written_through_one_buffer_kept_for_it_as_a_pipe_writes_it() => Cases.AllAsync(
+        ("a conversation is written as a pipe writes it and a large request rents no buffer of its length", A_conversation_is_written_as_a_pipe_writes_it_and_a_large_request_rents_no_buffer_of_its_length),
+        ("a later conversation writes its request into the buffer the first one grew", A_later_conversation_writes_its_request_into_the_buffer_the_first_one_grew),
+        ("a writer ended writes no more", A_writer_ended_writes_no_more));
+
+    private async Task A_conversation_is_written_as_a_pipe_writes_it_and_a_large_request_rents_no_buffer_of_its_length()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         using MemoryStream piped = new();
@@ -46,8 +51,7 @@ public class ContiguousWriterTests
         Assert.True(now.LargeRents == 0, $"Writing the conversation took {now.LargeRents} arrays of a request's length from the shared pool, which a thread other than the one that gave each back misses, allocating it anew");
     }
 
-    [Fact]
-    public async Task A_later_conversation_writes_its_request_into_the_buffer_the_first_one_grew()
+    private async Task A_later_conversation_writes_its_request_into_the_buffer_the_first_one_grew()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         byte[] request = new byte[300_000];
@@ -60,8 +64,7 @@ public class ContiguousWriterTests
         Assert.True(allocated < 1024, $"A second conversation's {request.Length:N0}-byte request allocated {allocated:N0} bytes: each run's request would grow a buffer anew");
     }
 
-    [Fact]
-    public async Task A_writer_ended_writes_no_more()
+    private async Task A_writer_ended_writes_no_more()
     {
         ContiguousWriter writer = new(Stream.Null);
         writer.Complete();

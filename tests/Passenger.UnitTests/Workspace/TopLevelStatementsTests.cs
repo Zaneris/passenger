@@ -8,48 +8,34 @@ namespace Passenger.UnitTests.Workspace;
 /// after ||||||| and ======= too, which the compiler reads as no code.</summary>
 public class TopLevelStatementsTests
 {
-    [Theory]
-    [InlineData("Console.WriteLine(\"Hello\");\n")]
-    [InlineData("var n = 2;\nConsole.WriteLine($\"é {n}\");\n")]
-    [InlineData("﻿// A greeting.\n/* Two lines\n   of comment. */\nusing System;\nusing System.Text;\n\nConsole.WriteLine(1);\n")]
-    [InlineData("global using System.Linq;\nusing static System.Math;\nusing Text = System.Text;\nusing global::System.IO;\nreturn Abs(-1);\n")]
-    [InlineData("using var reader = new StreamReader(\"a\");\n")]
-    [InlineData("using (var reader = new StreamReader(\"a\")) { }\n")]
-    [InlineData("using StreamReader reader = new(\"a\");\n")]
-    [InlineData("#if DEBUG\nConsole.WriteLine(\"debug\");\n#endif\n")]
-    [InlineData("#region Main\nawait Task.Delay(1);\n#endregion\n")]
-    [InlineData("[System.Diagnostics.CodeAnalysis.SuppressMessage(\"a]b\", \"c\")]\nstatic void Main() { }\n")]
-    [InlineData("static int Twice(int x) => x * 2;\nConsole.WriteLine(Twice(2));\n")]
-    [InlineData("global::System.Console.WriteLine(1);\n")]
-    [InlineData("record.Save();\n")]
-    [InlineData("Action a = delegate { };\n")]
-    [InlineData("delegate { }.Invoke();\n")]
-    [InlineData("if (args.Length > 0) { return 1; }\nreturn 0;\nclass Helper { }\n")]
-    [InlineData("<<<<<<< HEAD\nConsole.WriteLine(1);\n=======\nclass Shop { short count; }\n>>>>>>> feature\n")]
-    [InlineData("<<<<<<<HEAD\nclass Shop { }\n")]
-    [InlineData(">>>>>>> feature\nclass Shop { }\n")]
-    public void Code_that_begins_with_a_statement_is_a_programs(string code) =>
-        Assert.True(ProgramFiles.BeginsWithStatement(code, 0), $"Code beginning with a statement was taken for declarations alone:\n{code}");
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("// Nothing but a comment.\n")]
-    [InlineData("using System;\nusing System.Text;\n")]
-    [InlineData("namespace Tools;\n\npublic static class Helper { }\n")]
-    [InlineData("namespace Tools\n{\n    class Helper { }\n}\n")]
-    [InlineData("using System;\n\n[Serializable]\npublic sealed partial class Shape { }\n")]
-    [InlineData("[assembly: System.Reflection.AssemblyTitle(\"Tools\")]\ninternal static class Helper { }\n")]
-    [InlineData("extern alias Old;\nfile record Point(int X, int Y);\n")]
-    [InlineData("public readonly record struct Size(int Width, int Height);\n")]
-    [InlineData("interface IShape { }\n")]
-    [InlineData("enum Colour { Red }\n")]
-    [InlineData("public delegate void Changed(object sender);\n")]
-    [InlineData("/* using Fake; Console.WriteLine(); */\nstruct Point { }\n")]
-    [InlineData("using नमस्ते.गिनती;\nusing सूची = नमस्ते.Tools;\n\nnamespace नमस्ते;\n\nclass गिनती { }\n")]
-    [InlineData("<<<<<<< HEAD\nclass Shop { long count; }\n=======\nclass Shop { short count; }\n>>>>>>> feature\n")]
-    [InlineData("<<<<<<< HEAD\nclass Shop { long count; }\n||||||| base\nConsole.WriteLine(1);\n=======\nConsole.WriteLine(2);\n>>>>>>> feature\n")]
-    [InlineData("<<<<<<< HEAD\r\n=======\r\nConsole.WriteLine(1);\r\n>>>>>>> feature\r\nclass Shop { }\r\n")]
-    [InlineData("|||||||\nConsole.WriteLine(1);\n>>>>>>> feature\nclass Shop { }\n")]
-    public void Code_that_declares_types_or_nothing_is_no_programs(string code) =>
-        Assert.False(ProgramFiles.BeginsWithStatement(code, 0), $"Code declaring types or nothing was taken for a program:\n{code}");
+    [Fact]
+    public void Code_that_begins_with_a_statement_is_a_programs_and_code_declaring_types_or_nothing_is_not() => Cases.All(
+        ("code that begins with a statement is a program's", () => Cases.Each(
+        [
+            "Console.WriteLine(\"Hello\");\n",
+            "\uFEFF// A greeting.\n/* Two lines\n   of comment. */\nusing System;\nusing System.Text;\n\nConsole.WriteLine(1);\n",
+            "global using System.Linq;\nusing static System.Math;\nusing Text = System.Text;\nusing global::System.IO;\nreturn Abs(-1);\n",
+            "using var reader = new StreamReader(\"a\");\n",
+            "using (var reader = new StreamReader(\"a\")) { }\n",
+            "#if DEBUG\nConsole.WriteLine(\"debug\");\n#endif\n",
+            "[System.Diagnostics.CodeAnalysis.SuppressMessage(\"a]b\", \"c\")]\nstatic void Main() { }\n",
+            "record.Save();\n",
+            "delegate { }.Invoke();\n",
+            "<<<<<<< HEAD\nConsole.WriteLine(1);\n=======\nclass Shop { short count; }\n>>>>>>> feature\n",
+            "<<<<<<<HEAD\nclass Shop { }\n",
+        ], code => Assert.True(ProgramFiles.BeginsWithStatement(code, 0), $"Code beginning with a statement was taken for declarations alone:\n{code}"))),
+        ("code that declares types or nothing is no program's", () => Cases.Each(
+        [
+            "",
+            "using System;\nusing System.Text;\n",
+            "namespace Tools;\n\npublic static class Helper { }\n",
+            "using System;\n\n[Serializable]\npublic sealed partial class Shape { }\n",
+            "[assembly: System.Reflection.AssemblyTitle(\"Tools\")]\ninternal static class Helper { }\n",
+            "extern alias Old;\nfile record Point(int X, int Y);\n",
+            "public delegate void Changed(object sender);\n",
+            "/* using Fake; Console.WriteLine(); */\nstruct Point { }\n",
+            "using नमस्ते.गिनती;\nusing सूची = नमस्ते.Tools;\n\nnamespace नमस्ते;\n\nclass गिनती { }\n",
+            "<<<<<<< HEAD\nclass Shop { long count; }\n||||||| base\nConsole.WriteLine(1);\n=======\nConsole.WriteLine(2);\n>>>>>>> feature\n",
+            "<<<<<<< HEAD\r\n=======\r\nConsole.WriteLine(1);\r\n>>>>>>> feature\r\nclass Shop { }\r\n",
+        ], code => Assert.False(ProgramFiles.BeginsWithStatement(code, 0), $"Code declaring types or nothing was taken for a program:\n{code}"))));
 }

@@ -20,7 +20,11 @@ public sealed class SolutionKeptTests
     }
 
     [Fact]
-    public void A_scan_of_one_workspace_never_lets_go_of_another_workspaces_documents()
+    public void What_is_kept_by_a_workspaces_documents_follows_that_workspace_alone() => Cases.All(
+        ("a scan of one workspace never lets go of another workspaces documents", A_scan_of_one_workspace_never_lets_go_of_another_workspaces_documents),
+        ("a document or project gone from its workspace takes its entry with it", A_document_or_project_gone_from_its_workspace_takes_its_entry_with_it));
+
+    private void A_scan_of_one_workspace_never_lets_go_of_another_workspaces_documents()
     {
         (AdhocWorkspace host, _, Document hostFirst, Document hostSecond) = Made("Game");
         (AdhocWorkspace loose, _, Document looseFirst, _) = Made("Loose");
@@ -41,8 +45,7 @@ public sealed class SolutionKeptTests
         loose.Dispose();
     }
 
-    [Fact]
-    public void A_document_or_project_gone_from_its_workspace_takes_its_entry_with_it()
+    private void A_document_or_project_gone_from_its_workspace_takes_its_entry_with_it()
     {
         (AdhocWorkspace host, Project project, Document first, Document second) = Made("Game");
         SolutionKept<DocumentId, string> documents = SolutionKept.ByDocument<string>();

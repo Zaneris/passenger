@@ -72,7 +72,17 @@ public sealed class RunningLinesTests
     }
 
     [Fact]
-    public void A_line_runs_code_only_where_the_debugger_can_bind_a_breakpoint_on_it()
+    public void A_line_runs_code_only_where_a_breakpoint_binds_and_one_on_a_line_that_runs_nothing_moves_to_the_next_that_may() => Cases.All(
+        ("a line runs code only where the debugger can bind a breakpoint on it", A_line_runs_code_only_where_the_debugger_can_bind_a_breakpoint_on_it),
+        ("a breakpoint on a line that runs nothing moves to the next that may and none after the last", A_breakpoint_on_a_line_that_runs_nothing_moves_to_the_next_that_may_and_none_after_the_last),
+        ("the next line is the first later line that runs", () => Cases.Each<string>(
+        [
+            "\n",
+            "\r\n",
+        ], The_next_line_is_the_first_later_line_that_runs)),
+        ("finding the next line that runs is one walk however long the class", Finding_the_next_line_that_runs_is_one_walk_however_long_the_class));
+
+    private void A_line_runs_code_only_where_the_debugger_can_bind_a_breakpoint_on_it()
     {
         ParsedText parsed = Parsed(out _);
         List<string> wrong = [.. Order.Select((line, at) => (line, at)).Where(l => RunningLines.Runs(parsed, l.at) != l.line.Runs)
@@ -80,8 +90,7 @@ public sealed class RunningLinesTests
         Assert.True(wrong.Count == 0, $"A breakpoint there would be said to bind or move wrongly:\n{string.Join('\n', wrong)}");
     }
 
-    [Fact]
-    public void A_breakpoint_on_a_line_that_runs_nothing_moves_to_the_next_that_may_and_none_after_the_last()
+    private void A_breakpoint_on_a_line_that_runs_nothing_moves_to_the_next_that_may_and_none_after_the_last()
     {
         ParsedText parsed = Parsed(out _);
         int field = Array.FindIndex(Order, l => l.Line.Contains("string? name", StringComparison.Ordinal));
@@ -95,10 +104,7 @@ public sealed class RunningLinesTests
 
     /// <summary>Every line's next is the first later line that runs, a string over several lines running on each of them, with
     /// either line end, and past the file's end there is none.</summary>
-    [Theory]
-    [InlineData("\n")]
-    [InlineData("\r\n")]
-    public void The_next_line_is_the_first_later_line_that_runs(string end)
+    private void The_next_line_is_the_first_later_line_that_runs(string end)
     {
         string text = string.Join(end, Order.Select(l => l.Line).Concat(["public sealed class Quoted", "{", "    private string? unset;", "", "    private string said = @\"one", "", "two\";",
             "    private int after;", "}", ""]));
@@ -114,8 +120,7 @@ public sealed class RunningLinesTests
     /// <summary>A class of nothing but auto-properties has no line that runs, so the hover over a breakpoint at its top reads to
     /// the file's end, on the window's thread: what that allocates, once its tree is read, stays that of one walk however long
     /// the class, where a walk for each line allocates a little more for every line and takes time by the square of them.</summary>
-    [Fact]
-    public void Finding_the_next_line_that_runs_is_one_walk_however_long_the_class()
+    private void Finding_the_next_line_that_runs_is_one_walk_however_long_the_class()
     {
         long few = WalkBytes(200);
         long many = WalkBytes(4000);

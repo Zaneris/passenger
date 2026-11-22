@@ -76,7 +76,12 @@ public sealed class DocumentReadsKeptTests
     }
 
     [Fact]
-    public async Task An_edit_inside_a_body_reads_again_only_its_own_document()
+    public Task A_documents_read_is_kept_until_an_edit_reaches_what_it_bound() => Cases.AllAsync(
+        ("an edit inside a body reads again only its own document", An_edit_inside_a_body_reads_again_only_its_own_document),
+        ("a declaration edited in another file reads again the documents whose code was bound", A_declaration_edited_in_another_file_reads_again_the_documents_whose_code_was_bound),
+        ("parse options and documents come and gone are followed", Parse_options_and_documents_come_and_gone_are_followed));
+
+    private async Task An_edit_inside_a_body_reads_again_only_its_own_document()
     {
         using AdhocWorkspace workspace = Made();
         DocumentReadsKept<string> kept = new();
@@ -97,8 +102,7 @@ public sealed class DocumentReadsKeptTests
         Assert.Equal("Shop|Name", found["Reader.cs"]);
     }
 
-    [Fact]
-    public async Task A_declaration_edited_in_another_file_reads_again_the_documents_whose_code_was_bound()
+    private async Task A_declaration_edited_in_another_file_reads_again_the_documents_whose_code_was_bound()
     {
         using AdhocWorkspace workspace = Made();
         DocumentReadsKept<string> kept = new();
@@ -120,8 +124,7 @@ public sealed class DocumentReadsKeptTests
         Assert.True(found["Reader.cs"] == "Store|Name=,Port", $"An initializer given to Name left Reader.cs's read as {found["Reader.cs"]}: the key would still be said to need a value");
     }
 
-    [Fact]
-    public async Task Parse_options_and_documents_come_and_gone_are_followed()
+    private async Task Parse_options_and_documents_come_and_gone_are_followed()
     {
         using AdhocWorkspace workspace = Made();
         DocumentReadsKept<string> kept = new();

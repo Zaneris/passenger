@@ -19,7 +19,13 @@ public sealed class LongChainsTests
     }
 
     [Fact]
-    public void Extend_selection_in_the_middle_of_a_long_chain_takes_the_word_then_the_chain_up_to_it()
+    public void What_is_asked_of_a_files_syntax_at_a_place_costs_what_is_near_it_however_long_the_chain() => Cases.All(
+        ("extend selection in the middle of a long chain takes the word then the chain up to it", Extend_selection_in_the_middle_of_a_long_chain_takes_the_word_then_the_chain_up_to_it),
+        ("surround with reads the start of a long sum as an expression and a long else if chain as statements", Surround_with_reads_the_start_of_a_long_sum_as_an_expression_and_a_long_else_if_chain_as_statements),
+        ("the lines of a string after a long else if chain are found in one walk", The_lines_of_a_string_after_a_long_else_if_chain_are_found_in_one_walk),
+        ("a constants long sum runs nothing and the next line that runs is found past it", A_constants_long_sum_runs_nothing_and_the_next_line_that_runs_is_found_past_it));
+
+    private void Extend_selection_in_the_middle_of_a_long_chain_takes_the_word_then_the_chain_up_to_it()
     {
         string before = "class C { void M() { var x = a";
         string text = before + string.Concat(Enumerable.Repeat(".b", Links)) + "; } }";
@@ -33,8 +39,7 @@ public sealed class LongChainsTests
         });
     }
 
-    [Fact]
-    public void Surround_with_reads_the_start_of_a_long_sum_as_an_expression_and_a_long_else_if_chain_as_statements()
+    private void Surround_with_reads_the_start_of_a_long_sum_as_an_expression_and_a_long_else_if_chain_as_statements()
     {
         string before = "class C { int M() { return 1";
         string sum = before + string.Concat(Enumerable.Repeat(" + 1", Links)) + "; } }";
@@ -51,8 +56,7 @@ public sealed class LongChainsTests
             "A whole if and its else-ifs read as no statement"));
     }
 
-    [Fact]
-    public void The_lines_of_a_string_after_a_long_else_if_chain_are_found_in_one_walk()
+    private void The_lines_of_a_string_after_a_long_else_if_chain_are_found_in_one_walk()
     {
         string chain = "class C { void M(int a) {\n        if (a == 0) { }\n" + string.Concat(Enumerable.Repeat("        else if (a == 1) { }\n", Links))
             + "        var s = @\"one\ntwo\nthree\";\n    }\n}\n";
@@ -62,8 +66,7 @@ public sealed class LongChainsTests
         SmallStack.Run(() => Assert.Equal([Links + 2, Links + 3], SurroundScopes.InStrings(parsed, TextRange.FromBounds(from, to)).Order()));
     }
 
-    [Fact]
-    public void A_constants_long_sum_runs_nothing_and_the_next_line_that_runs_is_found_past_it()
+    private void A_constants_long_sum_runs_nothing_and_the_next_line_that_runs_is_found_past_it()
     {
         string text = "class C\n{\n    const int K = 1" + string.Concat(Enumerable.Repeat(" + 1", Links)) + ";\n    int k = K;\n}\n";
         ParsedText parsed = Parsed(text);

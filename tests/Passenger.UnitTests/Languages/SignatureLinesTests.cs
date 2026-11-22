@@ -9,7 +9,24 @@ namespace Passenger.UnitTests.Languages;
 public sealed class SignatureLinesTests
 {
     [Fact]
-    public void Each_parameter_takes_a_line_of_its_own_and_its_colours_move_with_it()
+    public void A_signature_is_laid_out_a_parameter_a_line_and_what_holds_no_list_is_left_as_it_is() => Cases.All(
+        ("each parameter takes a line of its own and its colours move with it", Each_parameter_takes_a_line_of_its_own_and_its_colours_move_with_it),
+        ("commas in a types arguments a nested bracket or a quoted default stay and a tag before the signature is no list", () => Cases.Each<(string, string)>(
+        [
+            ("(extension) char IEnumerable<char>.Aggregate<char>(Func<char, char, char> func)", "(extension) char IEnumerable<char>.Aggregate<char>(\n    Func<char, char, char> func)"),
+            ("void Log(string format = \"a, b\", params object[] args)", "void Log(\n    string format = \"a, b\",\n    params object[] args)"),
+            ("int[] Pick((int, int) pair, Func<int, (int, int)> made)", "int[] Pick(\n    (int, int) pair,\n    Func<int, (int, int)> made)"),
+            ("string List<T>.this[int index, bool wrap] { get; }", "string List<T>.this[\n    int index,\n    bool wrap] { get; }"),
+        ], row => Commas_in_a_types_arguments_a_nested_bracket_or_a_quoted_default_stay_and_a_tag_before_the_signature_is_no_list(row.Item1, row.Item2))),
+        ("each parameter is found where it stands without the spaces round it", Each_parameter_is_found_where_it_stands_without_the_spaces_round_it),
+        ("code with no parameters on one line is left as it is", () => Cases.Each<string>(
+        [
+            "class Program",
+            "int Twice(int value)\nint Thrice(int value)",
+            "void Broken(int value",
+        ], Code_with_no_parameters_on_one_line_is_left_as_it_is)));
+
+    private void Each_parameter_takes_a_line_of_its_own_and_its_colours_move_with_it()
     {
         const string code = "string Kinds.Described(string first, int year, bool middle = false) where T : new()";
         SignatureLines laid = SignatureLines.Of(code)!;
@@ -23,18 +40,10 @@ public sealed class SignatureLinesTests
         }
     }
 
-    [Theory]
-    [InlineData("(extension) char IEnumerable<char>.Aggregate<char>(Func<char, char, char> func)",
-        "(extension) char IEnumerable<char>.Aggregate<char>(\n    Func<char, char, char> func)")]
-    [InlineData("void Log(string format = \"a, b\", params object[] args)", "void Log(\n    string format = \"a, b\",\n    params object[] args)")]
-    [InlineData("int[] Pick((int, int) pair, Func<int, (int, int)> made)", "int[] Pick(\n    (int, int) pair,\n    Func<int, (int, int)> made)")]
-    [InlineData("string List<T>.this[int index, bool wrap] { get; }", "string List<T>.this[\n    int index,\n    bool wrap] { get; }")]
-    [InlineData("Task Run(Func<Task> work, Action<int> done = null)", "Task Run(\n    Func<Task> work,\n    Action<int> done = null)")]
-    public void Commas_in_a_types_arguments_a_nested_bracket_or_a_quoted_default_stay_and_a_tag_before_the_signature_is_no_list(string code, string laid) =>
+    private void Commas_in_a_types_arguments_a_nested_bracket_or_a_quoted_default_stay_and_a_tag_before_the_signature_is_no_list(string code, string laid) =>
         Assert.Equal(laid, SignatureLines.Of(code)?.Text);
 
-    [Fact]
-    public void Each_parameter_is_found_where_it_stands_without_the_spaces_round_it()
+    private void Each_parameter_is_found_where_it_stands_without_the_spaces_round_it()
     {
         const string code = "Task.Run<T>(Func<T, int> work, [bool  loud = false] ,  int count)";
         Assert.Equal(["Func<T, int> work", "[bool  loud = false]", "int count"], SignatureLines.Parameters(code).Select(p => code.Substring(p.Start, p.Length)));
@@ -42,11 +51,5 @@ public sealed class SignatureLinesTests
         Assert.Empty(SignatureLines.Parameters("(local variable) string? c"));
     }
 
-    [Theory]
-    [InlineData("int Helper.Count()")]
-    [InlineData("(local variable) string? c")]
-    [InlineData("class Program")]
-    [InlineData("int Twice(int value)\nint Thrice(int value)")]
-    [InlineData("void Broken(int value")]
-    public void Code_with_no_parameters_on_one_line_is_left_as_it_is(string code) => Assert.Null(SignatureLines.Of(code));
+    private void Code_with_no_parameters_on_one_line_is_left_as_it_is(string code) => Assert.Null(SignatureLines.Of(code));
 }

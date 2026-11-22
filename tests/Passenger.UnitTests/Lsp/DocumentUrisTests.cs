@@ -13,7 +13,13 @@ public sealed class DocumentUrisTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_usage_the_server_named_by_another_spelling_of_its_file_is_kept_once()
+    public void A_usage_the_server_named_is_kept_once_however_its_uri_spells_its_file_and_another_beside_it() => Cases.All(
+        ("a usage the server named by another spelling of its file is kept once", A_usage_the_server_named_by_another_spelling_of_its_file_is_kept_once),
+        ("a usage at another place or in another file is kept beside the servers", A_usage_at_another_place_or_in_another_file_is_kept_beside_the_servers),
+        ("a new name differing from the file there only in letter case keeps its own spelling", A_new_name_differing_from_the_file_there_only_in_letter_case_keeps_its_own_spelling),
+        ("documents of no file are the same only by their whole uri", Documents_of_no_file_are_the_same_only_by_their_whole_uri));
+
+    private void A_usage_the_server_named_by_another_spelling_of_its_file_is_kept_once()
     {
         string game = Directory.CreateDirectory(Path.Combine(root, "Game")).FullName;
         string player = Path.Combine(game, "Player.gd");
@@ -42,8 +48,7 @@ public sealed class DocumentUrisTests : IDisposable
         }
     }
 
-    [Fact]
-    public void A_usage_at_another_place_or_in_another_file_is_kept_beside_the_servers()
+    private void A_usage_at_another_place_or_in_another_file_is_kept_beside_the_servers()
     {
         string player = Path.Combine(root, "player.gd");
         string enemy = Path.Combine(root, "enemy.gd");
@@ -57,8 +62,7 @@ public sealed class DocumentUrisTests : IDisposable
     /// <summary>A rename's new name differing only in letter case from the file there keeps its own spelling, its folder
     /// spelled as the disk spells it, where the file's path as the disk names it would make the rename one of the file onto
     /// itself, which moved nothing.</summary>
-    [Fact]
-    public void A_new_name_differing_from_the_file_there_only_in_letter_case_keeps_its_own_spelling()
+    private void A_new_name_differing_from_the_file_there_only_in_letter_case_keeps_its_own_spelling()
     {
         string game = Directory.CreateDirectory(Path.Combine(root, "Game")).FullName;
         File.WriteAllText(Path.Combine(game, "player.cs"), "class Player;\n");
@@ -69,8 +73,7 @@ public sealed class DocumentUrisTests : IDisposable
         Assert.Equal(Path.Combine(game, "Enemy.cs"), DocumentUris.ToNewPath(DocumentUris.FromPath(Path.Combine(game, "Enemy.cs"))));
     }
 
-    [Fact]
-    public void Documents_of_no_file_are_the_same_only_by_their_whole_uri()
+    private void Documents_of_no_file_are_the_same_only_by_their_whole_uri()
     {
         const string Generated = "roslyn-source-generated://Spinner/Main_ScriptPath.generated.cs?hintName=Main_ScriptPath.generated.cs";
 

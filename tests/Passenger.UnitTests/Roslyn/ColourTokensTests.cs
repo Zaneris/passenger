@@ -8,23 +8,27 @@ namespace Passenger.UnitTests.Roslyn;
 public class ColourTokensTests
 {
     [Fact]
-    public void A_token_left_out_moves_none_after_it_on_its_line_or_below()
+    public void Every_token_kept_stays_at_its_place_whichever_are_left_out_and_takes_the_tables_type() => Cases.All(
+        ("a token left out moves none after it on its line or below", A_token_left_out_moves_none_after_it_on_its_line_or_below),
+        ("leaving out the first token places the next from the files start", Leaving_out_the_first_token_places_the_next_from_the_files_start),
+        ("a token whose type the table lacks is left out and tokens all left out are none", A_token_whose_type_the_table_lacks_is_left_out_and_tokens_all_left_out_are_none),
+        ("tokens spread over many lines each keep their place whichever are left out", Tokens_spread_over_many_lines_each_keep_their_place_whichever_are_left_out));
+
+    private void A_token_left_out_moves_none_after_it_on_its_line_or_below()
     {
         Token[] tokens = [new(0, 0, 3, 0, 0), new(0, 4, 3, 1, 0), new(0, 8, 1, 2, 1), new(2, 4, 2, 1, 0), new(2, 8, 1, 0, 2)];
         int[] types = [10, ColourTokens.LeftOut, 12];
         Assert.Equal([new Token(0, 0, 3, 10, 0), new(0, 8, 1, 12, 1), new(2, 8, 1, 10, 2)], Decoded(ColourTokens.Retyped(Encoded(tokens), types)));
     }
 
-    [Fact]
-    public void Leaving_out_the_first_token_places_the_next_from_the_files_start()
+    private void Leaving_out_the_first_token_places_the_next_from_the_files_start()
     {
         Token[] tokens = [new(0, 2, 3, 1, 0), new(0, 9, 4, 0, 0), new(1, 0, 2, 1, 0), new(1, 3, 2, 0, 0)];
         int[] types = [7, ColourTokens.LeftOut];
         Assert.Equal([new Token(0, 9, 4, 7, 0), new(1, 3, 2, 7, 0)], Decoded(ColourTokens.Retyped(Encoded(tokens), types)));
     }
 
-    [Fact]
-    public void A_token_whose_type_the_table_lacks_is_left_out_and_tokens_all_left_out_are_none()
+    private void A_token_whose_type_the_table_lacks_is_left_out_and_tokens_all_left_out_are_none()
     {
         Token[] tokens = [new(0, 0, 3, 5, 0), new(0, 4, 3, 0, 0)];
         Assert.Equal([new Token(0, 4, 3, 3, 0)], Decoded(ColourTokens.Retyped(Encoded(tokens), [3])));
@@ -32,8 +36,7 @@ public class ColourTokensTests
         Assert.Empty(ColourTokens.Retyped([], [3]));
     }
 
-    [Fact]
-    public void Tokens_spread_over_many_lines_each_keep_their_place_whichever_are_left_out()
+    private void Tokens_spread_over_many_lines_each_keep_their_place_whichever_are_left_out()
     {
         Random random = new(1962);
         for (int round = 0; round < 200; round++)

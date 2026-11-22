@@ -17,11 +17,31 @@ public class EnvelopeFormatterTests
     private static readonly JsonSerializerOptions Web = JsonRpcConversations.Web;
 
     /// <summary>A pipe's pieces: smaller than most messages, a socket's, and larger than any.</summary>
-    public static TheoryData<int> PipePieces => new() { 100, 4096, 1 << 20 };
+    private static readonly int[] PipePieces = [100, 4096, 1 << 20];
 
-    [Theory]
-    [MemberData(nameof(PipePieces))]
-    public async Task A_peers_requests_and_notifications_reach_their_handlers_and_are_answered_as_before(int piece)
+    [Fact]
+    public Task Every_message_is_read_and_written_as_StreamJsonRpcs_own_formatter_does_however_the_pipe_cuts_it() => Cases.AllAsync(
+        ("a peer's requests and notifications reach their handlers and are answered as before", () =>
+            Cases.EachAsync(PipePieces, A_peers_requests_and_notifications_reach_their_handlers_and_are_answered_as_before)),
+        ("Passenger's own requests are written and their answers and errors read as before", () =>
+            Cases.EachAsync(PipePieces, Passengers_own_requests_are_written_and_their_answers_and_errors_read_as_before)),
+        ("a message cut into pieces of a byte reads as it does whole", () =>
+        {
+            A_message_cut_into_pieces_of_a_byte_reads_as_it_does_whole();
+            return Task.CompletedTask;
+        }),
+        ("what is no message is refused as JSON that does not read", () =>
+        {
+            What_is_no_message_is_refused_as_JSON_that_does_not_read();
+            return Task.CompletedTask;
+        }),
+        ("a large answer rents no buffer and costs what it is read as", () =>
+        {
+            A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as();
+            return Task.CompletedTask;
+        }));
+
+    private static async Task A_peers_requests_and_notifications_reach_their_handlers_and_are_answered_as_before(int piece)
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         string before = await JsonRpcConversations.InboundAsync(new SystemTextJsonFormatter { JsonSerializerOptions = Web }, piece, 5_000, cancel);
@@ -34,9 +54,7 @@ public class EnvelopeFormatterTests
         Assert.Contains("answered {\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32800,", now);
     }
 
-    [Theory]
-    [MemberData(nameof(PipePieces))]
-    public async Task Passengers_own_requests_are_written_and_their_answers_and_errors_read_as_before(int piece)
+    private static async Task Passengers_own_requests_are_written_and_their_answers_and_errors_read_as_before(int piece)
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         string before = await JsonRpcConversations.OutboundAsync(new SystemTextJsonFormatter { JsonSerializerOptions = Web }, piece, 5_000, cancel);
@@ -49,8 +67,7 @@ public class EnvelopeFormatterTests
 
     /// <summary>Each kind of message cut into pieces of a byte, so every name, number and string crosses one: read as it is
     /// read whole.</summary>
-    [Fact]
-    public void A_message_cut_into_pieces_of_a_byte_reads_as_it_does_whole()
+    private static void A_message_cut_into_pieces_of_a_byte_reads_as_it_does_whole()
     {
         string[] messages =
         [
@@ -72,8 +89,7 @@ public class EnvelopeFormatterTests
         Assert.Equal("request 3 exit 1.0 0", Said(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(messages[4]))));
     }
 
-    [Fact]
-    public void What_is_no_message_is_refused_as_JSON_that_does_not_read()
+    private static void What_is_no_message_is_refused_as_JSON_that_does_not_read()
     {
         string[] refused =
         [
@@ -92,8 +108,7 @@ public class EnvelopeFormatterTests
 
     /// <summary>A semantic tokens answer of 250,000 numbers, about 750 KB: read whole, it rents nothing from the shared pool,
     /// which a busy conversation's messages take from one another, and allocates no more than the answer read alone.</summary>
-    [Fact]
-    public void A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as()
+    private static void A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as()
     {
         string answer = $$$"""{"resultId":"9","data":{{{JsonRpcConversations.Tokens(250_000)}}}}""";
         ReadOnlySequence<byte> message = new(Encoding.UTF8.GetBytes($$$"""{"jsonrpc":"2.0","id":7,"result":{{{answer}}}}"""));

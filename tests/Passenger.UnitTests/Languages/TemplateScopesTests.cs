@@ -11,39 +11,37 @@ public sealed class TemplateScopesTests
 {
     private const string Derived = "class Base\n{\n    public virtual int Size() => 0;\n}\n\nclass Derived : Base\n{\n    ";
 
-    [Theory]
-    [InlineData(Derived + "|\n}\n", TemplateScope.Member)]
-    [InlineData(Derived + "pro|\n}\n", TemplateScope.Member)]
-    [InlineData(Derived + "[Obsolete]\n    pro|\n}\n", TemplateScope.Member)]
-    [InlineData(Derived + "override |\n}\n", TemplateScope.None)]
-    [InlineData(Derived + "override ct|\n}\n", TemplateScope.None)]
-    [InlineData(Derived + "public static pro|\n}\n", TemplateScope.None)]
-    [InlineData(Derived + "override |\n    public int Count => 1;\n}\n", TemplateScope.None)]
-    [InlineData("namespace Shapes;\n\ncla|\n", TemplateScope.Type)]
-    [InlineData("namespace Shapes;\n\npublic cla|\n", TemplateScope.None)]
-    [InlineData("namespace Shapes;\n\npublic |\nclass Circle\n{\n}\n", TemplateScope.None)]
-    [InlineData(Derived + "public int Count => fo|;\n}\n", TemplateScope.None)]
-    public void A_template_goes_only_where_its_word_starts_the_declaration(string marked, TemplateScope scope)
-    {
-        (ParsedText syntax, int caret) = Parse(marked);
-        TemplateScope found = TemplateScopes.At(syntax, caret).Scope;
-        Assert.True(found == scope, $"At the caret of {marked.Replace("\n", " ", StringComparison.Ordinal)} templates of {found} are offered, not {scope}");
-    }
-
-    [Theory]
-    [InlineData(Derived + "override |\n}\n", true)]
-    [InlineData(Derived + "public override |\n}\n", true)]
-    [InlineData(Derived + "override |\n    public int Count => 1;\n}\n", true)]
-    [InlineData(Derived + "override  |\n}\n", false)]
-    [InlineData(Derived + "public |\n}\n", false)]
-    [InlineData(Derived + "void M()\n    {\n        string override_ = \"override |\";\n    }\n}\n", false)]
-    [InlineData(Derived + "// override |\n}\n", false)]
-    public void A_space_after_a_members_override_opens_completion(string marked, bool opens)
-    {
-        (ParsedText syntax, int caret) = Parse(marked);
-        Assert.True(CompletionTriggers.AfterOverride(syntax, caret) == opens,
-            $"A space typed before the caret of {marked.Replace("\n", " ", StringComparison.Ordinal)} {(opens ? "opens no" : "opens")} completion");
-    }
+    [Fact]
+    public void A_template_goes_only_where_its_word_starts_the_declaration_and_a_space_after_override_opens_completion() => Cases.All(
+        ("a template goes only where its word starts the declaration", () => Cases.Each(
+        [
+            (Derived + "|\n}\n", TemplateScope.Member),
+            (Derived + "[Obsolete]\n    pro|\n}\n", TemplateScope.Member),
+            (Derived + "override ct|\n}\n", TemplateScope.None),
+            (Derived + "public static pro|\n}\n", TemplateScope.None),
+            ("namespace Shapes;\n\ncla|\n", TemplateScope.Type),
+            ("namespace Shapes;\n\npublic |\nclass Circle\n{\n}\n", TemplateScope.None),
+            (Derived + "public int Count => fo|;\n}\n", TemplateScope.None),
+        ], row =>
+        {
+            (ParsedText syntax, int caret) = Parse(row.Item1);
+            TemplateScope found = TemplateScopes.At(syntax, caret).Scope;
+            Assert.True(found == row.Item2, $"At the caret of {row.Item1.Replace("\n", " ", StringComparison.Ordinal)} templates of {found} are offered, not {row.Item2}");
+        })),
+        ("a space after a member's override opens completion", () => Cases.Each(
+        [
+            (Derived + "public override |\n}\n", true),
+            (Derived + "override |\n    public int Count => 1;\n}\n", true),
+            (Derived + "override  |\n}\n", false),
+            (Derived + "public |\n}\n", false),
+            (Derived + "void M()\n    {\n        string override_ = \"override |\";\n    }\n}\n", false),
+            (Derived + "// override |\n}\n", false),
+        ], row =>
+        {
+            (ParsedText syntax, int caret) = Parse(row.Item1);
+            Assert.True(CompletionTriggers.AfterOverride(syntax, caret) == row.Item2,
+                $"A space typed before the caret of {row.Item1.Replace("\n", " ", StringComparison.Ordinal)} {(row.Item2 ? "opens no" : "opens")} completion");
+        })));
 
     private static (ParsedText Syntax, int Caret) Parse(string marked)
     {
