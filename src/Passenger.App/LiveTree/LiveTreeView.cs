@@ -124,7 +124,7 @@ public sealed class LiveTreeView : DockPanel
 
         monitors = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         ChartsLink = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = ShowChartsWords, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0, 0, 0) };
-        ToolTip.SetTip(ChartsLink, "The game's frame time, frames a second and its own monitors over the last minutes, read while they show");
+        ToolTip.SetTip(ChartsLink, ChartsTip);
         ChartsLink.Click += (_, _) => ChartsRequested?.Invoke(this, EventArgs.Empty);
         DockPanel.SetDock(ChartsLink, Dock.Right);
         monitorsRow = new DockPanel { [DockProperty] = Dock.Top, Margin = new Thickness(ListRow.TextStart, Gaps.Tight), IsVisible = false, Children = { ChartsLink, monitors } };
@@ -573,14 +573,24 @@ public sealed class LiveTreeView : DockPanel
         status.Text = line ?? string.Empty;
     }
 
-    /// <summary>A note over the tree that what it shows is not live (the app paused), or none.</summary>
-    /// <summary>A running game's performance monitors, on a line of their own under the buttons; none for null.</summary>
-    public void ShowMonitors(string? text)
+    /// <summary>A running game's performance monitors, on a line of their own under the buttons; none for null. While a game's
+    /// first are still to come (<paramref name="coming"/>) the line holds its room saying so, its charts' link greyed, so the
+    /// tree and properties under it stay where a person aims as they come.</summary>
+    public void ShowMonitors(string? text, bool coming = false)
     {
-        monitors.Text = text;
-        monitorsRow.IsVisible = text is not null;
+        monitorsText = text;
+        monitors.Text = text ?? (coming ? MonitorsComing : null);
+        monitorsRow.IsVisible = text is not null || coming;
+        ToolButtons.Grey(ChartsLink, text is null ? "The game's monitors have not come yet" : null, ChartsTip);
         charts.IsVisible = text is not null && charts.Content is not null;
     }
+
+    /// <summary>The game's monitors as last shown, null while none have come.</summary>
+    private string? monitorsText;
+
+    private const string MonitorsComing = "Waiting for the game's monitors…";
+
+    private const string ChartsTip = "The game's frame time, frames a second and its own monitors over the last minutes, read while they show";
 
     private const string ShowChartsWords = "Show charts";
 
@@ -597,7 +607,7 @@ public sealed class LiveTreeView : DockPanel
     public void ShowCharts(Control? chart)
     {
         charts.Content = chart;
-        charts.IsVisible = chart is not null && monitorsRow.IsVisible;
+        charts.IsVisible = chart is not null && monitorsText is not null;
         ChartsLink.Content = chart is null ? ShowChartsWords : "Hide charts";
     }
 
@@ -636,8 +646,9 @@ public sealed class LiveTreeView : DockPanel
     public event EventHandler<int>? SourceChosen;
 
     /// <summary>The game's monitors as shown, while they are.</summary>
-    public string? MonitorsLine => monitorsRow.IsVisible ? monitors.Text : null;
+    public string? MonitorsLine => monitorsText;
 
+    /// <summary>A note over the tree that what it shows is not live (the app paused), or none.</summary>
     public void ShowBanner(string? text)
     {
         banner.Say(text);

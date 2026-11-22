@@ -163,7 +163,7 @@ public sealed partial class LiveTreeController
         }
         made.ShowStatus(status.Message, status.Line);
         made.ShowBanner(banner);
-        made.ShowMonitors(monitorsShown);
+        made.ShowMonitors(monitorsShown, MonitorsComing);
         made.ShowCharts(charting && app is Godot.GodotGame ? monitorCharts : null);
         made.ChartsRequested += (_, _) =>
         {
@@ -204,8 +204,11 @@ public sealed partial class LiveTreeController
     private void ShowMonitors(string? text)
     {
         monitorsShown = text;
-        view?.ShowMonitors(text);
+        view?.ShowMonitors(text, MonitorsComing);
     }
+
+    /// <summary>Whether a game followed is still to send its first monitors, which come a second after it connects.</summary>
+    private bool MonitorsComing => monitorsShown is null && app is Godot.GodotGame { State: LiveAppState.Waiting or LiveAppState.Connected };
 
     private void ShowBanner(string? text)
     {
@@ -606,6 +609,7 @@ public sealed partial class LiveTreeController
                 ShowStatus($"Waiting for {app.Name} to show its windows…", null);
                 break;
             case { State: LiveAppState.Refused }:
+                ShowMonitors(null);
                 ShowStatus(app.Problem, null);
                 break;
             case { State: LiveAppState.Ended }:
