@@ -251,18 +251,27 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Puts the workspace just opened at the top of the recent ones as what it was opened as (its solution, the
-    /// project opened alone, or the folder without either), by the name the toolbar shows.</summary>
-    private void Remember()
+    /// <summary>Puts the workspace just opened among the recent ones as what it was opened as (its solution, the project
+    /// opened alone, or the folder without either), by the name the toolbar shows, as opened when it was
+    /// <paramref name="asked"/> for (<see cref="AskedAt"/>).</summary>
+    private void Remember(DateTimeOffset asked)
     {
         if (!keepsWorkspace || session.Workspace is not { } workspace)
         {
             return;
         }
         RememberOpen(workspace.OpenedAs);
-        state!.Recent.Set(state.Recent.Value.Opened(workspace.OpenedAs, workspace.Name, DateTimeOffset.UtcNow));
+        state!.Recent.Set(state.Recent.Value.Opened(workspace.OpenedAs, workspace.Name, asked));
         ShowRecent();
     }
+
+    /// <summary>The latest time an open was asked for at in this process (<see cref="AskedAt"/>).</summary>
+    private static DateTimeOffset lastAsked;
+
+    /// <summary>When an open asked for now is kept among the recent ones as opened (<see cref="RecentSolutionsState.Next"/>),
+    /// later than every open asked for before it, so opens that land out of turn (a start's windows reopening at once) keep
+    /// the order they were asked for in, which the next start reopens them in.</summary>
+    private DateTimeOffset AskedAt() => keepsWorkspace ? lastAsked = state!.Recent.Value.Next(DateTimeOffset.UtcNow, lastAsked) : DateTimeOffset.UtcNow;
 
     /// <summary>The recent ones on the Welcome screen, and in the system's lists outside the window
     /// (<see cref="RecentShortcuts"/>), which only a Passenger a person sees sets.</summary>

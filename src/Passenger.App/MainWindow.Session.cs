@@ -23,6 +23,9 @@ public partial class MainWindow
     private string? opening;
     private int openingAt;
 
+    /// <summary>When the open <see cref="opens"/> counts last was asked for, as the recent ones keep it (<see cref="AskedAt"/>).</summary>
+    private DateTimeOffset openAsked;
+
     /// <summary>The folder open in the window and what it has and runs; one with no folder before any opens.</summary>
     public ProjectSession Session => session;
 
@@ -159,6 +162,7 @@ public partial class MainWindow
         // The folder's documents read off the window's thread meanwhile, so its restore takes them in with no read.
         Task reading = keepsWorkspace ? Task.WhenAll(Hold(opening).ReadAsync(), TakeKeptTrustAsync()) : Task.CompletedTask;
         int open = ++opens;
+        openAsked = AskedAt();
         if (ending.IsCompleted && reading.IsCompleted)
         {
             Begin(opening, fileNamed ? named : null);
@@ -184,7 +188,7 @@ public partial class MainWindow
         Explorer.Load(session.Workspace!, explorerView);
         ShowWorkspaceName();
         UpdateStatus();
-        Remember();
+        Remember(AskedAt());
     }
 
     private async Task BeginOnceEndedAsync(int open, string folder, string? named, Task reading, Action? opened)
@@ -231,7 +235,7 @@ public partial class MainWindow
         ShowWorkspaceName();
         UpdateStatus();
         ShowUnreadSolution();
-        Remember();
+        Remember(openAsked);
         IdeErrors.Observe(KeepSnapshotsAsync());
         // Untrusted, the folder is asked of once the window has it, nothing of its code begun meanwhile.
         if (!opened.Trusted)

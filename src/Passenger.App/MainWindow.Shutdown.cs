@@ -100,7 +100,7 @@ public partial class MainWindow
             status.Text = unsaved;
             return unsaved;
         }
-        Remember();
+        Remember(AskedAt());
         ForgetOpen();
         if (keepsWorkspace)
         {

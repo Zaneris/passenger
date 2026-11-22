@@ -25,15 +25,22 @@ public sealed record RecentSolutionsState : IStateDocument<RecentSolutionsState>
     /// and in front.</summary>
     public IReadOnlyList<(string Path, RecentSolution Entry)> StillOpen() => [.. Newest().Where(s => s.Entry.Open).Reverse()];
 
-    /// <summary>With a path opened now, newest of all even on a clock that has not moved since the last, and open.</summary>
-    public RecentSolutionsState Opened(string path, string name, DateTimeOffset now)
+    /// <summary>With a path opened as asked for <paramref name="at"/>, and open.</summary>
+    public RecentSolutionsState Opened(string path, string name, DateTimeOffset at)
     {
-        DateTimeOffset latest = Solutions.Values.Select(s => s.Opened).DefaultIfEmpty(DateTimeOffset.MinValue).Max();
         Dictionary<string, RecentSolution> next = new(Solutions)
         {
-            [path] = new RecentSolution { Name = name, Opened = now > latest ? now : latest.AddTicks(1), Open = true },
+            [path] = new RecentSolution { Name = name, Opened = at, Open = true },
         };
         return this with { Solutions = Kept(next) };
+    }
+
+    /// <summary>When a path asked for <paramref name="now"/> is kept as opened: then, but later than every one kept and than
+    /// <paramref name="after"/>, one asked for before it and not kept yet, even on a clock that has not moved since.</summary>
+    public DateTimeOffset Next(DateTimeOffset now, DateTimeOffset after)
+    {
+        DateTimeOffset latest = Solutions.Values.Select(s => s.Opened).Append(after).Max();
+        return now > latest ? now : latest.AddTicks(1);
     }
 
     /// <summary>With a path no window has open any longer (its window closed alone, or another workspace opened in it), so
