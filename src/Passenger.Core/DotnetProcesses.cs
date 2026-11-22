@@ -120,10 +120,6 @@ public sealed record DotnetProcess(int Id, string Name, string CommandLine, stri
 /// since no process debugs itself.</summary>
 public static partial class DotnetProcesses
 {
-    /// <summary>The runtime's debugger transport (dbgshim's handshake and ICorDebug's channel) on macOS and Linux.</summary>
-    [GeneratedRegex(@"^clr-debug-pipe-(?<id>\d+)-(?<started>\d+)-in$")]
-    private static partial Regex Transport();
-
     /// <summary>A diagnostic port's pipe on Windows.</summary>
     [GeneratedRegex(@"^dotnet-diagnostic-(?<id>\d+)$")]
     private static partial Regex DiagnosticPort();
@@ -542,16 +538,28 @@ public static partial class DotnetProcesses
         }
     }
 
-    /// <summary>Each process the runtime's pipes name, with the start its transport's pipes were made for (none on Windows,
-    /// whose pipes go with their process).</summary>
+    /// <summary>Each process whose runtime opened a debugger's transport, with the start its pipes were made for: on macOS
+    /// and Linux each process the system lists whose pipe of its id and start (<see cref="RuntimeFiles"/>) is in the
+    /// temporary folder, asked by that name, so the folder's other files, killed programs' among them, are never read; on
+    /// Windows each diagnostic port's pipe, which goes with its process.</summary>
     private static IEnumerable<(int Id, long? Started)> Candidates()
     {
-        string folder = OperatingSystem.IsWindows() ? @"\\.\pipe\" : Path.GetTempPath();
-        Regex named = OperatingSystem.IsWindows() ? DiagnosticPort() : Transport();
+        if (!OperatingSystem.IsWindows())
+        {
+            string folder = Path.GetTempPath();
+            foreach (int id in Listed())
+            {
+                if (StartKey(id) is long started && File.Exists(Path.Combine(folder, string.Create(CultureInfo.InvariantCulture, $"clr-debug-pipe-{id}-{started}-in"))))
+                {
+                    yield return (id, started);
+                }
+            }
+            yield break;
+        }
         string[] names;
         try
         {
-            names = Directory.GetFiles(folder);
+            names = Directory.GetFiles(@"\\.\pipe\");
         }
         catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
         {
@@ -559,10 +567,27 @@ public static partial class DotnetProcesses
         }
         foreach (string name in names)
         {
-            if (named.Match(Path.GetFileName(name)) is { Success: true } match && int.TryParse(match.Groups["id"].ValueSpan, CultureInfo.InvariantCulture, out int id))
+            if (DiagnosticPort().Match(Path.GetFileName(name)) is { Success: true } match && int.TryParse(match.Groups["id"].ValueSpan, CultureInfo.InvariantCulture, out int id))
             {
-                yield return (id, match.Groups["started"].Success && long.TryParse(match.Groups["started"].ValueSpan, CultureInfo.InvariantCulture, out long started) ? started : null);
+                yield return (id, null);
             }
+        }
+    }
+
+    /// <summary>Every process the system lists now, on macOS and Linux.</summary>
+    private static unsafe IReadOnlyList<int> Listed()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return [.. Processes.Where(id => id > 0)];
+        }
+        const int AllProcesses = 1;
+        // Room for those started since the system said how many there are.
+        int[] ids = new int[ProcListPids(AllProcesses, 0, null, 0) / sizeof(int) + 64];
+        fixed (int* buffer = ids)
+        {
+            int bytes = ProcListPids(AllProcesses, 0, buffer, ids.Length * sizeof(int));
+            return bytes <= 0 ? [] : [.. ids.Take(Math.Min(bytes / sizeof(int), ids.Length)).Where(id => id > 0)];
         }
     }
 
