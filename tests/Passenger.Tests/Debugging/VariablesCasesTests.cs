@@ -9,9 +9,10 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 {
-    /// <summary>The gate's variables as one flow, to take their place once it has its record on CI: a captured
-    /// parameter listed once with its live value, an exception's inner one, a union's value, a pointer's address and
-    /// target, a DebuggerDisplay rendered, and a value whose ToString throws opening to its members.</summary>
+    /// <summary>The gate's variables as one flow: a captured parameter listed once with its live value, an exception's
+    /// inner one, a union's value, a pointer's address and target, a DebuggerDisplay rendered, and a value whose
+    /// ToString throws opening to its members.</summary>
+    [Gate]
     [Fact]
     public async Task The_gates_variables_hold_as_one_flow()
     {
@@ -23,9 +24,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("a value whose ToString throws shows its type and opens to its members", () => new VariablesCasesTests(testOutputHelper), t => t.A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members());
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_parameter_a_lambda_captures_is_listed_once_with_its_live_value()
+    private async Task A_parameter_a_lambda_captures_is_listed_once_with_its_live_value()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine(f());");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
@@ -37,9 +36,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Single(locals, v => v.Name == "f");
     }
 
-    [Gate]
-    [Fact]
-    public async Task An_exception_wrapping_another_reports_the_inner_one()
+    private async Task An_exception_wrapping_another_reports_the_inner_one()
     {
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", Debuggees.Line("PassengerCases", "Console.WriteLine(f());"), [DapExceptionFilters.All]);
 
@@ -62,9 +59,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A C# 15 union shows the value it holds as that value's type, by its row and by evaluation, and opens to that
     /// value's members, one holding none showing null.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members()
+    private async Task A_union_shows_the_value_it_holds_as_that_values_type_opening_to_its_members()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"unions");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
@@ -89,9 +84,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A pointer shows its address as its type (int*), by its row and by evaluation, opens to the value it points
     /// at, and *pointer evaluates to that value.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at()
+    private async Task A_pointer_shows_its_address_and_type_and_opens_to_what_it_points_at()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"pointers");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
@@ -109,9 +102,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(("42", "int"), (read.Result, read.Type));
     }
 
-    [Gate]
-    [Fact]
-    public async Task DebuggerDisplay_renders_as_Visual_Studio_does()
+    private async Task DebuggerDisplay_renders_as_Visual_Studio_does()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
@@ -150,9 +141,7 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A value whose ToString throws shows its type and still opens to its members.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members()
+    private async Task A_value_whose_ToString_throws_shows_its_type_and_opens_to_its_members()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);

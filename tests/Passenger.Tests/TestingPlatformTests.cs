@@ -24,9 +24,10 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
     public TestingPlatformTests(RestoredFolders restored)
         : base(restored) => this.restored = restored;
 
-    /// <summary>The gate's Testing Platform runs as one flow, to take their place once it has its record on CI: a
-    /// theory's rows found and made by a run landing under their method, Stop ending a run and its test host keeping
-    /// what ran, and a VSTest and a Testing Platform project shown in one tree and run together.</summary>
+    /// <summary>The gate's Testing Platform runs as one flow: a theory's rows found and made by a run landing under
+    /// their method, Stop ending a run and its test host keeping what ran, and a VSTest and a Testing Platform project
+    /// shown in one tree and run together.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_testing_platform_runs_hold_as_one_flow()
     {
@@ -81,9 +82,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_theorys_rows_found_by_the_platform_and_made_by_its_run_land_under_their_method()
+    private void A_theorys_rows_found_by_the_platform_and_made_by_its_run_land_under_their_method()
     {
         // xUnit cannot list a theory's rows of a record before it runs them: the run makes them.
         Write(folder, "ShapeTests.cs",
@@ -112,9 +111,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Stop_ends_a_run_on_the_platform_and_its_test_host_keeping_what_ran()
+    private void Stop_ends_a_run_on_the_platform_and_its_test_host_keeping_what_ran()
     {
         string host = Path.Combine(folder, "running.txt");
         Write(folder, "SlowTests.cs",
@@ -133,9 +130,7 @@ public sealed class TestingPlatformTests : TestingPlatformFolders, IClassFixture
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_solution_of_a_vstest_project_and_an_mstest_project_on_the_platform_shows_both_in_one_tree_and_run_all_runs_both()
+    private void A_solution_of_a_vstest_project_and_an_mstest_project_on_the_platform_shows_both_in_one_tree_and_run_all_runs_both()
     {
         string solution = NewFolder();
         Write(solution, "Vs.Tests/Vs.Tests.csproj",

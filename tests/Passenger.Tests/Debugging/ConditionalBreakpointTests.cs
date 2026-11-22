@@ -12,10 +12,11 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
     private static readonly int TestEnd = AfterCount + 1;
 
-    /// <summary>The gate's conditions, hit counts and tracepoints as one flow, to take their place once it has its
-    /// record on CI: a breakpoint stopping where its condition holds, never where it fails, and saying why where it
-    /// cannot be told or is refused, a hit count of each form stopping on its hits and outlasting its file's
-    /// breakpoints sent again, and a tracepoint writing its values and never stopping.</summary>
+    /// <summary>The gate's conditions, hit counts and tracepoints as one flow: a breakpoint stopping where its
+    /// condition holds, never where it fails, and saying why where it cannot be told or is refused, a hit count of each
+    /// form stopping on its hits and outlasting its file's breakpoints sent again, and a tracepoint writing its values
+    /// and never stopping.</summary>
+    [Gate]
     [Fact]
     public async Task The_gates_conditions_and_hit_counts_hold_as_one_flow()
     {
@@ -31,9 +32,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("a hit count of every N stops on every Nth hit", () => new ConditionalBreakpointTests(testOutputHelper), t => t.A_hit_count_of_every_N_stops_on_every_Nth_hit());
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_condition_with_a_lambda_is_refused_saying_why()
+    private async Task A_condition_with_a_lambda_is_refused_saying_why()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -85,9 +84,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
             $"The program stopped at line {stop.ReadStopInfo().line} of {stop.ReadStopInfo().filePath} before MyMethod's end: the refused breakpoint was bound");
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_tracepoint_writes_its_message_with_the_values_in_it_and_never_stops()
+    private async Task A_tracepoint_writes_its_message_with_the_values_in_it_and_never_stops()
     {
         bool startSuspended = true;
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
@@ -111,9 +108,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(Debuggees.MyMethodEnd, (await host.WaitForStoppedEvent()).ReadStopInfo().line);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_whose_condition_holds_stops()
+    private async Task A_breakpoint_whose_condition_holds_stops()
     {
         bool startSuspended = true;
 
@@ -135,11 +130,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(LogWritten, stopInfo.line);
     }
 
-    [Gate]
-    [Theory]
-    [InlineData("noSuchName")]
-    [InlineData("myInt")]
-    public async Task A_breakpoint_whose_condition_cannot_be_told_stops_and_says_why(string condition)
+    private async Task A_breakpoint_whose_condition_cannot_be_told_stops_and_says_why(string condition)
     {
         bool startSuspended = true;
 
@@ -168,9 +159,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal([id], stoppedEvent.HitBreakpointIds);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_whose_condition_fails_never_stops()
+    private async Task A_breakpoint_whose_condition_fails_never_stops()
     {
         bool startSuspended = true;
 
@@ -198,12 +187,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>Equal to, as Rider's mode writes it, as a number alone, and as Visual Studio's "=".</summary>
-    [Gate]
-    [Theory]
-    [InlineData("==2")]
-    [InlineData("2")]
-    [InlineData("= 2")]
-    public async Task A_hit_count_of_N_stops_on_the_Nth_hit_alone(string hitCondition)
+    private async Task A_hit_count_of_N_stops_on_the_Nth_hit_alone(string hitCondition)
     {
         bool startSuspended = true;
         string hitConditionFilePath = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
@@ -232,9 +216,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("2", evaluateResponse.Result);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoints_hit_count_and_id_outlast_its_files_breakpoints_being_sent_again()
+    private async Task A_breakpoints_hit_count_and_id_outlast_its_files_breakpoints_being_sent_again()
     {
         bool startSuspended = true;
         string file = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
@@ -272,9 +254,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>Hit counts the debugger cannot read, each set in turn with the program's code loaded, where one it took would
     /// bind at once: each is refused saying why, the breakpoint beside it binds, and the program never stops at it.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_hit_count_the_debugger_cannot_read_is_refused_saying_why()
+    private async Task A_hit_count_the_debugger_cannot_read_is_refused_saying_why()
     {
         bool startSuspended = true;
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process debuggee);
@@ -314,9 +294,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         return value.Result;
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_hit_count_of_at_least_N_stops_on_every_hit_from_the_Nth()
+    private async Task A_hit_count_of_at_least_N_stops_on_every_hit_from_the_Nth()
     {
         bool startSuspended = true;
         string hitConditionFilePath = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
@@ -356,9 +334,7 @@ public class ConditionalBreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("3", evaluateResponse2.Result);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_hit_count_of_every_N_stops_on_every_Nth_hit()
+    private async Task A_hit_count_of_every_N_stops_on_every_Nth_hit()
     {
         bool startSuspended = true;
         string hitConditionFilePath = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");

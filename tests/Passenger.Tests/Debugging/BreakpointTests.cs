@@ -9,10 +9,11 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int MyIntSet = Debuggees.Line("DebuggableConsoleApp", "MyClass.cs", "int myInt = 4;");
 
-    /// <summary>The gate's breakpoints as one flow, to take their place once it has its record on CI: one set before
-    /// its module loads told pending then bound, one answered with where it bound once its symbols are in, one stopping
-    /// at the statement of its column, at a line's first statement and at a statement's start, and one in a file of the
-    /// program's name in another folder binding to none of it.</summary>
+    /// <summary>The gate's breakpoints as one flow: one set before its module loads told pending then bound, one
+    /// answered with where it bound once its symbols are in, one stopping at the statement of its column, at a line's
+    /// first statement and at a statement's start, and one in a file of the program's name in another folder binding to
+    /// none of it.</summary>
+    [Gate]
     [Fact]
     public async Task The_gates_breakpoints_hold_as_one_flow()
     {
@@ -24,9 +25,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("a breakpoint in a file named as the programs in another folder binds to none of it", () => new BreakpointTests(testOutputHelper), t => t.A_breakpoint_in_a_file_named_as_the_programs_in_another_folder_binds_to_none_of_it());
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_set_before_its_module_loads_is_told_pending_then_bound_at_its_statement()
+    private async Task A_breakpoint_set_before_its_module_loads_is_told_pending_then_bound_at_its_statement()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -81,9 +80,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(MyIntSet, stopInfo.line);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_given_a_column_stops_at_the_statement_at_that_column()
+    private async Task A_breakpoint_given_a_column_stops_at_the_statement_at_that_column()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -118,9 +115,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(endColumn, topFrame.EndColumn);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_on_a_line_of_several_statements_stops_at_the_first()
+    private async Task A_breakpoint_on_a_line_of_several_statements_stops_at_the_first()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -148,9 +143,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(expectedColumn, topFrame.Column);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_inside_a_statement_of_several_lines_stops_at_its_start()
+    private async Task A_breakpoint_inside_a_statement_of_several_lines_stops_at_its_start()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -184,9 +177,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(expectedColumn, topFrame.Column);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_set_once_its_symbols_have_loaded_is_answered_with_where_it_bound()
+    private async Task A_breakpoint_set_once_its_symbols_have_loaded_is_answered_with_where_it_bound()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);
@@ -220,9 +211,7 @@ public class BreakpointTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(endColumn, breakpoint.EndColumn);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_breakpoint_in_a_file_named_as_the_programs_in_another_folder_binds_to_none_of_it()
+    private async Task A_breakpoint_in_a_file_named_as_the_programs_in_another_folder_binds_to_none_of_it()
     {
         bool startSuspended = true;
         await using DebugSession debugProtocolHost = DebugSession.ForAttach(testOutputHelper, startSuspended, out Process p2);

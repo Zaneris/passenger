@@ -13,11 +13,11 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly int AfterCount = Debuggees.Line("DebuggableConsoleApp", "HitConditionClass.cs", "// breakpoint here");
 
-    /// <summary>The gate's attaches as one flow, to take their place once it has its record on CI: a program held at
-    /// its start let go and its breakpoint's first pass seen, a running program stopped by a pause at once, a program
-    /// left running when the client goes and attached to again, an attached program's end saying only the exit code the
-    /// system tells, a held program running on when its attach ends first, and an attach to a program that is not .NET
-    /// refused saying why.</summary>
+    /// <summary>The gate's attaches as one flow: a program held at its start let go and its breakpoint's first pass
+    /// seen, a running program stopped by a pause at once, a program left running when the client goes and attached to
+    /// again, an attached program's end saying only the exit code the system tells, a held program running on when its
+    /// attach ends first, and an attach to a program that is not .NET refused saying why.</summary>
+    [Gate]
     [Fact]
     public async Task The_gates_attaches_hold_as_one_flow()
     {
@@ -29,9 +29,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("an attach to a program that is not dotnet fails its configurationDone saying why", () => new AttachTests(testOutputHelper), t => t.An_attach_to_a_program_that_is_not_dotnet_fails_its_configurationDone_saying_why());
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_program_held_at_its_start_is_let_go_by_the_attach_and_its_breakpoints_first_pass_is_seen()
+    private async Task A_program_held_at_its_start_is_let_go_by_the_attach_and_its_breakpoints_first_pass_is_seen()
     {
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process debuggee);
         await host
@@ -49,9 +47,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             $"The first stop came on the breakpoint's pass {passes.Result}: the program ran past it before the debugger had hold of it");
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_program_attached_to_runs_on_when_the_client_goes_without_disconnecting_and_can_be_attached_to_again()
+    private async Task A_program_attached_to_runs_on_when_the_client_goes_without_disconnecting_and_can_be_attached_to_again()
     {
         string counted = Debuggees.Source("DebuggableConsoleApp", "HitConditionClass.cs");
         await using DebugSession first = DebugSession.ForAttach(testOutputHelper, startSuspended: true, out Process debuggee);
@@ -84,9 +80,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
             $"The program let go at pass {before.Result} had not run on when attached to again (pass {after.Result})");
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_running_program_is_the_debuggers_once_configurationDone_answers_so_a_pause_at_once_stops_it()
+    private async Task A_running_program_is_the_debuggers_once_configurationDone_answers_so_a_pause_at_once_stops_it()
     {
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, startSuspended: false, out Process debuggee);
         await host
@@ -100,9 +94,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(StopReasons.Pause, (await host.WaitForStoppedEvent()).Reason);
     }
 
-    [Gate]
-    [Fact]
-    public async Task An_attached_programs_end_says_its_exit_code_where_the_system_tells_it_and_makes_none_up()
+    private async Task An_attached_programs_end_says_its_exit_code_where_the_system_tells_it_and_makes_none_up()
     {
         // Held at its start until the attach lets it go, so it cannot end before the debugger has it; its output is read.
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["flood"]);
@@ -126,9 +118,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
     /// <summary>An attach to a program held at its start that ends before the debugger takes hold of it (Stop or Detach as it
     /// starts, Run Service without Debugger, an agent's stop) lets the program go, which runs on undebugged rather than wait
     /// for good for a debugger that is not coming.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_program_held_at_its_start_runs_on_when_its_attach_ends_before_taking_hold_of_it()
+    private async Task A_program_held_at_its_start_runs_on_when_its_attach_ends_before_taking_hold_of_it()
     {
         ProcessStartInfo start = Passenger.Core.ChildProcesses.Command(Debuggees.Apphost("PassengerCases"), ["child"]);
         start.Environment[RuntimeVariables.DefaultDiagnosticPortSuspend] = "1";
@@ -208,9 +198,7 @@ public class AttachTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    [Gate]
-    [Fact]
-    public async Task An_attach_to_a_program_that_is_not_dotnet_fails_its_configurationDone_saying_why()
+    private async Task An_attach_to_a_program_that_is_not_dotnet_fails_its_configurationDone_saying_why()
     {
         Process other = Debuggees.NotDotnet();
         await using DebugSession host = DebugSession.ForAttach(testOutputHelper, other);

@@ -27,11 +27,12 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     public UnitTestsTests(RestoredFolders restored)
         : base(restored) => this.restored = restored;
 
-    /// <summary>The gate's Unit Tests window as one flow, to take their place once it has its record on CI: Run All
-    /// marking each test with a failure linked to its line, a test run at the caret alone, a build's failure brought
-    /// forward, runs until a failure, under each framework, of a solution folder chosen and stopped while building or
-    /// finding, tests shown from code before any build and as they are typed, renamed and run, kept on their lines
-    /// below line breaks only Roslyn counts, and the tree's grouping, filters and find, kept with the folder.</summary>
+    /// <summary>The gate's Unit Tests window as one flow: Run All marking each test with a failure linked to its line,
+    /// a test run at the caret alone, a build's failure brought forward, runs until a failure, under each framework, of
+    /// a solution folder chosen and stopped while building or finding, tests shown from code before any build and as
+    /// they are typed, renamed and run, kept on their lines below line breaks only Roslyn counts, and the tree's
+    /// grouping, filters and find, kept with the folder.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_unit_tests_window_holds_as_one_flow()
     {
@@ -55,9 +56,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
     /// through its build, the status bar's tally a link back to it; a failed test's stack trace in its details links to the
     /// line that failed; Run Tests at the caret runs that test alone; and a build that fails brings the Build window forward
     /// with its error.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Run_all_marks_each_test_a_failure_links_to_its_line_run_at_the_caret_runs_that_test_alone_and_a_failed_build_brings_the_build_window_forward()
+    private void Run_all_marks_each_test_a_failure_links_to_its_line_run_at_the_caret_runs_that_test_alone_and_a_failed_build_brings_the_build_window_forward()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -145,9 +144,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Below_a_comment_holding_line_breaks_only_roslyn_counts_each_tests_icon_and_menu_stay_on_its_line()
+    private void Below_a_comment_holding_line_breaks_only_roslyn_counts_each_tests_icon_and_menu_stay_on_its_line()
     {
         // Roslyn counts four more lines in the comment than the editor does.
         File.WriteAllText(Source, File.ReadAllText(Source).Replace("public class SumTests",
@@ -166,9 +163,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Run_until_failure_repeats_a_test_until_it_fails_and_shows_that_run()
+    private void Run_until_failure_repeats_a_test_until_it_fails_and_shows_that_run()
     {
         // Passes twice, then fails: it counts its runs in a file of its own.
         string count = Path.Combine(Folder, "runs.txt");
@@ -199,9 +194,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_project_built_for_two_frameworks_runs_under_each_and_shows_each_ones_results_under_it()
+    private void A_project_built_for_two_frameworks_runs_under_each_and_shows_each_ones_results_under_it()
     {
         // The frameworks come from a property, as MSBuild evaluates them, not as the project file writes them.
         string solution = NewFolder();
@@ -378,9 +371,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Stop_in_the_unit_tests_window_ends_a_run_while_it_builds_and_while_it_finds_the_tests()
+    private void Stop_in_the_unit_tests_window_ends_a_run_while_it_builds_and_while_it_finds_the_tests()
     {
         // Finding this theory's rows waits until it is stopped, once it has said which test host looks for them.
         string host = Path.Combine(Folder, "discovering.txt");
@@ -851,9 +842,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         TestNode Of(string project) => window.Tests.Tree.Methods.Single(m => m.Name == "Parses" && Path.GetFileNameWithoutExtension(m.ProjectPath) == project);
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()
+    private void Typing_in_one_file_among_many_open_reads_and_marks_that_files_tests_and_no_others()
     {
         string solution = NewFolder();
         List<string> paths = [];
@@ -904,9 +893,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Run_unit_tests_on_a_solution_folder_chosen_in_the_explorer_runs_the_tests_of_its_projects_alone()
+    private void Run_unit_tests_on_a_solution_folder_chosen_in_the_explorer_runs_the_tests_of_its_projects_alone()
     {
         string solution = NewFolder();
         Write(solution, "tests/Fast.Tests/Fast.Tests.csproj", TestProject(TestProjects.Framework));
@@ -1003,9 +990,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.BottomPanel.Tests.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
             .GetVisualDescendants().OfType<Button>().First(b => b.Name == action);
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_solution_never_built_shows_its_xunit_nunit_and_mstest_tests_from_their_code_as_it_opens()
+    private void A_solution_never_built_shows_its_xunit_nunit_and_mstest_tests_from_their_code_as_it_opens()
     {
         string solution = NewFolder();
         Write(solution, "Library/Library.csproj", TestProjects.Library());
@@ -1055,9 +1040,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Run_all_lands_on_the_tests_shown_from_code_with_a_theorys_rows_under_it_and_a_test_it_never_ran_stays()
+    private void Run_all_lands_on_the_tests_shown_from_code_with_a_theorys_rows_under_it_and_a_test_it_never_ran_stays()
     {
         // xUnit cannot list a theory's rows of a record before it runs them: they come from the run.
         Write("ShapeTests.cs",
@@ -1183,9 +1166,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Typing_a_test_adds_it_to_the_tree_renaming_or_removing_one_follows_and_a_test_that_ran_keeps_its_result()
+    private void Typing_a_test_adds_it_to_the_tree_renaming_or_removing_one_follows_and_a_test_that_ran_keeps_its_result()
     {
         MainWindow window = Open();
         Assert.True(window.Perform(AppActions.RunAllTests));
@@ -1223,9 +1204,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Group_by_categories_shows_each_test_under_its_xunit_traits_nunit_categories_and_mstest_test_categories()
+    private void Group_by_categories_shows_each_test_under_its_xunit_traits_nunit_categories_and_mstest_test_categories()
     {
         string solution = NewFolder();
         Write(solution, "Xunit.Tests/Xunit.Tests.csproj", TestProject(TestProjects.Framework));
@@ -1283,9 +1262,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void After_a_run_the_failed_filter_shows_the_failures_alone_as_many_as_it_counts_and_a_modifier_adds_the_ignored()
+    private void After_a_run_the_failed_filter_shows_the_failures_alone_as_many_as_it_counts_and_a_modifier_adds_the_ignored()
     {
         MainWindow window = Open();
         Assert.True(window.Perform(AppActions.RunAllTests));
@@ -1317,9 +1294,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Find_in_the_unit_tests_window_narrows_the_tree_to_the_tests_named_and_the_rows_above_them()
+    private void Find_in_the_unit_tests_window_narrows_the_tree_to_the_tests_named_and_the_rows_above_them()
     {
         Write("ParseTests.cs", "using Xunit;\n\nnamespace Sums.Parsing;\n\npublic class ParseTests\n{\n    [Fact]\n    public void Reads_two() { }\n\n    [Fact]\n    public void Reads_four() { }\n}\n");
         MainWindow window = Open();
@@ -1346,9 +1321,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_grouping_and_outcomes_chosen_come_back_when_the_folder_opens_again_and_another_folder_has_its_own()
+    private void The_grouping_and_outcomes_chosen_come_back_when_the_folder_opens_again_and_another_folder_has_its_own()
     {
         string settings = NewFolder();
         string other = NewFolder();

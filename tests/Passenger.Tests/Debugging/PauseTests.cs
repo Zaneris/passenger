@@ -12,10 +12,10 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
 {
     private const string Looping = "LoopingConsoleApp";
 
-    /// <summary>The gate's pauses as one flow, to take their place once it has its record on CI: a looping program
-    /// paused in its loop and again after it went on, a value paused in a sleep shown though its ToString cannot run
-    /// and a step back to the loop, and a parallel loop stopped on the iteration its condition matches or where its
-    /// exception was thrown.</summary>
+    /// <summary>The gate's pauses as one flow: a looping program paused in its loop and again after it went on, a value
+    /// paused in a sleep shown though its ToString cannot run and a step back to the loop, and a parallel loop stopped
+    /// on the iteration its condition matches or where its exception was thrown.</summary>
+    [Gate]
     [Fact]
     public async Task The_gates_pauses_hold_as_one_flow()
     {
@@ -25,9 +25,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("an exception in a parallel loop whose iterations test a condition stops where it was thrown", () => new PauseTests(testOutputHelper), t => t.An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown());
     }
 
-    [Gate]
-    [Fact]
-    public async Task Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too()
+    private async Task Pause_stops_a_looping_program_in_its_loop_and_a_second_pause_after_continuing_does_too()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, sleeps: false);
@@ -48,9 +46,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
     /// <summary>A pause that caught the thread in the runtime's own code (its sleep), where none of the program's can run: a
     /// value its ToString would show is shown by its type, its fields there to open, never as an error; and a step from
     /// there comes back to the loop.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_value_paused_in_a_sleep_shows_its_type_and_fields_where_its_ToString_cannot_run_and_a_step_comes_back_to_the_loop()
+    private async Task A_value_paused_in_a_sleep_shows_its_type_and_fields_where_its_ToString_cannot_run_and_a_step_comes_back_to_the_loop()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Launch(host, sleeps: true);
@@ -204,9 +200,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             && attributes.Contains(DapAttributes.NeedsThreads) && answer.Result.Contains("needs another thread", StringComparison.Ordinal);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration()
+    private async Task A_condition_that_calls_a_method_stops_a_parallel_loop_on_its_matching_iteration()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await StopsOnMatchingIteration(host);
@@ -316,9 +310,7 @@ public class PauseTests(ITestOutputHelper testOutputHelper)
             $"With a thread's start it failed to handle, the program did not run on to its end as it would have (exit code {exitCode}):\n{output}");
     }
 
-    [Gate]
-    [Fact]
-    public async Task An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown()
+    private async Task An_exception_in_a_parallel_loop_whose_iterations_test_a_condition_stops_where_it_was_thrown()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await Start(host, ["parallel", "throws"], async host =>

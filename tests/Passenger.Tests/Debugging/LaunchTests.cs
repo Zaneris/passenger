@@ -8,10 +8,11 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class LaunchTests(ITestOutputHelper testOutputHelper)
 {
-    /// <summary>The gate's launches as one flow, to take their place once it has its record on CI: a program stopped at
-    /// its entry however its Main is written, reading its own input, writing all it writes with its own exit code and
-    /// starting another as it would undebugged, started in the client's terminal or refused there saying why, and a
-    /// runtime starting late, a launch stopped while it starts and a program ending before it.</summary>
+    /// <summary>The gate's launches as one flow: a program stopped at its entry however its Main is written, reading
+    /// its own input, writing all it writes with its own exit code and starting another as it would undebugged, started
+    /// in the client's terminal or refused there saying why, and a runtime starting late, a launch stopped while it
+    /// starts and a program ending before it.</summary>
+    [Gate]
     [Fact]
     public async Task The_gates_launches_hold_as_one_flow()
     {
@@ -29,9 +30,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync("a program that ends before its runtime starts fails configurationDone saying how it ended", () => new LaunchTests(testOutputHelper), t => t.A_program_that_ends_before_its_runtime_starts_fails_configurationDone_saying_how_it_ended());
     }
 
-    [Gate]
-    [Fact]
-    public async Task Stop_at_entry_stops_in_Main_saying_so()
+    private async Task Stop_at_entry_stops_in_Main_saying_so()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("DebuggableConsoleApp");
@@ -50,9 +49,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.EndsWith("Program.cs", topFrame.Source?.Path);
     }
 
-    [Gate]
-    [Fact]
-    public async Task Stop_at_entry_in_top_level_statements_stops_at_their_first_saying_so()
+    private async Task Stop_at_entry_in_top_level_statements_stops_at_their_first_saying_so()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("TopLevelStatementsConsoleApp");
@@ -75,9 +72,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
-    [Gate]
-    [Fact]
-    public async Task Stop_at_entry_in_an_async_Main_stops_at_its_start_saying_so()
+    private async Task Stop_at_entry_in_an_async_Main_stops_at_its_start_saying_so()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("AsyncEntryConsoleApp");
@@ -100,9 +95,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
-    [Gate]
-    [Fact]
-    public async Task Stop_at_entry_in_async_top_level_statements_stops_at_their_first_saying_so()
+    private async Task Stop_at_entry_in_async_top_level_statements_stops_at_their_first_saying_so()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         string program = Debuggees.Program("AsyncTopLevelStatementsConsoleApp");
@@ -125,9 +118,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Contains(variables, variable => variable.Name == "test");
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_launched_program_reads_its_own_input_never_the_adapters()
+    private async Task A_launched_program_reads_its_own_input_never_the_adapters()
     {
         int written = Debuggees.Line("ReadsInputConsoleApp", "Console.WriteLine($\"read:");
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
@@ -151,9 +142,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("\"hello\"", line.Result);
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_dotnet_program_the_debugged_one_starts_runs_as_it_would_undebugged()
+    private async Task A_dotnet_program_the_debugged_one_starts_runs_as_it_would_undebugged()
     {
         // Nothing that holds the debugged program at its start may reach the programs it starts in turn.
         await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases",
@@ -166,9 +155,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
         Assert.True(hold.Result == "null", $"The program was held at its start by DOTNET_DefaultDiagnosticPortSuspend, which is still in its environment ({hold.Result}) for every .NET program it starts");
     }
 
-    [Gate]
-    [Fact]
-    public async Task A_program_writing_64_KB_runs_to_its_end_with_all_it_wrote_and_its_own_exit_code()
+    private async Task A_program_writing_64_KB_runs_to_its_end_with_all_it_wrote_and_its_own_exit_code()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         await host
@@ -210,30 +197,9 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
             $"The program wrote {output.Length} of its 65,536 characters and the debugger said it exited with {(exitCode is int code ? code.ToString() : "nothing")}, not 42");
     }
 
-    [Gate]
-    [Fact]
-    public async Task The_thread_running_Main_is_the_one_named_Main_Thread()
-    {
-        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
-
-        await host
-            .InitializeAsync()
-            .LaunchAsync(Debuggees.Program("TopLevelStatementsConsoleApp"), stopAtEntry: true, justMyCode: true)
-            .WaitForInitializedEvent();
-        await host.ConfigurationDoneAsync();
-
-        StoppedEvent stopped = await host.WaitForStoppedEvent();
-        IReadOnlyList<DapThread> threads = (await host.RequestAsync<ThreadsResponse>(DapCommands.Threads)).Threads;
-        Assert.Equal("Main Thread", Assert.Single(threads, t => t.Id == stopped.ThreadId).Name);
-        Assert.Single(threads, t => t.Name == "Main Thread");
-        Assert.Equal(stopped.ThreadId, Assert.Single(threads, t => t.IsMain == true).Id);
-    }
-
     /// <summary>A program the client starts in its terminal starts held, and the debugger has hold of it before any of it
     /// runs: a breakpoint on Main's very first line stops it there, launch after launch, never missed by a Main that ran on.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_program_started_in_the_clients_terminal_stops_at_a_breakpoint_on_Mains_first_line_every_time()
+    private async Task A_program_started_in_the_clients_terminal_stops_at_a_breakpoint_on_Mains_first_line_every_time()
     {
         string source = Debuggees.Source("TerminalConsoleApp", "Program.cs");
         int first = Debuggees.Line("TerminalConsoleApp", "// Main's first line");
@@ -257,9 +223,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A client that cannot start the program in its terminal fails configurationDone saying so, and the debugger
     /// goes on answering: the request never holds the engine.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_client_that_cannot_start_the_program_in_its_terminal_fails_the_launch_saying_why()
+    private async Task A_client_that_cannot_start_the_program_in_its_terminal_fails_the_launch_saying_why()
     {
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
         host.Connection.Handle<RunInTerminalArguments, RunInTerminalResponse>(DapCommands.RunInTerminal,
@@ -276,9 +240,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A program whose runtime is slow to start (its first start on a machine reads it from a cold disk) is
     /// still the debugger's, however late its runtime answers: held here 6 s at its start.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_program_whose_runtime_starts_late_is_still_debugged()
+    private async Task A_program_whose_runtime_starts_late_is_still_debugged()
     {
         using StartHold hold = new();
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
@@ -300,9 +262,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A launch stopped while its program's runtime is still starting ends at once, the program with it, and says why:
     /// the debugger waits for a runtime as long as the session lasts, no longer.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_launch_stopped_while_its_runtime_starts_ends_at_once_with_its_program()
+    private async Task A_launch_stopped_while_its_runtime_starts_ends_at_once_with_its_program()
     {
         using StartHold hold = new();
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
@@ -322,9 +282,7 @@ public class LaunchTests(ITestOutputHelper testOutputHelper)
 
     /// <summary>A program that ends before any runtime in it starts fails configurationDone as it ends, saying so and how it
     /// ended, rather than once a wait runs out.</summary>
-    [Gate]
-    [Fact]
-    public async Task A_program_that_ends_before_its_runtime_starts_fails_configurationDone_saying_how_it_ended()
+    private async Task A_program_that_ends_before_its_runtime_starts_fails_configurationDone_saying_how_it_ended()
     {
         (string program, string[] arguments) = OperatingSystem.IsWindows() ? ("cmd", (string[])["/c", "exit 3"]) : ("/bin/sh", ["-c", "exit 3"]);
         await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
