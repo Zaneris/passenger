@@ -165,10 +165,11 @@ public static class DeviceLaunches
         }, null);
     }
 
-    /// <summary>A plan's iOS simulator found, booted with no window where it is shut down, and its app installed there, the
-    /// plan's program then simctl launching the app afresh with its output on simctl's own (<see cref="SimulatorApp.Launch"/>);
-    /// why not, in words for the person. A simulator booted here is told to <paramref name="booted"/>, whose folder shuts it down,
-    /// and where someone sees this Passenger (not <paramref name="unseen"/>), the Run window's notes say it has no window.</summary>
+    /// <summary>A plan's iOS simulator found, the app its build made read, the simulator booted with no window where it is
+    /// shut down, and the app installed there, the plan's program then simctl launching the app afresh with its output on
+    /// simctl's own (<see cref="SimulatorApp.Launch"/>); why not, in words for the person. A simulator booted here is told to
+    /// <paramref name="booted"/>, whose folder shuts it down, and where someone sees this Passenger (not <paramref name="unseen"/>),
+    /// the Run window's notes say it has no window.</summary>
     private static async Task<(LaunchPlan? Plan, string? Problem)> SimulatorReadyAsync(LaunchPlan plan, DeviceLaunch device, string project,
         IReadOnlyDictionary<string, string> globals, bool unseen, Action<string> say, Action<IReadOnlyList<DeviceTarget>> listed, Action<string, string>? booted, CancellationToken cancel)
     {
@@ -183,6 +184,12 @@ public static class DeviceLaunches
         {
             return (null, DeviceTargets.Gone(device.Target, targets, name));
         }
+        // Before any boot: MSBuild asked as the simulator's system starts takes many times as long, minutes on a loaded machine.
+        (SimulatorBuild? built, string? unread) = await AppleSimulators.ReadBuildAsync(project, device.Framework, globals, cancel);
+        if (built is null)
+        {
+            return (null, $"{name} could not be installed on {target.Name}: {unread}");
+        }
         bool booting = !target.Running;
         if (booting)
         {
@@ -196,7 +203,7 @@ public static class DeviceLaunches
         }
         listed(targets);
         say($"Installing {name} on {target.Name}…");
-        (SimulatorApp? app, string? uninstalled) = await AppleSimulators.InstallAsync(project, device.Framework, target.Id, tools, globals, cancel);
+        (SimulatorApp? app, string? uninstalled) = await AppleSimulators.InstallAsync(built, target.Id, tools, cancel);
         if (app is null)
         {
             return (null, $"{name} could not be installed on {target.Name}: {uninstalled}");

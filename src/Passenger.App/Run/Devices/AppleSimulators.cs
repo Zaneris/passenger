@@ -10,6 +10,10 @@ public sealed record AppleTools(string Developer)
     public string Simctl => Path.Combine(Developer, "usr", "bin", "simctl");
 }
 
+/// <summary>An app a build made for a simulator, as its workload reads it: its bundle identifier, the built bundle and the
+/// runtime identifier it was built for.</summary>
+public sealed record SimulatorBuild(string Package, string Bundle, string RuntimeIdentifier);
+
 /// <summary>iOS's simulators through its workload and that workload's own Xcode: the simulators and devices the workload
 /// lists (<c>ComputeAvailableDevices</c>, what <c>dotnet run --list-devices</c> asks), a simulator booted where it is shut
 /// down, always with no window (<c>simctl boot</c> opens none), the built app installed there (<c>simctl install</c>) and
@@ -96,10 +100,10 @@ public static class AppleSimulators
         }
     }
 
-    /// <summary>Installs the built app on a booted simulator, its bundle and identifier as its workload reads them
+    /// <summary>The app the project's build made for a simulator, its bundle and identifier as its workload reads them
     /// (<c>_ReadAppManifest</c>, no build of its own): the app, or why not.</summary>
-    public static async Task<(SimulatorApp? App, string? Problem)> InstallAsync(string project, string framework, string udid, AppleTools tools,
-        IReadOnlyDictionary<string, string> globals, CancellationToken cancel)
+    public static async Task<(SimulatorBuild? Built, string? Problem)> ReadBuildAsync(string project, string framework, IReadOnlyDictionary<string, string> globals,
+        CancellationToken cancel)
     {
         MSBuildAnswer read = await MSBuildQuestions.AskAsync(project, framework, globals, new MSBuildQuestion([MSBuildNames.ReadAppManifest])
         {
@@ -120,17 +124,22 @@ public static class AppleSimulators
         {
             return (null, $"{Path.GetFileName(bundle)} is not built ({bundle})");
         }
-        bundle = PathNames.Canonical(bundle);
+        return (new SimulatorBuild(identifier, PathNames.Canonical(bundle), read.Property(MSBuildNames.RuntimeIdentifier) ?? string.Empty), null);
+    }
+
+    /// <summary>Installs the built app on a booted simulator: the app, or why not.</summary>
+    public static async Task<(SimulatorApp? App, string? Problem)> InstallAsync(SimulatorBuild built, string udid, AppleTools tools, CancellationToken cancel)
+    {
         try
         {
-            ChildResult installed = await SimctlAsync(tools.Simctl, ["install", udid, bundle], cancel);
+            ChildResult installed = await SimctlAsync(tools.Simctl, ["install", udid, built.Bundle], cancel);
             if (!installed.Succeeded)
             {
                 return (null, installed.Said);
             }
-            ChildResult data = await SimctlAsync(tools.Simctl, ["get_app_container", udid, identifier, "data"], cancel);
+            ChildResult data = await SimctlAsync(tools.Simctl, ["get_app_container", udid, built.Package, "data"], cancel);
             return data.Succeeded && data.Output.Trim() is { Length: > 0 } container
-                ? (new SimulatorApp(udid, tools.Simctl, identifier, bundle, read.Property(MSBuildNames.RuntimeIdentifier) ?? string.Empty)
+                ? (new SimulatorApp(udid, tools.Simctl, built.Package, built.Bundle, built.RuntimeIdentifier)
                 {
                     Carried = Path.Combine(container, "tmp", "passenger"),
                 }, null)
