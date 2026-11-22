@@ -5,16 +5,18 @@ namespace Passenger.App.Godot;
 
 /// <summary>The person's Godot editor open on a project, asked through its IDE messaging server for the names a script's
 /// strings may take that only it knows (an input action not yet saved, the nodes of the scene it edits): found by the meta
-/// file the editor writes into the project as it opens, connected once and kept while that file names it, never an editor
-/// started for it. Passenger's own headless editors are never asked (<see cref="GodotScripts.Headless"/>): they read the
-/// same files Passenger reads and edit no scene of the person's. A list waits for an answer only <see cref="Limit"/>; a
-/// later one is kept for the next list. Held by the session, ended with it.</summary>
+/// file the editor writes into the project as it opens, connected once and kept while that file names it and the editor
+/// answers within <see cref="Patience"/> (connected again at the next ask once it has not), never an editor started for
+/// it. Passenger's own headless editors are never asked (<see cref="GodotScripts.Headless"/>): they read the same files
+/// Passenger reads and edit no scene of the person's. A list waits for an answer only <see cref="Limit"/>; a later one is
+/// kept for the next list. Held by the session, ended with it.</summary>
 internal sealed class GodotIdeLink : IAsyncDisposable
 {
     /// <summary>How long a list waits for the editor, whose answer comes on its next frame.</summary>
     internal static readonly TimeSpan Limit = Waits.Of(TimeSpan.FromMilliseconds(400));
 
-    /// <summary>How long a connection's handshake, and an answer kept for a later list, are waited for.</summary>
+    /// <summary>How long a connection's handshake, and an answer kept for a later list, are waited for; a connection whose
+    /// answer has not come by then ends (<see cref="GodotIdeClient.AskAsync"/>).</summary>
     private static readonly TimeSpan Patience = Waits.Of(TimeSpan.FromSeconds(5));
 
 
@@ -88,6 +90,7 @@ internal sealed class GodotIdeLink : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            IdeErrors.Write($"Godot: the editor open on {project} did not answer within {Durations.Said(Patience)}, so the next list connects to it again");
             return null;
         }
     }

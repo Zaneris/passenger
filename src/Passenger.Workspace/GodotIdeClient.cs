@@ -7,7 +7,9 @@ namespace Passenger.Workspace;
 
 /// <summary>A connection to a Godot editor's IDE messaging server on a loopback port (<see cref="GodotIdeMessaging"/>):
 /// handshaken as it opens, its answers matched to its requests in the order asked, as the server answers one request at a
-/// time, and a request the server makes of it answered as one it does not serve. Raises nothing; any thread.</summary>
+/// time, and a request the server makes of it answered as one it does not serve. A request given up on once asked ends
+/// it: an answer the server never gives would hand each later one to the request before it. Raises nothing; any
+/// thread.</summary>
 public sealed class GodotIdeClient : IAsyncDisposable
 {
     private readonly TcpClient tcp;
@@ -70,7 +72,8 @@ public sealed class GodotIdeClient : IAsyncDisposable
         return null;
     }
 
-    /// <summary>The server's answer to a request; null once the connection has gone, before or while it waits.</summary>
+    /// <summary>The server's answer to a request; null once the connection has gone, before or while it waits. Cancelled
+    /// once asked, the connection ends with it (<see cref="Open"/>).</summary>
     public async Task<GodotIdeMessage?> AskAsync(string id, string body, CancellationToken cancel)
     {
         TaskCompletionSource<GodotIdeMessage?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -91,12 +94,33 @@ public sealed class GodotIdeClient : IAsyncDisposable
         {
             End();
         }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            // Written in part, or not at all, it leaves the stream and the order of the answers unknown.
+            Drop();
+            throw;
+        }
         finally
         {
             writing.Release();
         }
-        // Left in the queue when the wait is given up, so the late answer is matched to it and dropped.
-        return await answer.Task.WaitAsync(cancel);
+        try
+        {
+            return await answer.Task.WaitAsync(cancel);
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            // Godot's editor leaves a request asked in its first moments unanswered for good at times.
+            Drop();
+            throw;
+        }
+    }
+
+    /// <summary>The connection ended and closed, so the server lets go of it too.</summary>
+    private void Drop()
+    {
+        End();
+        tcp.Dispose();
     }
 
     private async Task ReadAsync()
