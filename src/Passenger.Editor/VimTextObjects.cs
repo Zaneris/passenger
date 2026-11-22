@@ -3,8 +3,8 @@ using Passenger.Text;
 namespace Passenger.Editor;
 
 /// <summary>The text an operator takes: from <see cref="Start"/> to before <see cref="End"/>, or the whole lines they are
-/// on (<see cref="Linewise"/>).</summary>
-public readonly record struct VimSpan(int Start, int End, bool Linewise);
+/// on (<see cref="Linewise"/>); <see cref="EndKept"/> where an end in a later line's first column is no exclusive end.</summary>
+public readonly record struct VimSpan(int Start, int End, bool Linewise, bool EndKept = false);
 
 /// <summary>Vim's text objects, the "inner" and "a" ones, as pure functions of the text and a caret: words, WORDs,
 /// sentences, paragraphs, bracketed blocks, quoted strings and tag blocks. Null where there is no such object.</summary>
@@ -321,7 +321,7 @@ public static class VimTextObjects
     public static VimSpan EndingInFirstColumn(TextSnapshot text, VimSpan span)
     {
         LineSpan last = VimMotions.LineOf(text, span.End);
-        if (span.Linewise || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
+        if (span.Linewise || span.EndKept || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
         {
             return span;
         }
