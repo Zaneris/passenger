@@ -30,6 +30,50 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `BuildRunTests`' `With_hot_reload_edits_reach_the_running_program_a_signature_change_restarts_it_and_it_ends_with_the_window`,
+  CI 45016390450 (Windows gate shard 1): "Waited 150 s for dotnet watch to start the program again and watch it", the Run
+  window showing dotnet watch's restart, its build, "Waiting for changes" and the program run again for the wait's 150 s.
+  **Cause not found**: the program run again writes its process id first, and the wait never read an id unlike the one
+  of the program before; the same step passed in that run's flow of BuildRunTests and seven times on the Windows VM, and
+  Windows gave no program the id of one just ended in 80 starts there. The test now tells each start again by its id file
+  written again, not by an id unlike the last, and a wait that gives up says what the file holds, when it was written and
+  whether the program before still runs (d0880af08, #701).
+- `McpIosSimulatorTests`' `An_ios_heads_app_an_agents_passenger_ran_on_a_simulator_it_booted_ends_…`, CI 45016390450
+  (macOS report shard 1): "The settings_set call had no answer in 120 s", its Passenger's log holding only its first line
+  (the folder opened ahead of its window) and nothing on its standard error. **Cause not found**: that Passenger had
+  ended before the call gave up (the failure, which samples a Passenger's threads while it runs, sampled none) on a
+  runner whose free memory fell to 0.9 GB of 7 in that job; a call a Passenger gone never answers now says it had ended,
+  with its exit code and the signal that ended it (69550d61f, #1792).
+- `AspireConsoleBytesTests`' `An_AppHosts_console_and_its_containers_merged_log_cost_a_small_constant_for_each_line_however_many_come`,
+  CI 45016390450 (macOS report shard 2): "left programs' runtime files … dotnet-diagnostic-47119-1795347663-socket", as
+  `McpGDScriptFixTests`' below. **Another program's doing**: by its start the program began at 11:41:03, while
+  `AspirePackageAppHostTests`' starter ran through the window just before it in the run's process of classes alone.
+  Sampled on the Mac, Aspire's dashboard, which the bundle's orchestrator starts and ends as the AppHost goes, makes a
+  diagnostic socket and no debugger pipes, the one file left in both runs, and killed leaves it for the next test's
+  check. The starter test now reads the files of the bundle's programs while they run and takes them once those have
+  gone, as `AspireExternalDataTests` does (4f269c3e1, #2092).
+- `StoredTracesTests`' `An_exceptions_stack_trace_is_read_from_what_it_stores_as_its_getter_writes_it`, CI 45016390450
+  (Windows report shard 3): "$exception.StackTrace was answered: error: The evaluation took longer than 3 s and could not
+  be stopped, as it runs outside managed code". **The test's limit**, as `ImplementedTests`' and `InterpreterTests`'
+  before it: the program's first StackTrace getter loaded System.Diagnostics.StackTrace, System.Reflection.Metadata and
+  System.Collections.Immutable (1.5 to 2.2 s apart in the engine's log) and was still reading the program's PDB 6.5 s in,
+  against the run's 3 s, a developer machine's time; both sessions that compare getters now take
+  `DebugSession.ScaledEvaluations` (70a743dd5, #1123).
+- `MigrationsTests`' `Migrations_run_against_the_database_and_their_tools_are_fixed_in_place`, CI 45016390450 (Windows
+  report shard 1), its step of typing while a fix adds a package: "Button 'Add Microsoft.EntityFrameworkCore.Design
+  10.0.15' is not laid out in its window". **A race in the IDE**: the Migrations window made its rows of gaps and their
+  buttons anew at every change of its state, and one (its environments read, its projects evaluated) ran with the queued
+  work the click's draw ran, after the test found the button and before it pressed it, so the button pressed was in no
+  window, as a person's press met by such a change does nothing. The rows are made again only when a gap's words, weight
+  or fixes change (70374013e, #689).
+- `LocalHistoryTests`' `Each_change_is_kept_under_the_name_of_what_made_it_and_what_it_wrote_over_kept_too`, CI
+  45016390450 (Windows report shard 1), its step of a conflict resolved each way: "Waited 225 s for Theirs.txt's
+  resolution kept, its history listing []". **The IDE**: Local History kept a change to a file it had not seen under the
+  activity's name only where the file read as made since the folder opened, by its creation time, and NTFS gives a file
+  deleted and made again under its name within 15 s the old one's creation time (as on the Windows VM), so git's writing
+  Theirs.txt anew for Accept Theirs, a file never opened, was a first sight with no row; on macOS and Linux it was kept
+  as the file made, with nothing of what it held before. Accept Yours, Accept Theirs and Rollback now have Local History
+  read their files before git writes them, so each is a change from the file as it stood (58b384386, #2062).
 - `BindingValuesTests`' `A_debugged_apps_bindings_show_their_values_and_a_window_shown_is_collected_once_it_closes`,
   CI 45009557197 (Linux report shard 3), as `GDScriptTypesTests` (CI 44995132904, macOS gate), `AvaloniaListsTests` (CI
   44989932645) and `TestingPlatformDebuggingTests` (CI 44970786971, both Linux report shard 3): "The IDE caught 1 error
