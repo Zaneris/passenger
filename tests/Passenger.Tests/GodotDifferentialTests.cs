@@ -135,7 +135,7 @@ public sealed partial class GodotDifferentialTests
         string.Join("; ", errors.OrderBy(e => e.Line).Select(e => $"{e.Line}: {e.Said}")) is { Length: > 0 } told ? told : "nothing";
 
     /// <summary>A script of a few members and statements, some naming what it never declares, giving a value its target
-    /// takes none of or calling with too few or many arguments.</summary>
+    /// takes none of, calling with too few or many arguments or written in a way Godot's parser refuses.</summary>
     private static string Script(Random random)
     {
         string[] types = ["int", "float", "String", "bool", "Vector2", "Array", "Dictionary", "Node"];
@@ -150,6 +150,16 @@ public sealed partial class GodotDifferentialTests
             bool constant = random.Next(4) == 0;
             text.Append(constant ? $"const M{i} = {value}\n" : $"var m{i}: {types[type]} = {value}\n");
             names.Add(constant ? $"M{i}" : $"m{i}");
+        }
+        // A mistake Godot's parser finds now and then: a stray indented line, a nameless variable, a function's missing colon.
+        if (random.Next(6) == 0)
+        {
+            text.Append(random.Next(3) switch
+            {
+                0 => "\tvar stray := 1\n",
+                1 => "var = 1\n",
+                _ => "\n\nfunc g()\n\tpass\n",
+            });
         }
         int parameters = random.Next(0, 3);
         string declared = string.Join(", ", Enumerable.Range(0, parameters).Select(p => $"p{p}: int"));
@@ -208,6 +218,12 @@ public sealed partial class GodotDifferentialTests
     private static HashSet<(int Line, string Said)> Ours(GodotEngineApi api, string script)
     {
         GDScriptTree tree = GDScriptTree.Parse(script);
+        // Godot's loader says only the first of a script's parse errors, where its analyzer's it says whole.
+        if (tree.Errors.Count > 0)
+        {
+            GDScriptError first = tree.Errors.MinBy(e => e.Start);
+            return [(script.AsSpan(0, first.Start).Count('\n') + 1, first.Message)];
+        }
         GDScriptAnalyzer analyzer = new(new GDScriptProject(api, path => path == "res://s.gd" ? tree : null, new Dictionary<string, string>(StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal)));
         return [.. analyzer.Analyze(tree, "res://s.gd").Findings(GDScriptWarningSettings.Of(null)).Where(f => f.IsError)
