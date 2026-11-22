@@ -8,7 +8,16 @@ namespace Passenger.UnitTests.Core;
 public class PooledBytesTests
 {
     [Fact]
-    public void Bytes_written_in_pieces_read_back_in_order_as_the_buffer_grows_past_its_usual_size()
+    public Task A_pooled_buffer_gives_back_every_byte_in_order_and_holds_no_more_than_it_needs() => Cases.AllAsync(
+        ("Bytes written in pieces read back in order as the buffer grows past its usual size", () => { Bytes_written_in_pieces_read_back_in_order_as_the_buffer_grows_past_its_usual_size(); return Task.CompletedTask; }),
+        ("Room asked with no size is at least a byte even when the buffer is full", () => { Room_asked_with_no_size_is_at_least_a_byte_even_when_the_buffer_is_full(); return Task.CompletedTask; }),
+        ("A cleared buffer holds nothing of the message before it large or small", () => { A_cleared_buffer_holds_nothing_of_the_message_before_it_large_or_small(); return Task.CompletedTask; }),
+        ("A document read in place from it reads the message and the buffer cleared after a large one is of the usual size", () => { A_document_read_in_place_from_it_reads_the_message_and_the_buffer_cleared_after_a_large_one_is_of_the_usual_size(); return Task.CompletedTask; }),
+        ("A stream read to its end into it reads back whole after what was written as the buffer grows", A_stream_read_to_its_end_into_it_reads_back_whole_after_what_was_written_as_the_buffer_grows),
+        ("Disposed it holds nothing and written again holds only what came after", () => { Disposed_it_holds_nothing_and_written_again_holds_only_what_came_after(); return Task.CompletedTask; }),
+        ("A large JSON message written through it is the JSON the serializer makes", () => { A_large_JSON_message_written_through_it_is_the_JSON_the_serializer_makes(); return Task.CompletedTask; }));
+
+    private void Bytes_written_in_pieces_read_back_in_order_as_the_buffer_grows_past_its_usual_size()
     {
         PooledBytes bytes = new();
         byte[] expected = new byte[300_000];
@@ -27,8 +36,7 @@ public class PooledBytesTests
         Assert.True(expected.AsSpan().SequenceEqual(bytes.Written), "The bytes read back are not those written");
     }
 
-    [Fact]
-    public void Room_asked_with_no_size_is_at_least_a_byte_even_when_the_buffer_is_full()
+    private void Room_asked_with_no_size_is_at_least_a_byte_even_when_the_buffer_is_full()
     {
         PooledBytes bytes = new();
         int filled = bytes.GetSpan().Length;
@@ -37,8 +45,7 @@ public class PooledBytesTests
         Assert.Equal(filled, bytes.Written.Length);
     }
 
-    [Fact]
-    public void A_cleared_buffer_holds_nothing_of_the_message_before_it_large_or_small()
+    private void A_cleared_buffer_holds_nothing_of_the_message_before_it_large_or_small()
     {
         PooledBytes bytes = new();
         bytes.GetSpan(1_000_000).Fill(1);
@@ -52,8 +59,7 @@ public class PooledBytesTests
         Assert.Equal(0, bytes.Written.Length);
     }
 
-    [Fact]
-    public void A_document_read_in_place_from_it_reads_the_message_and_the_buffer_cleared_after_a_large_one_is_of_the_usual_size()
+    private void A_document_read_in_place_from_it_reads_the_message_and_the_buffer_cleared_after_a_large_one_is_of_the_usual_size()
     {
         using PooledBytes bytes = new();
         byte[] large = JsonSerializer.SerializeToUtf8Bytes(new string('x', 1_000_000));
@@ -68,8 +74,7 @@ public class PooledBytesTests
             $"Cleared after a message of {large.Length} bytes, the buffer still holds {bytes.GetSpan().Length}: a reader keeps its largest message's array to its end");
     }
 
-    [Fact]
-    public async Task A_stream_read_to_its_end_into_it_reads_back_whole_after_what_was_written_as_the_buffer_grows()
+    private async Task A_stream_read_to_its_end_into_it_reads_back_whole_after_what_was_written_as_the_buffer_grows()
     {
         using PooledBytes bytes = new();
         bytes.GetSpan(3)[..3].Fill(7);
@@ -80,8 +85,7 @@ public class PooledBytesTests
         Assert.True(((byte[])[7, 7, 7, .. streamed]).AsSpan().SequenceEqual(bytes.Written), "The bytes read back are not those written, then those the stream held");
     }
 
-    [Fact]
-    public void Disposed_it_holds_nothing_and_written_again_holds_only_what_came_after()
+    private void Disposed_it_holds_nothing_and_written_again_holds_only_what_came_after()
     {
         PooledBytes bytes = new();
         bytes.GetSpan(100_000)[..100_000].Fill(1);
@@ -96,8 +100,7 @@ public class PooledBytesTests
         Assert.Equal(0, bytes.Written.Length);
     }
 
-    [Fact]
-    public void A_large_JSON_message_written_through_it_is_the_JSON_the_serializer_makes()
+    private void A_large_JSON_message_written_through_it_is_the_JSON_the_serializer_makes()
     {
         Dictionary<string, string> message = Enumerable.Range(0, 20_000).ToDictionary(i => $"key{i}", i => $"value {i} é\U0001F600");
         PooledBytes bytes = new();

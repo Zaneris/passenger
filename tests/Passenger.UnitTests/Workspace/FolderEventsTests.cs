@@ -21,7 +21,18 @@ public class FolderEventsTests
     }
 
     [Fact]
-    public void A_streams_word_that_it_dropped_changes_is_a_drop_wherever_it_points()
+    public void A_folders_events_are_told_once_each_as_they_came() => Cases.All(
+        ("A streams word that it dropped changes is a drop wherever it points", A_streams_word_that_it_dropped_changes_is_a_drop_wherever_it_points),
+        ("The folder moved away is gone and nothing of itself or outside it is a change", The_folder_moved_away_is_gone_and_nothing_of_itself_or_outside_it_is_a_change),
+        ("Each change below the folder is said in turn and a rename by what stands there now", Each_change_below_the_folder_is_said_in_turn_and_a_rename_by_what_stands_there_now),
+        ("A folder watched on its own hears its children alone", A_folder_watched_on_its_own_hears_its_children_alone),
+        ("Read from above the folder it is gone as it or a folder holding it is renamed or deleted away", Read_from_above_the_folder_it_is_gone_as_it_or_a_folder_holding_it_is_renamed_or_deleted_away),
+        ("A shared stream reaches a folder with a drop over or in it its own folder moved or one holding it gone", A_shared_stream_reaches_a_folder_with_a_drop_over_or_in_it_its_own_folder_moved_or_one_holding_it_gone),
+        ("A watch failed is said to every folder its watcher reads for as failed", A_watch_failed_is_said_to_every_folder_its_watcher_reads_for_as_failed),
+        ("Windows folders are shared from the deepest folder both are in below their drives and shares", Windows_folders_are_shared_from_the_deepest_folder_both_are_in_below_their_drives_and_shares),
+        ("A stream is shared from the deepest folder both are in and never from a home its children or a volume", A_stream_is_shared_from_the_deepest_folder_both_are_in_and_never_from_a_home_its_children_or_a_volume));
+
+    private void A_streams_word_that_it_dropped_changes_is_a_drop_wherever_it_points()
     {
         // As a stream behind says it at its top, and the kernel's full queue at the volume's root.
         Assert.Equal([new FolderEvent(Folder, FolderEventKind.Dropped)], Read(Folder, FolderEvents.MustScanSubDirs | FolderEvents.UserDropped));
@@ -31,8 +42,7 @@ public class FolderEventsTests
             "A volume mounted was not taken for changes the stream cannot tell, so what it brought under the folder goes unseen");
     }
 
-    [Fact]
-    public void The_folder_moved_away_is_gone_and_nothing_of_itself_or_outside_it_is_a_change()
+    private void The_folder_moved_away_is_gone_and_nothing_of_itself_or_outside_it_is_a_change()
     {
         Assert.Equal([new FolderEvent(Folder, FolderEventKind.Gone)], Read(Folder, FolderEvents.RootChanged));
         Assert.Empty(Read(Folder, FolderEvents.ItemModified | FolderEvents.ItemInodeMetaMod));
@@ -40,8 +50,7 @@ public class FolderEventsTests
         Assert.Empty(Read($"{Home}/Dev/Shopping/Cart.cs", FolderEvents.ItemModified));
     }
 
-    [Fact]
-    public void Each_change_below_the_folder_is_said_in_turn_and_a_rename_by_what_stands_there_now()
+    private void Each_change_below_the_folder_is_said_in_turn_and_a_rename_by_what_stands_there_now()
     {
         string cart = $"{Folder}/src/Cart.cs";
         Assert.Equal([new FolderEvent(cart, FolderEventKind.Changed)], Read(cart, FolderEvents.ItemModified | FolderEvents.ItemIsFile));
@@ -52,15 +61,13 @@ public class FolderEventsTests
         Assert.Equal([new FolderEvent(cart, FolderEventKind.Made)], Read(cart, FolderEvents.ItemCreated | FolderEvents.ItemRenamed | FolderEvents.ItemIsFile));
     }
 
-    [Fact]
-    public void A_folder_watched_on_its_own_hears_its_children_alone()
+    private void A_folder_watched_on_its_own_hears_its_children_alone()
     {
         Assert.Equal([new FolderEvent($"{Folder}/Cart.cs", FolderEventKind.Changed)], Read($"{Folder}/Cart.cs", FolderEvents.ItemModified, recursive: false));
         Assert.Empty(Read($"{Folder}/src/Cart.cs", FolderEvents.ItemModified, recursive: false));
     }
 
-    [Fact]
-    public void Read_from_above_the_folder_it_is_gone_as_it_or_a_folder_holding_it_is_renamed_or_deleted_away()
+    private void Read_from_above_the_folder_it_is_gone_as_it_or_a_folder_holding_it_is_renamed_or_deleted_away()
     {
         const uint Removed = FolderEvents.ItemRemoved | FolderEvents.ItemIsDir;
         const uint Renamed = FolderEvents.ItemRenamed | FolderEvents.ItemIsDir;
@@ -74,8 +81,7 @@ public class FolderEventsTests
         Assert.True(Read(Folder, Removed, there: false).Count == 0, "A stream of the folder's own said it gone by its event as well as by its word");
     }
 
-    [Fact]
-    public void A_shared_stream_reaches_a_folder_with_a_drop_over_or_in_it_its_own_folder_moved_or_one_holding_it_gone()
+    private void A_shared_stream_reaches_a_folder_with_a_drop_over_or_in_it_its_own_folder_moved_or_one_holding_it_gone()
     {
         Assert.True(FolderEvents.Reaches("/", FolderEvents.MustScanSubDirs | FolderEvents.KernelDropped, Folder), "The kernel's drop at the root missed the folder");
         Assert.True(FolderEvents.Reaches($"{Folder}/src", FolderEvents.MustScanSubDirs, Folder), "A drop in the folder missed it");
@@ -87,8 +93,7 @@ public class FolderEventsTests
             "A change below the folder, which the folders above its path hand over, was handed over twice");
     }
 
-    [Fact]
-    public void A_watch_failed_is_said_to_every_folder_its_watcher_reads_for_as_failed()
+    private void A_watch_failed_is_said_to_every_folder_its_watcher_reads_for_as_failed()
     {
         Assert.Equal([new FolderEvent(Home, FolderEventKind.Failed)], Read(Home, FolderEvents.Failed, from: Home));
         Assert.True(FolderEvents.Says(FolderEvents.Failed) && FolderEvents.Reaches(Home, FolderEvents.Failed, Folder),
@@ -96,8 +101,7 @@ public class FolderEventsTests
         Assert.False(FolderEvents.Says(FolderEvents.ItemRemoved | FolderEvents.ItemIsDir), "A folder deleted was taken for the watcher's own word to every folder");
     }
 
-    [Fact]
-    public void Windows_folders_are_shared_from_the_deepest_folder_both_are_in_below_their_drives_and_shares()
+    private void Windows_folders_are_shared_from_the_deepest_folder_both_are_in_below_their_drives_and_shares()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows names a drive or a share at a path's root");
         const string WindowsHome = @"C:\Users\someone";
@@ -109,8 +113,7 @@ public class FolderEventsTests
         Assert.Equal(@"\\server\share\a\b\c\d", FolderEvents.Shared(@"\\server\share\a\b\c\d\e", @"\\server\share\a\b\c\d\f", WindowsHome));
     }
 
-    [Fact]
-    public void A_stream_is_shared_from_the_deepest_folder_both_are_in_and_never_from_a_home_its_children_or_a_volume()
+    private void A_stream_is_shared_from_the_deepest_folder_both_are_in_and_never_from_a_home_its_children_or_a_volume()
     {
         Assert.Equal($"{Home}/.nuget/packages", FolderEvents.Shared($"{Home}/.nuget/packages/avalonia/12.0.0/lib/net8.0", $"{Home}/.nuget/packages/xunit.v3/3.2.0/lib/net8.0", Home));
         Assert.Equal($"{Home}/Dev/Shop", FolderEvents.Shared($"{Home}/Dev/Shop/App/obj", $"{Home}/Dev/Shop/Core/bin", Home));

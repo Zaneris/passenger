@@ -10,7 +10,13 @@ public sealed class ProgramsTests
     private const string Default = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC";
 
     [Fact]
-    public void A_bare_name_on_Windows_is_tried_with_each_extension_of_what_Windows_starts_in_PATHEXTs_order()
+    public void A_commands_program_is_found_as_a_terminal_finds_it() => Cases.All(
+        ("A bare name on Windows is tried with each extension of what Windows starts in PATHEXTs order", A_bare_name_on_Windows_is_tried_with_each_extension_of_what_Windows_starts_in_PATHEXTs_order),
+        ("A name given with an extension of what Windows starts is looked for as it is", A_name_given_with_an_extension_of_what_Windows_starts_is_looked_for_as_it_is),
+        ("Each folder on the PATH is searched whole before the next and a file with no extension is never taken", Each_folder_on_the_PATH_is_searched_whole_before_the_next_and_a_file_with_no_extension_is_never_taken),
+        ("A folder put first on the PATH is there once and every other entry kept an empty one too", A_folder_put_first_on_the_PATH_is_there_once_and_every_other_entry_kept_an_empty_one_too));
+
+    private void A_bare_name_on_Windows_is_tried_with_each_extension_of_what_Windows_starts_in_PATHEXTs_order()
     {
         Assert.Equal(["func.com", "func.exe", "func.bat", "func.cmd"], Programs.WindowsNames("func", Default));
         Assert.Equal(["func.cmd", "func.exe"], Programs.WindowsNames("func", ".CMD;.PY;.EXE"));
@@ -18,15 +24,13 @@ public sealed class ProgramsTests
         Assert.Equal(["python3.11.com", "python3.11.exe", "python3.11.bat", "python3.11.cmd"], Programs.WindowsNames("python3.11", ".js;.vbs"));
     }
 
-    [Fact]
-    public void A_name_given_with_an_extension_of_what_Windows_starts_is_looked_for_as_it_is()
+    private void A_name_given_with_an_extension_of_what_Windows_starts_is_looked_for_as_it_is()
     {
         Assert.Equal(["pwsh.exe"], Programs.WindowsNames("pwsh.exe", Default));
         Assert.Equal(["pnpm.CMD"], Programs.WindowsNames("pnpm.CMD", Default));
     }
 
-    [Fact]
-    public void Each_folder_on_the_PATH_is_searched_whole_before_the_next_and_a_file_with_no_extension_is_never_taken()
+    private void Each_folder_on_the_PATH_is_searched_whole_before_the_next_and_a_file_with_no_extension_is_never_taken()
     {
         string npm = Path.Combine("C:", "npm");
         string tools = Path.Combine("C:", "tools");
@@ -48,8 +52,7 @@ public sealed class ProgramsTests
     }
 
     /// <summary>A POSIX shell reads an empty entry of the PATH as the folder it works in.</summary>
-    [Fact]
-    public void A_folder_put_first_on_the_PATH_is_there_once_and_every_other_entry_kept_an_empty_one_too()
+    private void A_folder_put_first_on_the_PATH_is_there_once_and_every_other_entry_kept_an_empty_one_too()
     {
         char separator = Path.PathSeparator;
         string dotnet = Path.Combine(Path.GetTempPath(), "dotnet");

@@ -8,7 +8,14 @@ namespace Passenger.UnitTests.Core;
 public class SharedWorkTests
 {
     [Fact]
-    public async Task Asks_at_once_take_one_task_and_one_that_stops_waiting_leaves_it_to_the_rest()
+    public Task Work_shared_by_key_runs_once_for_every_ask_and_is_let_go_only_by_the_last() => Cases.AllAsync(
+        ("Asks at once take one task and one that stops waiting leaves it to the rest", Asks_at_once_take_one_task_and_one_that_stops_waiting_leaves_it_to_the_rest),
+        ("An ended task is taken again only where it stands and one that does not is begun anew", An_ended_task_is_taken_again_only_where_it_stands_and_one_that_does_not_is_begun_anew),
+        ("Without stands a task that ended is never taken again", Without_stands_a_task_that_ended_is_never_taken_again),
+        ("A task that stands is begun anew once forgotten", A_task_that_stands_is_begun_anew_once_forgotten),
+        ("Unheld work ends for every asker though the first ones thread never runs again", Unheld_work_ends_for_every_asker_though_the_first_ones_thread_never_runs_again));
+
+    private async Task Asks_at_once_take_one_task_and_one_that_stops_waiting_leaves_it_to_the_rest()
     {
         SharedWork<string, string> shared = new(comparer: StringComparer.Ordinal);
         TaskCompletionSource<string> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -30,8 +37,7 @@ public class SharedWorkTests
             $"Three asks at once, the first giving up, began the work {begun} times, so a download would be made once for each");
     }
 
-    [Fact]
-    public async Task An_ended_task_is_taken_again_only_where_it_stands_and_one_that_does_not_is_begun_anew()
+    private async Task An_ended_task_is_taken_again_only_where_it_stands_and_one_that_does_not_is_begun_anew()
     {
         SharedWork<string, string> shared = new(task => task.IsCompletedSuccessfully, StringComparer.Ordinal);
         int begun = 0;
@@ -46,8 +52,7 @@ public class SharedWorkTests
             $"After a failed and a good download the work was begun {begun} times, so a failure is never tried again or a schema had is downloaded anew");
     }
 
-    [Fact]
-    public async Task Without_stands_a_task_that_ended_is_never_taken_again()
+    private async Task Without_stands_a_task_that_ended_is_never_taken_again()
     {
         SharedWork<string, string> shared = new(comparer: StringComparer.Ordinal);
         int begun = 0;
@@ -58,8 +63,7 @@ public class SharedWorkTests
         Assert.Equal("download 2", await shared.Take("bootstrap.min.css", Work));
     }
 
-    [Fact]
-    public async Task A_task_that_stands_is_begun_anew_once_forgotten()
+    private async Task A_task_that_stands_is_begun_anew_once_forgotten()
     {
         SharedWork<string, string> shared = new(task => task.IsCompletedSuccessfully, StringComparer.Ordinal);
         int begun = 0;
@@ -72,8 +76,7 @@ public class SharedWorkTests
     }
 
     /// <summary>The first asker's thread runs nothing posted to it, as a headless test's thread once its test is over.</summary>
-    [Fact]
-    public async Task Unheld_work_ends_for_every_asker_though_the_first_ones_thread_never_runs_again()
+    private async Task Unheld_work_ends_for_every_asker_though_the_first_ones_thread_never_runs_again()
     {
         SharedWork<string, string> shared = new(task => task.IsCompletedSuccessfully, StringComparer.Ordinal, unheld: true);
         TaskCompletionSource<string> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);

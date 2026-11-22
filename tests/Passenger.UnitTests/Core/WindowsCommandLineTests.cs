@@ -9,53 +9,60 @@ namespace Passenger.UnitTests.Core;
 public sealed class WindowsCommandLineTests
 {
     [Fact]
-    public void A_command_for_cmd_with_its_operators_and_spaces_is_one_quoted_word_after_a_bare_switch()
+    public void Words_are_quoted_on_a_windows_command_line_only_where_they_must_be() => Cases.All(
+        ("A command for cmd with its operators and spaces is one quoted word after a bare switch", A_command_for_cmd_with_its_operators_and_spaces_is_one_quoted_word_after_a_bare_switch),
+        ("A trailing backslash stays the words own and never escapes its closing quote", A_trailing_backslash_stays_the_words_own_and_never_escapes_its_closing_quote),
+        ("An inner quote is escaped with the backslashes before it doubled", An_inner_quote_is_escaped_with_the_backslashes_before_it_doubled),
+        ("A plain word goes bare with its backslashes and an empty one as two quotes", A_plain_word_goes_bare_with_its_backslashes_and_an_empty_one_as_two_quotes));
+
+    private void A_command_for_cmd_with_its_operators_and_spaces_is_one_quoted_word_after_a_bare_switch()
     {
         Check(["/c", "set GIT_PREFIX& echo x"], "/c \"set GIT_PREFIX& echo x\"",
             "cmd.exe would take a quoted /c for no switch, or its command apart at its spaces, and answer that it is not a command");
         Check(["/c", "a& b"], "/c \"a& b\"", "cmd.exe would read \"a& b\" as other words than the run configuration gave");
     }
 
-    [Fact]
-    public void A_trailing_backslash_stays_the_words_own_and_never_escapes_its_closing_quote()
+    private void A_trailing_backslash_stays_the_words_own_and_never_escapes_its_closing_quote()
     {
         Check(["C:\\out\\"], "C:\\out\\", "A folder ending in a backslash would reach the program with a quote in place of it");
         Check(["C:\\my out\\", "next"], "\"C:\\my out\\\\\" next",
             "A folder with a space ending in a backslash would escape its closing quote, running into the next word");
     }
 
-    [Fact]
-    public void An_inner_quote_is_escaped_with_the_backslashes_before_it_doubled()
+    private void An_inner_quote_is_escaped_with_the_backslashes_before_it_doubled()
     {
         Check(["say \"hi\""], "\"say \\\"hi\\\"\"", "A quote inside a word would end it or reach the program doubled");
         Check(["a\\\"b"], "\"a\\\\\\\"b\"", "A backslash before a quote would escape the quote and be lost");
         Check(["say\"hi"], "\"say\\\"hi\"", "A quote inside a word with no space would end the word's text early");
     }
 
-    [Fact]
-    public void A_plain_word_goes_bare_with_its_backslashes_and_an_empty_one_as_two_quotes()
+    private void A_plain_word_goes_bare_with_its_backslashes_and_an_empty_one_as_two_quotes()
     {
         Check(["-NoLogo", "C:\\Program\\x.exe", "", "last"], "-NoLogo C:\\Program\\x.exe \"\" last",
             "A plain word would reach a .bat in quotes, which it keeps, or an empty word would be lost");
     }
 
     [Fact]
-    public void A_batch_files_words_with_cmds_operators_and_variables_go_through_cmd_quoted_as_given()
+    public void A_batch_files_words_reach_its_program_through_cmd_as_given_so_nothing_in_them_runs() => Cases.All(
+        ("A batch files words with cmds operators and variables go through cmd quoted as given", A_batch_files_words_with_cmds_operators_and_variables_go_through_cmd_quoted_as_given),
+        ("A batch files words with quotes escapes and backslashes reach the program it runs as given", A_batch_files_words_with_quotes_escapes_and_backslashes_reach_the_program_it_runs_as_given),
+        ("A batch file is run by its path in quotes with extensions on and delayed expansion off", A_batch_file_is_run_by_its_path_in_quotes_with_extensions_on_and_delayed_expansion_off),
+        ("A line break in a batch files word is refused as no line of cmds carries it", A_line_break_in_a_batch_files_word_is_refused_as_no_line_of_cmds_carries_it));
+
+    private void A_batch_files_words_with_cmds_operators_and_variables_go_through_cmd_quoted_as_given()
     {
         Through(["run", "dev", "R&D", "a|b", "%x%"], "run dev \"R&D\" \"a|b\" \"%%cd:~,%x%%cd:~,%\"",
             "cmd.exe would run D as a command of its own after R, pipe into a command b, or put x's value in place of %x%");
     }
 
-    [Fact]
-    public void A_batch_files_words_with_quotes_escapes_and_backslashes_reach_the_program_it_runs_as_given()
+    private void A_batch_files_words_with_quotes_escapes_and_backslashes_reach_the_program_it_runs_as_given()
     {
         Through(["say \"hi\"", "x^y", "!z!", "a\\\"b", "C:\\out\\", "", "plain-1.0/x:y@z"],
             "\"say \"\"hi\"\"\" \"x^y\" \"!z!\" \"a\\\\\"\"b\" \"C:\\out\\\\\" \"\" plain-1.0/x:y@z",
             "a quote would end cmd's quoting there, a caret be taken away, a trailing backslash escape the closing quote, or an empty word be lost");
     }
 
-    [Fact]
-    public void A_batch_file_is_run_by_its_path_in_quotes_with_extensions_on_and_delayed_expansion_off()
+    private void A_batch_file_is_run_by_its_path_in_quotes_with_extensions_on_and_delayed_expansion_off()
     {
         string line = WindowsCommandLine.ThroughCmd("C:\\Program Files\\nodejs\\pnpm.cmd", ["install"]);
         Assert.True(line == "/e:ON /v:OFF /d /s /c \"\"C:\\Program Files\\nodejs\\pnpm.cmd\" install\"",
@@ -64,8 +71,7 @@ public sealed class WindowsCommandLineTests
             "A .cmd or .bat, in any letter case, would be started without cmd.exe, or a program through it");
     }
 
-    [Fact]
-    public void A_line_break_in_a_batch_files_word_is_refused_as_no_line_of_cmds_carries_it()
+    private void A_line_break_in_a_batch_files_word_is_refused_as_no_line_of_cmds_carries_it()
     {
         ArgumentException refused = Assert.Throws<ArgumentException>(() => WindowsCommandLine.ThroughCmd(Path.Combine("npm", "pnpm.cmd"), ["run", "a\nb"]));
         Assert.StartsWith("pnpm.cmd runs through cmd.exe", refused.Message, StringComparison.Ordinal);

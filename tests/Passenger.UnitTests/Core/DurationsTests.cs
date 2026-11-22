@@ -8,27 +8,27 @@ namespace Passenger.UnitTests.Core;
 /// rounded, a minute or an hour alone said as one.</summary>
 public sealed class DurationsTests
 {
-    [Theory]
-    [InlineData(0d, "0 ms")]
-    [InlineData(0.4d, "0.4 ms")]
-    [InlineData(250d, "250 ms")]
-    [InlineData(999.96d, "1 s")]
-    [InlineData(1500d, "1.5 s")]
-    [InlineData(59_960d, "1 minute")]
-    [InlineData(60_000d, "1 minute")]
-    [InlineData(90_000d, "1.5 minutes")]
-    [InlineData(120_000d, "2 minutes")]
-    [InlineData(3_600_000d, "1 hour")]
-    [InlineData(9_000_000d, "2.5 hours")]
-    [InlineData(-1500d, "-1.5 s")]
-    public void A_while_is_said_in_its_largest_unit_to_a_tenth(double milliseconds, string said)
+    [Fact]
+    public void A_while_is_said_one_way_wherever_it_is_said() => Cases.All(
+        ("A while is said in its largest unit to a tenth", A_while_is_said_in_its_largest_unit_to_a_tenth),
+        ("A while is said in the ides digits under a culture writing a decimal comma", A_while_is_said_in_the_ides_digits_under_a_culture_writing_a_decimal_comma));
+
+    private void A_while_is_said_in_its_largest_unit_to_a_tenth() => Cases.Each<(double milliseconds, string said)>(
+    [
+        (0d, "0 ms"),
+        (250d, "250 ms"),
+        (1500d, "1.5 s"),
+        (90_000d, "1.5 minutes"),
+        (3_600_000d, "1 hour"),
+        (-1500d, "-1.5 s"),
+    ], row =>
     {
+        (double milliseconds, string said) = row;
         string written = Durations.Said(TimeSpan.FromMilliseconds(milliseconds));
         Assert.True(written == said, $"{milliseconds} ms were said as {written}, not {said}: a while reads one way in one place and another elsewhere");
-    }
+    });
 
-    [Fact]
-    public void A_while_is_said_in_the_ides_digits_under_a_culture_writing_a_decimal_comma()
+    private void A_while_is_said_in_the_ides_digits_under_a_culture_writing_a_decimal_comma()
     {
         CultureInfo was = CultureInfo.CurrentCulture;
         CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");

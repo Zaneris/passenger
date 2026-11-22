@@ -10,7 +10,13 @@ public class FoundPathsTests
     private static readonly string Here = OperatingSystem.IsWindows() ? @"C:\work\Shop\Program.cs" : "/work/Shop/Program.cs";
 
     [Fact]
-    public void A_path_on_this_machine_may_be_asked_whether_whole_relative_or_climbing_by_dots()
+    public void A_path_read_from_text_is_asked_of_the_disk_only_on_this_machines_own_volumes() => Cases.All(
+        ("A path on this machine may be asked whether whole relative or climbing by dots", A_path_on_this_machine_may_be_asked_whether_whole_relative_or_climbing_by_dots),
+        ("A shares path by either slash is never asked", A_shares_path_by_either_slash_is_never_asked),
+        ("A devices path is never asked", A_devices_path_is_never_asked),
+        ("A path under an automount root is never asked off Windows", A_path_under_an_automount_root_is_never_asked_off_Windows));
+
+    private void A_path_on_this_machine_may_be_asked_whether_whole_relative_or_climbing_by_dots()
     {
         foreach (string path in (string[])[Here, "Program.cs", Path.Combine("src", "..", "Program.cs"), OperatingSystem.IsWindows() ? "C:/work/x.cs" : "/work/../x.cs", "/netbox/x.cs"])
         {
@@ -21,8 +27,7 @@ public class FoundPathsTests
 
     /// <summary>Two slashes of either kind begin a share's path on Windows, and are refused everywhere, as a share's path
     /// read from a Windows program's output; its dots never climb above its share.</summary>
-    [Fact]
-    public void A_shares_path_by_either_slash_is_never_asked()
+    private void A_shares_path_by_either_slash_is_never_asked()
     {
         foreach (string path in (string[])[@"\\otherhost\share\a.cs", "//otherhost/share/a.cs", @"\/otherhost/share/a.cs", @"/\otherhost\share\a.cs",
             @"\\otherhost\share\..\..\a.cs", @"\\\otherhost\share\a.cs", @"\\otherhost.\share\a.cs"])
@@ -32,8 +37,7 @@ public class FoundPathsTests
         }
     }
 
-    [Fact]
-    public void A_devices_path_is_never_asked()
+    private void A_devices_path_is_never_asked()
     {
         List<string> devices = [@"\\?\C:\work\a.cs", @"\\.\pipe\x", "//?/C:/work/a.cs", "//./COM1", @"\\?\UNC\otherhost\share\a.cs"];
         if (OperatingSystem.IsWindows())
@@ -50,8 +54,7 @@ public class FoundPathsTests
 
     /// <summary>Naming a path under /net (or macOS's /Network) mounts that host's exports: refused in the letter case its
     /// volume takes, and once its dots are resolved; a name that only begins the same is no such root.</summary>
-    [Fact]
-    public void A_path_under_an_automount_root_is_never_asked_off_Windows()
+    private void A_path_under_an_automount_root_is_never_asked_off_Windows()
     {
         string[] automounted = ["/net/otherhost/share/a.cs", "/net", "/work/../net/otherhost/a.cs", "/./net/otherhost/a.cs"];
         foreach (string path in automounted)
@@ -64,7 +67,13 @@ public class FoundPathsTests
     }
 
     [Fact]
-    public void An_empty_path_or_one_holding_a_nul_is_never_asked()
+    public void A_path_is_asked_only_where_it_is_whole_or_reached_and_a_file_address_only_naming_this_machine() => Cases.All(
+        ("An empty path or one holding a nul is never asked", An_empty_path_or_one_holding_a_nul_is_never_asked),
+        ("A shares path inside a folder the IDE works in may be asked and none outside it", A_shares_path_inside_a_folder_the_IDE_works_in_may_be_asked_and_none_outside_it),
+        ("A folder held as reached lets its paths be asked until let go", A_folder_held_as_reached_lets_its_paths_be_asked_until_let_go),
+        ("A file address names a path here only without another host and never a shares", A_file_address_names_a_path_here_only_without_another_host_and_never_a_shares));
+
+    private void An_empty_path_or_one_holding_a_nul_is_never_asked()
     {
         Assert.Equal(FoundPathRefusal.Malformed, FoundPaths.WhyNotAsked(string.Empty));
         Assert.Equal(FoundPathRefusal.Malformed, FoundPaths.WhyNotAsked("a\0b.cs"));
@@ -72,8 +81,7 @@ public class FoundPathsTests
 
     /// <summary>A folder opened on a share (or an automounted one) is the IDE's already: a path inside it may be asked,
     /// its dots resolved first, so none climbs out of it to the share beside it or another host.</summary>
-    [Fact]
-    public void A_shares_path_inside_a_folder_the_IDE_works_in_may_be_asked_and_none_outside_it()
+    private void A_shares_path_inside_a_folder_the_IDE_works_in_may_be_asked_and_none_outside_it()
     {
         string share = OperatingSystem.IsWindows() ? @"\\fileserver\code\Shop" : "/net/fileserver/code/Shop";
         string inside = Path.Combine(share, "src", "a.cs");
@@ -87,8 +95,7 @@ public class FoundPathsTests
 
     /// <summary>A folder held as one the IDE works in (a window's open folder) lets its paths be asked while held, and no
     /// longer once let go.</summary>
-    [Fact]
-    public void A_folder_held_as_reached_lets_its_paths_be_asked_until_let_go()
+    private void A_folder_held_as_reached_lets_its_paths_be_asked_until_let_go()
     {
         string share = OperatingSystem.IsWindows() ? @"\\heldserver\code\Held" : "/net/heldserver/code/Held";
         string inside = Path.Combine(share, "a.cs");
@@ -105,8 +112,7 @@ public class FoundPathsTests
 
     /// <summary>A file address names a path here only with no host or localhost, its path as any found path's however
     /// escaped: another host's, a share's by four slashes or escaped slashes, a device's or an automounted one is none.</summary>
-    [Fact]
-    public void A_file_address_names_a_path_here_only_without_another_host_and_never_a_shares()
+    private void A_file_address_names_a_path_here_only_without_another_host_and_never_a_shares()
     {
         string here = OperatingSystem.IsWindows() ? @"C:\work\x.txt" : "/work/x.txt";
         Assert.Equal(here, FoundPaths.OfFileAddress(new Uri(OperatingSystem.IsWindows() ? "file:///C:/work/x.txt" : "file:///work/x.txt")));

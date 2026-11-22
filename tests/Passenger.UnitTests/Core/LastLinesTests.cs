@@ -7,7 +7,13 @@ namespace Passenger.UnitTests.Core;
 public class LastLinesTests
 {
     [Fact]
-    public void An_exception_that_ended_the_program_is_named_above_however_many_frames_its_trace_has()
+    public void A_programs_last_lines_name_the_exception_that_ended_it_with_its_inner_ones() => Cases.All(
+        ("An exception that ended the program is named above however many frames its trace has", An_exception_that_ended_the_program_is_named_above_however_many_frames_its_trace_has),
+        ("An exceptions inner ones are named with it and the end of an inner trace is one of its frames", An_exceptions_inner_ones_are_named_with_it_and_the_end_of_an_inner_trace_is_one_of_its_frames),
+        ("A line after a trace is what the program last said", A_line_after_a_trace_is_what_the_program_last_said),
+        ("A program that said nothing has no last line", A_program_that_said_nothing_has_no_last_line));
+
+    private void An_exception_that_ended_the_program_is_named_above_however_many_frames_its_trace_has()
     {
         LastLines lines = new(5);
         lines.Heard("Initializing application in design mode");
@@ -25,8 +31,7 @@ public class LastLinesTests
         Assert.Equal("   at Avalonia.Designer.HostApp.Program.Main(String[] args)", lines.Kept[^1]);
     }
 
-    [Fact]
-    public void An_exceptions_inner_ones_are_named_with_it_and_the_end_of_an_inner_trace_is_one_of_its_frames()
+    private void An_exceptions_inner_ones_are_named_with_it_and_the_end_of_an_inner_trace_is_one_of_its_frames()
     {
         LastLines lines = new(3);
         lines.Heard("Unhandled exception. System.TypeInitializationException: The type initializer for 'SkiaSharp.SkiaApi' threw an exception.");
@@ -41,8 +46,7 @@ public class LastLinesTests
         Assert.Equal(5, lines.Kept.Count);
     }
 
-    [Fact]
-    public void A_line_after_a_trace_is_what_the_program_last_said()
+    private void A_line_after_a_trace_is_what_the_program_last_said()
     {
         LastLines lines = new(5);
         lines.Heard("Unhandled exception. System.Exception: handled and logged");
@@ -54,8 +58,7 @@ public class LastLinesTests
         Assert.Equal(["Unhandled exception. System.Exception: handled and logged", "   at Gallery.App.Initialize()", "the previewer's last words"], lines.Kept);
     }
 
-    [Fact]
-    public void A_program_that_said_nothing_has_no_last_line()
+    private void A_program_that_said_nothing_has_no_last_line()
     {
         LastLines lines = new(5);
         lines.Heard("");

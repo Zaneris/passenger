@@ -13,7 +13,14 @@ public sealed class UnwritableFoldersTests
     private const string Open = "/work/Shop";
 
     [Fact]
-    public void A_missing_local_source_under_a_folder_the_system_owns_blames_no_folder()
+    public void A_folder_no_write_reaches_is_told_as_such() => Cases.All(
+        ("A missing local source under a folder the system owns blames no folder", A_missing_local_source_under_a_folder_the_system_owns_blames_no_folder),
+        ("A write refused under a read only project folder blames that folder", A_write_refused_under_a_read_only_project_folder_blames_that_folder),
+        ("A write refused under a read only open folder blames it where the project writes there", A_write_refused_under_a_read_only_open_folder_blames_it_where_the_project_writes_there),
+        ("A write refused outside the project blames only the folder the error names", A_write_refused_outside_the_project_blames_only_the_folder_the_error_names),
+        ("A folder that can be written is never blamed", A_folder_that_can_be_written_is_never_blamed));
+
+    private void A_missing_local_source_under_a_folder_the_system_owns_blames_no_folder()
     {
         OnUnix();
         Dictionary<string, bool> folders = Folders(("/", false), ("/Users", false), ("/opt", false), (Open, true), ("/work/Shop/App", true));
@@ -28,8 +35,7 @@ public sealed class UnwritableFoldersTests
         }
     }
 
-    [Fact]
-    public void A_write_refused_under_a_read_only_project_folder_blames_that_folder()
+    private void A_write_refused_under_a_read_only_project_folder_blames_that_folder()
     {
         OnUnix();
         Dictionary<string, bool> folders = Folders(("/", false), ("/work", true), (Open, true), ("/work/Shop/App", false));
@@ -45,8 +51,7 @@ public sealed class UnwritableFoldersTests
             "A missing local source inside the read-only project is said as the project being read-only, not as missing");
     }
 
-    [Fact]
-    public void A_write_refused_under_a_read_only_open_folder_blames_it_where_the_project_writes_there()
+    private void A_write_refused_under_a_read_only_open_folder_blames_it_where_the_project_writes_there()
     {
         OnUnix();
         Dictionary<string, bool> folders = Folders(("/", false), ("/work", true), (Open, false), ("/work/Shop/App", false));
@@ -54,8 +59,7 @@ public sealed class UnwritableFoldersTests
         Assert.True(Blamed(Error, folders) == Open, $"An artifacts folder the read-only open folder could not hold is blamed on {Blamed(Error, folders)}, not on {Open}");
     }
 
-    [Fact]
-    public void A_write_refused_outside_the_project_blames_only_the_folder_the_error_names()
+    private void A_write_refused_outside_the_project_blames_only_the_folder_the_error_names()
     {
         OnUnix();
         Dictionary<string, bool> folders = Folders(("/", false), ("/opt", false), ("/opt/nuget", false), ("/opt/nuget/packages", false), (Open, true), ("/work/Shop/App", true));
@@ -65,8 +69,7 @@ public sealed class UnwritableFoldersTests
         Assert.True(above is null, $"A refused write two folders below {above} blames it, a folder the error does not name");
     }
 
-    [Fact]
-    public void A_folder_that_can_be_written_is_never_blamed()
+    private void A_folder_that_can_be_written_is_never_blamed()
     {
         OnUnix();
         Dictionary<string, bool> folders = Folders(("/", false), ("/work", true), (Open, true), ("/work/Shop/App", true));

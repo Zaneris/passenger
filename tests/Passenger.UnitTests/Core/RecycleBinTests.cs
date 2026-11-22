@@ -11,14 +11,17 @@ public sealed class RecycleBinTests
     private const string Deleted = @"C:\Users\ted\Shop\Shop.Shared\Models";
 
     [Fact]
-    public void A_record_of_either_form_names_the_path_its_item_was_deleted_from()
+    public void A_recycle_bin_record_is_read_for_the_path_deleted_in_both_forms() => Cases.All(
+        ("A record of either form names the path its item was deleted from", A_record_of_either_form_names_the_path_its_item_was_deleted_from),
+        ("A record cut short or of another form names nothing", A_record_cut_short_or_of_another_form_names_nothing));
+
+    private void A_record_of_either_form_names_the_path_its_item_was_deleted_from()
     {
         Assert.Equal(Deleted, RecycleBin.DeletedFrom(Record(2, Deleted)));
         Assert.Equal(Deleted, RecycleBin.DeletedFrom(Record(1, Deleted)));
     }
 
-    [Fact]
-    public void A_record_cut_short_or_of_another_form_names_nothing()
+    private void A_record_cut_short_or_of_another_form_names_nothing()
     {
         byte[] whole = Record(2, Deleted);
         Assert.Null(RecycleBin.DeletedFrom(whole.AsSpan(0, 30)));

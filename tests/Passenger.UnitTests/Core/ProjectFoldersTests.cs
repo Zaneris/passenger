@@ -14,7 +14,13 @@ public sealed class ProjectFoldersTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_projects_own_folders_pass_over_build_output_dependencies_hidden_folders_and_another_projects()
+    public void A_projects_own_folders_leave_out_its_output_and_another_projects() => Cases.All(
+        ("A projects own folders pass over build output dependencies hidden folders and another projects", () => Fresh(test => test.A_projects_own_folders_pass_over_build_output_dependencies_hidden_folders_and_another_projects())),
+        ("The folders walk and a projects files pass over build output in another letter case as its own folders do", () => Fresh(test => test.The_folders_walk_and_a_projects_files_pass_over_build_output_in_another_letter_case_as_its_own_folders_do())),
+        ("Build output in another letter case is passed over where case is ignored and the folders other names only as written", () => Fresh(test => test.Build_output_in_another_letter_case_is_passed_over_where_case_is_ignored_and_the_folders_other_names_only_as_written())),
+        ("A resource is found by its embedded name only in the projects own folders", () => Fresh(test => test.A_resource_is_found_by_its_embedded_name_only_in_the_projects_own_folders())));
+
+    private void A_projects_own_folders_pass_over_build_output_dependencies_hidden_folders_and_another_projects()
     {
         string project = Path.Join(root, "Shop");
         foreach (string folder in (string[])["Pages/Admin", "bin/Debug", "obj", "node_modules/left-pad", ".vs", "Tests", "Tools", "Bin"])
@@ -36,8 +42,7 @@ public sealed class ProjectFoldersTests : IDisposable
         Assert.False(ProjectFolders.Holds(project, Path.Join(root, "Other", "A.cs")), "A file outside the project counts as its own");
     }
 
-    [Fact]
-    public void The_folders_walk_and_a_projects_files_pass_over_build_output_in_another_letter_case_as_its_own_folders_do()
+    private void The_folders_walk_and_a_projects_files_pass_over_build_output_in_another_letter_case_as_its_own_folders_do()
     {
         string project = Path.Join(root, "Shop");
         string[] written = ["Pages/Index.cs", "Bin/Debug/Built.cs", "Obj/Shop.AssemblyInfo.cs", "Node_Modules/pad/index.js", "Tools/Tool.cs"];
@@ -68,8 +73,7 @@ public sealed class ProjectFoldersTests : IDisposable
     /// <summary>Only a project's build output and dependencies are read in another letter case: an Artifacts folder of an
     /// RPG's items, a Packages folder or a testresults folder is the person's code, though artifacts, packages NuGet
     /// restored into and TestResults written as such are passed over.</summary>
-    [Fact]
-    public void Build_output_in_another_letter_case_is_passed_over_where_case_is_ignored_and_the_folders_other_names_only_as_written()
+    private void Build_output_in_another_letter_case_is_passed_over_where_case_is_ignored_and_the_folders_other_names_only_as_written()
     {
         string game = Path.Join(root, "Game");
         string[] written = ["Bin/Debug/Built.cs", "Artifacts/Sword.tscn", "testresults/Summary.md",
@@ -95,8 +99,7 @@ public sealed class ProjectFoldersTests : IDisposable
         Assert.Equal(expected, listed);
     }
 
-    [Fact]
-    public void A_resource_is_found_by_its_embedded_name_only_in_the_projects_own_folders()
+    private void A_resource_is_found_by_its_embedded_name_only_in_the_projects_own_folders()
     {
         string project = Path.Join(root, "Shop");
         foreach (string folder in (string[])["Pages", "Tests"])
@@ -109,5 +112,12 @@ public sealed class ProjectFoldersTests : IDisposable
         Assert.Equal([Path.Join(project, "Pages", "Strings")], ResourceFiles.Named(project, "Shop", "Shop.Pages.Strings"));
         Assert.True(ResourceFiles.Named(project, "Shop", "Shop.Tests.Strings").Count == 0,
             "Shop.Tests.Strings was found in the nested Tests project's folder, as if Shop's own");
+    }
+
+    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
+    private static void Fresh(Action<ProjectFoldersTests> check)
+    {
+        using ProjectFoldersTests test = new();
+        check(test);
     }
 }

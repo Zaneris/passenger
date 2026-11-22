@@ -7,7 +7,11 @@ namespace Passenger.UnitTests.Core;
 public class BlockingTests
 {
     [Fact]
-    public void A_wait_lets_its_thread_go_once_another_thread_ends_the_task()
+    public void A_synchronous_wait_on_a_task_lets_its_thread_go_once_the_task_ends() => Cases.All(
+        ("A wait lets its thread go once another thread ends the task", A_wait_lets_its_thread_go_once_another_thread_ends_the_task),
+        ("A wait on a task that failed or was cancelled throws nothing", A_wait_on_a_task_that_failed_or_was_cancelled_throws_nothing));
+
+    private void A_wait_lets_its_thread_go_once_another_thread_ends_the_task()
     {
         TaskCompletionSource<int> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Thread answering = new(() => answer.SetResult(1));
@@ -19,8 +23,7 @@ public class BlockingTests
         answering.Join();
     }
 
-    [Fact]
-    public void A_wait_on_a_task_that_failed_or_was_cancelled_throws_nothing()
+    private void A_wait_on_a_task_that_failed_or_was_cancelled_throws_nothing()
     {
         Task<int>[] ended = [Task.FromException<int>(new InvalidOperationException("The relay went away")), Task.FromCanceled<int>(new CancellationToken(canceled: true))];
 

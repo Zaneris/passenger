@@ -10,7 +10,16 @@ public class UserEnvironmentTests
     private const string Folder = @"C:\Users\ana\AppData\Local\PassengerIDE\current\bin";
 
     [Fact]
-    public void A_folder_goes_at_the_end_of_the_path_every_entry_before_it_kept_as_written()
+    public void Windows_user_path_changes_a_folder_at_a_time_as_windows_reads_it() => Cases.All(
+        ("A folder goes at the end of the path every entry before it kept as written", A_folder_goes_at_the_end_of_the_path_every_entry_before_it_kept_as_written),
+        ("A folder put on and taken off leaves the path as it was", A_folder_put_on_and_taken_off_leaves_the_path_as_it_was),
+        ("A folder the path names already however written is not added again", A_folder_the_path_names_already_however_written_is_not_added_again),
+        ("An entry naming the folder through a variable is the folder", An_entry_naming_the_folder_through_a_variable_is_the_folder),
+        ("A folder taken off leaves every other entry as written where it was", A_folder_taken_off_leaves_every_other_entry_as_written_where_it_was),
+        ("A folder put first moves from where it was and one first already is left", A_folder_put_first_moves_from_where_it_was_and_one_first_already_is_left),
+        ("Put and take change the variable once and take it away where nothing else was in it", Put_and_take_change_the_variable_once_and_take_it_away_where_nothing_else_was_in_it));
+
+    private void A_folder_goes_at_the_end_of_the_path_every_entry_before_it_kept_as_written()
     {
         Assert.Equal($@"C:\Tools;;%USERPROFILE%\.dotnet\tools;{Folder}", UserEnvironment.With(@"C:\Tools;;%USERPROFILE%\.dotnet\tools", Folder, first: false));
         Assert.True(UserEnvironment.With(@"C:\Tools;", Folder, first: false) == $@"C:\Tools;{Folder};",
@@ -20,8 +29,7 @@ public class UserEnvironmentTests
     }
 
     /// <summary>An uninstall leaves the Path as the install found it, character for character.</summary>
-    [Fact]
-    public void A_folder_put_on_and_taken_off_leaves_the_path_as_it_was()
+    private void A_folder_put_on_and_taken_off_leaves_the_path_as_it_was()
     {
         foreach (string had in (string[])[@"C:\Tools", @"C:\Tools;", @"C:\Tools;;%USERPROFILE%\bin;", @";C:\Tools", @"C:\Tools;;"])
         {
@@ -30,8 +38,7 @@ public class UserEnvironmentTests
         }
     }
 
-    [Fact]
-    public void A_folder_the_path_names_already_however_written_is_not_added_again()
+    private void A_folder_the_path_names_already_however_written_is_not_added_again()
     {
         foreach (string named in (string[])[Folder, Folder.ToUpperInvariant(), Folder + @"\", $"\"{Folder}\"", Folder.Replace('\\', '/'), $" {Folder} "])
         {
@@ -39,8 +46,7 @@ public class UserEnvironmentTests
         }
     }
 
-    [Fact]
-    public void An_entry_naming_the_folder_through_a_variable_is_the_folder()
+    private void An_entry_naming_the_folder_through_a_variable_is_the_folder()
     {
         string? before = Environment.GetEnvironmentVariable("UNIT_TEST_LOCAL_APP_DATA");
         Environment.SetEnvironmentVariable("UNIT_TEST_LOCAL_APP_DATA", @"C:\Users\ana\AppData\Local");
@@ -56,8 +62,7 @@ public class UserEnvironmentTests
         }
     }
 
-    [Fact]
-    public void A_folder_taken_off_leaves_every_other_entry_as_written_where_it_was()
+    private void A_folder_taken_off_leaves_every_other_entry_as_written_where_it_was()
     {
         Assert.Equal(@"C:\Tools;;%USERPROFILE%\bin;", UserEnvironment.Without($@"C:\Tools;;{Folder};%USERPROFILE%\bin;{Folder.ToLowerInvariant()}\;", Folder));
         Assert.Equal(string.Empty, UserEnvironment.Without(Folder, Folder));
@@ -65,8 +70,7 @@ public class UserEnvironmentTests
         Assert.Null(UserEnvironment.Without(null, Folder));
     }
 
-    [Fact]
-    public void A_folder_put_first_moves_from_where_it_was_and_one_first_already_is_left()
+    private void A_folder_put_first_moves_from_where_it_was_and_one_first_already_is_left()
     {
         Assert.Equal($@"{Folder};C:\Tools;D:\bin", UserEnvironment.With($@"C:\Tools;{Folder};D:\bin", Folder, first: true));
         Assert.Equal($@"{Folder};C:\Tools", UserEnvironment.With(@"C:\Tools", Folder, first: true));
@@ -74,8 +78,7 @@ public class UserEnvironmentTests
         Assert.Equal(Folder, UserEnvironment.With(null, Folder, first: true));
     }
 
-    [Fact]
-    public void Put_and_take_change_the_variable_once_and_take_it_away_where_nothing_else_was_in_it()
+    private void Put_and_take_change_the_variable_once_and_take_it_away_where_nothing_else_was_in_it()
     {
         Dictionary<string, string> variables = new() { [UserEnvironment.PathVariable] = @"C:\Tools;;%USERPROFILE%\bin" };
         UserEnvironment.StandIn = variables;

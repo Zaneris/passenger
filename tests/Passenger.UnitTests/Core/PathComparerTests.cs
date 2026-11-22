@@ -21,7 +21,14 @@ public class PathComparerTests
     });
 
     [Fact]
-    public void Names_differing_only_in_case_are_two_files_where_their_folder_tells_case_and_one_where_it_ignores_it()
+    public void Paths_alike_but_for_letter_case_compare_as_their_folders_tell_case() => Cases.All(
+        ("Names differing only in case are two files where their folder tells case and one where it ignores it", () => Fresh(test => test.Names_differing_only_in_case_are_two_files_where_their_folder_tells_case_and_one_where_it_ignores_it())),
+        ("Paths differing otherwise or not at all ask no folder", () => Fresh(test => test.Paths_differing_otherwise_or_not_at_all_ask_no_folder())),
+        ("A folder is asked once and one not there is answered by the nearest folder above that is", () => Fresh(test => test.A_folder_is_asked_once_and_one_not_there_is_answered_by_the_nearest_folder_above_that_is())),
+        ("A set keyed by paths holds both names where case is told and finds either spelling where it is ignored", () => Fresh(test => test.A_set_keyed_by_paths_holds_both_names_where_case_is_told_and_finds_either_spelling_where_it_is_ignored())),
+        ("A path is under a folder spelled in another case only where the folders holding the names that differ ignore case", () => Fresh(test => test.A_path_is_under_a_folder_spelled_in_another_case_only_where_the_folders_holding_the_names_that_differ_ignore_case())));
+
+    private void Names_differing_only_in_case_are_two_files_where_their_folder_tells_case_and_one_where_it_ignores_it()
     {
         Assert.False(comparer.Equals(At("cs", "README.md"), At("cs", "readme.md")), "README.md and readme.md on a case-sensitive volume compared as one file");
         Assert.True(comparer.Equals(At("plain", "README.md"), At("plain", "readme.md")), "README.md and readme.md where case is ignored compared as two files");
@@ -30,8 +37,7 @@ public class PathComparerTests
         Assert.True(comparer.Equals("README.md", "readme.md"), "A name with no folder before it was told apart by case");
     }
 
-    [Fact]
-    public void Paths_differing_otherwise_or_not_at_all_ask_no_folder()
+    private void Paths_differing_otherwise_or_not_at_all_ask_no_folder()
     {
         Assert.True(comparer.Equals(At("cs", "a.md"), new string(At("cs", "a.md").AsSpan())));
         Assert.False(comparer.Equals(At("cs", "a.md"), At("cs", "b.md")));
@@ -39,8 +45,7 @@ public class PathComparerTests
         Assert.True(asked.Count == 0, $"Paths alike or differing past case asked {string.Join(", ", asked)}");
     }
 
-    [Fact]
-    public void A_folder_is_asked_once_and_one_not_there_is_answered_by_the_nearest_folder_above_that_is()
+    private void A_folder_is_asked_once_and_one_not_there_is_answered_by_the_nearest_folder_above_that_is()
     {
         comparer.Equals(At("cs", "docs", "A.md"), At("cs", "docs", "a.md"));
         comparer.Equals(At("cs", "docs", "B.md"), At("cs", "docs", "b.md"));
@@ -51,8 +56,7 @@ public class PathComparerTests
         Assert.Equal([At("gone", "sub"), At("gone"), Root], asked);
     }
 
-    [Fact]
-    public void A_set_keyed_by_paths_holds_both_names_where_case_is_told_and_finds_either_spelling_where_it_is_ignored()
+    private void A_set_keyed_by_paths_holds_both_names_where_case_is_told_and_finds_either_spelling_where_it_is_ignored()
     {
         HashSet<string> paths = new(comparer) { At("cs", "README.md"), At("cs", "readme.md"), At("plain", "README.md") };
         Assert.Equal(3, paths.Count);
@@ -62,8 +66,7 @@ public class PathComparerTests
             "Sorting took two files for one, or one for two");
     }
 
-    [Fact]
-    public void A_path_is_under_a_folder_spelled_in_another_case_only_where_the_folders_holding_the_names_that_differ_ignore_case()
+    private void A_path_is_under_a_folder_spelled_in_another_case_only_where_the_folders_holding_the_names_that_differ_ignore_case()
     {
         Assert.False(comparer.IsUnder(At("cs", "packages", "a.props"), At("cs", "Packages")),
             "An import from packages was taken as under the package folder Packages beside it on a case-sensitive volume, so its changes would go unheard");
@@ -79,4 +82,7 @@ public class PathComparerTests
     /// them do.</summary>
     private static bool Within(string path, string folder) =>
         path.Equals(folder, StringComparison.OrdinalIgnoreCase) || path.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A check on a test of its own, as it ran alone.</summary>
+    private static void Fresh(Action<PathComparerTests> check) => check(new PathComparerTests());
 }

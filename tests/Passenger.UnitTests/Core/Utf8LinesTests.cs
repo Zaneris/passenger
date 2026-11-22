@@ -8,7 +8,13 @@ namespace Passenger.UnitTests.Core;
 public class Utf8LinesTests
 {
     [Fact]
-    public async Task Lines_come_without_their_ends_a_lone_CR_stays_in_its_line_and_a_last_line_without_an_end_is_a_line()
+    public Task A_peers_utf8_lines_come_whole_however_its_pipe_cuts_them() => Cases.AllAsync(
+        ("Lines come without their ends a lone CR stays in its line and a last line without an end is a line", Lines_come_without_their_ends_a_lone_CR_stays_in_its_line_and_a_last_line_without_an_end_is_a_line),
+        ("A CRLF or a character cut between two reads reads as if it came in one", A_CRLF_or_a_character_cut_between_two_reads_reads_as_if_it_came_in_one),
+        ("A line longer than the buffer comes whole and the short lines after it too", A_line_longer_than_the_buffer_comes_whole_and_the_short_lines_after_it_too),
+        ("A seeded run of random lines in random reads comes back line for line", A_seeded_run_of_random_lines_in_random_reads_comes_back_line_for_line));
+
+    private async Task Lines_come_without_their_ends_a_lone_CR_stays_in_its_line_and_a_last_line_without_an_end_is_a_line()
     {
         Assert.Equal(["one", string.Empty, "two", "a\rb", string.Empty, "last"], await LinesAsync("one\r\n\ntwo\na\rb\r\n\r\nlast", chunk: 1_000));
         Assert.Equal(["one", "two"], await LinesAsync("one\ntwo\n", chunk: 1_000));
@@ -17,8 +23,7 @@ public class Utf8LinesTests
 
     /// <summary>Every place the text can be cut into two reads, and reads of one byte: the CR of a "\r\n" at the end of one read
     /// and its LF at the start of the next end one line, and a character of several bytes cut in two comes whole.</summary>
-    [Fact]
-    public async Task A_CRLF_or_a_character_cut_between_two_reads_reads_as_if_it_came_in_one()
+    private async Task A_CRLF_or_a_character_cut_between_two_reads_reads_as_if_it_came_in_one()
     {
         const string Text = "first\r\nsé€\U0001F600\r\n\r\nthird\n";
         string[] expected = ["first", "sé€\U0001F600", string.Empty, "third"];
@@ -31,24 +36,26 @@ public class Utf8LinesTests
         Assert.Equal(expected, await LinesAsync(bytes, _ => 1));
     }
 
-    [Theory]
-    [InlineData(64 * 1024 - 1)]
-    [InlineData(64 * 1024)]
-    [InlineData(64 * 1024 + 1)]
-    [InlineData(1_000_000)]
-    public async Task A_line_longer_than_the_buffer_comes_whole_and_the_short_lines_after_it_too(int length)
+    private Task A_line_longer_than_the_buffer_comes_whole_and_the_short_lines_after_it_too() => Cases.EachAsync<int>(
+    [
+        64 * 1024 - 1,
+        64 * 1024,
+        64 * 1024 + 1,
+        1_000_000,
+    ], async length =>
     {
         string longLine = new('x', length);
         string text = $"before\n{longLine}\r\nafter\n{longLine}{longLine}\nshort\n";
         Assert.Equal(["before", longLine, "after", longLine + longLine, "short"], await LinesAsync(text, chunk: 8_192));
-    }
+    });
 
     /// <summary>Lines of every length from none to a few hundred thousand bytes, with either end, read in seeded random pieces.</summary>
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    public async Task A_seeded_run_of_random_lines_in_random_reads_comes_back_line_for_line(int seed)
+    private Task A_seeded_run_of_random_lines_in_random_reads_comes_back_line_for_line() => Cases.EachAsync<int>(
+    [
+        1,
+        2,
+        3,
+    ], async seed =>
     {
         Random random = new(seed);
         List<string> lines = [];
@@ -74,7 +81,7 @@ public class Utf8LinesTests
         }
         byte[] bytes = Encoding.UTF8.GetBytes(text.ToString());
         Assert.Equal(lines, await LinesAsync(bytes, _ => random.Next(3) == 0 ? random.Next(1, 16) : random.Next(1, 200_000)));
-    }
+    });
 
     private static Task<List<string>> LinesAsync(string text, int chunk) => LinesAsync(Encoding.UTF8.GetBytes(text), _ => chunk);
 

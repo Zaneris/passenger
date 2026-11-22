@@ -27,7 +27,20 @@ public class MachOFileTests
     }
 
     [Fact]
-    public void A_thin_program_is_one_slice_at_its_start_and_a_universal_one_each_its_table_names_by_32_or_64_bit_offsets()
+    public void A_mac_program_is_read_for_its_slices_and_what_each_links_and_a_file_cut_short_reads_no_further() => Cases.All(
+        ("A thin program is one slice at its start and a universal one each its table names by 32 or 64 bit offsets", A_thin_program_is_one_slice_at_its_start_and_a_universal_one_each_its_table_names_by_32_or_64_bit_offsets),
+        ("A header cut short or a table of no slice is no program", A_header_cut_short_or_a_table_of_no_slice_is_no_program),
+        ("A thin program names what it links of every kind in order and nothing else its commands hold", A_thin_program_names_what_it_links_of_every_kind_in_order_and_nothing_else_its_commands_hold),
+        ("A universal program names what each slice links once", A_universal_program_names_what_each_slice_links_once),
+        ("Files of no mach o are none a java class that begins as a universal program too", Files_of_no_mach_o_are_none_a_java_class_that_begins_as_a_universal_program_too),
+        ("A program cut short gives what is there and a size past its end reads no further", A_program_cut_short_gives_what_is_there_and_a_size_past_its_end_reads_no_further),
+        ("A slice past the programs end adds nothing to those that are there", A_slice_past_the_programs_end_adds_nothing_to_those_that_are_there),
+        ("A function lies from its symbol to the next of its section as offsets into its image", A_function_lies_from_its_symbol_to_the_next_of_its_section_as_offsets_into_its_image),
+        ("A program with no symbol table or a table past its end names no function", A_program_with_no_symbol_table_or_a_table_past_its_end_names_no_function),
+        ("The runtimes own library names where its tiering worker starts", The_runtimes_own_library_names_where_its_tiering_worker_starts),
+        ("A macs own tool is read for what it links", A_macs_own_tool_is_read_for_what_it_links));
+
+    private void A_thin_program_is_one_slice_at_its_start_and_a_universal_one_each_its_table_names_by_32_or_64_bit_offsets()
     {
         byte[] first = MachOBytes.Thin(LibSystem);
         byte[] second = MachOBytes.Thin(AppKit);
@@ -38,8 +51,7 @@ public class MachOFileTests
         Assert.Equal([LibSystem, AppKit], Linked(MachOBytes.Universal(wide: true, first, second)));
     }
 
-    [Fact]
-    public void A_header_cut_short_or_a_table_of_no_slice_is_no_program()
+    private void A_header_cut_short_or_a_table_of_no_slice_is_no_program()
     {
         Assert.Null(Sliced(MachOBytes.Thin(LibSystem)[..31]));
         Assert.Null(Sliced([0xCA, 0xFE, 0xBA, 0xBF, 0, 0, 0, 0]));
@@ -47,23 +59,20 @@ public class MachOFileTests
         Assert.Empty(Sliced([0xCA, 0xFE, 0xBA, 0xBF, 0, 0, 0, 1, .. new byte[31]])!);
     }
 
-    [Fact]
-    public void A_thin_program_names_what_it_links_of_every_kind_in_order_and_nothing_else_its_commands_hold()
+    private void A_thin_program_names_what_it_links_of_every_kind_in_order_and_nothing_else_its_commands_hold()
     {
         Assert.Equal([LibSystem, AppKit, "@rpath/libSDL2-2.0.0.dylib"], Linked(MachOBytes.Commands((0x0C, LibSystem), (0x1B, "a uuid"), (0x80000018, AppKit), (0x8000001F, "@rpath/libSDL2-2.0.0.dylib"))));
         Assert.Equal([LibSystem], Linked(MachOBytes.Thin(LibSystem)));
         Assert.Empty(Linked(MachOBytes.Thin())!);
     }
 
-    [Fact]
-    public void A_universal_program_names_what_each_slice_links_once()
+    private void A_universal_program_names_what_each_slice_links_once()
     {
         Assert.Equal([LibSystem, AppKit], Linked(MachOBytes.Universal(MachOBytes.Thin(LibSystem, AppKit), MachOBytes.Thin(LibSystem))));
         Assert.Equal([LibSystem, AppKit], Linked(MachOBytes.Universal(MachOBytes.Thin(LibSystem), MachOBytes.Thin(AppKit))));
     }
 
-    [Fact]
-    public void Files_of_no_mach_o_are_none_a_java_class_that_begins_as_a_universal_program_too()
+    private void Files_of_no_mach_o_are_none_a_java_class_that_begins_as_a_universal_program_too()
     {
         Assert.Null(Linked([]));
         Assert.Null(Linked([0x7F, (byte)'E', (byte)'L', (byte)'F', 2, 1, 1, 0, 0, 0, 0, 0]));
@@ -72,8 +81,7 @@ public class MachOFileTests
         Assert.Null(Linked([0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 65, 0, 0, 0, 0]));
     }
 
-    [Fact]
-    public void A_program_cut_short_gives_what_is_there_and_a_size_past_its_end_reads_no_further()
+    private void A_program_cut_short_gives_what_is_there_and_a_size_past_its_end_reads_no_further()
     {
         byte[] whole = MachOBytes.Thin(LibSystem, AppKit);
         Assert.Equal([LibSystem], Linked(whole[..^40]));
@@ -96,16 +104,14 @@ public class MachOFileTests
         Assert.Empty(Linked(commands)!);
     }
 
-    [Fact]
-    public void A_slice_past_the_programs_end_adds_nothing_to_those_that_are_there()
+    private void A_slice_past_the_programs_end_adds_nothing_to_those_that_are_there()
     {
         byte[] program = MachOBytes.Universal(MachOBytes.Thin(LibSystem), MachOBytes.Thin(AppKit));
         BinaryPrimitives.WriteUInt32BigEndian(program.AsSpan(8 + 20 + 8), int.MaxValue);
         Assert.Equal([LibSystem], Linked(program));
     }
 
-    [Fact]
-    public void A_function_lies_from_its_symbol_to_the_next_of_its_section_as_offsets_into_its_image()
+    private void A_function_lies_from_its_symbol_to_the_next_of_its_section_as_offsets_into_its_image()
     {
         byte[] program = MachOBytes.Symbols(text: 0x1000, mapped: 0x9000,
             ("_first", 0x0E, 1, 0x1100), ("_stab", 0x24, 1, 0x1140), ("_elsewhere", 0x0E, 2, 0x1160), ("_undefined", 0x01, 0, 0x1170),
@@ -117,8 +123,7 @@ public class MachOFileTests
         Assert.Equal(new Dictionary<string, (ulong Start, ulong End)> { ["_first"] = (0x100, 0x180), ["_last"] = (0x200, 0x9000) }, functions);
     }
 
-    [Fact]
-    public void A_program_with_no_symbol_table_or_a_table_past_its_end_names_no_function()
+    private void A_program_with_no_symbol_table_or_a_table_past_its_end_names_no_function()
     {
         using MemoryStream linking = new(MachOBytes.Thin(LibSystem));
         Assert.Null(MachOFile.Functions(linking, ["_first"]));
@@ -132,8 +137,7 @@ public class MachOFileTests
 
     /// <summary>The runtime's own library names the routine its tiering worker starts at, which the debugger tells that
     /// thread by on macOS.</summary>
-    [Fact]
-    public void The_runtimes_own_library_names_where_its_tiering_worker_starts()
+    private void The_runtimes_own_library_names_where_its_tiering_worker_starts()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only macOS's runtime is a Mach-O library");
         const string start = "__ZN24TieredCompilationManager29BackgroundWorkerBootstrapper0EPv";
@@ -145,8 +149,7 @@ public class MachOFileTests
     }
 
     /// <summary>The system's own builds, thin or universal, are the reader's real input: read, never run.</summary>
-    [Fact]
-    public void A_macs_own_tool_is_read_for_what_it_links()
+    private void A_macs_own_tool_is_read_for_what_it_links()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only a Mac has macOS's programs to read");
         using FileStream open = File.OpenRead("/usr/bin/open");

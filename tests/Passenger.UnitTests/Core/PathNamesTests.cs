@@ -13,7 +13,20 @@ public class PathNamesTests
     private static readonly bool CaseBlind = !OperatingSystem.IsLinux();
 
     [Fact]
-    public void A_path_is_under_a_folder_only_past_a_separator_after_its_whole_name()
+    public void Paths_are_compared_shown_and_walked_one_way_by_whole_names_canonically() => Cases.All(
+        ("A path is under a folder only past a separator after its whole name", A_path_is_under_a_folder_only_past_a_separator_after_its_whole_name),
+        ("Below a folder is the names from it down and nothing for the folder or a path outside", Below_a_folder_is_the_names_from_it_down_and_nothing_for_the_folder_or_a_path_outside),
+        ("A path below a folder is its names in forward slashes the folder itself a dot and one outside none", A_path_below_a_folder_is_its_names_in_forward_slashes_the_folder_itself_a_dot_and_one_outside_none),
+        ("A moved folder takes the paths in it along and leaves one beside it whose name begins the same", A_moved_folder_takes_the_paths_in_it_along_and_leaves_one_beside_it_whose_name_begins_the_same),
+        ("A path is shown from the open folder the folder by its name and anything else whole", A_path_is_shown_from_the_open_folder_the_folder_by_its_name_and_anything_else_whole),
+        ("Extensions and the systems own files are known in any letter case", Extensions_and_the_systems_own_files_are_known_in_any_letter_case),
+        ("A tilde and separator at a paths start is the persons home and nothing else is", A_tilde_and_separator_at_a_paths_start_is_the_persons_home_and_nothing_else_is),
+        ("A path not there yet keeps its missing names below the canonical folder that is", A_path_not_there_yet_keeps_its_missing_names_below_the_canonical_folder_that_is),
+        ("A files canonical path and its name in a walk follow links and a renamed folder", A_files_canonical_path_and_its_name_in_a_walk_follow_links_and_a_renamed_folder),
+        ("A path already canonical is made canonical and walked with no copy", A_path_already_canonical_is_made_canonical_and_walked_with_no_copy),
+        ("A walk gives each folders files by name nearest folder first leaving out the systems files and folders not entered", A_walk_gives_each_folders_files_by_name_nearest_folder_first_leaving_out_the_systems_files_and_folders_not_entered));
+
+    private void A_path_is_under_a_folder_only_past_a_separator_after_its_whole_name()
     {
         string app = At("app");
         Assert.True(PathNames.IsUnder(At("app", "src", "A.cs"), app));
@@ -26,8 +39,7 @@ public class PathNamesTests
         Assert.Equal(CaseBlind, PathNames.Same(At("App"), app));
     }
 
-    [Fact]
-    public void Below_a_folder_is_the_names_from_it_down_and_nothing_for_the_folder_or_a_path_outside()
+    private void Below_a_folder_is_the_names_from_it_down_and_nothing_for_the_folder_or_a_path_outside()
     {
         Assert.Equal(Path.Join("src", "A.cs"), PathNames.Below(At("app", "src", "A.cs"), At("app")).ToString());
         Assert.Equal(string.Empty, PathNames.Below(At("app"), At("app")).ToString());
@@ -36,8 +48,7 @@ public class PathNamesTests
 
     /// <summary>A path below a folder is written in forward slashes, a backslash a separator only on Windows and elsewhere a
     /// letter of a name; the folder itself is ".", a path outside it none, and only a route climbs out by "..".</summary>
-    [Fact]
-    public void A_path_below_a_folder_is_its_names_in_forward_slashes_the_folder_itself_a_dot_and_one_outside_none()
+    private void A_path_below_a_folder_is_its_names_in_forward_slashes_the_folder_itself_a_dot_and_one_outside_none()
     {
         Assert.Equal("src/A.cs", PathNames.Relative(At("app", "src", "A.cs"), At("app")));
         Assert.Equal("src/A.cs", PathNames.Relative(At("app", "src", "A.cs"), At("app") + Path.DirectorySeparatorChar));
@@ -53,8 +64,7 @@ public class PathNamesTests
         Assert.Equal(OperatingSystem.IsWindows() ? "a/b.css" : @"a\b.css", PathNames.Slashed(@"a\b.css"));
     }
 
-    [Fact]
-    public void A_moved_folder_takes_the_paths_in_it_along_and_leaves_one_beside_it_whose_name_begins_the_same()
+    private void A_moved_folder_takes_the_paths_in_it_along_and_leaves_one_beside_it_whose_name_begins_the_same()
     {
         Assert.Equal(At("app", "lib", "A.cs"), PathNames.Moved(At("app", "src", "A.cs"), At("app", "src"), At("app", "lib")));
         Assert.Equal(At("app", "lib"), PathNames.Moved(At("app", "src"), At("app", "src"), At("app", "lib")));
@@ -63,8 +73,7 @@ public class PathNamesTests
         Assert.False(PathNames.Within(At("app2"), At("app")));
     }
 
-    [Fact]
-    public void A_path_is_shown_from_the_open_folder_the_folder_by_its_name_and_anything_else_whole()
+    private void A_path_is_shown_from_the_open_folder_the_folder_by_its_name_and_anything_else_whole()
     {
         string app = At("app");
         Assert.Equal(Path.Join("src", "A.cs"), PathNames.Shown(At("app", "src", "A.cs"), app));
@@ -76,8 +85,7 @@ public class PathNamesTests
         Assert.Equal(At("app", "A.cs"), PathNames.Shown(At("app", "A.cs"), string.Empty));
     }
 
-    [Fact]
-    public void Extensions_and_the_systems_own_files_are_known_in_any_letter_case()
+    private void Extensions_and_the_systems_own_files_are_known_in_any_letter_case()
     {
         Assert.True(PathNames.HasExtension(At("A.CS"), [".csproj", ".cs"]));
         Assert.False(PathNames.HasExtension(At("A.csproj"), [".cs"]));
@@ -89,8 +97,7 @@ public class PathNamesTests
 
     /// <summary>A "~/" at a path's start (git's config, a program's output) is the person's home folder, "~\" too on Windows;
     /// a "~" anywhere else, or one naming another person's home, is no home of theirs.</summary>
-    [Fact]
-    public void A_tilde_and_separator_at_a_paths_start_is_the_persons_home_and_nothing_else_is()
+    private void A_tilde_and_separator_at_a_paths_start_is_the_persons_home_and_nothing_else_is()
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         Assert.Equal(Path.Combine(home, ".ssh/id_ed25519.pub"), PathNames.Expanded("~/.ssh/id_ed25519.pub"));
@@ -100,8 +107,7 @@ public class PathNamesTests
         Assert.Null(PathNames.Expanded("keys/~/id.pub"));
     }
 
-    [Fact]
-    public void A_path_not_there_yet_keeps_its_missing_names_below_the_canonical_folder_that_is()
+    private void A_path_not_there_yet_keeps_its_missing_names_below_the_canonical_folder_that_is()
     {
         using Folder folder = new();
         string canonical = PathNames.Canonical(folder.Path);
@@ -113,8 +119,7 @@ public class PathNamesTests
     /// <summary>What the folder's watcher asks of each file it hears of: its canonical path, and as a walk names it, its own
     /// name in its folder's canonical path. Through a linked folder, of a file that is a link, and of one gone with the
     /// folder it was in, renamed, each is what resolving its folder then joining its name gives.</summary>
-    [Fact]
-    public void A_files_canonical_path_and_its_name_in_a_walk_follow_links_and_a_renamed_folder()
+    private void A_files_canonical_path_and_its_name_in_a_walk_follow_links_and_a_renamed_folder()
     {
         using Folder folder = new();
         folder.Write(Path.Join("src", "Shop", "Cart.cs"), Path.Join("src", "Shop", "Order.cs"));
@@ -148,8 +153,7 @@ public class PathNamesTests
 
     /// <summary>A path already as the system spells it, as nearly every path the watcher hears is, costs no string to make
     /// canonical or to name as a walk does: each of a burst's thousands of events would pay one.</summary>
-    [Fact]
-    public void A_path_already_canonical_is_made_canonical_and_walked_with_no_copy()
+    private void A_path_already_canonical_is_made_canonical_and_walked_with_no_copy()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' own name for a file is asked of a handle, into a buffer of its own");
         using Folder folder = new();
@@ -166,8 +170,7 @@ public class PathNamesTests
         Assert.True(allocated == 0, $"Making a canonical path canonical and naming it as a walk does 1,000 times allocated {allocated:N0} bytes, which every file the watcher hears pays");
     }
 
-    [Fact]
-    public void A_walk_gives_each_folders_files_by_name_nearest_folder_first_leaving_out_the_systems_files_and_folders_not_entered()
+    private void A_walk_gives_each_folders_files_by_name_nearest_folder_first_leaving_out_the_systems_files_and_folders_not_entered()
     {
         using Folder folder = new();
         folder.Write("b.txt", "a.txt", ".DS_Store", Path.Join("sub", "c.txt"), Path.Join("sub", "deeper", "d.txt"), Path.Join("skip", "e.txt"),

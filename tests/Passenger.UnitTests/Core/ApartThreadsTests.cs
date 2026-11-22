@@ -10,7 +10,12 @@ public class ApartThreadsTests
     private static readonly AsyncLocal<object?> Carried = new();
 
     [Fact]
-    public async Task A_thread_started_apart_sees_nothing_its_starter_carried()
+    public Task Work_on_a_thread_of_its_own_carries_nothing_of_whoever_started_it() => Cases.AllAsync(
+        ("A thread started apart sees nothing its starter carried", A_thread_started_apart_sees_nothing_its_starter_carried),
+        ("A timer made apart calls back with nothing its maker carried", A_timer_made_apart_calls_back_with_nothing_its_maker_carried),
+        ("Unheld work on a thread of its own sees nothing its starter carried", Unheld_work_on_a_thread_of_its_own_sees_nothing_its_starter_carried));
+
+    private async Task A_thread_started_apart_sees_nothing_its_starter_carried()
     {
         object? seen = await SeenAsync(done =>
         {
@@ -20,8 +25,7 @@ public class ApartThreadsTests
         Assert.True(seen is null, $"A thread started apart saw {seen}, which its starter carried: it would keep that for as long as it lived");
     }
 
-    [Fact]
-    public async Task A_timer_made_apart_calls_back_with_nothing_its_maker_carried()
+    private async Task A_timer_made_apart_calls_back_with_nothing_its_maker_carried()
     {
         Timer? made = null;
         object? seen = await SeenAsync(done =>
@@ -34,8 +38,7 @@ public class ApartThreadsTests
         Assert.True(seen is null, $"A timer made apart called back seeing {seen}, which its maker carried: it would keep that for as long as it lived");
     }
 
-    [Fact]
-    public async Task Unheld_work_on_a_thread_of_its_own_sees_nothing_its_starter_carried()
+    private async Task Unheld_work_on_a_thread_of_its_own_sees_nothing_its_starter_carried()
     {
         object? seen = await SeenAsync(done => BackgroundWork.UnheldThread(() => done(Carried.Value)));
         Assert.True(seen is null, $"Unheld work on a thread of its own saw {seen}, which its starter carried: it would keep that for as long as it ran");

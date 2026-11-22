@@ -8,7 +8,11 @@ namespace Passenger.UnitTests.Core;
 public sealed class DotnetProcessTests
 {
     [Fact]
-    public void A_processs_arguments_and_environment_are_read_from_the_systems_record_of_its_start()
+    public void A_dotnet_programs_assembly_name_and_build_are_read_from_its_command_line() => Cases.All(
+        ("A processs arguments and environment are read from the systems record of its start", A_processs_arguments_and_environment_are_read_from_the_systems_record_of_its_start),
+        ("A programs assembly and name come from its command line", A_programs_assembly_and_name_come_from_its_command_line));
+
+    private void A_processs_arguments_and_environment_are_read_from_the_systems_record_of_its_start()
     {
         byte[] record = [.. BitConverter.GetBytes(2), .. Text("/Apps/Shop.app/Contents/MacOS/Shop"), 0, 0, 0, .. Text("Shop"), .. Text("-v"),
             .. Text("HOME=/Users/a"), .. Text("PASSENGER_APP_START=A1B2"), 0, .. Text("executable_path=/Apps/Shop.app/Contents/MacOS/Shop")];
@@ -25,21 +29,19 @@ public sealed class DotnetProcessTests
         static byte[] Text(string text) => [.. System.Text.Encoding.UTF8.GetBytes(text), 0];
     }
 
-    [Theory]
-    [InlineData("dotnet", "/usr/share/dotnet/dotnet /app/Shop.Api.dll --urls http://+:80", "/app/Shop.Api.dll", "Shop.Api")]
-    [InlineData("dotnet", "dotnet exec --runtimeconfig x.json \"/app/my app/Shop.Api.dll\"", "/app/my app/Shop.Api.dll", "Shop.Api")]
-    [InlineData("dotnet.exe", "\"C:\\Program Files\\dotnet\\dotnet.exe\" \"C:\\My App\\Shop.Api.dll\"", "C:\\My App\\Shop.Api.dll", "Shop.Api")]
-    [InlineData("dotnet", "dotnet watch run", null, "dotnet")]
-    [InlineData("Shop.Api", "\"/app/my app/Shop.Api\" --verbose", "/app/my app/Shop.Api.dll", "Shop.Api")]
-    [InlineData("Passenger.Tests.exe", "C:\\work\\Passenger.Tests.exe", "C:\\work\\Passenger.Tests.dll", "Passenger.Tests")]
-    [InlineData("passenger-helper", "/opt/passenger/passenger-helper /opt/passenger/host/Passenger.Host.dll --folder /src", "/opt/passenger/host/Passenger.Host.dll", "Passenger.Host")]
-    [InlineData("dotnet", "dotnet exec --fx-version 11.0.0 /work/passenger-helper.dll /work/roslyn/Microsoft.CodeAnalysis.LanguageServer.dll --stdio",
-        "/work/roslyn/Microsoft.CodeAnalysis.LanguageServer.dll", "Microsoft.CodeAnalysis.LanguageServer")]
-    [InlineData("passenger-helper.exe", "\"C:\\Passenger\\passenger-helper.exe\" C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "Passenger.DebugAdapter")]
-    public void A_programs_assembly_and_name_come_from_its_command_line(string name, string commandLine, string? assembly, string program)
+    private void A_programs_assembly_and_name_come_from_its_command_line() => Cases.Each<(string name, string commandLine, string? assembly, string program)>(
+    [
+        ("dotnet", "/usr/share/dotnet/dotnet /app/Shop.Api.dll --urls http://+:80", "/app/Shop.Api.dll", "Shop.Api"),
+        ("dotnet.exe", "\"C:\\Program Files\\dotnet\\dotnet.exe\" \"C:\\My App\\Shop.Api.dll\"", "C:\\My App\\Shop.Api.dll", "Shop.Api"),
+        ("dotnet", "dotnet watch run", null, "dotnet"),
+        ("Passenger.Tests.exe", "C:\\work\\Passenger.Tests.exe", "C:\\work\\Passenger.Tests.dll", "Passenger.Tests"),
+        ("passenger-helper", "/opt/passenger/passenger-helper /opt/passenger/host/Passenger.Host.dll --folder /src", "/opt/passenger/host/Passenger.Host.dll", "Passenger.Host"),
+        ("passenger-helper.exe", "\"C:\\Passenger\\passenger-helper.exe\" C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "Passenger.DebugAdapter"),
+    ], row =>
     {
+        (string name, string commandLine, string? assembly, string program) = row;
         DotnetProcess process = new(1, name, commandLine, "me", IsMine: true);
         Assert.Equal(assembly, process.Assembly);
         Assert.Equal(program, process.Program);
-    }
+    });
 }

@@ -11,7 +11,11 @@ namespace Passenger.UnitTests.Core;
 public partial class JsonLinesTests
 {
     [Fact]
-    public async Task Messages_are_read_whole_from_the_pieces_a_stream_cuts_them_into()
+    public Task A_peers_json_lines_are_read_whole_however_the_stream_cuts_them() => Cases.AllAsync(
+        ("Messages are read whole from the pieces a stream cuts them into", Messages_are_read_whole_from_the_pieces_a_stream_cuts_them_into),
+        ("A message costs what it is read as and never its text", A_message_costs_what_it_is_read_as_and_never_its_text));
+
+    private async Task Messages_are_read_whole_from_the_pieces_a_stream_cuts_them_into()
     {
         byte[] said = Encoding.UTF8.GetBytes("{\"name\":\"café\",\"bytes\":\"AQID\"}\n\nnull\r\n{\"name\":\"two\"}\r\nnot json\n{\"name\":\"last\"}");
         List<string> unread = [];
@@ -28,8 +32,7 @@ public partial class JsonLinesTests
 
     /// <summary>The picture's line fits the reader's own buffer, so what the second message costs is the message alone,
     /// whatever the pool keeps; its length a multiple of 3, so its base 64 decodes to an array of its own size.</summary>
-    [Fact]
-    public async Task A_message_costs_what_it_is_read_as_and_never_its_text()
+    private async Task A_message_costs_what_it_is_read_as_and_never_its_text()
     {
         byte[] picture = new byte[39_999];
         new Random(1).NextBytes(picture);

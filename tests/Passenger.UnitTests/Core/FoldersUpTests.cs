@@ -27,13 +27,21 @@ public sealed class FoldersUpTests : IDisposable
         FoldersUp.WhyNot(owner, group, mode, Me, g => g == MyGroup, u => u == Bob ? "bob" : $"uid {u}", g => g == Staff ? "staff" : $"gid {g}");
 
     [Fact]
-    public void A_walk_from_no_folder_reads_nothing()
+    public void A_walk_up_reads_the_persons_own_folders_and_ends_before_one_another_user_may_write() => Cases.All(
+        ("A walk from no folder reads nothing", () => Fresh(test => test.A_walk_from_no_folder_reads_nothing())),
+        ("The persons own folders are read whatever their mode and roots where no other may write", () => Fresh(test => test.The_persons_own_folders_are_read_whatever_their_mode_and_roots_where_no_other_may_write())),
+        ("A folder another user owns ends the walk naming them whatever its mode", () => Fresh(test => test.A_folder_another_user_owns_ends_the_walk_naming_them_whatever_its_mode())),
+        ("A folder root owns that every user may write ends the walk as tmp does its sticky bit notwithstanding", () => Fresh(test => test.A_folder_root_owns_that_every_user_may_write_ends_the_walk_as_tmp_does_its_sticky_bit_notwithstanding())),
+        ("A group may write a folder root owns only where it is the persons own", () => Fresh(test => test.A_group_may_write_a_folder_root_owns_only_where_it_is_the_persons_own())),
+        ("A group is the persons own where it is named as they are and lists no one else", () => Fresh(test => test.A_group_is_the_persons_own_where_it_is_named_as_they_are_and_lists_no_one_else())),
+        ("On Windows the persons the systems the Administrators and a services folders are read", () => Fresh(test => test.On_Windows_the_persons_the_systems_the_Administrators_and_a_services_folders_are_read())));
+
+    private void A_walk_from_no_folder_reads_nothing()
     {
         Assert.True(!FoldersUp.From(string.Empty).Any(), "A walk from no folder (a tool's tab, a name with no folder before it) read a folder, where it throws on Windows");
     }
 
-    [Fact]
-    public void The_persons_own_folders_are_read_whatever_their_mode_and_roots_where_no_other_may_write()
+    private void The_persons_own_folders_are_read_whatever_their_mode_and_roots_where_no_other_may_write()
     {
         Assert.Null(Unix(Me, Staff, Shown));
         Assert.Null(Unix(Me, Staff, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute));
@@ -42,29 +50,25 @@ public sealed class FoldersUpTests : IDisposable
         Assert.Null(Unix(0, 0, Shown));
     }
 
-    [Fact]
-    public void A_folder_another_user_owns_ends_the_walk_naming_them_whatever_its_mode()
+    private void A_folder_another_user_owns_ends_the_walk_naming_them_whatever_its_mode()
     {
         Assert.Equal("another user, bob, owns it", Unix(Bob, Staff, Shown));
         Assert.Equal("another user, bob, owns it", Unix(Bob, Staff, UnixFileMode.UserRead | UnixFileMode.UserExecute));
     }
 
-    [Fact]
-    public void A_folder_root_owns_that_every_user_may_write_ends_the_walk_as_tmp_does_its_sticky_bit_notwithstanding()
+    private void A_folder_root_owns_that_every_user_may_write_ends_the_walk_as_tmp_does_its_sticky_bit_notwithstanding()
     {
         Assert.Equal("every user may write in it", Unix(0, 0, Everyones | UnixFileMode.StickyBit));
         Assert.Equal("every user may write in it", Unix(0, 0, Shown | UnixFileMode.OtherWrite));
     }
 
-    [Fact]
-    public void A_group_may_write_a_folder_root_owns_only_where_it_is_the_persons_own()
+    private void A_group_may_write_a_folder_root_owns_only_where_it_is_the_persons_own()
     {
         Assert.Null(Unix(0, MyGroup, Shown | UnixFileMode.GroupWrite));
         Assert.Equal("the group staff may write in it", Unix(0, Staff, Shown | UnixFileMode.GroupWrite));
     }
 
-    [Fact]
-    public void A_group_is_the_persons_own_where_it_is_named_as_they_are_and_lists_no_one_else()
+    private void A_group_is_the_persons_own_where_it_is_named_as_they_are_and_lists_no_one_else()
     {
         Assert.True(FoldersUp.IsOwnGroup("me", ("me", [])));
         Assert.True(FoldersUp.IsOwnGroup("me", ("me", ["me"])));
@@ -74,8 +78,7 @@ public sealed class FoldersUpTests : IDisposable
         Assert.False(FoldersUp.IsOwnGroup(null, ("me", [])));
     }
 
-    [Fact]
-    public void On_Windows_the_persons_the_systems_the_Administrators_and_a_services_folders_are_read()
+    private void On_Windows_the_persons_the_systems_the_Administrators_and_a_services_folders_are_read()
     {
         Assert.Null(FoldersUp.WhyNot(MySid, MySid, secured: true));
         Assert.Null(FoldersUp.WhyNot("S-1-5-18", MySid, secured: true));
@@ -84,7 +87,16 @@ public sealed class FoldersUpTests : IDisposable
     }
 
     [Fact]
-    public void On_Windows_a_folder_another_account_owns_or_whose_owner_is_unread_ends_the_walk()
+    public void On_windows_another_accounts_folder_ends_the_walk_and_what_another_user_put_above_is_passed_over() => Cases.All(
+        ("On Windows a folder another account owns or whose owner is unread ends the walk", () => Fresh(test => test.On_Windows_a_folder_another_account_owns_or_whose_owner_is_unread_ends_the_walk())),
+        ("On Windows a volume keeping no owners is the persons as Windows lets everyone write there", () => Fresh(test => test.On_Windows_a_volume_keeping_no_owners_is_the_persons_as_Windows_lets_everyone_write_there())),
+        ("A global json in a parent another user owns is passed over and nothing above it read while the persons own parent is", () => Fresh(test => test.A_global_json_in_a_parent_another_user_owns_is_passed_over_and_nothing_above_it_read_while_the_persons_own_parent_is())),
+        ("A global json in the persons own parent every user may write is still read", () => Fresh(test => test.A_global_json_in_the_persons_own_parent_every_user_may_write_is_still_read())),
+        ("A global json another user put in the persons own parent is passed over for the next one up", () => Fresh(test => test.A_global_json_another_user_put_in_the_persons_own_parent_is_passed_over_for_the_next_one_up())),
+        ("A node modules another user made in an accepted folder is passed over with all it holds", () => Fresh(test => test.A_node_modules_another_user_made_in_an_accepted_folder_is_passed_over_with_all_it_holds())),
+        ("A folder not there is passed and the walk goes on above it", () => Fresh(test => test.A_folder_not_there_is_passed_and_the_walk_goes_on_above_it())));
+
+    private void On_Windows_a_folder_another_account_owns_or_whose_owner_is_unread_ends_the_walk()
     {
         Assert.Equal("another account, S-1-5-21-1004336348-1177238915-682003330-1002, owns it",
             FoldersUp.WhyNot("S-1-5-21-1004336348-1177238915-682003330-1002", MySid, secured: true));
@@ -92,15 +104,13 @@ public sealed class FoldersUpTests : IDisposable
         Assert.Equal("its owner could not be read", FoldersUp.WhyNot(null, MySid, secured: true));
     }
 
-    [Fact]
-    public void On_Windows_a_volume_keeping_no_owners_is_the_persons_as_Windows_lets_everyone_write_there()
+    private void On_Windows_a_volume_keeping_no_owners_is_the_persons_as_Windows_lets_everyone_write_there()
     {
         Assert.Null(FoldersUp.WhyNot(null, MySid, secured: false));
         Assert.Null(FoldersUp.WhyNot("S-1-5-21-1004336348-1177238915-682003330-1002", MySid, secured: false));
     }
 
-    [Fact]
-    public void A_global_json_in_a_parent_another_user_owns_is_passed_over_and_nothing_above_it_read_while_the_persons_own_parent_is()
+    private void A_global_json_in_a_parent_another_user_owns_is_passed_over_and_nothing_above_it_read_while_the_persons_own_parent_is()
     {
         File.WriteAllText(Path.Join(root, "global.json"), "{}\n");
         string own = Folder("own", Shown);
@@ -118,8 +128,7 @@ public sealed class FoldersUpTests : IDisposable
         }
     }
 
-    [Fact]
-    public void A_global_json_in_the_persons_own_parent_every_user_may_write_is_still_read()
+    private void A_global_json_in_the_persons_own_parent_every_user_may_write_is_still_read()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows' folders have no mode that lets every user write in them");
         string open = Folder("open", Everyones);
@@ -128,8 +137,7 @@ public sealed class FoldersUpTests : IDisposable
         Folder("open", Shown);
     }
 
-    [Fact]
-    public void A_global_json_another_user_put_in_the_persons_own_parent_is_passed_over_for_the_next_one_up()
+    private void A_global_json_another_user_put_in_the_persons_own_parent_is_passed_over_for_the_next_one_up()
     {
         File.WriteAllText(Path.Join(root, "global.json"), "{}\n");
         string own = Folder("own", Shown);
@@ -143,8 +151,7 @@ public sealed class FoldersUpTests : IDisposable
         Assert.Equal(planted, Dotnet.GlobalJsonIn(project)?.FullName);
     }
 
-    [Fact]
-    public void A_node_modules_another_user_made_in_an_accepted_folder_is_passed_over_with_all_it_holds()
+    private void A_node_modules_another_user_made_in_an_accepted_folder_is_passed_over_with_all_it_holds()
     {
         string package = Path.Join(root, "node_modules", "eslint", "package.json");
         Directory.CreateDirectory(Path.GetDirectoryName(package)!);
@@ -165,8 +172,7 @@ public sealed class FoldersUpTests : IDisposable
         Assert.Null(FoldersUp.Found(Path.Join(root, "node_modules"), Path.Join("..", "beside.json")));
     }
 
-    [Fact]
-    public void A_folder_not_there_is_passed_and_the_walk_goes_on_above_it()
+    private void A_folder_not_there_is_passed_and_the_walk_goes_on_above_it()
     {
         string own = Folder("own", Shown);
         string[] walked = [.. FoldersUp.From(Path.Join(own, "gone", "deeper"))];
@@ -183,5 +189,12 @@ public sealed class FoldersUpTests : IDisposable
             File.SetUnixFileMode(folder, mode);
         }
         return folder;
+    }
+
+    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
+    private static void Fresh(Action<FoldersUpTests> check)
+    {
+        using FoldersUpTests test = new();
+        check(test);
     }
 }

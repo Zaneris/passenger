@@ -8,20 +8,26 @@ namespace Passenger.UnitTests.Core;
 /// taking with the listener left to its owner. Each accept is a step the test gives, in turn.</summary>
 public class AcceptingTests
 {
-    [Theory]
-    [InlineData(SocketError.ConnectionReset)]
-    [InlineData(SocketError.ConnectionAborted)]
-    public async Task A_connection_gone_before_it_was_taken_is_passed_over_and_the_question_after_it_is_served(SocketError gone)
+    [Fact]
+    public Task A_servers_listener_serves_the_next_connection_after_one_gone_or_failed() => Cases.AllAsync(
+        ("A connection gone before it was taken is passed over and the question after it is served", A_connection_gone_before_it_was_taken_is_passed_over_and_the_question_after_it_is_served),
+        ("A listener that fails is closed so a client coming after is refused rather than left waiting", A_listener_that_fails_is_closed_so_a_client_coming_after_is_refused_rather_than_left_waiting),
+        ("A stop ends the taking and leaves the listener to its owner", A_stop_ends_the_taking_and_leaves_the_listener_to_its_owner));
+
+    private Task A_connection_gone_before_it_was_taken_is_passed_over_and_the_question_after_it_is_served() => Cases.EachAsync<SocketError>(
+    [
+        SocketError.ConnectionReset,
+        SocketError.ConnectionAborted,
+    ], async gone =>
     {
         (List<string> served, int closed) = await TakeAsync(() => throw new SocketException((int)gone), () => "Password for 'https://example.invalid':");
 
         Assert.True(served is ["Password for 'https://example.invalid':"] && closed == 0,
             $"After a connection {gone} before it was taken the server served [{string.Join(", ", served)}] and closed its listener {closed} times, "
             + "so a helper asking next would wait on a listener nobody takes from");
-    }
+    });
 
-    [Fact]
-    public async Task A_listener_that_fails_is_closed_so_a_client_coming_after_is_refused_rather_than_left_waiting()
+    private async Task A_listener_that_fails_is_closed_so_a_client_coming_after_is_refused_rather_than_left_waiting()
     {
         (List<string> served, int closed) = await TakeAsync(() => throw new SocketException((int)SocketError.TooManyOpenSockets), () => "never taken");
 
@@ -29,8 +35,7 @@ public class AcceptingTests
             $"A listener whose accept failed was closed {closed} times and served [{string.Join(", ", served)}], so a client coming after waits on it for good");
     }
 
-    [Fact]
-    public async Task A_stop_ends_the_taking_and_leaves_the_listener_to_its_owner()
+    private async Task A_stop_ends_the_taking_and_leaves_the_listener_to_its_owner()
     {
         (List<string> served, int closed) = await TakeAsync();
 

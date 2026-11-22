@@ -7,7 +7,11 @@ namespace Passenger.UnitTests.Core;
 public class SortedTests
 {
     [Fact]
-    public void Every_search_finds_the_first_place_a_scan_from_the_start_finds()
+    public void A_search_by_halving_answers_as_a_scan_does() => Cases.All(
+        ("Every search finds the first place a scan from the start finds", Every_search_finds_the_first_place_a_scan_from_the_start_finds),
+        ("Nothing to search answers none before and keys of another kind compare as their own", Nothing_to_search_answers_none_before_and_keys_of_another_kind_compare_as_their_own));
+
+    private void Every_search_finds_the_first_place_a_scan_from_the_start_finds()
     {
         Random random = new(1028);
         for (int run = 0; run < 200; run++)
@@ -41,8 +45,7 @@ public class SortedTests
         }
     }
 
-    [Fact]
-    public void Nothing_to_search_answers_none_before_and_keys_of_another_kind_compare_as_their_own()
+    private void Nothing_to_search_answers_none_before_and_keys_of_another_kind_compare_as_their_own()
     {
         Assert.Equal(0, Sorted.FirstAtOrAfter<int>([], 5));
         Assert.Equal(0, Sorted.FirstAfter(new List<int>(), static k => k, 5));

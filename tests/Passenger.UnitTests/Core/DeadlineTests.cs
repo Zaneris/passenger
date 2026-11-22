@@ -10,7 +10,11 @@ public class DeadlineTests
     private static long Ticks(double seconds) => (long)(seconds * Stopwatch.Frequency);
 
     [Fact]
-    public void A_deadline_passes_once_its_time_has_run_on_the_clock_and_says_the_time_left_before()
+    public void A_waits_limit_passes_only_once_its_time_has_run() => Cases.All(
+        ("A deadline passes once its time has run on the clock and says the time left before", A_deadline_passes_once_its_time_has_run_on_the_clock_and_says_the_time_left_before),
+        ("A time too long to count never passes and none or less has passed at once", A_time_too_long_to_count_never_passes_and_none_or_less_has_passed_at_once));
+
+    private void A_deadline_passes_once_its_time_has_run_on_the_clock_and_says_the_time_left_before()
     {
         const long now = 1_000_000;
         Deadline limit = Deadline.In(TimeSpan.FromSeconds(5), now);
@@ -22,8 +26,7 @@ public class DeadlineTests
         Assert.True(limit.LeftAt(now + Ticks(9)) == TimeSpan.Zero, $"A wait past its time said {limit.LeftAt(now + Ticks(9))} left, not none");
     }
 
-    [Fact]
-    public void A_time_too_long_to_count_never_passes_and_none_or_less_has_passed_at_once()
+    private void A_time_too_long_to_count_never_passes_and_none_or_less_has_passed_at_once()
     {
         const long now = 1_000_000;
         Deadline forever = Deadline.In(TimeSpan.MaxValue, now);

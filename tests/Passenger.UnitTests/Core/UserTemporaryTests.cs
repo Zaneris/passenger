@@ -9,7 +9,12 @@ public class UserTemporaryTests
     private static readonly string State = Path.Combine(Path.DirectorySeparatorChar + "no-such-folder", "Passenger");
 
     [Fact]
-    public void A_states_folders_are_in_the_users_temporary_folder_its_kinds_named_beside_its_own()
+    public void A_states_temporary_folders_are_its_own_and_the_users_alone() => Cases.All(
+        ("A states folders are in the users temporary folder its kinds named beside its own", A_states_folders_are_in_the_users_temporary_folder_its_kinds_named_beside_its_own),
+        ("Two states have folders of their own and one state spelled two ways has one", Two_states_have_folders_of_their_own_and_one_state_spelled_two_ways_has_one),
+        ("A folder made the users own is theirs alone and a link in its place is refused", A_folder_made_the_users_own_is_theirs_alone_and_a_link_in_its_place_is_refused));
+
+    private void A_states_folders_are_in_the_users_temporary_folder_its_kinds_named_beside_its_own()
     {
         string own = UserTemporary.Of(State);
         string updates = UserTemporary.Of(State, "updates");
@@ -19,15 +24,13 @@ public class UserTemporaryTests
         Assert.True(updates == $"{own}-updates", $"The state's updates folder is {updates}, not its own folder's name with its kind, {own}-updates");
     }
 
-    [Fact]
-    public void Two_states_have_folders_of_their_own_and_one_state_spelled_two_ways_has_one()
+    private void Two_states_have_folders_of_their_own_and_one_state_spelled_two_ways_has_one()
     {
         Assert.Equal(UserTemporary.Of(State, "updates"), UserTemporary.Of(State + Path.DirectorySeparatorChar, "updates"));
         Assert.NotEqual(UserTemporary.Of(State, "updates"), UserTemporary.Of(State + "-other", "updates"));
     }
 
-    [Fact]
-    public void A_folder_made_the_users_own_is_theirs_alone_and_a_link_in_its_place_is_refused()
+    private void A_folder_made_the_users_own_is_theirs_alone_and_a_link_in_its_place_is_refused()
     {
         if (OperatingSystem.IsWindows())
         {

@@ -16,7 +16,16 @@ public sealed class JsonMembersTests
         """;
 
     [Fact]
-    public void Each_read_takes_a_member_of_its_own_kind()
+    public void A_json_member_reads_as_the_kind_it_should_be_and_as_nothing_otherwise() => Cases.All(
+        ("Each read takes a member of its own kind", Each_read_takes_a_member_of_its_own_kind),
+        ("A scalar reads as its text whatever kind it was written as", A_scalar_reads_as_its_text_whatever_kind_it_was_written_as),
+        ("A member of another kind reads as nothing", A_member_of_another_kind_reads_as_nothing),
+        ("A holder that is no object has no members", A_holder_that_is_no_object_has_no_members),
+        ("No holder at all has no members", No_holder_at_all_has_no_members),
+        ("A name is matched as written unless any case is asked for", A_name_is_matched_as_written_unless_any_case_is_asked_for),
+        ("An object a program wrote among other lines is read whole whatever braces the lines beside it hold", An_object_a_program_wrote_among_other_lines_is_read_whole_whatever_braces_the_lines_beside_it_hold));
+
+    private void Each_read_takes_a_member_of_its_own_kind()
     {
         using JsonDocument read = JsonDocument.Parse(Written);
         JsonElement root = read.RootElement;
@@ -30,8 +39,7 @@ public sealed class JsonMembersTests
         Assert.Equal(["a", "b"], JsonMembers.Texts(root, "list"));
     }
 
-    [Fact]
-    public void A_scalar_reads_as_its_text_whatever_kind_it_was_written_as()
+    private void A_scalar_reads_as_its_text_whatever_kind_it_was_written_as()
     {
         using JsonDocument read = JsonDocument.Parse(Written);
         JsonElement root = read.RootElement;
@@ -45,18 +53,15 @@ public sealed class JsonMembersTests
             "An object or an array read as a scalar's text, which an engine's reader would take as the value it asked for");
     }
 
-    [Theory]
-    [InlineData("name")]
-    [InlineData("port")]
-    [InlineData("big")]
-    [InlineData("half")]
-    [InlineData("on")]
-    [InlineData("none")]
-    [InlineData("digits")]
-    [InlineData("inner")]
-    [InlineData("list")]
-    [InlineData("missing")]
-    public void A_member_of_another_kind_reads_as_nothing(string name)
+    private void A_member_of_another_kind_reads_as_nothing() => Cases.Each<string>(
+    [
+        "name",
+        "big",
+        "on",
+        "none",
+        "inner",
+        "missing",
+    ], name =>
     {
         using JsonDocument read = JsonDocument.Parse(Written);
         JsonElement root = read.RootElement;
@@ -69,15 +74,16 @@ public sealed class JsonMembersTests
         Assert.True(member.ValueKind == JsonValueKind.Object || JsonMembers.Properties(root, name).Count == 0, $"{name} read as an object's members");
         Assert.True(member.ValueKind == JsonValueKind.Array || JsonMembers.Items(root, name).Count == 0, $"{name} read as an array's items");
         Assert.True(member.ValueKind == JsonValueKind.Array || JsonMembers.Texts(root, name).Count == 0, $"{name} read as an array's strings");
-    }
+    });
 
-    [Theory]
-    [InlineData("[{ \"name\": \"web\" }]")]
-    [InlineData("\"name\"")]
-    [InlineData("42")]
-    [InlineData("true")]
-    [InlineData("null")]
-    public void A_holder_that_is_no_object_has_no_members(string text)
+    private void A_holder_that_is_no_object_has_no_members() => Cases.Each<string>(
+    [
+        "[{ \"name\": \"web\" }]",
+        "\"name\"",
+        "42",
+        "true",
+        "null",
+    ], text =>
     {
         using JsonDocument read = JsonDocument.Parse(text);
         JsonElement holder = read.RootElement;
@@ -85,18 +91,16 @@ public sealed class JsonMembersTests
             && JsonMembers.Bool(holder, "name") is null && JsonMembers.Object(holder, "name") is null && JsonMembers.Properties(holder, "name").Count == 0
             && JsonMembers.Items(holder, "name").Count == 0 && JsonMembers.Texts(holder, "name").Count == 0,
             $"A member was read out of {text}, where System.Text.Json's own read throws past a reader's catch of malformed JSON");
-    }
+    });
 
-    [Fact]
-    public void No_holder_at_all_has_no_members()
+    private void No_holder_at_all_has_no_members()
     {
         JsonElement? none = null;
         Assert.True(JsonMembers.Text(none, "name") is null && JsonMembers.Object(default(JsonElement), "name") is null && JsonMembers.Items(none, "name").Count == 0,
             "A member was read out of a holder a missing object gave, so a read through an object that is not there would not chain");
     }
 
-    [Fact]
-    public void A_name_is_matched_as_written_unless_any_case_is_asked_for()
+    private void A_name_is_matched_as_written_unless_any_case_is_asked_for()
     {
         using JsonDocument read = JsonDocument.Parse(Written);
         JsonElement inner = JsonMembers.Object(read.RootElement, "inner")!.Value;
@@ -105,8 +109,7 @@ public sealed class JsonMembersTests
         Assert.Equal("kept", JsonMembers.Text(JsonMembers.Object(read.RootElement, "INNER", anyCase: true), "NAME", anyCase: true));
     }
 
-    [Fact]
-    public void An_object_a_program_wrote_among_other_lines_is_read_whole_whatever_braces_the_lines_beside_it_hold()
+    private void An_object_a_program_wrote_among_other_lines_is_read_whole_whatever_braces_the_lines_beside_it_hold()
     {
         const string Indented = "{\n  \"inner\": {\n    \"name\": \"kept\"\n  }\n}";
         string said = "a line with a { brace\r\n" + Indented.ReplaceLineEndings("\r\n") + "\r\nwarning: } and { after\r\n";

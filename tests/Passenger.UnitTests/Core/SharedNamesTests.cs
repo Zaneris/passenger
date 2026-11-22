@@ -10,7 +10,11 @@ namespace Passenger.UnitTests.Core;
 public sealed class SharedNamesTests
 {
     [Fact]
-    public void Two_names_read_in_turn_whose_hashes_meet_are_each_read_once()
+    public void A_shared_name_is_read_once_however_its_hash_falls() => Cases.All(
+        ("Two names read in turn whose hashes meet are each read once", Two_names_read_in_turn_whose_hashes_meet_are_each_read_once),
+        ("A name read between others whose hashes meet its own is read once", A_name_read_between_others_whose_hashes_meet_its_own_is_read_once));
+
+    private void Two_names_read_in_turn_whose_hashes_meet_are_each_read_once()
     {
         string[] meeting = Meeting("Shared.Order", 2);
         string order = Read(meeting[0]);
@@ -23,8 +27,7 @@ public sealed class SharedNamesTests
         }
     }
 
-    [Fact]
-    public void A_name_read_between_others_whose_hashes_meet_its_own_is_read_once()
+    private void A_name_read_between_others_whose_hashes_meet_its_own_is_read_once()
     {
         string[] meeting = Meeting("Shared.Passed", 3);
         string passed = Read(meeting[0]);

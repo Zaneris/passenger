@@ -9,7 +9,14 @@ public sealed class TrustedFoldersTests
     private static string At(params string[] names) => Path.Combine([Top, .. names]);
 
     [Fact]
-    public void A_folder_trusted_trusts_every_folder_and_file_under_it_and_nothing_beside_it()
+    public void A_trusted_folder_trusts_what_is_under_it_and_a_workspace_lends_only_folders_beside_its_own() => Cases.All(
+        ("A folder trusted trusts every folder and file under it and nothing beside it", A_folder_trusted_trusts_every_folder_and_file_under_it_and_nothing_beside_it),
+        ("A parent trusted takes the place of the folders under it and a folder under a trusted one adds nothing", A_parent_trusted_takes_the_place_of_the_folders_under_it_and_a_folder_under_a_trusted_one_adds_nothing),
+        ("Where every folder is trusted a folder held to the persons answer is trusted only once it or a parent is", Where_every_folder_is_trusted_a_folder_held_to_the_persons_answer_is_trusted_only_once_it_or_a_parent_is),
+        ("A trusted workspaces folders beyond its own are trusted while it lends them and no longer once it lets them go", A_trusted_workspaces_folders_beyond_its_own_are_trusted_while_it_lends_them_and_no_longer_once_it_lets_them_go),
+        ("A workspace lends a folder beside its own never a disks root the home folder a folder holding it or its own", A_workspace_lends_a_folder_beside_its_own_never_a_disks_root_the_home_folder_a_folder_holding_it_or_its_own));
+
+    private void A_folder_trusted_trusts_every_folder_and_file_under_it_and_nothing_beside_it()
     {
         TrustedFolders trusted = TrustedFolders.None.With([At("work", "app")]);
 
@@ -20,8 +27,7 @@ public sealed class TrustedFoldersTests
         Assert.False(TrustedFolders.None.Trusts(At("work", "app")), "A folder was trusted before anything was");
     }
 
-    [Fact]
-    public void A_parent_trusted_takes_the_place_of_the_folders_under_it_and_a_folder_under_a_trusted_one_adds_nothing()
+    private void A_parent_trusted_takes_the_place_of_the_folders_under_it_and_a_folder_under_a_trusted_one_adds_nothing()
     {
         TrustedFolders children = TrustedFolders.None.With([At("work", "app"), At("work", "lib"), At("other")]);
 
@@ -32,8 +38,7 @@ public sealed class TrustedFoldersTests
         Assert.Same(parent, parent.With(["relative", string.Empty]));
     }
 
-    [Fact]
-    public void Where_every_folder_is_trusted_a_folder_held_to_the_persons_answer_is_trusted_only_once_it_or_a_parent_is()
+    private void Where_every_folder_is_trusted_a_folder_held_to_the_persons_answer_is_trusted_only_once_it_or_a_parent_is()
     {
         TrustedFolders everything = TrustedFolders.None with { Everything = true, Asked = [At("work", "app")] };
 
@@ -42,8 +47,7 @@ public sealed class TrustedFoldersTests
         Assert.True(everything.With([At("work")]).Trusts(At("work", "app", "src")), "The parent trusted did not trust the folder held to the person's answer");
     }
 
-    [Fact]
-    public void A_trusted_workspaces_folders_beyond_its_own_are_trusted_while_it_lends_them_and_no_longer_once_it_lets_them_go()
+    private void A_trusted_workspaces_folders_beyond_its_own_are_trusted_while_it_lends_them_and_no_longer_once_it_lets_them_go()
     {
         object workspace = new();
         TrustedFolders lent = TrustedFolders.None.With([At("repo", "src")]).Lending(workspace, [At("repo", "tests"), At("repo", "tests")]);
@@ -55,8 +59,7 @@ public sealed class TrustedFoldersTests
         Assert.True(lent.Lending(new object(), []).Trusts(At("repo", "tests")), "Another workspace letting its folders go took back this one's");
     }
 
-    [Fact]
-    public void A_workspace_lends_a_folder_beside_its_own_never_a_disks_root_the_home_folder_a_folder_holding_it_or_its_own()
+    private void A_workspace_lends_a_folder_beside_its_own_never_a_disks_root_the_home_folder_a_folder_holding_it_or_its_own()
     {
         string open = At("repo", "app");
         string home = PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
@@ -73,7 +76,14 @@ public sealed class TrustedFoldersTests
     }
 
     [Fact]
-    public void Why_a_workspace_lends_a_folder_nothing_names_the_disks_root_the_open_folder_or_the_home_folder_it_is_or_holds()
+    public void A_folder_in_a_git_repository_is_trusted_as_the_repository_and_taken_back_with_it() => Cases.All(
+        ("Why a workspace lends a folder nothing names the disks root the open folder or the home folder it is or holds", Why_a_workspace_lends_a_folder_nothing_names_the_disks_root_the_open_folder_or_the_home_folder_it_is_or_holds),
+        ("A folder in a Git repository is trusted as the repositorys top and one in none as itself", A_folder_in_a_Git_repository_is_trusted_as_the_repositorys_top_and_one_in_none_as_itself),
+        ("A git file naming a git folder makes a worktrees top and a submodule takes its superprojects top", A_git_file_naming_a_git_folder_makes_a_worktrees_top_and_a_submodule_takes_its_superprojects_top),
+        ("Trusting a folder in a Git repository trusts the repository whose trust taken back takes back the folder", Trusting_a_folder_in_a_Git_repository_trusts_the_repository_whose_trust_taken_back_takes_back_the_folder),
+        ("A folder taken back is trusted no longer with every folder under it while a parent still trusted keeps it", A_folder_taken_back_is_trusted_no_longer_with_every_folder_under_it_while_a_parent_still_trusted_keeps_it));
+
+    private void Why_a_workspace_lends_a_folder_nothing_names_the_disks_root_the_open_folder_or_the_home_folder_it_is_or_holds()
     {
         string open = At("repo", "app");
         string home = PathNames.Canonical(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
@@ -90,8 +100,7 @@ public sealed class TrustedFoldersTests
         }
     }
 
-    [Fact]
-    public void A_folder_in_a_Git_repository_is_trusted_as_the_repositorys_top_and_one_in_none_as_itself()
+    private void A_folder_in_a_Git_repository_is_trusted_as_the_repositorys_top_and_one_in_none_as_itself()
     {
         string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
         try
@@ -116,8 +125,7 @@ public sealed class TrustedFoldersTests
         }
     }
 
-    [Fact]
-    public void A_git_file_naming_a_git_folder_makes_a_worktrees_top_and_a_submodule_takes_its_superprojects_top()
+    private void A_git_file_naming_a_git_folder_makes_a_worktrees_top_and_a_submodule_takes_its_superprojects_top()
     {
         string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
         try
@@ -142,8 +150,7 @@ public sealed class TrustedFoldersTests
         }
     }
 
-    [Fact]
-    public void Trusting_a_folder_in_a_Git_repository_trusts_the_repository_whose_trust_taken_back_takes_back_the_folder()
+    private void Trusting_a_folder_in_a_Git_repository_trusts_the_repository_whose_trust_taken_back_takes_back_the_folder()
     {
         string root = PathNames.Canonical(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
         string repository = Directory.CreateDirectory(Path.Join(root, "repo")).FullName;
@@ -167,8 +174,7 @@ public sealed class TrustedFoldersTests
         }
     }
 
-    [Fact]
-    public void A_folder_taken_back_is_trusted_no_longer_with_every_folder_under_it_while_a_parent_still_trusted_keeps_it()
+    private void A_folder_taken_back_is_trusted_no_longer_with_every_folder_under_it_while_a_parent_still_trusted_keeps_it()
     {
         TrustedFolders trusted = TrustedFolders.None.With([At("work", "app"), At("other")]);
 

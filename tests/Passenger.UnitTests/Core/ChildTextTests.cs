@@ -11,30 +11,40 @@ public class ChildTextTests
 {
     private static readonly Encoding Utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-    public static TheoryData<string, byte[]> Texts => new()
-    {
-        { "ASCII with its line ends", "one\r\ntwo\nthree\r"u8.ToArray() },
-        { "empty lines between ends of each kind", "a\r\r\n\n\rb\n\r\r"u8.ToArray() },
-        { "UTF-8 of one to four bytes a character", Encoding.UTF8.GetBytes("café 漢字 \U0001F600 €") },
-        { "UTF-8 after its mark", [0xEF, 0xBB, 0xBF, .. "mark"u8] },
-        { "UTF-16 after its little-endian mark", [0xFF, 0xFE, .. Encoding.Unicode.GetBytes("hé 漢")] },
-        { "UTF-16 after its big-endian mark", [0xFE, 0xFF, .. Encoding.BigEndianUnicode.GetBytes("hé 漢")] },
-        { "UTF-32 after its little-endian mark", [0xFF, 0xFE, 0, 0, .. Encoding.UTF32.GetBytes("\U0001F600x")] },
-        { "UTF-32 after its big-endian mark", [0, 0, 0xFE, 0xFF, .. new UTF32Encoding(bigEndian: true, byteOrderMark: false).GetBytes("x\U0001F600")] },
-        { "a character cut short at the end", [.. "ok"u8, 0xE6, 0xBC] },
-        { "bytes that are no UTF-8", [0xFF, 0x41, 0xC3, 0x28, 0x80] },
-        { "the start of a mark alone", [0xEF, 0xBB] },
-        { "a lone NUL", [0] },
-        { "NULs that begin no mark", [0, 0, 0x41, 0] },
-        { "nothing", [] },
-    };
+    private static readonly (string What, byte[] Bytes)[] Texts =
+    [
+        ("ASCII with its line ends", "one\r\ntwo\nthree\r"u8.ToArray()),
+        ("empty lines between ends of each kind", "a\r\r\n\n\rb\n\r\r"u8.ToArray()),
+        ("UTF-8 of one to four bytes a character", Encoding.UTF8.GetBytes("café 漢字 \U0001F600 €")),
+        ("UTF-8 after its mark", [0xEF, 0xBB, 0xBF, .. "mark"u8]),
+        ("UTF-16 after its little-endian mark", [0xFF, 0xFE, .. Encoding.Unicode.GetBytes("hé 漢")]),
+        ("UTF-16 after its big-endian mark", [0xFE, 0xFF, .. Encoding.BigEndianUnicode.GetBytes("hé 漢")]),
+        ("UTF-32 after its little-endian mark", [0xFF, 0xFE, 0, 0, .. Encoding.UTF32.GetBytes("\U0001F600x")]),
+        ("UTF-32 after its big-endian mark", [0, 0, 0xFE, 0xFF, .. new UTF32Encoding(bigEndian: true, byteOrderMark: false).GetBytes("x\U0001F600")]),
+        ("a character cut short at the end", [.. "ok"u8, 0xE6, 0xBC]),
+        ("bytes that are no UTF-8", [0xFF, 0x41, 0xC3, 0x28, 0x80]),
+        ("the start of a mark alone", [0xEF, 0xBB]),
+        ("a lone NUL", [0]),
+        ("NULs that begin no mark", [0, 0, 0x41, 0]),
+        ("nothing", []),
+    ];
+
+    [Fact]
+    public Task A_childs_output_reads_as_its_processs_own_reader_reads_it_however_its_reads_are_cut() => Cases.AllAsync(
+        ("Bytes cut into reads anywhere read as the processs own reader reads them whole", Bytes_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them_whole),
+        ("Lines and the whole text cut into reads anywhere read as the processs own reader reads them", Lines_and_the_whole_text_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them),
+        ("A line read whole costs its string alone", A_line_read_whole_costs_its_string_alone),
+        ("A line waits for its end and a wait cancelled is cancelled", A_line_waits_for_its_end_and_a_wait_cancelled_is_cancelled),
+        ("A read that waits answers as its streams read ends with the characters it brought", A_read_that_waits_answers_as_its_streams_read_ends_with_the_characters_it_brought),
+        ("The start of a byte order mark waits for the rest and the mark is left out", The_start_of_a_byte_order_mark_waits_for_the_rest_and_the_mark_is_left_out),
+        ("A read whose stream fails fails with an IOException and one cancelled is cancelled", A_read_whose_stream_fails_fails_with_an_IOException_and_one_cancelled_is_cancelled),
+        ("A byte order mark is looked for until what came begins none", () => { A_byte_order_mark_is_looked_for_until_what_came_begins_none(); return Task.CompletedTask; }));
 
     /// <summary>Every place the bytes can be cut into two reads, and reads of one byte, each read taken a few characters
     /// at a time: the text is what the process's reader reads from the bytes whole.</summary>
-    [Theory]
-    [MemberData(nameof(Texts))]
-    public async Task Bytes_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them_whole(string what, byte[] bytes)
+    private Task Bytes_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them_whole() => Cases.EachAsync(Texts, async row =>
     {
+        (string what, byte[] bytes) = row;
         string expected = await new StreamReader(new MemoryStream(bytes), Utf8, detectEncodingFromByteOrderMarks: true)
             .ReadToEndAsync(TestContext.Current.CancellationToken);
         for (int cut = 0; cut <= bytes.Length; cut++)
@@ -44,14 +54,13 @@ public class ChildTextTests
             Assert.True(read == expected, $"{what} cut after {cut} bytes read as [{read}], not [{expected}]");
         }
         Assert.Equal(expected, await TextAsync(bytes, _ => 1));
-    }
+    }, row => row.What);
 
     /// <summary>Lines and the whole text, every place the bytes can be cut into two reads and reads of one byte: each as the
     /// process's own reader reads them, a line's end ("\n", "\r\n" or "\r") left off, a "\r\n" cut between two reads one end.</summary>
-    [Theory]
-    [MemberData(nameof(Texts))]
-    public async Task Lines_and_the_whole_text_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them(string what, byte[] bytes)
+    private Task Lines_and_the_whole_text_cut_into_reads_anywhere_read_as_the_processs_own_reader_reads_them() => Cases.EachAsync(Texts, async row =>
     {
+        (string what, byte[] bytes) = row;
         CancellationToken cancel = TestContext.Current.CancellationToken;
         List<string> expected = await LinesAsync(new StreamReader(new MemoryStream(bytes), Utf8, detectEncodingFromByteOrderMarks: true), cancel);
         string whole = await new StreamReader(new MemoryStream(bytes), Utf8, detectEncodingFromByteOrderMarks: true).ReadToEndAsync(cancel);
@@ -67,12 +76,11 @@ public class ChildTextTests
         }
         using ChildText single = new(new ChunkedStream(bytes, _ => 1), Utf8);
         Assert.Equal(expected, await LinesAsync(single, cancel));
-    }
+    }, row => row.What);
 
     /// <summary>A line whose end came in the same read costs its string alone: a child that writes thousands of lines (a
     /// build, a test run) costs its reader no more than those lines.</summary>
-    [Fact]
-    public async Task A_line_read_whole_costs_its_string_alone()
+    private async Task A_line_read_whole_costs_its_string_alone()
     {
         const int Count = 2_000;
         byte[] bytes = Encoding.ASCII.GetBytes(string.Concat(Enumerable.Range(0, Count).Select(i => $"Line {i:D5} of a child's output, as a build or a test runner writes it.\r\n")));
@@ -91,8 +99,7 @@ public class ChildTextTests
     }
 
     /// <summary>A line waits for its end, which its stream's read brings, and a wait whose read is cancelled is cancelled.</summary>
-    [Fact]
-    public async Task A_line_waits_for_its_end_and_a_wait_cancelled_is_cancelled()
+    private async Task A_line_waits_for_its_end_and_a_wait_cancelled_is_cancelled()
     {
         HeldStream stream = new();
         using ChildText text = new(stream, Utf8);
@@ -111,8 +118,7 @@ public class ChildTextTests
     /// <summary>A read its stream makes wait answers once the stream's read ends: a first byte that begins no byte order mark
     /// at once, the start of a mark held until what follows tells, a character cut between two reads once whole, and
     /// nothing once the stream has ended, which lets the stream go.</summary>
-    [Fact]
-    public async Task A_read_that_waits_answers_as_its_streams_read_ends_with_the_characters_it_brought()
+    private async Task A_read_that_waits_answers_as_its_streams_read_ends_with_the_characters_it_brought()
     {
         HeldStream stream = new();
         using ChildText text = new(stream, Utf8);
@@ -137,8 +143,7 @@ public class ChildTextTests
         Assert.True(stream.Disposed, "The stream was kept once its text had ended");
     }
 
-    [Fact]
-    public async Task The_start_of_a_byte_order_mark_waits_for_the_rest_and_the_mark_is_left_out()
+    private async Task The_start_of_a_byte_order_mark_waits_for_the_rest_and_the_mark_is_left_out()
     {
         HeldStream stream = new();
         using ChildText text = new(stream, Utf8);
@@ -153,8 +158,7 @@ public class ChildTextTests
 
     /// <summary>A failed read of a pipe's socket fails the read waiting on it as a stream's failure, an IOException, as it
     /// fails a read that does not wait; a cancelled one is cancelled.</summary>
-    [Fact]
-    public async Task A_read_whose_stream_fails_fails_with_an_IOException_and_one_cancelled_is_cancelled()
+    private async Task A_read_whose_stream_fails_fails_with_an_IOException_and_one_cancelled_is_cancelled()
     {
         HeldStream stream = new();
         using ChildText text = new(stream, Utf8);
@@ -172,8 +176,7 @@ public class ChildTextTests
         await Assert.ThrowsAsync<IOException>(() => failing.ReadAsync(buffer, TestContext.Current.CancellationToken).AsTask());
     }
 
-    [Fact]
-    public void A_byte_order_mark_is_looked_for_until_what_came_begins_none()
+    private void A_byte_order_mark_is_looked_for_until_what_came_begins_none()
     {
         Assert.Null(ChildText.MarkOf([0xFF, 0xFE], ended: false));
         Assert.Equal((Encoding.Unicode, 2), ChildText.MarkOf([0xFF, 0xFE], ended: true));

@@ -7,7 +7,13 @@ namespace Passenger.UnitTests.Core;
 public class ChildLinesTests
 {
     [Fact]
-    public void Lines_come_without_their_ends_and_a_last_line_without_an_end_is_a_line()
+    public void A_childs_output_is_heard_as_lines_whatever_pieces_its_pipe_cuts_it_into() => Cases.All(
+        ("Lines come without their ends and a last line without an end is a line", Lines_come_without_their_ends_and_a_last_line_without_an_end_is_a_line),
+        ("A CRLF cut between two pieces reads as if it came in one", A_CRLF_cut_between_two_pieces_reads_as_if_it_came_in_one),
+        ("A line past the longest is cut there and the lines after it come whole", A_line_past_the_longest_is_cut_there_and_the_lines_after_it_come_whole),
+        ("A longest of none is refused", A_longest_of_none_is_refused));
+
+    private void Lines_come_without_their_ends_and_a_last_line_without_an_end_is_a_line()
     {
         Assert.Equal(["one", string.Empty, "two", "a", "b", string.Empty, "last"], Lines(["one\r\n\ntwo\na\rb\r\n\r\nlast"]));
         Assert.Equal(["one", "two"], Lines(["one\ntwo\n"]));
@@ -18,8 +24,7 @@ public class ChildLinesTests
 
     /// <summary>Every place the text can be cut into two pieces, and pieces of one character: a "\r\n" cut between two is
     /// still one end, and a lone "\r" at a piece's end still ends its line.</summary>
-    [Fact]
-    public void A_CRLF_cut_between_two_pieces_reads_as_if_it_came_in_one()
+    private void A_CRLF_cut_between_two_pieces_reads_as_if_it_came_in_one()
     {
         const string Text = "first\r\nsecond\r\rthird\n\r\nfourth\r";
         string[] expected = ["first", "second", string.Empty, "third", string.Empty, "fourth"];
@@ -32,8 +37,7 @@ public class ChildLinesTests
 
     /// <summary>A line past the longest is cut there, however the pieces fall, the lines after it whole; the longest itself and
     /// shorter come whole.</summary>
-    [Fact]
-    public void A_line_past_the_longest_is_cut_there_and_the_lines_after_it_come_whole()
+    private void A_line_past_the_longest_is_cut_there_and_the_lines_after_it_come_whole()
     {
         string over = new('x', 10_000);
         string text = $"short\n{over}\r\n{new string('y', 8)}\n{over}";
@@ -43,8 +47,7 @@ public class ChildLinesTests
         Assert.Equal(["short", over, new string('y', 8), over], Lines([text]));
     }
 
-    [Fact]
-    public void A_longest_of_none_is_refused()
+    private void A_longest_of_none_is_refused()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new ChildLines(_ => { }, longest: 0));
     }

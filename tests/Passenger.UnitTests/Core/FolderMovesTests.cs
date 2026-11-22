@@ -14,7 +14,12 @@ public sealed class FolderMovesTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_folder_carried_away_and_back_keeps_its_links_build_output_hidden_files_and_times()
+    public void A_folder_carried_between_volumes_arrives_as_it_was() => Cases.All(
+        ("A folder carried away and back keeps its links build output hidden files and times", () => Fresh(test => test.A_folder_carried_away_and_back_keeps_its_links_build_output_hidden_files_and_times())),
+        ("A carry refused leaves the folder where it was as it was and says why", () => Fresh(test => test.A_carry_refused_leaves_the_folder_where_it_was_as_it_was_and_says_why())),
+        ("A rename refused for a file held under the folder is thrown never taken for another volume", () => Fresh(test => test.A_rename_refused_for_a_file_held_under_the_folder_is_thrown_never_taken_for_another_volume())));
+
+    private void A_folder_carried_away_and_back_keeps_its_links_build_output_hidden_files_and_times()
     {
         string made = Path.Join(root, "volume-a", "Shop");
         string outside = Write(Path.Join(root, "elsewhere", "shared.txt"), "shared\n");
@@ -41,8 +46,7 @@ public sealed class FolderMovesTests : IDisposable
         Assert.Equal(["Shop"], Directory.EnumerateFileSystemEntries(Path.Join(root, "volume-a")).Select(Path.GetFileName));
     }
 
-    [Fact]
-    public void A_carry_refused_leaves_the_folder_where_it_was_as_it_was_and_says_why()
+    private void A_carry_refused_leaves_the_folder_where_it_was_as_it_was_and_says_why()
     {
         string made = Path.Join(root, "volume-a", "Shop");
         Write(Path.Join(made, "Program.cs"), "class Program { }\n");
@@ -60,8 +64,7 @@ public sealed class FolderMovesTests : IDisposable
     /// <summary>Windows refuses a folder's rename while a file under it is open, however its reader shares it, as a virus
     /// scanner reading what was just written holds it: a copy of the folder beside it would meet the scanner again, so the
     /// refusal is the caller's to wait out or work around, never a move between volumes.</summary>
-    [Fact]
-    public void A_rename_refused_for_a_file_held_under_the_folder_is_thrown_never_taken_for_another_volume()
+    private void A_rename_refused_for_a_file_held_under_the_folder_is_thrown_never_taken_for_another_volume()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses a folder's rename for a file open under it");
         string unpacked = Path.Join(root, "unpacked", "shared");
@@ -133,5 +136,12 @@ public sealed class FolderMovesTests : IDisposable
         {
             Assert.Skip($"Windows lets this user make no symlink: {refused.Message}");
         }
+    }
+
+    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
+    private static void Fresh(Action<FolderMovesTests> check)
+    {
+        using FolderMovesTests test = new();
+        check(test);
     }
 }

@@ -6,12 +6,18 @@ namespace Passenger.UnitTests.Core;
 /// name whichever spelling of its full name it comes from.</summary>
 public sealed class TypeNamesTests
 {
-    [Theory]
-    [InlineData("Shop.Specs.BasketSteps", "BasketSteps")]
-    [InlineData("Shop.Specs.BasketSteps+Discounts", "Discounts")]
-    [InlineData("Shop.Specs.BasketSteps.Discounts", "Discounts")]
-    [InlineData("System.Collections.Generic.List`1", "List`1")]
-    [InlineData("BasketSteps", "BasketSteps")]
-    public void A_short_name_is_the_types_own_name_in_either_spelling(string fullName, string shown) =>
-        Assert.True(TypeNames.Short(fullName) == shown, $"{fullName} is shown as {TypeNames.Short(fullName)}, not {shown}: a step, test or binding error names another type");
+    [Fact]
+    public void A_short_name_is_the_types_own_name_in_either_spelling() => Cases.Each<(string fullName, string shown)>(
+    [
+        ("Shop.Specs.BasketSteps", "BasketSteps"),
+        ("Shop.Specs.BasketSteps+Discounts", "Discounts"),
+        ("Shop.Specs.BasketSteps.Discounts", "Discounts"),
+        ("System.Collections.Generic.List`1", "List`1"),
+        ("BasketSteps", "BasketSteps"),
+    ], row =>
+    {
+        (string fullName, string shown) = row;
+        
+                Assert.True(TypeNames.Short(fullName) == shown, $"{fullName} is shown as {TypeNames.Short(fullName)}, not {shown}: a step, test or binding error names another type");
+    });
 }

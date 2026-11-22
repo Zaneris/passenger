@@ -7,7 +7,13 @@ namespace Passenger.UnitTests.Core;
 public class ExitCodesTests
 {
     [Fact]
-    public void A_code_above_128_on_macOS_and_Linux_names_the_signal_that_ended_the_program()
+    public void An_exit_code_is_told_as_its_signal_its_hex_or_itself() => Cases.All(
+        ("A code above 128 on macOS and Linux names the signal that ended the program", A_code_above_128_on_macOS_and_Linux_names_the_signal_that_ended_the_program),
+        ("A code standing for a signal that ends no program is the programs own", A_code_standing_for_a_signal_that_ends_no_program_is_the_programs_own),
+        ("A code no signal gives is said as it is", A_code_no_signal_gives_is_said_as_it_is),
+        ("A negative code on Windows is said with its hex as its status codes are written", A_negative_code_on_Windows_is_said_with_its_hex_as_its_status_codes_are_written));
+
+    private void A_code_above_128_on_macOS_and_Linux_names_the_signal_that_ended_the_program()
     {
         Assert.Equal("exit code 137 (SIGKILL)", ExitCodes.Said(137, windows: false));
         Assert.Equal("exit code 139 (SIGSEGV)", ExitCodes.Said(139, windows: false));
@@ -18,8 +24,7 @@ public class ExitCodesTests
         Assert.Equal("exit code 152 (signal 24)", ExitCodes.Said(152, windows: false));
     }
 
-    [Fact]
-    public void A_code_standing_for_a_signal_that_ends_no_program_is_the_programs_own()
+    private void A_code_standing_for_a_signal_that_ends_no_program_is_the_programs_own()
     {
         // .NET's host exits 150 where a program's runtime is missing: SIGTTOU's number, which stops a program, never ends it.
         Assert.Equal("exit code 150", ExitCodes.Said(150, windows: false));
@@ -27,8 +32,7 @@ public class ExitCodesTests
         Assert.Equal("exit code 156", ExitCodes.Said(156, windows: false));
     }
 
-    [Fact]
-    public void A_code_no_signal_gives_is_said_as_it_is()
+    private void A_code_no_signal_gives_is_said_as_it_is()
     {
         Assert.Equal("exit code 0", ExitCodes.Said(0, windows: false));
         Assert.Equal("exit code 3", ExitCodes.Said(3, windows: false));
@@ -37,8 +41,7 @@ public class ExitCodesTests
         Assert.Equal("exit code 137", ExitCodes.Said(137, windows: true));
     }
 
-    [Fact]
-    public void A_negative_code_on_Windows_is_said_with_its_hex_as_its_status_codes_are_written()
+    private void A_negative_code_on_Windows_is_said_with_its_hex_as_its_status_codes_are_written()
     {
         Assert.Equal("exit code -1 (0xFFFFFFFF)", ExitCodes.Said(-1, windows: true));
         Assert.Equal("exit code -1073741819 (0xC0000005)", ExitCodes.Said(unchecked((int)0xC0000005), windows: true));
