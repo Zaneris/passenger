@@ -20,43 +20,41 @@ public sealed class PackageFoldersTests : IDisposable
     }
 
     [Fact]
-    public void A_projects_source_below_the_package_folder_it_names_stays_its_own_beside_a_package_there()
-    {
-        string source = Written("src/App/Program.cs");
-        string deeper = Written("src/App/Models/Order.cs");
-        Written("kit/1.0.0/.nupkg.metadata");
-        string restored = Written("kit/1.0.0/lib/Kit.cs");
-        PackageFolders.Learn([root]);
+    public void A_package_folders_files_are_a_packages_and_a_projects_source_below_it_stays_its_own() => Cases.All(
+        ("a project's source below the package folder it names stays its own beside a package there", () =>
+        {
+            string source = Written("src/App/Program.cs");
+            string deeper = Written("src/App/Models/Order.cs");
+            Written("kit/1.0.0/.nupkg.metadata");
+            string restored = Written("kit/1.0.0/lib/Kit.cs");
+            PackageFolders.Learn([root]);
 
-        Assert.False(PackageFolders.Holds(source), "A project's own source below its package folder was taken for a package's, so it could not be edited or saved");
-        Assert.False(PackageFolders.Holds(deeper), "A project's own source below its package folder was taken for a package's, so it could not be edited or saved");
-        Assert.Null(PackageFolders.PackageOf(source));
-        Assert.True(PackageFolders.Holds(restored), "A restored package's file was left writable, every project's copy of that version");
-        Assert.Equal("kit 1.0.0", PackageFolders.PackageOf(restored));
-    }
+            Assert.False(PackageFolders.Holds(source), "A project's own source below its package folder was taken for a package's, so it could not be edited or saved");
+            Assert.False(PackageFolders.Holds(deeper), "A project's own source below its package folder was taken for a package's, so it could not be edited or saved");
+            Assert.Null(PackageFolders.PackageOf(source));
+            Assert.True(PackageFolders.Holds(restored), "A restored package's file was left writable, every project's copy of that version");
+            Assert.Equal("kit 1.0.0", PackageFolders.PackageOf(restored));
+        }),
+        ("a package of a fallback folder with only its nuspec is a package", () =>
+        {
+            Written("lamp/2.0.0/lamp.nuspec");
+            string restored = Written("lamp/2.0.0/content/lamp.css");
+            PackageFolders.Learn([root]);
 
-    [Fact]
-    public void A_package_of_a_fallback_folder_with_only_its_nuspec_is_a_package()
-    {
-        Written("lamp/2.0.0/lamp.nuspec");
-        string restored = Written("lamp/2.0.0/content/lamp.css");
-        PackageFolders.Learn([root]);
+            Assert.True(PackageFolders.Holds(restored), "A package holding its nuspec was not taken for one");
+        }),
+        ("a file made in a package's folder or its version's own is the package's and in the package folder or an id's none", () =>
+        {
+            Written("tray/3.0.0/.nupkg.metadata");
+            string content = Path.GetDirectoryName(Written("tray/3.0.0/content/tray.txt"))!;
+            string version = Path.Combine(root, "tray", "3.0.0");
+            PackageFolders.Learn([root]);
 
-        Assert.True(PackageFolders.Holds(restored), "A package holding its nuspec was not taken for one");
-    }
+            Assert.Equal("tray 3.0.0", PackageFolders.PackageIn(content));
+            Assert.Equal("tray 3.0.0", PackageFolders.PackageIn(version));
+            Assert.Null(PackageFolders.PackageOf(version));
+            Assert.Null(PackageFolders.PackageIn(Path.Combine(root, "tray")));
+            Assert.Null(PackageFolders.PackageIn(root));
+        }));
 
-    [Fact]
-    public void A_file_made_in_a_packages_folder_or_its_versions_own_is_the_packages_and_in_the_package_folder_or_an_ids_none()
-    {
-        Written("tray/3.0.0/.nupkg.metadata");
-        string content = Path.GetDirectoryName(Written("tray/3.0.0/content/tray.txt"))!;
-        string version = Path.Combine(root, "tray", "3.0.0");
-        PackageFolders.Learn([root]);
-
-        Assert.Equal("tray 3.0.0", PackageFolders.PackageIn(content));
-        Assert.Equal("tray 3.0.0", PackageFolders.PackageIn(version));
-        Assert.Null(PackageFolders.PackageOf(version));
-        Assert.Null(PackageFolders.PackageIn(Path.Combine(root, "tray")));
-        Assert.Null(PackageFolders.PackageIn(root));
-    }
 }

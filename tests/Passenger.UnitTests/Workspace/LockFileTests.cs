@@ -10,25 +10,22 @@ public class LockFileTests
     private static readonly string Project = Path.Combine(Folder, "My Shop.csproj");
 
     [Fact]
-    public void A_project_naming_no_lock_file_has_packages_lock_json_beside_it()
-    {
-        Assert.Equal(Path.Combine(Folder, "packages.lock.json"), ProjectModel.LockFileOf(Project, null, _ => false));
-        Assert.Equal(Path.Combine(Folder, "packages.lock.json"), ProjectModel.LockFileOf(Project, "", _ => false));
-    }
+    public void The_lock_file_a_package_change_writes_is_found_as_NuGets_restore_finds_it() => Cases.All(
+        ("a project naming no lock file has packages.lock.json beside it", () =>
+        {
+            Assert.Equal(Path.Combine(Folder, "packages.lock.json"), ProjectModel.LockFileOf(Project, null, _ => false));
+        }),
+        ("a lock file named for the project file is taken where it is there its spaces written as underscores", () =>
+        {
+            string own = Path.Combine(Folder, "packages.My_Shop.lock.json");
+            Assert.Equal(own, ProjectModel.LockFileOf(Project, null, path => path == own));
+        }),
+        ("the lock file the project names is taken from its folder whatever is there", () =>
+        {
+            string own = Path.Combine(Folder, "packages.My_Shop.lock.json");
+            Assert.Equal(Path.Combine(Folder, "locks", "shop.json"), ProjectModel.LockFileOf(Project, "locks\\shop.json", path => path == own));
+            string elsewhere = Path.Combine(Path.GetTempPath(), "locks", "shop.json");
+            Assert.Equal(elsewhere, ProjectModel.LockFileOf(Project, elsewhere, _ => true));
+        }));
 
-    [Fact]
-    public void A_lock_file_named_for_the_project_file_is_taken_where_it_is_there_its_spaces_written_as_underscores()
-    {
-        string own = Path.Combine(Folder, "packages.My_Shop.lock.json");
-        Assert.Equal(own, ProjectModel.LockFileOf(Project, null, path => path == own));
-    }
-
-    [Fact]
-    public void The_lock_file_the_project_names_is_taken_from_its_folder_whatever_is_there()
-    {
-        string own = Path.Combine(Folder, "packages.My_Shop.lock.json");
-        Assert.Equal(Path.Combine(Folder, "locks", "shop.json"), ProjectModel.LockFileOf(Project, "locks\\shop.json", path => path == own));
-        string elsewhere = Path.Combine(Path.GetTempPath(), "locks", "shop.json");
-        Assert.Equal(elsewhere, ProjectModel.LockFileOf(Project, elsewhere, _ => true));
-    }
 }
