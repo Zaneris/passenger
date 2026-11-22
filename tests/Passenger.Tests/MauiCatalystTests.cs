@@ -21,27 +21,36 @@ namespace Passenger.Tests;
 /// says they stay out, and stops in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit.
 /// Stop ends the app and takes out what was carried, its start's own instance alone where it is debugged and run at once;
 /// an agent's Passenger killed with its tree ends the app it opened too. Skips, saying why, off a Mac, without MAUI's and
-/// Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged through the window, so alone.</summary>
+/// Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged through the window, so alone; each test's waits
+/// end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
 public sealed class MauiCatalystTests : McpRig
 {
-    private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);
+    private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));
 
     /// <summary>What the update handler the test adds to the app writes once Hot Reload has applied an edit.</summary>
     private const string Handled = "Update handler called for MainPage";
 
-    /// <summary>The MAUI app's Mac Catalyst head on this Mac: run with Hot Reload, its tree, a tap and an edit; debugged as
-    /// the template builds it; the template's app as made, opened hidden by Run and given a whole Debug build
-    /// (<see cref="MauiTemplateRunTests"/>); and debugged and run at once, each instance ended alone.</summary>
+    /// <summary>The MAUI app's Mac Catalyst head run on this Mac: with Hot Reload, its tree, a tap and an edit; and the
+    /// template's app as made, opened hidden by Run and given a whole Debug build (<see cref="MauiTemplateRunTests"/>).</summary>
     [AvaloniaFact]
-    public void A_maui_apps_mac_catalyst_head_runs_and_debugs_hidden_takes_edits_and_ends_each_instance_alone()
+    public void A_maui_apps_mac_catalyst_head_runs_hidden_with_hot_reload_and_as_the_template_makes_it()
     {
+        using IDisposable hang = Limits.BeginHang();
         Flow.Step("a MAUI app's Mac Catalyst head run with Hot Reload shows its tree, takes a tap and an edit, and ends with Stop",
             A_maui_apps_mac_catalyst_head_run_with_hot_reload_shows_its_tree_takes_a_tap_and_an_edit_and_ends_with_stop);
-        Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, and takes a Hot Reload edit",
-            A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit);
         Flow.Step("on a Mac, Run opens the MAUI template's Mac Catalyst head hidden, its output in the Run window, and Stop ends it",
             MauiTemplateRunTests.On_a_mac_run_opens_the_maui_apps_mac_catalyst_head_hidden_its_output_in_the_run_window_and_stop_ends_it);
+    }
+
+    /// <summary>The MAUI app's Mac Catalyst head debugged on this Mac: as the template builds it, its trimmed assemblies
+    /// said; and debugged and run at once, each instance ended alone.</summary>
+    [AvaloniaFact]
+    public void A_maui_apps_mac_catalyst_head_is_debugged_as_the_template_builds_it_and_beside_a_run_each_ending_alone()
+    {
+        using IDisposable hang = Limits.BeginHang();
+        Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, and takes a Hot Reload edit",
+            A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit);
         Flow.Step("a MAUI app's Mac Catalyst head debugged and run at once ends each instance alone with its own start",
             A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start);
     }
