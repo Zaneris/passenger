@@ -100,10 +100,10 @@ public sealed class LiveRequests : IAsyncDisposable
     ];
 
     /// <summary>Starts hearing a running program at its diagnostic port, once it is past its start where its runtime could
-    /// hang (<paramref name="waiting"/> told how long that is), each event told to <paramref name="heard"/> on the thread
+    /// hang (<paramref name="waiting"/> told what it waits for), each event told to <paramref name="heard"/> on the thread
     /// that reads the stream. A program gone, with no port to reach, or whose runtime takes no session in time, is a
     /// <see cref="ProfilingException"/> saying why (<see cref="SessionStarts"/>).</summary>
-    public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, Action<TimeSpan>? waiting = null, CancellationToken cancel = default) =>
+    public static async Task<LiveRequests> AttachAsync(int processId, Action<WebEvent> heard, Action<SessionWait>? waiting = null, CancellationToken cancel = default) =>
         new(await LiveSession.AtPortAsync(processId, Providers, circularBufferMB: 64, "Its requests could not be followed", source => Hear(source, heard), waiting, cancel));
 
     /// <summary>Starts hearing a program in a container (<paramref name="place"/>) through Passenger's tools there (their

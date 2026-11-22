@@ -26,10 +26,10 @@ internal sealed class LiveSession : IAsyncDisposable
     public Task Ended { get; }
 
     /// <summary>A session at a running program's diagnostic port, once it is past its start where its runtime could hang
-    /// (<paramref name="waiting"/> told how long that is). A program gone, with no port to reach, or whose runtime takes no
+    /// (<paramref name="waiting"/> told what it waits for). A program gone, with no port to reach, or whose runtime takes no
     /// session in time, is a <see cref="ProfilingException"/> beginning <paramref name="failed"/> (<see cref="SessionStarts"/>).</summary>
     public static async Task<LiveSession> AtPortAsync(int processId, EventPipeProvider[] providers, int circularBufferMB, string failed,
-        Action<EventPipeEventSource> follow, Action<TimeSpan>? waiting, CancellationToken cancel)
+        Action<EventPipeEventSource> follow, Action<SessionWait>? waiting, CancellationToken cancel)
     {
         EventPipeSession started = await SessionStarts.StartAsync(processId, providers, circularBufferMB, failed, waiting, cancel);
         return new LiveSession(started.EventStream, follow, async () =>

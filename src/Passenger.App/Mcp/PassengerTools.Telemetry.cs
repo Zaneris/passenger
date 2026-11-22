@@ -213,10 +213,11 @@ public sealed partial class PassengerTools
             LiveMetrics live;
             try
             {
-                live = await LiveMetrics.AttachAsync(program, meters, listened, due =>
+                live = await LiveMetrics.AttachAsync(program, meters, listened, wait =>
                 {
-                    AgentCall.Say(ProgramStarts.Waiting(selected.Resource.DisplayName, "reading its metrics"));
-                    waited = ProgramStarts.Waited(selected.Resource.DisplayName, "reading its metrics", due);
+                    AgentCall.Say(wait.Saying(selected.Resource.DisplayName, "reading its metrics"));
+                    string said = wait.Said(selected.Resource.DisplayName, "reading its metrics");
+                    waited = waited is null ? said : $"{waited}; {said}";
                 }, cancel);
                 AgentCall.Say(null);
             }
@@ -249,7 +250,7 @@ public sealed record TelemetryInfo(IReadOnlyList<JsonElement> Logs, IReadOnlyLis
     /// <summary>What it left out of a long answer, and how to read it.</summary>
     public string? More { get; init; }
 
-    /// <summary>kind metrics': how long it waited for the program to finish starting before reading it, and why, where it did.</summary>
+    /// <summary>kind metrics': what it waited for before reading the program (its start, its runtime asked again), and why, where it did.</summary>
     public string? Waited { get; init; }
 }
 

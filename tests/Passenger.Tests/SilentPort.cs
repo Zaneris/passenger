@@ -12,12 +12,14 @@ namespace Passenger.Tests;
 
 /// <summary>A stand-in in front of a program's diagnostic port, at the address Passenger's client takes first for its
 /// process (a router's, as <see cref="StopRefusingPort"/> takes it), that takes every connection and answers none, as a
-/// runtime whose diagnostics are held up does. Any process of the machine may reach it, as a pipe's name on Windows and the
-/// temporary folder elsewhere are shared, so it keeps each connection's time, the process that made it and the request it
-/// sent (<see cref="Account"/>). While it stands, a session's start in this process gives up after 4 s, as much longer as
-/// the run's scale, and the programs the process starts keep the IDE's own limit (<see cref="Passenger.Profiler.SessionStarts.HoldLimit"/>).
-/// Disposed, it stops listening and lets each connection go: on the UI thread with the window's loop running.</summary>
-public sealed partial class SilentPort : IDisposable
+/// runtime whose diagnostics are held up does; or holds only the first few (<c>holding</c>), passing each later one to the
+/// program's own port once let (<see cref="PassOn"/>), as a runtime slow to answer its first does. Any process of the
+/// machine may reach it, as a pipe's name on Windows and the temporary folder elsewhere are shared, so it keeps each
+/// connection's time, the process that made it and the request it sent (<see cref="Account"/>). While it stands, a
+/// session's start in this process gives up after 4 s, as much longer as the run's scale, and the programs the process
+/// starts keep the IDE's own limit (<see cref="Passenger.Profiler.SessionStarts.HoldLimit"/>). Disposed, it stops listening
+/// and lets each connection go: on the UI thread with the window's loop running, or awaited off it.</summary>
+public sealed partial class SilentPort : IDisposable, IAsyncDisposable
 {
     private readonly IDisposable limit = Passenger.Profiler.SessionStarts.HoldLimit(TimeSpan.FromSeconds(4));
 
@@ -29,6 +31,8 @@ public sealed partial class SilentPort : IDisposable
     private const byte EventPipe = 0x02;
     private const byte StopTracing = 0x01;
 
+    private readonly int processId;
+    private readonly int holding;
     private readonly string address;
     private readonly Socket? listener;
     private readonly CancellationTokenSource end = new();
@@ -37,8 +41,14 @@ public sealed partial class SilentPort : IDisposable
     private readonly List<Connection> taken = [];
     private readonly List<Task> hearing = [];
 
-    public SilentPort(int processId)
+    /// <summary>How many of the connections past those it holds it lets pass, and what it tells them as it lets more.</summary>
+    private long passes;
+    private TaskCompletionSource passing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public SilentPort(int processId, int holding = int.MaxValue)
     {
+        this.processId = processId;
+        this.holding = holding;
         if (OperatingSystem.IsWindows())
         {
             address = $"dotnet-diagnostic-dsrouter-{processId}";
@@ -108,6 +118,20 @@ public sealed partial class SilentPort : IDisposable
         }
     }
 
+    /// <summary>Lets <paramref name="connections"/> more of those it takes past the ones it holds pass through, in the order
+    /// they came, every one by default.</summary>
+    public void PassOn(int connections = int.MaxValue)
+    {
+        TaskCompletionSource told;
+        lock (taken)
+        {
+            passes = connections == int.MaxValue ? long.MaxValue : passes + connections;
+            told = passing;
+            passing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        told.SetResult();
+    }
+
     /// <summary>Each connection in the order it came: when, from which process, and what it asked.</summary>
     public string Account()
     {
@@ -119,25 +143,44 @@ public sealed partial class SilentPort : IDisposable
 
     public void Dispose()
     {
+        StopListening();
+        Ui.Pumped(() => accepting.IsCompleted, TimeSpan.FromSeconds(10), scaled: false);
+        Task[] reads = LetGo();
+        Ui.Pumped(() => reads.All(read => read.IsCompleted), TimeSpan.FromSeconds(10), scaled: false);
+        end.Dispose();
+        limit.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StopListening();
+        await Waiting.Within(accepting, TimeSpan.FromSeconds(10), scaled: false);
+        await Waiting.Within(Task.WhenAll(LetGo()), TimeSpan.FromSeconds(10), scaled: false);
+        end.Dispose();
+        limit.Dispose();
+    }
+
+    private void StopListening()
+    {
         end.Cancel();
         listener?.Dispose();
         if (listener is not null)
         {
             File.Delete(address);
         }
-        Ui.Pumped(() => accepting.IsCompleted, TimeSpan.FromSeconds(10), scaled: false);
-        Task[] reads;
+    }
+
+    /// <summary>Closes every connection taken, giving the reads of them to wait out.</summary>
+    private Task[] LetGo()
+    {
         lock (taken)
         {
             foreach (Connection connection in taken)
             {
                 connection.Stream.Dispose();
             }
-            reads = [.. hearing];
+            return [.. hearing];
         }
-        Ui.Pumped(() => reads.All(read => read.IsCompleted), TimeSpan.FromSeconds(10), scaled: false);
-        end.Dispose();
-        limit.Dispose();
     }
 
     private static bool Here(Connection connection) => connection.From is null || connection.From == Environment.ProcessId;
@@ -148,6 +191,7 @@ public sealed partial class SilentPort : IDisposable
         Connection connection = new(stream, Now, from, from is int id ? Named(id) : null);
         lock (taken)
         {
+            connection.Passing = taken.Count >= holding ? taken.Count - holding : null;
             taken.Add(connection);
             hearing.Add(Waiting.Apart(() => HearAsync(connection)));
         }
@@ -198,7 +242,8 @@ public sealed partial class SilentPort : IDisposable
     private NamedPipeServerStream Pipe() =>
         new(address, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
 
-    /// <summary>Reads the request a connection sent, answering nothing; one closed or let go of before it was whole says so.</summary>
+    /// <summary>Reads the request a connection sent, answering nothing, or passing it and all after through where it passes
+    /// connections on; one closed or let go of before it was whole says so.</summary>
     private async Task HearAsync(Connection connection)
     {
         byte[] header = new byte[HeaderSize];
@@ -213,6 +258,28 @@ public sealed partial class SilentPort : IDisposable
             byte[] payload = new byte[Math.Max(0, BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(Magic.Length)) - HeaderSize)];
             await connection.Stream.ReadExactlyAsync(payload, end.Token);
             connection.Asked = Request(header[Magic.Length + 2], header[Magic.Length + 3], payload);
+            if (connection.Passing is long place)
+            {
+                while (true)
+                {
+                    Task told;
+                    lock (taken)
+                    {
+                        if (place < passes)
+                        {
+                            break;
+                        }
+                        told = passing.Task;
+                    }
+                    await told.WaitAsync(end.Token);
+                }
+                connection.Passed = true;
+                await using Stream program = await StopRefusingPort.ProgramPortAsync(processId, end.Token);
+                await program.WriteAsync(header, end.Token);
+                await program.WriteAsync(payload, end.Token);
+                await program.FlushAsync(end.Token);
+                await StopRefusingPort.BothWaysAsync(connection.Stream, program, end.Token);
+            }
         }
         catch (EndOfStreamException)
         {
@@ -333,6 +400,18 @@ public sealed partial class SilentPort : IDisposable
         public Stream Stream { get; } = stream;
         public int? From { get; } = from;
 
+        /// <summary>Its place among the connections past those held, which pass once let; null for one held.</summary>
+        public long? Passing { get; set; }
+
+        /// <summary>Whether it has been passed through to the program's own port.</summary>
+        public bool Passed
+        {
+            get => passed;
+            set => passed = value;
+        }
+
+        private volatile bool passed;
+
         /// <summary>What it asked, set once read on the thread that read it.</summary>
         public string? Asked
         {
@@ -341,6 +420,6 @@ public sealed partial class SilentPort : IDisposable
         }
 
         public override string ToString() =>
-            $"at {Seconds(at)} from {who ?? "a process the system did not name"}: {Asked ?? "nothing read"}";
+            $"at {Seconds(at)} from {who ?? "a process the system did not name"}: {Asked ?? "nothing read"}{(Passed ? ", passed on" : string.Empty)}";
     }
 }

@@ -13,23 +13,24 @@ internal static class UnansweredPorts
     /// <summary>How long the port is given to answer that request.</summary>
     private static TimeSpan AnswerLimit => Waits.Of(TimeSpan.FromSeconds(2));
 
-    /// <summary>The words for process <paramref name="processId"/>, whose port left a request unanswered.</summary>
-    public static async Task<string> WhyAsync(int processId, CancellationToken cancel)
+    /// <summary>What process <paramref name="processId"/>'s port, which left a request unanswered, shows now: the words, and
+    /// whether it answered another request at once, its runtime slow to answer the first rather than held up.</summary>
+    public static async Task<(string Why, bool AnswersNow)> WhyAsync(int processId, CancellationToken cancel)
     {
         if (!DotnetProcesses.Runs(processId))
         {
-            return $"process {processId} has ended";
+            return ($"process {processId} has ended", false);
         }
         if (OperatingSystem.IsWindows() && !DiagnosticsClient.GetPublishedProcesses().Contains(processId))
         {
-            return $"process {processId} runs, but its diagnostic port, the pipe dotnet-diagnostic-{processId}, is not there";
+            return ($"process {processId} runs, but its diagnostic port, the pipe dotnet-diagnostic-{processId}, is not there", false);
         }
         string port = OperatingSystem.IsWindows() ? $"its diagnostic port, the pipe dotnet-diagnostic-{processId}," : "its diagnostic port";
         return await AnswerAsync(processId, cancel).ConfigureAwait(false) switch
         {
-            null => $"process {processId} runs, and {port} answered another request at once",
-            "" => $"process {processId} runs, and {port} is there but answered no other request either in {Durations.Said(AnswerLimit)}",
-            { } failed => $"process {processId} runs, and {port} failed another request: {failed}",
+            null => ($"process {processId} runs, and {port} answered another request at once", true),
+            "" => ($"process {processId} runs, and {port} is there but answered no other request either in {Durations.Said(AnswerLimit)}", false),
+            { } failed => ($"process {processId} runs, and {port} failed another request: {failed}", false),
         };
     }
 

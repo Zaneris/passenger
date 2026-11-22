@@ -210,12 +210,12 @@ public sealed class MetricsPane : DockPanel
                 try
                 {
                     LiveMetrics started = place is { } there ? await LiveMetrics.AttachAsync(process, there, Heard(follow), asked.Token)
-                        : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow), _ =>
+                        : await LiveMetrics.AttachAsync(process, [.. meters], Heard(follow), wait =>
                         {
                             if (follow == follows)
                             {
                                 waited = true;
-                                Say(ProgramStarts.Waiting(name, "reading its metrics"));
+                                Say(wait.Saying(name, "reading its metrics"));
                             }
                         }, asked.Token);
                     if (follow != follows)
@@ -322,7 +322,7 @@ public sealed class MetricsPane : DockPanel
         if (live is { } session)
         {
             live = null;
-            IdeErrors.Observe(session.DisposeAsync().AsTask());
+            IdeErrors.Observe(LetGoAsync(session));
         }
         key = null;
         fed = false;
@@ -334,6 +334,14 @@ public sealed class MetricsPane : DockPanel
         headings.Clear();
         rows.Children.Clear();
         Showing();
+    }
+
+    /// <summary>Stops a session and lets go of its program, held as background work until its runtime took the stop, so
+    /// what waits for the IDE to be quiet finds the session gone.</summary>
+    private static async Task LetGoAsync(LiveMetrics session)
+    {
+        using IDisposable working = BackgroundWork.Scope();
+        await session.DisposeAsync();
     }
 
     private void Say(string words)

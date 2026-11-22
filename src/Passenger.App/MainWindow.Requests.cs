@@ -218,7 +218,7 @@ public partial class MainWindow
                     LiveRequests live = target.Place is { } place
                         ? await LiveRequests.AttachAsync(target.Process, place, told => log.Hear(told, target.Name, target.Project), asked.Token)
                         : await LiveRequests.AttachAsync(target.Process, told => log.Hear(told, target.Name, target.Project),
-                            _ => RequestLog.Following = ProgramStarts.Waiting(target.Name, "following its requests"), asked.Token);
+                            wait => RequestLog.Following = wait.Saying(target.Name, "following its requests"), asked.Token);
                     followedRequests[target.Key] = (target, live);
                     IdeErrors.Observe(live.Ended.ContinueWith(_ => UiThread.Post(() =>
                     {

@@ -7,7 +7,8 @@ namespace Passenger.Tests;
 /// <summary>The Stats tabs' charts of a program whose runtime answers no session's start: one the debugger holds paused said
 /// to be, with no reading begun, so nothing waits on it meanwhile, read once it runs, and said to be paused over its charts
 /// while the debugger holds it again; one that takes no session said to once its start's time runs out, and left, and asked
-/// nothing more once the pane lets it go as its start waits. The program read is this test's own process.</summary>
+/// nothing more once the pane lets it go as its start waits; one slow to take its first that answers at once after asked
+/// again, saying so, and read. The program read is this test's own process.</summary>
 public sealed class MetricsPaneTests
 {
     /// <summary>A program paused in the debugger is said to be and read once it runs; a runtime that takes no session
@@ -54,6 +55,9 @@ public sealed class MetricsPaneTests
             paused = false;
             pane.DebuggerChanged();
             Assert.Equal(string.Empty, pane.Said);
+            // Its session stopped before the next test, which may stand a port of its own in front of this process's.
+            pane.Stop();
+            Ui.Settle();
         }
         finally
         {
@@ -84,6 +88,41 @@ public sealed class MetricsPaneTests
             Assert.True(port.TakenHere == 2, $"The pane's start and its account of the port were to be the two connections this process made to it, where it made "
                 + $"{port.TakenHere}. The pane {began}, {said} and was quiet by {port.Time}; the port took {port.Account()}");
             Assert.Empty(pane.Charted);
+        }
+        finally
+        {
+            pane.Stop();
+        }
+    }
+
+    /// <summary>A program whose runtime takes no session in its start's time but answers the next request at once (a port
+    /// that holds the pane's first start and passes the rest to the runtime) is asked once more, the pane saying so as it
+    /// asks, and charted: never said to have failed while its runtime answers.</summary>
+    [AvaloniaFact]
+    public void A_runtime_slow_to_take_its_first_session_that_answers_at_once_after_is_asked_again_saying_so_and_charted()
+    {
+        MetricsPane pane = new() { Paused = (_, _) => false };
+        using SilentPort port = new(Environment.ProcessId, holding: 1);
+        try
+        {
+            pane.Show("api", Environment.ProcessId);
+            Ui.PumpUntil(() => port.AskedHere.Count > 0, "the pane's start to reach the port", TimeSpan.FromSeconds(30));
+            string first = port.AskedHere[0];
+            Assert.Contains("System.Diagnostics.Metrics", first, StringComparison.Ordinal);
+            // The pane's account of the port once its start's time runs out: a session of no provider, started and stopped.
+            port.PassOn(2);
+            string asking = new Passenger.Profiler.RuntimeAskedAgain(Passenger.Profiler.SessionStarts.Limit).Saying("api", "reading its metrics");
+            Ui.PumpUntil(() => pane.Said == asking || pane.Said.StartsWith("api: ", StringComparison.Ordinal), "the pane to say it asks again, or why it gave up",
+                TimeSpan.FromMinutes(1));
+            Assert.True(pane.Said == asking, $"The pane was to say \"{asking}\" as it asked again, where it says \"{pane.Said}\"; the port took {port.Account()}");
+            port.PassOn();
+            Ui.WaitFor(() => pane.Charted.Count > 0, () => $"the program's metrics charted once asked again (the pane says {pane.Said}; the port took {port.Account()})",
+                TimeSpan.FromMinutes(1));
+            // Its session widened to the meters the program publishes is a start of its own, under another session id.
+            Assert.True(port.AskedHere.Count(asked => asked == first) == 2, $"The pane was to ask for its session twice, the first held, where the port took {port.Account()}");
+            // Its session's stop passed to the runtime while the port stands, so the next test's port never takes it.
+            pane.Stop();
+            Ui.Settle();
         }
         finally
         {

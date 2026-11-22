@@ -403,7 +403,17 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     /// stand-in AppHost has Passenger start, sent requests meanwhile, answers its request duration with its rate and median,
     /// heard from its runtime.</summary>
     [Fact]
-    public async Task An_agent_reads_a_services_request_duration_through_telemetry_metrics()
+    public async Task An_agent_reads_a_services_request_duration_through_telemetry_metrics() => await RequestDurationAsync(slowFirstSession: false);
+
+    /// <summary>An agent's metrics of a service whose runtime takes Passenger's first session too late but answers the next
+    /// request at once (a port in front of web's that holds the first connection and passes the rest to the runtime) are
+    /// asked again rather than given up, the answer saying so, with the request duration heard.</summary>
+    [Fact]
+    public async Task An_agents_metrics_of_a_runtime_slow_to_take_its_first_session_are_asked_again_and_say_so() => await RequestDurationAsync(slowFirstSession: true);
+
+    /// <summary>The web app's request duration read by the agent, its runtime's first session held where
+    /// <paramref name="slowFirstSession"/>.</summary>
+    private async Task RequestDurationAsync(bool slowFirstSession)
     {
         await project.ResetAsync();
         string web = await project.WriteWebAppAsync();
@@ -429,6 +439,8 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         // Held while it runs, so how it ended reads should it end.
         using System.Diagnostics.Process webProcess = System.Diagnostics.Process.GetProcessById(program);
         Assert.False(webProcess.SafeHandle.IsInvalid, "The web service's process could not be held");
+        await using SilentPort? held = slowFirstSession ? new SilentPort(program, holding: 1) : null;
+        held?.PassOn();
         port.LetGo(gate);
         resources.PushResource(new Passenger.App.Aspire.Protocol.Resource
         {
@@ -481,6 +493,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         try
         {
             JsonElement heard = default;
+            List<string> waited = [];
             if (!await Waiting.UntilAsync(async () =>
             {
                 CallToolResult answer = await Result(client, McpTools.Telemetry, new() { ["kind"] = "metrics", ["resource"] = "web" });
@@ -490,6 +503,10 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
                 }
                 using JsonDocument read = JsonDocument.Parse(Text(answer));
                 heard = read.RootElement.Clone();
+                if (heard.TryGetProperty("waited", out JsonElement wait))
+                {
+                    waited.Add(wait.GetString()!);
+                }
                 return heard.TryGetProperty("metrics", out JsonElement metrics) && metrics.EnumerateArray().Any(m => m.GetProperty("instrument").GetString() == "http.server.request.duration"
                     && m.GetProperty("value").GetString()!.Contains("median", StringComparison.Ordinal));
             }, TimeSpan.FromMinutes(1), Cancel))
@@ -499,6 +516,12 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             JsonElement duration = heard.GetProperty("metrics").EnumerateArray().Single(m => m.GetProperty("instrument").GetString() == "http.server.request.duration");
             Assert.Equal(("Microsoft.AspNetCore.Hosting", "s"), (duration.GetProperty("meter").GetString(), duration.GetProperty("unit").GetString()));
             Assert.Matches(@"^[0-9.,]+/s, median ", duration.GetProperty("value").GetString()!);
+            if (held is not null)
+            {
+                Assert.True(waited.Any(said => said.Contains("Asked web's runtime again: it took no session for reading its metrics in ", StringComparison.Ordinal)),
+                    $"The agent was not told web's runtime was asked again: it was told it waited for {(waited.Count == 0 ? "nothing" : string.Join("; ", waited))}; "
+                    + $"the port took {held.Account()}");
+            }
             Assert.Empty(resources.Errors);
         }
         finally
@@ -522,8 +545,9 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             }
             string ran = !DotnetProcesses.Runs(webProcess)
                 ? $"began at {webProcess.StartTime:HH:mm:ss.fff} and ended at {webProcess.ExitTime:HH:mm:ss.fff} with exit code {webProcess.ExitCode}" : $"began at {webProcess.StartTime:HH:mm:ss.fff} and runs";
+            string port = held is null ? string.Empty : $"; at {DateTime.Now:HH:mm:ss.fff} the port in front of web's took {held.Account()}";
             return $"web was sent {Volatile.Read(ref sent)} requests{stopped}, answered {Volatile.Read(ref served)} of them and was slower than 5 s to {Volatile.Read(ref slow)}, "
-                + $"its program {program} {ran} (the agent's Passenger logged {(logged.Length == 0 ? "nothing of it" : $"of it:\n  {logged}\n")}), "
+                + $"its program {program} {ran} (the agent's Passenger logged {(logged.Length == 0 ? "nothing of it" : $"of it:\n  {logged}\n")}){port}, "
                 + $"and its console says:\n{Text(console)}";
         }
     }

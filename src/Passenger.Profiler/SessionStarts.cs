@@ -7,10 +7,11 @@ namespace Passenger.Profiler;
 /// <summary>The one start of a session at a program's own diagnostic port for what is heard from it live, begun only once
 /// the program is past its start where its runtime could hang (<see cref="ProgramStarts"/>), so its stop is past it too,
 /// and given <see cref="Limit"/> for its runtime to take it: a client waits for good on a runtime that never answers (on
-/// Windows on a pipe that is not there too). A start refused or past its limit is a <see cref="ProfilingException"/> saying
-/// why, one past its limit with what the port showed then (<see cref="UnansweredPorts"/>); whether to ask again is
-/// <see cref="AskAgain"/>'s to say. Every session that must hear the program from its first moment starts through
-/// <see cref="OnAsync"/>.</summary>
+/// Windows on a pipe that is not there too). One past its limit whose port then answers another request at once is asked
+/// once more, its runtime slow rather than held up (<see cref="RuntimeAskedAgain"/>). A start refused or past its limit is a
+/// <see cref="ProfilingException"/> saying why, one past it with what the port showed then (<see cref="UnansweredPorts"/>);
+/// whether to ask again is <see cref="AskAgain"/>'s to say. Every session that must hear the program from its first moment
+/// starts through <see cref="OnAsync"/>.</summary>
 public static class SessionStarts
 {
     /// <summary>A provider no program registers, so a session of it starts without the program's code running.</summary>
@@ -41,34 +42,44 @@ public static class SessionStarts
     }
 
     /// <summary>A session of <paramref name="providers"/> at process <paramref name="processId"/>'s port, its failure said
-    /// after <paramref name="unread"/> ("Its metrics could not be read"); <paramref name="waiting"/> told how long it waits
-    /// first for the program to finish starting, where it does.</summary>
+    /// after <paramref name="unread"/> ("Its metrics could not be read"); <paramref name="waiting"/> told what it waits for
+    /// as it begins to: the program to finish starting, or its runtime asked again.</summary>
     internal static async Task<EventPipeSession> StartAsync(int processId, IEnumerable<EventPipeProvider> providers, int circularBufferMB, string unread,
-        Action<TimeSpan>? waiting, CancellationToken cancel)
+        Action<SessionWait>? waiting, CancellationToken cancel)
     {
         TimeSpan due = await BackgroundWork.Run(() => ProgramStarts.DueAt(processId), cancel);
         if (due > TimeSpan.Zero)
         {
-            waiting?.Invoke(due);
+            waiting?.Invoke(new ProgramStarting(due));
             await Task.Delay(due, cancel);
         }
-        using CancellationTokenSource answered = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        answered.CancelAfter(Limit);
-        try
+        for (bool again = false; ; again = true)
         {
-            DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
-            EventPipeSession started = await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, answered.Token);
-            return await TurnedOnAsync(client, started, cancel);
-        }
-        catch (Exception error) when (DiagnosticsFailures.Of(error))
-        {
-            // No port to reach while the program runs: one that has just started opens it a moment later.
-            throw new ProfilingException($"{unread}: {error.Message}", error) { NotYetOpen = error is ServerNotAvailableException && DotnetProcesses.Runs(processId) };
-        }
-        catch (OperationCanceledException unanswered) when (!cancel.IsCancellationRequested)
-        {
-            string why = await UnansweredPorts.WhyAsync(processId, cancel);
-            throw new ProfilingException($"{unread}: its runtime took no session in {Durations.Said(Limit)} ({why})", unanswered);
+            TimeSpan limit = Limit;
+            using CancellationTokenSource answered = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            answered.CancelAfter(limit);
+            try
+            {
+                DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
+                // The same providers again: a metrics session the runtime took late is then this one's own, never refused as another tool's.
+                EventPipeSession started = await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, answered.Token);
+                return await TurnedOnAsync(client, started, cancel);
+            }
+            catch (Exception error) when (DiagnosticsFailures.Of(error))
+            {
+                // No port to reach while the program runs: one that has just started opens it a moment later.
+                throw new ProfilingException($"{unread}: {error.Message}", error) { NotYetOpen = error is ServerNotAvailableException && DotnetProcesses.Runs(processId) };
+            }
+            catch (OperationCanceledException unanswered) when (!cancel.IsCancellationRequested)
+            {
+                (string why, bool answersNow) = await UnansweredPorts.WhyAsync(processId, cancel);
+                if (answersNow && !again)
+                {
+                    waiting?.Invoke(new RuntimeAskedAgain(limit));
+                    continue;
+                }
+                throw new ProfilingException($"{unread}: its runtime took no session in {Durations.Said(limit)}{(again ? ", asked twice" : string.Empty)} ({why})", unanswered);
+            }
         }
     }
 
@@ -120,4 +131,37 @@ public static class SessionStarts
     /// one whose program has yet to open its port, and only within <paramref name="limit"/>, the time a runtime is given to
     /// open it. A program gone, a runtime that took no session in its time and one that refused it are said at once.</summary>
     public static bool AskAgain(ProfilingException failed, TimeSpan asking, TimeSpan limit) => failed.NotYetOpen && asking < limit;
+}
+
+/// <summary>What a live session's start waits for, told as it begins to wait, in words naming the program and what the
+/// session is for (<c>reading</c>, "reading its metrics").</summary>
+public abstract record SessionWait
+{
+    /// <summary>What is said while it waits.</summary>
+    public abstract string Saying(string name, string reading);
+
+    /// <summary>What an answer says of it once made.</summary>
+    public abstract string Said(string name, string reading);
+}
+
+/// <summary>A wait of <paramref name="Due"/> for a program to finish starting, where a session begun as it starts could
+/// hang it (<see cref="ProgramStarts"/>).</summary>
+public sealed record ProgramStarting(TimeSpan Due) : SessionWait
+{
+    public override string Saying(string name, string reading) =>
+        $"Waiting for {name} to finish starting: {reading} as it starts can hang it on .NET 10 or earlier…";
+
+    public override string Said(string name, string reading) =>
+        $"Waited {Durations.Said(Due)} for {name} to finish starting: {reading} as it starts can hang it on .NET 10 or earlier";
+}
+
+/// <summary>A start asked again of a runtime that took no session in <paramref name="Unanswered"/> but answered another
+/// request at once after: slow to take it, not held up.</summary>
+public sealed record RuntimeAskedAgain(TimeSpan Unanswered) : SessionWait
+{
+    public override string Saying(string name, string reading) =>
+        $"Asking {name}'s runtime again: it took no session for {reading} in {Durations.Said(Unanswered)}, then answered another request at once…";
+
+    public override string Said(string name, string reading) =>
+        $"Asked {name}'s runtime again: it took no session for {reading} in {Durations.Said(Unanswered)}, then answered another request at once";
 }

@@ -138,7 +138,7 @@ public sealed class StopRefusingPort : IDisposable
                 {
                     return;
                 }
-                await using Stream program = await ProgramAsync();
+                await using Stream program = await ProgramPortAsync(processId, end.Token);
                 await program.WriteAsync(header, end.Token);
                 await program.WriteAsync(payload, end.Token);
                 await program.FlushAsync(end.Token);
@@ -154,20 +154,7 @@ public sealed class StopRefusingPort : IDisposable
                     await client.FlushAsync(end.Token);
                     return;
                 }
-                Task toProgram = client.CopyToAsync(program, end.Token);
-                Task toClient = program.CopyToAsync(client, end.Token);
-                await Task.WhenAny(toProgram, toClient);
-                // Either side's end closes the other.
-                await client.DisposeAsync();
-                await program.DisposeAsync();
-                try
-                {
-                    await Task.WhenAll(toProgram, toClient);
-                }
-                catch (Exception closed) when (closed is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
-                {
-                    // The copy the other's end closed under its read.
-                }
+                await BothWaysAsync(client, program, end.Token);
             }
         }
         catch (Exception gone) when (gone is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
@@ -180,19 +167,38 @@ public sealed class StopRefusingPort : IDisposable
         }
     }
 
-    /// <summary>A connection to the program's own port.</summary>
-    private async Task<Stream> ProgramAsync()
+    /// <summary>A connection to process <paramref name="processId"/>'s own port.</summary>
+    internal static async Task<Stream> ProgramPortAsync(int processId, CancellationToken cancel)
     {
         if (OperatingSystem.IsWindows())
         {
             NamedPipeClientStream pipe = new(".", $"dotnet-diagnostic-{processId}", PipeDirection.InOut, PipeOptions.Asynchronous);
-            await pipe.ConnectAsync(TimeSpan.FromSeconds(10), end.Token);
+            await pipe.ConnectAsync(TimeSpan.FromSeconds(10), cancel);
             return pipe;
         }
         string own = Passenger.Core.RuntimeFiles.Of(processId)?.Socket ?? throw new InvalidOperationException($"Process {processId} has gone");
         Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        await socket.ConnectAsync(new UnixDomainSocketEndPoint(own), end.Token);
+        await socket.ConnectAsync(new UnixDomainSocketEndPoint(own), cancel);
         return new NetworkStream(socket, ownsSocket: true);
+    }
+
+    /// <summary>Everything passed either way between a client and the program's port until either side closes, whose end
+    /// closes the other.</summary>
+    internal static async Task BothWaysAsync(Stream client, Stream program, CancellationToken cancel)
+    {
+        Task toProgram = client.CopyToAsync(program, cancel);
+        Task toClient = program.CopyToAsync(client, cancel);
+        await Task.WhenAny(toProgram, toClient);
+        await client.DisposeAsync();
+        await program.DisposeAsync();
+        try
+        {
+            await Task.WhenAll(toProgram, toClient);
+        }
+        catch (Exception closed) when (closed is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
+        {
+            // The copy the other's end closed under its read.
+        }
     }
 
     /// <summary>An error answered for the command: the server's Error, its payload the HRESULT.</summary>

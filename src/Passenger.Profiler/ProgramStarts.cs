@@ -63,11 +63,4 @@ public static class ProgramStarts
             return null;
         }
     }
-
-    /// <summary>What a reading says while it waits out a program's start (<paramref name="reading"/> "reading its metrics").</summary>
-    public static string Waiting(string name, string reading) => $"Waiting for {name} to finish starting: {reading} as it starts can hang it on .NET 10 or earlier…";
-
-    /// <summary>What an answer says of a wait it made first.</summary>
-    public static string Waited(string name, string reading, TimeSpan due) =>
-        $"Waited {Durations.Said(due)} for {name} to finish starting: {reading} as it starts can hang it on .NET 10 or earlier";
 }
