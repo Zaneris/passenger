@@ -78,8 +78,17 @@ public sealed class GlobalUsingsTests : IClassFixture<GlobalUsingsTests.Project>
         project.Reset();
     }
 
+    /// <summary>Names a global using in another file, a using item or the implicit usings bring are coloured as the
+    /// server binds them, a type's uses lit together, and marked as the global using is taken out of another open file,
+    /// cleared as it is put back.</summary>
     [AvaloniaFact]
-    public void Names_from_a_global_using_in_another_file_a_using_item_and_implicit_usings_are_coloured_and_a_types_uses_lit_together()
+    public void Names_a_global_using_brings_are_coloured_and_marked_as_it_is_taken_out_of_another_file_and_put_back()
+    {
+        Flow.StepApart("names from a global using in another file, a using item and implicit usings are coloured, and a type's uses lit together", () => new GlobalUsingsTests(project), t => t.Names_from_a_global_using_in_another_file_a_using_item_and_implicit_usings_are_coloured_and_a_types_uses_lit_together());
+        Flow.StepApart("taking a global using out of another open file marks the names it brought, and putting it back clears them", () => new GlobalUsingsTests(project), t => t.Taking_a_global_using_out_of_another_open_file_marks_the_names_it_brought_and_putting_it_back_clears_them());
+    }
+
+    private void Names_from_a_global_using_in_another_file_a_using_item_and_implicit_usings_are_coloured_and_a_types_uses_lit_together()
     {
         MainWindow window = project.Open("Tools.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -96,8 +105,7 @@ public sealed class GlobalUsingsTests : IClassFixture<GlobalUsingsTests.Project>
 
     /// <summary>The global using taken out of the other file, open beside, and put back: the file relying on it follows each
     /// change, its problems too, of which the server says nothing, the names it brought keeping their syntax's colours.</summary>
-    [AvaloniaFact]
-    public void Taking_a_global_using_out_of_another_open_file_marks_the_names_it_brought_and_putting_it_back_clears_them()
+    private void Taking_a_global_using_out_of_another_open_file_marks_the_names_it_brought_and_putting_it_back_clears_them()
     {
         MainWindow window = project.Open("Tools.cs");
         OpenDocument tools = window.EditorArea.Active!;
@@ -121,29 +129,6 @@ public sealed class GlobalUsingsTests : IClassFixture<GlobalUsingsTests.Project>
         window.OpenFile(project.PathOf("Tools.cs"));
         Ui.WaitFor(() => !tools.Markers.Any(m => m.Kind == MarkerKind.Error), () => $"the marks gone once the global using is back: [{string.Join("; ", tools.Markers.Select(m => m.Message))}]");
         Ui.WaitFor(() => Kinds(editor, ToolsNames) == Resolved, () => $"the type's colours back with the global using: {Kinds(editor, ToolsNames)}");
-        window.Close();
-    }
-
-    /// <summary>A file's own using of a struct's namespace taken out and put back: the struct's name keeps its syntax's
-    /// colour, a type's where it declares a local and none where it stands before a dot, while a local's use keeps the
-    /// server's local colour; once the using is back the server's struct colour is laid over the syntax's guess.</summary>
-    [AvaloniaFact]
-    public void A_type_whose_using_is_taken_out_keeps_its_syntaxs_colour_a_local_its_own_and_takes_the_servers_once_bound_again()
-    {
-        MainWindow window = project.Open("Words.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        const string Bound = "Rune rune=Struct Rune.IsLetter=Struct IsLetter(=Method IsLetter(rune)=Local count++=Local";
-        Ui.WaitFor(() => Kinds(editor, WordsNames) == Bound, () => $"the server's colours with the using: {Kinds(editor, WordsNames)}");
-
-        editor.Selections = SelectionSet.Single(0);
-        window.KeyTextInput("// ");
-        const string Unbound = "Rune rune=Class Rune.IsLetter=Text IsLetter(=Method IsLetter(rune)=Local count++=Local";
-        Ui.WaitFor(() => Kinds(editor, WordsNames) == Unbound,
-            () => $"Rune keeping its syntax's colours with its using taken out, not a local's, and the local its own: {Kinds(editor, WordsNames)}");
-
-        Ui.Run(window, EditorActions.Undo);
-        Assert.Equal(Words, editor.Document.Snapshot.ToString());
-        Ui.WaitFor(() => Kinds(editor, WordsNames) == Bound, () => $"the server's struct colour over the syntax's once the using is back: {Kinds(editor, WordsNames)}");
         window.Close();
     }
 

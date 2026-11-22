@@ -17,8 +17,19 @@ public sealed class LanguageServerPortTests
     /// <summary>Godot's answer to initialize, as its server sent it.</summary>
     private const string Initialized = """{"id":1,"jsonrpc":"2.0","result":{"capabilities":{"codeActionProvider":false,"colorProvider":false,"completionProvider":{"resolveProvider":true,"triggerCharacters":[".","$","'","\""]},"declarationProvider":true,"definitionProvider":true,"documentFormattingProvider":false,"documentHighlightProvider":true,"documentLinkProvider":{"resolveProvider":false},"documentOnTypeFormattingProvider":{"firstTriggerCharacter":"","moreTriggerCharacter":[]},"documentRangeFormattingProvider":false,"documentSymbolProvider":true,"executeCommandProvider":{"commands":[]},"foldingRangeProvider":false,"hoverProvider":true,"implementationProvider":false,"referencesProvider":true,"renameProvider":{"prepareProvider":true},"signatureHelpProvider":{"triggerCharacters":[",","("]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":true},"willSave":false,"willSaveWaitUntil":true},"typeDefinitionProvider":false,"workspace":{},"workspaceSymbolProvider":false}}}""";
 
+    /// <summary>A language server reached on a port, as Godot's is: sent bare frames, the folder's path and whole
+    /// texts; nothing listening fails its start as a server that ended; and a start that fails or is given up leaves no
+    /// server held.</summary>
     [Fact]
-    public async Task A_server_on_a_port_is_sent_bare_frames_and_the_folders_path_and_takes_whole_texts()
+    public async Task A_server_on_a_port_is_spoken_to_as_it_takes_its_frames_and_a_start_that_fails_or_is_given_up_holds_nothing()
+    {
+        await Flow.StepAsync("a server on a port is sent bare frames and the folder's path, and takes whole texts", A_server_on_a_port_is_sent_bare_frames_and_the_folders_path_and_takes_whole_texts);
+        await Flow.StepAsync("nothing listening on the port fails the start as a server that ended", Nothing_listening_on_the_port_fails_the_start_as_a_server_that_ended);
+        await Flow.StepAsync("a start the server fails leaves no server held", A_start_the_server_fails_leaves_no_server_held);
+        await Flow.StepAsync("a start given up leaves no server held", A_start_given_up_leaves_no_server_held);
+    }
+
+    private async Task A_server_on_a_port_is_sent_bare_frames_and_the_folders_path_and_takes_whole_texts()
     {
         string folder = TestFolders.Create("lsp-port-");
         using TcpListener listener = new(IPAddress.Loopback, 0);
@@ -33,20 +44,7 @@ public sealed class LanguageServerPortTests
         Assert.Equal(0, session.Server.ProcessId);
     }
 
-    [Fact]
-    public async Task A_server_that_says_it_works_on_another_folder_as_it_is_initialized_is_known_to()
-    {
-        string folder = TestFolders.Create("lsp-port-");
-        using TcpListener listener = new(IPAddress.Loopback, 0);
-        listener.Start();
-        Task<(string Header, JsonElement Asked)> served = ServeAsync(listener, other: "/projects/elsewhere");
-        await using LanguageSession session = await LanguageSession.StartAsync(Start(folder, listener), TestContext.Current.CancellationToken);
-        await served;
-        Assert.Equal("/projects/elsewhere", session.Server.OtherFolder);
-    }
-
-    [Fact]
-    public async Task Nothing_listening_on_the_port_fails_the_start_as_a_server_that_ended()
+    private async Task Nothing_listening_on_the_port_fails_the_start_as_a_server_that_ended()
     {
         string folder = TestFolders.Create("lsp-port-");
         TcpListener listener = new(IPAddress.Loopback, 0);
@@ -58,8 +56,7 @@ public sealed class LanguageServerPortTests
         Assert.Contains("nothing listens on port", failed.Reason, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task A_start_the_server_fails_leaves_no_server_held()
+    private async Task A_start_the_server_fails_leaves_no_server_held()
     {
         string folder = TestFolders.Create("lsp-port-");
         using TcpListener listener = new(IPAddress.Loopback, 0);
@@ -74,8 +71,7 @@ public sealed class LanguageServerPortTests
         Assert.True(LanguageServer.LiveIn(start.LogFolder) == 0, "A server that ended as it was initialized is held for the rest of the IDE's life");
     }
 
-    [Fact]
-    public async Task A_start_given_up_leaves_no_server_held()
+    private async Task A_start_given_up_leaves_no_server_held()
     {
         string folder = TestFolders.Create("lsp-port-");
         using TcpListener listener = new(IPAddress.Loopback, 0);

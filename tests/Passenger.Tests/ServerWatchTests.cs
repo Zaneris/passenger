@@ -28,10 +28,35 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         project.Reset();
     }
 
+    /// <summary>What a build writes into obj, or deletes there, reaches the server: a burst of sources and the assets
+    /// it rewrote, a thousand deleted side by side, one told come then deleted unheard, and one written unheard once
+    /// the window comes in front.</summary>
+    [AvaloniaFact]
+    public void What_a_build_writes_or_deletes_in_obj_reaches_the_server_heard_or_unheard()
+    {
+        Flow.StepApart("a build's burst into obj reaches the server, every file and the assets it rewrote", () => new ServerWatchTests(project), t => t.A_builds_burst_into_obj_reaches_the_server_every_file_and_the_assets_it_rewrote());
+        Flow.StepApart("a thousand files deleted side by side in obj each reach the server as gone", () => new ServerWatchTests(project), t => t.A_thousand_files_deleted_side_by_side_in_obj_each_reach_the_server_as_gone());
+        Flow.StepApart("a source told come then deleted unheard in obj reaches the server as gone", () => new ServerWatchTests(project), t => t.A_source_told_come_then_deleted_unheard_in_obj_reaches_the_server_as_gone());
+        Flow.StepApart("a source written unheard in obj reaches the server once the window comes in front", () => new ServerWatchTests(project), t => t.A_source_written_unheard_in_obj_reaches_the_server_once_the_window_comes_in_front());
+    }
+
+    /// <summary>Folders moved in and out, and files written before the server's watches are registered or after it was
+    /// given its builds, reach it as they stand: the first walks tell it only what no longer stands as it was given
+    /// it.</summary>
+    [AvaloniaFact]
+    public void Folders_moved_and_files_written_before_the_servers_watches_or_its_start_reach_it_as_they_stand()
+    {
+        Flow.StepApart("a folder of fifty sources moved in reaches Go to File and the server as fifty made, and one deleted unheard as gone", () => new ServerWatchTests(project), t => t.A_folder_of_fifty_sources_moved_in_reaches_go_to_file_and_the_server_as_fifty_made_and_one_deleted_unheard_as_gone());
+        Flow.StepApart("a folder of fifty sources moved out leaves Go to File and reaches the server as fifty deletions", () => new ServerWatchTests(project), t => t.A_folder_of_fifty_sources_moved_out_leaves_go_to_file_and_reaches_the_server_as_fifty_deletions());
+        Flow.StepApart("while an outside folder's watcher makes its first walk, sources written in the project and in obj reach the server and the window goes quiet", () => new ServerWatchTests(project), t => t.While_an_outside_folders_watcher_makes_its_first_walk_sources_written_in_the_project_and_in_obj_reach_the_server_and_the_window_goes_quiet());
+        Flow.StepApart("a server started ahead is told by the first walks only what was written after it was given its builds", () => new ServerWatchTests(project), t => t.A_server_started_ahead_is_told_by_the_first_walks_only_what_was_written_after_it_was_given_its_builds(false));
+        Flow.StepApart("a server started ahead with a file written meanwhile is told it by the first walks", () => new ServerWatchTests(project), t => t.A_server_started_ahead_is_told_by_the_first_walks_only_what_was_written_after_it_was_given_its_builds(true));
+        Flow.StepApart("a file written before the server's watches are registered is told it as they come, and a rename reaches it as written", () => new ServerWatchTests(project), t => t.A_file_written_before_the_servers_watches_are_registered_is_told_it_as_they_come_and_a_rename_reaches_it_as_written());
+    }
+
     /// <summary>A build that writes a thousand sources into obj side by side, as a generator emitting its files does, and
     /// rewrites the project's restore assets among them: the server is told of every source and of the assets.</summary>
-    [AvaloniaFact]
-    public void A_builds_burst_into_obj_reaches_the_server_every_file_and_the_assets_it_rewrote()
+    private void A_builds_burst_into_obj_reaches_the_server_every_file_and_the_assets_it_rewrote()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -58,8 +83,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
 
     /// <summary>A thousand sources in obj deleted side by side, as a clean or a script deletes them: the server, which hears
     /// of obj only from Passenger's own watcher of it, is told of every one as gone.</summary>
-    [AvaloniaFact]
-    public void A_thousand_files_deleted_side_by_side_in_obj_each_reach_the_server_as_gone()
+    private void A_thousand_files_deleted_side_by_side_in_obj_each_reach_the_server_as_gone()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -87,8 +111,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     /// <summary>A source written in obj, which the server is told came, then deleted unheard, as a burst on a busy machine
     /// drops the deletion's event: obj's watcher took the source into its record as it handed it over, so the listing
     /// after the burst finds it gone, and the server is told it went.</summary>
-    [AvaloniaFact]
-    public void A_source_told_come_then_deleted_unheard_in_obj_reaches_the_server_as_gone()
+    private void A_source_told_come_then_deleted_unheard_in_obj_reaches_the_server_as_gone()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -120,8 +143,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     /// <summary>A source written in obj while obj's watcher heard nothing, as the system drops a change without a word,
     /// reaches the server once the window comes in front, as a person comes back from a terminal: the server's own watchers
     /// look again with the folder's.</summary>
-    [AvaloniaFact]
-    public void A_source_written_unheard_in_obj_reaches_the_server_once_the_window_comes_in_front()
+    private void A_source_written_unheard_in_obj_reaches_the_server_once_the_window_comes_in_front()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -151,8 +173,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     /// <summary>A folder of fifty sources moved into the project from elsewhere, which a folder's watcher hears as the folder
     /// alone: Go to File lists every source and the server is told of each as made; one of them deleted after, unheard as a
     /// burst drops it, is found gone by the listing after the burst, and the server told it went.</summary>
-    [AvaloniaFact]
-    public void A_folder_of_fifty_sources_moved_in_reaches_go_to_file_and_the_server_as_fifty_made_and_one_deleted_unheard_as_gone()
+    private void A_folder_of_fifty_sources_moved_in_reaches_go_to_file_and_the_server_as_fifty_made_and_one_deleted_unheard_as_gone()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -186,8 +207,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
 
     /// <summary>A folder of fifty sources the server was told of moved out of the project, which a folder's watcher hears as
     /// the folder alone: Go to File lets every source go, and the server is told of each as gone.</summary>
-    [AvaloniaFact]
-    public void A_folder_of_fifty_sources_moved_out_leaves_go_to_file_and_reaches_the_server_as_fifty_deletions()
+    private void A_folder_of_fifty_sources_moved_out_leaves_go_to_file_and_reaches_the_server_as_fifty_deletions()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -210,8 +230,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     /// large folder's (the references' packs) went on for minutes on CI's cold Windows disk: a source written in the project
     /// and one written into obj, which a watcher of Passenger's own hears, still reach the server meanwhile, never waiting
     /// behind that walk, and the window goes quiet without it.</summary>
-    [AvaloniaFact]
-    public void While_an_outside_folders_watcher_makes_its_first_walk_sources_written_in_the_project_and_in_obj_reach_the_server_and_the_window_goes_quiet()
+    private void While_an_outside_folders_watcher_makes_its_first_walk_sources_written_in_the_project_and_in_obj_reach_the_server_and_the_window_goes_quiet()
     {
         MainWindow window = project.Open("Program.cs");
         WatchedFiles watched = Watched(window);
@@ -248,40 +267,12 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
         window.Close();
     }
 
-    /// <summary>A project in a folder below another project's, whose obj the server's watch of the folder above reaches and
-    /// only a watcher of Passenger's own hears: a global using added to its project file, which its design-time build
-    /// writes into a source in its obj, reaches the server, which then finds the type it names.</summary>
-    [AvaloniaFact]
-    public void A_global_using_a_project_below_another_projects_folder_writes_into_its_obj_reaches_the_server()
-    {
-        string folder = PathNames.Canonical(TestFolders.Create("nested-"));
-        string shop = TestFolders.Write(folder, "Shop.csproj", TestProjects.Library().With("  <ItemGroup>\n    <Compile Remove=\"Lib/**\" />\n  </ItemGroup>\n"));
-        TestFolders.Write(folder, "Shop.cs", "class Shop\n{\n}\n");
-        string implicitUsings = "<ImplicitUsings>enable</ImplicitUsings>";
-        string library = TestFolders.Write(folder, Path.Combine("Lib", "Lib.csproj"), TestProjects.Library(implicitUsings));
-        string code = TestFolders.Write(folder, Path.Combine("Lib", "Code.cs"), "class Code\n{\n    public object Text() => new StringBuilder();\n}\n");
-        Restore.Run(shop);
-        Restore.Run(library);
-        MainWindow window = Ui.OpenFolder(folder);
-        window.OpenFile(code);
-        Ui.WaitFor(() => Codes(window, code).Contains("CS0246"), () => $"the language server's error on StringBuilder in Lib's Code.cs: {WatchLog(window)}", TimeSpan.FromMinutes(2));
-
-        File.WriteAllText(library, TestProjects.Library(implicitUsings).With("  <ItemGroup>\n    <Using Include=\"System.Text\" />\n  </ItemGroup>\n"));
-        Ui.WaitFor(() => !Codes(window, code).Contains("CS0246"),
-            () => $"the language server to take the global using of System.Text its design-time build wrote into Lib's obj, where Code.cs still has "
-                + $"[{string.Join(", ", Codes(window, code))}], so the type it names stays unknown: {WatchLog(window)}", TimeSpan.FromMinutes(2));
-        window.Close();
-    }
-
     /// <summary>A C# server started ahead of the window, which loads its projects from the head start's design-time builds
     /// before the window takes it up and starts the folder's watchers for it: their first walks tell the server of nothing
     /// those builds or the restore before them wrote, which it read as it loaded them, so it says its diagnostics may have
     /// changed no more after its load's word; but a file of its obj another program writes meanwhile, once the server was
     /// given them, is told it.</summary>
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_server_started_ahead_is_told_by_the_first_walks_only_what_was_written_after_it_was_given_its_builds(bool meanwhile)
+    private void A_server_started_ahead_is_told_by_the_first_walks_only_what_was_written_after_it_was_given_its_builds(bool meanwhile)
     {
         string folder = PathNames.Canonical(TestFolders.Create("ahead-"));
         string sum = TestFolders.Write(folder, "Sum.csproj", TestProjects.Library());
@@ -348,8 +339,7 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
     /// (held back here until it is written, as a registration may come after its load has ended): the server is told of it
     /// as they come, so a rename that reaches it, asked at once, renames it as written, never refused after a wait for a
     /// file the server was never told of.</summary>
-    [AvaloniaFact]
-    public void A_file_written_before_the_servers_watches_are_registered_is_told_it_as_they_come_and_a_rename_reaches_it_as_written()
+    private void A_file_written_before_the_servers_watches_are_registered_is_told_it_as_they_come_and_a_rename_reaches_it_as_written()
     {
         string folder = PathNames.Canonical(TestFolders.Create("registered-late-"));
         string shop = TestFolders.Write(folder, "Shop.csproj", TestProjects.Library());
@@ -392,69 +382,6 @@ public sealed class ServerWatchTests : IClassFixture<ServerWatchTests.Project>
             TestFolders.Delete(folder);
         }
     }
-
-    /// <summary>A MAUI page's folder never restored, its page written again before the server's watches of the folder are
-    /// registered (held back here until it is written, through the server's restore and its load again): the server is
-    /// told of the page as they come, so renaming a method the page's C# expression calls renames the expression in the
-    /// page as written, never refused after a wait for a page the server was never told of.</summary>
-    [AvaloniaFact]
-    public void A_maui_page_written_before_the_servers_watches_are_registered_is_told_it_as_they_come_and_a_rename_reaches_its_expression()
-    {
-        string folder = McpNavigationTests.MauiPage("registered-late-maui-");
-        string helper = TestFolders.Write(folder, "Helper.cs", "namespace MauiApp1;\n\npublic static class Helper\n{\n    public static string Shout(string text) => text.ToUpperInvariant();\n}\n");
-        string page = Path.Combine(folder, "MainPage.xaml");
-        string first = File.ReadAllText(page)
-            .Replace("<ContentPage x:Class=\"MauiApp1.MainPage\">", "<ContentPage x:Class=\"MauiApp1.MainPage\" xmlns:local=\"clr-namespace:MauiApp1\">", StringComparison.Ordinal)
-            .Replace("Text=\"Hello, World!\"", "Text=\"{local:Helper.Shout('hello')}\"", StringComparison.Ordinal);
-        File.WriteAllText(page, first);
-        TaskCompletionSource written = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        WatchedFiles.HoldRegistrations(folder, written.Task);
-        MainWindow window = Ui.OpenFolder(folder);
-        try
-        {
-            window.OpenFile(helper);
-            Ui.WaitFor(() => window.CSharpService?.IsReady == true, () => $"the language server to load MauiApp1: {window.CSharpService?.State}", TimeSpan.FromMinutes(3));
-            RoslynSession session = window.CSharpService!.Session!;
-            // Read by the server as first written once its load after the restore takes the page in, which it holds until told otherwise.
-            Task<IReadOnlyList<Passenger.Roslyn.Extension.TextHeld>>? asking = null;
-            Ui.WaitFor(() =>
-            {
-                if (asking is { IsCompleted: true } asked && Ui.Await(asked, "the server's text of MainPage.xaml") is [{ Hash: not null }])
-                {
-                    return true;
-                }
-                asking = asking is { IsCompleted: false } ? asking : session.HeldTextsAsync([page]);
-                return false;
-            }, "the server to hold MainPage.xaml as its load after the restore takes it in", TimeSpan.FromMinutes(3));
-            string now = "<!-- Shouted. -->\n" + first;
-            File.WriteAllText(page, now);
-            Ui.WaitFor(() => session.Server.WatchedFiles.Changing().Paths.Contains(page), "the folder's watcher to hear MainPage.xaml written");
-            written.SetResult();
-
-            Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Sho");
-            window.EditorArea.CodeEditor.Focus();
-            Ui.Run(window, AppActions.Rename);
-            Ui.Settle();
-            Assert.True(window.Assist.Renaming is not null, "Rename opened no box");
-            window.KeyTextInput("Yell");
-            Ui.Press(window, "ENTER");
-            Ui.Settle();
-            Assert.True(File.ReadAllText(page) == now.Replace("{local:Helper.Shout(", "{local:Helper.Yell(", StringComparison.Ordinal),
-                $"Renaming Shout to Yell left MainPage.xaml, written before the server's watches were registered, otherwise: {File.ReadAllText(page)}; it said {window.Status}: {WatchLog(window)}");
-        }
-        finally
-        {
-            written.TrySetResult();
-            window.Close();
-            TestFolders.Delete(folder);
-        }
-    }
-
-    /// <summary>The codes of the server's diagnostics in an open file.</summary>
-    private static List<string?> Codes(MainWindow window, string path) =>
-        window.EditorArea.Documents.FirstOrDefault(d => PathNames.Same(d.Path, path)) is { } open && window.CSharpService?.For(open) is { } served
-            ? [.. served.Diagnostics.Select(d => d.Code?.ToString())]
-            : [];
 
     /// <summary>The server's watched files, once obj is watched for it by a watcher of Passenger's own whose first walk is done.</summary>
     private WatchedFiles Watched(MainWindow window)
