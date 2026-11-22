@@ -99,6 +99,21 @@ public sealed class TablesAndFlowsTests
         Assert.True(rows.Count == 4 && rows.Distinct().Count() == 4 && rows.All(made => made.Disposed),
             $"Checks and rows apart did not each have an instance of their own disposed after it: {string.Join(", ", rows.Select(made => $"{made.Number} {made.Disposed}"))}");
 
+        // An instance disposed asynchronously has its disposal awaited after its step, check or row, as xunit awaits a test's.
+        List<ApartAsync> awaited = [];
+        await Flow.StepApartAsync<ApartAsync>("a waiting step apart has an instance of its own", made =>
+        {
+            awaited.Add(made);
+            return Task.CompletedTask;
+        });
+        await Cases.AllApartAsync<ApartAsync>(("a waiting check apart has one", made => Added(awaited, made)), ("so has the next", made => Added(awaited, made)));
+        await Cases.EachApartAsync<ApartAsync, int>([1, 2], (made, _) => Added(awaited, made));
+        Assert.True(awaited.Count == 5 && awaited.Distinct().Count() == 5 && awaited.All(made => made.Disposed),
+            $"Steps, checks and rows apart of a class disposed asynchronously did not each have its own instance's disposal awaited: {string.Join(", ", awaited.Select(made => made.Disposed))}");
+        Exception unawaited = Assert.ThrowsAny<Exception>(() => Flow.StepApart<ApartAsync>("a step that cannot await its instance's disposal", _ => { }));
+        Assert.True(Said(unawaited).Contains("disposed asynchronously", StringComparison.Ordinal),
+            $"A step apart that cannot await a class's disposal went on without it, leaving what it set up for the next: {Said(unawaited)}");
+
         // Each step and row in a context of its own: what one sets of an AsyncLocal, as an agent's call marks its flow, the next never sees.
         List<string?> seen = [];
         Flow.Step("a step sets an ambient value", () => Ambient.Value = "set by a step");
@@ -117,6 +132,25 @@ public sealed class TablesAndFlowsTests
 
     /// <summary>A value carried by the flow of the code that sets it, as an agent's call is.</summary>
     private static readonly AsyncLocal<string?> Ambient = new();
+
+    private static async Task Added(List<ApartAsync> made, ApartAsync one)
+    {
+        await Task.Yield();
+        made.Add(one);
+    }
+
+    /// <summary>A test class's instance disposed asynchronously, as a step apart makes one: marked once its disposal,
+    /// which waits, has ended.</summary>
+    private sealed class ApartAsync : IAsyncDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.Yield();
+            Disposed = true;
+        }
+    }
 
     /// <summary>A test class's instance as a step apart makes one: numbered as made, and counted as disposed.</summary>
     private sealed class Apart : IDisposable

@@ -60,7 +60,8 @@ public static class Flow
 
     /// <summary>A step in an instance of its own of the test's class, made by <paramref name="make"/> (its constructor,
     /// with any fixture it takes) and disposed after it, as each step was once a test of its own with its own instance:
-    /// for a class whose tests each set up, and put back, what the steps would otherwise share.</summary>
+    /// for a class whose tests each set up, and put back, what the steps would otherwise share. A class disposed only
+    /// asynchronously takes <see cref="StepApartAsync{TTest}(string, Func{TTest}, Func{TTest, Task})"/>.</summary>
     public static void StepApart<TTest>(string name, Func<TTest> make, Action<TTest> step) => Step(name, () =>
     {
         TTest apart = make();
@@ -70,7 +71,7 @@ public static class Flow
         }
         finally
         {
-            (apart as IDisposable)?.Dispose();
+            Dispose(apart);
         }
     });
 
@@ -78,7 +79,8 @@ public static class Flow
     /// arguments.</summary>
     public static void StepApart<TTest>(string name, Action<TTest> step) where TTest : new() => StepApart(name, () => new TTest(), step);
 
-    /// <summary><see cref="StepApart{TTest}(string, Func{TTest}, Action{TTest})"/> for a step that waits.</summary>
+    /// <summary><see cref="StepApart{TTest}(string, Func{TTest}, Action{TTest})"/> for a step that waits, or a class
+    /// disposed asynchronously, whose disposal it awaits.</summary>
     public static Task StepApartAsync<TTest>(string name, Func<TTest> make, Func<TTest, Task> step) => StepAsync(name, async () =>
     {
         TTest apart = make();
@@ -88,9 +90,40 @@ public static class Flow
         }
         finally
         {
-            (apart as IDisposable)?.Dispose();
+            await DisposeAsync(apart);
         }
     });
+
+    /// <summary><see cref="StepApartAsync{TTest}(string, Func{TTest}, Func{TTest, Task})"/> for a class made with no
+    /// arguments.</summary>
+    public static Task StepApartAsync<TTest>(string name, Func<TTest, Task> step) where TTest : new() => StepApartAsync(name, () => new TTest(), step);
+
+    /// <summary>Disposes an instance made apart, as xunit disposes a test's; one disposed only asynchronously is refused
+    /// here, as nothing would put back what it set up.</summary>
+    internal static void Dispose(object? apart)
+    {
+        if (apart is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+        else if (apart is IAsyncDisposable)
+        {
+            throw new InvalidOperationException($"{apart.GetType().Name} is disposed asynchronously: run it apart through the waiting form, which awaits its disposal");
+        }
+    }
+
+    /// <summary>Disposes an instance made apart as <c>await using</c> would: its DisposeAsync where it has one, else its Dispose.</summary>
+    internal static async Task DisposeAsync(object? apart)
+    {
+        if (apart is IAsyncDisposable disposable)
+        {
+            await disposable.DisposeAsync();
+        }
+        else
+        {
+            (apart as IDisposable)?.Dispose();
+        }
+    }
 
     /// <summary>A step run in a copy of the caller's execution context, so nothing ambient it sets (an AsyncLocal) reaches
     /// the steps after it, as when each was a test of its own; what it makes is handed on as ever.</summary>

@@ -59,6 +59,21 @@ public static class Cases
     public static void EachApart<TTest, T>(IEnumerable<T> rows, Action<TTest, T> check, Func<T, string>? name = null) where TTest : new() =>
         Each(rows, row => Apart(() => new TTest(), test => check(test, row)), name);
 
+    /// <summary><see cref="AllApart{TTest}(Func{TTest}, ValueTuple{string, Action{TTest}}[])"/> for checks that wait, or a
+    /// class disposed asynchronously: each in turn, its instance's disposal awaited after it.</summary>
+    public static Task AllApartAsync<TTest>(Func<TTest> make, params (string Holds, Func<TTest, Task> Check)[] checks) =>
+        EachAsync(checks, check => ApartAsync(make, check.Check), check => check.Holds);
+
+    /// <summary><see cref="AllApartAsync{TTest}(Func{TTest}, ValueTuple{string, Func{TTest, Task}}[])"/> for a class made
+    /// with no arguments.</summary>
+    public static Task AllApartAsync<TTest>(params (string Holds, Func<TTest, Task> Check)[] checks) where TTest : new() =>
+        AllApartAsync(() => new TTest(), checks);
+
+    /// <summary><see cref="EachApart{TTest, T}"/> for a check that waits, or a class disposed asynchronously: each row in
+    /// turn, its instance's disposal awaited after it.</summary>
+    public static Task EachApartAsync<TTest, T>(IEnumerable<T> rows, Func<TTest, T, Task> check, Func<T, string>? name = null) where TTest : new() =>
+        EachAsync(rows, row => ApartAsync(() => new TTest(), test => check(test, row)), name);
+
     private static void Apart<TTest>(Func<TTest> make, Action<TTest> check)
     {
         TTest apart = make();
@@ -68,7 +83,20 @@ public static class Cases
         }
         finally
         {
-            (apart as IDisposable)?.Dispose();
+            Flow.Dispose(apart);
+        }
+    }
+
+    private static async Task ApartAsync<TTest>(Func<TTest> make, Func<TTest, Task> check)
+    {
+        TTest apart = make();
+        try
+        {
+            await check(apart);
+        }
+        finally
+        {
+            await Flow.DisposeAsync(apart);
         }
     }
 
