@@ -64,8 +64,206 @@ public sealed class NuGetTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    /// <summary>The NuGet window's lists and Update All across a solution's projects, each change one command of Undo:
+    /// a feed that fails partway said, never every package current, a refused project or Stop ending the run with what
+    /// was done undoable, a version the final save changed never taken down, a change refused while another runs, and
+    /// an edit saved meanwhile kept.</summary>
     [AvaloniaFact]
-    public void Updates_checks_on_entry_filters_locally_and_selects_the_latest_version()
+    public void Packages_are_browsed_and_updated_across_every_project_and_a_change_that_fails_or_is_stopped_loses_no_work()
+    {
+        Flow.StepApart<NuGetTests>("updates checks on entry filters locally and selects the latest version", t =>
+        {
+            t.Updates_checks_on_entry_filters_locally_and_selects_the_latest_version();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("the solution rows menu manages the solution's packages across every project", t =>
+        {
+            t.The_solution_rows_menu_manages_the_solutions_packages_across_every_project();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("the package list sorts and filters and lists transitive packages with what brings them in", t =>
+        {
+            t.The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("another folder opened with the NuGet window shown lists that folder's packages", t =>
+        {
+            t.Another_folder_opened_with_the_nuget_window_shown_lists_that_folders_packages();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all updates every project even when search hides results and one undo restores them", t =>
+        {
+            t.Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("updates reports partial feed failure instead of claiming every package is current", t =>
+        {
+            t.Updates_reports_partial_feed_failure_instead_of_claiming_every_package_is_current();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all stops on a refused project and undo restores the earlier success", t =>
+        {
+            t.Update_all_stops_on_a_refused_project_and_undo_restores_the_earlier_success();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("stopping update all prevents the held package commands from starting", t =>
+        {
+            t.Stopping_update_all_prevents_the_held_package_commands_from_starting();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all stops when a provider check handles an update that fails", t =>
+        {
+            t.Update_all_stops_when_a_provider_check_handles_an_update_that_fails();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all does not downgrade a reference the final save changed to a version", t =>
+        {
+            t.Update_all_does_not_downgrade_a_reference_changed_by_the_final_save("9.0.0");
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all does not downgrade a reference the final save changed to a range", t => t.Update_all_does_not_downgrade_a_reference_changed_by_the_final_save("[9.0.0,10.0.0)"));
+        Flow.StepApart<NuGetTests>("update all restores a project whose versions it moved and says when it does not restore", t =>
+        {
+            t.Update_all_restores_a_project_whose_versions_it_moved_and_says_when_it_does_not_restore();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("while a package change runs the project's actions are disabled and one asked meanwhile is refused saying why", t =>
+        {
+            t.While_a_package_change_runs_the_projects_actions_are_disabled_and_one_asked_meanwhile_is_refused_saying_why();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a failed change keeps an edit saved to the project while it ran", t =>
+        {
+            t.A_failed_change_keeps_an_edit_saved_to_the_project_while_it_ran();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a change refused as an open file would not save says why and leaves the actions enabled", t =>
+        {
+            t.A_change_refused_as_an_open_file_would_not_save_says_why_and_leaves_the_actions_enabled();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("an install dotnet writes is named in local history and a save made as it runs stays the person's", t =>
+        {
+            t.An_install_dotnet_writes_is_named_in_local_history_and_a_save_made_as_it_runs_stays_the_persons();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>Under central package management a package's version moves where the evaluation keeps it (a property,
+    /// a nested Directory.Packages.props), every other character kept, as one change set of Local History and one
+    /// command of Undo; an edit the person makes to the central file meanwhile stops Update All, which names it, and
+    /// Undo never takes it back.</summary>
+    [AvaloniaFact]
+    public void A_central_version_is_moved_where_its_file_keeps_it_one_command_of_Undo_never_absorbing_the_persons_edit()
+    {
+        Flow.StepApart<NuGetTests>("update all rechecks shared central versions and preserves one undo", t =>
+        {
+            t.Update_all_rechecks_shared_central_versions_and_preserves_one_undo();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all stops before absorbing a user edit to an open central file", t =>
+        {
+            t.Update_all_stops_before_absorbing_a_user_edit_to_an_open_central_file();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all undo does not absorb a later user save to a shared central file", t =>
+        {
+            t.Update_all_undo_does_not_absorb_a_later_user_save_to_a_shared_central_file();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all over nested central files moves every package through its property and keeps the file's text", t =>
+        {
+            t.Update_all_over_nested_central_files_moves_every_package_through_its_property_and_keeps_the_files_text();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update all stopped by an edit to a central file names it and leaves EF Core's set whole", t =>
+        {
+            t.Update_all_stopped_by_an_edit_to_a_central_file_names_it_and_leaves_ef_cores_set_whole();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("updating a package whose central version is a property moves the property and keeps the file's text", t =>
+        {
+            t.Updating_a_package_whose_central_version_is_a_property_moves_the_property_and_keeps_the_files_text();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("updating a reference whose version is a property moves the property and leaves the project as it was", t =>
+        {
+            t.Updating_a_reference_whose_version_is_a_property_moves_the_property_and_leaves_the_project_as_it_was();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("an install under central management is one change set of local history named as the install", t =>
+        {
+            t.An_install_under_central_management_is_one_change_set_of_local_history_named_as_the_install();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    /// <summary>The audit and its fixes: a pinned version, a range and a version differing by framework audited as
+    /// each is in force, one a framework gets through another package audited there, an audit page the feed fails said
+    /// as not read, install and update greyed until the audit answers, a deprecated version marked with why, a
+    /// vulnerable one said before install, and a fix referencing the fixed version in the framework that gets the
+    /// vulnerable one, under central management too, or made by Update All from the Updates tab.</summary>
+    [AvaloniaFact]
+    public void A_vulnerable_or_deprecated_version_is_audited_as_its_project_gets_it_and_fixed_where_it_is_got()
+    {
+        Flow.StepApart<NuGetTests>("a pinned version is shown audited and compared as that version and an update keeps it pinned", t =>
+        {
+            t.A_pinned_version_is_shown_audited_and_compared_as_that_version_and_an_update_keeps_it_pinned();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a range is shown and audited as the version its restore resolved", t =>
+        {
+            t.A_range_is_shown_and_audited_as_the_version_its_restore_resolved();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a package whose version differs by framework shows each and is marked vulnerable when any is", t =>
+        {
+            t.A_package_whose_version_differs_by_framework_shows_each_and_is_marked_vulnerable_when_any_is();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a version one framework gets through another package is audited though the project references it in another", t =>
+        {
+            t.A_version_one_framework_gets_through_another_package_is_audited_though_the_project_references_it_in_another();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a vulnerability page the feed lists but answers 404 for is said as an audit not read", t =>
+        {
+            t.A_vulnerability_page_the_feed_lists_but_answers_404_for_is_said_as_an_audit_not_read();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("while the audit is unanswered install and update are greyed saying why until it answers", t =>
+        {
+            t.While_the_audit_is_unanswered_install_and_update_are_greyed_saying_why_until_it_answers();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a deprecated version is marked with why and what to use instead and found by its filter", t =>
+        {
+            t.A_deprecated_version_is_marked_with_why_and_what_to_use_instead_and_found_by_its_filter();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("a vulnerable version chosen before install is said in the details", t =>
+        {
+            t.A_vulnerable_version_chosen_before_install_is_said_in_the_details();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("fix on a project's line references the fixed version in the framework that gets the vulnerable one alone", t =>
+        {
+            t.Fix_on_a_projects_line_references_the_fixed_version_in_the_framework_that_gets_the_vulnerable_one_alone();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("under central management the fix at a project file's mark puts the central version in and references it in that framework alone", t =>
+        {
+            t.Under_central_management_the_fix_at_a_project_files_mark_puts_the_central_version_in_and_references_it_in_that_framework_alone();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("the updates tab lists a vulnerable version brought in with its fix and update all makes the fix", t =>
+        {
+            t.The_updates_tab_lists_a_vulnerable_version_brought_in_with_its_fix_and_update_all_makes_the_fix();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void Updates_checks_on_entry_filters_locally_and_selects_the_latest_version()
     {
         const string Other = "Passenger.Current";
         feed.Add(Other, "2.0.0");
@@ -94,8 +292,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>The solution's row offers Manage NuGet Packages for Solution, which a project's row does not: it shows the
     /// NuGet window over every project, a project it was narrowed to let go.</summary>
-    [AvaloniaFact]
-    public void The_solution_rows_menu_manages_the_solutions_packages_across_every_project()
+    private void The_solution_rows_menu_manages_the_solutions_packages_across_every_project()
     {
         const string Other = "Passenger.Other";
         feed.Add(Other, "1.0.0");
@@ -123,33 +320,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The package list's Sort and Filter, over two restored projects whose restore brought in packages neither
-    /// names: App references Lib and Passenger.Other, Lib references Passenger.Charts, which depends on a vulnerable
-    /// Passenger.Vulnerable. Transitive packages are listed only when asked, tagged, with what brings each in for each
-    /// project, audited as referenced ones are; a project's alone, the vulnerable alone and the order narrow what the
-    /// list holds without asking the feed again, and are kept as another package is chosen.</summary>
-    /// <summary>The package list says why it has no rows in its own place, never two blank panes: none installed, then none
-    /// on the feeds for a search, and nothing once a search finds a package.</summary>
-    [AvaloniaFact]
-    public void The_package_list_says_why_it_is_empty_where_its_rows_would_be()
-    {
-        MainWindow window = Open();
-        NuGetView nuget = window.NuGet;
-        Ui.WaitFor(() => nuget.ListSays is not null, () => $"the empty list's words: {nuget.Status}");
-        Assert.Equal("No packages installed: search the feeds to add one", nuget.ListSays);
-
-        nuget.Query = "nothing-is-called-this";
-        Task searched = nuget.RefreshAsync();
-        Ui.Landed(() => searched.IsCompleted, $"the search for nothing: {nuget.Status}");
-        Assert.Equal("No package on the feeds matches the search", nuget.ListSays);
-
-        Search(nuget);
-        Assert.Null(nuget.ListSays);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in()
+    private void The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in()
     {
         const string Charts = "Passenger.Charts";
         const string Other = "Passenger.Other";
@@ -206,54 +377,6 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The chosen package's projects narrowed by name and by whether they reference it, and sorted, the choices kept
-    /// as another package is chosen; a project that gets the package only through another is tagged so and offers Install,
-    /// which references it directly.</summary>
-    [AvaloniaFact]
-    public void The_projects_pane_sorts_and_filters_and_keeps_its_choices_across_packages()
-    {
-        const string Charts = "Passenger.Charts";
-        feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
-        Project("Lib", Restorable, $"<ItemGroup><PackageReference Include=\"{Charts}\" Version=\"1.0.0\" /><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /></ItemGroup>");
-        string app = Project("App", Restorable, "<ItemGroup><ProjectReference Include=\"../Lib/Lib.csproj\" /></ItemGroup>");
-        Project("Tools", Restorable, string.Empty);
-        // By its real path, as the window reads it: a restore through TMPDIR's /var link loses App's reference to Lib.
-        Restore.Run(Passenger.Core.PathNames.Canonical(app));
-        MainWindow window = Open();
-        NuGetView nuget = window.NuGet;
-        ChoosePackage(nuget, Charts);
-        Assert.Equal(["App", "Lib", "Tools"], nuget.ProjectNames);
-        Assert.Contains(Line(nuget, "App")!.Children.OfType<Border>(), b => b.Child is TextBlock { Text: "transitive" });
-        Assert.Equal(["Install"], Labels(nuget, "App"));
-        Assert.Equal(["Install"], Labels(nuget, "Tools"));
-        Assert.Equal(["Remove"], Labels(nuget, "Lib"));
-
-        Ui.Click(nuget.ProjectFilters.Button);
-        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Sort Installed First");
-        Assert.Equal(["Lib", "App", "Tools"], nuget.ProjectNames);
-        Ui.Click(nuget.ProjectFilters.Button);
-        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Sort by Name, Z to A");
-        Assert.Equal(["Tools", "Lib", "App"], nuget.ProjectNames);
-        Ui.Click(nuget.ProjectFilters.Button);
-        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Not Installed");
-        Assert.Equal(["Tools", "App"], nuget.ProjectNames);
-        nuget.ProjectQuery = "too";
-        Ui.Settle();
-        Assert.Equal(["Tools"], nuget.ProjectNames);
-
-        ChoosePackage(nuget, Id);
-        Assert.True(nuget.ProjectNames.SequenceEqual(["Tools"]) && nuget.ProjectQuery == "too" && nuget.ProjectsShown == ProjectsShown.NotInstalled,
-            $"Choosing another package left [{string.Join(", ", nuget.ProjectNames)}] listed, filtered by '{nuget.ProjectQuery}' and {nuget.ProjectsShown}");
-        nuget.ProjectQuery = string.Empty;
-        Ui.Click(nuget.ProjectFilters.Button);
-        Ui.Choose(nuget.ProjectFilters.OpenMenu, "With an Update");
-        Assert.Equal(["Lib"], nuget.ProjectNames);
-        Ui.Click(nuget.ProjectFilters.Button);
-        Ui.Choose(nuget.ProjectFilters.OpenMenu, "Installed");
-        Assert.Equal(["Lib"], nuget.ProjectNames);
-        window.Close();
-    }
-
     /// <summary>A package of the list chosen as a person clicks its row, its versions and projects shown.</summary>
     private static void ChoosePackage(NuGetView nuget, PackageRow row)
     {
@@ -265,8 +388,7 @@ public sealed class NuGetTests : IDisposable
     private static void ChoosePackage(NuGetView nuget, string id) =>
         ChoosePackage(nuget, nuget.Rows.FirstOrDefault(r => r.Id == id) ?? throw new Xunit.Sdk.XunitException($"NuGet lists no {id}: [{string.Join(", ", nuget.Rows.Select(r => r.Id))}]"));
 
-    [AvaloniaFact]
-    public void Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them()
+    private void Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them()
     {
         const string Other = "Passenger.Other";
         feed.Add(Other, "1.0.0");
@@ -294,8 +416,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Updates_reports_partial_feed_failure_instead_of_claiming_every_package_is_current()
+    private void Updates_reports_partial_feed_failure_instead_of_claiming_every_package_is_current()
     {
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>");
         string config = Path.Combine(folder, "nuget.config");
@@ -311,8 +432,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Update_all_rechecks_shared_central_versions_and_preserves_one_undo()
+    private void Update_all_rechecks_shared_central_versions_and_preserves_one_undo()
     {
         File.WriteAllText(Path.Combine(folder, "Directory.Packages.props"), $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"[1.0.0]\" /></ItemGroup></Project>");
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" /></ItemGroup>");
@@ -330,8 +450,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Update_all_stops_on_a_refused_project_and_undo_restores_the_earlier_success()
+    private void Update_all_stops_on_a_refused_project_and_undo_restores_the_earlier_success()
     {
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
         string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
@@ -351,8 +470,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Stopping_update_all_prevents_the_held_package_commands_from_starting()
+    private void Stopping_update_all_prevents_the_held_package_commands_from_starting()
     {
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
         string original = File.ReadAllText(lib);
@@ -379,8 +497,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Update_all_stops_when_a_provider_check_handles_an_update_that_fails()
+    private void Update_all_stops_when_a_provider_check_handles_an_update_that_fails()
     {
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
         Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
@@ -400,10 +517,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData("9.0.0")]
-    [InlineData("[9.0.0,10.0.0)")]
-    public void Update_all_does_not_downgrade_a_reference_changed_by_the_final_save(string changedVersion)
+    private void Update_all_does_not_downgrade_a_reference_changed_by_the_final_save(string changedVersion)
     {
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
         Restore.Run(lib);
@@ -425,8 +539,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Update_all_stops_before_absorbing_a_user_edit_to_an_open_central_file()
+    private void Update_all_stops_before_absorbing_a_user_edit_to_an_open_central_file()
     {
         const string Other = "Passenger.Other";
         feed.Add(Other, "1.0.0");
@@ -459,8 +572,7 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Update_all_undo_does_not_absorb_a_later_user_save_to_a_shared_central_file()
+    private void Update_all_undo_does_not_absorb_a_later_user_save_to_a_shared_central_file()
     {
         string props = Path.Combine(folder, "Directory.Packages.props");
         File.WriteAllText(props, $"<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup><ItemGroup><PackageVersion Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup></Project>");
@@ -492,8 +604,7 @@ public sealed class NuGetTests : IDisposable
     /// as an edit of the person's; a version kept in a property moves the property, so the packages sharing it move with
     /// it; each file is as it was but for the versions moved, its blank lines and final newline kept; and Lib, whose
     /// versions App's change moved, is restored with them as the run reaches it.</summary>
-    [AvaloniaFact]
-    public void Update_all_over_nested_central_files_moves_every_package_through_its_property_and_keeps_the_files_text()
+    private void Update_all_over_nested_central_files_moves_every_package_through_its_property_and_keeps_the_files_text()
     {
         (string root, string examples) = Nested();
         string rootBefore = File.ReadAllText(root);
@@ -520,8 +631,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>The person's edit of a central file Update All wrote stops the run before the next project, naming that
     /// file among the folder's two of the name; EF Core's packages moved before it are the whole set, those of a project the
     /// run never reached among them, never half at the new version.</summary>
-    [AvaloniaFact]
-    public void Update_all_stopped_by_an_edit_to_a_central_file_names_it_and_leaves_ef_cores_set_whole()
+    private void Update_all_stopped_by_an_edit_to_a_central_file_names_it_and_leaves_ef_cores_set_whole()
     {
         (string root, string examples) = Nested();
         string unwritten = File.ReadAllText(examples);
@@ -559,8 +669,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>A single package's update, of one whose version the examples' file keeps in a property, moves the property,
     /// so the package sharing it moves too, and leaves every other byte of the file as it was.</summary>
-    [AvaloniaFact]
-    public void Updating_a_package_whose_central_version_is_a_property_moves_the_property_and_keeps_the_files_text()
+    private void Updating_a_package_whose_central_version_is_a_property_moves_the_property_and_keeps_the_files_text()
     {
         (string root, string examples) = Nested();
         string rootBefore = File.ReadAllText(root);
@@ -578,8 +687,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>Update All moving Linq2DbVersion, which Examples/Three's only package shares at a version no feed holds,
     /// restores Three at the run's end though no update names it, and says it does not restore, rather than leave that
     /// for the next build.</summary>
-    [AvaloniaFact]
-    public void Update_all_restores_a_project_whose_versions_it_moved_and_says_when_it_does_not_restore()
+    private void Update_all_restores_a_project_whose_versions_it_moved_and_says_when_it_does_not_restore()
     {
         (_, string examples) = Nested();
         feed.Add("Passenger.Linq2Db.SqlServer", "1.0.0");
@@ -598,8 +706,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>Without central package management, an update of a package whose reference's version is a property of
     /// Directory.Build.props moves the property where it is set, never writing a version into the project, so the other
     /// project's package sharing it moves too; every other character of both files is as it was.</summary>
-    [AvaloniaFact]
-    public void Updating_a_reference_whose_version_is_a_property_moves_the_property_and_leaves_the_project_as_it_was()
+    private void Updating_a_reference_whose_version_is_a_property_moves_the_property_and_leaves_the_project_as_it_was()
     {
         const string Other = "Passenger.Other";
         feed.Add(Other, "1.0.0");
@@ -622,8 +729,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>A project pinning the vulnerable 1.0.0 ("[1.0.0]") has it shown as 1.0.0 and marked, is offered the fix as
     /// an Update and nothing for 1.0.0 itself, and the Update pins 1.0.1, never turning the pin into a minimum.</summary>
-    [AvaloniaFact]
-    public void A_pinned_version_is_shown_audited_and_compared_as_that_version_and_an_update_keeps_it_pinned()
+    private void A_pinned_version_is_shown_audited_and_compared_as_that_version_and_an_update_keeps_it_pinned()
     {
         Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"[1.0.0]\" />\n  </ItemGroup>\n");
         MainWindow window = Open();
@@ -647,8 +753,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>A range whose least no feed holds ("[0.9.0, 2.0.0)") is shown and audited as the 1.0.0 its restore
     /// resolved, read from the project's project.assets.json, and offered the fix as an Update.</summary>
-    [AvaloniaFact]
-    public void A_range_is_shown_and_audited_as_the_version_its_restore_resolved()
+    private void A_range_is_shown_and_audited_as_the_version_its_restore_resolved()
     {
         Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"[0.9.0, 2.0.0)\" />\n  </ItemGroup>\n");
         Restore.Run(lib);
@@ -666,8 +771,7 @@ public sealed class NuGetTests : IDisposable
     /// second, shows both versions on its line, marked, the package's row and the status counting it vulnerable, and
     /// offers the version that fixes it as what it is for every framework, whose references move together: a downgrade
     /// naming net11.0, which it takes down from 1.1.0, never a plain Update.</summary>
-    [AvaloniaFact]
-    public void A_package_whose_version_differs_by_framework_shows_each_and_is_marked_vulnerable_when_any_is()
+    private void A_package_whose_version_differs_by_framework_shows_each_and_is_marked_vulnerable_when_any_is()
     {
         Project("Lib", $"net11.0;{TestProjects.Framework}",
             $"  <ItemGroup Condition=\"'$(TargetFramework)' == 'net11.0'\">\n    <PackageReference Include=\"{Id}\" Version=\"1.1.0\" />\n  </ItemGroup>\n"
@@ -693,8 +797,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>While another asker's change of Lib (an agent's, Migrations') runs, the NuGet window's Install on App is
     /// disabled, and a change the window asks for meanwhile is refused saying what is under way, not dropped unsaid; once
     /// the first change ends, App's Install is enabled again.</summary>
-    [AvaloniaFact]
-    public void While_a_package_change_runs_the_projects_actions_are_disabled_and_one_asked_meanwhile_is_refused_saying_why()
+    private void While_a_package_change_runs_the_projects_actions_are_disabled_and_one_asked_meanwhile_is_refused_saying_why()
     {
         MainWindow window = Open();
         NuGetView nuget = window.NuGet;
@@ -726,8 +829,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>A change that fails puts back only what it wrote: an edit to Lib.csproj typed and saved while the change
     /// waited is kept, never written over by the bytes read before the change, and the change's words say it was left as
     /// saved.</summary>
-    [AvaloniaFact]
-    public void A_failed_change_keeps_an_edit_saved_to_the_project_while_it_ran()
+    private void A_failed_change_keeps_an_edit_saved_to_the_project_while_it_ran()
     {
         Project("Lib", TestProjects.Framework, "  <PropertyGroup>\n    <Description>Before</Description>\n  </PropertyGroup>\n");
         MainWindow window = Open();
@@ -765,8 +867,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>An install under central package management, which Passenger writes into the project and its
     /// Directory.Packages.props and then restores, is one change set of Local History named as the install, holding both
     /// files, as Undo takes it back as one.</summary>
-    [AvaloniaFact]
-    public void An_install_under_central_management_is_one_change_set_of_local_history_named_as_the_install()
+    private void An_install_under_central_management_is_one_change_set_of_local_history_named_as_the_install()
     {
         Project("Lib", Restorable, string.Empty);
         Project("App", Restorable, string.Empty);
@@ -803,8 +904,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>An install dotnet add package writes, of a project open in the editor, is named as the install in the
     /// project's Local History, while a save the person makes of another file as it runs stays their own change.</summary>
-    [AvaloniaFact]
-    public void An_install_dotnet_writes_is_named_in_local_history_and_a_save_made_as_it_runs_stays_the_persons()
+    private void An_install_dotnet_writes_is_named_in_local_history_and_a_save_made_as_it_runs_stays_the_persons()
     {
         Project("Lib", Restorable, string.Empty);
         Project("App", Restorable, string.Empty);
@@ -847,8 +947,7 @@ public sealed class NuGetTests : IDisposable
 
     /// <summary>Another folder opened in the window while the NuGet window is shown has that folder's packages listed in
     /// place of the last folder's, whose rows never stay to be acted on against the new folder's projects.</summary>
-    [AvaloniaFact]
-    public void Another_folder_opened_with_the_nuget_window_shown_lists_that_folders_packages()
+    private void Another_folder_opened_with_the_nuget_window_shown_lists_that_folders_packages()
     {
         const string Other = "Passenger.Other";
         feed.Add(Other, "2.0.0");
@@ -881,8 +980,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>A change refused because an open file would not save (Windows refuses a write to a file another program
     /// holds, stood in for here) says why in the window's status, never "Working…" left unexplained, and leaves the
     /// projects' actions enabled and the project as it was.</summary>
-    [AvaloniaFact]
-    public void A_change_refused_as_an_open_file_would_not_save_says_why_and_leaves_the_actions_enabled()
+    private void A_change_refused_as_an_open_file_would_not_save_says_why_and_leaves_the_actions_enabled()
     {
         const string Unsaved = "Program.cs could not be saved: The process cannot access the file because it is being used by another process.";
         MainWindow window = Open();
@@ -901,64 +999,10 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A change that fails part way (moves together, as Migrations' alignment makes them, one to a package no feed
-    /// holds, so their restore fails) puts Lib back, and the window's status keeps saying so once its refresh has listed the
-    /// packages again, until the person asks for a list (Refresh); the status bar says it too, a click opening the window.</summary>
-    [AvaloniaFact]
-    public void A_failed_changes_words_stay_in_the_status_after_the_refresh_until_the_person_asks_for_a_list()
-    {
-        const string Failed = "The change failed, Lib.csproj put back as before; the log says why";
-        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
-        byte[] before = File.ReadAllBytes(lib);
-        MainWindow window = Open();
-        NuGetView nuget = window.NuGet;
-        Ui.Landed(() => nuget.Selected?.Id == Id && nuget.Status == "1 package installed, 1 vulnerable", $"{Id} listed as installed and vulnerable: {nuget.Status}");
-        IReadOnlyList<PackageRow> listed = nuget.Rows;
-
-        PackageOutcome outcome = Ui.Landed(nuget.Packages.InstallSetAsync(Named(window, "Lib"), [(Id, "1.0.1"), ("Passenger.Missing", "1.0.0")]), "the moves whose restore fails");
-        Assert.True(!outcome.Done && File.ReadAllBytes(lib).AsSpan().SequenceEqual(before),
-            $"The moves to a package no feed holds {(outcome.Done ? "were done" : "failed")}, leaving Lib.csproj as:\n{File.ReadAllText(lib)}\n{nuget.Log}");
-        Ui.Landed(() => !ReferenceEquals(nuget.Rows, listed) && nuget.Rows is [{ Id: Id }], $"the window's refresh after the failed change to list {Id} again");
-        Assert.True(nuget.Status == Failed, $"Once the window's refresh had landed its status said \"{nuget.Status}\", not that the change failed and Lib was put back");
-        Assert.True(window.Status == $"Move {Id} to 1.0.1, Passenger.Missing to 1.0.0 in Lib failed, Lib.csproj put back as before; the NuGet window's log says why"
-            && window.StatusPlace?.Name == "open the NuGet window", $"The status bar says \"{window.Status}\", a click to {window.StatusPlace?.Name ?? "nowhere"}");
-
-        window.Perform(AppActions.NuGetRefresh);
-        Ui.Landed(() => nuget.Status == "1 package installed, 1 vulnerable", $"the list's own words once the person asked for a list (it says \"{nuget.Status}\")");
-        window.Close();
-    }
-
-    /// <summary>A change whose restore fails says so in dotnet's last line even where the window fell behind as dotnet
-    /// ended, as a loaded machine's does: the lines dotnet printed meanwhile are the change's words before it is over,
-    /// however late the window runs them, never left to the log alone.</summary>
-    [AvaloniaFact]
-    public void A_failed_changes_words_are_dotnets_last_line_even_where_the_window_fell_behind_as_dotnet_ended()
-    {
-        Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
-        MainWindow window = Open();
-        NuGetView nuget = window.NuGet;
-        bool behind = false;
-        nuget.Packages.Line += (_, line) =>
-        {
-            if (!behind && line.Contains("error NU1101", StringComparison.Ordinal) && line.Contains("Passenger.Missing", StringComparison.Ordinal))
-            {
-                behind = true;
-                // A job of the window's own, as a heavy frame is, run after the lines already posted.
-                UiThread.Post(() => Ui.Stall(TimeSpan.FromSeconds(2), "the window behind as the restore says its last line and ends"));
-            }
-        };
-        PackageOutcome outcome = Ui.Landed(nuget.Packages.InstallSetAsync(Named(window, "Lib"), [(Id, "1.0.1"), ("Passenger.Missing", "1.0.0")]), "the moves whose restore fails");
-        Assert.True(behind, $"The restore never said it found no Passenger.Missing (NU1101), so the window never fell behind as it ended:\n{nuget.Log}");
-        Assert.True(outcome.Failure("failed")?.StartsWith("Failed to restore", StringComparison.Ordinal) == true,
-            $"The failed change said \"{outcome.Failure("failed")}\", not dotnet's last line that the restore failed: what dotnet printed as the window fell behind was left out of its words\n{nuget.Log}");
-        window.Close();
-    }
-
     /// <summary>A feed whose VulnerabilityInfo lists a page of advisories it answers 404 for has its audit read as failed,
     /// never as no advisories: the window's status says the vulnerabilities are unknown, naming the feed, rather than count
     /// the vulnerable 1.0.0 as safe.</summary>
-    [AvaloniaFact]
-    public void A_vulnerability_page_the_feed_lists_but_answers_404_for_is_said_as_an_audit_not_read()
+    private void A_vulnerability_page_the_feed_lists_but_answers_404_for_is_said_as_an_audit_not_read()
     {
         feed.AdvisoriesGone = true;
         Project("Lib", TestProjects.Framework, $"  <ItemGroup>\n    <PackageReference Include=\"{Id}\" Version=\"1.0.0\" />\n  </ItemGroup>\n");
@@ -976,8 +1020,7 @@ public sealed class NuGetTests : IDisposable
     /// the project that has it (never of one with a later version) and in the package's details, with why, the owner's
     /// words and the package to use instead, which a click searches for; Deprecated Only lists it alone. Nothing asks the
     /// registrations before the window is shown.</summary>
-    [AvaloniaFact]
-    public void A_deprecated_version_is_marked_with_why_and_what_to_use_instead_and_found_by_its_filter()
+    private void A_deprecated_version_is_marked_with_why_and_what_to_use_instead_and_found_by_its_filter()
     {
         const string Legacy = "Passenger.Legacy";
         const string Modern = "Passenger.Modern";
@@ -1027,157 +1070,12 @@ public sealed class NuGetTests : IDisposable
             ?? throw new Xunit.Sdk.XunitException($"{nuget.Selected?.Id}'s details say nothing of a deprecated version");
     }
 
-    /// <summary>At the smallest window, a deprecated package's row cuts its long id, its version and its deprecated tag kept
-    /// whole after it, where the row was cut inside its version; the bar's words take a row of their own, where they had
-    /// none; and the details put the version picker under the id inside the pane, where it ran under the pane's scroll
-    /// bar. At a wide window the id is whole and the picker beside it.</summary>
-    [AvaloniaFact]
-    public void At_the_smallest_window_a_rows_id_gives_way_to_its_version_and_mark_and_the_details_version_picker_wraps_under_it()
-    {
-        const string Legacy = "Passenger.Legacy.Storage.Client.Extensions";
-        feed.Add(Legacy, "9.3.3");
-        feed.Deprecate(Legacy, "9.3.3", ["Legacy"], "Kept no more.");
-        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"9.3.3\" /></ItemGroup>");
-        MainWindow window = Ui.OpenFolder(folder, width: MainWindow.SmallestWidth, height: MainWindow.SmallestHeight, languageServer: false);
-        try
-        {
-            window.Perform(AppActions.ShowNuGet);
-            Ui.Settle();
-            NuGetView nuget = window.NuGet;
-            Ui.WaitFor(() => nuget.Status == "1 package installed, 1 deprecated", () => $"{Legacy} listed deprecated: {nuget.Status}");
-            PackageRow row = nuget.Rows.Single(r => r.Id == Legacy);
-            Control line = Ui.Row(nuget.PackageList, row);
-            Rect list = Placed(window, nuget.PackageList);
-            TextBlock id = line.GetLogicalDescendants().OfType<TextBlock>().Single(t => t.Text == Legacy);
-            TextBlock version = line.GetLogicalDescendants().OfType<TextBlock>().Single(t => t.Text == "9.3.3");
-            Border tag = Tag(line, "deprecated") ?? throw new Xunit.Sdk.XunitException($"{Legacy}'s row has no deprecated tag");
-            foreach (Control kept in (Control[])[version, tag])
-            {
-                TextBlock words = kept as TextBlock ?? (TextBlock)((Border)kept).Child!;
-                Assert.True(kept.IsEffectivelyVisible && Placed(window, kept).Right <= list.Right + 0.5 && words.TextLayout.TextLines.All(l => !l.HasCollapsed),
-                    $"{Legacy}'s {(kept == tag ? "deprecated tag" : "version")} stands at {Placed(window, kept)} in a list ending at {list.Right:0.#}: the row is cut there");
-            }
-            Assert.True(id.TextLayout.TextLines is [{ HasCollapsed: true }], $"{Legacy}'s id, {id.Bounds.Width:0.#} wide, is not cut with an ellipsis before its version");
-            TextBlock status = nuget.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == nuget.Status);
-            Assert.True(status.IsEffectivelyVisible && status.TextLayout.TextLines.All(l => !l.HasCollapsed) && status.Bounds.Width >= status.TextLayout.Width - 0.5,
-                $"The bar's \"{nuget.Status}\" is given {status.Bounds.Width:0.#} units: it is out of sight at the smallest window");
-
-            ChoosePackage(nuget, row);
-            ComboBox picker = nuget.GetLogicalDescendants().OfType<ComboBox>().Single(c => c.Name == "Versions");
-            Control details = (Control)picker.FindLogicalAncestorOfType<ScrollViewer>()!.Content!;
-            TextBlock heading = details.GetLogicalDescendants().OfType<TextBlock>().First(t => t.Text == Legacy);
-            Assert.True(Placed(window, picker).Right <= Placed(window, details).Right + 0.5 && Placed(window, picker).Top >= Placed(window, heading).Bottom - 0.5,
-                $"The version picker stands at {Placed(window, picker)}, past the details' edge at {Placed(window, details).Right:0.#} or beside the id at {Placed(window, heading)}");
-
-            window.Width = 1600;
-            Ui.Settle();
-            Assert.True(id.TextLayout.TextLines is [{ HasCollapsed: false }] && Math.Abs(Placed(window, picker).Center.Y - Placed(window, heading).Center.Y) < 4,
-                $"At a wide window the id is {(id.TextLayout.TextLines[0].HasCollapsed ? "cut" : "whole")} and the picker at {Placed(window, picker)} beside the id at {Placed(window, heading)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>The version chosen in a package's details is said deprecated there before it is put in, as the stand-in's
-    /// registration says: in the word on the version a project has where their owner says the same of both, in a word of
-    /// its own where they say otherwise, and not at all where it is not deprecated.</summary>
-    [AvaloniaFact]
-    public void A_deprecated_version_chosen_before_install_is_said_in_the_details()
-    {
-        const string Legacy = "Passenger.Legacy";
-        const string Modern = "Passenger.Modern";
-        const string Words = "Broken past repair.";
-        foreach (string version in new[] { "1.0.0", "1.2.0", "1.5.0", "2.0.0" })
-        {
-            feed.Add(Legacy, version);
-        }
-        feed.Add(Modern, "2.0.0");
-        feed.Deprecate(Legacy, "1.0.0", ["CriticalBugs"], Words, Modern);
-        feed.Deprecate(Legacy, "1.5.0", ["CriticalBugs"], Words, Modern);
-        feed.Deprecate(Legacy, "2.0.0", ["Legacy"], "Kept no more.", Modern, "[2.0.0, )");
-        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"1.0.0\" /></ItemGroup>");
-        MainWindow window = Open();
-        NuGetView nuget = window.NuGet;
-        ChoosePackage(nuget, Legacy);
-        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget).Count == 2, () => $"{Legacy}'s details to say its two deprecations: [{string.Join(" | ", Said(nuget))}]");
-        Assert.Equal("2.0.0", nuget.ChosenVersion);
-        Assert.Equal(["1.0.0 is deprecated: critical bugs.", "2.0.0 is deprecated: legacy, no longer maintained."], Said(nuget));
-        Assert.Contains(Line(nuget, "App")!.Children.OfType<Button>(), b => b.Content as string == "Install");
-
-        Choose(nuget, "1.5.0");
-        Ui.WaitFor(() => Said(nuget).Count == 1 && Said(nuget)[0].Contains("1.5.0", StringComparison.Ordinal),
-            () => $"1.5.0, deprecated as Lib's 1.0.0 is, to be said with it: [{string.Join(" | ", Said(nuget))}], {nuget.ChosenVersion} chosen of "
-                + $"{nuget.Versions.Count} versions, the window {(nuget.IsShown ? "shown" : "hidden")}, 1.5.0's deprecation {Read(nuget, Legacy, "1.5.0")}");
-        Assert.Equal(["1.0.0 and 1.5.0 are deprecated: critical bugs."], Said(nuget));
-
-        Choose(nuget, "1.2.0");
-        Ui.WaitFor(() => Said(nuget) is ["1.0.0 is deprecated: critical bugs."], () => $"1.2.0, not deprecated, said as [{string.Join(" | ", Said(nuget))}]");
-        window.Close();
-
-        // The first line of each word the details say on deprecated versions.
-        static List<string> Said(NuGetView nuget) =>
-            [.. nuget.GetLogicalDescendants().OfType<Border>().Where(b => b.Name is "Deprecation" or "ChosenDeprecation")
-                .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
-
-        // What the folder's packages know of a version's deprecation, and whether their sources are the folder's own.
-        static string Read(NuGetView nuget, string id, string version) =>
-            (nuget.Packages.DeprecationOf(id, version) is not null ? "read" : nuget.Packages.DeprecationsUnknown([(id, version)]) is { Count: > 0 } unread
-                ? $"unread, {string.Join(", ", unread)} not answering" : "not read or still being read")
-            + $", the sources {(nuget.Packages.IsCurrent ? "current" : "not current")}";
-    }
-
-    /// <summary>A version chosen in a package's details while the feed has not yet answered whether it is deprecated stays
-    /// chosen as the person refreshes the list meanwhile (the sources read again and the details made again), and its
-    /// deprecation is said once the feed answers, where the details went back to the newest version and never said it.</summary>
-    [AvaloniaFact]
-    public void A_version_chosen_as_its_deprecation_is_asked_stays_chosen_through_a_refresh_and_is_said_once_answered()
-    {
-        const string Legacy = "Passenger.Legacy";
-        const string Words = "Broken past repair.";
-        foreach (string version in new[] { "1.0.0", "1.2.0", "1.5.0", "2.0.0" })
-        {
-            feed.Add(Legacy, version);
-        }
-        feed.Deprecate(Legacy, "1.0.0", ["CriticalBugs"], Words);
-        feed.Deprecate(Legacy, "1.5.0", ["CriticalBugs"], Words);
-        feed.Deprecate(Legacy, "2.0.0", ["Legacy"], "Kept no more.");
-        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Legacy}\" Version=\"1.0.0\" /></ItemGroup>");
-        MainWindow window = Open();
-        NuGetView nuget = window.NuGet;
-        ChoosePackage(nuget, Legacy);
-        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget).Count == 2, () => $"{Legacy}'s details to say its two deprecations: [{string.Join(" | ", Said(nuget))}]");
-
-        TaskCompletionSource answered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        feed.HoldRegistrations(answered.Task);
-        int asked = feed.Requests.Count;
-        Picker(nuget).SelectedItem = "1.5.0";
-        Ui.PumpUntil(() => feed.Requests.Skip(asked).Any(r => r.Path.StartsWith("/registrations/", StringComparison.Ordinal)),
-            "the feed to be asked whether the chosen 1.5.0 is deprecated");
-        window.Perform(AppActions.NuGetRefresh);
-        Ui.PumpUntil(() => nuget.Versions.Count == 0, "the refresh to make the details again, waiting on the feed's versions");
-        answered.SetResult();
-        Ui.WaitFor(() => nuget.Versions.Count == 4 && Said(nuget) is ["1.0.0 and 1.5.0 are deprecated: critical bugs."],
-            () => $"1.5.0, chosen before the refresh, to be said deprecated as Lib's 1.0.0 is: [{string.Join(" | ", Said(nuget))}], {nuget.ChosenVersion} chosen");
-        Assert.Equal(("1.5.0", "1.5.0"), (nuget.ChosenVersion, Picker(nuget).SelectedItem as string));
-        window.Close();
-
-        static ComboBox Picker(NuGetView nuget) => nuget.GetLogicalDescendants().OfType<ComboBox>().Single(c => c.Name == "Versions");
-
-        // The first line of each word the details say on deprecated versions.
-        static List<string> Said(NuGetView nuget) =>
-            [.. nuget.GetLogicalDescendants().OfType<Border>().Where(b => b.Name is "Deprecation" or "ChosenDeprecation")
-                .Select(b => b.GetLogicalDescendants().OfType<TextBlock>().First().Text ?? string.Empty)];
-    }
-
     /// <summary>The version chosen in a package's details is said vulnerable there before it is put in, as the stand-in's
     /// audit says, with its advisories, the gravest first and each linked, and the version that fixes them: of a package no
     /// project has, the audit read as the details ask, nothing listed having asked for it; of one a project has, in the
     /// word on its vulnerable version where the same advisories affect both, in a word of its own where others do, and not
     /// at all where none does.</summary>
-    [AvaloniaFact]
-    public void A_vulnerable_version_chosen_before_install_is_said_in_the_details()
+    private void A_vulnerable_version_chosen_before_install_is_said_in_the_details()
     {
         const string Leaky = "Passenger.Leaky";
         const string Moderate = "https://github.com/advisories/GHSA-pass-leak-mild";
@@ -1248,8 +1146,7 @@ public sealed class NuGetTests : IDisposable
     /// vulnerable, deprecated 1.0.0 through Passenger.Charts in the other has that 1.0.0 audited and its deprecation read:
     /// the package's row is marked and tagged, the status counts it, the project's line shows both versions, its mark naming
     /// the framework and what brings 1.0.0 in, and the details say the advisory and the version that fixes it, chosen.</summary>
-    [AvaloniaFact]
-    public void A_version_one_framework_gets_through_another_package_is_audited_though_the_project_references_it_in_another()
+    private void A_version_one_framework_gets_through_another_package_is_audited_though_the_project_references_it_in_another()
     {
         const string Charts = "Passenger.Charts";
         const string Known = "Known security vulnerability in 1.0.0. It could be exploited in certain scenarios. See the advisories below for details.";
@@ -1285,8 +1182,7 @@ public sealed class NuGetTests : IDisposable
     /// Install and Lib's Update are greyed, each saying why, Lib's Remove is not, the details say the feed is being asked,
     /// and the window's own install is refused saying why; once the feed answers, Lib's 1.0.0 is marked, the 1.0.1 that
     /// fixes it chosen, and Install and Update act again.</summary>
-    [AvaloniaFact]
-    public void While_the_audit_is_unanswered_install_and_update_are_greyed_saying_why_until_it_answers()
+    private void While_the_audit_is_unanswered_install_and_update_are_greyed_saying_why_until_it_answers()
     {
         Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /></ItemGroup>");
         string app = File.ReadAllText(Path.Combine(folder, "App", "App.csproj"));
@@ -1329,8 +1225,7 @@ public sealed class NuGetTests : IDisposable
     /// 1.0.0 through Passenger.Charts in the other has Fix on its line beside the mark: one click references 1.0.1, which
     /// fixes it, in that framework alone, where Downgrade would move net11.0's reference, and the restore it ends with
     /// resolves 1.0.1 there, net11.0's 1.1.0 and its reference as they were; the package is no longer marked.</summary>
-    [AvaloniaFact]
-    public void Fix_on_a_projects_line_references_the_fixed_version_in_the_framework_that_gets_the_vulnerable_one_alone()
+    private void Fix_on_a_projects_line_references_the_fixed_version_in_the_framework_that_gets_the_vulnerable_one_alone()
     {
         const string Charts = "Passenger.Charts";
         feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
@@ -1367,8 +1262,7 @@ public sealed class NuGetTests : IDisposable
     /// Passenger.Charts in the one that references Charts is marked on that reference in its file, and the code action there
     /// references the package in that framework alone, its 1.0.1 a PackageVersion in Directory.Packages.props; the restore
     /// resolves 1.0.1 there, the other framework getting none, and the mark goes.</summary>
-    [AvaloniaFact]
-    public void Under_central_management_the_fix_at_a_project_files_mark_puts_the_central_version_in_and_references_it_in_that_framework_alone()
+    private void Under_central_management_the_fix_at_a_project_files_mark_puts_the_central_version_in_and_references_it_in_that_framework_alone()
     {
         const string Charts = "Passenger.Charts";
         feed.Add(Charts, "1.0.0", (Id, "1.0.0"));
@@ -1417,8 +1311,7 @@ public sealed class NuGetTests : IDisposable
     /// <summary>The Updates tab lists a vulnerable version a project's framework gets only through another package beside the
     /// updates, with the version that fixes it, though the project's own references are current; Update All references it
     /// there, and the tab then lists no fix, the reference made at 1.0.1 at most an update to 1.1.0 like any other.</summary>
-    [AvaloniaFact]
-    public void The_updates_tab_lists_a_vulnerable_version_brought_in_with_its_fix_and_update_all_makes_the_fix()
+    private void The_updates_tab_lists_a_vulnerable_version_brought_in_with_its_fix_and_update_all_makes_the_fix()
     {
         const string Charts = "Passenger.Charts";
         feed.Add(Charts, "1.0.0", (Id, "1.0.0"));

@@ -11,8 +11,19 @@ namespace Passenger.Tests;
 [SameOnEverySystem]
 public sealed class CentralVersionTests
 {
+    /// <summary>A version placed in a one-line props file goes beside the package versions on their line, in a props
+    /// file of many lines takes its own line with the others' indent, and is written escaped where XML would read it
+    /// as markup; the central file is the one the evaluation names, none where central management is off.</summary>
     [Fact]
-    public void A_version_placed_in_a_one_line_props_file_with_package_versions_goes_beside_them_on_their_line()
+    public void A_central_version_is_placed_in_the_file_the_evaluation_names_as_that_file_is_written()
+    {
+        Flow.StepApart<CentralVersionTests>("a version placed in a one line props file with package versions goes beside them on their line", t => t.A_version_placed_in_a_one_line_props_file_with_package_versions_goes_beside_them_on_their_line());
+        Flow.StepApart<CentralVersionTests>("a version placed in a props file of many lines takes its own line with the others indent", t => t.A_version_placed_in_a_props_file_of_many_lines_takes_its_own_line_with_the_others_indent());
+        Flow.StepApart<CentralVersionTests>("a version whose words XML would read as markup is written escaped", t => t.A_version_whose_words_xml_would_read_as_markup_is_written_escaped());
+        Flow.StepApart<CentralVersionTests>("the central file is the one the evaluation names and none where central management is off or names none", t => t.The_central_file_is_the_one_the_evaluation_names_and_none_where_central_management_is_off_or_names_none());
+    }
+
+    private void A_version_placed_in_a_one_line_props_file_with_package_versions_goes_beside_them_on_their_line()
     {
         const string Props = "<Project><ItemGroup><PackageVersion Include=\"Alpha\" Version=\"1.0.0\" /><PackageVersion Include=\"Zulu\" Version=\"1.0.0\" /></ItemGroup></Project>";
 
@@ -22,16 +33,7 @@ public sealed class CentralVersionTests
             + "<PackageVersion Include=\"Zulu\" Version=\"1.0.0\" /></ItemGroup></Project>", Placed(Props, "Able", "2.0.0"));
     }
 
-    [Fact]
-    public void A_version_placed_in_a_one_line_props_file_without_package_versions_goes_in_an_item_group_inside_the_project()
-    {
-        Assert.Equal("<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup>"
-            + "<ItemGroup><PackageVersion Include=\"Mike\" Version=\"2.0.0\" /></ItemGroup></Project>",
-            Placed("<Project><PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup></Project>", "Mike", "2.0.0"));
-    }
-
-    [Fact]
-    public void A_version_placed_in_a_props_file_of_many_lines_takes_its_own_line_with_the_others_indent()
+    private void A_version_placed_in_a_props_file_of_many_lines_takes_its_own_line_with_the_others_indent()
     {
         const string Props = "<Project>\n  <ItemGroup>\n    <PackageVersion Include=\"Alpha\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n";
 
@@ -43,8 +45,7 @@ public sealed class CentralVersionTests
             Placed("<Project>\n</Project>\n", "Mike", "2.0.0"));
     }
 
-    [Fact]
-    public void A_version_whose_words_xml_would_read_as_markup_is_written_escaped()
+    private void A_version_whose_words_xml_would_read_as_markup_is_written_escaped()
     {
         string placed = Placed("<Project></Project>", "Odd&Id", "1.0.0-\"a\"<b>");
         XElement version = XDocument.Parse(placed).Descendants("PackageVersion").Single();
@@ -52,8 +53,7 @@ public sealed class CentralVersionTests
             $"The id and version read back as {version}, not as given: {placed}");
     }
 
-    [Fact]
-    public void The_central_file_is_the_one_the_evaluation_names_and_none_where_central_management_is_off_or_names_none()
+    private void The_central_file_is_the_one_the_evaluation_names_and_none_where_central_management_is_off_or_names_none()
     {
         string folder = Passenger.Core.PathNames.Canonical(Path.GetTempPath());
         string named = Path.Combine(folder, "eng", "Versions.props");

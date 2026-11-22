@@ -18,12 +18,40 @@ namespace Passenger.Tests;
 /// nuget.config is never read or written.</summary>
 public sealed class PackageSourcesTests : NuGetFeedsFolder
 {
+    /// <summary>The folder's feeds are listed, searched one or all, disabled and enabled, and a new one written into
+    /// its nuget.config; a feed added to a nuget.config open in a tab outside the folder shows there; a feed's search
+    /// on another host that asks for credentials is refused and never sent them; installing from the private feed
+    /// restores with its credentials, which nothing logs.</summary>
+    [AvaloniaFact]
+    public void A_folders_feeds_are_listed_and_edited_and_their_credentials_go_only_to_their_own_host_and_nowhere_in_a_log()
+    {
+        Flow.StepApart<PackageSourcesTests>("the folder's feeds are listed searched one or all disabled and enabled and a new one written into its NuGet config", t =>
+        {
+            t.The_folders_feeds_are_listed_searched_one_or_all_disabled_and_enabled_and_a_new_one_written_into_its_nuget_config();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<PackageSourcesTests>("a feed added to a NuGet config open in a tab outside the folder shows there", t =>
+        {
+            t.A_feed_added_to_a_nuget_config_open_in_a_tab_outside_the_folder_shows_there();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<PackageSourcesTests>("a feed's search on another host that asks for credentials is refused and never sent the feed's credentials", t =>
+        {
+            t.A_feeds_search_on_another_host_that_asks_for_credentials_is_refused_and_never_sent_the_feeds_credentials();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<PackageSourcesTests>("installing from the private feed restores with its credentials which nothing logs", t =>
+        {
+            t.Installing_from_the_private_feed_restores_with_its_credentials_which_nothing_logs();
+            OpenWindows.CloseAll();
+        });
+    }
+
     /// <summary>The Sources tab and the chooser list the folder's two feeds; a search of one feed finds only its packages and
     /// All Feeds both feeds'; a feed disabled leaves search until enabled again; and a feed added is written into the
     /// folder's nuget.config, the rest of the file kept, Local History keeping the file as it was before. One window, the
     /// feed added last, since nothing answers at its address.</summary>
-    [AvaloniaFact]
-    public void The_folders_feeds_are_listed_searched_one_or_all_disabled_and_enabled_and_a_new_one_written_into_its_nuget_config()
+    private void The_folders_feeds_are_listed_searched_one_or_all_disabled_and_enabled_and_a_new_one_written_into_its_nuget_config()
     {
         MainWindow window = Open();
         NuGetView nuget = window.NuGet;
@@ -109,8 +137,7 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
     /// <summary>A window on the project's folder, its nuget.config the one above it, where the folder's watcher does not reach,
     /// as it never reaches the person's own NuGet.Config: open in a tab, the file shows a feed the Sources tab adds there as
     /// the add ends, so what is typed and saved in that tab keeps the feed.</summary>
-    [AvaloniaFact]
-    public void A_feed_added_to_a_nuget_config_open_in_a_tab_outside_the_folder_shows_there()
+    private void A_feed_added_to_a_nuget_config_open_in_a_tab_outside_the_folder_shows_there()
     {
         MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Lib"), languageServer: false);
         window.Perform(AppActions.ShowNuGet);
@@ -137,8 +164,7 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
 
     /// <summary>A feed's answers can send Passenger to any host: a search there that asks for credentials is refused, and
     /// the feed's own credentials never go to it.</summary>
-    [AvaloniaFact]
-    public void A_feeds_search_on_another_host_that_asks_for_credentials_is_refused_and_never_sent_the_feeds_credentials()
+    private void A_feeds_search_on_another_host_that_asks_for_credentials_is_refused_and_never_sent_the_feeds_credentials()
     {
         using StandInFeed elsewhere = new("someone", "else");
         feed.SearchAt = new Uri($"{elsewhere.Root}/query");
@@ -156,8 +182,7 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Installing_from_the_private_feed_restores_with_its_credentials_which_nothing_logs()
+    private void Installing_from_the_private_feed_restores_with_its_credentials_which_nothing_logs()
     {
         MainWindow window = Open();
         NuGetView nuget = window.NuGet;
@@ -186,8 +211,24 @@ public sealed class PackageSourcesTests : NuGetFeedsFolder
 [Collection(Alone.Name)]
 public sealed class CredentialProviderTests : NuGetFeedsFolder
 {
+    /// <summary>A feed without credentials in its nuget.config gets them from a credential provider, and a provider
+    /// writing what is no message fails what is asked after it, saying so.</summary>
     [AvaloniaFact]
-    public void A_feed_without_credentials_in_its_nuget_config_gets_them_from_a_credential_provider()
+    public void A_credential_provider_gives_a_feed_its_credentials_and_one_that_writes_no_message_fails_saying_so()
+    {
+        Flow.StepApart<CredentialProviderTests>("a feed without credentials in its NuGet config gets them from a credential provider", t =>
+        {
+            t.A_feed_without_credentials_in_its_nuget_config_gets_them_from_a_credential_provider();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<CredentialProviderTests>("a credential provider writing what is no message fails what is asked after it saying so", t =>
+        {
+            t.A_credential_provider_writing_what_is_no_message_fails_what_is_asked_after_it_saying_so();
+            OpenWindows.CloseAll();
+        });
+    }
+
+    private void A_feed_without_credentials_in_its_nuget_config_gets_them_from_a_credential_provider()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -217,8 +258,7 @@ public sealed class CredentialProviderTests : NuGetFeedsFolder
 
     /// <summary>A provider that writes a line of its own among its messages (a runtime's warning) has ended its side of the
     /// conversation: what is asked of it after that fails at once, and the log says what it wrote, not that it was slow.</summary>
-    [AvaloniaFact]
-    public void A_credential_provider_writing_what_is_no_message_fails_what_is_asked_after_it_saying_so()
+    private void A_credential_provider_writing_what_is_no_message_fails_what_is_asked_after_it_saying_so()
     {
         if (OperatingSystem.IsWindows())
         {
