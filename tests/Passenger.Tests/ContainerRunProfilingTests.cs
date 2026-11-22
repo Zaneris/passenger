@@ -76,8 +76,18 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>The line (from one) of the hot method's first sequence point, its opening brace.</summary>
     public static int SpinLine => Array.FindIndex(Spinning.Split('\n'), l => l.Contains("public static double Spin()", StringComparison.Ordinal)) + 2;
 
+    /// <summary>Profiling a compose run as one flow, every step needing a Linux container engine and the container
+    /// tools, each in an instance of its own: Profile of a compose configuration recording the service marked from its
+    /// start with a memory snapshot there, and a container run's .NET service's request duration charted under its
+    /// stats.</summary>
     [AvaloniaFact]
-    public void Profile_of_a_compose_configuration_records_the_service_marked_from_its_start_takes_a_memory_snapshot_there_and_Stop_reads_it_first()
+    public void A_compose_services_profile_snapshot_and_request_duration_are_read_in_its_container()
+    {
+        Flow.StepApart("profile of a compose configuration records the service marked from its start takes a memory snapshot there and Stop reads it first", () => new ContainerRunProfilingTests(tools), t => t.Profile_of_a_compose_configuration_records_the_service_marked_from_its_start_takes_a_memory_snapshot_there_and_Stop_reads_it_first());
+        Flow.StepApart("a container runs dotnet service has its request duration charted under its stats", () => new ContainerRunProfilingTests(tools), t => t.A_container_runs_dotnet_service_has_its_request_duration_charted_under_its_stats());
+    }
+
+    private void Profile_of_a_compose_configuration_records_the_service_marked_from_its_start_takes_a_memory_snapshot_there_and_Stop_reads_it_first()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("profile");
@@ -142,8 +152,7 @@ public sealed class ContainerRunProfilingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>A .NET service of a container run has its metrics charted under its Stats in the Containers window, read in its
     /// container through Passenger's tools there: web, sent requests while its Stats tab is shown, has its request duration
     /// charted with its rate and median, and none is read once another row is chosen.</summary>
-    [AvaloniaFact]
-    public void A_container_runs_dotnet_service_has_its_request_duration_charted_under_its_stats()
+    private void A_container_runs_dotnet_service_has_its_request_duration_charted_under_its_stats()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("metrics");

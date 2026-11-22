@@ -16,11 +16,20 @@ namespace Passenger.Tests;
 /// names them, since the SDK it names is Visual Studio's alone.</summary>
 public sealed class ComposeProjectEditingTests
 {
+    /// <summary>A Docker Compose project in the editor and the Solution view as one flow, each step one test's check in
+    /// an instance of its own: read as MSBuild's and never marked for the Visual Studio SDK it names, and at the
+    /// solution's root showing only the files it holds.</summary>
+    [AvaloniaFact]
+    public void A_Docker_Compose_project_is_edited_as_MSBuilds_and_shows_only_the_files_it_holds()
+    {
+        Flow.StepApart<ComposeProjectEditingTests>("a Docker Compose project is read as MSBuilds and never marked for the Visual Studio SDK it names", t => t.A_Docker_Compose_project_is_read_as_MSBuilds_and_never_marked_for_the_Visual_Studio_SDK_it_names());
+        Flow.StepApart<ComposeProjectEditingTests>("a Docker Compose project at the solutions root shows only the files it holds", t => t.A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds());
+    }
+
     /// <summary>A Docker Compose project (.dcproj) is MSBuild's: coloured as markup, its properties completed and its elements
     /// described from MSBuild's schemas, and a file it names gone to; the SDK it names is Visual Studio's alone, so it is never
     /// evaluated, and nothing is marked on it or listed in Problems, typed in or not.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_project_is_read_as_MSBuilds_and_never_marked_for_the_Visual_Studio_SDK_it_names()
+    private void A_Docker_Compose_project_is_read_as_MSBuilds_and_never_marked_for_the_Visual_Studio_SDK_it_names()
     {
         string own = PathNames.Canonical(TestFolders.Create("project-dcproj-"));
         TestFolders.Write(own, "docker-compose.yml", "services:\n  web:\n    image: busybox:1.38\n");
@@ -88,8 +97,7 @@ public sealed class ComposeProjectEditingTests
     /// not (its launch profiles); never the projects, folders and files beside it, which the Files view still shows, nor
     /// a Dependencies row. What its text says once written, by another program or saved in the editor, shows at once: the
     /// files it names, and the service its run configuration launches.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds()
+    private void A_Docker_Compose_project_at_the_solutions_root_shows_only_the_files_it_holds()
     {
         string own = PathNames.Canonical(TestFolders.Create("solution-dcproj-"));
         TestFolders.Write(own, "docker-compose.foo.yml", "services:\n  internal-api:\n    image: busybox:1.38\n");

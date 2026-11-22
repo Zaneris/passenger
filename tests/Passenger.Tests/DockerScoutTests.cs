@@ -22,8 +22,17 @@ public sealed class DockerScoutTests
 {
     private const string Base = "mcr.microsoft.com/dotnet/aspnet:8.0";
 
+    /// <summary>Docker Scout on a Dockerfile as one flow, every step needing the docker CLI, each in an instance of its
+    /// own: the base image asked of scout only once asked, then marked with the tag it recommends as one edit, and the
+    /// fix on the second of two FROMs naming one image changing that FROM alone.</summary>
     [AvaloniaFact]
-    public void A_dockerfiles_base_image_is_asked_of_scout_only_once_asked_then_marked_with_the_tag_it_recommends_as_one_edit()
+    public void A_Dockerfiles_base_image_is_checked_by_scout_only_once_asked_and_its_fix_edits_its_own_FROM()
+    {
+        Flow.StepApart<DockerScoutTests>("a dockerfiles base image is asked of scout only once asked then marked with the tag it recommends as one edit", t => t.A_dockerfiles_base_image_is_asked_of_scout_only_once_asked_then_marked_with_the_tag_it_recommends_as_one_edit());
+        Flow.StepApart<DockerScoutTests>("the fix on the second of two FROMs naming one image changes that FROM alone", t => t.The_fix_on_the_second_of_two_FROMs_naming_one_image_changes_that_FROM_alone());
+    }
+
+    private void A_dockerfiles_base_image_is_asked_of_scout_only_once_asked_then_marked_with_the_tag_it_recommends_as_one_edit()
     {
         SkipWithoutDockerCli();
         string folder = TestFolders.Create("docker-scout-");
@@ -111,8 +120,7 @@ public sealed class DockerScoutTests
 
     /// <summary>Two stages on one image are marked each on its own FROM, and the fix offered on the second changes the second,
     /// the first left as it was.</summary>
-    [AvaloniaFact]
-    public void The_fix_on_the_second_of_two_FROMs_naming_one_image_changes_that_FROM_alone()
+    private void The_fix_on_the_second_of_two_FROMs_naming_one_image_changes_that_FROM_alone()
     {
         SkipWithoutDockerCli();
         string folder = TestFolders.Create("docker-scout-");

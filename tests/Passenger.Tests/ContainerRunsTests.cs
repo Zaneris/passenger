@@ -30,8 +30,71 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     public void Dispose() => taken.ForEach(TestFolders.Delete);
 
+    /// <summary>Compose runs as one flow, every step needing a Linux container engine, each in an instance of its own:
+    /// .NET services run from Passenger's build and rerun only where changed, leaving nothing at Stop, release and
+    /// fast-mode runs, a configuration building only what it starts in one build saying each service's errors or saying
+    /// it starts none, the Compose page and run icons, Compose's own watch, and a run's log followed again.</summary>
     [AvaloniaFact]
-    public void A_compose_solution_runs_its_dotnet_services_from_Passengers_build_reruns_only_what_changed_and_Stop_leaves_nothing()
+    public void A_compose_run_builds_what_it_starts_once_reruns_only_what_changed_and_says_each_services_errors()
+    {
+        Flow.StepApart("a compose solution runs its dotnet services from Passengers build reruns only what changed and Stop leaves nothing", () => new ContainerRunsTests(folders), t => t.A_compose_solution_runs_its_dotnet_services_from_Passengers_build_reruns_only_what_changed_and_Stop_leaves_nothing());
+        Flow.StepApart("a compose run under release runs its dotnet services from passengers release build", () => new ContainerRunsTests(folders), t => t.A_compose_run_under_release_runs_its_dotnet_services_from_passengers_release_build());
+        Flow.StepApart("with a fast mode run up builds and a configurations plan each finish", () => new ContainerRunsTests(folders), t => t.With_a_fast_mode_run_up_builds_and_a_configurations_plan_each_finish());
+        Flow.StepApart("a compose service of a multi targeted project runs in fast mode from its first frameworks build", () => new ContainerRunsTests(folders), t => t.A_compose_service_of_a_multi_targeted_project_runs_in_fast_mode_from_its_first_frameworks_build());
+        Flow.StepApart("a compose configuration builds only the services it starts and what they depend on", () => new ContainerRunsTests(folders), t => t.A_compose_configuration_builds_only_the_services_it_starts_and_what_they_depend_on());
+        Flow.StepApart("a compose run builds its services in one build says each ones errors and Rerun builds nothing unchanged", () => new ContainerRunsTests(folders), t => t.A_compose_run_builds_its_services_in_one_build_says_each_ones_errors_and_Rerun_builds_nothing_unchanged());
+        Flow.StepApart("a configuration that starts no service says so and starts nothing", () => new ContainerRunsTests(folders), t => t.A_configuration_that_starts_no_service_says_so_and_starts_nothing());
+        Flow.StepApart("the Compose page lists the services Compose reads and keeps a services project and what Run does with each", () => new ContainerRunsTests(folders), t => t.The_Compose_page_lists_the_services_Compose_reads_and_keeps_a_services_project_and_what_Run_does_with_each());
+        Flow.StepApart("a compose files services and a Dockerfiles final FROM have run icons whose menu runs that service", () => new ContainerRunsTests(folders), t => t.A_compose_files_services_and_a_Dockerfiles_final_FROM_have_run_icons_whose_menu_runs_that_service());
+        Flow.StepApart("a service that is not dotnet and declares a watch has Composes own watch while the run lasts", () => new ContainerRunsTests(folders), t => t.A_service_that_is_not_dotnet_and_declares_a_watch_has_Composes_own_watch_while_the_run_lasts());
+        Flow.StepApart("a runs log that ends while its services run is followed again quietly and Stop still takes them down", () => new ContainerRunsTests(folders), t => t.A_runs_log_that_ends_while_its_services_run_is_followed_again_quietly_and_Stop_still_takes_them_down());
+    }
+
+    /// <summary>A project run in a container as one flow, every step needing a Linux container engine, each in an
+    /// instance of its own: a container path in images mode linking to the workspace file, a local program's paths and
+    /// wildcard addresses linking on this machine after a container run, a service's address linking where its
+    /// container publishes it, a Dockerfile project, an SDK container project and a Docker launch profile each running
+    /// in a container, and an SDK container project as deployed running the SDK's image.</summary>
+    [AvaloniaFact]
+    public void A_project_runs_in_a_container_as_it_is_built_or_deployed_its_output_linking_to_the_files_and_addresses_it_names()
+    {
+        Flow.StepApart("in images mode a container path in the runs output links to the workspace file", () => new ContainerRunsTests(folders), t => t.In_images_mode_a_container_path_in_the_runs_output_links_to_the_workspace_file());
+        Flow.StepApart("after a container run a local programs paths and wildcard addresses link on this machine", () => new ContainerRunsTests(folders), t => t.After_a_container_run_a_local_programs_paths_and_wildcard_addresses_link_on_this_machine());
+        Flow.StepApart("a services own address in the runs output links where its container publishes it", () => new ContainerRunsTests(folders), t => t.A_services_own_address_in_the_runs_output_links_where_its_container_publishes_it());
+        Flow.StepApart("a Dockerfile project an SDK container project and a Docker launch profile each run their project in a container", () => new ContainerRunsTests(folders), t => t.A_Dockerfile_project_an_SDK_container_project_and_a_Docker_launch_profile_each_run_their_project_in_a_container());
+        Flow.StepApart("an SDK container project as deployed runs the image the SDK makes", () => new ContainerRunsTests(folders), t => t.An_SDK_container_project_as_deployed_runs_the_image_the_SDK_makes());
+    }
+
+    /// <summary>A compose run's secrets and the person's containers as one flow, every step needing a Linux container
+    /// engine, each in an instance of its own: the development certificate and only a service's own user secrets
+    /// mounted, containers Passenger did not make replaced only once the person says so, DockerComposeProjectName kept,
+    /// and Detach, Leave Running and another window's containers left or replaced as the person says.</summary>
+    [AvaloniaFact]
+    public void A_compose_run_mounts_only_its_services_own_secrets_and_leaves_or_replaces_the_persons_containers_only_as_they_say()
+    {
+        Flow.StepApart("a service that serves HTTPS has the development certificate and the projects user secrets mounted", () => new ContainerRunsTests(folders), t => t.A_service_that_serves_HTTPS_has_the_development_certificate_and_the_projects_user_secrets_mounted());
+        Flow.StepApart("a services user secrets reach it in its container from Passengers build and as deployed and only its own are mounted its backing service kept", () => new ContainerRunsTests(folders), t => t.A_services_user_secrets_reach_it_in_its_container_from_Passengers_build_and_as_deployed_and_only_its_own_are_mounted_its_backing_service_kept());
+        Flow.StepApart("containers of the project Passenger did not make are replaced only once the person says so and an orphan outlives the run", () => new ContainerRunsTests(folders), t => t.Containers_of_the_project_Passenger_did_not_make_are_replaced_only_once_the_person_says_so_and_an_orphan_outlives_the_run());
+        Flow.StepApart("a Docker Compose projects DockerComposeProjectName names the Compose project its run brings up and Stop takes down", () => new ContainerRunsTests(folders), t => t.A_Docker_Compose_projects_DockerComposeProjectName_names_the_Compose_project_its_run_brings_up_and_Stop_takes_down());
+        Flow.StepApart("detach leaves a Docker Compose projects containers running until the window closes", () => new ContainerRunsTests(folders), t => t.Detach_leaves_a_Docker_Compose_projects_containers_running_until_the_window_closes());
+        Flow.StepApart("leave Running leaves the person only the closing windows containers of a Compose project another folder runs too", () => new ContainerRunsTests(folders), t => t.Leave_Running_leaves_the_person_only_the_closing_windows_containers_of_a_Compose_project_another_folder_runs_too());
+        Flow.StepApart("a run asks before replacing another windows container of a Compose project of the same name", () => new ContainerRunsTests(folders), t => t.A_run_asks_before_replacing_another_windows_container_of_a_Compose_project_of_the_same_name());
+    }
+
+    /// <summary>Compose runs over a docker standing in front of the engine as one flow, every step needing a Linux
+    /// container engine and off Windows (the stand-ins are shell scripts), each in an instance of its own: a service
+    /// whose restart failed restarted by the next Rerun, Stop during a restart's up leaving no container though the
+    /// engine finishes one after Compose ended, and a run serving HTTPS with no trusted certificate asking to create
+    /// and trust it or run over HTTP.</summary>
+    [AvaloniaFact]
+    public void A_compose_restart_or_certificate_question_over_a_docker_in_front_of_the_engine_leaves_no_container_behind()
+    {
+        Flow.StepApart("a service whose restart failed is restarted by the next Rerun", () => new ContainerRunsTests(folders), t => t.A_service_whose_restart_failed_is_restarted_by_the_next_Rerun());
+        Flow.StepApart("stop during a restarts up leaves no container even one the engine finishes after Compose ended", () => new ContainerRunsTests(folders), t => t.Stop_during_a_restarts_up_leaves_no_container_even_one_the_engine_finishes_after_Compose_ended());
+        Flow.StepApart("a run that serves HTTPS with no trusted certificate asks to create and trust it or run over HTTP and says an export that fails", () => new ContainerRunsTests(folders), t => t.A_run_that_serves_HTTPS_with_no_trusted_certificate_asks_to_create_and_trust_it_or_run_over_HTTP_and_says_an_export_that_fails());
+    }
+
+    private void A_compose_solution_runs_its_dotnet_services_from_Passengers_build_reruns_only_what_changed_and_Stop_leaves_nothing()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("run");
@@ -101,8 +164,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     /// <summary>Release chosen, a Compose solution's .NET services run from Passenger's Release build, mounted in their
     /// containers, nothing built as Debug.</summary>
-    [AvaloniaFact]
-    public void A_compose_run_under_release_runs_its_dotnet_services_from_passengers_release_build()
+    private void A_compose_run_under_release_runs_its_dotnet_services_from_passengers_release_build()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("release");
@@ -131,8 +193,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>A Rerun whose restart of web fails (the engine refuses Compose's restart once, through a docker over the real
     /// one) says so and leaves web on its old build, and the next Rerun restarts web, whose build has changed since it last
     /// started, rather than finding nothing changed.</summary>
-    [AvaloniaFact]
-    public void A_service_whose_restart_failed_is_restarted_by_the_next_Rerun()
+    private void A_service_whose_restart_failed_is_restarted_by_the_next_Rerun()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The docker over the real one is a shell script");
@@ -168,8 +229,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>Stop while a restart's up is under way (api, left unstarted by the run, started by its Run, its up held by a
     /// docker over the real one until Stop ends it) leaves no container of the run, not even one the engine finishes after
     /// Compose has ended, just after the take-down listed them.</summary>
-    [AvaloniaFact]
-    public void Stop_during_a_restarts_up_leaves_no_container_even_one_the_engine_finishes_after_Compose_ended()
+    private void Stop_during_a_restarts_up_leaves_no_container_even_one_the_engine_finishes_after_Compose_ended()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The docker over the real one is a shell script");
@@ -202,8 +262,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
-    [AvaloniaFact]
-    public void With_a_fast_mode_run_up_builds_and_a_configurations_plan_each_finish()
+    private void With_a_fast_mode_run_up_builds_and_a_configurations_plan_each_finish()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("builds");
@@ -234,8 +293,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     /// <summary>A compose service whose project targets two frameworks runs in fast mode from its first framework's build,
     /// as Run runs such a project on this machine, the image's runtime that framework's.</summary>
-    [AvaloniaFact]
-    public void A_compose_service_of_a_multi_targeted_project_runs_in_fast_mode_from_its_first_frameworks_build()
+    private void A_compose_service_of_a_multi_targeted_project_runs_in_fast_mode_from_its_first_frameworks_build()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("multi");
@@ -262,8 +320,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>A compose configuration builds only what it brings up: one naming its backing service alone starts it with no
     /// dotnet build, and one naming web builds Web, which it runs beside the cache it depends on, and not Api, which nothing
     /// it starts needs.</summary>
-    [AvaloniaFact]
-    public void A_compose_configuration_builds_only_the_services_it_starts_and_what_they_depend_on()
+    private void A_compose_configuration_builds_only_the_services_it_starts_and_what_they_depend_on()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("only");
@@ -321,8 +378,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>A compose run builds its .NET services side by side in one dotnet build: with an error in each, it starts
     /// nothing, says the build failed in both, and Problems lists each one's error under its own project; mended, it comes
     /// up from one more build, and Rerun with nothing changed builds nothing, the Build window saying both are up to date.</summary>
-    [AvaloniaFact]
-    public void A_compose_run_builds_its_services_in_one_build_says_each_ones_errors_and_Rerun_builds_nothing_unchanged()
+    private void A_compose_run_builds_its_services_in_one_build_says_each_ones_errors_and_Rerun_builds_nothing_unchanged()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("together");
@@ -395,8 +451,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
-    [AvaloniaFact]
-    public void In_images_mode_a_container_path_in_the_runs_output_links_to_the_workspace_file()
+    private void In_images_mode_a_container_path_in_the_runs_output_links_to_the_workspace_file()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-images-");
@@ -436,8 +491,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// build's <c>/_/</c> path under its own project, where the image's map named the image's context; a path the image's
     /// files had no link, as nothing is there here; and where it listens on every interface at localhost, which a click
     /// opens.</summary>
-    [AvaloniaFact]
-    public void After_a_container_run_a_local_programs_paths_and_wildcard_addresses_link_on_this_machine()
+    private void After_a_container_run_a_local_programs_paths_and_wildcard_addresses_link_on_this_machine()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = PathNames.Canonical(TestFolders.Create("ctr-then-local-"));
@@ -489,8 +543,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>Where a service's program says it listens in its container (<c>http://[::]:8080</c>, <c>http://0.0.0.0:8080</c>)
     /// links, in the Run window, the address its container's 8080 is published on here, as the Containers window links that
     /// port, and the page answers there; an address on a port it publishes nowhere is no link.</summary>
-    [AvaloniaFact]
-    public void A_services_own_address_in_the_runs_output_links_where_its_container_publishes_it()
+    private void A_services_own_address_in_the_runs_output_links_where_its_container_publishes_it()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-listens-");
@@ -525,8 +578,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
-    [AvaloniaFact]
-    public void A_Dockerfile_project_an_SDK_container_project_and_a_Docker_launch_profile_each_run_their_project_in_a_container()
+    private void A_Dockerfile_project_an_SDK_container_project_and_a_Docker_launch_profile_each_run_their_project_in_a_container()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, _) = Restored("single");
@@ -574,8 +626,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_SDK_container_project_as_deployed_runs_the_image_the_SDK_makes()
+    private void An_SDK_container_project_as_deployed_runs_the_image_the_SDK_makes()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-sdkimage-");
@@ -614,8 +665,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
-    [AvaloniaFact]
-    public void The_Compose_page_lists_the_services_Compose_reads_and_keeps_a_services_project_and_what_Run_does_with_each()
+    private void The_Compose_page_lists_the_services_Compose_reads_and_keeps_a_services_project_and_what_Run_does_with_each()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, _) = Restored("table");
@@ -651,8 +701,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     }
 
     /// <summary>The compose file's <c>services:</c> has a run icon too, whose menu runs its configuration whole.</summary>
-    [AvaloniaFact]
-    public void A_compose_files_services_and_a_Dockerfiles_final_FROM_have_run_icons_whose_menu_runs_that_service()
+    private void A_compose_files_services_and_a_Dockerfiles_final_FROM_have_run_icons_whose_menu_runs_that_service()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("marks");
@@ -699,8 +748,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         }
     }
 
-    [AvaloniaFact]
-    public void A_service_that_is_not_dotnet_and_declares_a_watch_has_Composes_own_watch_while_the_run_lasts()
+    private void A_service_that_is_not_dotnet_and_declares_a_watch_has_Composes_own_watch_while_the_run_lasts()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-watch-");
@@ -734,8 +782,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// service is made anew; here its process is killed) is followed again from its end: Stop stays, what the service says
     /// next reaches the Run window, and Stop still takes it down. Each follow is told what every docker command is
     /// (<see cref="ContainerEngine.Variables"/>), so Podman's own docker writes no word of its provider into the Run window.</summary>
-    [AvaloniaFact]
-    public void A_runs_log_that_ends_while_its_services_run_is_followed_again_quietly_and_Stop_still_takes_them_down()
+    private void A_runs_log_that_ends_while_its_services_run_is_followed_again_quietly_and_Stop_still_takes_them_down()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-relog-");
@@ -789,8 +836,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>A service that serves HTTPS serves the development certificate exported for it, as PEM with its key and no
     /// password (a certificate made for the test, which dev-certs' stand-in writes, the machine's store never read), with the
     /// project's user secrets mounted; no command line the run started names a password.</summary>
-    [AvaloniaFact]
-    public void A_service_that_serves_HTTPS_has_the_development_certificate_and_the_projects_user_secrets_mounted()
+    private void A_service_that_serves_HTTPS_has_the_development_certificate_and_the_projects_user_secrets_mounted()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         // A throwaway certificate for localhost stands in for the machine's, whose store is never read and so asks no one anything.
@@ -899,8 +945,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// in the status bar; Create and Trust has dev-certs trust it and export it as PEM with no password, the person's alone
     /// to read, again once dev-certs names another certificate (an earlier Passenger's open folder and .pfx put right); Run
     /// and Profile stopped as dev-certs checks say so and leave nothing. dev-certs is a stand-in.</summary>
-    [AvaloniaFact]
-    public void A_run_that_serves_HTTPS_with_no_trusted_certificate_asks_to_create_and_trust_it_or_run_over_HTTP_and_says_an_export_that_fails()
+    private void A_run_that_serves_HTTPS_with_no_trusted_certificate_asks_to_create_and_trust_it_or_run_over_HTTP_and_says_an_export_that_fails()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in dev-certs is a shell script");
@@ -1081,8 +1126,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// user is its own (on Linux, run as the person, who alone may read them): its project's folder of them alone is
     /// mounted, where .NET finds it whoever the app runs as, and never another project's. The backing service the runs keep
     /// after Stop runs on for the next, until the folder closes.</summary>
-    [AvaloniaFact]
-    public void A_services_user_secrets_reach_it_in_its_container_from_Passengers_build_and_as_deployed_and_only_its_own_are_mounted_its_backing_service_kept()
+    private void A_services_user_secrets_reach_it_in_its_container_from_Passengers_build_and_as_deployed_and_only_its_own_are_mounted_its_backing_service_kept()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("secrets");
@@ -1159,8 +1203,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// are; Replace Them runs it in their place, and Stop then takes the run's down. One of a service the run never starts,
     /// an orphan of the project, is no one's to replace: it outlives the run's start and its Stop, only what carries this
     /// process's labels taken down.</summary>
-    [AvaloniaFact]
-    public void Containers_of_the_project_Passenger_did_not_make_are_replaced_only_once_the_person_says_so_and_an_orphan_outlives_the_run()
+    private void Containers_of_the_project_Passenger_did_not_make_are_replaced_only_once_the_person_says_so_and_an_orphan_outlives_the_run()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("theirs");
@@ -1219,8 +1262,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     /// <summary>A configuration whose every service is marked Don't start runs nothing, saying why, where up given no service
     /// would have started them all.</summary>
-    [AvaloniaFact]
-    public void A_configuration_that_starts_no_service_says_so_and_starts_nothing()
+    private void A_configuration_that_starts_no_service_says_so_and_starts_nothing()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("nothing");
@@ -1248,8 +1290,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>A Docker Compose project (.dcproj) naming its Compose project (DockerComposeProjectName) runs its services under
     /// that name, over the one its compose file gives: Compose lists the project by it, its containers carry it and none the
     /// file's name, and Stop takes them down.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_projects_DockerComposeProjectName_names_the_Compose_project_its_run_brings_up_and_Stop_takes_down()
+    private void A_Docker_Compose_projects_DockerComposeProjectName_names_the_Compose_project_its_run_brings_up_and_Stop_takes_down()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string files) = Restored("dcfile");
@@ -1287,8 +1328,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>Detach lets go of a Docker Compose project's run on a real engine: its containers run on, the run no longer
     /// followed nor Stop's; the close of a window nobody sees asks nothing and takes them down, as it takes all the folder
     /// started.</summary>
-    [AvaloniaFact]
-    public void Detach_leaves_a_Docker_Compose_projects_containers_running_until_the_window_closes()
+    private void Detach_leaves_a_Docker_Compose_projects_containers_running_until_the_window_closes()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Restored("dcdetach");
@@ -1327,8 +1367,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>Two windows on folders of one name (a/x and b/x) run one Compose project, each its own service. Detach in one
     /// and close it: the question asks of that window's container alone, and Leave Running leaves only it as the person's,
     /// never the other window's, which stays its run's, so the end of its Passenger would still take it down.</summary>
-    [AvaloniaFact]
-    public void Leave_Running_leaves_the_person_only_the_closing_windows_containers_of_a_Compose_project_another_folder_runs_too()
+    private void Leave_Running_leaves_the_person_only_the_closing_windows_containers_of_a_Compose_project_another_folder_runs_too()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string project = ProjectNamed("letgo");
@@ -1364,8 +1403,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
 
     /// <summary>A run of a Compose project another window runs too, from a folder of the same name, asks before taking that
     /// window's container of a service both start, as it asks of the person's own; Cancel leaves it to the run that made it.</summary>
-    [AvaloniaFact]
-    public void A_run_asks_before_replacing_another_windows_container_of_a_Compose_project_of_the_same_name()
+    private void A_run_asks_before_replacing_another_windows_container_of_a_Compose_project_of_the_same_name()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string project = ProjectNamed("taken");

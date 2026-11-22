@@ -12,8 +12,19 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tools) : IClassFixture<ContainerRunDebuggingTests.Tools>
 {
+    /// <summary>A compose run stopped as it comes up as one flow, every step needing a Linux container engine and the
+    /// container tools, each in an instance of its own: Stop during the build and during up as held services attach
+    /// leaving no container, debugger or Debug tab, Debug while Run comes up taking its place, and opening another
+    /// folder while Debug comes up leaving nothing in the next.</summary>
     [AvaloniaFact]
-    public void Stop_during_the_build_and_during_up_as_held_services_attach_leaves_no_container_debugger_or_Debug_tab()
+    public void Stopping_or_leaving_a_compose_run_as_it_comes_up_leaves_no_container_debugger_or_Debug_tab()
+    {
+        Flow.StepApart("stop during the build and during up as held services attach leaves no container debugger or Debug tab", () => new ContainerRunStopsTests(tools), t => t.Stop_during_the_build_and_during_up_as_held_services_attach_leaves_no_container_debugger_or_Debug_tab());
+        Flow.StepApart("debug while Run comes up takes its place leaving one run and its sessions", () => new ContainerRunStopsTests(tools), t => t.Debug_while_Run_comes_up_takes_its_place_leaving_one_run_and_its_sessions());
+        Flow.StepApart("opening another folder while Debug comes up leaves no container and no Debug tab in the next folder", () => new ContainerRunStopsTests(tools), t => t.Opening_another_folder_while_Debug_comes_up_leaves_no_container_and_no_Debug_tab_in_the_next_folder());
+    }
+
+    private void Stop_during_the_build_and_during_up_as_held_services_attach_leaves_no_container_debugger_or_Debug_tab()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("stops");
@@ -37,8 +48,7 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
     /// check, which up waits on, until the test lets it) takes Run's place: Run's up ends and says it was stopped, and
     /// Debug's run comes up whole, one container a service, its sessions left as they are once Run's start has
     /// ended.</summary>
-    [AvaloniaFact]
-    public void Debug_while_Run_comes_up_takes_its_place_leaving_one_run_and_its_sessions()
+    private void Debug_while_Run_comes_up_takes_its_place_leaving_one_run_and_its_sessions()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Slow("runthendebug");
@@ -77,8 +87,7 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
 
     /// <summary>Another folder opened while Debug brings a configuration up ends that start: its up ended and what it made
     /// taken down, and no session of it opening in the next folder's Debug window.</summary>
-    [AvaloniaFact]
-    public void Opening_another_folder_while_Debug_comes_up_leaves_no_container_and_no_Debug_tab_in_the_next_folder()
+    private void Opening_another_folder_while_Debug_comes_up_leaves_no_container_and_no_Debug_tab_in_the_next_folder()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Slow("leave");

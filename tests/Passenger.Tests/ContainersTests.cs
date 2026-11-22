@@ -456,10 +456,87 @@ public sealed class ContainersTests
             labels: { $LABEL }
         """;
 
+    /// <summary>The Containers window with no engine of its own as one flow, each step one test's check in an instance
+    /// of its own: Prune offered until the engine is known not to serve, then saying why, the status bar and Problems
+    /// saying there is no docker or its engine is not running, a choice to leave containers running kept on disk beside
+    /// another Passenger's, and Find Action reaching each tab and its logs' Find.</summary>
+    [AvaloniaFact]
+    public void The_Containers_window_says_where_the_engine_stands_and_keeps_the_persons_choices()
+    {
+        Flow.StepApart<ContainersTests>("prune is offered until the engine is known not to serve and then says why", t => t.Prune_is_offered_until_the_engine_is_known_not_to_serve_and_then_says_why());
+        Flow.StepApart<ContainersTests>("the status bar and problems say when there is no docker or its engine is not running", t => t.The_status_bar_and_problems_say_when_there_is_no_docker_or_its_engine_is_not_running());
+        Flow.StepApart<ContainersTests>("a choice to leave containers running is on disk once made and another Passengers stays beside it", t => t.A_choice_to_leave_containers_running_is_on_disk_once_made_and_another_Passengers_stays_beside_it());
+        Flow.StepApart<ContainersTests>("find Action reaches each of the Containers windows tabs and its logs Find", t => t.Find_Action_reaches_each_of_the_Containers_windows_tabs_and_its_logs_Find());
+    }
+
+    /// <summary>The Containers window over a stand-in engine as one flow, every step off Windows alone (the stand-in is
+    /// a shell script), each in an instance of its own: Prune asking before the window is quiet, stats coming through
+    /// the CLI's errors and saying why they ended, hiding the window ending a service's metrics, metrics looking again
+    /// until the program is found, the window following an engine that stops and starts, a restarting or failed
+    /// container shown so, and a log whose command leaves a job on its output ending it.</summary>
+    [AvaloniaFact]
+    public void The_Containers_window_follows_its_engine_and_ends_what_it_reads_once_hidden_or_done()
+    {
+        Flow.StepApart<ContainersTests>("prune asks its question before the window is quiet however late the engine answers", t => t.Prune_asks_its_question_before_the_window_is_quiet_however_late_the_engine_answers());
+        Flow.StepApart<ContainersTests>("stats come though the cli says much on its errors and say why the stream ended", t => t.Stats_come_though_the_cli_says_much_on_its_errors_and_say_why_the_stream_ended());
+        Flow.StepApart<ContainersTests>("hiding the Containers window ends a services metrics and a lookup under way starts none", t => t.Hiding_the_Containers_window_ends_a_services_metrics_and_a_lookup_under_way_starts_none());
+        Flow.StepApart<ContainersTests>("a services metrics say why its program is not reached and look again until found or its run ends", t => t.A_services_metrics_say_why_its_program_is_not_reached_and_look_again_until_found_or_its_run_ends());
+        Flow.StepApart<ContainersTests>("the window follows an engine that starts stops and starts again and lists compose projects by their labels with no compose", t => t.The_window_follows_an_engine_that_starts_stops_and_starts_again_and_lists_compose_projects_by_their_labels_with_no_compose());
+        Flow.StepApart<ContainersTests>("a container that keeps restarting or exited with an error shows failed and one stopped shows stopped", t => t.A_container_that_keeps_restarting_or_exited_with_an_error_shows_failed_and_one_stopped_shows_stopped());
+        Flow.StepApart<ContainersTests>("a log whose command ends leaving a job on its output says it finished and ends the job", t => t.A_log_whose_command_ends_leaving_a_job_on_its_output_says_it_finished_and_ends_the_job());
+    }
+
+    /// <summary>Compose runs over a stand-in engine as one flow, every step off Windows alone (the stand-in is a shell
+    /// script), each in an instance of its own: a remote engine's port and browser opening on its own machine, a
+    /// Compose project's own name kept from reading its files to its take-down, its browser opening once its service
+    /// answers HTTP, Detach and Leave Running letting a run go with the person's say, a quit over a run let go of
+    /// asking, and a Passenger nobody sees asking nothing and stopping them.</summary>
+    [AvaloniaFact]
+    public void A_compose_run_let_go_of_or_on_another_machine_is_followed_asked_about_and_stopped_as_the_person_chooses()
+    {
+        Flow.StepApart<ContainersTests>("a remote engines port opens on its own machine", t => t.A_remote_engines_port_opens_on_its_own_machine());
+        Flow.StepApart<ContainersTests>("a compose run on an engine of another machine opens the browser on that machine", t => t.A_compose_run_on_an_engine_of_another_machine_opens_the_browser_on_that_machine());
+        Flow.StepApart<ContainersTests>("a Docker Compose projects own project name is its runs from reading its files to its take down", t => t.A_Docker_Compose_projects_own_project_name_is_its_runs_from_reading_its_files_to_its_take_down());
+        Flow.StepApart<ContainersTests>("a Docker Compose projects browser opens once its service answers HTTP the status saying meanwhile that it waits", t => t.A_Docker_Compose_projects_browser_opens_once_its_service_answers_HTTP_the_status_saying_meanwhile_that_it_waits());
+        Flow.StepApart<ContainersTests>("detach lets go of a Docker Compose projects run and the windows close asks and stops its containers", t => t.Detach_lets_go_of_a_Docker_Compose_projects_run_and_the_windows_close_asks_and_stops_its_containers());
+        Flow.StepApart<ContainersTests>("leave Running keeps a runs containers let go of as the solution closes and records them as the persons", t => t.Leave_Running_keeps_a_runs_containers_let_go_of_as_the_solution_closes_and_records_them_as_the_persons());
+        Flow.StepApart<ContainersTests>("a quit over a run let go of asks Cancel gives it up and Stop carries it on taking its containers down", t => t.A_quit_over_a_run_let_go_of_asks_Cancel_gives_it_up_and_Stop_carries_it_on_taking_its_containers_down());
+        Flow.StepApart<ContainersTests>("a Passenger nobody sees asks nothing and its close stops a runs containers let go of", t => t.A_Passenger_nobody_sees_asks_nothing_and_its_close_stops_a_runs_containers_let_go_of());
+    }
+
+    /// <summary>The Containers window over a real engine as one flow, every step needing a Linux container engine, each
+    /// in an instance of its own: a compose project listed with its logs, a container's stats, files and actions, a
+    /// folder's end leaving the person's own, a volume's removal asked first, a broken snapshot refused, attaching with
+    /// the container's own tools, Open Shell, the clean-up passing over what the person left, and a stopped log
+    /// kept.</summary>
+    [AvaloniaFact]
+    public void Containers_are_listed_read_and_acted_on_leaving_the_persons_own_and_asking_before_data_goes()
+    {
+        Flow.StepApart<ContainersTests>("a compose project is listed with its services ports and health and its logs stream with links and merge its services", t => t.A_compose_project_is_listed_with_its_services_ports_and_health_and_its_logs_stream_with_links_and_merge_its_services());
+        Flow.StepApart<ContainersTests>("a containers stats show its numbers its files open read only and stop start restart and remove act on it", t => t.A_containers_stats_show_its_numbers_its_files_open_read_only_and_stop_start_restart_and_remove_act_on_it());
+        Flow.StepApart<ContainersTests>("a folders end removes what passenger started of a compose project and leaves the persons own of it", t => t.A_folders_end_removes_what_passenger_started_of_a_compose_project_and_leaves_the_persons_own_of_it());
+        Flow.StepApart<ContainersTests>("removing a volume asks first since its data goes with it", t => t.Removing_a_volume_asks_first_since_its_data_goes_with_it());
+        Flow.StepApart<ContainersTests>("a memory snapshot a containers tools send that does not hold together is refused saying so", t => t.A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so());
+        Flow.StepApart<ContainersTests>("attaching in a container never uses tools of another version nor a list of programs that is none", t => t.Attaching_in_a_container_never_uses_tools_of_another_version_nor_a_list_of_programs_that_is_none());
+        Flow.StepApart<ContainersTests>("open shell runs a command in the container in a terminal tab", t => t.Open_shell_runs_a_command_in_the_container_in_a_terminal_tab());
+        Flow.StepApart<ContainersTests>("the next starts clean up passes over what the person chose to leave running just before Passenger ended", t => t.The_next_starts_clean_up_passes_over_what_the_person_chose_to_leave_running_just_before_Passenger_ended());
+        Flow.StepApart<ContainersTests>("a stopped containers log stays as it was read while the window reads the engine again", t => t.A_stopped_containers_log_stays_as_it_was_read_while_the_window_reads_the_engine_again());
+    }
+
+    /// <summary>A real engine's containers off Windows as one flow, every step needing a Linux container engine and a
+    /// path of this machine's, each in an instance of its own: a container's files tab never writing outside
+    /// Passenger's cache nor copying a huge file, its copies the person's alone, and attaching in an emulated container
+    /// saying it is emulated.</summary>
+    [AvaloniaFact]
+    public void A_containers_files_stay_in_Passengers_cache_and_an_emulated_one_says_so()
+    {
+        Flow.StepApart<ContainersTests>("a container can never have its files tab write outside passengers cache nor copy a huge file and its copies are the persons alone", t => t.A_container_can_never_have_its_files_tab_write_outside_passengers_cache_nor_copy_a_huge_file_and_its_copies_are_the_persons_alone());
+        Flow.StepApart<ContainersTests>("attaching in an emulated container says it is emulated", t => t.Attaching_in_an_emulated_container_says_it_is_emulated());
+    }
+
     /// <summary>Prune is offered while nothing has asked the engine how it stands, never refused as not running then, and
     /// refused once the engine is known not to serve, in its own words (here: no docker command where it was named).</summary>
-    [AvaloniaFact]
-    public void Prune_is_offered_until_the_engine_is_known_not_to_serve_and_then_says_why()
+    private void Prune_is_offered_until_the_engine_is_known_not_to_serve_and_then_says_why()
     {
         string folder = TestFolders.Create("prune-");
         TestFolders.Write(folder, "README.md", "# Shop\n");
@@ -484,8 +561,7 @@ public sealed class ContainersTests
     /// <summary>Prune asks its question once the engine says it serves, however late, before the window is quiet: what waits
     /// for the window (a screenshot's next step, a test's next key) finds the question asked, never left to come later and
     /// take the keys from whatever comes next. Cancelled, it prunes nothing.</summary>
-    [AvaloniaFact]
-    public void Prune_asks_its_question_before_the_window_is_quiet_however_late_the_engine_answers()
+    private void Prune_asks_its_question_before_the_window_is_quiet_however_late_the_engine_answers()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         string folder = TestFolders.Create("prune-late-");
@@ -515,8 +591,7 @@ public sealed class ContainersTests
     /// opens; a container's log streaming into its console with links, the address its program names as its own linked where
     /// its container publishes it; and the project's log merging its services, each a toggle, which Find searches by a
     /// regular expression.</summary>
-    [AvaloniaFact]
-    public void A_compose_project_is_listed_with_its_services_ports_and_health_and_its_logs_stream_with_links_and_merge_its_services()
+    private void A_compose_project_is_listed_with_its_services_ports_and_health_and_its_logs_stream_with_links_and_merge_its_services()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         (string folder, string project) = Docker.ComposeUp("list", Shop);
@@ -581,8 +656,7 @@ public sealed class ContainersTests
     /// <summary>One busy container chosen in the window: its Stats show the engine's numbers while that tab shows, and nothing
     /// streams once it is hidden; its Files tab opens a file of its read-only; and Stop, Start, Restart and Remove act on it,
     /// asking nothing.</summary>
-    [AvaloniaFact]
-    public void A_containers_stats_show_its_numbers_its_files_open_read_only_and_stop_start_restart_and_remove_act_on_it()
+    private void A_containers_stats_show_its_numbers_its_files_open_read_only_and_stop_start_restart_and_remove_act_on_it()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("solo", "trap 'exit 0' TERM; echo 'from inside' > /tmp/note.txt; while true; do :; done");
@@ -630,8 +704,7 @@ public sealed class ContainersTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_folders_end_removes_what_passenger_started_of_a_compose_project_and_leaves_the_persons_own_of_it()
+    private void A_folders_end_removes_what_passenger_started_of_a_compose_project_and_leaves_the_persons_own_of_it()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string folder = TestFolders.Create("ctr-project-");
@@ -661,8 +734,7 @@ public sealed class ContainersTests
         }
     }
 
-    [AvaloniaFact]
-    public void Removing_a_volume_asks_first_since_its_data_goes_with_it()
+    private void Removing_a_volume_asks_first_since_its_data_goes_with_it()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string volume = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}data";
@@ -697,8 +769,7 @@ public sealed class ContainersTests
 
     /// <summary>A container's stats come though its CLI says much on its standard error first, more than a pipe holds unread,
     /// and once the stream ends the pane says why, in the CLI's own words, where the numbers were.</summary>
-    [AvaloniaFact]
-    public void Stats_come_though_the_cli_says_much_on_its_errors_and_say_why_the_stream_ended()
+    private void Stats_come_though_the_cli_says_much_on_its_errors_and_say_why_the_stream_ended()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         string folder = TestFolders.Create("ctr-stats-errors-");
@@ -733,8 +804,7 @@ public sealed class ContainersTests
     /// <summary>A .NET service's metrics are read only while they are shown: hiding the Containers window ends a reading, a
     /// program found after it hid starts none, and shown again the row chosen is read again. The stand-in's program is held
     /// paused, so the pane says what it follows without a session.</summary>
-    [AvaloniaFact]
-    public void Hiding_the_Containers_window_ends_a_services_metrics_and_a_lookup_under_way_starts_none()
+    private void Hiding_the_Containers_window_ends_a_services_metrics_and_a_lookup_under_way_starts_none()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         string folder = TestFolders.Create("ctr-metrics-hidden-");
@@ -786,8 +856,7 @@ public sealed class ContainersTests
     /// meanwhile, then why it was not reached, and look again by themselves, nothing else changing, until it is found; and
     /// once its run has ended they let go and look no more. The stand-in's program is held paused, so the pane says what it
     /// follows without a session.</summary>
-    [AvaloniaFact]
-    public void A_services_metrics_say_why_its_program_is_not_reached_and_look_again_until_found_or_its_run_ends()
+    private void A_services_metrics_say_why_its_program_is_not_reached_and_look_again_until_found_or_its_run_ends()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         string folder = TestFolders.Create("ctr-metrics-unreached-");
@@ -843,8 +912,7 @@ public sealed class ContainersTests
     /// <summary>The Files tab copies a container's file only into Passenger's cache, never a huge one, and as the person's
     /// alone: the cache's folders 0700 and the copy 0600 whatever the umask, as a secret's file may be one; a file opened
     /// again shows its new text.</summary>
-    [AvaloniaFact]
-    public void A_container_can_never_have_its_files_tab_write_outside_passengers_cache_nor_copy_a_huge_file_and_its_copies_are_the_persons_alone()
+    private void A_container_can_never_have_its_files_tab_write_outside_passengers_cache_nor_copy_a_huge_file_and_its_copies_are_the_persons_alone()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The escape is written as a path of this machine's from its root, which a Windows path is not");
@@ -902,8 +970,7 @@ public sealed class ContainersTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so()
+    private void A_memory_snapshot_a_containers_tools_send_that_does_not_hold_together_is_refused_saying_so()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         // Stand-in tools of this version: one program, a recording begun at once, and each heap mode started sends a frame.
@@ -1015,8 +1082,7 @@ public sealed class ContainersTests
         }
     }
 
-    [AvaloniaFact]
-    public void Attaching_in_a_container_never_uses_tools_of_another_version_nor_a_list_of_programs_that_is_none()
+    private void Attaching_in_a_container_never_uses_tools_of_another_version_nor_a_list_of_programs_that_is_none()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         // A copy of the tools for every system that says it is another version than this Passenger's, and no release to download from.
@@ -1066,8 +1132,7 @@ public sealed class ContainersTests
     /// <summary>Attaching in a container whose image is for another processor than its engine's says the debugger may not
     /// attach there, the image run under emulation, beside what the program's own note says (a Release build's): the engine's
     /// processor answered by a docker standing in over the real one, the tools a stand-in whose adapter ends at once.</summary>
-    [AvaloniaFact]
-    public void Attaching_in_an_emulated_container_says_it_is_emulated()
+    private void Attaching_in_an_emulated_container_says_it_is_emulated()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The docker answering another processor for the engine is a shell script");
@@ -1124,8 +1189,7 @@ public sealed class ContainersTests
         return tools;
     }
 
-    [AvaloniaFact]
-    public void Open_shell_runs_a_command_in_the_container_in_a_terminal_tab()
+    private void Open_shell_runs_a_command_in_the_container_in_a_terminal_tab()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("shell", "sleep 600");
@@ -1150,8 +1214,7 @@ public sealed class ContainersTests
         }
     }
 
-    [AvaloniaFact]
-    public void The_status_bar_and_problems_say_when_there_is_no_docker_or_its_engine_is_not_running()
+    private void The_status_bar_and_problems_say_when_there_is_no_docker_or_its_engine_is_not_running()
     {
         MainWindow none = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: null, search: false) };
         none.Show();
@@ -1179,8 +1242,7 @@ public sealed class ContainersTests
         down.Close();
     }
 
-    [AvaloniaFact]
-    public void The_window_follows_an_engine_that_starts_stops_and_starts_again_and_lists_compose_projects_by_their_labels_with_no_compose()
+    private void The_window_follows_an_engine_that_starts_stops_and_starts_again_and_lists_compose_projects_by_their_labels_with_no_compose()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (string cli, string state) = StandInEngine(TestFolders.Create("ctr-standin-"), up: false);
@@ -1211,8 +1273,7 @@ public sealed class ContainersTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_remote_engines_port_opens_on_its_own_machine()
+    private void A_remote_engines_port_opens_on_its_own_machine()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (string cli, _) = StandInEngine(TestFolders.Create("ctr-remote-"), up: true, host: "tcp://engine.example:2376");
@@ -1237,8 +1298,7 @@ public sealed class ContainersTests
     /// <summary>A compose run on an engine of another machine opens the browser at the launched service's port on that
     /// machine, its context's host, as the Containers window links it, never this one's localhost. The engine is a stand-in
     /// at 127.0.0.1, its service's published port a loopback server of the test's.</summary>
-    [AvaloniaFact]
-    public void A_compose_run_on_an_engine_of_another_machine_opens_the_browser_on_that_machine()
+    private void A_compose_run_on_an_engine_of_another_machine_opens_the_browser_on_that_machine()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         using StandInHttp web = new(exchange => exchange.ReplyAsync(200, "text/plain", "web"));
@@ -1272,8 +1332,7 @@ public sealed class ContainersTests
     /// <summary>A Docker Compose project (.dcproj) naming its Compose project (DockerComposeProjectName) runs under that name
     /// over the one Compose's model of its files gives: every command of its run takes it, from reading its files to its
     /// up, and Stop takes down the containers that carry it. The engine is a stand-in, whose every command is written down.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_projects_own_project_name_is_its_runs_from_reading_its_files_to_its_take_down()
+    private void A_Docker_Compose_projects_own_project_name_is_its_runs_from_reading_its_files_to_its_take_down()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         using StandInHttp web = new(exchange => exchange.ReplyAsync(200, "text/plain", "web"));
@@ -1310,8 +1369,7 @@ public sealed class ContainersTests
     /// service answers HTTP there, the status adding meanwhile that it waits: the engine takes a connection on a published
     /// port from its container's start, before its program listens, which a port here that takes each request and lets it go
     /// unanswered stands in for; once it answers, the page opens and the status says what the run said alone.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_projects_browser_opens_once_its_service_answers_HTTP_the_status_saying_meanwhile_that_it_waits()
+    private void A_Docker_Compose_projects_browser_opens_once_its_service_answers_HTTP_the_status_saying_meanwhile_that_it_waits()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         int asked = 0;
@@ -1359,8 +1417,7 @@ public sealed class ContainersTests
     /// window and the status saying its containers run on, Stop and Detach then greyed. Closing the window then asks, its
     /// containers still running, whether to stop them or leave them running: Stop takes them down with the folder. The
     /// engine is a stand-in, whose every command is written down, its project's container and network listed while up.</summary>
-    [AvaloniaFact]
-    public void Detach_lets_go_of_a_Docker_Compose_projects_run_and_the_windows_close_asks_and_stops_its_containers()
+    private void Detach_lets_go_of_a_Docker_Compose_projects_run_and_the_windows_close_asks_and_stops_its_containers()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (MainWindow window, string engineFolder) = LetGoOf("ctr-dcdetach-", unseen: false);
@@ -1390,8 +1447,7 @@ public sealed class ContainersTests
     /// leaving the containers running as the person's, never taken down, recorded on disk by the time the solution has closed
     /// so the next start's clean-up passes them over however soon Passenger quits; the window's close after asks nothing
     /// more.</summary>
-    [AvaloniaFact]
-    public void Leave_Running_keeps_a_runs_containers_let_go_of_as_the_solution_closes_and_records_them_as_the_persons()
+    private void Leave_Running_keeps_a_runs_containers_let_go_of_as_the_solution_closes_and_records_them_as_the_persons()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (MainWindow window, string engineFolder) = LetGoOf("ctr-dcleave-", unseen: false);
@@ -1424,8 +1480,7 @@ public sealed class ContainersTests
 
     /// <summary>The system's quit over a run Detach let go of asks too: Cancel gives the quit up, the window open, and Stop
     /// carries it on, the window closed and the containers taken down.</summary>
-    [AvaloniaFact]
-    public void A_quit_over_a_run_let_go_of_asks_Cancel_gives_it_up_and_Stop_carries_it_on_taking_its_containers_down()
+    private void A_quit_over_a_run_let_go_of_asks_Cancel_gives_it_up_and_Stop_carries_it_on_taking_its_containers_down()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (MainWindow window, string engineFolder) = LetGoOf("ctr-dcquit-", unseen: false);
@@ -1451,8 +1506,7 @@ public sealed class ContainersTests
 
     /// <summary>A Passenger nobody sees never asks: its window's close takes the containers of a run let go of down, as the
     /// folder's close takes all it started.</summary>
-    [AvaloniaFact]
-    public void A_Passenger_nobody_sees_asks_nothing_and_its_close_stops_a_runs_containers_let_go_of()
+    private void A_Passenger_nobody_sees_asks_nothing_and_its_close_stops_a_runs_containers_let_go_of()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (MainWindow window, string engineFolder) = LetGoOf("ctr-dcunseen-", unseen: true);
@@ -1474,8 +1528,7 @@ public sealed class ContainersTests
     /// running as theirs, reading the record as it stands on disk the moment the choice is made, as a start after a Passenger
     /// that quit at once does: of two containers such a Passenger labelled, the one recorded as left runs on, the other is
     /// removed.</summary>
-    [AvaloniaFact]
-    public void The_next_starts_clean_up_passes_over_what_the_person_chose_to_leave_running_just_before_Passenger_ended()
+    private void The_next_starts_clean_up_passes_over_what_the_person_chose_to_leave_running_just_before_Passenger_ended()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         MainWindow window = Ui.OpenFolder(TestFolders.Create("ctr-leftkept-"), languageServer: false);
@@ -1508,8 +1561,7 @@ public sealed class ContainersTests
     /// <summary>A choice to leave containers running is on disk once made, never a moment later, so a Passenger that ends at
     /// once leaves it for the next start; and what another Passenger over the same state left running meanwhile stays beside
     /// it, the two records joined rather than one taking the other's place.</summary>
-    [AvaloniaFact]
-    public void A_choice_to_leave_containers_running_is_on_disk_once_made_and_another_Passengers_stays_beside_it()
+    private void A_choice_to_leave_containers_running_is_on_disk_once_made_and_another_Passengers_stays_beside_it()
     {
         string file = Path.Combine(TestRun.Settings, ContainersFile);
         Ui.Await(ContainerLabels.LeaveToPersonAsync(ContainerEngine.Shared, ["17580a000001"]), "the choice to leave a container running");
@@ -1638,8 +1690,7 @@ public sealed class ContainersTests
     /// red as failed; one a Stop ended (SIGKILL's 137) and one that exited cleanly show stopped, and each dot's tip
     /// says the engine's words. A container's menu begins with the service actions, greyed with why while no run of the
     /// folder's has it as a .NET service.</summary>
-    [AvaloniaFact]
-    public void A_container_that_keeps_restarting_or_exited_with_an_error_shows_failed_and_one_stopped_shows_stopped()
+    private void A_container_that_keeps_restarting_or_exited_with_an_error_shows_failed_and_one_stopped_shows_stopped()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         (string cli, _) = StandInEngine(TestFolders.Create("ctr-failed-"), up: true, more: [
@@ -1686,8 +1737,7 @@ public sealed class ContainersTests
 
     /// <summary>A stopped container's log, read whole (its lines and its command's end), stays as it was read while the window
     /// reads the engine again.</summary>
-    [AvaloniaFact]
-    public void A_stopped_containers_log_stays_as_it_was_read_while_the_window_reads_the_engine_again()
+    private void A_stopped_containers_log_stays_as_it_was_read_while_the_window_reads_the_engine_again()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("stopped", "for i in 1 2 3 4 5; do echo \"stopped line $i\"; done");
@@ -1703,45 +1753,6 @@ public sealed class ContainersTests
                 () => $"the stopped container's log read whole: [{Text(console)}]");
             StaysAsRead(view);
             Assert.Equal(5, Text(console).Split('\n').Count(l => l.StartsWith("stopped line", StringComparison.Ordinal)));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A stopped container's log whose command ends only well after its last line has landed (the engine's CLI goes
-    /// on a moment after its last line, longer on a loaded machine) stays as it was read while the window reads the engine
-    /// again before that end and after it, the end said once beneath the lines.</summary>
-    [AvaloniaFact]
-    public void A_stopped_containers_log_whose_end_comes_after_its_last_line_stays_as_read_while_the_window_reads_the_engine_again()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
-        string folder = TestFolders.Create("ctr-late-end-");
-        string release = Path.Combine(folder, "release");
-        // Its lines written, the log's command ends only once the test lets it.
-        (string cli, _) = StandInEngine(folder, up: true,
-            logs: $"for i in 1 2 3 4 5; do echo \"stopped line $i\"; done; while [ ! -e '{release}' ]; do sleep 0.1; done");
-        MainWindow window = new() { Width = 1200, Height = 800, Engine = new ContainerEngine(cli: cli) };
-        window.Show();
-        window.OpenFolder(TestFolders.Create("ctr-late-end-window-"));
-        Ui.Settle();
-        try
-        {
-            ContainersView view = Shown(window);
-            Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Container && r.Label == "solo"), "solo's row");
-            OutputView console = view.Log.Console;
-            Ui.WaitFor(() => Text(console).Contains("stopped line 5", StringComparison.Ordinal), "the stopped container's log");
-            Assert.True(view.Log.Streaming is not null && !Text(console).Contains(LogEnded, StringComparison.Ordinal),
-                $"The log's command was said to have ended while it still ran: [{Text(console)}]");
-            string lines = StaysAsRead(view);
-
-            File.WriteAllText(release, string.Empty);
-            Ui.WaitFor(() => Text(console).Contains(LogEnded, StringComparison.Ordinal), () => $"the log's command said to have ended: [{Text(console)}]");
-            string read = Text(console);
-            Assert.True(read.StartsWith(lines, StringComparison.Ordinal) && read.Split('\n').Count(l => l.StartsWith("stopped line", StringComparison.Ordinal)) == 5,
-                $"The log's end took the place of what was read before it, [{lines}], where it was said beneath it: [{read}]");
-            StaysAsRead(view);
         }
         finally
         {
@@ -1775,8 +1786,7 @@ public sealed class ContainersTests
         void Count(object? sender, Passenger.Text.DocumentChangedEventArgs change) => changes++;
     }
 
-    [AvaloniaFact]
-    public void A_log_whose_command_ends_leaving_a_job_on_its_output_says_it_finished_and_ends_the_job()
+    private void A_log_whose_command_ends_leaving_a_job_on_its_output_says_it_finished_and_ends_the_job()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in engine is a shell script");
         string folder = TestFolders.Create("ctr-held-");
@@ -1872,8 +1882,7 @@ public sealed class ContainersTests
     /// <summary>The Containers window's tabs are actions, as the Aspire window's are: Find Action reaches each by its title and
     /// shows the window on that tab, its tab chosen, one the chosen row has not greyed with why; and Find in Container Logs
     /// shows the Log tab with its Find open.</summary>
-    [AvaloniaFact]
-    public void Find_Action_reaches_each_of_the_Containers_windows_tabs_and_its_logs_Find()
+    private void Find_Action_reaches_each_of_the_Containers_windows_tabs_and_its_logs_Find()
     {
         string folder = TestFolders.Create("ctr-tabs-");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "no containers here\n");

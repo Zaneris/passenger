@@ -14,18 +14,26 @@ public sealed class AspireContainerRecoveryTests
     private static readonly string RecordedId = new('a', 64);
     private static readonly string UnrecordedId = new('b', 64);
 
-    [AvaloniaTheory]
-    [InlineData("dead-owner")]
-    [InlineData("live-owner")]
-    [InlineData("renamed")]
-    [InlineData("engine-mismatch")]
-    [InlineData("unknown-id")]
-    [InlineData("persistent")]
-    [InlineData("gone")]
-    [InlineData("other-state")]
-    [InlineData("other-machine")]
-    [InlineData("empty")]
-    public void Opening_a_window_removes_only_an_exact_record_of_a_dead_owners_container(string scenario)
+    /// <summary>A dead owner's container record as one flow, every step off Windows alone, each record in an instance
+    /// of its own: only an exact record of a dead owner's container removed as a window opens, a live owner's, a
+    /// renamed one, another engine's, an unknown id, a persistent one, one gone, another state, another machine's and
+    /// an empty record each left.</summary>
+    [AvaloniaFact]
+    public void Opening_a_window_removes_only_an_exact_record_of_a_dead_owners_container()
+    {
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"dead-owner\")", t => t.RecordRemovedOnlyWhereExact("dead-owner"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"live-owner\")", t => t.RecordRemovedOnlyWhereExact("live-owner"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"renamed\")", t => t.RecordRemovedOnlyWhereExact("renamed"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"engine-mismatch\")", t => t.RecordRemovedOnlyWhereExact("engine-mismatch"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"unknown-id\")", t => t.RecordRemovedOnlyWhereExact("unknown-id"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"persistent\")", t => t.RecordRemovedOnlyWhereExact("persistent"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"gone\")", t => t.RecordRemovedOnlyWhereExact("gone"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"other-state\")", t => t.RecordRemovedOnlyWhereExact("other-state"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"other-machine\")", t => t.RecordRemovedOnlyWhereExact("other-machine"));
+        Flow.StepApart<AspireContainerRecoveryTests>("opening a window removes only an exact record of a dead owners container (\"empty\")", t => t.RecordRemovedOnlyWhereExact("empty"));
+    }
+
+    private void RecordRemovedOnlyWhereExact(string scenario)
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in container engine uses a Unix shell script");
         string state = TestFolders.Create("aspire-recovery-state-");

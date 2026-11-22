@@ -37,8 +37,22 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     private static readonly int InMain = Array.FindIndex(Program.Split('\n'), l => l.StartsWith("string name", StringComparison.Ordinal));
     private static readonly int InRequest = Array.FindIndex(Program.Split('\n'), l => l.Contains("string said", StringComparison.Ordinal));
 
+    /// <summary>A compose run's services as one flow, every step needing a Linux container engine and the container
+    /// tools, each in an instance of its own: a service's Debug, Restart, Run without Debugger and Attach acting on it
+    /// alone, services from a shared Dockerfile or labelled with their project debugged, the Requests window following
+    /// each service, one the debugger cannot attach to after its restart running on, and one marked Don't start started
+    /// later in the run.</summary>
     [AvaloniaFact]
-    public void A_services_Debug_Restart_Run_without_Debugger_and_Attach_act_on_it_alone_and_leave_the_run_up()
+    public void A_compose_services_actions_requests_and_debugging_act_on_it_alone_leaving_the_run_up()
+    {
+        Flow.StepApart("a services Debug Restart Run without Debugger and Attach act on it alone and leave the run up", () => new ContainerServicesTests(tools), t => t.A_services_Debug_Restart_Run_without_Debugger_and_Attach_act_on_it_alone_and_leave_the_run_up());
+        Flow.StepApart("a Docker Compose projects services built from a shared Dockerfile or labelled with their project are debugged from the Containers window", () => new ContainerServicesTests(tools), t => t.A_Docker_Compose_projects_services_built_from_a_shared_Dockerfile_or_labelled_with_their_project_are_debugged_from_the_Containers_window());
+        Flow.StepApart("the requests window follows each service in its container and a routes request goes to its published port", () => new ContainerServicesTests(tools), t => t.The_requests_window_follows_each_service_in_its_container_and_a_routes_request_goes_to_its_published_port());
+        Flow.StepApart("a service the debugger cannot attach to after its restart runs on without it", () => new ContainerServicesTests(tools), t => t.A_service_the_debugger_cannot_attach_to_after_its_restart_runs_on_without_it());
+        Flow.StepApart("a service marked Dont start is listed not started and its Run and Debug start it later in the run", () => new ContainerServicesTests(tools), t => t.A_service_marked_Dont_start_is_listed_not_started_and_its_Run_and_Debug_start_it_later_in_the_run());
+    }
+
+    private void A_services_Debug_Restart_Run_without_Debugger_and_Attach_act_on_it_alone_and_leave_the_run_up()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("services");
@@ -126,8 +140,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     /// (internal-api, Api), one its compose file labels with its project (web), so Debug Service on the Containers window's
     /// row restarts internal-api held and stops in its Main; one no project is known for says how to name it. Detach with
     /// internal-api's tab chosen lets go of it alone, the run going on, and with none chosen lets go of the run whole.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_projects_services_built_from_a_shared_Dockerfile_or_labelled_with_their_project_are_debugged_from_the_Containers_window()
+    private void A_Docker_Compose_projects_services_built_from_a_shared_Dockerfile_or_labelled_with_their_project_are_debugged_from_the_Containers_window()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("dcservices");
@@ -229,8 +242,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     /// containers (trace --requests), each request listed with the service that served it; a route's request sent from the
     /// folder's code goes to the port the engine published for its service; and the window hidden ends the tools through
     /// their input, an end the IDE asked for, never logged as their failing.</summary>
-    [AvaloniaFact]
-    public void The_requests_window_follows_each_service_in_its_container_and_a_routes_request_goes_to_its_published_port()
+    private void The_requests_window_follows_each_service_in_its_container_and_a_routes_request_goes_to_its_published_port()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("requests");
@@ -306,8 +318,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     /// <summary>Debug of one service whose debugger cannot attach after its restart (no container tools to put in it: none
     /// here, and no release to download them from) says why, and makes it again unheld, so it runs on without the debugger
     /// rather than waiting at its runtime's start for one that never comes.</summary>
-    [AvaloniaFact]
-    public void A_service_the_debugger_cannot_attach_to_after_its_restart_runs_on_without_it()
+    private void A_service_the_debugger_cannot_attach_to_after_its_restart_runs_on_without_it()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("noattach");
@@ -344,8 +355,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
     /// started, Attach greyed saying so; web's Run from its row builds it and starts it later, unheld, and Rerun restarts its
     /// changed build as the run's; api's Debug from its row starts it held, stopping in its Main, web left as it runs; Rerun
     /// while debugging, Debug of the configuration run whole, starts both again; and Stop takes every container down.</summary>
-    [AvaloniaFact]
-    public void A_service_marked_Dont_start_is_listed_not_started_and_its_Run_and_Debug_start_it_later_in_the_run()
+    private void A_service_marked_Dont_start_is_listed_not_started_and_its_Run_and_Debug_start_it_later_in_the_run()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = ContainerRunsTests.Shop("later");

@@ -19,11 +19,25 @@ public sealed class ContainerOverrideTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A compose service's override as one flow, each step one test's check in an instance of its own: a
+    /// rootless engine's service running as its container's root and a rootful one's as the person, development in
+    /// lower case mounting user secrets, ASPNETCORE_ENVIRONMENT winning, an image built as deployed taking its
+    /// project's build configuration, and a run's dashboard read where the engine is this machine's and refused where
+    /// another's.</summary>
+    [Fact]
+    public async Task A_services_override_runs_it_as_its_engine_and_environment_ask_and_reads_its_dashboard_only_on_this_machine()
+    {
+        await Flow.StepApartAsync("a service on a rootless engine runs as its containers root and on a rootful one as the person", () => new ContainerOverrideTests(), t => t.A_service_on_a_rootless_engine_runs_as_its_containers_root_and_on_a_rootful_one_as_the_person());
+        await Flow.StepApartAsync("a service whose environment is development in lower case has its user secrets mounted", () => new ContainerOverrideTests(), t => t.A_service_whose_environment_is_development_in_lower_case_has_its_user_secrets_mounted());
+        await Flow.StepApartAsync("a service whose ASPNETCORE ENVIRONMENT is Staging runs in Staging whatever DOTNET ENVIRONMENT says", () => new ContainerOverrideTests(), t => t.A_service_whose_ASPNETCORE_ENVIRONMENT_is_Staging_runs_in_Staging_whatever_DOTNET_ENVIRONMENT_says());
+        await Flow.StepApartAsync("an image built as deployed takes its projects build configuration where its dockerfile asks for one", () => new ContainerOverrideTests(), t => t.An_image_built_as_deployed_takes_its_projects_build_configuration_where_its_dockerfile_asks_for_one());
+        Flow.StepApart<ContainerOverrideTests>("a runs dashboard is read where the engine is this machines and refused where it is another machines", t => t.A_runs_dashboard_is_read_where_the_engine_is_this_machines_and_refused_where_it_is_another_machines());
+    }
+
     /// <summary>On a rootless engine, Docker or Podman, a service runs as the container's root, which is the person on the
     /// host, never as their uid:gid, a subordinate id there that can read none of what they keep for themselves, nor with
     /// Podman's keep-id; on a rootful Linux engine it runs as the person; where no owner is given, as its image says.</summary>
-    [Fact]
-    public async Task A_service_on_a_rootless_engine_runs_as_its_containers_root_and_on_a_rootful_one_as_the_person()
+    private async Task A_service_on_a_rootless_engine_runs_as_its_containers_root_and_on_a_rootful_one_as_the_person()
     {
         EngineState docker = Engine(podman: false, rootless: false);
         foreach ((EngineState engine, string? owner, string? user) in ((EngineState, string?, string?)[])[
@@ -45,8 +59,7 @@ public sealed class ContainerOverrideTests : IDisposable
     /// <summary>A service whose files name its environment development in lower case runs in Development, as .NET reads the
     /// name, so its project's user secrets are mounted where it reads them, in fast mode and as deployed; one in Production
     /// is given none.</summary>
-    [Fact]
-    public async Task A_service_whose_environment_is_development_in_lower_case_has_its_user_secrets_mounted()
+    private async Task A_service_whose_environment_is_development_in_lower_case_has_its_user_secrets_mounted()
     {
         await WithSecretsAsync(async id =>
         {
@@ -61,8 +74,7 @@ public sealed class ContainerOverrideTests : IDisposable
     /// <summary>A service whose files set ASPNETCORE_ENVIRONMENT Staging and DOTNET_ENVIRONMENT Development runs in Staging,
     /// as ASP.NET Core reads ASPNETCORE_ENVIRONMENT first, so the user secrets only Development reads are not mounted; the
     /// other way round it runs in Development and they are.</summary>
-    [Fact]
-    public async Task A_service_whose_ASPNETCORE_ENVIRONMENT_is_Staging_runs_in_Staging_whatever_DOTNET_ENVIRONMENT_says()
+    private async Task A_service_whose_ASPNETCORE_ENVIRONMENT_is_Staging_runs_in_Staging_whatever_DOTNET_ENVIRONMENT_says()
     {
         await WithSecretsAsync(async id =>
         {
@@ -132,8 +144,7 @@ public sealed class ContainerOverrideTests : IDisposable
     /// <summary>As deployed, a .NET service whose Dockerfile takes BUILD_CONFIGURATION builds its image in the configuration
     /// its project builds in under the folder's choice (Release, or a solution's own Staging), never a fixed Debug; one
     /// whose Dockerfile takes none, or one run from Passenger's build, is given none.</summary>
-    [Fact]
-    public async Task An_image_built_as_deployed_takes_its_projects_build_configuration_where_its_dockerfile_asks_for_one()
+    private async Task An_image_built_as_deployed_takes_its_projects_build_configuration_where_its_dockerfile_asks_for_one()
     {
         const string Takes = "FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base\nWORKDIR /app\n\nFROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\n"
             + "ARG BUILD_CONFIGURATION=Release\nWORKDIR /src\nCOPY . .\nRUN dotnet publish Web/Web.csproj -c $BUILD_CONFIGURATION -o /app/publish\n\n"
@@ -172,8 +183,7 @@ public sealed class ContainerOverrideTests : IDisposable
     /// <summary>The run's dashboard is read on this machine's loopback where the engine is this machine's, by a socket, a
     /// loopback address or a name under localhost, and refused naming the engine where it is another machine's, whose
     /// loopback this one cannot reach.</summary>
-    [Fact]
-    public void A_runs_dashboard_is_read_where_the_engine_is_this_machines_and_refused_where_it_is_another_machines()
+    private void A_runs_dashboard_is_read_where_the_engine_is_this_machines_and_refused_where_it_is_another_machines()
     {
         EngineState engine = Engine(podman: false, rootless: false);
         foreach (string here in (string[])["unix:///run/user/1000/docker.sock", "tcp://127.0.0.1:2375", "tcp://localhost:2375", "tcp://engine.dev.localhost:2376", "ssh://me@[::1]"])

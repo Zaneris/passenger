@@ -22,8 +22,22 @@ public sealed class ContainerConfigurationsTests
 
         """;
 
+    /// <summary>Container run configurations as one flow, each step one test's check in an instance of its own: an SDK
+    /// container asked for in Directory.Build.props, a DockerfileFile set there, a Dockerfile configuration changed in
+    /// place kept over what its Dockerfile makes, a Docker launch profile's configuration writing its run words back,
+    /// and a Docker Compose project's properties and launch profiles as its configurations, never built as a
+    /// project.</summary>
     [AvaloniaFact]
-    public void A_project_asking_for_an_SDK_container_in_its_Directory_Build_props_has_its_configuration_and_one_asking_under_a_false_condition_or_in_a_comment_has_none()
+    public void A_projects_container_configurations_come_from_its_properties_profiles_and_Dockerfile_and_keep_what_the_person_changed()
+    {
+        Flow.StepApart<ContainerConfigurationsTests>("a project asking for an SDK container in its Directory Build props has its configuration and one asking under a false condition or in a comment has none", t => t.A_project_asking_for_an_SDK_container_in_its_Directory_Build_props_has_its_configuration_and_one_asking_under_a_false_condition_or_in_a_comment_has_none());
+        Flow.StepApart<ContainerConfigurationsTests>("a DockerfileFile set in Directory Build props is the Dockerfile configurations and a folder cached before it was carried is evaluated again", t => t.A_DockerfileFile_set_in_Directory_Build_props_is_the_Dockerfile_configurations_and_a_folder_cached_before_it_was_carried_is_evaluated_again());
+        Flow.StepApart<ContainerConfigurationsTests>("a Dockerfile configuration changed in place is kept with the folder over what its Dockerfile makes", t => t.A_Dockerfile_configuration_changed_in_place_is_kept_with_the_folder_over_what_its_Dockerfile_makes());
+        Flow.StepApart<ContainerConfigurationsTests>("a Docker launch profiles configuration writes its own run words and variables back to the profile", t => t.A_Docker_launch_profiles_configuration_writes_its_own_run_words_and_variables_back_to_the_profile());
+        Flow.StepApart<ContainerConfigurationsTests>("a Docker Compose projects properties and launch profiles are its configurations and it is never built as a project", t => t.A_Docker_Compose_projects_properties_and_launch_profiles_are_its_configurations_and_it_is_never_built_as_a_project());
+    }
+
+    private void A_project_asking_for_an_SDK_container_in_its_Directory_Build_props_has_its_configuration_and_one_asking_under_a_false_condition_or_in_a_comment_has_none()
     {
         string folder = Solution("ctr-sdkask-", ["Tool", "Gated", "Quiet", "Plain"], """
               <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Tool'">
@@ -64,8 +78,7 @@ public sealed class ContainerConfigurationsTests
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_DockerfileFile_set_in_Directory_Build_props_is_the_Dockerfile_configurations_and_a_folder_cached_before_it_was_carried_is_evaluated_again()
+    private void A_DockerfileFile_set_in_Directory_Build_props_is_the_Dockerfile_configurations_and_a_folder_cached_before_it_was_carried_is_evaluated_again()
     {
         string folder = Solution("ctr-dockerfile-", ["App", "Side"], """
               <PropertyGroup Condition="'$(MSBuildProjectName)' == 'App'">
@@ -115,8 +128,7 @@ public sealed class ContainerConfigurationsTests
     /// <summary>A Dockerfile configuration's run arguments and mode changed in place are kept with the folder over what its
     /// Dockerfile makes: marked as changed, Reset to Dockerfile offered and no Write to Launch Profile, which it has none of,
     /// and there as changed when the folder opens again, its source as the Dockerfile makes it.</summary>
-    [AvaloniaFact]
-    public void A_Dockerfile_configuration_changed_in_place_is_kept_with_the_folder_over_what_its_Dockerfile_makes()
+    private void A_Dockerfile_configuration_changed_in_place_is_kept_with_the_folder_over_what_its_Dockerfile_makes()
     {
         string folder = Solution("ctr-inplace-", ["App"], string.Empty);
         TestFolders.Write(folder, "App/Dockerfile", "FROM mcr.microsoft.com/dotnet/runtime:10.0\n");
@@ -146,8 +158,7 @@ public sealed class ContainerConfigurationsTests
     /// <summary>A Docker launch profile's configuration writes back what the profile holds: the <c>docker run</c> words added
     /// after those its ports make, as its DockerfileRunArguments, a variable added and one taken out with its line; the
     /// configuration is then as the profile makes it, nothing kept here.</summary>
-    [AvaloniaFact]
-    public void A_Docker_launch_profiles_configuration_writes_its_own_run_words_and_variables_back_to_the_profile()
+    private void A_Docker_launch_profiles_configuration_writes_its_own_run_words_and_variables_back_to_the_profile()
     {
         string folder = Solution("ctr-writeback-", ["App"], string.Empty);
         const string Settings = """
@@ -214,8 +225,7 @@ public sealed class ContainerConfigurationsTests
 
     /// <summary>A Docker Compose project's (.dcproj) properties and launch profiles are its configurations, read with no engine
     /// needed, and it is never loaded or built as a .NET project.</summary>
-    [AvaloniaFact]
-    public void A_Docker_Compose_projects_properties_and_launch_profiles_are_its_configurations_and_it_is_never_built_as_a_project()
+    private void A_Docker_Compose_projects_properties_and_launch_profiles_are_its_configurations_and_it_is_never_built_as_a_project()
     {
         (string folder, _) = ContainerRunsTests.Shop("dcproj");
         File.Move(Path.Combine(folder, "compose.yaml"), Path.Combine(folder, "docker-compose.yml"));

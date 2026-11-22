@@ -31,8 +31,17 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
     /// <summary>The Persistent container's resource name.</summary>
     internal static string Kept => $"ps{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}-kept";
 
+    /// <summary>A real AppHost's containers as one flow, every step needing Aspire's runtime and a Linux container
+    /// engine, each in an instance of its own: Stop taking down the run's session container shown under its AppHost
+    /// while keeping a persistent one, and the session's network with its session container.</summary>
     [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Stop_takes_down_the_runs_session_container_shown_under_its_AppHost_and_keeps_a_persistent_one()
+    public void Stop_takes_down_an_AppHosts_session_container_and_network_and_keeps_a_persistent_one()
+    {
+        Flow.StepApart("stop takes down the runs session container shown under its AppHost and keeps a persistent one", () => new AspireContainersTests(project), t => t.Stop_takes_down_the_runs_session_container_shown_under_its_AppHost_and_keeps_a_persistent_one());
+        Flow.StepApart("stop takes down the runs session network with its session container", () => new AspireContainersTests(project), t => t.Stop_takes_down_the_runs_session_network_with_its_session_container());
+    }
+
+    private void Stop_takes_down_the_runs_session_container_shown_under_its_AppHost_and_keeps_a_persistent_one()
     {
         Assert.SkipWhen(WhyNot is not null, WhyNot ?? string.Empty);
         WithContainers(Path.GetDirectoryName(project.Host)!, project.Write);
@@ -85,8 +94,7 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
     /// the run's (DCP's <c>aspire-session-network-…</c>, labelled not Persistent), recorded with the session container
     /// as it is made, and Stop takes it down with the container, whatever the orchestrator did of it itself as its
     /// AppHost went.</summary>
-    [AvaloniaFact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public void Stop_takes_down_the_runs_session_network_with_its_session_container()
+    private void Stop_takes_down_the_runs_session_network_with_its_session_container()
     {
         Assert.SkipWhen(WhyNot is not null, WhyNot ?? string.Empty);
         WithContainers(Path.GetDirectoryName(project.Host)!, project.Write, kept: false);

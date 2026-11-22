@@ -24,8 +24,32 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Publishing with no engine of its own as one flow, each step one test's check in an instance of its own:
+    /// a push to a registry asking for a login with none found refused saying how to log in, one asking for none going
+    /// on, an AppHost's binary output landing in the open folder byte for byte under Undo and Redo, its deploy steps
+    /// offered as it declares them with a missing Azure login refused, and its steps run under the build configuration
+    /// chosen.</summary>
     [AvaloniaFact]
-    public void A_projects_container_image_is_published_into_the_engine_through_a_container_profile()
+    public void A_push_asks_for_a_login_only_where_the_registry_does_and_an_AppHosts_steps_publish_byte_for_byte()
+    {
+        Flow.StepApart("a push to a registry asking for a login with none found is refused saying how to log in", () => new ContainerPublishTests(appHost), t => t.A_push_to_a_registry_asking_for_a_login_with_none_found_is_refused_saying_how_to_log_in());
+        Flow.StepApart("a push to a registry asking for no login goes on with none found", () => new ContainerPublishTests(appHost), t => t.A_push_to_a_registry_asking_for_no_login_goes_on_with_none_found());
+        Flow.StepApart("an AppHosts binary output lands in the open folder byte for byte and Undo and Redo keep every byte", () => new ContainerPublishTests(appHost), t => t.An_AppHosts_binary_output_lands_in_the_open_folder_byte_for_byte_and_Undo_and_Redo_keep_every_byte());
+        Flow.StepApart("an AppHosts deploy steps are offered as it declares them and one needing a missing azure login is refused naming it", () => new ContainerPublishTests(appHost), t => t.An_AppHosts_deploy_steps_are_offered_as_it_declares_them_and_one_needing_a_missing_azure_login_is_refused_naming_it());
+        Flow.StepApart("an AppHosts steps and their listing run under the build configuration chosen", () => new ContainerPublishTests(appHost), t => t.An_AppHosts_steps_and_their_listing_run_under_the_build_configuration_chosen());
+    }
+
+    /// <summary>Publishing into the engine as one flow, every step needing a Linux container engine, each in an
+    /// instance of its own: a project's container image published through a container profile, and an AppHost's Docker
+    /// Compose files that docker compose config reads written as one step of Undo.</summary>
+    [AvaloniaFact]
+    public void A_projects_image_and_an_AppHosts_compose_files_are_published_into_the_engine_as_one_step_of_Undo()
+    {
+        Flow.StepApart("a projects container image is published into the engine through a container profile", () => new ContainerPublishTests(appHost), t => t.A_projects_container_image_is_published_into_the_engine_through_a_container_profile());
+        Flow.StepApart("an AppHost publishes Docker Compose files that docker compose config reads as one step of Undo", () => new ContainerPublishTests(appHost), t => t.An_AppHost_publishes_Docker_Compose_files_that_docker_compose_config_reads_as_one_step_of_Undo());
+    }
+
+    private void A_projects_container_image_is_published_into_the_engine_through_a_container_profile()
     {
         string? noEngine = Docker.WhyNot;
         Assert.SkipWhen(noEngine is not null, noEngine ?? string.Empty);
@@ -113,8 +137,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         }
     }
 
-    [AvaloniaFact]
-    public void A_push_to_a_registry_asking_for_a_login_with_none_found_is_refused_saying_how_to_log_in()
+    private void A_push_to_a_registry_asking_for_a_login_with_none_found_is_refused_saying_how_to_log_in()
     {
         using StandInRegistry registry = new() { AsksForLogin = true };
         string project = WriteApp("localhost:1/standin/base:1");
@@ -148,8 +171,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
 
     /// <summary>The SDK looks for a login only on a 401, so a registry asking for none takes the push with none found, the
     /// image built on its base and pushed by the SDK alone: no engine is asked.</summary>
-    [AvaloniaFact]
-    public void A_push_to_a_registry_asking_for_no_login_goes_on_with_none_found()
+    private void A_push_to_a_registry_asking_for_no_login_goes_on_with_none_found()
     {
         using StandInRegistry registry = new();
         // No app host, which a runtime's publish would take from a package of the platform's: framework-dependent, it needs none.
@@ -178,8 +200,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
         }
     }
 
-    [AvaloniaFact]
-    public void An_AppHost_publishes_Docker_Compose_files_that_docker_compose_config_reads_as_one_step_of_Undo()
+    private void An_AppHost_publishes_Docker_Compose_files_that_docker_compose_config_reads_as_one_step_of_Undo()
     {
         string? noEngine = Docker.WhyNot;
         Assert.SkipWhen(noEngine is not null, noEngine ?? string.Empty);
@@ -218,8 +239,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
     /// <summary>What an AppHost's publishers write lands in the open folder byte for byte, a binary file over a binary one, and
     /// text no save writes back as it found it, and one step of Undo puts back each byte, Redo each byte landed. A file
     /// changed since refuses it, naming the file.</summary>
-    [AvaloniaFact]
-    public void An_AppHosts_binary_output_lands_in_the_open_folder_byte_for_byte_and_Undo_and_Redo_keep_every_byte()
+    private void An_AppHosts_binary_output_lands_in_the_open_folder_byte_for_byte_and_Undo_and_Redo_keep_every_byte()
     {
         byte[] binary = [0x7F, 0x45, 0x4C, 0x46, 0xFF, 0x00, 0x80, 0x0A];
         byte[] had = [0x00, 0xFF, 0xC0, 0x80, 0x0D];
@@ -286,8 +306,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
     /// <summary>The Publish dialog of an AppHost reads its deploy steps from the AppHost itself, as Aspire's CLI lists them,
     /// and offers deploy and each environment's last step beside publish, each it runs Azure's login step for refused while
     /// the Azure CLI holds no account, saying how to log in; a refused step cannot be chosen, and publish stays chosen.</summary>
-    [AvaloniaFact]
-    public void An_AppHosts_deploy_steps_are_offered_as_it_declares_them_and_one_needing_a_missing_azure_login_is_refused_naming_it()
+    private void An_AppHosts_deploy_steps_are_offered_as_it_declares_them_and_one_needing_a_missing_azure_login_is_refused_naming_it()
     {
         appHost.Reset();
         string azure = Path.Combine(folder, "azure");
@@ -326,8 +345,7 @@ public sealed class ContainerPublishTests : IClassFixture<StandInAppHost>, IDisp
     /// <summary>An AppHost's publish, deploy steps and their listing run it as the folder's builds run it, under the build
     /// configuration chosen, as its solution maps it: the dialog's command says so, its steps are listed from its Release
     /// build, and its publish runs that build.</summary>
-    [AvaloniaFact]
-    public void An_AppHosts_steps_and_their_listing_run_under_the_build_configuration_chosen()
+    private void An_AppHosts_steps_and_their_listing_run_under_the_build_configuration_chosen()
     {
         appHost.Reset();
         string host = PathNames.Canonical(appHost.ProjectFile);

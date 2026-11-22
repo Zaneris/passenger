@@ -41,13 +41,45 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     private const int InMain = 1;
     private const int InRequest = 4;
 
+    /// <summary>Debugging compose services as one flow, every step needing a Linux container engine and the container
+    /// tools, each in an instance of its own: two services debugged at once and the Containers window's Restart, Stop
+    /// and Remove, Hot Reload reaching a paused service and a rude edit restarting its service, and an edit made while
+    /// they come up, after a restart's build, before a Restart without a build, or while images build applied once they
+    /// run.</summary>
+    [AvaloniaFact]
+    public void Container_services_are_debugged_and_hot_reloaded_each_edit_reaching_them_once_they_run()
+    {
+        Flow.StepApart("two services debugged at once stop in Main and in a request and the Containers windows Restart Stop and Remove go through the run", () => new ContainerRunDebuggingTests(tools), t => t.Two_services_debugged_at_once_stop_in_Main_and_in_a_request_and_the_Containers_windows_Restart_Stop_and_Remove_go_through_the_run());
+        Flow.StepApart("hot Reload reaches a paused service and Run with Hot Reload applies an edit and restarts a service for a rude one", () => new ContainerRunDebuggingTests(tools), t => t.Hot_Reload_reaches_a_paused_service_and_Run_with_Hot_Reload_applies_an_edit_and_restarts_a_service_for_a_rude_one());
+        Flow.StepApart("an edit made while Run with Hot Reload brings its services up is applied once they run", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_made_while_Run_with_Hot_Reload_brings_its_services_up_is_applied_once_they_run());
+        Flow.StepApart("an edit made while Rerun or Hot Reloads restart is held after its build is applied once the services run again", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_made_while_Rerun_or_Hot_Reloads_restart_is_held_after_its_build_is_applied_once_the_services_run_again());
+        Flow.StepApart("an edit applied before a Restart without a build is applied again once the service runs", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_applied_before_a_Restart_without_a_build_is_applied_again_once_the_service_runs());
+        Flow.StepApart("in images mode an edit made while the start or a restart builds the images is applied once the service runs", () => new ContainerRunDebuggingTests(tools), t => t.In_images_mode_an_edit_made_while_the_start_or_a_restart_builds_the_images_is_applied_once_the_service_runs());
+    }
+
+    /// <summary>Attaching to compose services as one flow, every step needing a Linux container engine and the
+    /// container tools, each in an instance of its own: Detach of a service Hot Reload changed refused saying why,
+    /// Attach under Run with Hot Reload debugging by its session, Attach to a service its Debug tab debugs showing that
+    /// tab, a Release image stopping through the path map, a service whose environment turns its debugger off never
+    /// held, and a taken port chosen again.</summary>
+    [AvaloniaFact]
+    public void A_container_services_attach_detach_and_ports_follow_its_session_and_say_why_where_it_cannot_be_debugged()
+    {
+        Flow.StepApart("detach of a service Hot Reload changed is refused saying why and Run Service without Debugger restarts it", () => new ContainerRunDebuggingTests(tools), t => t.Detach_of_a_service_Hot_Reload_changed_is_refused_saying_why_and_Run_Service_without_Debugger_restarts_it());
+        Flow.StepApart("attach under Run with Hot Reload debugs by its session never stopping the service and Run Service without Debugger restarts it", () => new ContainerRunDebuggingTests(tools), t => t.Attach_under_Run_with_Hot_Reload_debugs_by_its_session_never_stopping_the_service_and_Run_Service_without_Debugger_restarts_it());
+        Flow.StepApart("attach to a service its Debug tab debugs shows that tab and never stops it", () => new ContainerRunDebuggingTests(tools), t => t.Attach_to_a_service_its_Debug_tab_debugs_shows_that_tab_and_never_stops_it());
+        Flow.StepApart("in images mode a service stops through the path map a Release build is said and one with diagnostics off runs on saying why", () => new ContainerRunDebuggingTests(tools), t => t.In_images_mode_a_service_stops_through_the_path_map_a_Release_build_is_said_and_one_with_diagnostics_off_runs_on_saying_why());
+        Flow.StepApart("a service whose environment turns its debugger off is never held and serves under Debug and Profile saying why (\"compose\")", () => new ContainerRunDebuggingTests(tools), t => t.A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why("compose"));
+        Flow.StepApart("a service whose environment turns its debugger off is never held and serves under Debug and Profile saying why (\"Dockerfile\")", () => new ContainerRunDebuggingTests(tools), t => t.A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why("Dockerfile"));
+        Flow.StepApart("a port Passenger chose that is taken before up is chosen again and the service comes up debugged on another", () => new ContainerRunDebuggingTests(tools), t => t.A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another());
+    }
+
     /// <summary>Two services debugged at once, each stopping in Main and in a request, stepped and evaluated, web's address in
     /// its console linked where it is published here; then the Containers window's actions on the run go through it: the
     /// project's Restart ends the sessions, restarts every service and attaches to the debugged ones again; a service's Stop
     /// and Remove end its session before its container stops or goes (an adapter losing it would be the IDE's error, which
     /// fails the test), the run going on; and the project's Stop is the run's, its sessions ended before its containers go.</summary>
-    [AvaloniaFact]
-    public void Two_services_debugged_at_once_stop_in_Main_and_in_a_request_and_the_Containers_windows_Restart_Stop_and_Remove_go_through_the_run()
+    private void Two_services_debugged_at_once_stop_in_Main_and_in_a_request_and_the_Containers_windows_Restart_Stop_and_Remove_go_through_the_run()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("both");
@@ -134,8 +166,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Hot_Reload_reaches_a_paused_service_and_Run_with_Hot_Reload_applies_an_edit_and_restarts_a_service_for_a_rude_one()
+    private void Hot_Reload_reaches_a_paused_service_and_Run_with_Hot_Reload_applies_an_edit_and_restarts_a_service_for_a_rude_one()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("reload");
@@ -210,8 +241,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
 
     /// <summary>An edit typed while Run with Hot Reload brings its services up, held after their build and before they are
     /// attached to, is one Apply Hot Reload Changes applies once they run: web then answers as the edited code does.</summary>
-    [AvaloniaFact]
-    public void An_edit_made_while_Run_with_Hot_Reload_brings_its_services_up_is_applied_once_they_run()
+    private void An_edit_made_while_Run_with_Hot_Reload_brings_its_services_up_is_applied_once_they_run()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("held");
@@ -256,8 +286,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>Under Run with Hot Reload, an edit typed while Rerun's restart of web, and then Hot Reload's restart of both
     /// services for edits it cannot apply, is held after their build is one Apply Hot Reload Changes applies once they run
     /// again: each restarted session follows the edits from its build's save, not from its attach.</summary>
-    [AvaloniaFact]
-    public void An_edit_made_while_Rerun_or_Hot_Reloads_restart_is_held_after_its_build_is_applied_once_the_services_run_again()
+    private void An_edit_made_while_Rerun_or_Hot_Reloads_restart_is_held_after_its_build_is_applied_once_the_services_run_again()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("restarted");
@@ -323,8 +352,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>Under Run with Hot Reload, an edit applied to web and then the Containers window's Restart of web, which runs
     /// it again on its build without the edit: Apply Hot Reload Changes applies the edit again, the restarted session taking
     /// the ended one's edits since the build as still to apply.</summary>
-    [AvaloniaFact]
-    public void An_edit_applied_before_a_Restart_without_a_build_is_applied_again_once_the_service_runs()
+    private void An_edit_applied_before_a_Restart_without_a_build_is_applied_again_once_the_service_runs()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("again");
@@ -364,8 +392,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// an edit typed while the start is held after it saved the files for the images' build, and one typed while the
     /// Containers window's Restart of web is held after its own save, is one Apply Hot Reload Changes applies once web runs
     /// again, each session following the edits from its images' save, not from its attach.</summary>
-    [AvaloniaFact]
-    public void In_images_mode_an_edit_made_while_the_start_or_a_restart_builds_the_images_is_applied_once_the_service_runs()
+    private void In_images_mode_an_edit_made_while_the_start_or_a_restart_builds_the_images_is_applied_once_the_service_runs()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("imgreload");
@@ -438,8 +465,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>Under Debug, an edit applied to web, whose runtime lets no debugger go once Hot Reload has changed its code:
     /// the Debug window's Detach is refused saying why, web answering with the edit still, and the status bar's way on, Run
     /// Service without Debugger, restarts web, which answers as built and takes the debugger again.</summary>
-    [AvaloniaFact]
-    public void Detach_of_a_service_Hot_Reload_changed_is_refused_saying_why_and_Run_Service_without_Debugger_restarts_it()
+    private void Detach_of_a_service_Hot_Reload_changed_is_refused_saying_why_and_Run_Service_without_Debugger_restarts_it()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("changed");
@@ -493,8 +519,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// runtime keeps as its one debugger once its code has changed, its container running on and a request stopping at a
     /// breakpoint in the edited code; Attach to api, which no edit changed, lets its Hot Reload session go and attaches
     /// anew; and Run Service without Debugger restarts web, which then answers as built.</summary>
-    [AvaloniaFact]
-    public void Attach_under_Run_with_Hot_Reload_debugs_by_its_session_never_stopping_the_service_and_Run_Service_without_Debugger_restarts_it()
+    private void Attach_under_Run_with_Hot_Reload_debugs_by_its_session_never_stopping_the_service_and_Run_Service_without_Debugger_restarts_it()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("quiet");
@@ -552,8 +577,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>Under Debug, Attach to web, which its Debug tab debugs already, with api's tab chosen and the Debug window
     /// hidden: web's tab is chosen and the window shown, its session the same and running, its container never restarted
     /// and answering, where Attach ended that session with Stop before, its program with it.</summary>
-    [AvaloniaFact]
-    public void Attach_to_a_service_its_Debug_tab_debugs_shows_that_tab_and_never_stops_it()
+    private void Attach_to_a_service_its_Debug_tab_debugs_shows_that_tab_and_never_stops_it()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("again");
@@ -619,8 +643,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// context), so only the path map puts web's stop in the workspace's file, with no SDK image needed; api is a Release
     /// build, which is said, and a third service of api's image with its runtime's diagnostics off runs on undebugged, saying
     /// why.</summary>
-    [AvaloniaFact]
-    public void In_images_mode_a_service_stops_through_the_path_map_a_Release_build_is_said_and_one_with_diagnostics_off_runs_on_saying_why()
+    private void In_images_mode_a_service_stops_through_the_path_map_a_Release_build_is_said_and_one_with_diagnostics_off_runs_on_saying_why()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("images");
@@ -669,10 +692,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// debugger coming to let it go), by its compose environment or by its Dockerfile's ENV (its image's own, which Compose's
     /// model never shows), is never held: under Debug and under Profile it comes up and serves, the run's console saying why
     /// neither reaches it, Debug's status too, and Profile's refusal naming it and why.</summary>
-    [AvaloniaTheory]
-    [InlineData("compose")]
-    [InlineData("Dockerfile")]
-    public void A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why(string offBy)
+    private void A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why(string offBy)
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop($"off{offBy.ToLowerInvariant()[..3]}");
@@ -734,8 +754,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// published on another port, held and attached there (a request to it stops at a breakpoint), the browser opened at it,
     /// and the run's console says which port was taken. Without the choice made again, the run fails with the engine's
     /// "address already in use".</summary>
-    [AvaloniaFact]
-    public void A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another()
+    private void A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
         (string folder, string project) = Shop("taken");

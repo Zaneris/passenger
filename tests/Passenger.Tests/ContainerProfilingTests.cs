@@ -24,8 +24,20 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
 {
     private Spins spins => built.Spins;
 
+    /// <summary>Profiling a program in a container as one flow, every step needing a Linux container engine and the
+    /// container tools, each in an instance of its own: Attach Profiler offering the container's programs and recording
+    /// the one chosen, memory snapshots taken there and compared, the program debugged there recorded without asking,
+    /// and one held at its start recorded from its first turn.</summary>
     [AvaloniaFact]
-    public void Attach_Profiler_offers_the_containers_programs_records_the_one_chosen_there_and_shows_its_hot_method_and_why_it_has_no_frames()
+    public void A_program_in_a_container_is_profiled_and_snapshotted_there_debugged_or_held_at_its_start()
+    {
+        Flow.StepApart("attach Profiler offers the containers programs records the one chosen there and shows its hot method and why it has no frames", () => new ContainerProfilingTests(built), t => t.Attach_Profiler_offers_the_containers_programs_records_the_one_chosen_there_and_shows_its_hot_method_and_why_it_has_no_frames());
+        Flow.StepApart("memory snapshots of a program in a container are taken there and compared once its snapshot can be written and none is recorded before", () => new ContainerProfilingTests(built), t => t.Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_once_its_snapshot_can_be_written_and_none_is_recorded_before());
+        Flow.StepApart("attach Profiler records the program debugged in its container without asking", () => new ContainerProfilingTests(built), t => t.Attach_Profiler_records_the_program_debugged_in_its_container_without_asking());
+        Flow.StepApart("a program held at its start in a container is let go by Attach Profiler and recorded from its first turn", () => new ContainerProfilingTests(built), t => t.A_program_held_at_its_start_in_a_container_is_let_go_by_Attach_Profiler_and_recorded_from_its_first_turn());
+    }
+
+    private void Attach_Profiler_offers_the_containers_programs_records_the_one_chosen_there_and_shows_its_hot_method_and_why_it_has_no_frames()
     {
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
         string container = spins.Start("chosen");
@@ -64,8 +76,7 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         }
     }
 
-    [AvaloniaFact]
-    public void Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_once_its_snapshot_can_be_written_and_none_is_recorded_before()
+    private void Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_once_its_snapshot_can_be_written_and_none_is_recorded_before()
     {
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
         string container = spins.Start("memory");
@@ -134,8 +145,7 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         }
     }
 
-    [AvaloniaFact]
-    public void Attach_Profiler_records_the_program_debugged_in_its_container_without_asking()
+    private void Attach_Profiler_records_the_program_debugged_in_its_container_without_asking()
     {
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
         string container = spins.Start("debugged");
@@ -173,8 +183,7 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
 
     /// <summary>A program held at its start in its container, as a container run's Profile will start each service: Attach
     /// Profiler lets it go once it records, so the run has it from its first turn.</summary>
-    [AvaloniaFact]
-    public void A_program_held_at_its_start_in_a_container_is_let_go_by_Attach_Profiler_and_recorded_from_its_first_turn()
+    private void A_program_held_at_its_start_in_a_container_is_let_go_by_Attach_Profiler_and_recorded_from_its_first_turn()
     {
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
         string container = spins.Start("held", held: true);

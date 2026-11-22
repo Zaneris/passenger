@@ -30,8 +30,55 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
 
     public DockerFilesTests(Shop app) => this.app = app;
 
+    /// <summary>A Dockerfile's language server as one flow, every step needing Node.js, each in an instance of its own:
+    /// an instruction completed and one docker lacks marked, an image's tags completed from Docker Hub and nothing
+    /// asked once settings turn that off, and text typed over before the server's push never marked for the text
+    /// before.</summary>
     [AvaloniaFact]
-    public void A_dockerfile_completes_an_instruction_and_marks_one_docker_does_not_have()
+    public void A_Dockerfile_is_completed_and_marked_by_its_language_server_asking_Docker_Hub_only_while_settings_allow()
+    {
+        Flow.StepApart("a dockerfile completes an instruction and marks one docker does not have", () => new DockerFilesTests(app), t => t.A_dockerfile_completes_an_instruction_and_marks_one_docker_does_not_have());
+        Flow.StepApart("a dockerfile completes an images tags from docker hub and asks it nothing once settings turn that off", () => new DockerFilesTests(app), t => t.A_dockerfile_completes_an_images_tags_from_docker_hub_and_asks_it_nothing_once_settings_turn_that_off());
+        Flow.StepApart("a dockerfile typed over before its servers push is taken is never marked for the text before", () => new DockerFilesTests(app), t => t.A_dockerfile_typed_over_before_its_servers_push_is_taken_is_never_marked_for_the_text_before());
+    }
+
+    /// <summary>A compose file as one flow, every step needing Node.js and the YAML server, each in an instance of its
+    /// own: a service's keys completed by the compose schema and an unknown key marked, the names it declares completed
+    /// where a service names them, a service or volume renamed with its override as one Undo, and Go to Declaration
+    /// leading to the Dockerfile, the project, variables, env files and registry pages, the final stage's entrypoint
+    /// and variables as Compose reads them.</summary>
+    [AvaloniaFact]
+    public void A_compose_file_is_completed_renamed_and_navigated_as_Compose_reads_it()
+    {
+        Flow.StepApart("a compose file completes a services keys by the compose schema marks a key it does not have and knows composes tags", () => new DockerFilesTests(app), t => t.A_compose_file_completes_a_services_keys_by_the_compose_schema_marks_a_key_it_does_not_have_and_knows_composes_tags());
+        Flow.StepApart("a compose file completes the names it declares where a service names them and no others", () => new DockerFilesTests(app), t => t.A_compose_file_completes_the_names_it_declares_where_a_service_names_them_and_no_others());
+        Flow.StepApart("rename in a compose file renames a service or volume where it is declared and used with its override as one undo", () => new DockerFilesTests(app), t => t.Rename_in_a_compose_file_renames_a_service_or_volume_where_it_is_declared_and_used_with_its_override_as_one_undo());
+        Flow.StepApart("go to declaration in a compose file leads to the dockerfile and project services declarations variables env files and registry pages", () => new DockerFilesTests(app), t => t.Go_to_declaration_in_a_compose_file_leads_to_the_dockerfile_and_project_services_declarations_variables_env_files_and_registry_pages());
+        Flow.StepApart("go to declaration in a compose file takes the final stages entrypoint and its variables as compose reads them", () => new DockerFilesTests(app), t => t.Go_to_declaration_in_a_compose_file_takes_the_final_stages_entrypoint_and_its_variables_as_compose_reads_them());
+    }
+
+    /// <summary>Add Docker Support and Add Docker Compose as one flow, each step one test's check in an instance of its
+    /// own: the Dockerfile and .dockerignore written under one Undo, a class library greyed, nuget.config kept out and
+    /// mounted, the SDK's container properties set, Postgres beside an Npgsql app, a project's own Dockerfile on its
+    /// ports, each connection string pointed at its service, a compose file kept, and the ASP.NET Core image where
+    /// reached.</summary>
+    [AvaloniaFact]
+    public void Add_Docker_Support_and_Compose_write_what_a_project_needs_to_run_in_a_container_as_one_undoable_change()
+    {
+        Flow.StepApart("add docker support writes the projects dockerfile and the contexts dockerignore and undo takes both away", () => new DockerFilesTests(app), t => t.Add_docker_support_writes_the_projects_dockerfile_and_the_contexts_dockerignore_and_undo_takes_both_away());
+        Flow.StepApart("add docker support is greyed on a class library saying why and its dialog shows each choice whole", () => new DockerFilesTests(app), t => t.Add_docker_support_is_greyed_on_a_class_library_saying_why_and_its_dialog_shows_each_choice_whole());
+        Flow.StepApart("add docker support adds the line keeping nuget config out to a dockerignore there and undo takes it back", () => new DockerFilesTests(app), t => t.Add_docker_support_adds_the_line_keeping_nuget_config_out_to_a_dockerignore_there_and_undo_takes_it_back());
+        Flow.StepApart("add docker support by the sdk sets a workers container properties and leaves the rest of its project file as it was", () => new DockerFilesTests(app), t => t.Add_docker_support_by_the_sdk_sets_a_workers_container_properties_and_leaves_the_rest_of_its_project_file_as_it_was());
+        Flow.StepApart("add docker compose runs an app using npgsql beside postgres it waits for with its connection string and lists the file in the solution", () => new DockerFilesTests(app), t => t.Add_docker_compose_runs_an_app_using_npgsql_beside_postgres_it_waits_for_with_its_connection_string_and_lists_the_file_in_the_solution());
+        Flow.StepApart("undo takes back an adds change to an open project or solution with what it made and redo makes them again", () => new DockerFilesTests(app), t => t.Undo_takes_back_an_adds_change_to_an_open_project_or_solution_with_what_it_made_and_redo_makes_them_again());
+        Flow.StepApart("add docker support on a project at its contexts root copies it and mounts its nuget config as named in the work folder", () => new DockerFilesTests(app), t => t.Add_docker_support_on_a_project_at_its_contexts_root_copies_it_and_mounts_its_nuget_config_as_named_in_the_work_folder());
+        Flow.StepApart("add docker compose builds a projects own dockerfile from the folder it copies from on the ports it sets", () => new DockerFilesTests(app), t => t.Add_docker_compose_builds_a_projects_own_dockerfile_from_the_folder_it_copies_from_on_the_ports_it_sets());
+        Flow.StepApart("add docker compose points each connection string at the service its value is for and keeps its database", () => new DockerFilesTests(app), t => t.Add_docker_compose_points_each_connection_string_at_the_service_its_value_is_for_and_keeps_its_database());
+        Flow.StepApart("a compose file written before keeps its backing services majors and mounts as a project joins it", () => new DockerFilesTests(app), t => t.A_compose_file_written_before_keeps_its_backing_services_majors_and_mounts_as_a_project_joins_it());
+        Flow.StepApart("add docker support gives a project that asp net core reaches through a reference or a package the aspnet image", () => new DockerFilesTests(app), t => t.Add_docker_support_gives_a_project_that_asp_net_core_reaches_through_a_reference_or_a_package_the_aspnet_image());
+    }
+
+    private void A_dockerfile_completes_an_instruction_and_marks_one_docker_does_not_have()
     {
         Shop.SkipWithoutNode();
         MainWindow window = app.Open("ops/api.Dockerfile");
@@ -73,8 +120,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>Settings' Complete image tags from Docker Hub, on at first: after FROM image: the Dockerfile server offers the
     /// image's tags, asked of Docker Hub (a stand-in on loopback here); turned off on the Docker page, beside Remote JSON
     /// Schemas, the server starts again and asks Docker Hub nothing, offering no tags.</summary>
-    [AvaloniaFact]
-    public void A_dockerfile_completes_an_images_tags_from_docker_hub_and_asks_it_nothing_once_settings_turn_that_off()
+    private void A_dockerfile_completes_an_images_tags_from_docker_hub_and_asks_it_nothing_once_settings_turn_that_off()
     {
         Shop.SkipWithoutNode();
         using StandInHub hub = new();
@@ -124,8 +170,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>The Dockerfile server checks each text it is sent and names no version: its push for a text the person has
     /// typed over by the time the window takes it is that text's, never shown as the text now nor letting the file's
     /// checks go, so once they land the markers are the last text's.</summary>
-    [AvaloniaFact]
-    public void A_dockerfile_typed_over_before_its_servers_push_is_taken_is_never_marked_for_the_text_before()
+    private void A_dockerfile_typed_over_before_its_servers_push_is_taken_is_never_marked_for_the_text_before()
     {
         Shop.SkipWithoutNode();
         MainWindow window = app.Open("ops/api.Dockerfile");
@@ -192,8 +237,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     private const string TokenAsked = "GET /auth.docker.io/token?service=registry.docker.io&scope=repository:library/postgres:pull";
     private const string TagsAsked = "GET /registry-1.docker.io/v2/library/postgres/tags/list";
 
-    [AvaloniaFact]
-    public void A_compose_file_completes_a_services_keys_by_the_compose_schema_marks_a_key_it_does_not_have_and_knows_composes_tags()
+    private void A_compose_file_completes_a_services_keys_by_the_compose_schema_marks_a_key_it_does_not_have_and_knows_composes_tags()
     {
         Shop.SkipWithoutNode(yaml: true);
         MainWindow window = app.Open("ops/compose.yaml");
@@ -232,8 +276,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// and extends (the services of the file an extends names), its volumes under a service's volumes (a short entry's source
     /// or a long one's), its networks, secrets and configs under theirs; never the service itself, nor a name its list holds
     /// already, nor names of another kind, and none where no name is typed (an image).</summary>
-    [AvaloniaFact]
-    public void A_compose_file_completes_the_names_it_declares_where_a_service_names_them_and_no_others()
+    private void A_compose_file_completes_the_names_it_declares_where_a_service_names_them_and_no_others()
     {
         Shop.SkipWithoutNode(yaml: true);
         string compose = app.PathOf("ops2/compose.yaml");
@@ -270,8 +313,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// links, volumes_from, network_mode's service:, an extends); a volume from its declaration (a short entry, a long
     /// one's source); a service another file declares, from an extends naming it, in every file. A name its kind has,
     /// or one Compose would not take, is refused, saying why.</summary>
-    [AvaloniaFact]
-    public void Rename_in_a_compose_file_renames_a_service_or_volume_where_it_is_declared_and_used_with_its_override_as_one_undo()
+    private void Rename_in_a_compose_file_renames_a_service_or_volume_where_it_is_declared_and_used_with_its_override_as_one_undo()
     {
         Shop.SkipWithoutNode(yaml: true);
         string compose = app.PathOf("ops2/compose.yaml");
@@ -473,8 +515,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         Assert.Contains(chosen, editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
     }
 
-    [AvaloniaFact]
-    public void Go_to_declaration_in_a_compose_file_leads_to_the_dockerfile_and_project_services_declarations_variables_env_files_and_registry_pages()
+    private void Go_to_declaration_in_a_compose_file_leads_to_the_dockerfile_and_project_services_declarations_variables_env_files_and_registry_pages()
     {
         Shop.SkipWithoutNode(yaml: true);
         MainWindow window = app.Open("ops/compose.yaml");
@@ -519,8 +560,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
 
     /// <summary>Add Docker Support's Dockerfile and .dockerignore come into the Explorer as their own rows alone, every other
     /// row shown staying the row it was, and Undo takes both away.</summary>
-    [AvaloniaFact]
-    public void Add_docker_support_writes_the_projects_dockerfile_and_the_contexts_dockerignore_and_undo_takes_both_away()
+    private void Add_docker_support_writes_the_projects_dockerfile_and_the_contexts_dockerignore_and_undo_takes_both_away()
     {
         MainWindow window = app.Open(null);
         try
@@ -565,8 +605,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>Add > Docker Support is greyed on the class library, which makes no program to run, saying it is no service,
     /// and offered on the worker, a program; its dialog on the web app shows each way of building the image whole, its
     /// words wrapped within the dialog.</summary>
-    [AvaloniaFact]
-    public void Add_docker_support_is_greyed_on_a_class_library_saying_why_and_its_dialog_shows_each_choice_whole()
+    private void Add_docker_support_is_greyed_on_a_class_library_saying_why_and_its_dialog_shows_each_choice_whole()
     {
         MainWindow window = app.Open(null);
         try
@@ -608,8 +647,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// secret (its line leaves out the lower-case spelling alone), is given the line leaving every spelling out, in its own
     /// line breaks, the rest of it as it was; Undo takes the line back with the Dockerfile. One that leaves every spelling
     /// out already, or every file, is given nothing, and one taking nuget.config back after leaving it out is.</summary>
-    [AvaloniaFact]
-    public void Add_docker_support_adds_the_line_keeping_nuget_config_out_to_a_dockerignore_there_and_undo_takes_it_back()
+    private void Add_docker_support_adds_the_line_keeping_nuget_config_out_to_a_dockerignore_there_and_undo_takes_it_back()
     {
         foreach ((string had, bool kept) in ((string, bool)[])[(DockerFiles.Ignore, false), ("*\n", false), ("# Mine\nbin/\n**/[Nn]u[Gg]et.[Cc]onfig\n", false),
             ("**/nuget.config\n", true), ("**/[Nn][Uu][Gg][Ee][Tt].[Cc][Oo][Nn][Ff][Ii][Gg]\n!**/NuGet.Config\n", true), ("nuget.config\nNuGet.Config\n", true)])
@@ -647,8 +685,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
-    [AvaloniaFact]
-    public void Add_docker_support_by_the_sdk_sets_a_workers_container_properties_and_leaves_the_rest_of_its_project_file_as_it_was()
+    private void Add_docker_support_by_the_sdk_sets_a_workers_container_properties_and_leaves_the_rest_of_its_project_file_as_it_was()
     {
         MainWindow window = app.Open(null);
         try
@@ -677,8 +714,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         }
     }
 
-    [AvaloniaFact]
-    public void Add_docker_compose_runs_an_app_using_npgsql_beside_postgres_it_waits_for_with_its_connection_string_and_lists_the_file_in_the_solution()
+    private void Add_docker_compose_runs_an_app_using_npgsql_beside_postgres_it_waits_for_with_its_connection_string_and_lists_the_file_in_the_solution()
     {
         MainWindow window = app.Open(null);
         try
@@ -719,8 +755,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>An Add that changes the project file or the solution open in an editor is one command with what it made:
     /// Undo puts the open file's text back (the SDK route's, its editor's own step; Add Docker Compose's, with the files it
     /// made taken away) and Redo makes them all again.</summary>
-    [AvaloniaFact]
-    public void Undo_takes_back_an_adds_change_to_an_open_project_or_solution_with_what_it_made_and_redo_makes_them_again()
+    private void Undo_takes_back_an_adds_change_to_an_open_project_or_solution_with_what_it_made_and_redo_makes_them_again()
     {
         string worker = app.PathOf("Worker/Worker.csproj");
         MainWindow window = app.Open("Worker/Worker.csproj");
@@ -769,8 +804,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>A project at its build's context's root, beside its solution or opened on its own, is copied into the
     /// build's work folder (./), and its NuGet.config mounted there by the name the disk gives it, since the image's file
     /// system tells letter case apart.</summary>
-    [AvaloniaFact]
-    public void Add_docker_support_on_a_project_at_its_contexts_root_copies_it_and_mounts_its_nuget_config_as_named_in_the_work_folder()
+    private void Add_docker_support_on_a_project_at_its_contexts_root_copies_it_and_mounts_its_nuget_config_as_named_in_the_work_folder()
     {
         foreach (bool solution in (bool[])[true, false])
         {
@@ -898,8 +932,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// folder when its COPY lines read the project's files there, from the solution's when they read them from it, on the
     /// ports it sets (ASPNETCORE_HTTP_PORTS, else ASP.NET Core's 8080), never its launch profiles'; Passenger's own new
     /// Dockerfile, from the solution's folder on the launch profiles' port, given the nuget.config it mounts as a secret.</summary>
-    [AvaloniaFact]
-    public void Add_docker_compose_builds_a_projects_own_dockerfile_from_the_folder_it_copies_from_on_the_ports_it_sets()
+    private void Add_docker_compose_builds_a_projects_own_dockerfile_from_the_folder_it_copies_from_on_the_ports_it_sets()
     {
         string folder = Fresh("docker-own-",
             ("Mall.slnx", "<Solution>\n  <Project Path=\"Api/Api.csproj\" />\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Web/Web.csproj\" />\n</Solution>\n"),
@@ -940,8 +973,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>Each connection string an app has is pointed at the backing service its value is for, its database kept:
     /// Npgsql's Host= at postgres, made with that database; SqlClient's Server= at SQL Server, whose image makes no
     /// database, as a comment says; Redis' host:port at redis; SQLite's Data Source= file left as the app has it.</summary>
-    [AvaloniaFact]
-    public void Add_docker_compose_points_each_connection_string_at_the_service_its_value_is_for_and_keeps_its_database()
+    private void Add_docker_compose_points_each_connection_string_at_the_service_its_value_is_for_and_keeps_its_database()
     {
         string folder = Fresh("docker-strings-",
             ("Orders.slnx", "<Solution>\n  <Project Path=\"Orders/Orders.csproj\" />\n</Solution>\n"),
@@ -1174,8 +1206,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// at /var/lib/postgresql/data, SQL Server 2022, Redis 7) keeps them as written: Add > Docker Compose refuses, the
     /// solution having one, and a project joining it as a service leaves every line there, so no one's data is handed to
     /// a major it was not made by.</summary>
-    [AvaloniaFact]
-    public void A_compose_file_written_before_keeps_its_backing_services_majors_and_mounts_as_a_project_joins_it()
+    private void A_compose_file_written_before_keeps_its_backing_services_majors_and_mounts_as_a_project_joins_it()
     {
         File.WriteAllText(app.PathOf("compose.yaml"), EarlierServices + EarlierRest);
         MainWindow window = app.Open(null);
@@ -1257,8 +1288,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
 
     /// <summary>A project gets ASP.NET Core's image when the framework reaches it through a project it references (as
     /// evaluated) or a package (as its restore says), not only through its own SDK.</summary>
-    [AvaloniaFact]
-    public void Add_docker_support_gives_a_project_that_asp_net_core_reaches_through_a_reference_or_a_package_the_aspnet_image()
+    private void Add_docker_support_gives_a_project_that_asp_net_core_reaches_through_a_reference_or_a_package_the_aspnet_image()
     {
         const string Console = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n";
         string folder = Fresh("docker-aspnet-",
@@ -1298,8 +1328,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
     /// <summary>Go to Declaration on a build takes the project the final stage's ENTRYPOINT runs (its own, or the stage's it
     /// is FROM), never an earlier stage's nor a comment's; a variable is Compose's when the .env beside the file sets it, so
     /// one only a service's env_file sets is said not set for Compose, and $$VAR, a dollar sign written whole, is none.</summary>
-    [AvaloniaFact]
-    public void Go_to_declaration_in_a_compose_file_takes_the_final_stages_entrypoint_and_its_variables_as_compose_reads_them()
+    private void Go_to_declaration_in_a_compose_file_takes_the_final_stages_entrypoint_and_its_variables_as_compose_reads_them()
     {
         Shop.SkipWithoutNode(yaml: true);
         string compose = app.PathOf("ops2/compose.yaml");

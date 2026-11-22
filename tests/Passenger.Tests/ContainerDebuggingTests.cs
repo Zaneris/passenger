@@ -30,8 +30,36 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     private const int Said = 6;
     private const int Slept = 7;
 
+    /// <summary>Debugging a program in a container Passenger did not start as one flow, every step needing a Linux
+    /// container engine and the container tools, each in an instance of its own: one listed, attached to, stopped,
+    /// stepped, evaluated and running on as let go, Stop on a container's first process letting it go and attaching
+    /// again, the debugger on Alpine's musl, a program held at its start let go by the attach, and the tools downloaded
+    /// from their release checked against its SHA256SUMS.</summary>
     [AvaloniaFact]
-    public void A_program_in_a_container_passenger_did_not_start_is_listed_attached_to_stopped_stepped_evaluated_and_runs_on_after_detach()
+    public void A_program_in_a_container_is_attached_to_stopped_and_let_go_with_tools_checked_against_their_release()
+    {
+        Flow.StepApart("a program in a container passenger did not start is listed attached to stopped stepped evaluated and runs on after detach", () => new ContainerDebuggingTests(turns), t => t.A_program_in_a_container_passenger_did_not_start_is_listed_attached_to_stopped_stepped_evaluated_and_runs_on_after_detach());
+        Flow.StepApart("stop on a containers first process lets it go ends the adapter there and it is attached to again", () => new ContainerDebuggingTests(turns), t => t.Stop_on_a_containers_first_process_lets_it_go_ends_the_adapter_there_and_it_is_attached_to_again());
+        Flow.StepApart("on alpine the debugger runs in the container on musl and stops at a breakpoint and a program with diagnostics off says why", () => new ContainerDebuggingTests(turns), t => t.On_alpine_the_debugger_runs_in_the_container_on_musl_and_stops_at_a_breakpoint_and_a_program_with_diagnostics_off_says_why());
+        Flow.StepApart("a program held at its start in a container is let go by the attach stops at its breakpoint and is offered hot reload", () => new ContainerDebuggingTests(turns), t => t.A_program_held_at_its_start_in_a_container_is_let_go_by_the_attach_stops_at_its_breakpoint_and_is_offered_hot_reload());
+        Flow.StepApart("the container tools download from their release checked against its SHA256SUMS and a wrong checksum is refused", () => new ContainerDebuggingTests(turns), t => t.The_container_tools_download_from_their_release_checked_against_its_SHA256SUMS_and_a_wrong_checksum_is_refused());
+    }
+
+    /// <summary>Paths a container's program was built at as one flow, every step needing a Linux container engine and
+    /// the container tools, each in an instance of its own: a build naming the container's paths stopping at its
+    /// breakpoint by the document there and through a path map, one naming a Windows machine's paths, one built in its
+    /// image by the folder's compose file, and a deterministic build run by hand stopping in the folder's file its path
+    /// ends in.</summary>
+    [AvaloniaFact]
+    public void A_containers_breakpoints_bind_through_the_paths_its_build_named_wherever_it_was_built()
+    {
+        Flow.StepApart("a build naming the containers paths stops at its breakpoint by the document there and through a path map in the editor", () => new ContainerDebuggingTests(turns), t => t.A_build_naming_the_containers_paths_stops_at_its_breakpoint_by_the_document_there_and_through_a_path_map_in_the_editor());
+        Flow.StepApart("a build naming a windows machines paths stops at its breakpoint in a linux container", () => new ContainerDebuggingTests(turns), t => t.A_build_naming_a_windows_machines_paths_stops_at_its_breakpoint_in_a_linux_container());
+        Flow.StepApart("a program built in its image by the folders compose file stops in the folders file which its top frame opens", () => new ContainerDebuggingTests(turns), t => t.A_program_built_in_its_image_by_the_folders_compose_file_stops_in_the_folders_file_which_its_top_frame_opens());
+        Flow.StepApart("a deterministic build in a container run by hand stops in the folders file its path ends in", () => new ContainerDebuggingTests(turns), t => t.A_deterministic_build_in_a_container_run_by_hand_stops_in_the_folders_file_its_path_ends_in());
+    }
+
+    private void A_program_in_a_container_passenger_did_not_start_is_listed_attached_to_stopped_stepped_evaluated_and_runs_on_after_detach()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("glibc", turns.Glibc);
@@ -84,8 +112,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// debugger lets go of it, saying why, the adapter there ends, and the same process is attached to again and let go
     /// again, nothing of Passenger's left running in the container. Terminated, the program lived on held by an adapter
     /// that never ended, and every attach after timed out (#1521).</summary>
-    [AvaloniaFact]
-    public void Stop_on_a_containers_first_process_lets_it_go_ends_the_adapter_there_and_it_is_attached_to_again()
+    private void Stop_on_a_containers_first_process_lets_it_go_ends_the_adapter_there_and_it_is_attached_to_again()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("stop", turns.Glibc);
@@ -116,8 +143,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
         }
     }
 
-    [AvaloniaFact]
-    public void On_alpine_the_debugger_runs_in_the_container_on_musl_and_stops_at_a_breakpoint_and_a_program_with_diagnostics_off_says_why()
+    private void On_alpine_the_debugger_runs_in_the_container_on_musl_and_stops_at_a_breakpoint_and_a_program_with_diagnostics_off_says_why()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("alpine", turns.Alpine);
@@ -154,8 +180,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// <summary>A program held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug, as Debug of a container run will start
     /// each service: listed, attached to, let go by the attach so its first turn stops at the breakpoint, and offered Hot
     /// Reload, which a program not started so is not.</summary>
-    [AvaloniaFact]
-    public void A_program_held_at_its_start_in_a_container_is_let_go_by_the_attach_stops_at_its_breakpoint_and_is_offered_hot_reload()
+    private void A_program_held_at_its_start_in_a_container_is_let_go_by_the_attach_stops_at_its_breakpoint_and_is_offered_hot_reload()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("held", turns.Glibc, "-e", Held, "-e", "DOTNET_MODIFIABLE_ASSEMBLIES=debug");
@@ -183,8 +208,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// <summary>A build whose PDB names the container's own paths (/src/Turns, its sources there too): attached to with no
     /// map, its breakpoint binds by the document in the container; through a path map at the protocol's edge (what a container
     /// run configuration gives), its stop shows in the editor's file.</summary>
-    [AvaloniaFact]
-    public void A_build_naming_the_containers_paths_stops_at_its_breakpoint_by_the_document_there_and_through_a_path_map_in_the_editor()
+    private void A_build_naming_the_containers_paths_stops_at_its_breakpoint_by_the_document_there_and_through_a_path_map_in_the_editor()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("mapped", turns.Mapped);
@@ -215,8 +239,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
 
     /// <summary>A build whose PDB names a Windows machine's paths (C:\work\Turns), debugged in a Linux container: the
     /// breakpoint's path, given in another letter case as Windows may (c:\WORK\turns), binds there as Windows names files.</summary>
-    [AvaloniaFact]
-    public void A_build_naming_a_windows_machines_paths_stops_at_its_breakpoint_in_a_linux_container()
+    private void A_build_naming_a_windows_machines_paths_stops_at_its_breakpoint_in_a_linux_container()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("windows", turns.Windows);
@@ -243,8 +266,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// /src where the PDB names its sources, the folder holding another Program.cs of that name under samples/: attached
     /// to, its stop opens the folder's own file at its line, as the top frame names it, the image's paths read from the
     /// Dockerfile of the service Compose's labels on the container name. With no map, the stop showed nowhere (#1523).</summary>
-    [AvaloniaFact]
-    public void A_program_built_in_its_image_by_the_folders_compose_file_stops_in_the_folders_file_which_its_top_frame_opens()
+    private void A_program_built_in_its_image_by_the_folders_compose_file_stops_in_the_folders_file_which_its_top_frame_opens()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string project = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}turnscomposed";
@@ -261,8 +283,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// <summary>A deterministic build's program (its PDB naming <c>/_/Turns/Program.cs</c>) in an image of the build alone,
     /// run by hand, of which the folder says nothing: attached to, its stop opens the one file of the folder its path ends
     /// in, as a breakpoint there bound to it (#1523).</summary>
-    [AvaloniaFact]
-    public void A_deterministic_build_in_a_container_run_by_hand_stops_in_the_folders_file_its_path_ends_in()
+    private void A_deterministic_build_in_a_container_run_by_hand_stops_in_the_folders_file_its_path_ends_in()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         string container = Start("deterministic", turns.DeterministicImage);
@@ -305,8 +326,7 @@ public sealed class ContainerDebuggingTests(ContainerDebuggingTests.Turns turns)
     /// <summary>With no copy of the tools here, attaching downloads the release's of this version from its feed (a stand-in
     /// on loopback), checked against the release's SHA256SUMS, and caches them; a SHA256SUMS that names other bytes is
     /// refused, the status bar saying so, and nothing is copied into the container.</summary>
-    [AvaloniaFact]
-    public void The_container_tools_download_from_their_release_checked_against_its_SHA256SUMS_and_a_wrong_checksum_is_refused()
+    private void The_container_tools_download_from_their_release_checked_against_its_SHA256SUMS_and_a_wrong_checksum_is_refused()
     {
         Assert.SkipWhen(turns.WhyNot is not null, turns.WhyNot ?? string.Empty);
         using UpdatesTests.StandIn github = new();
