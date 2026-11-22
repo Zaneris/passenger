@@ -84,7 +84,9 @@ public sealed partial class Vim
                 // Nothing to join: visual mode ends all the same, the caret at the stretch's start, or where . found it.
                 if (replaying)
                 {
-                    return new VimResult(true, SelectionSet.Create([.. taken.Select(r => Selection.At(Settled(text, r.Anchor, breakEnds)))], 0));
+                    // Made again by characters over lines the text no longer holds, the caret goes where the stretch was cut back to.
+                    return new VimResult(true, SelectionSet.Create([.. taken.Select(r => Selection.At(Settled(text, mode == VimMode.Visual && r.Cursor < r.Anchor
+                        ? r.Cursor : r.Anchor, breakEnds)))], 0));
                 }
                 return new VimResult(true, block ? SelectionSet.Single(Settled(text, VimMotions.OffsetAtColumn(text, top, left, tab), breakEnds))
                     : mode == VimMode.VisualLine ? starts.With(c => Selection.At(VimMotions.LineOf(text, c.Caret).Start))
@@ -107,6 +109,11 @@ public sealed partial class Vim
             blockChange = block && !lines && basic == "c" && stretches.Count > 0;
             if (stretches.Count == 0)
             {
+                if (basic is not ("y" or "c"))
+                {
+                    // Taking nothing, the change is still the one . makes again.
+                    Remember(acting);
+                }
                 // A block with nothing in its columns still yanks and changes, and over more than one line deletes, a piece for each line.
                 if (block && basic == "y")
                 {

@@ -223,10 +223,11 @@ public sealed partial class Vim(VimRegisters registers)
         VimResult result = command is null ? VimResult.Held
             : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
             : Run(command, text, selections, view);
-        if (command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#" }
+        if ((command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
+            || (command is { Operator: not null, Name: not ("i" or "a" or "$") } && ReferenceEquals(result, VimResult.Held)))
         {
-            // One that can't act (nothing to repeat or put, no character, nowhere to go) keeps the column j and k aim for.
+            // One that can't act (nothing to repeat or put, nowhere to go, its operator's motion failing) keeps j and k's column.
             wantedFor = aimedFor;
         }
         return Told(result, command?.Name);
@@ -735,6 +736,11 @@ public sealed partial class Vim(VimRegisters registers)
             replaying = false;
             blockAgain = null;
             pending.Clear();
+        }
+        if (change.Visual is { Mode: VimMode.VisualLine, Again: InsertAgain.None } && change.Keys.Count > 0 && change.Keys[^1] is "u" or "U" or "~")
+        {
+            // A change of case over lines made again leaves the carets where it began, as Vim's does.
+            carets = selections;
         }
         if (plans.Count == 0)
         {

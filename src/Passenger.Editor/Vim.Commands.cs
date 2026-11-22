@@ -346,7 +346,8 @@ public sealed partial class Vim
         });
         if (!any)
         {
-            return VimResult.Held;
+            // A $ cut short aims j and k at the line's end all the same.
+            return command.Name == "$" ? Aimed(selections, [.. Enumerable.Repeat(int.MaxValue, selections.Count)]) : VimResult.Held;
         }
         // $ aims j and k at each line's end, and | at the column it asked for, however short the line.
         VimResult result = command.Name switch

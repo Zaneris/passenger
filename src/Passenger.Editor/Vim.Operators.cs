@@ -48,6 +48,11 @@ public sealed partial class Vim
         {
             // Nothing to act on: a count of words cut short leaves each caret where it ran out, as Vim's does.
             SelectionSet left = SelectionSet.Create(ranOut, selections.PrimaryIndex);
+            if (command.Name == "$")
+            {
+                // A $ cut short aims j and k at the line's end all the same.
+                Aimed(left, [.. Enumerable.Repeat(int.MaxValue, left.Count)]);
+            }
             return left.SameAs(selections) ? VimResult.Held : new VimResult(true, left);
         }
         return Act(command, op, stretches, text, selections, view);

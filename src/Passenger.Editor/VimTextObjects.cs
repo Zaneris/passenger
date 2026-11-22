@@ -636,7 +636,13 @@ public static class VimTextObjects
         {
             if (innerStart == openLine.EndIncludingBreak && closeLine.Line - 1 >= openLine.Line + 1)
             {
-                return new VimSpan(innerStart, text.GetLineStart(closeLine.Line - 1), true);
+                // Lines of blanks before the closing line are left out, and with nothing else inside nothing is taken.
+                int last = closeLine.Line - 1;
+                while (last > openLine.Line && text.GetLine(last) is { Length: > 0 } blanks && TextNavigation.IndentEnd(text, blanks) == blanks.End)
+                {
+                    last--;
+                }
+                return last > openLine.Line ? new VimSpan(innerStart, text.GetLineStart(last), true) : new VimSpan(innerStart, innerStart, false);
             }
             innerEnd = closeLine.Line - 1 >= 0 ? text.GetLine(closeLine.Line - 1).End : innerEnd;
             innerEnd = Math.Max(innerEnd, innerStart);

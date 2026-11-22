@@ -566,11 +566,12 @@ public sealed partial class Vim
             }
             if (moved is not { } reached)
             {
-                // A $ cut short still aims at the line's end, and a { or } cut short aims a block at the cursor.
-                visualAims[i] = command.Name == "$" && !block ? int.MaxValue : visualAims[i];
+                // A $ cut short still aims at the line's end; a word's end, sentence, paragraph or search at the cursor.
+                bool resets = command.Name is "e" or "E" or "ge" or "gE" or "(" or ")" or "{" or "}" or "n" or "N";
+                visualAims[i] = block ? visualAims[i] : command.Name == "$" ? int.MaxValue : resets ? -1 : visualAims[i];
                 blockColumns = !block ? blockColumns
                     : command.Name == "$" ? blockColumns with { ToEnd = true }
-                    : command.Name is "{" or "}" ? blockColumns with { ToEnd = false, Cursor = TextNavigation.VisualColumn(text, cursor, tab) }
+                    : resets ? blockColumns with { ToEnd = false, Cursor = TextNavigation.VisualColumn(text, cursor, tab) }
                     : blockColumns;
                 continue;
             }
