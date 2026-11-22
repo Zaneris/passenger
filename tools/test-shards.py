@@ -1248,7 +1248,9 @@ def ran_whole(name, ran, entry):
 
 def update(arguments):
     """TestTimes.json from runs' results: each class's seconds on each system, the mean of the runs that ran it whole,
-    each as a lone test process takes it (a run's beside another's at once by its system's PACED)."""
+    each as a lone test process takes it (a run's beside another's at once by its system's PACED); one a shard did not
+    reach, its seconds from before, or what the runs measured of it on another system at this one's pace where more, as
+    its seconds from before may be a skip's."""
     old = load(arguments.times, {})
     spent = {}
     suites = {}
@@ -1284,14 +1286,18 @@ def update(arguments):
             for test_class, seconds in classes.items():
                 spent.setdefault(system, {}).setdefault(test_class, []).append(seconds)
     times = {}
+    every = {system: {name: round(sum(values) / len(values), 1) for name, values in classes.items()}
+             for system, classes in spent.items()}
     for system in SYSTEMS:
         if system not in spent:
             if system in old:
                 times[system] = old[system]
             continue
-        measured = {name: round(sum(values) / len(values), 1) for name, values in spent[system].items()}
-        # A class a shard that stopped early never reported keeps its seconds from before, while the suite has it.
-        kept = {name: seconds for name, seconds in old.get(system, {}).items()
+        measured = every[system]
+        # Unreported (its shard stopped early), a class keeps its seconds from before, or, where more, another system's.
+        kept = {name: round(max([seconds] + [pace(every, system, other) * every[other][name] for other in every
+                                             if other != system and name in every[other]]), 1)
+                for name, seconds in old.get(system, {}).items()
                 if name not in measured and name in suites.get(system, set())}
         times[system] = dict(sorted({**kept, **measured}.items()))
         unmeasured = partly.get(system, set()) - set(measured)
