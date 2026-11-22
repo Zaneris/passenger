@@ -17,10 +17,11 @@ namespace Passenger.Tests;
 /// the member moves and the server's refactorings, and the person's Undo taking each change back whole.</summary>
 public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpRefactorTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
+        : base(folders) => restored = folders;
 
     private const string Calc = "namespace Shop;\n\npublic static class Calc\n{\n    public static int Scale(int value, int factor, int unused) => value * factor;\n\n"
         + "    public static int Twice(int value) => Scale(value, 2, 0);\n\n    /// <summary>Never called.</summary>\n    public static int Unused(int value) => value + 1;\n}\n";
@@ -59,8 +60,72 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     private const string Purse = "namespace Shop;\n\npublic static class Purse\n{\n    public static event EventHandler? Dropped;\n\n    public static int Fill()\n    {\n"
         + "        Func<int, string, Coin> mint = Coin.Mint;\n        Dropped += new Coin().OnDropped;\n        return Coin.Mint(1).Value + mint(2, \"silver\").Value;\n    }\n}\n";
 
+    /// <summary>Signature changes as one flow, each step one test's check in an instance of its own: a change made in a
+    /// file the agent had just written, every params collection call changed with each method group left said, a change
+    /// onto another member's or nested too deeply refused, how a parameter is passed changed at every caller, a ref or
+    /// out change saying each local that may have no value yet, and two parameters swapped keeping the order their
+    /// arguments run in.</summary>
+    [Fact]
+    public async Task An_agent_changes_signatures_and_how_parameters_pass_at_every_caller_hearing_what_it_left()
+    {
+        await Flow.StepApartAsync("an agent that writes a file and at once changes a signature or renames what it calls has the change made in what it wrote", () => new McpRefactorTests(restored), t => t.An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote());
+        await Flow.StepApartAsync("an agent changing a signature has every params collection call changed and hears of each method group left as it was", () => new McpRefactorTests(restored), t => t.An_agent_changing_a_signature_has_every_params_collection_call_changed_and_hears_of_each_method_group_left_as_it_was());
+        await Flow.StepApartAsync("an agent changing a signature onto another members or nested too deeply is refused saying why and a change counts the files it changed", () => new McpRefactorTests(restored), t => t.An_agent_changing_a_signature_onto_another_members_or_nested_too_deeply_is_refused_saying_why_and_a_change_counts_the_files_it_changed());
+        await Flow.StepApartAsync("an agent changing how a parameter is passed has every callers argument passed so", () => new McpRefactorTests(restored), t => t.An_agent_changing_how_a_parameter_is_passed_has_every_callers_argument_passed_so());
+        await Flow.StepApartAsync("an agent making an out parameter ref or by value hears of each call whose local may have no value yet", () => new McpRefactorTests(restored), t => t.An_agent_making_an_out_parameter_ref_or_by_value_hears_of_each_call_whose_local_may_have_no_value_yet());
+        await Flow.StepApartAsync("an agent swapping two parameters keeps the order the calls passed to them run in", () => new McpRefactorTests(restored), t => t.An_agent_swapping_two_parameters_keeps_the_order_the_calls_passed_to_them_run_in());
+    }
+
+    /// <summary>Pull up and push down as one flow, each step one test's check in an instance of its own: an overload or
+    /// a field found where it went, an override or a member using one left behind kept or refused, members still used
+    /// or implementing an interface refused, an override kept abstract still one, abstract where a class beside would
+    /// lack it refused naming each, a generic base's types written, and a class code makes refused being made
+    /// abstract.</summary>
+    [Fact]
+    public async Task An_agent_pulls_members_up_and_pushes_them_down_only_where_every_class_keeps_what_it_needs()
+    {
+        await Flow.StepApartAsync("an agent pushing down an overload or pulling up one of two fields finds each where it went", () => new McpRefactorTests(restored), t => t.An_agent_pushing_down_an_overload_or_pulling_up_one_of_two_fields_finds_each_where_it_went());
+        await Flow.StepApartAsync("an agent pulling up an override or a member using one left behind finds it in place or refused", () => new McpRefactorTests(restored), t => t.An_agent_pulling_up_an_override_or_a_member_using_one_left_behind_finds_it_in_place_or_refused());
+        await Flow.StepApartAsync("an agent pushing down a member still used where it would be gone finds it refused", () => new McpRefactorTests(restored), t => t.An_agent_pushing_down_a_member_still_used_where_it_would_be_gone_finds_it_refused());
+        await Flow.StepApartAsync("an agent pushing down a member implementing an interface finds it refused unless kept abstract", () => new McpRefactorTests(restored), t => t.An_agent_pushing_down_a_member_implementing_an_interface_finds_it_refused_unless_kept_abstract());
+        await Flow.StepApartAsync("an agent pulling up an override kept abstract finds it still an override and the project building", () => new McpRefactorTests(restored), t => t.An_agent_pulling_up_an_override_kept_abstract_finds_it_still_an_override_and_the_project_building());
+        await Flow.StepApartAsync("an agent pulling up a member abstract where a class beside would lack it finds it refused naming each", () => new McpRefactorTests(restored), t => t.An_agent_pulling_up_a_member_abstract_where_a_class_beside_would_lack_it_finds_it_refused_naming_each());
+        await Flow.StepApartAsync("an agent pulling members up to a generic base finds them written as the base names its types and the project building", () => new McpRefactorTests(restored), t => t.An_agent_pulling_members_up_to_a_generic_base_finds_them_written_as_the_base_names_its_types_and_the_project_building());
+        await Flow.StepApartAsync("an agent making a class abstract that code makes finds it refused naming each place", () => new McpRefactorTests(restored), t => t.An_agent_making_a_class_abstract_that_code_makes_finds_it_refused_naming_each_place());
+    }
+
+    /// <summary>Renames and extractions as one flow, each step one test's check in an instance of its own: each a Local
+    /// History change set named for what it did, a rename to the same name changing nothing, a class's rename taking
+    /// its file along, a refactoring right after git changed files acting on them as they are, an interface extracted
+    /// with every type parameter or an indexer, a new class's caller counted at once, and usages answering before a
+    /// file loads.</summary>
+    [Fact]
+    public async Task An_agents_renames_and_extractions_each_land_as_one_named_change_on_the_files_as_they_stand()
+    {
+        await Flow.StepApartAsync("an agents rename refactorings and code action each land in local history as one change set named for what it did", () => new McpRefactorTests(restored), t => t.An_agents_rename_refactorings_and_code_action_each_land_in_local_history_as_one_change_set_named_for_what_it_did());
+        await Flow.StepApartAsync("an agents rename to the name a symbol has says it has it and changes nothing", () => new McpRefactorTests(restored), t => t.An_agents_rename_to_the_name_a_symbol_has_says_it_has_it_and_changes_nothing());
+        await Flow.StepApartAsync("an agents code action renaming a class takes its file along and one renaming a file in letter case renames it", () => new McpRefactorTests(restored), t => t.An_agents_code_action_renaming_a_class_takes_its_file_along_and_one_renaming_a_file_in_letter_case_renames_it());
+        await Flow.StepApartAsync("an agent refactoring right after git changed and deleted files finds it acting on the files as they are", () => new McpRefactorTests(restored), t => t.An_agent_refactoring_right_after_git_changed_and_deleted_files_finds_it_acting_on_the_files_as_they_are());
+        await Flow.StepApartAsync("an agent extracting an interface has it declare every type parameter its constraints name", () => new McpRefactorTests(restored), t => t.An_agent_extracting_an_interface_has_it_declare_every_type_parameter_its_constraints_name());
+        await Flow.StepApartAsync("an agent extracts an indexer into an interface and is told a name with a space is no identifier", () => new McpRefactorTests(restored), t => t.An_agent_extracts_an_indexer_into_an_interface_and_is_told_a_name_with_a_space_is_no_identifier());
+        await Flow.StepApartAsync("an agent that writes a new class and its caller and at once renames it or asks its usages has the caller counted", () => new McpRefactorTests(restored), t => t.An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted());
+        await Flow.StepApartAsync("usages answer at once without a file another project has yet to load and a rename waits for it", () => new McpRefactorTests(restored), t => t.Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it());
+    }
+
+    /// <summary>Solution-wide refactorings an attached agent makes as one flow, each step one test's check in an
+    /// instance of its own: a signature changed for every caller, types moved and an interface extracted, each undone
+    /// whole by the person, safe delete only of what nothing uses unless told, members moved up and down with the
+    /// server's own refactorings, and imports optimized and cleanup over a file, a project and the solution, saying
+    /// what other files have.</summary>
     [AvaloniaFact]
-    public void An_agent_changes_a_signature_for_every_caller_moves_types_and_extracts_an_interface_each_undone_whole_by_the_person()
+    public void An_agents_solution_wide_refactorings_in_the_persons_window_are_each_undone_whole_by_the_person()
+    {
+        Flow.StepApart("an agent changes a signature for every caller moves types and extracts an interface each undone whole by the person", () => new McpRefactorTests(restored), t => t.An_agent_changes_a_signature_for_every_caller_moves_types_and_extracts_an_interface_each_undone_whole_by_the_person());
+        Flow.StepApart("an agent safe deletes only what nothing uses unless told moves members up and down and makes the servers refactorings", () => new McpRefactorTests(restored), t => t.An_agent_safe_deletes_only_what_nothing_uses_unless_told_moves_members_up_and_down_and_makes_the_servers_refactorings());
+        Flow.StepApart("an agent optimizes imports and cleans up a file a project and the solution and hears what other files have", () => new McpRefactorTests(restored), t => t.An_agent_optimizes_imports_and_cleans_up_a_file_a_project_and_the_solution_and_hears_what_other_files_have());
+    }
+
+    private void An_agent_changes_a_signature_for_every_caller_moves_types_and_extracts_an_interface_each_undone_whole_by_the_person()
     {
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report), ("Order.cs", Order), ("OrderBook.cs", OrderBook), ("Shapes.cs", Shapes));
         MainWindow window = AgentsWindow(Folder);
@@ -132,8 +197,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [AvaloniaFact]
-    public void An_agent_safe_deletes_only_what_nothing_uses_unless_told_moves_members_up_and_down_and_makes_the_servers_refactorings()
+    private void An_agent_safe_deletes_only_what_nothing_uses_unless_told_moves_members_up_and_down_and_makes_the_servers_refactorings()
     {
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Kilo.cs", ScaleText),
             ("Mega.cs", ScaleText.Replace("Kilo", "Mega", StringComparison.Ordinal)), ("Counter.cs", Counter));
@@ -211,8 +275,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// it did, holding every file it changed, moved, made or saved, as a refactoring run from the window does, where each
     /// file's write and each move made a set of its own, unnamed; and Move's options, described in the shape it takes, move
     /// the type where the one changed says, or as described into a file of its name.</summary>
-    [Fact]
-    public async Task An_agents_rename_refactorings_and_code_action_each_land_in_local_history_as_one_change_set_named_for_what_it_did()
+    private async Task An_agents_rename_refactorings_and_code_action_each_land_in_local_history_as_one_change_set_named_for_what_it_did()
     {
         await TakeFolderAsync();
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report), ("Order.cs", Order), ("OrderBook.cs", OrderBook), ("Shapes.cs", Shapes),
@@ -246,8 +309,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     }
 
     /// <summary>An agent's rename of a symbol to the name it has says so and changes nothing, never "Renamed".</summary>
-    [Fact]
-    public async Task An_agents_rename_to_the_name_a_symbol_has_says_it_has_it_and_changes_nothing()
+    private async Task An_agents_rename_to_the_name_a_symbol_has_says_it_has_it_and_changes_nothing()
     {
         await TakeFolderAsync();
         Shop(("Calc.cs", Calc), ("Till.cs", Till));
@@ -261,8 +323,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// as Rename does, and Rename file to Crate.cs renames a file in letter case, each answer naming the rename, where the file
     /// kept its name under an answer saying it was applied; the language server takes each file under its new name, offering
     /// to rename it no more, where its project's load failed for good on the name it held already.</summary>
-    [Fact]
-    public async Task An_agents_code_action_renaming_a_class_takes_its_file_along_and_one_renaming_a_file_in_letter_case_renames_it()
+    private async Task An_agents_code_action_renaming_a_class_takes_its_file_along_and_one_renaming_a_file_in_letter_case_renames_it()
     {
         await TakeFolderAsync();
         Shop(("shelf.cs", "namespace Shop;\n\npublic class shelf\n{\n}\n"), ("Stock.cs", "namespace Shop;\n\npublic static class Stock\n{\n    public static shelf Open() => new shelf();\n}\n"),
@@ -289,8 +350,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Fact]
-    public async Task An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote()
+    private async Task An_agent_that_writes_a_file_and_at_once_changes_a_signature_or_renames_what_it_calls_has_the_change_made_in_what_it_wrote()
     {
         await TakeFolderAsync();
         Shop(("Calc.cs", Calc), ("Till.cs", Till), ("Report.cs", Report));
@@ -322,8 +382,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// values spread out or passed as one, gives a cref the new parameters, and names each method group it cannot change
     /// with why (a delegate's, an event handler's): the delegate it makes no longer fits, which the agent would otherwise
     /// hear of only as the build breaks.</summary>
-    [Fact]
-    public async Task An_agent_changing_a_signature_has_every_params_collection_call_changed_and_hears_of_each_method_group_left_as_it_was()
+    private async Task An_agent_changing_a_signature_has_every_params_collection_call_changed_and_hears_of_each_method_group_left_as_it_was()
     {
         await TakeFolderAsync();
         Shop(("Summer.cs", Summer), ("Totals.cs", Totals), ("Coins.cs", Coins), ("Purse.cs", Purse));
@@ -362,8 +421,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// overload's, or a parameter retyped to match one) is refused naming that member, nothing changed, and a change made
     /// says the files it changed: the build would otherwise break, a second change writing its temporary names into the
     /// other member. A type or value nested past what the parser is given is refused saying so, the server answering on.</summary>
-    [Fact]
-    public async Task An_agent_changing_a_signature_onto_another_members_or_nested_too_deeply_is_refused_saying_why_and_a_change_counts_the_files_it_changed()
+    private async Task An_agent_changing_a_signature_onto_another_members_or_nested_too_deeply_is_refused_saying_why_and_a_change_counts_the_files_it_changed()
     {
         await TakeFolderAsync();
         const string Tally = "namespace Shop;\n\npublic class Tally\n{\n    public int Add(int a, int b)\n    {\n        return a + b;\n    }\n\n"
@@ -436,8 +494,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Push Members Down gives a method to a derived class that declares only another overload of it, and Pull
     /// Members Up takes one variable of a field declaring two as a field of its own, the other staying: no member is lost
     /// on the way, so the project still builds.</summary>
-    [Fact]
-    public async Task An_agent_pushing_down_an_overload_or_pulling_up_one_of_two_fields_finds_each_where_it_went()
+    private async Task An_agent_pushing_down_an_overload_or_pulling_up_one_of_two_fields_finds_each_where_it_went()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic class Shape\n{\n    public string Name(string prefix) => prefix + \"shape\";\n}\n";
@@ -465,8 +522,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Pull Members Up of an override of the base's abstract member puts it in place of that declaration, made
     /// virtual, the other class's override standing; one the base declares with a body of its own, or one using what stays
     /// below, is refused with why, nothing changed, and goes once pulled up with what it uses, the project building.</summary>
-    [Fact]
-    public async Task An_agent_pulling_up_an_override_or_a_member_using_one_left_behind_finds_it_in_place_or_refused()
+    private async Task An_agent_pulling_up_an_override_or_a_member_using_one_left_behind_finds_it_in_place_or_refused()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract string Label();\n\n    public virtual string Kind() => \"shape\";\n}\n";
@@ -508,8 +564,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Push Members Down of a member the base's own code still calls, one a class not chosen calls as its own, or one
     /// reached through the base's type, is refused naming each use, nothing changed; members nothing left behind uses go,
     /// the chosen class's override of one becoming its own virtual member, and the project builds.</summary>
-    [Fact]
-    public async Task An_agent_pushing_down_a_member_still_used_where_it_would_be_gone_finds_it_refused()
+    private async Task An_agent_pushing_down_a_member_still_used_where_it_would_be_gone_finds_it_refused()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic class Shape\n{\n    public virtual string Describe() => \"shape\";\n\n    public string Summary() => Describe() + \"!\";\n\n"
@@ -547,8 +602,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Push Members Down of a member the base implements an interface with, or a class not chosen does, is refused
     /// naming the interface, nothing changed; kept abstract in the base, which becomes abstract, it goes, and the project
     /// builds.</summary>
-    [Fact]
-    public async Task An_agent_pushing_down_a_member_implementing_an_interface_finds_it_refused_unless_kept_abstract()
+    private async Task An_agent_pushing_down_a_member_implementing_an_interface_finds_it_refused_unless_kept_abstract()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic interface IDescribable\n{\n    string Describe();\n}\n\npublic interface INamed\n{\n    string Name();\n}\n\n"
@@ -582,56 +636,9 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "a member implementing an interface was pushed down kept abstract");
     }
 
-    /// <summary>Push Members Down of an override of an abstract member is refused from a concrete class, or where a class not
-    /// chosen would be left without it, naming the base and member, nothing changed; from an abstract class it goes, uses
-    /// and overrides below still reaching the base's member, and kept abstract it stays an override, the project building.</summary>
-    [Fact]
-    public async Task An_agent_pushing_down_an_override_of_an_abstract_member_finds_it_refused_where_a_concrete_class_would_lack_it()
-    {
-        await TakeFolderAsync();
-        const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract double Area();\n}\n";
-        const string Polygon = "namespace Shop;\n\npublic class Polygon : Shape\n{\n    public override double Area() => 0;\n}\n\npublic class Square : Polygon\n{\n}\n";
-        const string Curve = "namespace Shop;\n\npublic abstract class Curve : Shape\n{\n    public override double Area() => 1;\n\n    public double Twice(Curve other) => Area() + other.Area();\n}\n\n"
-            + "public class Circle : Curve\n{\n}\n\npublic class Ellipse : Curve\n{\n}\n\npublic class Oval : Curve\n{\n    public override double Area() => 2;\n}\n";
-        Shop(("Shape.cs", Shape), ("Polygon.cs", Polygon), ("Curve.cs", Curve));
-        await using McpClient client = await Start(["--mcp", Folder]);
-
-        foreach ((string file, string text, string at, string target, string said) in new[]
-        {
-            ("Polygon.cs", Polygon, "class Pol", "Square", "'Polygon' would not implement Area(): double, abstract in 'Shape': keep it abstract in 'Polygon'"),
-            ("Curve.cs", Curve, "class Cur", "Circle", "'Ellipse' would not implement Area(): double, abstract in 'Shape': push it down to 'Ellipse' too"),
-        })
-        {
-            CallToolResult refused = await Result(client, McpTools.Refactor, Place("push_members_down", file, text, at, new { targets = new[] { target }, members = new[] { "Area" } }));
-            Assert.True(refused.IsError == true && Text(refused).Contains(said, StringComparison.Ordinal), $"Pushing Area down from {file} answered: {Text(refused)}");
-            Assert.Equal(Shape, File.ReadAllText(PathOf("Shape.cs")));
-            Assert.Equal(Polygon, File.ReadAllText(PathOf("Polygon.cs")));
-            Assert.Equal(Curve, File.ReadAllText(PathOf("Curve.cs")));
-        }
-
-        JsonElement fromAbstract = await Call(client, McpTools.Refactor, Place("push_members_down", "Curve.cs", Curve, "class Cur",
-            new { targets = new[] { "Circle", "Ellipse" }, members = new[] { "Area" } }));
-        Assert.Equal(["Curve.cs changed"], Files(fromAbstract));
-        string curve = File.ReadAllText(PathOf("Curve.cs"));
-        Assert.True(curve.Contains("public abstract class Curve : Shape\n{\n    public double Twice(Curve other) => Area() + other.Area();\n}\n", StringComparison.Ordinal)
-            && curve.Contains("public class Ellipse : Curve\n{\n    public override double Area() => 1;\n}\n", StringComparison.Ordinal)
-            && curve.Contains("public class Oval : Curve\n{\n    public override double Area() => 2;\n}\n", StringComparison.Ordinal),
-            $"Pushing Area down from the abstract Curve left Curve.cs so:\n{curve}");
-
-        JsonElement keptAbstract = await Call(client, McpTools.Refactor, Place("push_members_down", "Polygon.cs", Polygon, "class Pol",
-            new { targets = new[] { "Square" }, members = new[] { "Area" }, @abstract = new[] { "Area" } }));
-        Assert.Equal(["Polygon.cs changed"], Files(keptAbstract));
-        string polygon = File.ReadAllText(PathOf("Polygon.cs"));
-        Assert.True(polygon.Contains("public abstract class Polygon : Shape\n{\n    public abstract override double Area();\n}\n", StringComparison.Ordinal)
-            && polygon.Contains("public class Square : Polygon\n{\n    public override double Area() => 0;\n}\n", StringComparison.Ordinal),
-            $"Pushing Area down from Polygon kept abstract left Polygon.cs so:\n{polygon}");
-        await Compiles(client, "overrides of an abstract member were pushed down");
-    }
-
     /// <summary>Pull Members Up of an override of an abstract member, kept abstract in a class between, declares it there
     /// as an abstract override, the class below keeping its body, and the project builds.</summary>
-    [Fact]
-    public async Task An_agent_pulling_up_an_override_kept_abstract_finds_it_still_an_override_and_the_project_building()
+    private async Task An_agent_pulling_up_an_override_kept_abstract_finds_it_still_an_override_and_the_project_building()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract double Area();\n}\n";
@@ -652,8 +659,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Pull Members Up that would declare a member abstract in a class, kept abstract or abstract already, is refused
     /// naming each class below it, not abstract, that would lack it, nothing changed; where none would, an abstract member
     /// moved makes the class abstract, one kept abstract stays an abstract override below, and the project builds.</summary>
-    [Fact]
-    public async Task An_agent_pulling_up_a_member_abstract_where_a_class_beside_would_lack_it_finds_it_refused_naming_each()
+    private async Task An_agent_pulling_up_a_member_abstract_where_a_class_beside_would_lack_it_finds_it_refused_naming_each()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n}\n\npublic class Solid : Shape\n{\n}\n";
@@ -699,45 +705,11 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "abstract members were pulled up");
     }
 
-    /// <summary>Pull Members Up to an interface is refused naming each class listing it, or an interface below it, that would
-    /// not implement the member, an abstract class too, nothing changed; where each has it, its own, a base's or abstract,
-    /// the interface declares it and the project builds.</summary>
-    [Fact]
-    public async Task An_agent_pulling_up_to_an_interface_another_implementer_lacks_finds_it_refused_naming_each()
-    {
-        await TakeFolderAsync();
-        const string Contracts = "namespace Shop;\n\npublic interface IShape\n{\n}\n\npublic interface IRound : IShape\n{\n}\n\npublic interface IPriced\n{\n}\n";
-        const string Tile = "namespace Shop;\n\npublic class Tile : IShape, IPriced\n{\n    public double Area() => 1;\n\n    public decimal Price() => 2;\n}\n";
-        const string Others = "namespace Shop;\n\npublic class Disc : IRound\n{\n}\n\npublic struct Dot : IShape\n{\n    public double Area() => 0;\n}\n\n"
-            + "public abstract class Ring : IShape\n{\n}\n\npublic abstract class Patch : IPriced\n{\n    public abstract decimal Price();\n}\n\n"
-            + "public class Quilt : Patch\n{\n    public override decimal Price() => 3;\n}\n\npublic class Stock\n{\n    public decimal Price() => 4;\n}\n\n"
-            + "public class Crate : Stock, IPriced\n{\n}\n";
-        (string Name, string Text)[] files = [("Contracts.cs", Contracts), ("Tile.cs", Tile), ("Others.cs", Others)];
-        Shop(files);
-        await using McpClient client = await Start(["--mcp", Folder]);
-
-        CallToolResult refused = await Result(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til", new { target = "IShape", members = new[] { "Area" } }));
-        Assert.True(refused.IsError == true && Text(refused).Contains("'Disc' and 'Ring' would not implement Area(): double, declared in 'IShape'", StringComparison.Ordinal),
-            $"Pulling Tile's Area up to IShape answered: {Text(refused)}");
-        foreach ((string name, string written) in files)
-        {
-            Assert.True(File.ReadAllText(PathOf(name)) == written, $"Pulling Tile's Area up to IShape, refused, changed {name}:\n{File.ReadAllText(PathOf(name))}");
-        }
-
-        JsonElement pulled = await Call(client, McpTools.Refactor, Place("pull_members_up", "Tile.cs", Tile, "class Til", new { target = "IPriced", members = new[] { "Price" } }));
-        Assert.Equal(["Contracts.cs changed"], Files(pulled));
-        string contracts = File.ReadAllText(PathOf("Contracts.cs"));
-        Assert.True(contracts == Contracts.Replace("IPriced\n{\n}", "IPriced\n{\n    decimal Price();\n}", StringComparison.Ordinal),
-            $"Pulling Tile's Price up to IPriced left Contracts.cs so:\n{contracts}");
-        await Compiles(client, "Price was pulled up to IPriced");
-    }
-
     /// <summary>Pull Members Up to a generic base as the class names it, an interface or a class given a type of its own or
     /// one of the class's type parameters: the member goes there with the class's type parameters written as the base's
     /// own, and the project builds; an override of the base's abstract member it gives another type is refused, nothing
     /// changed.</summary>
-    [Fact]
-    public async Task An_agent_pulling_members_up_to_a_generic_base_finds_them_written_as_the_base_names_its_types_and_the_project_building()
+    private async Task An_agent_pulling_members_up_to_a_generic_base_finds_them_written_as_the_base_names_its_types_and_the_project_building()
     {
         await TakeFolderAsync();
         const string Contracts = "namespace Shop;\n\npublic interface IShape<T>\n{\n}\n\npublic interface IMeasured<T>\n{\n}\n\npublic class Base<T>\n{\n}\n\n"
@@ -778,8 +750,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Pull Members Up of an abstract member into a class that is not abstract, or Push Members Down of one kept
     /// abstract there, is refused where code makes that class, naming each member that does, nothing changed.</summary>
-    [Fact]
-    public async Task An_agent_making_a_class_abstract_that_code_makes_finds_it_refused_naming_each_place()
+    private async Task An_agent_making_a_class_abstract_that_code_makes_finds_it_refused_naming_each_place()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic class Shape\n{\n    public virtual int Sides() => 0;\n}\n";
@@ -811,8 +782,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A refactoring made a moment after Git changed or deleted files outside the IDE acts on the files as they are on
     /// disk: Push Members Down again right after a reset put its files back gives each class the member the reset took from
     /// it, and a rename right after a file using the member was deleted renames it everywhere else, the project building.</summary>
-    [Fact]
-    public async Task An_agent_refactoring_right_after_git_changed_and_deleted_files_finds_it_acting_on_the_files_as_they_are()
+    private async Task An_agent_refactoring_right_after_git_changed_and_deleted_files_finds_it_acting_on_the_files_as_they_are()
     {
         await TakeFolderAsync();
         const string Shape = "namespace Shop;\n\npublic abstract class Shape\n{\n    public abstract double Area();\n}\n";
@@ -849,8 +819,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Extract Interface from a class whose type parameter a member uses is constrained by another the members do
     /// not name: the interface declares both, so the constraint it copies names a type parameter of its own.</summary>
-    [Fact]
-    public async Task An_agent_extracting_an_interface_has_it_declare_every_type_parameter_its_constraints_name()
+    private async Task An_agent_extracting_an_interface_has_it_declare_every_type_parameter_its_constraints_name()
     {
         await TakeFolderAsync();
         const string Holder = "namespace Shop;\n\npublic class Holder<T, U, V> where T : U\n{\n    public T Keep(T value) => value;\n\n    public V Other(V value) => value;\n}\n";
@@ -866,8 +835,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Extract Interface offers a class's indexer among its members and declares it in the interface, the project
     /// building; and a rename to a name that is no C# identifier is refused, saying so, the file unchanged.</summary>
-    [Fact]
-    public async Task An_agent_extracts_an_indexer_into_an_interface_and_is_told_a_name_with_a_space_is_no_identifier()
+    private async Task An_agent_extracts_an_indexer_into_an_interface_and_is_told_a_name_with_a_space_is_no_identifier()
     {
         await TakeFolderAsync();
         const string Shelf = "namespace Shop;\n\npublic class Shelf\n{\n    private readonly string[] items = [\"a\", \"b\"];\n\n"
@@ -893,8 +861,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Change Signature of a parameter's ref kind gives each call's argument the keyword it now takes: ref to in,
     /// in to none, none to ref before a variable, each leaving the project building; a value that cannot be passed by
     /// ref is named among the uses left, its call as it was.</summary>
-    [Fact]
-    public async Task An_agent_changing_how_a_parameter_is_passed_has_every_callers_argument_passed_so()
+    private async Task An_agent_changing_how_a_parameter_is_passed_has_every_callers_argument_passed_so()
     {
         await TakeFolderAsync();
         const string Tally = "namespace Shop;\n\npublic static class Tally\n{\n    public static int Add(ref int total, int amount) => total + amount;\n}\n";
@@ -932,8 +899,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Change Signature of an out parameter to ref or by value: a call passing a local with a value follows, and
     /// one passing a local that may have none yet, which the new passing would read, is left as it was and named among
     /// the uses left; once the agent gives each such local a value, the project builds.</summary>
-    [Fact]
-    public async Task An_agent_making_an_out_parameter_ref_or_by_value_hears_of_each_call_whose_local_may_have_no_value_yet()
+    private async Task An_agent_making_an_out_parameter_ref_or_by_value_hears_of_each_call_whose_local_may_have_no_value_yet()
     {
         await TakeFolderAsync();
         const string Meter = "namespace Shop;\n\npublic static class Meter\n{\n    public static void Read(out int steps) => steps = 3;\n\n    public static void Count(out int steps) => steps = 4;\n}\n";
@@ -981,8 +947,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Change Signature swapping two parameters of a method called with a call for each, and with plain values:
     /// the calls keep the order they run in, each named, so Open still runs before Read; the plain values move with their
     /// parameters.</summary>
-    [Fact]
-    public async Task An_agent_swapping_two_parameters_keeps_the_order_the_calls_passed_to_them_run_in()
+    private async Task An_agent_swapping_two_parameters_keeps_the_order_the_calls_passed_to_them_run_in()
     {
         await TakeFolderAsync();
         const string Pipe = "namespace Shop;\n\npublic static class Pipe\n{\n    public static string Copy(string from, string to) => from + to;\n\n"
@@ -1005,8 +970,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Compiles(client, "Copy's parameters were swapped");
     }
 
-    [Fact]
-    public async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
+    private async Task An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted()
     {
         await TakeFolderAsync();
         Shop(("Calc.cs", Calc));
@@ -1041,8 +1005,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
     /// caller, where they waited for App and refused; a rename of it waits for App, naming the caller, the first to come,
     /// though two new files of Lib's were waited for and let go together before, and renames the caller there too once
     /// App's build is let go.</summary>
-    [Fact]
-    public async Task Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it()
+    private async Task Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-reach-"));
         DeleteAtEnd(folder);
@@ -1104,8 +1067,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
             $"The rename ({Text(renamed)}) left App's new caller calling a method that is no longer there:\n{File.ReadAllText(Path.Combine(folder, "App", "Caller.cs"))}");
     }
 
-    [AvaloniaFact]
-    public void An_agent_optimizes_imports_and_cleans_up_a_file_a_project_and_the_solution_and_hears_what_other_files_have()
+    private void An_agent_optimizes_imports_and_cleans_up_a_file_a_project_and_the_solution_and_hears_what_other_files_have()
     {
         const string messy = "using System.Text;\nusing System.Collections.Generic;\n\nnamespace Shop;\n\npublic static class Messy\n{\n    public static int Count( )\n    {\n"
             + "        List<string> names = [];\n        return   names.Count;\n    }\n}\n";

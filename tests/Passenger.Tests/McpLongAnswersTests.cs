@@ -17,10 +17,11 @@ namespace Passenger.Tests;
 /// hundreds of programs, their run configurations and thousands of routes.</summary>
 public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpLongAnswersTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
+        : base(folders) => restored = folders;
 
     private const int CallFiles = 60;
 
@@ -28,8 +29,20 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
 
     private const int BigMembers = 2500;
 
+    /// <summary>Answers held to their limit as one flow, each step one test's check in an instance of its own: every
+    /// answer that grows with the code saying how many it left out and how to read them, a line longer than an answer
+    /// cut with its pieces joining whole, and a workspace of hundreds of projects and thousands of routes and a
+    /// solution of hundreds of programs held to the limit, each listing a folder's within.</summary>
     [Fact]
-    public async Task Every_answer_that_grows_with_the_code_holds_to_the_limit_saying_how_many_it_left_out_and_how_to_read_them()
+    public async Task An_agents_answers_hold_to_their_limit_however_large_the_code_saying_what_they_left_out_and_how_to_read_on()
+    {
+        await Flow.StepApartAsync("every answer that grows with the code holds to the limit saying how many it left out and how to read them", () => new McpLongAnswersTests(restored), t => t.Every_answer_that_grows_with_the_code_holds_to_the_limit_saying_how_many_it_left_out_and_how_to_read_them());
+        await Flow.StepApartAsync("a line longer than an answer is cut saying how to read on and its pieces join whole", () => new McpLongAnswersTests(restored), t => t.A_line_longer_than_an_answer_is_cut_saying_how_to_read_on_and_its_pieces_join_whole());
+        await Flow.StepApartAsync("a workspace of hundreds of projects and thousands of routes holds to the limit and within lists those of a folder or file whole", () => new McpLongAnswersTests(restored), t => t.A_workspace_of_hundreds_of_projects_and_thousands_of_routes_holds_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole());
+        await Flow.StepApartAsync("a solution of hundreds of programs holds its run configurations and open files to the limit and within lists those of a folder or file whole", () => new McpLongAnswersTests(restored), t => t.A_solution_of_hundreds_of_programs_holds_its_run_configurations_and_open_files_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole());
+    }
+
+    private async Task Every_answer_that_grows_with_the_code_holds_to_the_limit_saying_how_many_it_left_out_and_how_to_read_them()
     {
         await TakeFolderAsync();
         Write("Much.cs", "static class Much\n{\n    public static int Used(int value) => value;\n}\n");
@@ -150,8 +163,7 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A line longer than an answer holds (a minified script's, a data file's) is cut where the answer runs out, saying how much of
     /// it was left out and the from and column that read on, and read on that way to its end and the line after it, its
     /// pieces joining whole.</summary>
-    [Fact]
-    public async Task A_line_longer_than_an_answer_is_cut_saying_how_to_read_on_and_its_pieces_join_whole()
+    private async Task A_line_longer_than_an_answer_is_cut_saying_how_to_read_on_and_its_pieces_join_whole()
     {
         string folder = TestFolders.Create("mcp-long-line-");
         DeleteAtEnd(folder);
@@ -182,8 +194,7 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(read.ToString() == line, $"The pieces of long.txt's line read on by column made {read.Length:N0} characters other than its {line.Length:N0}");
     }
 
-    [Fact]
-    public async Task A_workspace_of_hundreds_of_projects_and_thousands_of_routes_holds_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
+    private async Task A_workspace_of_hundreds_of_projects_and_thousands_of_routes_holds_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
     {
         string wide = await WideSolutionAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(wide, "Web.slnf")]);
@@ -215,8 +226,7 @@ public sealed class McpLongAnswersTests : McpRig, IClassFixture<RestoredFolders>
             $"workspace's routes within {file} answered {routesOf.GetProperty("projects").GetArrayLength()} projects and {routesOf.GetProperty("routes").GetArrayLength()} routes, not its {RoutesEach}");
     }
 
-    [Fact]
-    public async Task A_solution_of_hundreds_of_programs_holds_its_run_configurations_and_open_files_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
+    private async Task A_solution_of_hundreds_of_programs_holds_its_run_configurations_and_open_files_to_the_limit_and_within_lists_those_of_a_folder_or_file_whole()
     {
         string wide = await WideSolutionAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(wide, "Wide.slnx")], languageServer: false);

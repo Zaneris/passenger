@@ -14,13 +14,35 @@ namespace Passenger.Tests;
 /// next one starts. Each skips, saying why, where no Linux engine runs.</summary>
 public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpContainersTests(RestoredFolders folders)
-        : base(folders)
+        : base(folders) => restored = folders;
+
+    /// <summary>An agent's containers as one flow, every step needing a Linux container engine, each in an instance of
+    /// its own: the engine's containers listed with a log read and one stopped and started, a project's image published
+    /// through the SDK's container profile, and a compose configuration brought up with its services' state and taken
+    /// down by Stop.</summary>
+    [Fact]
+    public async Task An_agent_lists_runs_and_publishes_containers_through_the_engine_and_its_compose_configurations()
     {
+        await Flow.StepApartAsync("an agent lists the engines containers reads a log and stops and starts one", () => new McpContainersTests(restored), t => t.An_agent_lists_the_engines_containers_reads_a_log_and_stops_and_starts_one());
+        await Flow.StepApartAsync("an agent publishes a projects container image through build with the sdks container profile", () => new McpContainersTests(restored), t => t.An_agent_publishes_a_projects_container_image_through_build_with_the_sdks_container_profile());
+        await Flow.StepApartAsync("an agents run brings a compose configuration up with its services state and stop takes it down", () => new McpContainersTests(restored), t => t.An_agents_run_brings_a_compose_configuration_up_with_its_services_state_and_stop_takes_it_down());
     }
 
-    [Fact]
-    public async Task An_agent_lists_the_engines_containers_reads_a_log_and_stops_and_starts_one()
+    /// <summary>An attached agent's containers as one flow, every step needing a Linux container engine, each in an
+    /// instance of its own: a command in a container waiting for the person to allow it, and containers a gone
+    /// Passenger of this machine left removed as the next starts while another machine's stay.</summary>
+    [AvaloniaFact]
+    public void An_attached_agents_container_command_waits_for_the_person_and_a_gone_Passengers_containers_are_removed_but_another_machines()
+    {
+        Flow.StepApart("an agents command in a container waits for the person to allow it", () => new McpContainersTests(restored), t => t.An_agents_command_in_a_container_waits_for_the_person_to_allow_it());
+        Flow.StepApart("containers a passenger of this machine that is gone left are removed as the next one starts and another machines stay", () => new McpContainersTests(restored), t => t.Containers_a_passenger_of_this_machine_that_is_gone_left_are_removed_as_the_next_one_starts_and_another_machines_stay());
+    }
+
+    private async Task An_agent_lists_the_engines_containers_reads_a_log_and_stops_and_starts_one()
     {
         await Docker.SkipWithoutEngineAsync();
         string name = await Docker.ContainerAsync("agent", "echo agent-hello; trap 'exit 0' TERM; while true; do sleep 1; done");
@@ -54,8 +76,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent publishes a project's container image through build's publish with the SDK's own container profile,
     /// no file of its own: the image, on a base a stand-in registry serves and labelled for the run, is in the engine, and the
     /// answer names it.</summary>
-    [Fact]
-    public async Task An_agent_publishes_a_projects_container_image_through_build_with_the_sdks_container_profile()
+    private async Task An_agent_publishes_a_projects_container_image_through_build_with_the_sdks_container_profile()
     {
         await Docker.SkipWithoutEngineAsync();
         await using StandInRegistry registry = new();
@@ -86,8 +107,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Fact]
-    public async Task An_agents_run_brings_a_compose_configuration_up_with_its_services_state_and_stop_takes_it_down()
+    private async Task An_agents_run_brings_a_compose_configuration_up_with_its_services_state_and_stop_takes_it_down()
     {
         await Docker.SkipWithoutEngineAsync();
         string compose = Plain("mcp-compose-");
@@ -109,8 +129,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(string.Empty, await Docker.RunAsync("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}"));
     }
 
-    [AvaloniaFact]
-    public void An_agents_command_in_a_container_waits_for_the_person_to_allow_it()
+    private void An_agents_command_in_a_container_waits_for_the_person_to_allow_it()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         string name = Docker.Container("exec", "sleep 600");
@@ -216,8 +235,7 @@ public sealed class McpContainersTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [AvaloniaFact]
-    public void Containers_a_passenger_of_this_machine_that_is_gone_left_are_removed_as_the_next_one_starts_and_another_machines_stay()
+    private void Containers_a_passenger_of_this_machine_that_is_gone_left_are_removed_as_the_next_one_starts_and_another_machines_stay()
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         MainWindow window = Ui.OpenFolder(Plain("mcp-left-"));

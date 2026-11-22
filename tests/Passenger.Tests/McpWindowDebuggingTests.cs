@@ -23,15 +23,27 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpWindowDebuggingTests(RestoredFolders folders)
-        : base(folders)
+        : base(folders) => restored = folders;
+
+    /// <summary>An attached agent's debugging as one flow, each step one test's check in an instance of its own: a
+    /// project file's diagnostics from its own checks while a build runs, the person asked once before the agent first
+    /// runs, sets a breakpoint, evaluates or types into a program in the terminal, and the window taking keys while the
+    /// agent finds ten thousand usages.</summary>
+    [AvaloniaFact]
+    public void An_attached_agents_debugging_asks_the_person_once_and_its_work_leaves_the_window_its_keys()
     {
+        Flow.StepApart("an agents diagnostics for a project file come from its own checks while a build runs", () => new McpWindowDebuggingTests(restored), t => t.An_agents_diagnostics_for_a_project_file_come_from_its_own_checks_while_a_build_runs());
+        Flow.StepApart("an agent is asked once before it first runs sets a breakpoint evaluates or types into a program in the terminal", () => new McpWindowDebuggingTests(restored), t => t.An_agent_is_asked_once_before_it_first_runs_sets_a_breakpoint_evaluates_or_types_into_a_program_in_the_terminal());
+        Flow.StepApart("the window takes keys while an attached agent finds ten thousand usages each with its line", () => new McpWindowDebuggingTests(restored), t => t.The_window_takes_keys_while_an_attached_agent_finds_ten_thousand_usages_each_with_its_line());
     }
 
     /// <summary>An agent's diagnostics for a project file wait for that file's own checks alone, never for a build running
     /// meanwhile.</summary>
-    [AvaloniaFact]
-    public void An_agents_diagnostics_for_a_project_file_come_from_its_own_checks_while_a_build_runs()
+    private void An_agents_diagnostics_for_a_project_file_come_from_its_own_checks_while_a_build_runs()
     {
         File.WriteAllText(Path.Combine(Folder, "Directory.Build.targets"), """
             <Project>
@@ -75,8 +87,7 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
     /// input; saving and stopping are never asked about. The configuration uses the terminal: run answers with what the
     /// program's tab shows, debug_start stops at a breakpoint on Main's first line, debug_input types into its tab, and
     /// output reads the tab, the program's end in it.</summary>
-    [AvaloniaFact]
-    public void An_agent_is_asked_once_before_it_first_runs_sets_a_breakpoint_evaluates_or_types_into_a_program_in_the_terminal()
+    private void An_agent_is_asked_once_before_it_first_runs_sets_a_breakpoint_evaluates_or_types_into_a_program_in_the_terminal()
     {
         Write("Program.cs", File.ReadAllText(Debugging.Helpers.Debuggees.Source("TerminalConsoleApp", "Program.cs")));
         MainWindow window = AgentsWindow(Folder, languageServer: false);
@@ -131,8 +142,7 @@ public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFold
     /// <summary>While an attached agent's ten thousand usages are found, each with its line read from its closed file, the
     /// window takes every key typed; the files the answer only counted are read through within, and from where one file's
     /// places run past the limit, to every place.</summary>
-    [AvaloniaFact]
-    public void The_window_takes_keys_while_an_attached_agent_finds_ten_thousand_usages_each_with_its_line()
+    private void The_window_takes_keys_while_an_attached_agent_finds_ten_thousand_usages_each_with_its_line()
     {
         // Every call under a long comment, so a usage's line read from its file's start reads each file 2,500 times over.
         for (int file = 0; file < 4; file++)

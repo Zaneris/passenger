@@ -14,8 +14,23 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class McpWorkspaceTests : McpRig
 {
+    /// <summary>An agent's workspace as one flow, each step one test's check in an instance of its own: an Android app
+    /// called an exe as it runs where its evaluation says library, what each project builds named as the Solution view
+    /// draws it, a file made unheard found at the next call after a quiet spell, and build, run and workspace right
+    /// after an edit of frameworks, a project added to the solution or an import made beside a project answering from
+    /// them as written.</summary>
     [Fact]
-    public async Task Workspace_calls_an_android_app_an_exe_as_it_runs_where_its_evaluation_says_library()
+    public async Task An_agents_workspace_names_what_each_project_builds_as_written_and_finds_what_the_watcher_did_not_hear()
+    {
+        await Flow.StepApartAsync("workspace calls an android app an exe as it runs where its evaluation says library", () => new McpWorkspaceTests(), t => t.Workspace_calls_an_android_app_an_exe_as_it_runs_where_its_evaluation_says_library());
+        await Flow.StepApartAsync("workspace names what each project builds as the solution view draws it", () => new McpWorkspaceTests(), t => t.Workspace_names_what_each_project_builds_as_the_solution_view_draws_it());
+        await Flow.StepApartAsync("a file made while the watcher heard nothing is found at the agents next call after a quiet spell", () => new McpWorkspaceTests(), t => t.A_file_made_while_the_watcher_heard_nothing_is_found_at_the_agents_next_call_after_a_quiet_spell());
+        await Flow.StepApartAsync("workspace build and run right after an edit of a projects frameworks each answer from the frameworks as edited", () => new McpWorkspaceTests(), t => t.Workspace_build_and_run_right_after_an_edit_of_a_projects_frameworks_each_answer_from_the_frameworks_as_edited());
+        await Flow.StepApartAsync("workspace right after an edit adding a project to the solution lists it", () => new McpWorkspaceTests(), t => t.Workspace_right_after_an_edit_adding_a_project_to_the_solution_lists_it());
+        await Flow.StepApartAsync("workspace right after an import was made beside a project lists what the import gives it", () => new McpWorkspaceTests(), t => t.Workspace_right_after_an_import_was_made_beside_a_project_lists_what_the_import_gives_it());
+    }
+
+    private async Task Workspace_calls_an_android_app_an_exe_as_it_runs_where_its_evaluation_says_library()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-android-app-"));
         DeleteAtEnd(folder);
@@ -33,8 +48,7 @@ public sealed class McpWorkspaceTests : McpRig
 
     /// <summary>workspace names what each project builds as the Solution view draws it, from its evaluation: a web API, a
     /// project of tests, a class library and a shared project.</summary>
-    [Fact]
-    public async Task Workspace_names_what_each_project_builds_as_the_solution_view_draws_it()
+    private async Task Workspace_names_what_each_project_builds_as_the_solution_view_draws_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-kinds-"));
         DeleteAtEnd(folder);
@@ -55,8 +69,7 @@ public sealed class McpWorkspaceTests : McpRig
     /// <summary>A file made while the folder's watcher heard nothing, as the system drops a change without a word, is found at
     /// the agent's next call once it has been away a while, as a person's window finds it coming in front, which an agent's
     /// own IDE never does: find_in_files, reading the folder's files as Go to File lists them, finds what it holds.</summary>
-    [Fact]
-    public async Task A_file_made_while_the_watcher_heard_nothing_is_found_at_the_agents_next_call_after_a_quiet_spell()
+    private async Task A_file_made_while_the_watcher_heard_nothing_is_found_at_the_agents_next_call_after_a_quiet_spell()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-unheard-"));
         DeleteAtEnd(folder);
@@ -74,8 +87,7 @@ public sealed class McpWorkspaceTests : McpRig
     /// <summary>An agent's edit of a project's frameworks, each followed at once by another call, before the folder's watcher
     /// may have heard of it: workspace lists them as edited, build's publish takes the one now first and run builds and runs
     /// that one, where each answered from the project as it stood before the edit.</summary>
-    [Fact]
-    public async Task Workspace_build_and_run_right_after_an_edit_of_a_projects_frameworks_each_answer_from_the_frameworks_as_edited()
+    private async Task Workspace_build_and_run_right_after_an_edit_of_a_projects_frameworks_each_answer_from_the_frameworks_as_edited()
     {
         const string Newer = "net11.0";
         string older = TestProjects.Framework;
@@ -123,8 +135,7 @@ public sealed class McpWorkspaceTests : McpRig
     /// <summary>An agent's edit adding a project to the solution, which the folder's watcher never hears, is what its next
     /// call answers from: workspace lists the project added, where it listed the solution's projects as they stood before
     /// until the watcher heard of the write.</summary>
-    [Fact]
-    public async Task Workspace_right_after_an_edit_adding_a_project_to_the_solution_lists_it()
+    private async Task Workspace_right_after_an_edit_adding_a_project_to_the_solution_lists_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-solution-"));
         DeleteAtEnd(folder);
@@ -152,8 +163,7 @@ public sealed class McpWorkspaceTests : McpRig
     /// <summary>An import made beside a project by the agent's own shell, which the folder's watcher never hears, is what its
     /// next call answers from: workspace lists the framework the import gives the project, where it listed the one before
     /// until the watcher heard of the import.</summary>
-    [Fact]
-    public async Task Workspace_right_after_an_import_was_made_beside_a_project_lists_what_the_import_gives_it()
+    private async Task Workspace_right_after_an_import_was_made_beside_a_project_lists_what_the_import_gives_it()
     {
         const string Newer = "net11.0";
         string folder = PathNames.Canonical(TestFolders.Create("mcp-import-"));

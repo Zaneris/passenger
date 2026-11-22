@@ -13,8 +13,21 @@ public sealed class McpGDScriptRefactorTests : McpRig
 {
     private const string Script = "extends Node\n\n\nfunc hit(target, amount = 1):\n\tprint(target, amount)\n\n\nfunc _ready():\n\thit(\"a\")\n\thit(\"b\", 3)\n\tcall(\"hit\", \"c\")\n";
 
+    /// <summary>An agent's GDScript refactorings as one flow, each step one test's check in an instance of its own: a
+    /// function's signature changed, a variable extracted and a safe delete of a used one refused, a rename a call
+    /// names at run time holds back refused naming force and made with it, an enum's value and an inner class's member
+    /// found and renamed at the first ask with no Godot started, and a signal's signature changed through its emits and
+    /// its handler.</summary>
     [Fact]
-    public async Task An_agent_changes_a_gdscript_functions_signature_extracts_a_variable_and_is_refused_a_safe_delete_of_a_used_one()
+    public async Task An_agent_refactors_GDScript_changing_signatures_renaming_and_extracting_where_Godot_would_run_them()
+    {
+        await Flow.StepApartAsync("an agent changes a gdscript functions signature extracts a variable and is refused a safe delete of a used one", () => new McpGDScriptRefactorTests(), t => t.An_agent_changes_a_gdscript_functions_signature_extracts_a_variable_and_is_refused_a_safe_delete_of_a_used_one());
+        await Flow.StepApartAsync("an agents rename a call names at run time holds back is refused naming force and made with it leaves the call", () => new McpGDScriptRefactorTests(), t => t.An_agents_rename_a_call_names_at_run_time_holds_back_is_refused_naming_force_and_made_with_it_leaves_the_call());
+        await Flow.StepApartAsync("an agent finds and renames an enums value and an inner classs member at the first ask with no godot started", () => new McpGDScriptRefactorTests(), t => t.An_agent_finds_and_renames_an_enums_value_and_an_inner_classs_member_at_the_first_ask_with_no_godot_started());
+        await Flow.StepApartAsync("an agent changes a gdscript signals signature through its emits and the handler connected", () => new McpGDScriptRefactorTests(), t => t.An_agent_changes_a_gdscript_signals_signature_through_its_emits_and_the_handler_connected());
+    }
+
+    private async Task An_agent_changes_a_gdscript_functions_signature_extracts_a_variable_and_is_refused_a_safe_delete_of_a_used_one()
     {
         string folder = TestFolders.Create("mcp-gdscript-refactor-");
         string path = TestFolders.Write(folder, "main.gd", Script);
@@ -44,8 +57,7 @@ public sealed class McpGDScriptRefactorTests : McpRig
         Assert.True(refused.IsError == true && Text(refused).Contains("'strike' is still used", StringComparison.Ordinal), $"Safe Delete of a used function answered: {Text(refused)}");
     }
 
-    [Fact]
-    public async Task An_agents_rename_a_call_names_at_run_time_holds_back_is_refused_naming_force_and_made_with_it_leaves_the_call()
+    private async Task An_agents_rename_a_call_names_at_run_time_holds_back_is_refused_naming_force_and_made_with_it_leaves_the_call()
     {
         string folder = TestFolders.Create("mcp-gdscript-rename-");
         string path = TestFolders.Write(folder, "main.gd", "extends Node\n\n\nfunc hit(target):\n\tprint(target)\n\n\nfunc by_name(method: String) -> void:\n\tcall(method, 1)\n\thit(2)\n");
@@ -58,8 +70,7 @@ public sealed class McpGDScriptRefactorTests : McpRig
         Assert.Equal("extends Node\n\n\nfunc strike(target):\n\tprint(target)\n\n\nfunc by_name(method: String) -> void:\n\tcall(method, 1)\n\tstrike(2)\n", File.ReadAllText(path));
     }
 
-    [Fact]
-    public async Task An_agent_finds_and_renames_an_enums_value_and_an_inner_classs_member_at_the_first_ask_with_no_godot_started()
+    private async Task An_agent_finds_and_renames_an_enums_value_and_an_inner_classs_member_at_the_first_ask_with_no_godot_started()
     {
         string folder = TestFolders.Create("mcp-gdscript-nested-");
         string path = TestFolders.Write(folder, "main.gd", "extends Node\n\nenum Mood { CALM, ANGRY }\n\nvar helper := Helper.new()\n\n\nfunc _ready() -> void:\n"
@@ -73,8 +84,7 @@ public sealed class McpGDScriptRefactorTests : McpRig
             + "\tprint(Mood.STILL)\n\thelper.total += 1\n\n\nclass Helper:\n\tvar total := 0\n\n\tfunc bump() -> void:\n\t\ttotal += 1\n", File.ReadAllText(path));
     }
 
-    [Fact]
-    public async Task An_agent_changes_a_gdscript_signals_signature_through_its_emits_and_the_handler_connected()
+    private async Task An_agent_changes_a_gdscript_signals_signature_through_its_emits_and_the_handler_connected()
     {
         string folder = TestFolders.Create("mcp-gdscript-signal-");
         string path = TestFolders.Write(folder, "main.gd", "extends Node\n\nsignal scored(points)\n\n\nfunc _ready():\n\tscored.connect(on_scored)\n\tscored.emit(3)\n\n\n"

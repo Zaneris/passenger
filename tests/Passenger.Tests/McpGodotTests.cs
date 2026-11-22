@@ -191,8 +191,38 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
 
     private const string Headless = "Spinner: Headless";
 
+    /// <summary>An agent's Godot game run as one flow, every step needing Godot 4's .NET build, each in an instance of
+    /// its own: a game run with its nodes read, a value set it prints, clicks and typing into it and why a headless one
+    /// shows no picture, plain buttons clicked under a node or a control with what covers one named, the loop paused
+    /// and stepped a frame and a node picked at a point, each of two copies reached by its name, and a running game's
+    /// script members read as its frame counter climbs.</summary>
     [Fact]
-    public async Task An_agent_runs_a_godot_game_reads_its_nodes_sets_a_value_it_prints_clicks_and_types_into_it_and_hears_why_a_headless_game_has_no_picture()
+    public async Task An_agent_runs_a_Godot_game_and_drives_it_reading_its_nodes_and_members_by_the_games_own_copy()
+    {
+        await Flow.StepApartAsync("an agent runs a godot game reads its nodes sets a value it prints clicks and types into it and hears why a headless game has no picture", () => new McpGodotTests(game), t => t.An_agent_runs_a_godot_game_reads_its_nodes_sets_a_value_it_prints_clicks_and_types_into_it_and_hears_why_a_headless_game_has_no_picture());
+        await Flow.StepApartAsync("an agents click presses plain buttons under a node or a control and names what covers one", () => new McpGodotTests(game), t => t.An_agents_click_presses_plain_buttons_under_a_node_or_a_control_and_names_what_covers_one());
+        await Flow.StepApartAsync("an agent pauses the games loop steps it a frame and picks a node at a point with the ide and app tools", () => new McpGodotTests(game), t => t.An_agent_pauses_the_games_loop_steps_it_a_frame_and_picks_a_node_at_a_point_with_the_ide_and_app_tools());
+        await Flow.StepApartAsync("an agent reaches each of two copies of a game by its name the copys tree asked as it starts", () => new McpGodotTests(game), t => t.An_agent_reaches_each_of_two_copies_of_a_game_by_its_name_the_copys_tree_asked_as_it_starts());
+        await Flow.StepApartAsync("an agent reads a running games script members and sees its frame counter climb", () => new McpGodotTests(game), t => t.An_agent_reads_a_running_games_script_members_and_sees_its_frame_counter_climb());
+    }
+
+    /// <summary>An agent debugging a Godot game as one flow, every step needing Godot 4's .NET build, each in an
+    /// instance of its own: a debugged game starting muted, a breakpoint in its script's process, Debug Start answered
+    /// with the stop in the game's ready or a later frame, a GDScript breakpoint with debug_state saying where and its
+    /// locals, a run with Hot Reload applying an edit it prints, and Debug Start and Continue stopping in the game's
+    /// other language.</summary>
+    [Fact]
+    public async Task An_agent_debugs_and_hot_reloads_a_Godot_game_stopping_in_either_language()
+    {
+        await Flow.StepApartAsync("a game an agent debugs starts muted", () => new McpGodotTests(game), t => t.A_game_an_agent_debugs_starts_muted());
+        await Flow.StepApartAsync("an agent debugs a godot game to a breakpoint in its scripts process", () => new McpGodotTests(game), t => t.An_agent_debugs_a_godot_game_to_a_breakpoint_in_its_scripts_process());
+        await Flow.StepApartAsync("debug start answers with the stop at a breakpoint in the games ready or one its frames reach later", () => new McpGodotTests(game), t => t.Debug_start_answers_with_the_stop_at_a_breakpoint_in_the_games_ready_or_one_its_frames_reach_later());
+        await Flow.StepApartAsync("an agent sets a breakpoint in a gdscript file and debug state says where the game stopped with its locals", () => new McpGodotTests(game), t => t.An_agent_sets_a_breakpoint_in_a_gdscript_file_and_debug_state_says_where_the_game_stopped_with_its_locals());
+        await Flow.StepApartAsync("an agent runs a godot game with hot reload and applies an edit it then prints", () => new McpGodotTests(game), t => t.An_agent_runs_a_godot_game_with_hot_reload_and_applies_an_edit_it_then_prints());
+        await Flow.StepApartAsync("debug start and debug continue answer with a stop in the games other language", () => new McpGodotTests(game), t => t.Debug_start_and_debug_continue_answer_with_a_stop_in_the_games_other_language());
+    }
+
+    private async Task An_agent_runs_a_godot_game_reads_its_nodes_sets_a_value_it_prints_clicks_and_types_into_it_and_hears_why_a_headless_game_has_no_picture()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -231,8 +261,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>An agent's click presses a plain button under a bare Node and one under a Control that acts as it is pressed,
     /// both beyond the 64 by 64 the headless display gives a game, which Passenger's helper gives its project's size; one a
     /// panel covers is refused, naming the panel.</summary>
-    [Fact]
-    public async Task An_agents_click_presses_plain_buttons_under_a_node_or_a_control_and_names_what_covers_one()
+    private async Task An_agents_click_presses_plain_buttons_under_a_node_or_a_control_and_names_what_covers_one()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -252,8 +281,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>An agent pauses the game's loop and steps it a frame with ide_action, each answer saying the frame it is at,
     /// lets it run on, and with Select Element on has app_click pick the button at a point, its answer naming what it picked
     /// and the button taking no click of its own meanwhile.</summary>
-    [Fact]
-    public async Task An_agent_pauses_the_games_loop_steps_it_a_frame_and_picks_a_node_at_a_point_with_the_ide_and_app_tools()
+    private async Task An_agent_pauses_the_games_loop_steps_it_a_frame_and_picks_a_node_at_a_point_with_the_ide_and_app_tools()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -279,8 +307,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>An agent runs the game and Run Another Copy beside it, and at once reads the copy's tree, the call waiting for the
     /// copy to open its scene; then reaches each copy's nodes by the name its run gives it, the first's too, though the Live
     /// Visual Tree follows the copy started last.</summary>
-    [Fact]
-    public async Task An_agent_reaches_each_of_two_copies_of_a_game_by_its_name_the_copys_tree_asked_as_it_starts()
+    private async Task An_agent_reaches_each_of_two_copies_of_a_game_by_its_name_the_copys_tree_asked_as_it_starts()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false);
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -303,8 +330,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
 
     /// <summary>A game an agent debugs starts with its audio muted, whatever the folder keeps: Mute Game Audio, run by the agent,
     /// lets it play.</summary>
-    [Fact]
-    public async Task A_game_an_agent_debugs_starts_muted()
+    private async Task A_game_an_agent_debugs_starts_muted()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         await Call(client, McpTools.DebugStart, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -316,8 +342,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>An agent reads the members a running game's scripts declare with app_details' members: Main's private frame
     /// counter, read twice, climbs, the answer naming the node and its script, and its auto-property and other field beside it
     /// at their lines; the class of a GDScript (ticker) finds the node running it, whose count of its frames climbs too.</summary>
-    [Fact]
-    public async Task An_agent_reads_a_running_games_script_members_and_sees_its_frame_counter_climb()
+    private async Task An_agent_reads_a_running_games_script_members_and_sees_its_frame_counter_climb()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = Headless, ["waitSeconds"] = 180 });
@@ -373,8 +398,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
         return Text(result);
     }
 
-    [Fact]
-    public async Task An_agent_debugs_a_godot_game_to_a_breakpoint_in_its_scripts_process()
+    private async Task An_agent_debugs_a_godot_game_to_a_breakpoint_in_its_scripts_process()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         int line = Array.FindIndex(GodotGameFolder.Script.Split('\n'), l => l.Contains("frames++;", StringComparison.Ordinal)) + 1;
@@ -390,8 +414,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>debug_start of a game with a breakpoint in its script answers with the stop there itself, its line and the
     /// method's local, rather than that the game runs once it has connected: in _Ready, and in a method its frames first
     /// reach seconds after it starts.</summary>
-    [Fact]
-    public async Task Debug_start_answers_with_the_stop_at_a_breakpoint_in_the_games_ready_or_one_its_frames_reach_later()
+    private async Task Debug_start_answers_with_the_stop_at_a_breakpoint_in_the_games_ready_or_one_its_frames_reach_later()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         string[] lines = GodotGameFolder.Script.Split('\n');
@@ -411,8 +434,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
 
     /// <summary>A breakpoint an agent sets in a GDScript file stops the game there, its GDScript debugged beside its C#: the
     /// breakpoint bound, debug_state naming the script's line, its locals and self, and the game's two sessions.</summary>
-    [Fact]
-    public async Task An_agent_sets_a_breakpoint_in_a_gdscript_file_and_debug_state_says_where_the_game_stopped_with_its_locals()
+    private async Task An_agent_sets_a_breakpoint_in_a_gdscript_file_and_debug_state_says_where_the_game_stopped_with_its_locals()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         int line = Array.FindIndex(GodotGameFolder.Ticker.Split('\n'), l => l.Contains("ticks += 1", StringComparison.Ordinal)) + 1;
@@ -433,8 +455,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
 
     /// <summary>run with Hot Reload says the game takes it, and hot_reload applies an edit to the method _Process calls, which
     /// the game then prints, no debug session shown.</summary>
-    [Fact]
-    public async Task An_agent_runs_a_godot_game_with_hot_reload_and_applies_an_edit_it_then_prints()
+    private async Task An_agent_runs_a_godot_game_with_hot_reload_and_applies_an_edit_it_then_prints()
     {
         try
         {
@@ -457,8 +478,7 @@ public sealed class McpGodotTests : McpRig, IClassFixture<GodotGameFolder>
     /// <summary>A stop in the game's other language answers the call that let the game go, as one in its own does: debug_start
     /// with a breakpoint in GDScript alone answers with the GDScript stop, debug_continue of it with a stop in the C#, and
     /// debug_continue of that with the GDScript stop again, none of them waiting out its time and saying the game runs.</summary>
-    [Fact]
-    public async Task Debug_start_and_debug_continue_answer_with_a_stop_in_the_games_other_language()
+    private async Task Debug_start_and_debug_continue_answer_with_a_stop_in_the_games_other_language()
     {
         await using McpClient client = await Start(["--mcp", game.Folder], languageServer: false, environment: Homes);
         int tick = Array.FindIndex(GodotGameFolder.Ticker.Split('\n'), l => l.Contains("ticks += 1", StringComparison.Ordinal)) + 1;

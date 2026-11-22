@@ -11,8 +11,22 @@ namespace Passenger.Tests;
 /// code_actions lists on the startup project's file and apply_code_action makes.</summary>
 public sealed class McpMigrationsTests : McpRig
 {
+    /// <summary>An agent's migrations as one flow, each step one test's check in an instance of its own: what dotnet ef
+    /// lacks fixed through code actions, then a migration added and applied, Add Migration taking its output folder and
+    /// keeping it for the context, the environment chosen by name and one naming none refused, an update of one EF Core
+    /// package moving the set saying which provider it left, and a call given up stopping alone while the run goes
+    /// on.</summary>
     [Fact]
-    public async Task An_agent_fixes_what_dotnet_ef_lacks_through_code_actions_then_adds_and_applies_a_migration()
+    public async Task An_agents_migrations_run_dotnet_ef_as_the_window_does_fixing_what_it_lacks_and_stopping_one_call_alone()
+    {
+        await Flow.StepApartAsync("an agent fixes what dotnet ef lacks through code actions then adds and applies a migration", () => new McpMigrationsTests(), t => t.An_agent_fixes_what_dotnet_ef_lacks_through_code_actions_then_adds_and_applies_a_migration());
+        await Flow.StepApartAsync("an agents Add Migration takes its output folder after its name and keeps it for the context", () => new McpMigrationsTests(), t => t.An_agents_Add_Migration_takes_its_output_folder_after_its_name_and_keeps_it_for_the_context());
+        await Flow.StepApartAsync("an agent chooses the environment dotnet ef runs in by name and one that names none is refused", () => new McpMigrationsTests(), t => t.An_agent_chooses_the_environment_dotnet_ef_runs_in_by_name_and_one_that_names_none_is_refused());
+        await Flow.StepApartAsync("an agents update of one of EF Cores packages moves the set and says which provider it left behind", () => new McpMigrationsTests(), t => t.An_agents_update_of_one_of_EF_Cores_packages_moves_the_set_and_says_which_provider_it_left_behind());
+        await Flow.StepApartAsync("an agent giving up on a migrations call stops that call alone and the run under way goes on", () => new McpMigrationsTests(), t => t.An_agent_giving_up_on_a_migrations_call_stops_that_call_alone_and_the_run_under_way_goes_on());
+    }
+
+    private async Task An_agent_fixes_what_dotnet_ef_lacks_through_code_actions_then_adds_and_applies_a_migration()
     {
         string folder = await ShopApp.MakeAsync(design: false, tool: null);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
@@ -48,8 +62,7 @@ public sealed class McpMigrationsTests : McpRig
     /// <summary>An agent's Add Migration takes the folder its files go in after the migration's name, as the window's question
     /// does, from the project's: kept for the context, so one given no folder goes there too, the answer naming where each
     /// went and the folders holding the context's migrations; a folder outside the project refused, saying why.</summary>
-    [Fact]
-    public async Task An_agents_Add_Migration_takes_its_output_folder_after_its_name_and_keeps_it_for_the_context()
+    private async Task An_agents_Add_Migration_takes_its_output_folder_after_its_name_and_keeps_it_for_the_context()
     {
         string folder = await ShopApp.MakeAsync(design: true, tool: ShopApp.Version);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
@@ -70,8 +83,7 @@ public sealed class McpMigrationsTests : McpRig
     /// <summary>An agent's choice of the environment dotnet ef runs in, by ide_action with its name as input: none answers
     /// the one in force and those offered, a name chooses it for every command after, and one that names no environment is
     /// refused saying why.</summary>
-    [Fact]
-    public async Task An_agent_chooses_the_environment_dotnet_ef_runs_in_by_name_and_one_that_names_none_is_refused()
+    private async Task An_agent_chooses_the_environment_dotnet_ef_runs_in_by_name_and_one_that_names_none_is_refused()
     {
         string folder = await ShopApp.MakeAsync(design: true, tool: ShopApp.Version);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
@@ -90,8 +102,7 @@ public sealed class McpMigrationsTests : McpRig
     /// <summary>An agent's nuget_install of one of EF Core's packages is never asked about: it moves the project's others with
     /// it, as the window's update does, and leaves the provider it leaves behind as it was, its answer naming what moved and
     /// the provider's version that supports the EF Core asked.</summary>
-    [Fact]
-    public async Task An_agents_update_of_one_of_EF_Cores_packages_moves_the_set_and_says_which_provider_it_left_behind()
+    private async Task An_agents_update_of_one_of_EF_Cores_packages_moves_the_set_and_says_which_provider_it_left_behind()
     {
         string folder = await ShopApp.MakeAsync(design: true, tool: null, provider: "1.0.0",
             providers: [("1.0.0", $"[{ShopApp.Older}]"), ("2.0.0", $"[{ShopApp.Version}]")], ef: ShopApp.Older, relational: true);
@@ -113,8 +124,7 @@ public sealed class McpMigrationsTests : McpRig
 
     /// <summary>An agent giving up on a Migrations call held behind a run's build stops that call alone: the run whose
     /// build it waits behind goes on, built and run once its hold is let go.</summary>
-    [Fact]
-    public async Task An_agent_giving_up_on_a_migrations_call_stops_that_call_alone_and_the_run_under_way_goes_on()
+    private async Task An_agent_giving_up_on_a_migrations_call_stops_that_call_alone_and_the_run_under_way_goes_on()
     {
         string folder = await ShopApp.MakeAsync(design: true, tool: ShopApp.Version);
         string held = Path.Combine(folder, "held");

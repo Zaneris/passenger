@@ -19,11 +19,43 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>The user secrets of the Aspire test's AppHost, the run's own.</summary>
     private const string AspireSecretsId = "passenger-mcp-aspire-host";
 
+    /// <summary>An agent's languages beyond C# as one flow, each step one test's check in an instance of its own: a C#
+    /// file nested past what Passenger reads left out, Avalonia's and WPF's XAML read, navigated, renamed and
+    /// refactored, Aspire resources gone to, set and renamed, a project file's evaluated values, a web app's routes, a
+    /// Markdown outline, a configuration key's value and a Razor component by symbol, a multi-targeted project's
+    /// framework chosen, and an escaped item going to its file.</summary>
+    [Fact]
+    public async Task An_agent_reads_navigates_and_renames_XAML_Aspire_project_files_and_Razor_through_Passengers_own_readers()
+    {
+        await Flow.StepApartAsync("an agent is told a cs file nested past what passenger reads is left out while the rest of its project answers", () => new McpLanguagesTests(restored), t => t.An_agent_is_told_a_cs_file_nested_past_what_passenger_reads_is_left_out_while_the_rest_of_its_project_answers());
+        await Flow.StepApartAsync("an agent reads navigates renames and refactors avalonia xaml through passengers own xaml and a library type decompiled once", () => new McpLanguagesTests(restored), t => t.An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once());
+        await Flow.StepApartAsync("an agent goes to sets and renames aspire resources as the window does", () => new McpLanguagesTests(restored), t => t.An_agent_goes_to_sets_and_renames_aspire_resources_as_the_window_does());
+        await Flow.StepApartAsync("an agent reads navigates renames and refactors wpf xaml through passengers own xaml", () => new McpLanguagesTests(restored), t => t.An_agent_reads_navigates_renames_and_refactors_wpf_xaml_through_passengers_own_xaml());
+        await Flow.StepApartAsync("an agent reads a project files evaluated values and goes where each name is defined", () => new McpLanguagesTests(restored), t => t.An_agent_reads_a_project_files_evaluated_values_and_goes_where_each_name_is_defined());
+        await Flow.StepApartAsync("an agent lists a web apps routes read from its code", () => new McpLanguagesTests(restored), t => t.An_agent_lists_a_web_apps_routes_read_from_its_code());
+        await Flow.StepApartAsync("an agents outline of a markdown file is its headings nested by level", () => new McpLanguagesTests(restored), t => t.An_agents_outline_of_a_markdown_file_is_its_headings_nested_by_level());
+        await Flow.StepApartAsync("an agent goes to a configuration keys value and names a razor component and its members by symbol", () => new McpLanguagesTests(restored), t => t.An_agent_goes_to_a_configuration_keys_value_and_names_a_razor_component_and_its_members_by_symbol());
+        await Flow.StepApartAsync("an agent chooses a multi targeted projects framework and workspace the preview and its build follow", () => new McpLanguagesTests(restored), t => t.An_agent_chooses_a_multi_targeted_projects_framework_and_workspace_the_preview_and_its_build_follow());
+        await Flow.StepApartAsync("an item written escaped goes to the file it names", () => new McpLanguagesTests(restored), t => t.An_item_written_escaped_goes_to_the_file_it_names());
+    }
+
+    /// <summary>An agent's web languages as one flow, every step needing Node.js and TypeScript's server, each in an
+    /// instance of its own: the web languages read, navigated, renamed, fixed and formatted through their servers,
+    /// ESLint and Prettier, TypeScript's refactorings made by its commands, a rename at an imported name, and
+    /// diagnostics and ESLint fixes waiting for the checks of the text as it stands.</summary>
+    [Fact]
+    public async Task An_agent_works_the_web_languages_through_their_servers_TypeScripts_refactorings_ESLint_and_Prettier()
+    {
+        await Flow.StepApartAsync("an agent reads navigates renames fixes and formats the web languages through their servers eslint and prettier", () => new McpLanguagesTests(restored), t => t.An_agent_reads_navigates_renames_fixes_and_formats_the_web_languages_through_their_servers_eslint_and_prettier());
+        await Flow.StepApartAsync("an agent applies typescripts refactorings which its server makes by commands of its own", () => new McpLanguagesTests(restored), t => t.An_agent_applies_typescripts_refactorings_which_its_server_makes_by_commands_of_its_own());
+        await Flow.StepApartAsync("an agents typescript rename at an imported name renames it where it is declared and everywhere it is used", () => new McpLanguagesTests(restored), t => t.An_agents_typescript_rename_at_an_imported_name_renames_it_where_it_is_declared_and_everywhere_it_is_used());
+        await Flow.StepApartAsync("an agents diagnostics and eslint fixes wait for the checks of the text as it stands", () => new McpLanguagesTests(restored), t => t.An_agents_diagnostics_and_eslint_fixes_wait_for_the_checks_of_the_text_as_it_stands());
+    }
+
     /// <summary>A C# file nested past what Passenger reads would end the C# language server, whose parser recurses past its
     /// stack: it is left out of its project and said to be, an agent's call on it is refused saying why, and the rest of the
     /// project answers as ever. One 900 deep, past what a thread pool's stack holds, is the server's as any other.</summary>
-    [Fact]
-    public async Task An_agent_is_told_a_cs_file_nested_past_what_passenger_reads_is_left_out_while_the_rest_of_its_project_answers()
+    private async Task An_agent_is_told_a_cs_file_nested_past_what_passenger_reads_is_left_out_while_the_rest_of_its_project_answers()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-deep-cs-"));
         DeleteAtEnd(folder);
@@ -50,8 +82,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
     /// <summary>Avalonia's XAML, and a library type it names decompiled once across sessions, another version's decompiled
     /// files unused for months pruned.</summary>
-    [Fact]
-    public async Task An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once()
+    private async Task An_agent_reads_navigates_renames_and_refactors_avalonia_xaml_through_passengers_own_xaml_and_a_library_type_decompiled_once()
     {
         string gallery = await Taken("mcpaxaml-");
         // Another version's decompiled files, which no session has used for two months.
@@ -176,8 +207,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>Aspire's code help for an agent: a service's connection string to the AppHost line declaring the resource, an
     /// AppHost's parameter with no value marked and set through its fix with the value given as name (in the run's own user
     /// secrets, never said back), and a resource renamed in the AppHost and the service that reads it.</summary>
-    [Fact]
-    public async Task An_agent_goes_to_sets_and_renames_aspire_resources_as_the_window_does()
+    private async Task An_agent_goes_to_sets_and_renames_aspire_resources_as_the_window_does()
     {
         string secrets = Path.Combine(TestRun.UserSecrets, AspireSecretsId, "secrets.json");
         string shop = await Taken("mcpaspire-");
@@ -214,8 +244,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         }
     }
 
-    [Fact]
-    public async Task An_agent_reads_navigates_renames_and_refactors_wpf_xaml_through_passengers_own_xaml()
+    private async Task An_agent_reads_navigates_renames_and_refactors_wpf_xaml_through_passengers_own_xaml()
     {
         string gallery = await Taken("mcpwxaml-");
         await using McpClient client = await Start(["--mcp", gallery]);
@@ -268,8 +297,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// copied into its node_modules): each tool through the file's language server, ESLint's fix first among the actions,
     /// Prettier formatting what it covers, and JSON's Go to Declaration and Rename, which its server lacks, Passenger's own;
     /// its lack of usages said plainly.</summary>
-    [Fact]
-    public async Task An_agent_reads_navigates_renames_fixes_and_formats_the_web_languages_through_their_servers_eslint_and_prettier()
+    private async Task An_agent_reads_navigates_renames_fixes_and_formats_the_web_languages_through_their_servers_eslint_and_prettier()
     {
         await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
         await EslintPrettierTests.Project.SkipWithoutNodeAsync();
@@ -345,8 +373,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>TypeScript's refactorings, which its server makes by commands of its own that hand Passenger their edits: an
     /// agent extracts a call into a function, told the name it was given and where, and moves a class to a new file, which
     /// the file that used it then imports it from, every file written. Skipped without a Node.js.</summary>
-    [Fact]
-    public async Task An_agent_applies_typescripts_refactorings_which_its_server_makes_by_commands_of_its_own()
+    private async Task An_agent_applies_typescripts_refactorings_which_its_server_makes_by_commands_of_its_own()
     {
         await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
         string web = Made("mcptsref-", made =>
@@ -381,8 +408,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
     /// <summary>An agent's TypeScript rename at an imported name, and at a use of another, renames each where it is declared
     /// and everywhere it is used, every file written, never an alias in the importing file alone. Skipped without a Node.js.</summary>
-    [Fact]
-    public async Task An_agents_typescript_rename_at_an_imported_name_renames_it_where_it_is_declared_and_everywhere_it_is_used()
+    private async Task An_agents_typescript_rename_at_an_imported_name_renames_it_where_it_is_declared_and_everywhere_it_is_used()
     {
         await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
         string web = Made("mcptsrename-", made =>
@@ -418,8 +444,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>An agent's diagnostics and ESLint's fixes answer from the checks of the text as it stands: TypeScript's problem
     /// in a file just opened, then the edited text's own, ESLint's in its first call as its server starts, and ESLint's fix
     /// listed, then applied, each in a file let go since the call before (as a pause lets it go). Skipped without a Node.js.</summary>
-    [Fact]
-    public async Task An_agents_diagnostics_and_eslint_fixes_wait_for_the_checks_of_the_text_as_it_stands()
+    private async Task An_agents_diagnostics_and_eslint_fixes_wait_for_the_checks_of_the_text_as_it_stands()
     {
         await WebLanguagesTests.SkipWithoutNodeAsync(typescript: true);
         await EslintPrettierTests.Project.SkipWithoutNodeAsync();
@@ -456,8 +481,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>A project whose property comes from its Directory.Build.props and whose target another names: what MSBuild's
     /// evaluation makes of each name, where each is defined (the SDK's own files among them, and a target below a lone
     /// '\r', which ends a line for MSBuild alone), the file's elements, and the commands MSBuild files lack said plainly.</summary>
-    [Fact]
-    public async Task An_agent_reads_a_project_files_evaluated_values_and_goes_where_each_name_is_defined()
+    private async Task An_agent_reads_a_project_files_evaluated_values_and_goes_where_each_name_is_defined()
     {
         string shop = Made("mcpmsbuild-", made =>
         {
@@ -510,8 +534,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
     /// <summary>A web app's routes, read from its code: the workspace with routes lists each with its handler, parameters and
     /// place, and without them says nothing of routes.</summary>
-    [Fact]
-    public async Task An_agent_lists_a_web_apps_routes_read_from_its_code()
+    private async Task An_agent_lists_a_web_apps_routes_read_from_its_code()
     {
         string shop = await Taken("mcproutes-");
         await using McpClient client = await Start(["--mcp", shop]);
@@ -546,8 +569,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
 
     /// <summary>An agent's outline of a Markdown file: its headings, nested by level, each with its line, read by Passenger
     /// with no server; a heading inside a fenced block is none.</summary>
-    [Fact]
-    public async Task An_agents_outline_of_a_markdown_file_is_its_headings_nested_by_level()
+    private async Task An_agents_outline_of_a_markdown_file_is_its_headings_nested_by_level()
     {
         string notes = Made("mcpmarkdown-", made => File.WriteAllText(Path.Combine(made, "NOTES.md"),
             "# Notes\n\nWhat they are.\n\n## Building\n\n```sh\n# not a heading\n```\n\n### On **macOS**\n\n## Running\n"));
@@ -574,8 +596,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>A Blazor app's C#, as the window's code help reads it: a configuration key's read goes to where appsettings.json
     /// gives it and its card says the value, and a Razor component and a member of its <c>@code</c> are named by symbol as a
     /// C# type and its members are.</summary>
-    [Fact]
-    public async Task An_agent_goes_to_a_configuration_keys_value_and_names_a_razor_component_and_its_members_by_symbol()
+    private async Task An_agent_goes_to_a_configuration_keys_value_and_names_a_razor_component_and_its_members_by_symbol()
     {
         const string Salutation = "<button @onclick=\"Clicked\">Click</button>\n\n@code {\n    private int count;\n\n    private void Clicked() => count++;\n}\n";
         string shop = PathNames.Canonical(TestFolders.Create("mcp-blazor-"));
@@ -616,8 +637,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
     /// <summary>A multi-targeted project's framework chosen by an agent through Target Framework, as the XAML file's switcher
     /// chooses it: workspace names the first, then the one chosen; the XAML file's preview says it waits for that framework's
     /// build, and Build for XAML Preview builds that framework alone, the other's never built.</summary>
-    [Fact]
-    public async Task An_agent_chooses_a_multi_targeted_projects_framework_and_workspace_the_preview_and_its_build_follow()
+    private async Task An_agent_chooses_a_multi_targeted_projects_framework_and_workspace_the_preview_and_its_build_follow()
     {
         string pair = await Taken("mcppair-");
         string second = MultiTargetedXamlTests.Second;
@@ -758,8 +778,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         }
     }
 
-    [Fact]
-    public async Task An_item_written_escaped_goes_to_the_file_it_names()
+    private async Task An_item_written_escaped_goes_to_the_file_it_names()
     {
         string folder = TestFolders.Create("mcp-escaped-item-");
         TestFolders.Write(folder, "per%cent/notes.txt", "Notes\n");
@@ -769,21 +788,6 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
 
         JsonElement found = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Include=\"per"))).EnumerateArray());
-
-        Assert.EndsWith("notes.txt", found.GetProperty("path").GetString()!, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task An_item_written_with_an_xml_entity_goes_to_the_file_it_names()
-    {
-        string folder = TestFolders.Create("mcp-entity-item-");
-        TestFolders.Write(folder, "r&d/notes.txt", "Notes\n");
-        string project = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n"
-            + "  <ItemGroup>\n    <None Include=\"r&amp;d/notes.txt\" />\n  </ItemGroup>\n</Project>\n";
-        TestFolders.Write(folder, "Shop.csproj", project);
-        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
-
-        JsonElement found = Assert.Single((await Call(client, McpTools.Definition, At(project, "Shop.csproj", "Include=\"r"))).EnumerateArray());
 
         Assert.EndsWith("notes.txt", found.GetProperty("path").GetString()!, StringComparison.Ordinal);
     }

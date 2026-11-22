@@ -16,10 +16,39 @@ namespace Passenger.Tests;
 [Collection(Beside.Name)]
 public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, IClassFixture<StandInAppHost>
 {
+    /// <summary>An agent's telemetry of an AppHost as one flow, each step one test's check in an instance of its own:
+    /// the dashboard's own answer with its credentials hidden and never another resource's, a resource's trace holding
+    /// the spans its service sent from an instance, the key never sent to a dashboard elsewhere or named with
+    /// credentials, a service's request duration read through its metrics, and a runtime slow to take its first session
+    /// asked again, saying so.</summary>
+    [Fact]
+    public async Task An_agents_telemetry_is_the_dashboards_own_never_sending_its_key_elsewhere_and_asking_a_slow_runtime_again()
+    {
+        await Flow.StepApartAsync("an agents telemetry is the dashboards own answer with its credentials hidden and never another resources", () => new McpAspireStandInTests(project), t => t.An_agents_telemetry_is_the_dashboards_own_answer_with_its_credentials_hidden_and_never_another_resources());
+        await Flow.StepApartAsync("an agents trace of a resource holds the spans its service sent from an instance", () => new McpAspireStandInTests(project), t => t.An_agents_trace_of_a_resource_holds_the_spans_its_service_sent_from_an_instance());
+        await Flow.StepApartAsync("an agents telemetry never sends the key to a dashboard elsewhere or named with credentials", () => new McpAspireStandInTests(project), t => t.An_agents_telemetry_never_sends_the_key_to_a_dashboard_elsewhere_or_named_with_credentials());
+        await Flow.StepApartAsync("an agent reads a services request duration through telemetry metrics", () => new McpAspireStandInTests(project), t => t.An_agent_reads_a_services_request_duration_through_telemetry_metrics());
+        await Flow.StepApartAsync("an agents metrics of a runtime slow to take its first session are asked again and say so", () => new McpAspireStandInTests(project), t => t.An_agents_metrics_of_a_runtime_slow_to_take_its_first_session_are_asked_again_and_say_so());
+    }
+
+    /// <summary>An agent's runs of an AppHost as one flow, each step one test's check in an instance of its own: its
+    /// run answering with the AppHost's own console, an AppHost whose connection ended said to list no resources while
+    /// the rest answers, its resources' commands through container_action with those it cannot refused, a resource
+    /// whose container runtime is unhealthy failing saying so, and one replica's debug start debugging that replica's
+    /// own program.</summary>
+    [Fact]
+    public async Task An_agent_runs_an_AppHost_its_resources_commands_and_one_replicas_debugging_as_the_AppHost_and_its_engine_answer()
+    {
+        await Flow.StepApartAsync("an agents run of an AppHost answers with the AppHosts own console", () => new McpAspireStandInTests(project), t => t.An_agents_run_of_an_AppHost_answers_with_the_AppHosts_own_console());
+        await Flow.StepApartAsync("an agent is told why an AppHost whose connection ended lists no resources and the rest of the workspace answers", () => new McpAspireStandInTests(project), t => t.An_agent_is_told_why_an_AppHost_whose_connection_ended_lists_no_resources_and_the_rest_of_the_workspace_answers());
+        await Flow.StepApartAsync("an agent runs an AppHost resources commands through container action and is refused those it cannot", () => new McpAspireStandInTests(project), t => t.An_agent_runs_an_AppHost_resources_commands_through_container_action_and_is_refused_those_it_cannot());
+        await Flow.StepApartAsync("an agents run of a resource whose container runtime is unhealthy fails saying so", () => new McpAspireStandInTests(project), t => t.An_agents_run_of_a_resource_whose_container_runtime_is_unhealthy_fails_saying_so());
+        await Flow.StepApartAsync("an agents debug start of one replica debugs that replicas own program", () => new McpAspireStandInTests(project), t => t.An_agents_debug_start_of_one_replica_debugs_that_replicas_own_program());
+    }
+
     /// <summary>An agent's run of an AppHost answers with the AppHost's own console, which begins with the command that
     /// started it, never Run's console, which holds whatever Run ran before it.</summary>
-    [Fact]
-    public async Task An_agents_run_of_an_AppHost_answers_with_the_AppHosts_own_console()
+    private async Task An_agents_run_of_an_AppHost_answers_with_the_AppHosts_own_console()
     {
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
@@ -36,8 +65,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             $"An agent's run of the AppHost answered with a console that is not the AppHost's, so it reads nothing of its start: {ran}");
     }
 
-    [Fact]
-    public async Task An_agents_telemetry_is_the_dashboards_own_answer_with_its_credentials_hidden_and_never_another_resources()
+    private async Task An_agents_telemetry_is_the_dashboards_own_answer_with_its_credentials_hidden_and_never_another_resources()
     {
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
@@ -122,8 +150,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
 
     /// <summary>A trace an agent reads for a resource is the dashboard's whole, its spans those of the resource's service
     /// whatever instance sent them: a trace of the service api, its instance instance1, read for the resource api by its id.</summary>
-    [Fact]
-    public async Task An_agents_trace_of_a_resource_holds_the_spans_its_service_sent_from_an_instance()
+    private async Task An_agents_trace_of_a_resource_holds_the_spans_its_service_sent_from_an_instance()
     {
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
@@ -145,8 +172,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         Assert.Empty(resources.Errors);
     }
 
-    [Fact]
-    public async Task An_agents_telemetry_never_sends_the_key_to_a_dashboard_elsewhere_or_named_with_credentials()
+    private async Task An_agents_telemetry_never_sends_the_key_to_a_dashboard_elsewhere_or_named_with_credentials()
     {
         await using AspireDashboardHost dashboard = await AspireDashboardHost.StartAsync();
         // An address no machine answers at (TEST-NET-1), and the stand-in dashboard's own named with a user.
@@ -168,8 +194,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
         }
     }
 
-    [Fact]
-    public async Task An_agent_is_told_why_an_AppHost_whose_connection_ended_lists_no_resources_and_the_rest_of_the_workspace_answers()
+    private async Task An_agent_is_told_why_an_AppHost_whose_connection_ended_lists_no_resources_and_the_rest_of_the_workspace_answers()
     {
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
@@ -199,8 +224,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     /// restart as Aspire's resource-restart; a confirmation asks no one (nobody would answer a headless IDE's question), while
     /// one that asks the person for input, one the resource lacks and one not enabled now are refused saying why, the AppHost
     /// never asked; workspace lists the commands it may run and how the AppHost's run was started.</summary>
-    [Fact]
-    public async Task An_agent_runs_an_AppHost_resources_commands_through_container_action_and_is_refused_those_it_cannot()
+    private async Task An_agent_runs_an_AppHost_resources_commands_through_container_action_and_is_refused_those_it_cannot()
     {
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
@@ -263,8 +287,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     /// <summary>An agent's run of a resource its AppHost cannot start where it is (RuntimeUnhealthy: its container engine is
     /// not running) fails at once saying so, as the Aspire window's red dot shows it, never waiting out the call's whole wait
     /// for it to come up and then answering as if it might yet.</summary>
-    [Fact]
-    public async Task An_agents_run_of_a_resource_whose_container_runtime_is_unhealthy_fails_saying_so()
+    private async Task An_agents_run_of_a_resource_whose_container_runtime_is_unhealthy_fails_saying_so()
     {
         await project.ResetAsync();
         await using AspireInteractionHost resources = await AspireInteractionHost.StartAsync(project.KeyFile);
@@ -283,8 +306,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     /// replica: restarted held by its own resource's command, its session attached to its own new program (stopped at a
     /// breakpoint, its process's id a local there), workspace naming that session on its resource alone, and the other
     /// replica left running as it was, undebugged. The test starts each replica as DCP does, as the stand-in's commands ask.</summary>
-    [Fact]
-    public async Task An_agents_debug_start_of_one_replica_debugs_that_replicas_own_program()
+    private async Task An_agents_debug_start_of_one_replica_debugs_that_replicas_own_program()
     {
         await project.ResetAsync();
         await project.BuildApiAsync();
@@ -402,14 +424,12 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
     /// <summary>An agent reads a service's metrics through telemetry's kind metrics, as the Stats tab reads them: a web app the
     /// stand-in AppHost has Passenger start, sent requests meanwhile, answers its request duration with its rate and median,
     /// heard from its runtime.</summary>
-    [Fact]
-    public async Task An_agent_reads_a_services_request_duration_through_telemetry_metrics() => await RequestDurationAsync(slowFirstSession: false);
+    private async Task An_agent_reads_a_services_request_duration_through_telemetry_metrics() => await RequestDurationAsync(slowFirstSession: false);
 
     /// <summary>An agent's metrics of a service whose runtime takes Passenger's first session too late but answers the next
     /// request at once (a port in front of web's that holds the first connection and passes the rest to the runtime) are
     /// asked again rather than given up, the answer saying so, with the request duration heard.</summary>
-    [Fact]
-    public async Task An_agents_metrics_of_a_runtime_slow_to_take_its_first_session_are_asked_again_and_say_so() => await RequestDurationAsync(slowFirstSession: true);
+    private async Task An_agents_metrics_of_a_runtime_slow_to_take_its_first_session_are_asked_again_and_say_so() => await RequestDurationAsync(slowFirstSession: true);
 
     /// <summary>The web app's request duration read by the agent, its runtime's first session held where
     /// <paramref name="slowFirstSession"/>.</summary>

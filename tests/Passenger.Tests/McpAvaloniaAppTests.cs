@@ -51,13 +51,42 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
 {
     private readonly string appFolder;
 
-    public McpAvaloniaAppTests(AgentAppFolder app) => appFolder = app.Folder;
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly AgentAppFolder fixture;
+
+    public McpAvaloniaAppTests(AgentAppFolder app)
+    {
+        fixture = app;
+        appFolder = app.Folder;
+    }
+
+    /// <summary>An agent's Avalonia app as one flow, each step one test's check in an instance of its own: run, seen,
+    /// clicked, typed into, scrolled and its failed bindings read, each punctuation key pressed by its character and
+    /// held with Ctrl, debugged with a click into a breakpoint and its controls' sources and styles read, and a step
+    /// out of a click handler never stopping in Passenger's inspector.</summary>
+    [Fact]
+    public async Task An_agent_runs_drives_and_debugs_an_Avalonia_app_through_its_inspector_never_stopping_in_Passengers_own()
+    {
+        await Flow.StepApartAsync("an agent runs an avalonia app sees it clicks its button types into it scrolls it reads its failed bindings and profiles its frames", () => new McpAvaloniaAppTests(fixture), t => t.An_agent_runs_an_avalonia_app_sees_it_clicks_its_button_types_into_it_scrolls_it_reads_its_failed_bindings_and_profiles_its_frames());
+        await Flow.StepApartAsync("an agent presses each punctuation key by its character typing it and held with ctrl the app hears ctrl with that key", () => new McpAvaloniaAppTests(fixture), t => t.An_agent_presses_each_punctuation_key_by_its_character_typing_it_and_held_with_ctrl_the_app_hears_ctrl_with_that_key());
+        await Flow.StepApartAsync("an agent debugging an avalonia app clicks into a breakpoint reads a controls sources and styles breaks where a property changes and on a failed binding", () => new McpAvaloniaAppTests(fixture), t => t.An_agent_debugging_an_avalonia_app_clicks_into_a_breakpoint_reads_a_controls_sources_and_styles_breaks_where_a_property_changes_and_on_a_failed_binding());
+        await Flow.StepApartAsync("an agent stepping out of a click handler it clicked into is never stopped in passengers inspector", () => new McpAvaloniaAppTests(fixture), t => t.An_agent_stepping_out_of_a_click_handler_it_clicked_into_is_never_stopped_in_passengers_inspector());
+    }
+
+    /// <summary>An attached agent's Avalonia app as one flow, each step one test's check in an instance of its own:
+    /// asked before it first clicks or presses keys in the person's app or Passenger's own, and its app tools reading
+    /// the app of the Debug tab it names, the chosen tab's by default.</summary>
+    [AvaloniaFact]
+    public void An_attached_agent_asks_before_it_drives_the_persons_app_and_reads_the_app_of_the_debug_tab_it_names()
+    {
+        Flow.StepApart("an agent on the persons window is asked before it first clicks or presses keys in their avalonia app or in passenger", () => new McpAvaloniaAppTests(fixture), t => t.An_agent_on_the_persons_window_is_asked_before_it_first_clicks_or_presses_keys_in_their_avalonia_app_or_in_passenger());
+        Flow.StepApart("an agents app tools read the app of the debug tab it names and the chosen tabs by default", () => new McpAvaloniaAppTests(fixture), t => t.An_agents_app_tools_read_the_app_of_the_debug_tab_it_names_and_the_chosen_tabs_by_default());
+    }
 
     /// <summary>Run, driven and looked at, then profiled until it ends by itself once its window has been drawn
     /// ("--quit-once-drawn"), not for a time that a loaded machine's app may not have drawn in; and an app that draws nothing
     /// says so, its frames' count 0 and why.</summary>
-    [Fact]
-    public async Task An_agent_runs_an_avalonia_app_sees_it_clicks_its_button_types_into_it_scrolls_it_reads_its_failed_bindings_and_profiles_its_frames()
+    private async Task An_agent_runs_an_avalonia_app_sees_it_clicks_its_button_types_into_it_scrolls_it_reads_its_failed_bindings_and_profiles_its_frames()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
         JsonElement built = await Call(client, McpTools.Build);
@@ -161,8 +190,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     /// <summary>An agent presses each key a US keyboard types other than a letter or digit by the character it types, as the
     /// keymap and a screenshot's --key read one: into the app's text box each types its character, a shifted one Shift's, and
     /// held with Ctrl the app hears Ctrl with the key that character is on, ctrl+/ the slash key.</summary>
-    [Fact]
-    public async Task An_agent_presses_each_punctuation_key_by_its_character_typing_it_and_held_with_ctrl_the_app_hears_ctrl_with_that_key()
+    private async Task An_agent_presses_each_punctuation_key_by_its_character_typing_it_and_held_with_ctrl_the_app_hears_ctrl_with_that_key()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
         JsonElement built = await Call(client, McpTools.Build);
@@ -188,8 +216,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     /// value came from and its styles with why each applies or not; Break When Value Changes on the counter's text, which a
     /// click stops where the code-behind sets it; the binding values the window's XAML shows at that stop; and, debugged again,
     /// a failed binding stopping it with XAML Binding Errors on, and running on with it off.</summary>
-    [Fact]
-    public async Task An_agent_debugging_an_avalonia_app_clicks_into_a_breakpoint_reads_a_controls_sources_and_styles_breaks_where_a_property_changes_and_on_a_failed_binding()
+    private async Task An_agent_debugging_an_avalonia_app_clicks_into_a_breakpoint_reads_a_controls_sources_and_styles_breaks_where_a_property_changes_and_on_a_failed_binding()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
         // Built first, as the build's time on a busy machine is none of what the launch's wait below measures.
@@ -269,8 +296,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     /// out of the handler: the app runs on, the click's handling done, never stopped in Passenger's inspector, whose code made
     /// the click and which is never the app's own code to Just My Code (#1891), nor at its next click, which the window's
     /// loop, managed code with the app's Main below it, hands the handler as it did the first (#1899).</summary>
-    [Fact]
-    public async Task An_agent_stepping_out_of_a_click_handler_it_clicked_into_is_never_stopped_in_passengers_inspector()
+    private async Task An_agent_stepping_out_of_a_click_handler_it_clicked_into_is_never_stopped_in_passengers_inspector()
     {
         await using McpClient client = await Start(["--mcp", appFolder], languageServer: false);
         JsonElement built = await Call(client, McpTools.Build);
@@ -309,8 +335,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     /// questions Passenger asks the person for it, nor reaches Settings; the window,
     /// closed, goes at once, held by nothing the inspector of Passenger's own windows started in the agent's call (#1445).
     /// Passenger's own windows are inspected once a process, so this is the run's one test of them in the test process itself.</summary>
-    [AvaloniaFact]
-    public void An_agent_on_the_persons_window_is_asked_before_it_first_clicks_or_presses_keys_in_their_avalonia_app_or_in_passenger()
+    private void An_agent_on_the_persons_window_is_asked_before_it_first_clicks_or_presses_keys_in_their_avalonia_app_or_in_passenger()
     {
         WeakReference<MainWindow> weak = AskedAndAnswered();
         // Avalonia's tooltip service keeps the last control it showed a tip over (the agent clicked one) until the pointer moves on.
@@ -413,8 +438,7 @@ public sealed class McpAvaloniaAppTests : McpRig, IClassFixture<AgentAppFolder>
     /// <summary>An agent on a window debugging two Avalonia apps at once (<see cref="DebuggedAppsTests"/>' pair): its app tools act
     /// on the app of the Debug tab it names, by the name debug_state lists, else on the chosen tab's; the failed bindings it
     /// reads name the program each failed in.</summary>
-    [AvaloniaFact]
-    public void An_agents_app_tools_read_the_app_of_the_debug_tab_it_names_and_the_chosen_tabs_by_default()
+    private void An_agents_app_tools_read_the_app_of_the_debug_tab_it_names_and_the_chosen_tabs_by_default()
     {
         string apps = TestFolders.Create("apps-");
         DeleteAtEnd(apps);

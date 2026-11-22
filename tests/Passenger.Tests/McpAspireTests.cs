@@ -25,10 +25,11 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpAspireTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
+        : base(folders) => restored = folders;
 
     [Fact]
     public async Task Aspire_tools_are_discoverable_and_refuse_to_control_an_unowned_app()
@@ -106,10 +107,29 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
+    /// <summary>An agent's real AppHost as one flow, every step needing Aspire's runtime, each in an instance of its
+    /// own: duplicate resource names of the official starter qualified by the AppHost that owns them, and ending a
+    /// windowless Passenger's input stopping the starter's tree and DCP's listener.</summary>
+    [Fact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
+    public async Task An_agents_real_AppHost_names_its_resources_by_their_AppHost_and_ends_its_tree_with_the_agents_Passenger()
+    {
+        await Flow.StepApartAsync("an agent must qualify duplicate official starter resource names with the owned AppHost", () => new McpAspireTests(restored), t => t.An_agent_must_qualify_duplicate_official_starter_resource_names_with_the_owned_AppHost());
+        await Flow.StepApartAsync("ending a windowless Passengers input stops the official starter tree and Dcp listener", () => new McpAspireTests(restored), t => t.Ending_a_windowless_Passengers_input_stops_the_official_starter_tree_and_Dcp_listener());
+    }
+
+    /// <summary>An attached agent's Aspire starts as one flow, each step one test's check in an instance of its own:
+    /// workspace saying a service marked Don't start is Not started, and a start cancelled ending the starting process
+    /// and its execution listener.</summary>
+    [AvaloniaFact]
+    public void An_attached_agents_Aspire_start_says_a_service_not_started_and_ends_what_it_began_when_cancelled()
+    {
+        Flow.StepApart("an agents workspace says a service marked Dont start is Not started", () => new McpAspireTests(restored), t => t.An_agents_workspace_says_a_service_marked_Dont_start_is_Not_started());
+        Flow.StepApart("canceling an agents Aspire start ends the starting process and its execution listener", () => new McpAspireTests(restored), t => t.Canceling_an_agents_Aspire_start_ends_the_starting_process_and_its_execution_listener());
+    }
+
     /// <summary>An agent's workspace says a service its run configuration says not to start is Not started, never
     /// FailedToStart. The AppHost is AspireStandInTests' stand-in, its service's start asked of the IDE as DCP asks it.</summary>
-    [AvaloniaFact]
-    public void An_agents_workspace_says_a_service_marked_Dont_start_is_Not_started()
+    private void An_agents_workspace_says_a_service_marked_Dont_start_is_Not_started()
     {
         // The test's own, made as it runs, so its folder goes with it; its windows take no warm server of it.
         StandInAppHost project = new();
@@ -153,8 +173,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Fact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public async Task An_agent_must_qualify_duplicate_official_starter_resource_names_with_the_owned_AppHost()
+    private async Task An_agent_must_qualify_duplicate_official_starter_resource_names_with_the_owned_AppHost()
     {
         await using AspireApp project = new();
         await project.InitializeAsync();
@@ -202,8 +221,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [AvaloniaFact]
-    public void Canceling_an_agents_Aspire_start_ends_the_starting_process_and_its_execution_listener()
+    private void Canceling_an_agents_Aspire_start_ends_the_starting_process_and_its_execution_listener()
     {
         Write("Sum.csproj", TestProjects.Console("<ImplicitUsings>enable</ImplicitUsings>"));
         string pidFile = Path.Combine(Folder, "aspire-starting.pid");
@@ -265,8 +283,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Fact(Skip = AspireApp.AppHostSkipped, SkipType = typeof(AspireApp), SkipWhen = nameof(AspireApp.IsUnavailable))]
-    public async Task Ending_a_windowless_Passengers_input_stops_the_official_starter_tree_and_Dcp_listener()
+    private async Task Ending_a_windowless_Passengers_input_stops_the_official_starter_tree_and_Dcp_listener()
     {
         string starter = TestFolders.Create("mcp-aspire-shutdown-");
         DeleteAtEnd(starter);

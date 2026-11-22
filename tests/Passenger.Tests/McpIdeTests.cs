@@ -16,15 +16,35 @@ namespace Passenger.Tests;
 /// is <see cref="McpIdeProfilingTests"/>'.</summary>
 public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpIdeTests(RestoredFolders folders)
-        : base(folders)
+        : base(folders) => restored = folders;
+
+    /// <summary>An agent's IDE tools as one flow, each step one test's check in an instance of its own: a label put
+    /// while another holds Local History, an action waiting for its file's grammar and for its work, thousands of
+    /// warnings answered errors first, settings and what .editorconfig sets over them, a named state's settings kept
+    /// its own, find, revert, problems and the build, a scope inside node_modules or bin, a picture of the window, and
+    /// a Razor component's errors.</summary>
+    [Fact]
+    public async Task An_agents_IDE_tools_answer_settings_problems_finds_history_and_pictures_as_the_window_holds_them()
     {
+        await Flow.StepApartAsync("a label put while another passenger holds local history is answered as waiting and listed once let go", () => new McpIdeTests(restored), t => t.A_label_put_while_another_passenger_holds_local_history_is_answered_as_waiting_and_listed_once_let_go());
+        await Flow.StepApartAsync("an action waits for the grammar reading the file it asks of", () => new McpIdeTests(restored), t => t.An_action_waits_for_the_grammar_reading_the_file_it_asks_of());
+        await Flow.StepApartAsync("problems of thousands of warnings answer within the limit errors first and a path or severity reaches the rest", () => new McpIdeTests(restored), t => t.Problems_of_thousands_of_warnings_answer_within_the_limit_errors_first_and_a_path_or_severity_reaches_the_rest());
+        await Flow.StepApartAsync("settings say what the folders editorconfig files set over each setting", () => new McpIdeTests(restored), t => t.Settings_say_what_the_folders_editorconfig_files_set_over_each_setting());
+        await Flow.StepApartAsync("an agents passenger opens on the settings kept in its named state and keeps its changes its own", () => new McpIdeTests(restored), t => t.An_agents_passenger_opens_on_the_settings_kept_in_its_named_state_and_keeps_its_changes_its_own());
+        await Flow.StepApartAsync("an agent finds text in the windows scopes reverts a file through local history and reads problems and the build window", () => new McpIdeTests(restored), t => t.An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window());
+        await Flow.StepApartAsync("an agents directory scope inside node modules or bin finds and replaces what its files hold", () => new McpIdeTests(restored), t => t.An_agents_directory_scope_inside_node_modules_or_bin_finds_and_replaces_what_its_files_hold());
+        await Flow.StepApartAsync("an agents ide action waits for its work and answers what it came to asking nobody", () => new McpIdeTests(restored), t => t.An_agents_ide_action_waits_for_its_work_and_answers_what_it_came_to_asking_nobody());
+        await Flow.StepApartAsync("an agents picture of passengers window at any scale shows the code and the active tabs name", () => new McpIdeTests(restored), t => t.An_agents_picture_of_passengers_window_at_any_scale_shows_the_code_and_the_active_tabs_name());
+        await Flow.StepApartAsync("an agent reads a razor components errors names and usages through roslyns razor", () => new McpIdeTests(restored), t => t.An_agent_reads_a_razor_components_errors_names_and_usages_through_roslyns_razor());
     }
 
     /// <summary>A label put while another Passenger on the same state holds Local History past the call's wait is answered as
     /// waiting for it, never as put, and is listed once that Passenger lets go (#1791).</summary>
-    [Fact]
-    public async Task A_label_put_while_another_passenger_holds_local_history_is_answered_as_waiting_and_listed_once_let_go()
+    private async Task A_label_put_while_another_passenger_holds_local_history_is_answered_as_waiting_and_listed_once_let_go()
     {
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -46,8 +66,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A grammar takes a moment to read a long file, whose lines inside strings Convert Indentation must know: the action
     /// waits for it, right after the file opens and again after the edit its first conversion made, where each refused the agent.</summary>
-    [Fact]
-    public async Task An_action_waits_for_the_grammar_reading_the_file_it_asks_of()
+    private async Task An_action_waits_for_the_grammar_reading_the_file_it_asks_of()
     {
         await TakeFolderAsync();
         Write("long.py", string.Concat(Enumerable.Range(0, 6000).Select(i => $"def f{i}(a):\n    if a:\n        return [x for x in a]\n    return None\n\n\n")));
@@ -64,8 +83,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     /// saying how many warnings it left out and how to ask for them: severity error gives the error alone, a folder's path the
     /// lists within it, and each file's path its own, read on from the line its words name past the limit, which together
     /// reach every warning.</summary>
-    [Fact]
-    public async Task Problems_of_thousands_of_warnings_answer_within_the_limit_errors_first_and_a_path_or_severity_reaches_the_rest()
+    private async Task Problems_of_thousands_of_warnings_answer_within_the_limit_errors_first_and_a_path_or_severity_reaches_the_rest()
     {
         await TakeFolderAsync();
         const int Files = 12;
@@ -128,8 +146,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's settings say, setting by setting, what the folder's .editorconfig files set over it for the files
     /// their sections name, as Settings does under its rows: GDScript's layout the line length scripts take, XAML's
     /// nothing, set for scripts alone, and the final line break what Markdown files take.</summary>
-    [Fact]
-    public async Task Settings_say_what_the_folders_editorconfig_files_set_over_each_setting()
+    private async Task Settings_say_what_the_folders_editorconfig_files_set_over_each_setting()
     {
         await TakeFolderAsync();
         Write(".editorconfig", "root = true\n\n[*.gd]\nmax_line_length = 120\n\n[*.md]\ninsert_final_newline = false\n");
@@ -147,8 +164,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's Passenger whose state PASSENGER_SETTINGS names opens on the settings.json kept there, as a person's
     /// window would: solution-wide analysis on there is on from its start, listing an error of a file nobody opened, and the
     /// settings stay its own, kept nowhere, so a change it makes leaves the file as it was.</summary>
-    [Fact]
-    public async Task An_agents_passenger_opens_on_the_settings_kept_in_its_named_state_and_keeps_its_changes_its_own()
+    private async Task An_agents_passenger_opens_on_the_settings_kept_in_its_named_state_and_keeps_its_changes_its_own()
     {
         await TakeFolderAsync();
         Write("Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
@@ -171,8 +187,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(kept, File.ReadAllText(file));
     }
 
-    [Fact]
-    public async Task An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window()
+    private async Task An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window()
     {
         await TakeFolderAsync();
         const string helper = "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n";
@@ -276,8 +291,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>find_in_files and replace_in_files in a directory inside a folder the folder's search passes over
     /// (node_modules, bin) search its files all the same, which the solution's search still leaves out.</summary>
-    [Fact]
-    public async Task An_agents_directory_scope_inside_node_modules_or_bin_finds_and_replaces_what_its_files_hold()
+    private async Task An_agents_directory_scope_inside_node_modules_or_bin_finds_and_replaces_what_its_files_hold()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-passed-over-"));
         DeleteAtEnd(folder);
@@ -368,8 +382,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     /// agent's shell began a moment before; Continue Rebase right after the shell's interactive rebase stopped to edit goes
     /// on with it, Git's state read fresh; Settings…, a dialog nobody is there to answer, is closed and said. Each answered "Ran"
     /// before, the fetch's failure unsaid, the questions left open, and Continue Rebase refused as no rebase was known.</summary>
-    [Fact]
-    public async Task An_agents_ide_action_waits_for_its_work_and_answers_what_it_came_to_asking_nobody()
+    private async Task An_agents_ide_action_waits_for_its_work_and_answers_what_it_came_to_asking_nobody()
     {
         string repository = TestFolders.Create("mcp-action-outcome-");
         DeleteAtEnd(repository);
@@ -418,8 +431,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's picture of Passenger's own window at 2 pixels a unit shows the code and the active tab's name as
     /// at 1, where at any scale but 1 the editor's text and the tab's title and icons were left out: drawn after a clip of
     /// their own, they were scaled twice over, off the picture.</summary>
-    [Fact]
-    public async Task An_agents_picture_of_passengers_window_at_any_scale_shows_the_code_and_the_active_tabs_name()
+    private async Task An_agents_picture_of_passengers_window_at_any_scale_shows_the_code_and_the_active_tabs_name()
     {
         string folder = TestFolders.Create("mcp-picture-");
         DeleteAtEnd(folder);
@@ -464,8 +476,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Razor for an agent: a component's errors, what a name in its markup is, and a method's usages across its
     /// markup and its code block.</summary>
-    [Fact]
-    public async Task An_agent_reads_a_razor_components_errors_names_and_usages_through_roslyns_razor()
+    private async Task An_agent_reads_a_razor_components_errors_names_and_usages_through_roslyns_razor()
     {
         string blazor = PathNames.Canonical(TestFolders.Create("mcp-razor-"));
         DeleteAtEnd(blazor);
@@ -492,100 +503,4 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A Find in Files answer's matches as path:line.</summary>
     private static string[] Places(JsonElement found) =>
         [.. found.GetProperty("matches").EnumerateArray().Select(m => $"{m.GetProperty("path").GetString()}:{m.GetProperty("line").GetInt32()}").Order(StringComparer.Ordinal)];
-}
-
-/// <summary>Attach Profiler for an agent, and why a memory profile has no heap, McpIdeTests' where what it tests is held to a
-/// time: a profile's samples, so the class runs alone.</summary>
-[Collection(Alone.Name)]
-public sealed class McpIdeProfilingTests : McpRig, IClassFixture<RestoredFolders>
-{
-    public McpIdeProfilingTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
-
-    /// <summary>Attach Profiler for an agent: the program Run started, profiled from now for a while, left running after. Its
-    /// hot spot is named at the editor's line, below a comment whose breaks the compiler counted into the PDB's lines.</summary>
-    [Fact]
-    public async Task An_agent_profiles_a_program_already_running_and_leaves_it_running()
-    {
-        await TakeFolderAsync();
-        Write("Program.cs", $"File.WriteAllText(Path.Combine(@\"{Folder}\", \"spin.pid\"), Environment.ProcessId.ToString());\n"
-            + "long turns = 0;\nwhile (true)\n{\n    turns = Spin.Turn(turns);\n}\n\n"
-            + $"/* Pasted:{(char)0x2028}a{(char)0x2029}b{(char)0x85}c\rd */\nstatic class Spin\n{{\n    public static long Turn(long turns) => turns + 1;\n}}\n");
-        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        CallToolResult unattached = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
-        Assert.True(unattached.IsError == true, $"Attach Profiler with nothing running answered: {Text(unattached)}");
-
-        Assert.True((await Call(client, McpTools.Run, new() { ["waitSeconds"] = 0 })).GetProperty("stillRunning").GetBoolean());
-        int spinning = await WrittenId("spin.pid", "the program to start");
-        JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 2 });
-        Assert.True(profiled.GetProperty("samples").GetInt32() > 0, $"Attach Profiler sampled nothing: {profiled.GetRawText()}");
-        // The editor's line 11, which the compiler, ending a line at each of the comment's four breaks, numbered 15.
-        JsonElement turn = Assert.Single(profiled.GetProperty("hotSpots").EnumerateArray(), h => h.GetProperty("method").GetString()!.Contains("Spin.Turn", StringComparison.Ordinal));
-        Assert.True(turn.TryGetProperty("source", out JsonElement source) && source.GetString() == "Program.cs:11", $"Spin.Turn's hot spot is not named at its line: {turn}");
-        using Process program = Process.GetProcessById(spinning);
-        Assert.True(DotnetProcesses.Runs(program), "The program an agent attached the profiler to ended with its snapshot");
-        await Call(client, McpTools.Stop);
-    }
-
-    /// <summary>An agent's profile asking for a memory snapshot hears why it has no heap: without seconds, before anything is
-    /// built or run, as the heap is read from the program as it runs; with seconds, of a program that ended before they
-    /// passed, in the answer's heap note.</summary>
-    [Fact]
-    public async Task An_agents_memory_profile_says_why_it_has_no_heap()
-    {
-        await TakeFolderAsync();
-        Write("Program.cs", $"File.WriteAllText(Path.Combine(@\"{Folder}\", \"ran.txt\"), \"ran\");\nConsole.WriteLine(\"done\");\n");
-        string ran = Path.Combine(Folder, "ran.txt");
-        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-
-        CallToolResult refused = await Result(client, McpTools.Profile, new() { ["memory"] = true });
-        Assert.True(refused.IsError == true && Text(refused).Contains(PassengerTools.MemoryWithoutSeconds, StringComparison.Ordinal),
-            $"A memory profile without seconds answered: {Text(refused)}");
-        Assert.False(File.Exists(ran), "A memory profile refused for want of seconds ran the program all the same");
-
-        JsonElement ended = await Call(client, McpTools.Profile, new() { ["memory"] = true, ["seconds"] = 60 });
-        Assert.True(File.Exists(ran), $"The memory profile with seconds never ran the program: {ended.GetRawText()}");
-        Assert.True(!ended.TryGetProperty("heap", out JsonElement heap) || heap.ValueKind == JsonValueKind.Null, $"The program that ended at once has a heap: {heap}");
-        Assert.True(ended.TryGetProperty("heapNote", out JsonElement note) && note.GetString()?.StartsWith("The program ended before its memory snapshot", StringComparison.Ordinal) == true,
-            $"The memory profile of a program that ended before its seconds passed says nothing of why it has no heap: {ended.GetRawText()}");
-    }
-
-    /// <summary>An agent's profile of a program the debugger holds answers at once rather than waiting on it: refused while
-    /// the program is stopped at a breakpoint; and, the program stopping at another as the profile's time runs out, its run
-    /// let go unread, saying so; neither leaves a later profile refused as one already under way.</summary>
-    [Fact]
-    public async Task An_agents_profile_of_a_program_the_debugger_holds_answers_at_once_and_leaves_the_next_free()
-    {
-        await TakeFolderAsync();
-        Write("Program.cs", "using System.Diagnostics;\n"
-            + "Console.WriteLine(\"begun\");\n"
-            + "Stopwatch clock = Stopwatch.StartNew();\n"
-            + "long turns = 0;\n"
-            + "while (clock.Elapsed < TimeSpan.FromSeconds(3)) { turns = Spin.Turn(turns); }\n"
-            + "Console.WriteLine($\"spun {turns}\");\n"
-            + "while (true) { turns = Spin.Turn(turns); }\n"
-            + "static class Spin\n{\n    public static long Turn(long turns) => turns + 1;\n}\n");
-        const string Held = "is paused in the debugger: continue it to profile";
-        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
-        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 2 });
-        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6 });
-        await Call(client, McpTools.DebugStart, new() { ["waitSeconds"] = 120 });
-
-        CallToolResult refused = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
-        Assert.True(refused.IsError == true && Text(refused).Contains(Held, StringComparison.Ordinal),
-            $"An agent's profile of the program stopped at its breakpoint answered: {Text(refused)}");
-
-        // On to the second breakpoint, three seconds on, which it reaches as the profile's six seconds run.
-        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 0 });
-        CallToolResult letGo = await Result(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 6 });
-        Assert.True(letGo.IsError == true && Text(letGo).Contains($"{Held} (its run so far was let go unread)", StringComparison.Ordinal),
-            $"An agent's profile of the program that stopped at a breakpoint as it ran answered: {Text(letGo)}");
-
-        await Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 0 });
-        JsonElement profiled = await Call(client, McpTools.Profile, new() { ["attach"] = true, ["seconds"] = 1 });
-        Assert.True(profiled.GetProperty("samples").GetInt32() > 0, $"Attach Profiler sampled nothing once the program went on: {profiled.GetRawText()}");
-        await Call(client, McpTools.Stop);
-    }
 }

@@ -21,8 +21,21 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
 
     private static Dictionary<string, object?> At(string path, int line, int column) => new() { ["path"] = path, ["line"] = line, ["column"] = column };
 
+    /// <summary>An agent's BDD as one flow, each step one test's check in an instance of its own: steps and their
+    /// definitions gone between, a feature's parts listed, a missing step defined and renamed, a feature's first
+    /// diagnostics listing its undefined step and the argument its definition cannot take, a feature read in its
+    /// project's language or found to hold none, and a scenario's run answering its failing step with its definition,
+    /// green once fixed.</summary>
     [Fact]
-    public async Task An_agent_goes_between_steps_and_their_definitions_lists_a_features_parts_defines_a_missing_step_and_renames_one()
+    public async Task An_agent_works_a_features_steps_definitions_diagnostics_and_runs_as_Reqnroll_reads_them()
+    {
+        await Flow.StepApartAsync("an agent goes between steps and their definitions lists a features parts defines a missing step and renames one", () => new BddMcpTests(folders), t => t.An_agent_goes_between_steps_and_their_definitions_lists_a_features_parts_defines_a_missing_step_and_renames_one());
+        await Flow.StepApartAsync("an agents first diagnostics of a feature lists its undefined step and the argument its definition cannot take", () => new BddMcpTests(folders), t => t.An_agents_first_diagnostics_of_a_feature_lists_its_undefined_step_and_the_argument_its_definition_cannot_take());
+        await Flow.StepApartAsync("an agents diagnostics say a feature is read in its projects language and finds no feature and what that leaves unmatched", () => new BddMcpTests(folders), t => t.An_agents_diagnostics_say_a_feature_is_read_in_its_projects_language_and_finds_no_feature_and_what_that_leaves_unmatched());
+        await Flow.StepApartAsync("an agents run of a scenario answers its failing step with its definition and arguments and runs green once the definition is fixed", () => new BddMcpTests(folders), t => t.An_agents_run_of_a_scenario_answers_its_failing_step_with_its_definition_and_arguments_and_runs_green_once_the_definition_is_fixed());
+    }
+
+    private async Task An_agent_goes_between_steps_and_their_definitions_lists_a_features_parts_defines_a_missing_step_and_renames_one()
     {
         string folder = PathNames.Canonical(await folders.TakeAsync("bddmcp-", made => ReqnrollProjects.Write(made)));
         DeleteAtEnd(folder);
@@ -53,8 +66,7 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
     /// <summary>An agent's first call of a fresh session, diagnostics on a feature, lists the marks its steps' definitions
     /// make (a step none binds, an argument its definition cannot take), the definitions read as the C# server loads, never
     /// answering as of none read.</summary>
-    [Fact]
-    public async Task An_agents_first_diagnostics_of_a_feature_lists_its_undefined_step_and_the_argument_its_definition_cannot_take()
+    private async Task An_agents_first_diagnostics_of_a_feature_lists_its_undefined_step_and_the_argument_its_definition_cannot_take()
     {
         string folder = PathNames.Canonical(await folders.TakeAsync("bddmcp-", made => ReqnrollProjects.Write(made)));
         DeleteAtEnd(folder);
@@ -74,8 +86,7 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
     /// with no language line, failing the project's load: that feature's finding says the language it is read in and how its
     /// own is named, a German feature beside it says its steps are matched to no definitions as the load failed, never an
     /// empty list, and the folder's toolset names the feature.</summary>
-    [Fact]
-    public async Task An_agents_diagnostics_say_a_feature_is_read_in_its_projects_language_and_finds_no_feature_and_what_that_leaves_unmatched()
+    private async Task An_agents_diagnostics_say_a_feature_is_read_in_its_projects_language_and_finds_no_feature_and_what_that_leaves_unmatched()
     {
         string folder = PathNames.Canonical(await folders.TakeAsync("bddmcp-", made => ReqnrollProjects.Write(made)));
         DeleteAtEnd(folder);
@@ -102,8 +113,7 @@ public sealed class BddMcpTests(RestoredFolders folders) : McpRig, IClassFixture
         Assert.Equal($"{Path.Combine("Features", "Calculator.feature")}(2,1): {why}", toolset.GetProperty("message").GetString());
     }
 
-    [Fact]
-    public async Task An_agents_run_of_a_scenario_answers_its_failing_step_with_its_definition_and_arguments_and_runs_green_once_the_definition_is_fixed()
+    private async Task An_agents_run_of_a_scenario_answers_its_failing_step_with_its_definition_and_arguments_and_runs_green_once_the_definition_is_fixed()
     {
         string folder = PathNames.Canonical(await folders.TakeAsync("bddmcp-", made => ReqnrollProjects.Write(made)));
         DeleteAtEnd(folder);

@@ -36,8 +36,35 @@ public sealed class McpGodotScriptGameTests : McpRig
         DeleteAtEnd(folder + "-home");
     }
 
+    /// <summary>An agent debugging a GDScript game as one flow, every step needing Godot 4, each in an instance of its
+    /// own: a script saved in a debugged game reloading, typing into a label refused and a click stopping at a
+    /// breakpoint said so, a conditional breakpoint holding as the game's own if reads it, a hit count counting only
+    /// the hits its condition held on, and GUT's tests run as the folder opens.</summary>
     [Fact]
-    public async Task A_script_saved_in_a_debugged_game_of_GDScript_alone_reloads_and_hot_reload_says_saved_scripts_reload()
+    public async Task An_agent_debugs_a_GDScript_game_its_breakpoints_holding_as_the_game_reads_them_and_saved_scripts_reloading()
+    {
+        await Flow.StepApartAsync("a script saved in a debugged game of GDScript alone reloads and hot reload says saved scripts reload", () => new McpGodotScriptGameTests(), t => t.A_script_saved_in_a_debugged_game_of_GDScript_alone_reloads_and_hot_reload_says_saved_scripts_reload());
+        await Flow.StepApartAsync("typing into a label is refused a click that stops at a breakpoint says so and set next statement says its debugger has none", () => new McpGodotScriptGameTests(), t => t.Typing_into_a_label_is_refused_a_click_that_stops_at_a_breakpoint_says_so_and_set_next_statement_says_its_debugger_has_none());
+        await Flow.StepApartAsync("a conditional breakpoint holds as the games own if reads its value", () => new McpGodotScriptGameTests(), t => t.A_conditional_breakpoint_holds_as_the_games_own_if_reads_its_value());
+        await Flow.StepApartAsync("a hit count counts the hits its condition held on through an edit of its message logged as every debugger logs it", () => new McpGodotScriptGameTests(), t => t.A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it());
+        await Flow.StepApartAsync("tests run as the folder opens runs a gut test extending the projects own test class", () => new McpGodotScriptGameTests(), t => t.Tests_run_as_the_folder_opens_runs_a_gut_test_extending_the_projects_own_test_class());
+    }
+
+    /// <summary>An agent's input into a GDScript game as one flow, every step needing Godot 4, each in an instance of
+    /// its own: input aimed at a second window going to it, keys reaching the main window past a second one holding the
+    /// focus, keys aimed past an exclusive window said to have gone to it, punctuation typed by its characters and
+    /// heard with Ctrl, and app_tree running no script's getter.</summary>
+    [Fact]
+    public async Task An_agents_input_reaches_the_GDScript_games_window_it_aims_at_and_its_tree_runs_no_script_getter()
+    {
+        await Flow.StepApartAsync("input aimed at a second window goes to it by control and by a point of the window named", () => new McpGodotScriptGameTests(), t => t.Input_aimed_at_a_second_window_goes_to_it_by_control_and_by_a_point_of_the_window_named());
+        await Flow.StepApartAsync("keys aimed at the main window reach it past a second window holding the focus", () => new McpGodotScriptGameTests(), t => t.Keys_aimed_at_the_main_window_reach_it_past_a_second_window_holding_the_focus());
+        await Flow.StepApartAsync("keys aimed past an exclusive window are said to have gone to it", () => new McpGodotScriptGameTests(), t => t.Keys_aimed_past_an_exclusive_window_are_said_to_have_gone_to_it());
+        await Flow.StepApartAsync("punctuation keys pressed by their characters type them into a games text box and with ctrl are heard by their keys", () => new McpGodotScriptGameTests(), t => t.Punctuation_keys_pressed_by_their_characters_type_them_into_a_games_text_box_and_with_ctrl_are_heard_by_their_keys());
+        await Flow.StepApartAsync("app tree runs no getter of a script and keeps its text and app details says what it ran", () => new McpGodotScriptGameTests(), t => t.App_tree_runs_no_getter_of_a_script_and_keeps_its_text_and_app_details_says_what_it_ran());
+    }
+
+    private async Task A_script_saved_in_a_debugged_game_of_GDScript_alone_reloads_and_hot_reload_says_saved_scripts_reload()
     {
         await using McpClient client = await Start(["--mcp", folder], languageServer: false,
             environment: new() { [Passenger.App.Godot.GodotUserFolders.HomeVariable] = folder + "-home" });
@@ -67,8 +94,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// focus; a click whose handler stops at a breakpoint is said at once as the game stopped under the debugger, never
     /// waited out and refused as a game paused, and debug_state says the stop; Set Next Statement, which Godot's GDScript
     /// debugger cannot do, is refused saying so, never in the protocol's words.</summary>
-    [Fact]
-    public async Task Typing_into_a_label_is_refused_a_click_that_stops_at_a_breakpoint_says_so_and_set_next_statement_says_its_debugger_has_none()
+    private async Task Typing_into_a_label_is_refused_a_click_that_stops_at_a_breakpoint_says_so_and_set_next_statement_says_its_debugger_has_none()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://press.gd\" id=\"1\"]\n\n"
             + "[node name=\"Main\" type=\"Node2D\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Button\" type=\"Button\" parent=\".\"]\n"
@@ -105,8 +131,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// <summary>Input aimed at a second window goes to it: a click on its text box, which sits where the main window's does, and
     /// typing land there, a click at a point of the window named presses what is there, and the main window takes input again
     /// once aimed at. Godot runs headless, whose windows are embedded in the main one.</summary>
-    [Fact]
-    public async Task Input_aimed_at_a_second_window_goes_to_it_by_control_and_by_a_point_of_the_window_named()
+    private async Task Input_aimed_at_a_second_window_goes_to_it_by_control_and_by_a_point_of_the_window_named()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows);
         File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _ready() -> void:\n\t$Second/Press.pressed.connect(func() -> void: print(\"pressed in second\"))\n");
@@ -138,8 +163,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// <summary>Keys aimed at the main window's text box reach it though a second window holds the focus, which they take from it
     /// with nothing of the game hearing a press, where they went to that window as the answer named the text box; keys aimed at
     /// nothing stay with the window holding the focus.</summary>
-    [Fact]
-    public async Task Keys_aimed_at_the_main_window_reach_it_past_a_second_window_holding_the_focus()
+    private async Task Keys_aimed_at_the_main_window_reach_it_past_a_second_window_holding_the_focus()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows);
         File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _input(event: InputEvent) -> void:\n\tif event is InputEventMouseButton and event.position.x < 0:\n"
@@ -161,8 +185,7 @@ public sealed class McpGodotScriptGameTests : McpRig
 
     /// <summary>An exclusive window keeps every key until it closes, for a person as for an agent: keys aimed at the main window go
     /// to it, and the answer says so, where it named the control they missed.</summary>
-    [Fact]
-    public async Task Keys_aimed_past_an_exclusive_window_are_said_to_have_gone_to_it()
+    private async Task Keys_aimed_past_an_exclusive_window_are_said_to_have_gone_to_it()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows.Replace("type=\"Window\" parent=\".\"", "type=\"AcceptDialog\" parent=\".\"", StringComparison.Ordinal));
         File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _ready() -> void:\n\t$Second.popup_centered.call_deferred()\n");
@@ -181,8 +204,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// Godot: each typed into its text box, a shifted one its Shift's character, and held with Ctrl heard by the key's own
     /// code whatever Shift holds, ctrl+/ as Ctrl with the slash key and ctrl+plus as Ctrl and Shift with the equal sign's,
     /// typing nothing.</summary>
-    [Fact]
-    public async Task Punctuation_keys_pressed_by_their_characters_type_them_into_a_games_text_box_and_with_ctrl_are_heard_by_their_keys()
+    private async Task Punctuation_keys_pressed_by_their_characters_type_them_into_a_games_text_box_and_with_ctrl_are_heard_by_their_keys()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), TwoWindows);
         File.WriteAllText(Path.Combine(folder, "second.gd"), "extends Control\n\nfunc _input(event: InputEvent) -> void:\n\tvar key := event as InputEventKey\n"
@@ -210,8 +232,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// <summary>app_tree reads what a node's class holds past its script, and a GDScript's own text as stored: looking at
     /// the tree, named properties among it, runs no getter and no <c>_get</c>, which app_details, reading through Godot's
     /// own inspection, runs and says it did.</summary>
-    [Fact]
-    public async Task App_tree_runs_no_getter_of_a_script_and_keeps_its_text_and_app_details_says_what_it_ran()
+    private async Task App_tree_runs_no_getter_of_a_script_and_keeps_its_text_and_app_details_says_what_it_ran()
     {
         File.WriteAllText(Path.Combine(folder, "main.tscn"), "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://counting.gd\" id=\"1\"]\n\n"
             + "[node name=\"Main\" type=\"Control\"]\nscript = ExtResource(\"1\")\n\n[node name=\"Press\" type=\"Button\" parent=\".\"]\noffset_right = 120.0\noffset_bottom = 40.0\n"
@@ -246,8 +267,7 @@ public sealed class McpGodotScriptGameTests : McpRig
 
     /// <summary>A conditional breakpoint holds as the game's own <c>if</c> reads its value: each line whose condition is a
     /// value Godot takes for false lets the game go on, and the game stops at the one Godot takes for true.</summary>
-    [Fact]
-    public async Task A_conditional_breakpoint_holds_as_the_games_own_if_reads_its_value()
+    private async Task A_conditional_breakpoint_holds_as_the_games_own_if_reads_its_value()
     {
         File.WriteAllText(Path.Combine(folder, "ticker.gd"), Truths);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false,
@@ -277,8 +297,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// game at i 14, as every debugger counts (the managed debugger's and the browser's tests stop alike); one that neither
     /// stops nor logs says where it was reached. The edited message logs \{ and \} as braces, a string quoted unless ,nq and
     /// an int, 64 bits, in hexadecimal under ,h, as every debugger does; one writing {{ is refused saying how to write a brace.</summary>
-    [Fact]
-    public async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
+    private async Task A_hit_count_counts_the_hits_its_condition_held_on_through_an_edit_of_its_message_logged_as_every_debugger_logs_it()
     {
         File.WriteAllText(Path.Combine(folder, "ticker.gd"), Loop);
         await using McpClient client = await Start(["--mcp", folder], languageServer: false,
@@ -317,8 +336,7 @@ public sealed class McpGodotScriptGameTests : McpRig
     /// <summary>tests_run asked as the folder opens waits for the tests its code declares: a GUT test in a script extending the
     /// project's own test class, known only once that class has been read, runs and passes (GUT the stand-in of
     /// <see cref="GodotGutTests"/>).</summary>
-    [Fact]
-    public async Task Tests_run_as_the_folder_opens_runs_a_gut_test_extending_the_projects_own_test_class()
+    private async Task Tests_run_as_the_folder_opens_runs_a_gut_test_extending_the_projects_own_test_class()
     {
         string gut = PathNames.Canonical(TestFolders.Create("godot-mcp-gut-"));
         DeleteAtEnd(gut);

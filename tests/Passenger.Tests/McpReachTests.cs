@@ -30,12 +30,38 @@ public sealed class McpReachTests : McpRig
         return (folder, elsewhere, TestFolders.Write(elsewhere, "id_stand_in", Key));
     }
 
+    /// <summary>What an agent reaches as one flow, each step one test's check in an instance of its own: a file outside
+    /// the open folder refused by its path, by dots or through a link, leaving it as it was, a project its trusted
+    /// solution names beside the folder read and edited and nothing else there, a package's file and a generator's code
+    /// read where its places lead and changed by none, the server's library code read only in the person's own folder,
+    /// and settings naming a program Passenger runs refused to it.</summary>
+    [Fact]
+    public async Task An_agent_reaches_the_open_folder_and_its_trusted_solutions_projects_alone_and_reads_elsewhere_only_where_its_places_lead()
+    {
+        await Flow.StepApartAsync("an agent is refused a file outside the open folder by its path or by dots and the file is left as it was", () => new McpReachTests(), t => t.An_agent_is_refused_a_file_outside_the_open_folder_by_its_path_or_by_dots_and_the_file_is_left_as_it_was());
+        await Flow.StepApartAsync("an agent is refused a file outside the open folder through a link in it and finds or replaces nothing there", () => new McpReachTests(), t => t.An_agent_is_refused_a_file_outside_the_open_folder_through_a_link_in_it_and_finds_or_replaces_nothing_there());
+        await Flow.StepApartAsync("an agent reads and edits a project its trusted solution names beside the folder and nothing else there", () => new McpReachTests(), t => t.An_agent_reads_and_edits_a_project_its_trusted_solution_names_beside_the_folder_and_nothing_else_there());
+        await Flow.StepApartAsync("an agent reads a packages file and a generators code outside the folder where its places lead and changes neither", () => new McpReachTests(), t => t.An_agent_reads_a_packages_file_and_a_generators_code_outside_the_folder_where_its_places_lead_and_changes_neither());
+        await Flow.StepApartAsync("an agent reads the language servers library code only where its folder is the persons own", () => new McpReachTests(), t => t.An_agent_reads_the_language_servers_library_code_only_where_its_folder_is_the_persons_own());
+        await Flow.StepApartAsync("settings naming a program passenger runs are refused to an agent and kept as the person set them", () => new McpReachTests(), t => t.Settings_naming_a_program_passenger_runs_are_refused_to_an_agent_and_kept_as_the_person_set_them());
+    }
+
+    /// <summary>What an attached agent's edits reach as one flow, each step one test's check in an instance of its own:
+    /// in a window whose folder is not trusted the project its solution names beside it refused, and its edits of the
+    /// solution and of an AppHost reaching and lending nothing beside what the person had.</summary>
+    [AvaloniaFact]
+    public void An_attached_agents_edits_of_a_solution_or_AppHost_lend_it_nothing_the_person_had_not_and_an_untrusted_window_nothing()
+    {
+        Flow.StepApart<McpReachTests>("an agent in a window whose folder is not trusted is refused the project its solution names beside it", t => t.An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_the_project_its_solution_names_beside_it());
+        Flow.StepApart<McpReachTests>("an agents edit of its solution reaches and lends nothing beside what the person had", t => t.An_agents_edit_of_its_solution_reaches_and_lends_nothing_beside_what_the_person_had());
+        Flow.StepApart<McpReachTests>("an agents edit of an AppHost reaches and lends nothing beside what the person had", t => t.An_agents_edit_of_an_AppHost_reaches_and_lends_nothing_beside_what_the_person_had());
+    }
+
     /// <summary>A file outside the open folder, named by its full path or by <c>..</c> from the folder, is refused to
     /// editor_text, edit and open in the one sentence saying what an agent reaches, and to find_in_files' directory and
     /// diagnostics; a share's path is never asked of the disk; the file is left as it was. Opening the folder it is in, the
     /// workspace the agent chooses, makes it the agent's to read.</summary>
-    [Fact]
-    public async Task An_agent_is_refused_a_file_outside_the_open_folder_by_its_path_or_by_dots_and_the_file_is_left_as_it_was()
+    private async Task An_agent_is_refused_a_file_outside_the_open_folder_by_its_path_or_by_dots_and_the_file_is_left_as_it_was()
     {
         (string folder, string elsewhere, string secret) = WorkAndHome();
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
@@ -104,8 +130,7 @@ public sealed class McpReachTests : McpRig
     /// reaches: editor_text, edit and open through either are refused naming where the link leads, the file left as it was;
     /// find_in_files finds the text in the folder's own file and none through the link, and replace_in_files leaves the
     /// file the link leads to as it was, saying why.</summary>
-    [Fact]
-    public async Task An_agent_is_refused_a_file_outside_the_open_folder_through_a_link_in_it_and_finds_or_replaces_nothing_there()
+    private async Task An_agent_is_refused_a_file_outside_the_open_folder_through_a_link_in_it_and_finds_or_replaces_nothing_there()
     {
         (string folder, string elsewhere, string secret) = WorkAndHome();
         try
@@ -166,8 +191,7 @@ public sealed class McpReachTests : McpRig
 
     /// <summary>A trusted folder's solution naming a project beside it puts that project's files in an agent's reach, to read
     /// and edit by <c>..</c> and by their full path as the folder's own; a file beside them no project holds is still refused.</summary>
-    [Fact]
-    public async Task An_agent_reads_and_edits_a_project_its_trusted_solution_names_beside_the_folder_and_nothing_else_there()
+    private async Task An_agent_reads_and_edits_a_project_its_trusted_solution_names_beside_the_folder_and_nothing_else_there()
     {
         (string folder, string library, string beside) = SolutionBeside();
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
@@ -183,8 +207,7 @@ public sealed class McpReachTests : McpRig
     /// <summary>A folder the person opened without trusting it lends an agent nothing beside it: the project its solution names
     /// there is refused to read and, once the person allowed edit, to edit, the file left as it was, while the folder's own
     /// files are read.</summary>
-    [AvaloniaFact]
-    public void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_the_project_its_solution_names_beside_it()
+    private void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_the_project_its_solution_names_beside_it()
     {
         (string folder, string library, _) = SolutionBeside();
         string written = File.ReadAllText(library);
@@ -218,8 +241,7 @@ public sealed class McpReachTests : McpRig
     /// open folder and a real project beside it the person never added reaches and lends nothing new: a file beside the
     /// solution and the real project's file are refused, that project's folder is never trusted, and the library the solution
     /// named before is still read and trusted with it; opened again by the person, the solution's real project is theirs.</summary>
-    [AvaloniaFact]
-    public void An_agents_edit_of_its_solution_reaches_and_lends_nothing_beside_what_the_person_had()
+    private void An_agents_edit_of_its_solution_reaches_and_lends_nothing_beside_what_the_person_had()
     {
         (string folder, string library, string beside) = SolutionBeside();
         string root = Path.GetDirectoryName(folder)!;
@@ -272,8 +294,7 @@ public sealed class McpReachTests : McpRig
     /// the service's files in an agent's reach and lends them the folder's trust; an agent's edit of the AppHost naming another
     /// project beside it reaches and lends nothing new, the service named before still read and trusted; once the person saves
     /// the AppHost themselves, the project it names is theirs.</summary>
-    [AvaloniaFact]
-    public void An_agents_edit_of_an_AppHost_reaches_and_lends_nothing_beside_what_the_person_had()
+    private void An_agents_edit_of_an_AppHost_reaches_and_lends_nothing_beside_what_the_person_had()
     {
         string root = PathNames.Canonical(TestFolders.Create("mcp-apphost-"));
         DeleteAtEnd(root);
@@ -335,8 +356,7 @@ public sealed class McpReachTests : McpRig
     /// <summary>A package's file, restored to a package folder outside the open folder, where definition leads, and a source
     /// generator's code copied outside it, where usages lead, are an agent's to read; edit refuses each as read-only, the
     /// package's naming the package, leaving it as it was.</summary>
-    [Fact]
-    public async Task An_agent_reads_a_packages_file_and_a_generators_code_outside_the_folder_where_its_places_lead_and_changes_neither()
+    private async Task An_agent_reads_a_packages_file_and_a_generators_code_outside_the_folder_where_its_places_lead_and_changes_neither()
     {
         string root = PathNames.Canonical(TestFolders.Create("mcp-reached-"));
         DeleteAtEnd(root);
@@ -384,8 +404,7 @@ public sealed class McpReachTests : McpRig
     /// among the person's own, never the shared /tmp) is an agent's to read where it is the person's own, edit refusing a file there as
     /// read-only by where it lies; where a link stands in the temporary folder's place (as another user of a shared /tmp may
     /// leave one) leading to a folder of the person's, nothing through it is read or changed.</summary>
-    [Fact]
-    public async Task An_agent_reads_the_language_servers_library_code_only_where_its_folder_is_the_persons_own()
+    private async Task An_agent_reads_the_language_servers_library_code_only_where_its_folder_is_the_persons_own()
     {
         (string folder, string elsewhere, string secret) = WorkAndHome();
         string root = Path.GetDirectoryName(folder)!;
@@ -423,8 +442,7 @@ public sealed class McpReachTests : McpRig
 
     /// <summary>settings_set refuses an agent each setting naming a program Passenger runs or code it loads, saying the
     /// person sets it, and keeps the one the person set.</summary>
-    [Fact]
-    public async Task Settings_naming_a_program_passenger_runs_are_refused_to_an_agent_and_kept_as_the_person_set_them()
+    private async Task Settings_naming_a_program_passenger_runs_are_refused_to_an_agent_and_kept_as_the_person_set_them()
     {
         (string folder, _, _) = WorkAndHome();
         KeepSettings(new JsonObject { ["terminalShell"] = "/bin/sh" });

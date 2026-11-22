@@ -17,16 +17,36 @@ namespace Passenger.Tests;
 /// next build is <see cref="McpBuildNodesTests"/>'.</summary>
 public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpProcessesTests(RestoredFolders folders)
-        : base(folders)
+        : base(folders) => restored = folders;
+
+    /// <summary>Passengers on one state as one flow, each step one test's check in an instance of its own: a change one
+    /// makes one change set named for it in another and in one started after, and a Passenger killed while it loads,
+    /// runs, profiles, debugs and builds leaving none of it running.</summary>
+    [Fact]
+    public async Task A_change_one_Passenger_makes_is_one_named_change_set_in_another_and_a_killed_one_leaves_nothing_running()
     {
+        await Flow.StepApartAsync("a change one passenger makes is one change set named for it in another on the same state and in one started after", () => new McpProcessesTests(restored), t => t.A_change_one_passenger_makes_is_one_change_set_named_for_it_in_another_on_the_same_state_and_in_one_started_after());
+        await Flow.StepApartAsync("a Passenger killed while it loads runs profiles debugs and builds a project leaves none of it running", () => new McpProcessesTests(restored), t => t.A_Passenger_killed_while_it_loads_runs_profiles_debugs_and_builds_a_project_leaves_none_of_it_running());
+    }
+
+    /// <summary>Local History shared with the person's window as one flow, each step one test's check in an instance of
+    /// its own: what an agent's own Passenger keeps outlasting the person's window pruning it, and labels it puts
+    /// meanwhile all kept.</summary>
+    [AvaloniaFact]
+    public void An_agents_Local_History_and_labels_outlast_the_persons_window_pruning_the_shared_history()
+    {
+        Flow.StepApart("what an agents own passenger keeps in local history outlasts the persons window pruning the history", () => new McpProcessesTests(restored), t => t.What_an_agents_own_passenger_keeps_in_local_history_outlasts_the_persons_window_pruning_the_history());
+        Flow.StepApart("labels an agents passenger puts as the persons window prunes the shared history are all kept", () => new McpProcessesTests(restored), t => t.Labels_an_agents_passenger_puts_as_the_persons_window_prunes_the_shared_history_are_all_kept());
     }
 
     /// <summary>An agent's windowless Passenger over the person's folder keeps its Local History in the person's store: what
     /// it kept (a file as it was before the agent changed it) outlasts the person's window pruning the history at a day's
     /// turn.</summary>
-    [AvaloniaFact]
-    public void What_an_agents_own_passenger_keeps_in_local_history_outlasts_the_persons_window_pruning_the_history()
+    private void What_an_agents_own_passenger_keeps_in_local_history_outlasts_the_persons_window_pruning_the_history()
     {
         string notes = Path.Combine(Folder, "Notes.txt");
         File.WriteAllText(notes, "first draft\n");
@@ -98,8 +118,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The person's window and an agent's windowless Passenger keep one Local History in one state at the same
     /// time: every label the agent's Passenger puts is in it after the window has pruned the history again and again
     /// meanwhile, each prune of a long history holding the agent's lines back until it is done.</summary>
-    [AvaloniaFact]
-    public void Labels_an_agents_passenger_puts_as_the_persons_window_prunes_the_shared_history_are_all_kept()
+    private void Labels_an_agents_passenger_puts_as_the_persons_window_prunes_the_shared_history_are_all_kept()
     {
         // Hours of earlier labels, which both keep, so each prune reads and writes the log at length.
         string log = Path.Combine(global::Passenger.App.State.ProjectState.FolderOf(OwnState, PathNames.Canonical(Folder)), "localHistory", "changes.log");
@@ -168,8 +187,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Two agents' own Passengers on one folder and one state keep one Local History: a change one makes is listed by
     /// the other, which heard it on disk, and by a Passenger started after both have gone, as the one change set of the edit
     /// that made it, never a second one called an external change.</summary>
-    [Fact]
-    public async Task A_change_one_passenger_makes_is_one_change_set_named_for_it_in_another_on_the_same_state_and_in_one_started_after()
+    private async Task A_change_one_passenger_makes_is_one_change_set_named_for_it_in_another_on_the_same_state_and_in_one_started_after()
     {
         string folder = Plain("mcp-history-");
         McpClient watching = await Start(["--mcp", folder], languageServer: false);
@@ -201,8 +219,7 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
     /// a program, debugs another and builds the project and its language server loads it. Each program writes its id to a
     /// file named for how it was started; the load and, once the folder has a linger file, the build run a step that would
     /// take ten minutes. The programs are two launch profiles', as Debug of the one Run runs would end that run.</summary>
-    [Fact]
-    public async Task A_Passenger_killed_while_it_loads_runs_profiles_debugs_and_builds_a_project_leaves_none_of_it_running()
+    private async Task A_Passenger_killed_while_it_loads_runs_profiles_debugs_and_builds_a_project_leaves_none_of_it_running()
     {
         await TakeFolderAsync();
         Write("Program.cs", $"File.WriteAllText(Path.Combine(@\"{Folder}\", args[0] + \".pid\"), Environment.ProcessId.ToString());\nThread.Sleep(Timeout.Infinite);\n");
@@ -284,198 +301,5 @@ public sealed class McpProcessesTests : McpRig, IClassFixture<RestoredFolders>
                 }
             }
         }
-    }
-}
-
-/// <summary>The MSBuild nodes an agent's own Passenger's builds leave end with it, as it ends or is killed. MSBuild keeps
-/// a node only while the machine's count of nodes allows, which other builds beside it would take, so the class runs
-/// alone.</summary>
-[Collection(Alone.Name)]
-public sealed class McpBuildNodesTests : McpRig, IClassFixture<RestoredFolders>
-{
-    public McpBuildNodesTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
-
-    /// <summary>The MSBuild nodes a build of Passenger's leaves for its next build, which no other build takes up, end with
-    /// Passenger, whether it ends as its agent leaves or is killed. The two projects build at once, each with a step of a few
-    /// seconds, so MSBuild runs one in a node the test sees; restored first, with no language server, whose restore would
-    /// leave a node no process's child. MSBuild sometimes ends a node it meant to keep (<see cref="NodeBuilds"/>): the test
-    /// builds until one stays.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task The_msbuild_nodes_a_build_leaves_for_the_next_end_with_passenger(bool killed)
-    {
-        Nice.SkipUnlessMSBuildKeepsNodes();
-        await TakeFolderAsync();
-        string two = await WriteTwoAsync();
-        // No compiler server among what the build starts, which is the machine's to share.
-        Process passenger = StartPassenger(["--mcp", two], environment: new() { ["UseSharedCompilation"] = "false" }, languageServer: false);
-        List<int> left = [];
-        List<OwnProcess> own = [];
-        McpClient? client = null;
-        try
-        {
-            client = await Connect(passenger, ["--mcp", two]);
-            for (int build = 1; left.Count == 0; build++)
-            {
-                await Processes.UntilMSBuildKeepsNodesAsync();
-                // The ids a build's steps write are that build's, so what the test sees running is too.
-                File.Delete(Path.Combine(two, "A", "step.pid"));
-                File.Delete(Path.Combine(two, "B", "step.pid"));
-                HashSet<int> before = [.. Processes.Descendants(passenger.Id)];
-                Task<JsonElement> building = Call(client, McpTools.Build);
-                await WrittenId("two/A/step.pid", "project A's step");
-                await WrittenId("two/B/step.pid", "project B's step");
-                int[] during = [.. Processes.Descendants(passenger.Id).Where(id => !before.Contains(id))];
-                IReadOnlyDictionary<int, string> listed = Processes.Listed();
-                JsonElement built = await building;
-                Assert.True(built.GetProperty("succeeded").GetBoolean(), built.GetProperty("outcome").GetString());
-                left.AddRange(during.Where(Processes.IsRunning));
-                own.AddRange(left.Select(OwnProcess.Of));
-                if (left.Count == 0 && build == NodeBuilds)
-                {
-                    Assert.Fail($"{NodeBuilds} builds left nothing for the next build to use, so there is nothing to see end with Passenger.{NoNodeLeft(passenger.Id, during, listed)}");
-                }
-            }
-
-            if (killed)
-            {
-                OwnProcess.Of(passenger).Kill(alone: true);
-            }
-            else
-            {
-                await client.DisposeAsync();
-                client = null;
-                Assert.True(passenger.WaitForExit(MainWindow.EndLimit + TimeSpan.FromSeconds(5).Scaled()), "Passenger did not end once its agent left");
-            }
-            string[] running = [.. left.Where(id => !Processes.Gone(id)).Select(Processes.Describe)];
-            Assert.True(running.Length == 0, $"After Passenger {(killed ? "was killed" : "ended")}, {running.Length} of the {left.Count} processes its build left went on:\n{string.Join('\n', running)}");
-        }
-        finally
-        {
-            ChildProcesses.Kill(passenger);
-            own.ForEach(process => process.Kill());
-            if (client is not null)
-            {
-                try
-                {
-                    await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
-                }
-                catch (Exception gone) when (gone is IOException or TimeoutException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
-                {
-                    // The server is gone, as the test made it.
-                }
-            }
-        }
-    }
-
-    /// <summary>Nothing a build of Passenger's starts goes on under its handshake salt once Passenger ends: no MSBuild server
-    /// at all (its builds turn it off), and none of the worker nodes left for its next build, nor a compiler or Razor server
-    /// one of them started, which the build is let start as any build does. Counted by the salt each takes from Passenger
-    /// (<see cref="Processes.SaltedBuilds"/>), so other builds on the machine are not.</summary>
-    [Fact]
-    public async Task Nothing_a_build_of_passengers_starts_runs_on_under_its_salt_once_passenger_ends()
-    {
-        Nice.SkipUnlessMSBuildKeepsNodes();
-        await TakeFolderAsync();
-        string two = await WriteTwoAsync();
-        Process passenger = StartPassenger(["--mcp", two], languageServer: false);
-        string salt = $"passenger-{passenger.Id}";
-        IReadOnlyDictionary<int, string> during = new Dictionary<int, string>();
-        McpClient? client = null;
-        try
-        {
-            client = await Connect(passenger, ["--mcp", two]);
-            for (int build = 1; !during.Values.Any(IsNode); build++)
-            {
-                await Processes.UntilMSBuildKeepsNodesAsync();
-                JsonElement built = await Call(client, McpTools.Build);
-                Assert.True(built.GetProperty("succeeded").GetBoolean(), built.GetProperty("outcome").GetString());
-                during = Processes.SaltedBuilds(salt);
-                Assert.False(during.Values.Any(c => c.Contains("/nodemode:8", StringComparison.Ordinal)),
-                    $"Passenger's build ran in MSBuild's server, which outlives every build and keeps its nodes:\n{string.Join('\n', during.Values)}");
-                if (!during.Values.Any(IsNode) && build == NodeBuilds)
-                {
-                    Assert.Fail($"{NodeBuilds} builds left no node under {salt}, so there is nothing to see end with Passenger.{NoNodeLeft(passenger.Id, [], Processes.Listed())}");
-                }
-            }
-            await client.DisposeAsync();
-            client = null;
-            Assert.True(passenger.WaitForExit(MainWindow.EndLimit + TimeSpan.FromSeconds(5).Scaled()), "Passenger did not end once its agent left");
-            IReadOnlyDictionary<int, string> left = during;
-            await Waiting.UntilAsync(() => (left = Processes.SaltedBuilds(salt)).Count == 0, TimeSpan.FromSeconds(10).Scaled(), TestContext.Current.CancellationToken, TimeSpan.FromMilliseconds(250));
-            Assert.True(left.Count == 0, $"After Passenger ended, {left.Count} of what its builds started went on under its salt {salt}, each holding its memory until "
-                + $"MSBuild's idle timeout or for good:\n{string.Join('\n', left.Select(p => $"{p.Key} {p.Value}"))}");
-        }
-        finally
-        {
-            ChildProcesses.Kill(passenger);
-            foreach (int id in Processes.SaltedBuilds(salt).Keys)
-            {
-                OwnProcess.Of(id).Kill();
-            }
-            if (client is not null)
-            {
-                try
-                {
-                    await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
-                }
-                catch (Exception gone) when (gone is IOException or TimeoutException or ObjectDisposedException or OperationCanceledException or InvalidOperationException)
-                {
-                    // The server is gone.
-                }
-            }
-        }
-
-        static bool IsNode(string command) => command.Contains("/nodemode:1", StringComparison.Ordinal);
-    }
-
-    /// <summary>Two projects of one solution, restored, each with a step of a few seconds, so a build of both runs one in a
-    /// node; the step writes its process's id to step.pid.</summary>
-    private async Task<string> WriteTwoAsync()
-    {
-        string two = Path.Combine(Folder, "two");
-        Directory.CreateDirectory(Path.Combine(two, "A"));
-        Directory.CreateDirectory(Path.Combine(two, "B"));
-        Write("two/Two.slnx", "<Solution>\n  <Project Path=\"A/A.csproj\" />\n  <Project Path=\"B/B.csproj\" />\n</Solution>\n");
-        foreach (string project in new[] { "two/A/A.csproj", "two/B/B.csproj" })
-        {
-            Write(project, $"""
-                <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup>
-                    <TargetFramework>{TestProjects.Framework}</TargetFramework>
-                  </PropertyGroup>
-                  <Target Name="Wait" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
-                    <Exec Condition="'$(OS)' != 'Windows_NT'" Command="echo $$ &gt; step.pid; sleep 3" />
-                    <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;Set-Content -Path step.pid -Value $PID; Start-Sleep -Seconds 3&quot;" />
-                  </Target>
-                </Project>
-                """);
-        }
-        await Restore.RunAsync(two);
-        return two;
-    }
-
-    /// <summary>The builds the test makes for one to leave a node: rarely, on a loaded machine, MSBuild ends a node it meant
-    /// to keep, and the next build starts one again.</summary>
-    private const int NodeBuilds = 3;
-
-    /// <summary>Why the last build may have left no node, for its failure to say: what it ran (id, parent, nice value,
-    /// command) and Passenger's MSBuild nodes now, with their MSBuild variables.</summary>
-    private static string NoNodeLeft(int passenger, IReadOnlyList<int> ran, IReadOnlyDictionary<int, string> listed)
-    {
-        IReadOnlyDictionary<int, string> now = Processes.Listed();
-        IReadOnlyDictionary<int, string> nodes = Processes.MSBuildNodes();
-        string[] ours = [.. nodes.Where(n => $"{n.Value} ".Contains($"passenger-{passenger} ", StringComparison.Ordinal)).Select(n => $"{Seen(n.Key)} {n.Value}")];
-        (int counted, int most) = Processes.MSBuildNodesCounted();
-        return $"\nPassenger: {Seen(passenger)}\nWhat its build ran while both steps did:\n{string.Join('\n', ran.Select(Seen))}" +
-            $"\nPassenger's MSBuild nodes now:\n{string.Join('\n', ours)}" +
-            $"\nMSBuild keeps no node at a nice value other than 0, nor while it counts more than {most} nodes (the MSBuild executable's): {counted} of the machine's {nodes.Count} run;" +
-            " and a node it meant to keep ends when its build closes their pipe first, now and then";
-
-        string Seen(int id) => listed.TryGetValue(id, out string? line) || now.TryGetValue(id, out line) ? line : Processes.Describe(id);
     }
 }

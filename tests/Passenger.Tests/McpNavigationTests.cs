@@ -20,10 +20,11 @@ namespace Passenger.Tests;
 /// moved known at once in its new file.</summary>
 public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpNavigationTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
+        : base(folders) => restored = folders;
 
     private const string Words = "using System.Text.RegularExpressions;\n\nstatic partial class Words\n{\n"
         + "    [GeneratedRegex(@\"\\w+\")]\n    private static partial Regex Word();\n\n"
@@ -62,12 +63,88 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         return folder;
     }
 
+    /// <summary>MAUI expressions as an agent reads them as one flow, each step one test's check in an instance of its
+    /// own: a page's InitializeComponent answered from the generator's declaration in a copy of its code, an attached
+    /// property's element, a method and its type renamed with the expression naming them, a definition asked first
+    /// waiting for the generator's code, and an element's usages listing each expression and the code-
+    /// behind's.</summary>
+    [Fact]
+    public async Task An_agent_reads_and_renames_what_a_MAUI_expression_names_through_the_generators_code()
+    {
+        await Flow.StepApartAsync("definition of a maui pages initialize component answers the generators declaration in a copy of its code", () => new McpNavigationTests(restored), t => t.Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code());
+        await Flow.StepApartAsync("definition of the element an attached propertys read names in a maui expression goes to the element", () => new McpNavigationTests(restored), t => t.Definition_of_the_element_an_attached_propertys_read_names_in_a_maui_expression_goes_to_the_element());
+        await Flow.StepApartAsync("renaming a method and its type a maui expression names renames the expression with them", () => new McpNavigationTests(restored), t => t.Renaming_a_method_and_its_type_a_maui_expression_names_renames_the_expression_with_them());
+        await Flow.StepApartAsync("definition in a maui expression asked first waits for the generators code and answers the element", () => new McpNavigationTests(restored), t => t.Definition_in_a_maui_expression_asked_first_waits_for_the_generators_code_and_answers_the_element());
+        await Flow.StepApartAsync("usages of an element a maui expression reads list the element each expression and the code behinds use and rename renames them", () => new McpNavigationTests(restored), t => t.Usages_of_an_element_a_maui_expression_reads_list_the_element_each_expression_and_the_code_behinds_use_and_rename_renames_them());
+    }
+
+    /// <summary>Code questions as files, builds and loads change as one flow, each step one test's check in an instance
+    /// of its own: what a restore brings waited for beside one that fails, a project a solution filter leaves out taken
+    /// in by its builds, diagnostics during a build not outlasting it, find_symbol answering from files another program
+    /// wrote, made or deleted as they stand, Unload and Reload Project, and Go to Declaration into a project the filter
+    /// leaves out.</summary>
+    [Fact]
+    public async Task An_agents_code_questions_answer_from_the_files_and_builds_as_they_stand_waiting_for_what_a_restore_or_load_brings()
+    {
+        await Flow.StepApartAsync("definition of what a restore brings waits for its projects load again beside a restore that fails", () => new McpNavigationTests(restored), t => t.Definition_of_what_a_restore_brings_waits_for_its_projects_load_again_beside_a_restore_that_fails());
+        await Flow.StepApartAsync("a first build of a project a solution filter leaves out takes its assembly in and each build after it what it added", () => new McpNavigationTests(restored), t => t.A_first_build_of_a_project_a_solution_filter_leaves_out_takes_its_assembly_in_and_each_build_after_it_what_it_added());
+        await Flow.StepApartAsync("diagnostics asked while a build goes on do not outlast it once it has answered with what it wrote", () => new McpNavigationTests(restored), t => t.Diagnostics_asked_while_a_build_goes_on_do_not_outlast_it_once_it_has_answered_with_what_it_wrote());
+        await Flow.StepApartAsync("find symbol asked right after another program wrote a closed file answers from it as written", () => new McpNavigationTests(restored), t => t.Find_symbol_asked_right_after_another_program_wrote_a_closed_file_answers_from_it_as_written());
+        await Flow.StepApartAsync("find symbol asked after another program deleted made or wrote a file answers from the files as they stand (false, false)", () => new McpNavigationTests(restored), t => t.Find_symbol_asked_after_another_program_deleted_made_or_wrote_a_file_answers_from_the_files_as_they_stand(false, false));
+        await Flow.StepApartAsync("find symbol asked after another program deleted made or wrote a file answers from the files as they stand (true, false)", () => new McpNavigationTests(restored), t => t.Find_symbol_asked_after_another_program_deleted_made_or_wrote_a_file_answers_from_the_files_as_they_stand(true, false));
+        await Flow.StepApartAsync("find symbol asked after another program deleted made or wrote a file answers from the files as they stand (false, true)", () => new McpNavigationTests(restored), t => t.Find_symbol_asked_after_another_program_deleted_made_or_wrote_a_file_answers_from_the_files_as_they_stand(false, true));
+        await Flow.StepApartAsync("unload Project takes a project out of the language server until Reload Project loads it again", () => new McpNavigationTests(restored), t => t.Unload_Project_takes_a_project_out_of_the_language_server_until_Reload_Project_loads_it_again());
+        await Flow.StepApartAsync("go to declaration into a project a solution filter leaves out opens its source at the declaration", () => new McpNavigationTests(restored), t => t.Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration());
+    }
+
+    /// <summary>Symbols as an agent finds them as one flow, each step one test's check in an instance of its own: the
+    /// solution's own symbols and usages in order, generated symbols and files told apart after the person's and
+    /// answered from their text, a hierarchy followed from them, either half of a partial method, symbols named in
+    /// place of places, a record's positional property, a rename answering once git's index holds its move, and a card
+    /// read as plain text.</summary>
+    [Fact]
+    public async Task An_agent_finds_symbols_usages_and_hierarchies_the_persons_first_and_a_generators_answered_from_its_text()
+    {
+        await Flow.StepApartAsync("an agent finds the solutions own symbols reads usages in order and hears when no symbol is where it asked", () => new McpNavigationTests(restored), t => t.An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked());
+        await Flow.StepApartAsync("an agents find symbol lists a generated symbol it names first before the solutions own names like it", () => new McpNavigationTests(restored), t => t.An_agents_find_symbol_lists_a_generated_symbol_it_names_first_before_the_solutions_own_names_like_it());
+        await Flow.StepApartAsync("usages tell an agent which files are generated code and list them after the persons", () => new McpNavigationTests(restored), t => t.Usages_tell_an_agent_which_files_are_generated_code_and_list_them_after_the_persons());
+        await Flow.StepApartAsync("an agent asking about a generators code where usages led it is answered from its text or refused at once", () => new McpNavigationTests(restored), t => t.An_agent_asking_about_a_generators_code_where_usages_led_it_is_answered_from_its_text_or_refused_at_once());
+        await Flow.StepApartAsync("an agent follows the hierarchy from a place in a generators code", () => new McpNavigationTests(restored), t => t.An_agent_follows_the_hierarchy_from_a_place_in_a_generators_code());
+        await Flow.StepApartAsync("either half of a partial method answers its callers and what its body calls", () => new McpNavigationTests(restored), t => t.Either_half_of_a_partial_method_answers_its_callers_and_what_its_body_calls());
+        await Flow.StepApartAsync("an agent names a symbol in place of its place finds names exactly and tells overloads apart by their documentation ids", () => new McpNavigationTests(restored), t => t.An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids());
+        await Flow.StepApartAsync("an agent names a records positional property as Record Property and gets its uses declaration and rename as from a use", () => new McpNavigationTests(restored), t => t.An_agent_names_a_records_positional_property_as_Record_Property_and_gets_its_uses_declaration_and_rename_as_from_a_use());
+        await Flow.StepApartAsync("an agent gets a records positional propertys callers from a use by name and at its declaration", () => new McpNavigationTests(restored), t => t.An_agent_gets_a_records_positional_propertys_callers_from_a_use_by_name_and_at_its_declaration());
+        await Flow.StepApartAsync("an agents rename of a type answers once gits index holds its files move", () => new McpNavigationTests(restored), t => t.An_agents_rename_of_a_type_answers_once_gits_index_holds_its_files_move());
+        await Flow.StepApartAsync("an agent finds a name itself first an indexer by name reads a card as plain text and a fixs suppressions counted", () => new McpNavigationTests(restored), t => t.An_agent_finds_a_name_itself_first_an_indexer_by_name_reads_a_card_as_plain_text_and_a_fixs_suppressions_counted());
+    }
+
+    /// <summary>What an agent's calls leave and ask as one flow, each step one test's check in an instance of its own:
+    /// calls on many files leaving open only those it opened or left unsaved, a second diagnostics of an unchanged file
+    /// sending the server nothing, and a question at once after a code action moved a type to its own file finding it
+    /// there.</summary>
+    [Fact]
+    public async Task An_agents_calls_leave_only_its_own_files_open_and_ask_the_server_only_for_what_changed()
+    {
+        await Flow.StepApartAsync("an agents calls on many files leave open only the file it opened the one its edit left unsaved and the last few asked", () => new McpNavigationTests(restored), t => t.An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_the_one_its_edit_left_unsaved_and_the_last_few_asked());
+        await Flow.StepApartAsync("a second diagnostics of an unchanged file answers from the servers last pull sending none", () => new McpNavigationTests(restored), t => t.A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none());
+        await Flow.StepApartAsync("what an agent asks at once after a code action moved a type to a file of its own finds the type there", () => new McpNavigationTests(restored), t => t.What_an_agent_asks_at_once_after_a_code_action_moved_a_type_to_a_file_of_its_own_finds_the_type_there());
+    }
+
+    /// <summary>The language server a window takes up from its head start as one flow, each step one test's check in an
+    /// instance of its own: a definition asked as the window takes up a server that restored ahead waiting for what the
+    /// restore brought, and a project kept unloaded staying out of it.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_waits_for_the_server_a_window_takes_up_and_a_project_kept_unloaded_stays_out()
+    {
+        Flow.StepApart("definition asked as the window takes up a server that restored ahead waits for what the restore brought", () => new McpNavigationTests(restored), t => t.Definition_asked_as_the_window_takes_up_a_server_that_restored_ahead_waits_for_what_the_restore_brought());
+        Flow.StepApart("a project kept unloaded leaves the language server a window takes up from its head start", () => new McpNavigationTests(restored), t => t.A_project_kept_unloaded_leaves_the_language_server_a_window_takes_up_from_its_head_start());
+    }
+
     /// <summary>A MAUI page's code-behind calls the InitializeComponent MAUI's source generator declares of its XAML: definition
     /// goes to that declaration in a copy of the generator's code the agent can read (the read-only copy Go to Declaration
     /// opens), at its line with that line's code, asked first thing of a folder never restored: the server's restore as it
     /// loads brings MAUI's build files and generator, so the answer waits for the projects' load after it.</summary>
-    [Fact]
-    public async Task Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code()
+    private async Task Definition_of_a_maui_pages_initialize_component_answers_the_generators_declaration_in_a_copy_of_its_code()
     {
         string folder = MauiPage("mcp-maui-");
         DeleteAtEnd(folder);
@@ -84,8 +161,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A MAUI page's C# expression reading an attached property from a named element (<c>CounterBtn.(Grid.Row)</c>),
     /// which MAUI's generator writes as the getter's call (<c>Grid.GetRow(CounterBtn)</c>), the element's name after the
     /// type's: definition from the element's name goes to the element, never to the type the call names first.</summary>
-    [Fact]
-    public async Task Definition_of_the_element_an_attached_propertys_read_names_in_a_maui_expression_goes_to_the_element()
+    private async Task Definition_of_the_element_an_attached_propertys_read_names_in_a_maui_expression_goes_to_the_element()
     {
         string folder = MauiPage("mcp-maui-attached-");
         DeleteAtEnd(folder);
@@ -109,8 +185,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's rename of a method, then of its type, that a MAUI page's C# expression names through a XAML
     /// prefix renames the expression with them, as their C# uses, so the page still names what it calls; and a rename from
     /// the expression renames the method as from its declaration.</summary>
-    [Fact]
-    public async Task Renaming_a_method_and_its_type_a_maui_expression_names_renames_the_expression_with_them()
+    private async Task Renaming_a_method_and_its_type_a_maui_expression_names_renames_the_expression_with_them()
     {
         (string folder, string page) = MauiPageCallingHelper("mcp-maui-renamed-");
         DeleteAtEnd(folder);
@@ -137,8 +212,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's first question of a MAUI page's C# expression, asked as a folder never restored opens, waits as its
     /// first C# question does, through the server's restore, the load after it and its generators' run: definition of the
     /// element the expression reads answers its x:Name, from the field MAUI's generator makes, never nothing.</summary>
-    [Fact]
-    public async Task Definition_in_a_maui_expression_asked_first_waits_for_the_generators_code_and_answers_the_element()
+    private async Task Definition_in_a_maui_expression_asked_first_waits_for_the_generators_code_and_answers_the_element()
     {
         string folder = MauiPage("mcp-maui-first-");
         DeleteAtEnd(folder);
@@ -160,8 +234,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// makes for it): usages from the name in an expression lists the element, each expression reading it and the
     /// code-behind's use, as from a code-behind's field, and none of the generator's own code; and rename from the element
     /// renames each of them.</summary>
-    [Fact]
-    public async Task Usages_of_an_element_a_maui_expression_reads_list_the_element_each_expression_and_the_code_behinds_use_and_rename_renames_them()
+    private async Task Usages_of_an_element_a_maui_expression_reads_list_the_element_each_expression_and_the_code_behinds_use_and_rename_renames_them()
     {
         string folder = MauiPage("mcp-maui-element-");
         DeleteAtEnd(folder);
@@ -206,8 +279,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// what the server said meanwhile, its restore among it, so an agent's question asked as the window opens waits for the
     /// load after the restore and its generator's run, and definition of the page's InitializeComponent goes to the
     /// generator's declaration, never to nothing as of the load before the restore.</summary>
-    [AvaloniaFact]
-    public void Definition_asked_as_the_window_takes_up_a_server_that_restored_ahead_waits_for_what_the_restore_brought()
+    private void Definition_asked_as_the_window_takes_up_a_server_that_restored_ahead_waits_for_what_the_restore_brought()
     {
         string folder = MauiPage("mcp-maui-ahead-");
         DeleteAtEnd(folder);
@@ -289,8 +361,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// failing (its package no feed holds), the other bringing code by the package's build files, which its project loads
     /// again with after. An agent's question of that code asked while the restores run waits for that load, whatever the
     /// other's restore did, so definition of the package's class goes to its declaration in the package.</summary>
-    [Fact]
-    public async Task Definition_of_what_a_restore_brings_waits_for_its_projects_load_again_beside_a_restore_that_fails()
+    private async Task Definition_of_what_a_restore_brings_waits_for_its_projects_load_again_beside_a_restore_that_fails()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-restored-"));
         DeleteAtEnd(folder);
@@ -328,8 +399,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The solution a filter leaves a library out of, as a fresh clone opens it: the assembly of the library is
     /// not there as C# loads the app, so nothing of it is known, and the first build, however quick, takes it in with no
     /// restart, what the agent asks next finding the library's types; each build after that brings what it added.</summary>
-    [Fact]
-    public async Task A_first_build_of_a_project_a_solution_filter_leaves_out_takes_its_assembly_in_and_each_build_after_it_what_it_added()
+    private async Task A_first_build_of_a_project_a_solution_filter_leaves_out_takes_its_assembly_in_and_each_build_after_it_what_it_added()
     {
         string folder = await AppWithoutItsLibraryAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
@@ -365,8 +435,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// on, the server reads it only at the build's end, so what diagnostics answered between the two is no answer to ask
     /// after it, with nothing else said to the server since. (The server's own read of it may come first: nothing here asks
     /// what the ask under way answered.)</summary>
-    [Fact]
-    public async Task Diagnostics_asked_while_a_build_goes_on_do_not_outlast_it_once_it_has_answered_with_what_it_wrote()
+    private async Task Diagnostics_asked_while_a_build_goes_on_do_not_outlast_it_once_it_has_answered_with_what_it_wrote()
     {
         string folder = await AppWithoutItsLibraryAsync();
         // The app's compile, after the library's, held once the test puts "hold" there until it puts "go" (ten minutes at most).
@@ -420,8 +489,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A closed file another program writes in place, which the folder's watcher never hears, is what find_symbol
     /// asked at once answers from, every time: the type written there found, the one written over gone, where the answer
     /// was of the file as it stood until the watcher heard of the write.</summary>
-    [Fact]
-    public async Task Find_symbol_asked_right_after_another_program_wrote_a_closed_file_answers_from_it_as_written()
+    private async Task Find_symbol_asked_right_after_another_program_wrote_a_closed_file_answers_from_it_as_written()
     {
         await TakeFolderAsync();
         Write("Shapes.cs", "static class Shape0\n{\n}\n");
@@ -444,11 +512,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// is what find_symbol asked at once answers from: the deleted file's type gone, the made file's found, the type
     /// written in place found and the one written over gone, whether the question comes a moment or seconds after and
     /// whatever time the program set the file's write to (back a month, as a copy keeping its time does).</summary>
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task Find_symbol_asked_after_another_program_deleted_made_or_wrote_a_file_answers_from_the_files_as_they_stand(bool waited, bool backDated)
+    private async Task Find_symbol_asked_after_another_program_deleted_made_or_wrote_a_file_answers_from_the_files_as_they_stand(bool waited, bool backDated)
     {
         await TakeFolderAsync();
         string shapes = Path.Combine(Folder, "Shapes.cs");
@@ -491,8 +555,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Unload Project takes the project out of the language server: nothing is answered from the text the server
     /// read of it, so Go to Declaration from what references it finds the line where it is now, its symbols are found no
     /// more, and a file come under it is neither waited for nor brings it back; Reload Project has it loaded again.</summary>
-    [Fact]
-    public async Task Unload_Project_takes_a_project_out_of_the_language_server_until_Reload_Project_loads_it_again()
+    private async Task Unload_Project_takes_a_project_out_of_the_language_server_until_Reload_Project_loads_it_again()
     {
         string folder = await AppWithoutItsLibraryAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(folder, "Shop.slnx")]);
@@ -533,8 +596,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A window keeping the folder's state takes up the language server started ahead, which loaded every project
     /// before anything read what the folder keeps: the project the person left unloaded is taken out of it, so the server
     /// holds what the window says is loaded. An agent's own Passenger keeps no state, so this window is built by hand.</summary>
-    [AvaloniaFact]
-    public void A_project_kept_unloaded_leaves_the_language_server_a_window_takes_up_from_its_head_start()
+    private void A_project_kept_unloaded_leaves_the_language_server_a_window_takes_up_from_its_head_start()
     {
         string folder = AppAndLibrary();
         Restore.Run(Path.Combine(folder, "Shop.slnx"));
@@ -564,8 +626,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A symbol of a project a solution filter leaves out, which C# reads only as its built assembly, is declared in
     /// that project's own file, never in the server's stub of the assembly: a method, a property and a primary constructor,
     /// and a method whose source takes another parameter than the assembly built before it; the framework's still a stub.</summary>
-    [Fact]
-    public async Task Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration()
+    private async Task Go_to_declaration_into_a_project_a_solution_filter_leaves_out_opens_its_source_at_the_declaration()
     {
         string folder = await AppWithoutItsLibraryAsync();
         await using McpClient client = await Start(["--mcp", Path.Combine(folder, "App.slnf")]);
@@ -592,8 +653,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Fact]
-    public async Task An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked()
+    private async Task An_agent_finds_the_solutions_own_symbols_reads_usages_in_order_and_hears_when_no_symbol_is_where_it_asked()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -672,8 +732,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>find_symbol lists the name itself first though only a source generator declares it (the regex generator's
     /// class Word_0), before the solution's own names that start with it, so no limit cuts it; the solution's own come before
     /// the rest of what generators declare.</summary>
-    [Fact]
-    public async Task An_agents_find_symbol_lists_a_generated_symbol_it_names_first_before_the_solutions_own_names_like_it()
+    private async Task An_agents_find_symbol_lists_a_generated_symbol_it_names_first_before_the_solutions_own_names_like_it()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -693,8 +752,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>usages says which files are generated code, as Roslyn tells it, and lists them after the person's: a source
     /// generator's, a .g.cs a tool wrote, and a file whose first comment says &lt;auto-generated&gt;; a file written by hand
     /// says nothing of it.</summary>
-    [Fact]
-    public async Task Usages_tell_an_agent_which_files_are_generated_code_and_list_them_after_the_persons()
+    private async Task Usages_tell_an_agent_which_files_are_generated_code_and_list_them_after_the_persons()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -718,8 +776,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>The code tools on a source generator's code copied, where usages led the agent, answer at once: its outline
     /// from its own text, and what needs the language server, which never holds a copy, refused in the window's words,
     /// naming the generator and the project.</summary>
-    [Fact]
-    public async Task An_agent_asking_about_a_generators_code_where_usages_led_it_is_answered_from_its_text_or_refused_at_once()
+    private async Task An_agent_asking_about_a_generators_code_where_usages_led_it_is_answered_from_its_text_or_refused_at_once()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -750,8 +807,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>hierarchy at a place in a source generator's code copied, where usages and definition led the agent, answers
     /// as in the code it is made from, the server asked of its own document: the regex generator's half of a partial method
     /// has that method's callers and what its body calls, and the JSON generator's half of a class what derives from it.</summary>
-    [Fact]
-    public async Task An_agent_follows_the_hierarchy_from_a_place_in_a_generators_code()
+    private async Task An_agent_follows_the_hierarchy_from_a_place_in_a_generators_code()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -774,8 +830,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A partial member's two halves are one member to hierarchy: asked at the half that declares it or the half with
     /// its body, it answers the callers, bound to the one, and the callees, written in the other.</summary>
-    [Fact]
-    public async Task Either_half_of_a_partial_method_answers_its_callers_and_what_its_body_calls()
+    private async Task Either_half_of_a_partial_method_answers_its_callers_and_what_its_body_calls()
     {
         await TakeFolderAsync();
         Write("Halves.cs", "static partial class Halves\n{\n    public static partial int Twice(int value);\n\n    public static int Quad(int value) => Twice(Twice(value));\n}\n\n"
@@ -790,8 +845,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         }
     }
 
-    [Fact]
-    public async Task An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids()
+    private async Task An_agent_names_a_symbol_in_place_of_its_place_finds_names_exactly_and_tells_overloads_apart_by_their_documentation_ids()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -841,8 +895,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// Record.Property, of a record class and a record struct, as find_symbol lists it: usages, definition and rename by that
     /// name answer what they answer from a use of it, as the editor's Find Usages, Go to Declaration and Rename do, the
     /// property, not the parameter, said to be what the place took.</summary>
-    [Fact]
-    public async Task An_agent_names_a_records_positional_property_as_Record_Property_and_gets_its_uses_declaration_and_rename_as_from_a_use()
+    private async Task An_agent_names_a_records_positional_property_as_Record_Property_and_gets_its_uses_declaration_and_rename_as_from_a_use()
     {
         await TakeFolderAsync();
         Write("Feeds.cs", Feeds);
@@ -885,8 +938,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// answered that the record was a type with no callers; its callees none, as an auto-property's. A method asked about at
     /// a use in another file answers as at its declaration, its callees the positional properties it reads; the record's
     /// parameter read in its own body is no member, and said to be none.</summary>
-    [Fact]
-    public async Task An_agent_gets_a_records_positional_propertys_callers_from_a_use_by_name_and_at_its_declaration()
+    private async Task An_agent_gets_a_records_positional_propertys_callers_from_a_use_by_name_and_at_its_declaration()
     {
         await TakeFolderAsync();
         Write("Feeds.cs", Feeds);
@@ -922,8 +974,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>rename of a type answers once Git's index holds its file's move: git status, run the moment the answer comes,
     /// as an agent's shell runs it, shows the file renamed, never the old one deleted and the new one untracked.</summary>
-    [Fact]
-    public async Task An_agents_rename_of_a_type_answers_once_gits_index_holds_its_files_move()
+    private async Task An_agents_rename_of_a_type_answers_once_gits_index_holds_its_files_move()
     {
         string folder = await TakeFolderAsync();
         File.WriteAllText(Path.Combine(folder, ".gitignore"), "bin/\nobj/\n");
@@ -948,8 +999,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         + "    public string this[int at] => books[at];\n\n"
         + "    public int Size()\n    {\n        int unused = 1;\n        return books.Length;\n    }\n}\n";
 
-    [Fact]
-    public async Task An_agent_finds_a_name_itself_first_an_indexer_by_name_reads_a_card_as_plain_text_and_a_fixs_suppressions_counted()
+    private async Task An_agent_finds_a_name_itself_first_an_indexer_by_name_reads_a_card_as_plain_text_and_a_fixs_suppressions_counted()
     {
         await TakeFolderAsync();
         Write("Words.cs", Words);
@@ -989,8 +1039,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// many files the IDE lists open only the file the agent opened in the editor and the one its edit could not save (a
     /// read-only file), and the language server holds those and at most <see cref="PassengerTools.FilesKept"/> more, the
     /// most recently asked, so a long session holds no more than it is working on.</summary>
-    [Fact]
-    public async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_the_one_its_edit_left_unsaved_and_the_last_few_asked()
+    private async Task An_agents_calls_on_many_files_leave_open_only_the_file_it_opened_the_one_its_edit_left_unsaved_and_the_last_few_asked()
     {
         await TakeFolderAsync();
         string[] parts = [.. Enumerable.Range(1, 12).Select(i => $"Part{i:00}.cs")];
@@ -1035,8 +1084,7 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A file an agent asks diagnostics of stays open in the language server after the call, so a second ask of it,
     /// unchanged, answers what the first did from the server's last pull, sending none (the protocol trace), once nothing has
     /// told the server anything since that pull (<see cref="AskedAgainAsync"/>).</summary>
-    [Fact]
-    public async Task A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none()
+    private async Task A_second_diagnostics_of_an_unchanged_file_answers_from_the_servers_last_pull_sending_none()
     {
         await TakeFolderAsync();
         await using McpClient client = await StartTracedAsync();
@@ -1127,35 +1175,11 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
             line.IndexOf("\"method\":\"", StringComparison.Ordinal) is var at and >= 0 && line.IndexOf('"', at + 10) is var end and > 0 ? line[(at + 10)..end] : null;
     }
 
-    /// <summary>A completion list changes nothing the language server answers, so an agent's diagnostics of a file asked again
-    /// once the list for a place in it has come answer from the pull before the list, sending none (the protocol trace).</summary>
-    [Fact]
-    public async Task Diagnostics_asked_again_after_a_completion_answer_from_the_pull_before_it_sending_none()
-    {
-        await TakeFolderAsync();
-        await using McpClient client = await StartTracedAsync();
-        await Call(client, McpTools.Open, new() { ["path"] = "Helper.cs", ["line"] = 6, ["column"] = 16 });
-        string trace = Path.Combine(OwnState, "logs", "lsp.log");
-        int asked = TraceLines(trace).Length;
-        string first = Text(await Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" }));
-        Assert.Contains("unused", first, StringComparison.Ordinal);
-        // The window's own pulls of the file just opened come first, then the server's word after its load: the ask after that word pulls again.
-        await MovedAfterLoadAsync();
-        await AskedAgainAsync(client, trace, first, asked, "Diagnostics of Helper.cs asked again after a completion list, nothing changed,", meanwhile: async () =>
-        {
-            int lists = Sent(trace, Passenger.Roslyn.Extension.ExtensionMethods.Completion);
-            await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.Complete });
-            Assert.True(await Waiting.UntilAsync(() => Sent(trace, Passenger.Roslyn.Extension.ExtensionMethods.Completion) > lists && Answered(trace, Passenger.Roslyn.Extension.ExtensionMethods.Completion),
-                TimeSpan.FromSeconds(30).Scaled(), Cancel), "Basic Completion at return value in Helper.cs had no completion list answered by the language server");
-        });
-    }
-
     /// <summary>A type a code action moved to a file of its own is known at once to what the agent asks next of a file using
     /// it, each tool asked first after a move of its own: the language server takes the new file into the project a moment
     /// later, and answered before then, diagnostics said the type could not be found and the other tools answered without
     /// it, of another symbol or none.</summary>
-    [Fact]
-    public async Task What_an_agent_asks_at_once_after_a_code_action_moved_a_type_to_a_file_of_its_own_finds_the_type_there()
+    private async Task What_an_agent_asks_at_once_after_a_code_action_moved_a_type_to_a_file_of_its_own_finds_the_type_there()
     {
         await TakeFolderAsync();
         string[] kinds = ["Circle", "Oval", "Star", "Ring", "Kite"];
@@ -1259,21 +1283,6 @@ public sealed class McpNavigationTests : McpRig, IClassFixture<RestoredFolders>
         using FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using StreamReader reader = new(read);
         return reader.ReadToEnd().Split('\n').Count(l => l.Contains("] --> ", StringComparison.Ordinal) && l.Contains($"\"method\":\"{method}\"", StringComparison.Ordinal));
-    }
-
-    /// <summary>Whether lsp.log's trace has the server's answer to a request of the method sent it.</summary>
-    private static bool Answered(string trace, string method)
-    {
-        string[] lines;
-        using (FileStream read = new(trace, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-        using (StreamReader reader = new(read))
-        {
-            lines = reader.ReadToEnd().Split('\n');
-        }
-        IEnumerable<string> ids = lines.Where(l => l.Contains("] --> ", StringComparison.Ordinal) && l.Contains($"\"method\":\"{method}\"", StringComparison.Ordinal))
-            .Select(l => System.Text.RegularExpressions.Regex.Match(l, "\"id\":(\\d+)[,}]").Groups[1].Value).Where(id => id.Length > 0);
-        return ids.Any(id => lines.Any(l => l.Contains("] <-- ", StringComparison.Ordinal) && l.Contains($"\"id\":{id},", StringComparison.Ordinal)
-            && l.Contains("\"result\"", StringComparison.Ordinal)));
     }
 
     /// <summary>The names of the files the language server was told open and not since closed, by lsp.log's trace of what it

@@ -17,10 +17,11 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpDebuggingTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
+        : base(folders) => restored = folders;
 
     [Fact]
     public async Task An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it()
@@ -165,11 +166,45 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"symbol_info on a project file's property did not say its value and where it was set: {framework}");
     }
 
+    /// <summary>An agent's stops and breakpoints as one flow, each step one test's check in an instance of its own: a
+    /// million-character local answered by its first characters and length, a debugged test run's tally as it ends, an
+    /// async program's unhandled exception stopping once at its throw, a Release build's step out and over, a
+    /// breakpoint at a lambda's column or line and one in a lambda written away from its closed file, and one outside a
+    /// file's lines or in no file refused.</summary>
+    [Fact]
+    public async Task An_agents_debugger_stops_steps_and_binds_breakpoints_as_the_code_is_written()
+    {
+        await Flow.StepApartAsync("an agents stops beside a million character local answer its first characters and its length", () => new McpDebuggingTests(restored), t => t.An_agents_stops_beside_a_million_character_local_answer_its_first_characters_and_its_length());
+        await Flow.StepApartAsync("an agent going on from a stop in a debugged test run gets its tally as it ends", () => new McpDebuggingTests(restored), t => t.An_agent_going_on_from_a_stop_in_a_debugged_test_run_gets_its_tally_as_it_ends());
+        await Flow.StepApartAsync("an async programs unhandled exception stops at its throw with its locals once and a caught one stops nothing", () => new McpDebuggingTests(restored), t => t.An_async_programs_unhandled_exception_stops_at_its_throw_with_its_locals_once_and_a_caught_one_stops_nothing());
+        await Flow.StepApartAsync("a release builds step out stops in its caller and a step over at its next statement", () => new McpDebuggingTests(restored), t => t.A_release_builds_step_out_stops_in_its_caller_and_a_step_over_at_its_next_statement());
+        await Flow.StepApartAsync("an agents breakpoint given a lambdas column stops inside it and one on its line at the statement", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_given_a_lambdas_column_stops_inside_it_and_one_on_its_line_at_the_statement());
+        await Flow.StepApartAsync("an agents breakpoint in a lambda written away from its closed file stops at the statement listed by its line", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line());
+        await Flow.StepApartAsync("an agents breakpoint outside a files lines or in no file is refused and none is kept", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept());
+    }
+
+    /// <summary>An agent's debug sessions as one flow, each step one test's check in an instance of its own:
+    /// Passenger's helpers on its own runtime, a stop ending a session still starting, a running configuration ended
+    /// first, output answering the program debugged, a web app answered once it serves, one the runtime gives up on
+    /// said failed and ended, a long call telling what it does, and a launch never reaching its breakpoint saying what
+    /// it waits for.</summary>
+    [Fact]
+    public async Task An_agents_debug_sessions_start_end_and_say_what_they_wait_for_on_Passengers_own_runtime()
+    {
+        await Flow.StepApartAsync("passengers own helpers run on the runtime Passenger runs on", () => new McpDebuggingTests(restored), t => t.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on());
+        await Flow.StepApartAsync("an agents stop ends a debug session whose program is still starting", () => new McpDebuggingTests(restored), t => t.An_agents_stop_ends_a_debug_session_whose_program_is_still_starting());
+        await Flow.StepApartAsync("an agents run and debug of a configuration that runs end it first and answer with the new start", () => new McpDebuggingTests(restored), t => t.An_agents_run_and_debug_of_a_configuration_that_runs_end_it_first_and_answer_with_the_new_start());
+        await Flow.StepApartAsync("an agents output naming no console answers the program debugged naming it not the run that ended", () => new McpDebuggingTests(restored), t => t.An_agents_output_naming_no_console_answers_the_program_debugged_naming_it_not_the_run_that_ended());
+        await Flow.StepApartAsync("an agents debug start of a web app answers once it serves saying where it listens", () => new McpDebuggingTests(restored), t => t.An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens());
+        await Flow.StepApartAsync("an agents debug start whose debugging the runtime gives up answers that it failed and the app is ended", () => new McpDebuggingTests(restored), t => t.An_agents_debug_start_whose_debugging_the_runtime_gives_up_answers_that_it_failed_and_the_app_is_ended());
+        await Flow.StepApartAsync("a call that takes a while tells its agent what it is doing and nothing reaches standard error", () => new McpDebuggingTests(restored), t => t.A_call_that_takes_a_while_tells_its_agent_what_it_is_doing_and_nothing_reaches_standard_error());
+        await Flow.StepApartAsync("a launch that never reaches its breakpoint says so and its progress says what it waits for", () => new McpDebuggingTests(restored), t => t.A_launch_that_never_reaches_its_breakpoint_says_so_and_its_progress_says_what_it_waits_for());
+    }
+
     /// <summary>Passenger's own helpers, Roslyn's server, the project host and the debug adapter, run on the very runtime
     /// Passenger runs on, whatever runtimes the machine has: a published Passenger's carried one (its own folder), so
     /// nothing of Passenger's needs the machine's .NET. Run against an installed Passenger too (McpRig.ExecutableVariable).</summary>
-    [Fact]
-    public async Task Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on()
+    private async Task Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on()
     {
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder]);
@@ -198,8 +233,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A local a million characters long is shown to an agent as its first few thousand, saying its length and the
     /// debug_evaluate that reads on, so each stop's answer stays one an agent's client takes; that read gives the next part
     /// whole.</summary>
-    [Fact]
-    public async Task An_agents_stops_beside_a_million_character_local_answer_its_first_characters_and_its_length()
+    private async Task An_agents_stops_beside_a_million_character_local_answer_its_first_characters_and_its_length()
     {
         await TakeFolderAsync();
         Write("Program.cs", "string big = new string('x', 1_000_000) + \"end\";\nint step = 0;\nstep++;\nstep++;\nConsole.WriteLine(big.Length + step);\n");
@@ -227,8 +261,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A debugged test run an agent goes on with from its stop answers, as its test host ends, with the tally and
     /// failures tests_run gives; its stop answers that it is paused there, never an earlier run's tally; and stopped at a
     /// failed assertion, an evaluation reads the test's own local, not the assertion's.</summary>
-    [Fact]
-    public async Task An_agent_going_on_from_a_stop_in_a_debugged_test_run_gets_its_tally_as_it_ends()
+    private async Task An_agent_going_on_from_a_stop_in_a_debugged_test_run_gets_its_tally_as_it_ends()
     {
         string tests = PathNames.Canonical(TestFolders.Create("mcp-debug-tests-"));
         DeleteAtEnd(tests);
@@ -319,8 +352,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An exception an async program leaves unhandled stops it where it was thrown, with that frame's locals, as a
     /// synchronous program's does, and once: going on ends the program. One the code awaiting it catches stops nothing.</summary>
-    [Fact]
-    public async Task An_async_programs_unhandled_exception_stops_at_its_throw_with_its_locals_once_and_a_caught_one_stops_nothing()
+    private async Task An_async_programs_unhandled_exception_stops_at_its_throw_with_its_locals_once_and_a_caught_one_stops_nothing()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-async-crash-"));
         DeleteAtEnd(folder);
@@ -358,8 +390,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>The folder's own program built as Release is stepped through as a Debug build is: stopped in a method, a step
     /// out stops in its caller with what the method returned, and a step over at the caller's next statement.</summary>
-    [Fact]
-    public async Task A_release_builds_step_out_stops_in_its_caller_and_a_step_over_at_its_next_statement()
+    private async Task A_release_builds_step_out_stops_in_its_caller_and_a_step_over_at_its_next_statement()
     {
         await TakeFolderAsync();
         await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
@@ -383,8 +414,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's stop ends a debug session still starting: while debug_start waits for a program whose runtime is
     /// held at its start (the test's own diagnostic port), stop ends the session and the program at once, and debug_start
     /// answers that it was stopped.</summary>
-    [Fact]
-    public async Task An_agents_stop_ends_a_debug_session_whose_program_is_still_starting()
+    private async Task An_agents_stop_ends_a_debug_session_whose_program_is_still_starting()
     {
         using Debugging.Helpers.StartHold hold = new();
         await TakeFolderAsync();
@@ -423,8 +453,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's Run and Debug, through ide_action, of a configuration that runs, by Run or under the debugger, each
     /// end the program running first and start it again, one copy left running each time, and each answers with what it came
     /// to, the new start, never the end of the program it took the place of.</summary>
-    [Fact]
-    public async Task An_agents_run_and_debug_of_a_configuration_that_runs_end_it_first_and_answer_with_the_new_start()
+    private async Task An_agents_run_and_debug_of_a_configuration_that_runs_end_it_first_and_answer_with_the_new_start()
     {
         await TakeFolderAsync();
         string runs = Path.Combine(Folder, "program.pids");
@@ -463,8 +492,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's breakpoint given a column in a lambda written on its statement's line is the lambda's, at its body:
     /// it stops inside the lambda each time it runs, where one on the line stops once at the statement; a column no lambda
     /// holds is refused, naming where the line's lambdas are.</summary>
-    [Fact]
-    public async Task An_agents_breakpoint_given_a_lambdas_column_stops_inside_it_and_one_on_its_line_at_the_statement()
+    private async Task An_agents_breakpoint_given_a_lambdas_column_stops_inside_it_and_one_on_its_line_at_the_statement()
     {
         await TakeFolderAsync();
         const string Counting = "int count = items.Count(i => i > 1);";
@@ -494,8 +522,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's breakpoint in a lambda of a closed file whose lambda is then written away on disk is the line's
     /// once the program is debugged: it stops once at the statement and is listed by its line, never asking the debugger
     /// for a column nothing holds.</summary>
-    [Fact]
-    public async Task An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line()
+    private async Task An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line()
     {
         await TakeFolderAsync();
         const string Counting = "int count = items.Count(i => i > 1);";
@@ -519,8 +546,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A line breakpoint an agent sets below a file's first line, past its last, or in a file not there is refused
     /// naming the file's lines or the file, and none is kept, where each was kept, the first two stopping at the program's
     /// first statement.</summary>
-    [Fact]
-    public async Task An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept()
+    private async Task An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept()
     {
         await TakeFolderAsync();
         Write("Program.cs", "int total = 1;\ntotal += 2;\nConsole.WriteLine($\"total {total}\");");
@@ -544,8 +570,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's output naming no console, once a program Run started has ended and while another is debugged,
     /// answers the debugged program's lines under a line naming it, never the ended run's; once that one has ended too, the
     /// run's, under a line naming it and how it ended.</summary>
-    [Fact]
-    public async Task An_agents_output_naming_no_console_answers_the_program_debugged_naming_it_not_the_run_that_ended()
+    private async Task An_agents_output_naming_no_console_answers_the_program_debugged_naming_it_not_the_run_that_ended()
     {
         await TakeFolderAsync();
         Write("Program.cs", "Console.WriteLine($\"said {args[0]}\");\nConsole.WriteLine(\"then\");\n");
@@ -574,8 +599,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's debug_start of a web app, which serves until it is stopped, answers once the app's host has
     /// started, running and saying where it listens, rather than waiting out its time for a stop or an end that never
     /// comes; the app answers there.</summary>
-    [Fact]
-    public async Task An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens()
+    private async Task An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens()
     {
         string folder = await WebAppAsync();
         await using McpClient client = await Start(["--mcp", folder], languageServer: false);
@@ -593,8 +617,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's debug_start of a web app whose debugging the runtime gives up for good as it starts, as it once did
     /// under load, holding the app where it stood, answers once the app is ended, saying its debugging failed and why,
     /// rather than waiting out its whole time for an app that will never serve; its console says so too.</summary>
-    [Fact]
-    public async Task An_agents_debug_start_whose_debugging_the_runtime_gives_up_answers_that_it_failed_and_the_app_is_ended()
+    private async Task An_agents_debug_start_whose_debugging_the_runtime_gives_up_answers_that_it_failed_and_the_app_is_ended()
     {
         string folder = await WebAppAsync();
         // The engine takes the load of the app's hosting as the runtime's word that its debugging failed.
@@ -627,8 +650,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A call that takes a while tells an agent that asked for progress what it is doing as it goes (the run's
     /// stages, then the wait for the program), at rising counts, so a client that gives up on a silent call (OpenCode's
     /// 60 s) waits on; and the agent's own Passenger writes nothing to the standard error an agent may never read.</summary>
-    [Fact]
-    public async Task A_call_that_takes_a_while_tells_its_agent_what_it_is_doing_and_nothing_reaches_standard_error()
+    private async Task A_call_that_takes_a_while_tells_its_agent_what_it_is_doing_and_nothing_reaches_standard_error()
     {
         await TakeFolderAsync();
         Write("Program.cs", "Console.WriteLine(\"waiting\");\nThread.Sleep(Timeout.Infinite);\n");
@@ -651,8 +673,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A launch whose program never reaches its breakpoint in the time waited is answered as running, naming the
     /// breakpoint it never stopped at, never as a plain "running" an agent takes for a stop yet to come; its progress says
     /// meanwhile what it waits for, the stop at that breakpoint among it.</summary>
-    [Fact]
-    public async Task A_launch_that_never_reaches_its_breakpoint_says_so_and_its_progress_says_what_it_waits_for()
+    private async Task A_launch_that_never_reaches_its_breakpoint_says_so_and_its_progress_says_what_it_waits_for()
     {
         await TakeFolderAsync();
         Write("Program.cs", "int ticks = 0;\nwhile (true)\n{\n    ticks++;\n    Thread.Sleep(50);\n    if (ticks < 0)\n    {\n"

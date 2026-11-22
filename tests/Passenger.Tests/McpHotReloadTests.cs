@@ -11,17 +11,28 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpHotReloadTests(RestoredFolders folders)
-        : base(folders)
+        : base(folders) => restored = folders;
+
+    /// <summary>An agent's Hot Reload as one flow, each step one test's check in an instance of its own: a stop at an
+    /// exception type, run to a line, a move back and changes applied with each rude edit told, a second reload naming
+    /// only the file it sent, and changes applied under dotnet watch saying what it made of them.</summary>
+    [Fact]
+    public async Task An_agents_Hot_Reload_applies_its_changes_and_says_each_rude_edit_under_the_debugger_or_dotnet_watch()
     {
+        await Flow.StepApartAsync("an agent stops at an exception type runs to a line moves back and applies hot reload changes told each rude edit at its line", () => new McpHotReloadTests(restored), t => t.An_agent_stops_at_an_exception_type_runs_to_a_line_moves_back_and_applies_hot_reload_changes_told_each_rude_edit_at_its_line());
+        await Flow.StepApartAsync("an agents second hot reload names only the file it sent", () => new McpHotReloadTests(restored), t => t.An_agents_second_hot_reload_names_only_the_file_it_sent());
+        await Flow.StepApartAsync("an agent applies hot reload changes to what run runs under dotnet watch and is told what dotnet watch made of them", () => new McpHotReloadTests(restored), t => t.An_agent_applies_hot_reload_changes_to_what_run_runs_under_dotnet_watch_and_is_told_what_dotnet_watch_made_of_them());
     }
 
     /// <summary>An agent's debugging with no window, its tools' answers each checked once: an exception breakpoint on a type,
     /// listed and stopping where that type is thrown, and one that never stops answered inactive; Run to Cursor and Set Next
     /// Statement, moves in a row each answered with its own line; and Hot Reload of an edit made while paused, then of one
     /// the runtime cannot take, named at its line and the program restarted for it only when asked.</summary>
-    [Fact]
-    public async Task An_agent_stops_at_an_exception_type_runs_to_a_line_moves_back_and_applies_hot_reload_changes_told_each_rude_edit_at_its_line()
+    private async Task An_agent_stops_at_an_exception_type_runs_to_a_line_moves_back_and_applies_hot_reload_changes_told_each_rude_edit_at_its_line()
     {
         await TakeFolderAsync();
         Write("Program.cs", "int total = 0;\ntotal += 1;\ntotal += 10;\ntotal += 100;\nfor (int turn = 1; turn <= 2; turn++)\n{\n"
@@ -102,8 +113,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>Two applies, each of an edit to another file, answer each with the file it sent alone: the second names
     /// only its own file, not the one the first already sent.</summary>
-    [Fact]
-    public async Task An_agents_second_hot_reload_names_only_the_file_it_sent()
+    private async Task An_agents_second_hot_reload_names_only_the_file_it_sent()
     {
         await TakeFolderAsync();
         Write("Program.cs", "int total = 0;\nfor (int i = 1; i <= 3; i++)\n{\n    total += Helper.Twice(i) + Other.Half(i);\n}\nConsole.WriteLine($\"total {total}\");\n");
@@ -182,8 +192,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>Run with Hot Reload (Settings' Hot Reload, or run's hotReload, since the headless IDE keeps the default settings)
     /// runs the program under dotnet watch, which takes saved edits: hot_reload saves them and answers with what dotnet watch
     /// said of them, and output shows the program running them.</summary>
-    [Fact]
-    public async Task An_agent_applies_hot_reload_changes_to_what_run_runs_under_dotnet_watch_and_is_told_what_dotnet_watch_made_of_them()
+    private async Task An_agent_applies_hot_reload_changes_to_what_run_runs_under_dotnet_watch_and_is_told_what_dotnet_watch_made_of_them()
     {
         await TakeFolderAsync();
         File.WriteAllText(Path.Combine(Folder, "Program.cs"),
