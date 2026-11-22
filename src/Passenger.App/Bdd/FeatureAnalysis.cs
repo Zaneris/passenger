@@ -10,12 +10,14 @@ namespace Passenger.App.Bdd;
 /// not read yet, so nothing is said undefined that is unknown), the marks those make, and the colours laid over the
 /// grammar's: every keyword in the file's language, descriptions, an examples table's header in bold, outline placeholders
 /// in a number's colour, as Reqnroll's editors show them, and the arguments a matched step gives its definition. An
-/// argument its definition cannot convert and a table's column no member takes are marked where they are written.</summary>
+/// argument its definition cannot convert and a table's column no member takes are marked where they are written, a
+/// definition taking more or fewer parameters than the step gives at the step.</summary>
 public sealed class FeatureAnalysis
 {
     public const string Undefined = "undefined-step";
     public const string Ambiguous = "ambiguous-step";
     public const string Argument = "step-argument";
+    public const string Parameters = "step-parameters";
     public const string Column = "table-column";
     public const string Syntax = "gherkin";
     public const string CodeBehind = "code-behind";
@@ -116,6 +118,10 @@ public sealed class FeatureAnalysis
                 marks.Add(Marker.Coded(RangeAt(refused.Line, refused.Column, refused.Length), refused.Fails ? MarkerKind.Error : MarkerKind.Warning,
                     refused.Fails || refused.Unjudged ? Argument : Undefined, refused.Why));
             }
+            if (match.Miscounted is { } miscounted)
+            {
+                marks.Add(Marker.Coded(WholeOf(step), MarkerKind.Error, Parameters, miscounted));
+            }
             foreach ((FeatureRow row, FeatureCell cell, string why) in UnreadColumns(step, match))
             {
                 marks.Add(Marker.Coded(RangeAt(row.Line, cell.Column, cell.Length), MarkerKind.Warning, Column, why));
@@ -143,10 +149,11 @@ public sealed class FeatureAnalysis
     }
 
     /// <summary>The names of a matched step's table its definition's table helpers set no member from (through a
-    /// transformation where the definition takes the table as another type), with why; those no read takes.</summary>
+    /// transformation where the definition takes the table as another type), with why; those no read takes. None where the
+    /// definition's parameters are not as many as the step gives, as a run fails before it reads the table.</summary>
     private IEnumerable<(FeatureRow Row, FeatureCell Cell, string Why)> UnreadColumns(FeatureStep step, StepMatch match)
     {
-        if (step.Table is not { } table || Steps is null || match is not { Status: MatchStatus.Defined, Bindings: [{ Binding: { Parameters.Count: > 0 } binding }] })
+        if (step.Table is not { } table || Steps is null || match is not { Status: MatchStatus.Defined, Miscounted: null, Bindings: [{ Binding: { Parameters.Count: > 0 } binding }] })
         {
             return [];
         }

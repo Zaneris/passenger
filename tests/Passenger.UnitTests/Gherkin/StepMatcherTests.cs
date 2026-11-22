@@ -179,11 +179,16 @@ public sealed class StepMatcherTests
 
             Assert.Equal(MatchStatus.Defined, Matcher(admin).Match(reading.Steps[0], reading).Status);
         }),
-        ("a definition refused only an argument it cannot convert binds the step which fails at that argument", () =>
+        ("a definition refused only an argument it cannot convert or its parameters' count binds the step which fails there", () =>
         {
-            StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the date is (.*)", "GivenTheDate", P("when", "System.DateTime")));
+            StepMatcher matcher = Matcher(
+                Binding(BindingKind.Given, "the date is (.*)", "GivenTheDate", P("when", "System.DateTime")),
+                Binding(BindingKind.When, "I wait (\\d+) seconds", "WhenIWait", P("seconds", Int), P("extra", Int)));
+            FeatureReading outline = FeatureReading.Read(
+                "Feature: F\n\nScenario Outline: O\n  When I wait <n> seconds\n\nExamples:\n  | n |\n  | 1 |\n  | 2 |\n", "en");
 
             StepMatch match = matcher.Match(StepKind.Given, "the date is 31/01/2024", false, false, new StepContext("F", "S", []));
+            StepMatch miscounted = matcher.Match(StepKind.When, "I wait 5 seconds", false, false, new StepContext("F", "S", []));
 
             Assert.Equal(MatchStatus.Defined, match.Status);
             Assert.Equal("GivenTheDate", Assert.Single(match.Bindings).Binding.Method);
@@ -192,6 +197,11 @@ public sealed class StepMatcherTests
             Assert.Equal("CalculatorSteps.GivenTheDate(DateTime) takes when as a date (as the invariant culture writes one, like 01/31/2024), which \"31/01/2024\" is not",
                 refused.Why);
             Assert.Empty(matcher.Match(StepKind.Given, "the date is 01/31/2024", false, false, new StepContext("F", "S", [])).Refused);
+            Assert.Null(match.Miscounted);
+            Assert.Equal(("WhenIWait", "CalculatorSteps.WhenIWait(Int32, Int32) takes 2 parameters, and the step gives 1: a run binds the step to it and fails there"),
+                (Assert.Single(miscounted.Bindings).Binding.Method, miscounted.Miscounted));
+            Assert.Empty(miscounted.Refused);
+            Assert.Equal(miscounted.Miscounted, matcher.Match(outline.Steps[0], outline).Miscounted);
         }),
         ("a step a Cucumber Expression would bind but for an argument its parameter type refuses is undefined at that argument", () =>
         {

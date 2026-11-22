@@ -83,9 +83,9 @@ public sealed class BddTests : IClassFixture<RestoredFolders>, IDisposable
             t.A_feature_written_in_another_language_than_its_projects_is_marked_saying_so_and_the_projects_load_problem_names_it();
             OpenWindows.CloseAll();
         });
-        Flow.StepApart<BddArgumentTests>("an argument or a table column its step's definition cannot take as Reqnroll converts them is marked where written", () => new BddArgumentTests(folders), t =>
+        Flow.StepApart<BddArgumentTests>("an argument, a table column or a count of arguments its step's definition cannot take as Reqnroll takes them is marked where written", () => new BddArgumentTests(folders), t =>
         {
-            t.An_int_a_date_an_enum_a_transformation_and_a_table_column_its_definition_cannot_take_are_each_marked_saying_what_it_takes();
+            t.An_int_a_date_an_enum_a_transformation_a_table_column_and_a_count_of_arguments_its_definition_cannot_take_are_each_marked_saying_what_it_takes();
             OpenWindows.CloseAll();
         });
         Flow.StepApart<BddArgumentTests>("a date in a project whose features are in Austrian German is read as its run converts it", () => new BddArgumentTests(folders), t =>

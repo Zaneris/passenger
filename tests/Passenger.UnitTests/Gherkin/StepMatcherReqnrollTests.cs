@@ -16,7 +16,7 @@ namespace Passenger.UnitTests.Gherkin;
 /// a transformation named in an expression, scopes by tag and feature, definitions alike and alike but for a parameter's
 /// type), each made by Reqnroll's own binding factory and read by Passenger as from its code, and random steps of every kind
 /// in random contexts, each bound by both: what binds it, whether several do alike, and whether one binds it only to fail
-/// converting an argument.</summary>
+/// counting its parameters or converting an argument.</summary>
 public sealed class StepMatcherReqnrollTests
 {
     private const int Seed = 2095;
@@ -51,15 +51,6 @@ public sealed class StepMatcherReqnrollTests
 
     private static readonly StepDefinitionType[] Kinds = [StepDefinitionType.Given, StepDefinitionType.When, StepDefinitionType.Then];
 
-    /// <summary>Bindings Passenger gives otherwise than Reqnroll's matcher, each with why, by what each says: to fix, a
-    /// definition whose parameters are more or fewer than its expression's arguments, which Reqnroll's matcher binds (the step
-    /// failing for the count as it runs) and Passenger leaves undefined.</summary>
-    private static readonly (string Passenger, string Reqnroll)[] Differences =
-    [
-        ("Undefined", "Miscounted:Wait"),
-        ("Undefined", "Miscounted:WaitMinutes"),
-    ];
-
     [Fact]
     public void A_step_is_bound_as_reqnrolls_own_matcher_binds_it()
     {
@@ -77,13 +68,13 @@ public sealed class StepMatcherReqnrollTests
             string ours = Passenger(passenger, kind, text, tags, feature);
             string theirs = Reqnroll(reqnroll, converter, kind, text, tags, feature);
             seen.Add(theirs.Split(':')[0]);
-            if (ours != theirs && !Differences.Contains((ours, theirs)))
+            if (ours != theirs)
             {
                 differ.Add($"{kind} \"{text}\" tagged [{string.Join(", ", tags)}] in {feature}: Passenger {ours}, Reqnroll {theirs}");
             }
         }
         Assert.True(differ.Count == 0, $"Seed {Seed}: Passenger binds steps otherwise than Reqnroll's matcher:\n{string.Join("\n", differ)}");
-        Assert.True(seen.IsSupersetOf(["Defined", "Ambiguous", "Undefined", "Refused"]),
+        Assert.True(seen.IsSupersetOf(["Defined", "Ambiguous", "Undefined", "Refused", "Miscounted"]),
             $"The steps drawn came only to {string.Join(", ", seen)} in Reqnroll's matcher, too few outcomes to tell its rules apart");
     }
 
@@ -97,7 +88,7 @@ public sealed class StepMatcherReqnrollTests
     }
 
     /// <summary>What Passenger binds the step to: the one definition, those alike, or none; a definition bound only to fail
-    /// converting an argument is said as refused.</summary>
+    /// counting its parameters is said as miscounted, one bound only to fail converting an argument as refused.</summary>
     private static string Passenger(StepMatcher matcher, StepDefinitionType kind, string text, string[] tags, string feature)
     {
         StepKind written = kind switch
@@ -109,6 +100,7 @@ public sealed class StepMatcherReqnrollTests
         StepMatch match = matcher.Match(written, text, false, false, new PassengerContext(feature, "Add", [.. tags.Select(t => "@" + t)]));
         return match.Status switch
         {
+            MatchStatus.Defined when match.Miscounted is not null => $"Miscounted:{Assert.Single(match.Bindings).Binding.Method}",
             MatchStatus.Defined when match.Refused.Any(r => r.Fails) => $"Refused:{Assert.Single(match.Bindings).Binding.Method}",
             MatchStatus.Defined => $"Defined:{Assert.Single(match.Bindings).Binding.Method}",
             MatchStatus.Ambiguous => $"Ambiguous:{string.Join(",", match.Bindings.Select(b => b.Binding.Method).Order(StringComparer.Ordinal))}",

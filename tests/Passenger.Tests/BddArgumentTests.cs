@@ -8,8 +8,9 @@ namespace Passenger.Tests;
 
 /// <summary>A feature's arguments and table columns checked as Reqnroll converts them at run time, with no build (the
 /// Reqnroll solution of <see cref="ReqnrollProjects"/> with a shop's steps beside its calculator's): a step's argument its
-/// definition's parameter cannot take, and a table's column no member of the type its definition reads it into takes, each
-/// marked where it is written, saying what is taken. Steps of <see cref="BddTests"/>' flow.</summary>
+/// definition's parameter cannot take, a table's column no member of the type its definition reads it into takes, and a
+/// step giving fewer arguments than its definition takes parameters, each marked where it is written, saying what is
+/// taken. Steps of <see cref="BddTests"/>' flow.</summary>
 public sealed class BddArgumentTests : IDisposable
 {
     private const string Steps =
@@ -41,6 +42,9 @@ public sealed class BddArgumentTests : IDisposable
         "\n" +
         "    [Given(\"these books\")]\n" +
         "    public void GivenBooks(Table table) { _ = table.CreateSet<Book>(); }\n" +
+        "\n" +
+        "    [Given(@\"the shop waits (\\d+) seconds\")]\n" +
+        "    public void GivenWaits(int seconds, int extra) { }\n" +
         "}\n";
 
     private const string Feature =
@@ -57,7 +61,8 @@ public sealed class BddArgumentTests : IDisposable
         "  And I have 3 apples\n" +
         "  And the shop opens on 1/31/2024\n" +
         "  And the colour is dark blue\n" +
-        "  And the price is $12\n";
+        "  And the price is $12\n" +
+        "  And the shop waits 3 seconds\n";
 
     private readonly string folder;
 
@@ -74,14 +79,14 @@ public sealed class BddArgumentTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    internal void An_int_a_date_an_enum_a_transformation_and_a_table_column_its_definition_cannot_take_are_each_marked_saying_what_it_takes()
+    internal void An_int_a_date_an_enum_a_transformation_a_table_column_and_a_count_of_arguments_its_definition_cannot_take_are_each_marked_saying_what_it_takes()
     {
         MainWindow window = Ui.OpenFolder(folder);
         try
         {
             Assert.Null(window.OpenFile(Path.Combine(folder, "Calc.Specs", "Features", "Shop.feature")));
             OpenDocument feature = window.EditorArea.Active!;
-            Ui.WaitFor(() => feature.Markers.Count >= 5, () => $"the shop's arguments and column marked: {Said(feature)}", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => feature.Markers.Count >= 6, () => $"the shop's arguments, column and count marked: {Said(feature)}", TimeSpan.FromMinutes(3));
 
             Assert.Equal((MarkerKind.Warning, FeatureAnalysis.Undefined), Kind(MarkOn(feature, "two")));
             Marker date = MarkOn(feature, "31/01/2024");
@@ -90,8 +95,11 @@ public sealed class BddArgumentTests : IDisposable
             Assert.Equal((MarkerKind.Error, FeatureAnalysis.Argument), Kind(MarkOn(feature, "Purple")));
             Assert.Equal((MarkerKind.Error, FeatureAnalysis.Argument), Kind(MarkOn(feature, "twelve")));
             Assert.Equal((MarkerKind.Warning, FeatureAnalysis.Column), Kind(MarkOn(feature, "Pagez")));
+            Marker waits = MarkOn(feature, "And the shop waits 3 seconds");
+            Assert.Equal((MarkerKind.Error, FeatureAnalysis.Parameters), Kind(waits));
+            Assert.EndsWith("ShopSteps.GivenWaits(Int32, Int32) takes 2 parameters, and the step gives 1: a run binds the step to it and fails there", waits.Message, StringComparison.Ordinal);
 
-            Assert.True(feature.Markers.Count == 5, $"Only the five refused were to be marked, and a run takes the rest: {Said(feature)}");
+            Assert.True(feature.Markers.Count == 6, $"Only the six refused were to be marked, and a run takes the rest: {Said(feature)}");
         }
         finally
         {

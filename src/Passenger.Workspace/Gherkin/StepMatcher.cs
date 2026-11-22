@@ -29,13 +29,16 @@ public readonly record struct StepArgument(int Start, int Length);
 public sealed record BoundStep(StepBinding Binding, IReadOnlyList<StepArgument> Arguments);
 
 /// <summary>What a step binds to: its definitions, and for one with none, the definitions whose expression fits its text but
-/// that Reqnroll would still refuse it (their parameters, their scope), with why; and the arguments a definition is refused
-/// for, where they are written.</summary>
+/// that Reqnroll would still refuse it (their parameters, their scope), with why; the arguments a definition is refused
+/// for, where they are written; and why a run fails on the count of its definition's parameters, which binds it all the
+/// same (null where the count is the step's).</summary>
 public sealed record StepMatch(MatchStatus Status, IReadOnlyList<BoundStep> Bindings, string? Why = null)
 {
     public static readonly StepMatch None = new(MatchStatus.Undefined, []);
 
     public IReadOnlyList<RefusedArgument> Refused { get; init; } = [];
+
+    public string? Miscounted { get; init; }
 }
 
 /// <summary>An argument a definition is refused for: where it is written (a line and column of the file; of a text matched
@@ -52,8 +55,8 @@ public sealed record RefusedArgument(int Line, int Column, int Length, string Wh
 /// definition of the step's kind whose regular expression matches the whole text, takes as many parameters as the text's
 /// arguments and the step's doc string and table, can convert each argument in the binding culture
 /// (<see cref="StepConversions"/>), and fits the step's context by one of its scopes; of several, those that fit by the
-/// most of a scope's restrictions; of none, the one whose only fault is an argument it cannot convert, which a run binds and
-/// fails. Made once for a set of definitions, each expression made once.</summary>
+/// most of a scope's restrictions; of none, the one whose only fault is its parameters (an argument it cannot convert, or
+/// their count), which a run binds and fails. Made once for a set of definitions, each expression made once.</summary>
 public sealed class StepMatcher
 {
     private readonly (StepBinding Binding, Regex? Regex, string? Error)[] compiled;
@@ -133,7 +136,7 @@ public sealed class StepMatcher
         {
             bound.Add(alike ? each : each with { Arguments = [] });
         }
-        return new StepMatch(MatchStatus.Defined, bound) { Refused = refused };
+        return new StepMatch(MatchStatus.Defined, bound) { Refused = refused, Miscounted = runs.Select(r => r.Miscounted).FirstOrDefault(m => m is not null) };
     }
 
     /// <summary>Whether a step can be matched as it stands: one with placeholders needs its outline's examples to have rows,
@@ -146,8 +149,8 @@ public sealed class StepMatcher
     {
         List<(StepBinding Binding, Match Match, int Fit)> fitting = [];
         List<string> refused = [];
-        // Those whose expression and scope fit but not their parameters, and whether one fits all but its scope.
-        List<(StepBinding Binding, Match Match, RefusedArgument[] Arguments)> unconverted = [];
+        // Those whose expression and scope fit but not their parameters (an argument, their count), and whether one fits all but its scope.
+        List<(StepBinding Binding, Match Match, RefusedArgument[] Arguments, string? Miscounted)> unconverted = [];
         // Arguments of definitions that fit whose check could not finish, said unchecked where the step binds to them.
         List<(StepBinding Binding, RefusedArgument Argument)> unjudged = [];
         bool outOfScope = false;
@@ -162,10 +165,11 @@ public sealed class StepMatcher
             int? fit = Fit(binding, context);
             if (arguments != binding.Parameters.Count)
             {
-                refused.Add($"{binding.Shown} takes {Numbers.Said(binding.Parameters.Count)} parameters, and the step gives {Numbers.Said(arguments)}");
+                string counted = $"{binding.Shown} takes {Plural.Of(binding.Parameters.Count, "parameter")}, and the step gives {Numbers.Said(arguments)}";
+                refused.Add(counted);
                 if (fit is not null)
                 {
-                    unconverted.Add((binding, match, []));
+                    unconverted.Add((binding, match, [], counted));
                 }
                 continue;
             }
@@ -191,7 +195,7 @@ public sealed class StepMatcher
             {
                 if (fit is not null)
                 {
-                    unconverted.Add((binding, match, [.. wrong]));
+                    unconverted.Add((binding, match, [.. wrong], null));
                 }
                 continue;
             }
@@ -211,10 +215,14 @@ public sealed class StepMatcher
                 return new StepMatch(MatchStatus.Undefined, [], why);
             }
             unconverted = [.. unconverted.DistinctBy(u => (u.Binding.Type, u.Binding.Method))];
-            // Reqnroll runs the one definition refused only for its parameters, failing as it converts them.
-            if (unconverted is [{ Arguments.Length: > 0 } only])
+            // Reqnroll runs the one definition refused only for its parameters, failing as it counts or converts them.
+            if (unconverted is [{ } only])
             {
-                return new StepMatch(MatchStatus.Defined, [new BoundStep(only.Binding, ArgumentsOf(only.Match))]) { Refused = only.Arguments };
+                return new StepMatch(MatchStatus.Defined, [new BoundStep(only.Binding, ArgumentsOf(only.Match))])
+                {
+                    Refused = only.Arguments,
+                    Miscounted = only.Miscounted is { } counted ? $"{counted}: a run binds the step to it and fails there" : null,
+                };
             }
             RefusedArgument[] arguments = unconverted.Count > 0 ? [.. unconverted.SelectMany(u => u.Arguments)] : NearlyBound(kind, text, hasDocString, hasTable, context);
             return new StepMatch(MatchStatus.Undefined, [], why) { Refused = arguments };
