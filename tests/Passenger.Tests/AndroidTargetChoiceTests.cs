@@ -114,10 +114,10 @@ public sealed class AndroidTargetChoiceTests : IDisposable
     }
 
     /// <summary>A run on an Android target lists Android's targets again on its way, which leaves every other platform's
-    /// listed: Choose Where It Runs after the run still offers this machine's head and, on a Mac, the iOS simulators. The
-    /// emulator, the build and the install are the project's own stand-ins, so no device, SDK or JDK is needed. Skips,
-    /// saying why, without the Android workload, or where Android's is the only target listed (Linux runs no head of its
-    /// own and no simulator).</summary>
+    /// listed: Choose Where It Runs opened at once after the run still offers this machine's head (Linux's an Avalonia
+    /// desktop head) and, on a Mac, the iOS simulators. The workload's emulator, the run's build and its install are the
+    /// project's own stand-ins (an emulator listed running, a build of nothing, an install failing once the run has
+    /// listed), so no device, SDK or JDK is needed. Skips, saying why, without the Android workload.</summary>
     [AvaloniaFact]
     public void After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered()
     {
@@ -134,17 +134,14 @@ public sealed class AndroidTargetChoiceTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         try
         {
-            Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated) && window.Configurations.Count > 0,
-                () => $"the app's project evaluated and its configuration made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
+            Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated && p.Evaluated!.Dependencies.Count > 1) && window.Configurations.Count > 0,
+                () => $"the app's project evaluated for each of its frameworks and its configuration made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
             ProjectModel app = window.Session.Projects.Single();
             Ui.Click(window.FindControl<Button>("RunTargetButton")!);
             Ui.WaitFor(() => window.OpenContextMenu is not null, () => $"the menu of where the app runs: {Ui.Said(window)}", Slow);
             string[] listed = [.. window.Session.Targets.Listed(app).Select(t => t.Shown)];
-            if (DeviceTargets.OfThisMachine is { } machine)
-            {
-                Assert.Contains(DeviceTargets.Here(machine).Shown, listed);
-            }
-            Assert.SkipWhen(listed.Length < 2, $"Only {string.Join(", ", listed)} is listed here, which runs no head of its own and no simulator, so a run has nothing else to keep");
+            Assert.Contains(DeviceTargets.Here(DeviceTargets.OfThisMachine ?? TargetPlatform.Desktop).Shown, listed);
+            Assert.True(listed.Length > 1, $"Only {string.Join(", ", listed)} is listed, so a run's listing has nothing else to keep");
             Ui.Choose(window.OpenContextMenu, emulator.Shown);
 
             Ui.Run(window, AppActions.RunProgram);
@@ -165,7 +162,8 @@ public sealed class AndroidTargetChoiceTests : IDisposable
     }
 
     /// <summary>An app with an Android head and, on a Mac, a Mac Catalyst head this machine runs and an iOS head its
-    /// simulators run, or on Windows a Windows head, whose Android head is the stand-ins' (<see cref="StandIns"/>).</summary>
+    /// simulators run, on Windows a Windows head, or on Linux an Avalonia desktop head, whose Android head is the
+    /// stand-ins' (<see cref="StandIns"/>).</summary>
     private static string StandingIn => $"""
         <Project>
           <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
@@ -173,13 +171,21 @@ public sealed class AndroidTargetChoiceTests : IDisposable
             <TargetFrameworks>{MauiApp.Android}</TargetFrameworks>
             <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">$(TargetFrameworks);{MauiApp.Android.Replace("-android", "-maccatalyst", StringComparison.Ordinal)};{MauiApp.Android.Replace("-android", "-ios", StringComparison.Ordinal)}</TargetFrameworks>
             <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);{MauiApp.Android.Replace("-android", "-windows10.0.19041.0", StringComparison.Ordinal)}</TargetFrameworks>
+            <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);{Desktop}</TargetFrameworks>
             <OutputType>Exe</OutputType>
             <ApplicationId>net.passengeride.tests.relisted</ApplicationId>
           </PropertyGroup>
+          <ItemGroup Condition="'$(TargetFramework)' == '{Desktop}'">
+            <PackageReference Include="Avalonia.Desktop" Version="{AvaloniaApp.Version}" />
+          </ItemGroup>
           <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
           <Import Project="StandIn.targets" Condition="'$(TargetFramework)' == '{MauiApp.Android}'" />
         </Project>
         """;
+
+    /// <summary>The framework of no platform beside the Android head's, which Avalonia's desktop platforms make a desktop
+    /// head.</summary>
+    private static string Desktop => MauiApp.Android.Replace("-android", string.Empty, StringComparison.Ordinal);
 
     /// <summary>The Android head's stand-ins, after the workload's targets: one emulator listed, running; a build of nothing;
     /// an install that fails, after the run has listed Android's targets. None asks the Android SDK or a JDK.</summary>
