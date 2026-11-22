@@ -554,6 +554,9 @@ public sealed partial class Vim
                 case "e" or "E":
                     moved = WordEndOrTextEnd(text, cursor, n, command.Name == "E");
                     break;
+                case ")":
+                    moved = SentenceOrTextEnd(text, cursor, n);
+                    break;
                 default:
                     moved = Target(command, text, cursor, operating: false, view)?.Offset;
                     break;
@@ -606,6 +609,28 @@ public sealed partial class Vim
             at = VimMotions.StepBack(text, p + 1);
         }
         return at == cursor ? null : at;
+    }
+
+    /// <summary>) in visual mode: from a line's end, past its last character, first the text after the blanks and line
+    /// breaks after it, as from an empty line; past the last sentence the last line's end; null where it cannot move.</summary>
+    private int? SentenceOrTextEnd(TextSnapshot text, int cursor, int n)
+    {
+        int end = LineEndOf(text, VimMotions.LastLine(text, breakEnds));
+        int at = cursor;
+        if (VimMotions.LineOf(text, at) is { Length: > 0 } line && at == line.End)
+        {
+            while (at < end && char.IsWhiteSpace(text[at]))
+            {
+                at++;
+            }
+            if (--n == 0 || at >= end)
+            {
+                return at == cursor ? null : at;
+            }
+        }
+        return VimMotions.Sentence(text, at, n, forward: true, breakEnds) is { } target
+            ? target.Kind == VimMotionKind.Inclusive ? end : target.Offset
+            : null;
     }
 
     /// <summary>The last character of the line an offset is on, its start where it is empty.</summary>

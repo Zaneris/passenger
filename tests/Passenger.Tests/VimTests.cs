@@ -203,7 +203,6 @@ public sealed partial class VimTests
         ($"A text object in visual mode by lines or a block, and the cursor a visual change over one leaves; {ToFix}",
             (vimCase, _, _) => vimCase.Uses(VisualObject)),
         ($"is and as on an empty or one-word line take the line whole; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceObject)),
-        ($"( and ) at the text's ends stay where they are; {ToFix}", (vimCase, _, _) => vimCase.Uses(SentenceMotion)),
         ($"Visual mode's cursor goes past the last line; {ToFix}", (_, _, passenger) => passenger.Seen.Contains(VisualPastEnd)),
         ($"Visual block mode's corners: a block over a line's last character, its I and A, ~ and J after o; {ToFix}", (vimCase, _, _) => vimCase.Uses(Block)),
         ($"I and A over a visual stretch by characters or lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(VisualInsert)),
@@ -230,7 +229,6 @@ public sealed partial class VimTests
     private const string VisualPastEnd = "a visual cursor past the last line";
     private const string VisualObject = "a text object in visual mode";
     private const string SentenceObject = "is or as";
-    private const string SentenceMotion = "( or )";
 
     /// <summary>A case of 1 to 6 lines and 1 to 4 commands, the cursor anywhere on a character; a visual stretch the
     /// keys leave is left only by the last command, the others' ended by Escape.</summary>
@@ -310,16 +308,16 @@ public sealed partial class VimTests
 
     private static T Pick<T>(Random random, T[] from) => from[random.Next(from.Length)];
 
-    /// <summary>A motion, its count before it, and what it uses; no count before 0, which a count takes as its digit.</summary>
-    private static (IEnumerable<string> Keys, string Motion) Motion(Random random, string text, string count = "")
+    /// <summary>A motion and its count before it; no count before 0, which a count takes as its digit.</summary>
+    private static IEnumerable<string> Motion(Random random, string text, string count = "")
     {
         if (random.Next(6) == 0)
         {
             string find = Pick(random, ["f", "t", "F", "T"]);
-            return ([.. Each(count), find, Target(random, text)], find);
+            return [.. Each(count), find, Target(random, text)];
         }
         string motion = Pick(random, Motions);
-        return (motion == "0" ? Each(motion) : Each(count + motion), motion);
+        return motion == "0" ? Each(motion) : Each(count + motion);
     }
 
     /// <summary>One command: a motion, an operator over a motion or text object, a change, a put, a visual stretch and
@@ -330,16 +328,11 @@ public sealed partial class VimTests
         HashSet<string> uses = [];
         string count = Counted(random);
         string register = random.Next(8) == 0 ? "\"" + Pick(random, ["a", "b", "A"]) : string.Empty;
-        void Moved((IEnumerable<string> Keys, string Motion) motion)
-        {
-            keys.AddRange(motion.Keys);
-            uses.UnionWith(motion.Motion is "(" or ")" ? [SentenceMotion] : []);
-        }
         switch (random.Next(15))
         {
             case 0:
             case 1:
-                Moved(Motion(random, text, count));
+                keys.AddRange(Motion(random, text, count));
                 break;
             case 2:
             case 3:
@@ -347,7 +340,7 @@ public sealed partial class VimTests
                 keys.AddRange(Each(register + count + op));
                 if (random.Next(2) == 0)
                 {
-                    Moved(Motion(random, text));
+                    keys.AddRange(Motion(random, text));
                 }
                 else
                 {
@@ -389,7 +382,7 @@ public sealed partial class VimTests
                     }
                     else
                     {
-                        Moved(Motion(random, text, Counted(random)));
+                        keys.AddRange(Motion(random, text, Counted(random)));
                     }
                 }
                 if (random.Next(4) > 0)
@@ -422,7 +415,7 @@ public sealed partial class VimTests
                 break;
             case 11:
                 keys.AddRange(Each("ma"));
-                Moved(Motion(random, text));
+                keys.AddRange(Motion(random, text));
                 string back = Pick(random, ["d'a", "y`a", "`a", "'a", "c`a"]);
                 keys.AddRange(Each(back));
                 if (back[0] == 'c')

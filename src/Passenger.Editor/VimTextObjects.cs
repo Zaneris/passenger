@@ -152,8 +152,8 @@ public static class VimTextObjects
         bool empty = line.Length == 0;
         if (inner && EmptyLastLineReach(text, caret, breakEnds) is { } from)
         {
-            // On an empty last line, iw reaches back to the line above's last place; with a count, to nothing.
-            return n == 1 ? (from, caret, false) : (caret, caret, false);
+            // On an empty last line, iw reaches back to the line above's last place; a count of two takes nothing, more fail.
+            return n == 1 ? (from, caret, false) : n == 2 || visual ? (caret, caret, false) : null;
         }
         int start = empty ? caret : Run(text, caret, bigWord).Start;
         int end = empty ? caret : RunLast(text, caret, bigWord);
