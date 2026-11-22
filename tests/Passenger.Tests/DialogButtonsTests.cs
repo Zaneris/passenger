@@ -36,11 +36,15 @@ public sealed class DialogButtonsTests : IDisposable
         TestFolders.Delete(other);
     }
 
-    [AvaloniaTheory]
-    [InlineData(CarriedThemes.Own)]
-    [InlineData("Harbour")]
-    [InlineData("Cubicle")]
-    public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it(string look)
+    [AvaloniaFact]
+    public void Every_dialog_has_its_buttons_words_centred_and_its_text_buttons_alike_with_the_default_where_Rider_puts_it() =>
+        Cases.Each([CarriedThemes.Own, "Harbour", "Cubicle"], look =>
+        {
+            using DialogButtonsTests apart = new();
+            apart.Every_dialog_under(look);
+        });
+
+    private void Every_dialog_under(string look)
     {
         using IDisposable worn = CarriedThemes.Wearing(look);
         // A solution, which Add Aspire Orchestration adds to; no C# language server, which no dialog here asks of.

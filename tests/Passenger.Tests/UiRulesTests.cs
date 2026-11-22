@@ -457,13 +457,17 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         return end < 0 ? text[at..] : text[at..end];
     }
 
+    [AvaloniaFact]
+    public void Every_choice_shows_the_chosen_mark_beside_its_ground_and_none_is_drawn_by_a_ground_of_its_own() => Cases.All(
+        ("Every chosen row tab stripe button and toolbar toggle shows the chosen mark beside its ground and nothing else does", Every_chosen_row_tab_stripe_button_and_toolbar_toggle_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does),
+        ("No list or tab draws its choice by a ground of its own", No_list_or_tab_draws_its_choice_by_a_ground_of_its_own));
+
     /// <summary>Every choice the window shows (a list's or a tree's chosen row, the open editor tab, a tool window's open
     /// tab, a stripe's open window's button, a toolbar's toggle that is on: Problems' severities, Mute Breakpoints) is shown by
     /// the one chosen mark beside its ground, in the chosen mark's colour on the side its kind takes, and nothing unchosen
     /// shows one, under each look dark and light; every row, tab, stripe button and toolbar toggle holds exactly one mark, so
     /// none draws its choice another way, by a ground alone a person with low vision may not tell from the page.</summary>
-    [AvaloniaFact]
-    public void Every_chosen_row_tab_stripe_button_and_toolbar_toggle_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does()
+    private void Every_chosen_row_tab_stripe_button_and_toolbar_toggle_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does()
     {
         MainWindow window = Open(1200, 800);
         try
@@ -576,8 +580,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>The grounds a choice stands on (a chosen row's, the open tab's and the open window's stripe button's) are named
     /// by the theme's styles alone, which draw the chosen mark beside them: a row or tab chosen by hand takes the chosen
     /// class, never its ground bound by hand without its mark.</summary>
-    [Fact]
-    public void No_list_or_tab_draws_its_choice_by_a_ground_of_its_own()
+    private void No_list_or_tab_draws_its_choice_by_a_ground_of_its_own()
     {
         Regex ground = new(@"\bTokenKeys\.(?:RowSelected|Tab_Active|Stripe_Selected)\b|Passenger\.(?:RowSelected|Tab\.Active|Stripe\.Selected)\b");
         string[] found = [.. from file in UiFiles(theme: false)
@@ -769,12 +772,16 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>A popup's frame of a type of its own, as the colour picker and the code assist popups are.</summary>
     private sealed class OwnFrame : Border;
 
+    [AvaloniaFact]
+    public void Every_popup_made_apart_takes_its_room_and_width_from_PopupFrame_and_a_width_of_the_scale() => Cases.All(
+        ("Every popup made apart from the searches takes a width of the scale and the frames room", Every_popup_made_apart_from_the_searches_takes_a_width_of_the_scale_and_the_frames_room),
+        ("Every popups frame takes its room and width from PopupFrame", Every_popups_frame_takes_its_room_and_width_from_PopupFrame));
+
     /// <summary>The popups made apart from the searches hold to the popups' rules as the searches do (HoldsToPopupRules):
     /// Rename's box, a list of fixes, a change's lines, the colour picker, and Godot's resource picker, items form and keep
     /// preview, Read as Text's view, each at a width of the scale with the frame's room, a list sized by what it holds at the
     /// narrowest width that holds it.</summary>
-    [AvaloniaFact]
-    public void Every_popup_made_apart_from_the_searches_takes_a_width_of_the_scale_and_the_frames_room()
+    private void Every_popup_made_apart_from_the_searches_takes_a_width_of_the_scale_and_the_frames_room()
     {
         MainWindow window = Open(1400, 900);
         try
@@ -843,8 +850,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>A popup's frame takes its room and width from PopupFrame (Inset, CardInset, a width of its scale, Fitting, a
     /// FittingFrame) or a list popup's ListRow.PopupList, never a number of its own: a frame whose own Padding, Width,
     /// MinWidth or MaxWidth names neither fails here, naming its line, as does an option of a popup's made of its own.</summary>
-    [Fact]
-    public void Every_popups_frame_takes_its_room_and_width_from_PopupFrame()
+    private void Every_popups_frame_takes_its_room_and_width_from_PopupFrame()
     {
         string[] found = [.. UiFiles().Where(f => !f.Path.EndsWith("/PopupFrame.cs", StringComparison.Ordinal) && !f.Path.EndsWith("/PopupHost.cs", StringComparison.Ordinal))
             .SelectMany(f => OwnRoom(f.Path, f.Text))];
@@ -1446,11 +1452,15 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    [AvaloniaFact]
+    public void Every_button_and_field_in_the_window_its_tool_windows_and_Settings_is_named() => Cases.All(
+        ("No button in the window or a tool window goes unnamed", No_button_in_the_window_or_a_tool_window_goes_unnamed),
+        ("Every field in the window its tool windows and Settings is named and a controls height", Every_field_in_the_window_its_tool_windows_and_Settings_is_named_and_a_controls_height));
+
     /// <summary>Every button a person meets in the window and its tool windows has words a screen reader says: its own, or a
     /// name given where it was made (<see cref="ToolButtons.Tip"/>), never only an icon. Its peer's name is what each
     /// system's accessibility reads, so an icon's button left with a tip alone is heard as a nameless button.</summary>
-    [AvaloniaFact]
-    public void No_button_in_the_window_or_a_tool_window_goes_unnamed()
+    private void No_button_in_the_window_or_a_tool_window_goes_unnamed()
     {
         MainWindow window = Open(1400, 880);
         try
@@ -1487,8 +1497,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// reader says (its own, its label's, a search's), never a placeholder alone, and stands as tall as the buttons and
     /// drop-downs beside it: the one field look, but a field of several lines, a value typed in its row (ValueField) and
     /// a table's cell.</summary>
-    [AvaloniaFact]
-    public void Every_field_in_the_window_its_tool_windows_and_Settings_is_named_and_a_controls_height()
+    private void Every_field_in_the_window_its_tool_windows_and_Settings_is_named_and_a_controls_height()
     {
         MainWindow window = Open(1400, 880);
         SettingsDialog? settings = null;
@@ -1849,13 +1858,17 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(found.Count == 0, $"At the window's least width:\n{string.Join("\n", found.Distinct().Take(60))}");
     }
 
+    [AvaloniaFact]
+    public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other_and_a_placeholder_cut_inside_its_scroller() => Cases.All(
+        ("The layout faults check finds words cut and controls drawn over each other", The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other),
+        ("A fields long placeholder ends in an ellipsis and the check finds one cut inside its scroller", A_fields_long_placeholder_ends_in_an_ellipsis_and_the_check_finds_one_cut_inside_its_scroller));
+
     /// <summary>The layout faults' check finds what it is for, so its silence means something: words wider than their room
     /// with no ellipsis, laid past a row narrower than them, past their part's room or past the window's edge by a row
     /// wider than it; a fixed-width field past a scroller that scrolls no way sideways, a field squeezed to too little
     /// room to type in, and two buttons in one cell, are each found; words ending in an ellipsis, and a field's own
     /// options inside it, are not.</summary>
-    [AvaloniaFact]
-    public void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
+    private void The_layout_faults_check_finds_words_cut_and_controls_drawn_over_each_other()
     {
         TextBlock cut = new() { Text = "Words far wider than their room", Width = 60 };
         TextBlock trimmed = new() { Text = "Words far wider than their room", Width = 60, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -2011,8 +2024,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// scroll to it: a placeholder laid out wider than its field, as every one was, words wider than a scroller that
     /// scrolls no way sideways, and words wider than a menu's scroller, which has no sideways bar. A field's own typed
     /// text, which its caret scrolls to, and words in a scroller with its bar, are not cuts.</summary>
-    [AvaloniaFact]
-    public void A_fields_long_placeholder_ends_in_an_ellipsis_and_the_check_finds_one_cut_inside_its_scroller()
+    private void A_fields_long_placeholder_ends_in_an_ellipsis_and_the_check_finds_one_cut_inside_its_scroller()
     {
         const string Long = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
         TextBox field = new() { Width = 160, PlaceholderText = Long, HorizontalAlignment = HorizontalAlignment.Left };
@@ -2107,10 +2119,14 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(found.Count == 0, string.Join("\n", found));
     }
 
+    [AvaloniaFact]
+    public void A_greyed_button_or_check_box_shows_its_tooltip_under_the_pointer() => Cases.All(
+        ("A greyed button shows its tooltip under the pointer", A_greyed_button_shows_its_tooltip_under_the_pointer),
+        ("A greyed check box shows its tooltip under the pointer", A_greyed_check_box_shows_its_tooltip_under_the_pointer));
+
     /// <summary>A greyed button shows its tooltip under the pointer, which says why it is greyed: Live Templates' Delete,
     /// greyed for a built-in template, says how one is turned off instead.</summary>
-    [AvaloniaFact]
-    public void A_greyed_button_shows_its_tooltip_under_the_pointer()
+    private void A_greyed_button_shows_its_tooltip_under_the_pointer()
     {
         MainWindow window = Open(1200, 800);
         SettingsDialog? dialog = null;
@@ -2137,8 +2153,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// nuget.config, which NuGet never writes, has its check box greyed, its tip saying what it is and why it is greyed, a
     /// screen reader naming it all the same. On Linux alone, where NuGet takes the machine's folder from the run
     /// (NUGET_COMMON_APPLICATION_DATA).</summary>
-    [AvaloniaFact]
-    public void A_greyed_check_box_shows_its_tooltip_under_the_pointer()
+    private void A_greyed_check_box_shows_its_tooltip_under_the_pointer()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux(), "NuGet reads the machine's nuget.config from the system's own folder here, which a test does not write");
         string machine = Directory.CreateDirectory(Path.Combine(Environment.GetEnvironmentVariable("NUGET_COMMON_APPLICATION_DATA")!, "NuGet", "Config")).FullName;
@@ -3579,13 +3594,17 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             + $"give each a row made once through ReusedRows.Use, showing its DataContext (Showing):\n{string.Join("\n", found)}");
     }
 
+    [Fact]
+    public void Every_lists_keys_double_click_and_chosen_row_are_heard_through_ListKeys() => Cases.All(
+        ("Every lists keys and double click are heard through ListKeys", Every_lists_keys_and_double_click_are_heard_through_ListKeys),
+        ("A list takes the keys on its chosen row only through ListKeys Hold", A_list_takes_the_keys_on_its_chosen_row_only_through_ListKeys_Hold));
+
     /// <summary>A list hears what its chosen row does by the keys and a double click only through ListKeys.Act (TreeKeys
     /// for a tree, which takes it), ahead of its rows, which take Enter and Space for their choice before a handler of the
     /// list hears them, so Enter does what a double click does in every list: a list's key or double click heard any other
     /// way (its KeyDown or DoubleTapped, a handler added for them, an override, or a XAML attribute) fails here, naming its
     /// line.</summary>
-    [Fact]
-    public void Every_lists_keys_and_double_click_are_heard_through_ListKeys()
+    private void Every_lists_keys_and_double_click_are_heard_through_ListKeys()
     {
         Regex declared = new(@"\b(?:ListBox|TreeList)\??\s+(\w+)\b(?!\s*\()|\b(\w+)\s*=\s*new\s+(?:ListBox|TreeList)\b|<(?:ListBox|app:TreeList)\b[^>]*\bName=""(\w+)""");
         Regex subclass = new(@"\bclass\s+\w+\s*:\s*(?:ListBox|TreeList)\b");
@@ -3621,8 +3640,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// move): a ListBox refuses Focus(), so a list given the keys that way gets none, and a row's container given them by
     /// hand misses a row out of sight or none chosen. Focus() on a ListBox, a TreeList or a class of theirs, or on a row
     /// taken from one by ContainerFromIndex or ContainerFromItem, fails here, naming its line.</summary>
-    [Fact]
-    public void A_list_takes_the_keys_on_its_chosen_row_only_through_ListKeys_Hold()
+    private void A_list_takes_the_keys_on_its_chosen_row_only_through_ListKeys_Hold()
     {
         (string Path, string Text)[] files = [.. UiFiles()];
         HashSet<string> kinds = ["ListBox", "TreeList"];
