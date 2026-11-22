@@ -30,22 +30,38 @@ internal static partial class Lifeline
     /// gone long before, zombies their parents reap included.</summary>
     private static readonly TimeSpan KillAgainFor = TimeSpan.FromSeconds(5);
 
-    /// <summary>The watchdog: "+N" puts group N on its list and "-N" strikes it off; "!C" makes C the command it runs last,
-    /// after every group still listed at the end of its input is killed. It writes nothing, and a terminal's hangup or
-    /// interrupt is not its to obey.</summary>
+    /// <summary>The watchdog: "+N" puts group N on its list and "-N" strikes it off; "@P F" lists file F of process P's
+    /// runtime and "-@P" strikes off all of P's; "!C" makes C the command it runs last. At the end of its input every group
+    /// still listed is killed, then each file listed is removed once its process has gone (for 2 s at most), then C runs.
+    /// It writes nothing, and a terminal's hangup or interrupt is not its to obey.</summary>
     private const string Watch = """
         exec >/dev/null 2>&1
         trap '' HUP INT
+        nl='
+        '
         groups=' '
+        files=''
         last=''
         while IFS= read -r line; do
           case $line in
             +*) groups="$groups${line#+} " ;;
+            -@*) kept=''; set -f; IFS=$nl; for entry in $files; do case $entry in "${line#-@} "*) ;; *) kept="$kept$entry$nl" ;; esac; done; unset IFS; set +f; files=$kept ;;
             -*) case $groups in *" ${line#-} "*) groups="${groups%% ${line#-} *} ${groups#* ${line#-} }" ;; esac ;;
+            @*) files="$files${line#@}$nl" ;;
             !*) last="${line#!}" ;;
           esac
         done
         for group in $groups; do kill -s KILL -- "-$group"; done
+        set -f; IFS=$nl
+        tries=0
+        while [ -n "$files" ] && [ "$tries" -lt 20 ]; do
+          alive=''
+          for entry in $files; do kill -0 "${entry%% *}" && alive=1; done
+          [ -z "$alive" ] && break
+          sleep 0.1; tries=$((tries + 1))
+        done
+        for entry in $files; do kill -0 "${entry%% *}" || rm -f -- "${entry#* }"; done
+        unset IFS; set +f
         if [ -n "$last" ]; then eval "$last"; fi
         """;
 
@@ -79,6 +95,16 @@ internal static partial class Lifeline
     private static readonly TimeSpan RemovalsLandFor = TimeSpan.FromSeconds(1);
     private static bool endsGroupsAtExit;
 
+    /// <summary>The runtime files of each process the watchdog has been told of, by process: Passenger's own and those of
+    /// the processes in its groups, which a crash or a kill of Passenger leaves to the watchdog's kill.</summary>
+    private static readonly Dictionary<int, RuntimeFiles> Told = [];
+
+    /// <summary>How often the processes of the groups listed are looked through for what the watchdog has not been told of
+    /// (a build's nodes, a debugged program): its count of those is seconds behind at most.</summary>
+    private static readonly TimeSpan FollowEvery = TimeSpan.FromSeconds(1);
+
+    private static Timer? following;
+
     /// <summary>Sets a child up, before it starts, to end with Passenger.</summary>
     public static void Prepare(ProcessStartInfo start)
     {
@@ -110,6 +136,7 @@ internal static partial class Lifeline
             Groups.Add(group);
             Tell($"+{group}");
             pruning ??= new Timer(_ => Prune(), null, PruneEvery, PruneEvery);
+            following ??= new Timer(_ => FollowRuntimeFiles(), null, TimeSpan.Zero, FollowEvery);
             if (!endsGroupsAtExit)
             {
                 endsGroupsAtExit = true;
@@ -223,6 +250,19 @@ internal static partial class Lifeline
         }
     }
 
+    /// <summary>Kills a process (once <see cref="KillGroup(Process)"/> has killed its group, where Passenger holds one), and
+    /// where no group of Passenger's holds it (a program a debugger started, found by its id), takes what its runtime leaves
+    /// once it has gone, as a group's are taken.</summary>
+    public static void KillAlone(Process process)
+    {
+        RuntimeFiles? left = Holds(process.Id) ? null : RuntimeFiles.Of(process.Id);
+        process.Kill();
+        if (left is not null)
+        {
+            Removing(BackgroundWork.Run(() => RemoveOnceGoneAsync([left])));
+        }
+    }
+
     private static void Removing(Task removal)
     {
         lock (Gate)
@@ -300,6 +340,64 @@ internal static partial class Lifeline
         }
     }
 
+    /// <summary>Tells the watchdog the runtime files of each process of a group listed, and of Passenger's own, as they come,
+    /// so a kill of Passenger leaves none of them; and takes those of each that has gone (one killed by another, or as it
+    /// ended), striking it off. Read outside the gate, as a process's environment is a call into the system.</summary>
+    private static void FollowRuntimeFiles()
+    {
+        int[] groups;
+        Dictionary<int, long> told;
+        lock (Gate)
+        {
+            groups = [.. Groups];
+            told = Told.ToDictionary(entry => entry.Key, entry => entry.Value.Started);
+        }
+        // Gone, or its id another process's now.
+        HashSet<int> gone = [.. told.Where(entry => DotnetProcesses.StartKey(entry.Key) != entry.Value).Select(entry => entry.Key)];
+        Dictionary<int, RuntimeFiles> come = [];
+        foreach (int id in groups.SelectMany(DotnetProcesses.InGroup).Prepend(Environment.ProcessId).Distinct())
+        {
+            if ((!told.ContainsKey(id) || gone.Contains(id)) && RuntimeFiles.Of(id) is { } files
+                && !files.Paths.Any(path => path.Contains('\n', StringComparison.Ordinal)))
+            {
+                come[id] = files;
+            }
+        }
+        List<RuntimeFiles> left = [];
+        lock (Gate)
+        {
+            foreach (int id in gone)
+            {
+                if (Told.TryGetValue(id, out RuntimeFiles? files) && files.Started == told[id])
+                {
+                    Told.Remove(id);
+                    Tell(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"-@{id}"));
+                    left.Add(files);
+                }
+            }
+            foreach ((int id, RuntimeFiles files) in come)
+            {
+                if (Told.TryAdd(id, files))
+                {
+                    TellFiles(files);
+                }
+            }
+        }
+        foreach (RuntimeFiles files in left)
+        {
+            files.Remove();
+        }
+    }
+
+    /// <summary>Lists a process's runtime files with the watchdog. Under the gate.</summary>
+    private static void TellFiles(RuntimeFiles files)
+    {
+        foreach (string path in files.Paths)
+        {
+            Tell(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"@{files.Id} {path}"));
+        }
+    }
+
     private static void Prune()
     {
         lock (Gate)
@@ -361,6 +459,13 @@ internal static partial class Lifeline
             foreach (int group in Groups)
             {
                 started.StandardInput.Write($"+{group}\n");
+            }
+            foreach (RuntimeFiles files in Told.Values)
+            {
+                foreach (string path in files.Paths)
+                {
+                    started.StandardInput.Write(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"@{files.Id} {path}\n"));
+                }
             }
             if (AtEnds.Count > 0)
             {

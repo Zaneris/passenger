@@ -946,7 +946,7 @@ public static class ChildProcesses
                 return;
             }
             Lifeline.KillGroup(process);
-            process.Kill();
+            Lifeline.KillAlone(process);
         }
         catch (Exception error) when (error is InvalidOperationException or Win32Exception)
         {

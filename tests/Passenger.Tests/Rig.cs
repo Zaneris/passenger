@@ -506,7 +506,8 @@ public static partial class Nice
 /// language server, a build, a debugger, a program) is waited out, those it closed itself too, then the folders the test
 /// made as it ran are removed, the windows that used them gone first. Any test fails where the person's Godot user folders
 /// were written as it ran (<see cref="PersonsGodot"/>), or left a game running of a Godot editor it ended (<see cref="TestGodotEditors"/>)
-/// or a container of the run's running (<see cref="Docker.LeftBy"/>), each ended.</summary>
+/// or a container of the run's running (<see cref="Docker.LeftBy"/>), each ended, or a gone program's runtime files
+/// (<see cref="LeftRuntimeFiles"/>), each removed.</summary>
 [AttributeUsage(AttributeTargets.Assembly)]
 public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
 {
@@ -558,6 +559,10 @@ public sealed class TestsLeaveNothingBehindAttribute : BeforeAfterTestAttribute
         if (TestGodotEditors.LeftGames() is [_, ..] left)
         {
             throw new InvalidOperationException($"{test.TestDisplayName} left games of a Godot editor it ended running, ended now: {string.Join("; ", left)}");
+        }
+        if (LeftRuntimeFiles.LeftBy(test.TestDisplayName) is { } runtimeFiles)
+        {
+            throw new InvalidOperationException(runtimeFiles);
         }
     }
 
@@ -3477,8 +3482,9 @@ public readonly struct OwnProcess
         }
     }
 
-    /// <summary>Ends it and what it started, or it alone as a crash ends it, while it is still the process the test knew,
-    /// passing over one that has ended; <paramref name="waited"/>, once it has gone (what it started is not waited for).</summary>
+    /// <summary>Ends it and what it started, their runtime files taken, or it alone as a crash ends it, while it is still the
+    /// process the test knew, passing over one that has ended; <paramref name="waited"/>, once it has gone (what it started
+    /// is not waited for).</summary>
     public void Kill(bool alone = false, bool waited = false)
     {
         if (OperatingSystem.IsWindows())
@@ -3504,6 +3510,7 @@ public readonly struct OwnProcess
         }
         else
         {
+            RuntimeFiles[] files = LeftRuntimeFiles.Of(Id);
             try
             {
                 using Process found = Process.GetProcessById(Id);
@@ -3513,6 +3520,7 @@ public readonly struct OwnProcess
             {
                 // Gone meanwhile.
             }
+            LeftRuntimeFiles.TakeOnceGone(files);
         }
         if (waited)
         {
