@@ -88,6 +88,12 @@ public sealed partial class Vim
                 SelectionSet starts = SelectionSet.Create([.. taken.Select(r => Selection.At(r.Low))], 0);
                 if (Join(text, starts, block ? Math.Max(2, bottom - top + 1) : n, spaced: op == "J", Options.JoinSpaces) is { } joined)
                 {
+                    if (block && top == bottom && top + 1 == VimMotions.LastLine(text, breakEnds)
+                        && right.CompareTo(TextNavigation.VisualColumn(text, text.GetLine(top).End, tab) - 1) == (text.GetLine(top + 1).Length > 0 ? 1 : 0))
+                    {
+                        // Joining the last line, a block past its line's end (to its last character, the last line empty) aims j and k at its left.
+                        (wantedFor, wanted) = (joined.Selections, [left]);
+                    }
                     return new VimResult(true, Edits: [joined]);
                 }
                 // Nothing to join: visual mode ends all the same, the caret at the stretch's start, or where . found it.

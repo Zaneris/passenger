@@ -270,7 +270,15 @@ public sealed partial class Vim
             case "S":
                 return Operate(command with { Name = "line" }, "c", text, selections, view);
             case "Y":
-                return Operate(command with { Name = "line" }, "y", text, selections, view);
+                operatorAim = aims is [int yanked] && selections.Count == 1 ? yanked : null;
+                try
+                {
+                    return Operate(command with { Name = "line" }, "y", text, selections, view);
+                }
+                finally
+                {
+                    operatorAim = null;
+                }
             case "i":
                 return Insert(text, selections, command, "i");
             case "a":
@@ -532,8 +540,9 @@ public sealed partial class Vim
                 return null;
             }
             int last = (int)Math.Min(first + (long)n - 1, VimMotions.LastLine(text, breakEnds));
-            // A yank leaves the caret; a change of case over one line goes to its first non-blank, as Vim's do.
-            int landing = n == 1 && op != "y" ? Math.Min(caret, VimMotions.FirstNonBlank(text, first, breakEnds)) : caret;
+            // A yank leaves the caret, at a column j and k aim at short of the end; a change of case over one line goes to its first non-blank.
+            int landing = n == 1 && op != "y" ? Math.Min(caret, VimMotions.FirstNonBlank(text, first, breakEnds))
+                : op == "y" && operatorAim is { } aim and not int.MaxValue ? Settled(text, VimMotions.OffsetAtColumn(text, first, aim, view.Indent.TabWidth), breakEnds) : caret;
             return (new VimSpan(text.GetLineStart(first), text.GetLineStart(last), true), landing, false);
         }
         if (command.Name is "i" or "a")
