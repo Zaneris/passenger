@@ -10,7 +10,11 @@ namespace Passenger.UnitTests.Text;
 public class AccessibleTextSearchTests
 {
     [Fact]
-    public void A_search_read_in_pieces_finds_what_one_of_the_whole_text_finds_and_reads_no_more_than_a_piece_at_once()
+    public void A_screen_readers_search_read_a_piece_at_a_time_finds_what_a_whole_search_does() => Cases.All(
+        ("A search read in pieces finds what one of the whole text finds and reads no more than a piece at once", A_search_read_in_pieces_finds_what_one_of_the_whole_text_finds_and_reads_no_more_than_a_piece_at_once),
+        ("A match across every place a piece may end is found", A_match_across_every_place_a_piece_may_end_is_found));
+
+    private void A_search_read_in_pieces_finds_what_one_of_the_whole_text_finds_and_reads_no_more_than_a_piece_at_once()
     {
         Random random = new(1846);
         const string Letters = "abcdeABCDE \n";
@@ -45,10 +49,11 @@ public class AccessibleTextSearchTests
         Assert.True(text.Widest is > 0 and < 20_000, $"The search read {text.Widest:N0} characters at once of {whole.Length:N0}");
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_match_across_every_place_a_piece_may_end_is_found(bool backward)
+    private void A_match_across_every_place_a_piece_may_end_is_found() => Cases.Each<bool>(
+    [
+        false,
+        true,
+    ], backward =>
     {
         const string Sought = "needle";
         char[] filler = new string('.', 70_000).ToCharArray();
@@ -60,7 +65,7 @@ public class AccessibleTextSearchTests
             Assert.True(text.Find(new TextRange(0, filler.Length), "NEEDLE", backward, ignoreCase: true) == new TextRange(at, Sought.Length),
                 $"\"{Sought}\" at {at} was found {(backward ? "backward" : "forward")} at {text.Find(new TextRange(0, filler.Length), "NEEDLE", backward, ignoreCase: true)}");
         }
-    }
+    });
 
     /// <summary>A text held as a string, keeping the most it was asked to read at once.</summary>
     private sealed class Pieces(string whole) : AccessibleText

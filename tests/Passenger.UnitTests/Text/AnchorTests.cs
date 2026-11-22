@@ -6,37 +6,45 @@ namespace Passenger.UnitTests.Text;
 /// <see cref="TextDocument.MarkAt"/>), as a breakpoint, a squiggle or a fold holds its place in the text.</summary>
 public class AnchorTests
 {
-    [Theory]
-    [InlineData(AnchorGravity.Before, 5)]
-    [InlineData(AnchorGravity.After, 8)]
-    public void Text_typed_at_an_anchor_goes_after_it_or_before_it_by_its_gravity(AnchorGravity gravity, int after)
+    [Fact]
+    public void An_anchor_goes_before_or_after_text_at_it_by_its_gravity_and_moves_as_the_edits_before_it() => Cases.All(
+        ("Text typed at an anchor goes after it or before it by its gravity", Text_typed_at_an_anchor_goes_after_it_or_before_it_by_its_gravity),
+        ("A replaced stretch keeps an anchor at its start takes one at its end past the new text and one inside by gravity", A_replaced_stretch_keeps_an_anchor_at_its_start_takes_one_at_its_end_past_the_new_text_and_one_inside_by_gravity),
+        ("Text deleted around an anchor leaves it where the deletion was still carried", Text_deleted_around_an_anchor_leaves_it_where_the_deletion_was_still_carried),
+        ("An anchor has moved when a handler of the change reads it", An_anchor_has_moved_when_a_handler_of_the_change_reads_it),
+        ("Several carets edits move an anchor by what each before it changed", Several_carets_edits_move_an_anchor_by_what_each_before_it_changed));
+
+    private void Text_typed_at_an_anchor_goes_after_it_or_before_it_by_its_gravity() => Cases.Each<(AnchorGravity gravity, int after)>(
+    [
+        (AnchorGravity.Before, 5),
+        (AnchorGravity.After, 8),
+    ], row =>
     {
+        (AnchorGravity gravity, int after) = row;
         TextDocument document = new("0123456789");
         Anchor anchor = document.AnchorAt(5, gravity);
         Edit(document, new TextEdit(5, 0, "abc"));
         Assert.Equal(after, anchor.Offset);
-    }
+    });
 
-    [Theory]
-    [InlineData(3, AnchorGravity.Before, 3)]
-    [InlineData(3, AnchorGravity.After, 3)]
-    [InlineData(5, AnchorGravity.Before, 3)]
-    [InlineData(5, AnchorGravity.After, 5)]
-    [InlineData(7, AnchorGravity.Before, 5)]
-    [InlineData(7, AnchorGravity.After, 5)]
-    [InlineData(2, AnchorGravity.After, 2)]
-    [InlineData(9, AnchorGravity.Before, 7)]
-    public void A_replaced_stretch_keeps_an_anchor_at_its_start_takes_one_at_its_end_past_the_new_text_and_one_inside_by_gravity(int at, AnchorGravity gravity,
-        int after)
+    private void A_replaced_stretch_keeps_an_anchor_at_its_start_takes_one_at_its_end_past_the_new_text_and_one_inside_by_gravity() => Cases.Each<(int at, AnchorGravity gravity, int after)>(
+    [
+        (3, AnchorGravity.Before, 3),
+        (3, AnchorGravity.After, 3),
+        (5, AnchorGravity.After, 5),
+        (7, AnchorGravity.Before, 5),
+        (2, AnchorGravity.After, 2),
+        (9, AnchorGravity.Before, 7),
+    ], row =>
     {
+        (int at, AnchorGravity gravity, int after) = row;
         TextDocument document = new("0123456789");
         Anchor anchor = document.AnchorAt(at, gravity);
         Edit(document, new TextEdit(3, 4, "ab"));
         Assert.Equal(after, anchor.Offset);
-    }
+    });
 
-    [Fact]
-    public void Text_deleted_around_an_anchor_leaves_it_where_the_deletion_was_still_carried()
+    private void Text_deleted_around_an_anchor_leaves_it_where_the_deletion_was_still_carried()
     {
         TextDocument document = new("line one\nline two\nline three");
         Anchor anchor = document.AnchorAt(14, AnchorGravity.After);
@@ -47,8 +55,7 @@ public class AnchorTests
         Assert.Equal(12, anchor.Offset);
     }
 
-    [Fact]
-    public void An_anchor_has_moved_when_a_handler_of_the_change_reads_it()
+    private void An_anchor_has_moved_when_a_handler_of_the_change_reads_it()
     {
         TextDocument document = new("abc");
         Anchor anchor = document.AnchorAt(2, AnchorGravity.Before);
@@ -58,8 +65,7 @@ public class AnchorTests
         Assert.Equal(5, seen);
     }
 
-    [Fact]
-    public void Several_carets_edits_move_an_anchor_by_what_each_before_it_changed()
+    private void Several_carets_edits_move_an_anchor_by_what_each_before_it_changed()
     {
         TextDocument document = new("a1b2c3d4");
         Anchor[] anchors = [.. Enumerable.Range(0, 9).Select(i => document.AnchorAt(i, AnchorGravity.Before))];
@@ -68,10 +74,17 @@ public class AnchorTests
         Assert.Equal([0, 1, 3, 4, 4, 5, 6, 8, 9], anchors.Select(a => a.Offset));
     }
 
+    [Fact]
+    public void Marks_and_ranges_keep_their_ends_and_a_seeded_run_of_changes_carries_every_anchor() => Cases.All(
+        ("An anchor inside a removal that text is inserted at the start of goes after that text", An_anchor_inside_a_removal_that_text_is_inserted_at_the_start_of_goes_after_that_text),
+        ("A mark keeps out what is typed at its start takes in what is typed at its end and once emptied stays empty", A_mark_keeps_out_what_is_typed_at_its_start_takes_in_what_is_typed_at_its_end_and_once_emptied_stays_empty),
+        ("A range never ends before it starts and a removed one stays where it was", A_range_never_ends_before_it_starts_and_a_removed_one_stays_where_it_was),
+        ("An anchor moved elsewhere is carried from there and one removed keeps its last offset", An_anchor_moved_elsewhere_is_carried_from_there_and_one_removed_keeps_its_last_offset),
+        ("A seeded run of random changes carries every anchor as the rules say", A_seeded_run_of_random_changes_carries_every_anchor_as_the_rules_say));
+
     /// <summary>An insertion at the start of a removal, as one caret's typing over another's selection makes: what was inside the
     /// removal is pressed to its start and the text inserted there goes before it, whatever its gravity.</summary>
-    [Fact]
-    public void An_anchor_inside_a_removal_that_text_is_inserted_at_the_start_of_goes_after_that_text()
+    private void An_anchor_inside_a_removal_that_text_is_inserted_at_the_start_of_goes_after_that_text()
     {
         TextDocument document = new("abcXYZdef");
         Anchor inside = document.AnchorAt(4, AnchorGravity.Before);
@@ -82,8 +95,7 @@ public class AnchorTests
         Assert.Equal(3, atStart.Offset);
     }
 
-    [Fact]
-    public void A_mark_keeps_out_what_is_typed_at_its_start_takes_in_what_is_typed_at_its_end_and_once_emptied_stays_empty()
+    private void A_mark_keeps_out_what_is_typed_at_its_start_takes_in_what_is_typed_at_its_end_and_once_emptied_stays_empty()
     {
         TextDocument document = new("call(name);");
         AnchoredRange mark = document.MarkAt(TextRange.FromBounds(5, 9));
@@ -98,8 +110,7 @@ public class AnchorTests
         Assert.Equal("call(@other);", document.Snapshot.ToString());
     }
 
-    [Fact]
-    public void A_range_never_ends_before_it_starts_and_a_removed_one_stays_where_it_was()
+    private void A_range_never_ends_before_it_starts_and_a_removed_one_stays_where_it_was()
     {
         TextDocument document = new("0123456789");
         AnchoredRange range = document.RangeAt(new TextRange(5, 0), AnchorGravity.After, AnchorGravity.Before);
@@ -114,8 +125,7 @@ public class AnchorTests
         Assert.Equal(new TextRange(8, 0), range.Range);
     }
 
-    [Fact]
-    public void An_anchor_moved_elsewhere_is_carried_from_there_and_one_removed_keeps_its_last_offset()
+    private void An_anchor_moved_elsewhere_is_carried_from_there_and_one_removed_keeps_its_last_offset()
     {
         TextDocument document = new("0123456789");
         Anchor anchor = document.AnchorAt(2, AnchorGravity.Before);
@@ -131,11 +141,12 @@ public class AnchorTests
 
     /// <summary>Hundreds of anchors of both gravities through a thousand seeded random changes of one to four edits each, every
     /// anchor's offset checked after each change against the rules worked out edit by edit from the last.</summary>
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void A_seeded_run_of_random_changes_carries_every_anchor_as_the_rules_say(int seed)
+    private void A_seeded_run_of_random_changes_carries_every_anchor_as_the_rules_say() => Cases.Each<int>(
+    [
+        1,
+        2,
+        3,
+    ], seed =>
     {
         Random random = new(seed);
         TextDocument document = new(Texts.Random(random, 4_000));
@@ -174,7 +185,7 @@ public class AnchorTests
             }
         }
         Assert.Equal(anchors.Count, document.Anchors);
-    }
+    });
 
     /// <summary>One edit's rule: before it unmoved, past it shifted, at an insertion by gravity, at a stretch's start kept, at
     /// its end past the new text, inside it to its start or with After past the new text.</summary>

@@ -10,7 +10,13 @@ public sealed class ContinuedLinesTests
     private static int[] Continued(string text) => [.. ContinuedLines.Python(TextSnapshot.From(text)).Order()];
 
     [Fact]
-    public void A_line_inside_brackets_or_after_a_backslash_goes_on_from_the_line_before()
+    public void A_python_files_continued_lines_are_those_its_tokenizer_reads_no_indentation_of() => Cases.All(
+        ("A line inside brackets or after a backslash goes on from the line before", A_line_inside_brackets_or_after_a_backslash_goes_on_from_the_line_before),
+        ("Brackets in strings and comments open nothing", Brackets_in_strings_and_comments_open_nothing),
+        ("A lines indentation is no blocks where it goes on or begins inside a string", A_lines_indentation_is_no_blocks_where_it_goes_on_or_begins_inside_a_string),
+        ("A statement brackets never hold reads as outside them", A_statement_brackets_never_hold_reads_as_outside_them));
+
+    private void A_line_inside_brackets_or_after_a_backslash_goes_on_from_the_line_before()
     {
         Assert.Equal([1, 2, 3], Continued("x = [y\n     for y in z\n     if y\n]\nif a:\n    pass\n"));
         Assert.Equal([1, 2], Continued("call(a, {\n  'k': (1,\n         2)})\nb = 1\n"));
@@ -18,8 +24,7 @@ public sealed class ContinuedLinesTests
         Assert.Equal([1], Continued("x = (1 +\r\n     2)\r\ny = 3\r\n"));
     }
 
-    [Fact]
-    public void Brackets_in_strings_and_comments_open_nothing()
+    private void Brackets_in_strings_and_comments_open_nothing()
     {
         Assert.Empty(Continued("x = '(' + \"[\" # {\nif a:\n    b = r'\\'('\n    c = '''(\n'''\n    d = f\"{e['(']}\"\n"));
         Assert.Empty(Continued("x = 'a\\\n(b'\nif c:\n    pass\n"));
@@ -29,8 +34,7 @@ public sealed class ContinuedLinesTests
 
     /// <summary>The lines whose indentation is no block's are those continued and those beginning inside a string, a docstring's
     /// text and its closing quotes among them, but not the line a string begins on.</summary>
-    [Fact]
-    public void A_lines_indentation_is_no_blocks_where_it_goes_on_or_begins_inside_a_string()
+    private void A_lines_indentation_is_no_blocks_where_it_goes_on_or_begins_inside_a_string()
     {
         const string Text = "def f(a):\n    \"\"\"Says.\n\n     More.\n    \"\"\"\n    g(a,\n      b)\n    return 'x\\\n  y'\n";
         Assert.Equal([6], Continued(Text));
@@ -39,8 +43,7 @@ public sealed class ContinuedLinesTests
 
     /// <summary>A bracket a string read otherwise leaves open, as a quote in a newer f-string's braces can, closes at the next
     /// statement brackets never hold.</summary>
-    [Fact]
-    public void A_statement_brackets_never_hold_reads_as_outside_them()
+    private void A_statement_brackets_never_hold_reads_as_outside_them()
     {
         Assert.DoesNotContain(3, Continued("x = f\"{y + \"[\"}\"\nif a:\n    b\ndef f():\n    if c:\n        pass\n"));
         Assert.DoesNotContain(4, Continued("x = f\"{y + \"[\"}\"\nif a:\n    b\ndef f():\n    if c:\n        pass\n"));

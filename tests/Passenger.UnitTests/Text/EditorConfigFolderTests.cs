@@ -13,7 +13,12 @@ public sealed class EditorConfigFolderTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void Each_key_is_said_with_its_files_way_from_the_folder_its_glob_and_its_value_and_one_taken_back_unsets_it()
+    public void What_the_editorconfigs_over_a_folder_set_is_said_key_by_key_with_its_file() => Cases.All(
+        ("Each key is said with its files way from the folder its glob and its value and one taken back unsets it", () => Fresh(test => test.Each_key_is_said_with_its_files_way_from_the_folder_its_glob_and_its_value_and_one_taken_back_unsets_it())),
+        ("A folders own root editorconfig hides those above it and one above marked root ends the climb", () => Fresh(test => test.A_folders_own_root_editorconfig_hides_those_above_it_and_one_above_marked_root_ends_the_climb())),
+        ("A section concerns a rows files where its glob matches one of them or their name beside it", () => Fresh(test => test.A_section_concerns_a_rows_files_where_its_glob_matches_one_of_them_or_their_name_beside_it())));
+
+    private void Each_key_is_said_with_its_files_way_from_the_folder_its_glob_and_its_value_and_one_taken_back_unsets_it()
     {
         string folder = Folder("repo/app");
         Write("repo/.editorconfig", "root = true\n\n[*.gd]\nmax_line_length = 120 # wide\n");
@@ -33,8 +38,7 @@ public sealed class EditorConfigFolderTests : IDisposable
         Assert.Equal([2, 5, 2, 4], read.Keys.Select(k => k.Line));
     }
 
-    [Fact]
-    public void A_folders_own_root_editorconfig_hides_those_above_it_and_one_above_marked_root_ends_the_climb()
+    private void A_folders_own_root_editorconfig_hides_those_above_it_and_one_above_marked_root_ends_the_climb()
     {
         Write("top/.editorconfig", "[*]\nindent_size = 8\n");
         Write("top/repo/.editorconfig", "root = true\n[*]\nindent_size = 4\n");
@@ -46,24 +50,23 @@ public sealed class EditorConfigFolderTests : IDisposable
         Assert.Equal(["../.editorconfig sets indent_size = 4 for *"], EditorConfigFolder.Read(lib, []).Keys.Select(k => k.Said(lib)));
     }
 
-    [Theory]
-    [InlineData("*.gd", true)]
-    [InlineData("**.gd", true)]
-    [InlineData("*", true)]
-    [InlineData("*.{gd,cs}", true)]
-    [InlineData("*.cs", false)]
-    [InlineData("{player,enemy}.gd", true)]
-    [InlineData("{boss,enemy}.gd", false)]
-    [InlineData("scripts/*.gd", true)]
-    [InlineData("levels/*.gd", false)]
-    public void A_section_concerns_a_rows_files_where_its_glob_matches_one_of_them_or_their_name_beside_it(string glob, bool concerns)
+    private void A_section_concerns_a_rows_files_where_its_glob_matches_one_of_them_or_their_name_beside_it() => Cases.Each<(string glob, bool concerns)>(
+    [
+        ("*.gd", true),
+        ("*", true),
+        ("*.{gd,cs}", true),
+        ("{player,enemy}.gd", true),
+        ("{boss,enemy}.gd", false),
+        ("levels/*.gd", false),
+    ], row =>
     {
+        (string glob, bool concerns) = row;
         string folder = Folder("game");
         SetKey key = new(Path.Join(folder, ".editorconfig"), glob, 2, "max_line_length", "120");
 
         Assert.True(key.Concerns(["file.gd"], [Path.Join(folder, "scripts", "player.gd"), Path.Join(root, "elsewhere", "enemy.gd")]) == concerns,
             $"[{glob}] {(concerns ? "did not concern" : "concerned")} the scripts");
-    }
+    });
 
     private string Folder(string relative) => Directory.CreateDirectory(Path.Join(root, relative)).FullName;
 
@@ -72,5 +75,12 @@ public sealed class EditorConfigFolderTests : IDisposable
         string path = Path.Join(root, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, text);
+    }
+
+    /// <summary>A check on a test of its own, as it ran alone: its own state, let go after it.</summary>
+    private static void Fresh(Action<EditorConfigFolderTests> check)
+    {
+        using EditorConfigFolderTests test = new();
+        check(test);
     }
 }

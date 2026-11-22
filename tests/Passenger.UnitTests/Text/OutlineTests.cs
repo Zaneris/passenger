@@ -8,7 +8,13 @@ namespace Passenger.UnitTests.Text;
 public class OutlineTests
 {
     [Fact]
-    public void Rows_come_in_reading_order_each_after_its_parent_and_before_its_children_at_its_depth()
+    public void A_files_outline_lists_its_rows_in_order_with_their_depths_in_one_pass() => Cases.All(
+        ("Rows come in reading order each after its parent and before its children at its depth", Rows_come_in_reading_order_each_after_its_parent_and_before_its_children_at_its_depth),
+        ("An outline of a hundred thousand symbols costs each what one of ten thousand does wide or deep", An_outline_of_a_hundred_thousand_symbols_costs_each_what_one_of_ten_thousand_does_wide_or_deep),
+        ("The innermost row at a line is the last in reading order whose lines hold it", The_innermost_row_at_a_line_is_the_last_in_reading_order_whose_lines_hold_it),
+        ("An outline made again keeps each unchanged row and is the earlier one where nothing changed", An_outline_made_again_keeps_each_unchanged_row_and_is_the_earlier_one_where_nothing_changed));
+
+    private void Rows_come_in_reading_order_each_after_its_parent_and_before_its_children_at_its_depth()
     {
         Node tree = new("Program", 0, 20,
         [
@@ -22,8 +28,7 @@ public class OutlineTests
     /// <summary>Counted by what a symbol's row costs to make in bytes, the same on every run, rather than by a time: a
     /// row copied into each list of rows above it, or a tree walked by recursion, costs more per symbol as the outline
     /// grows (a JSON file of three megabytes has a hundred thousand).</summary>
-    [Fact]
-    public void An_outline_of_a_hundred_thousand_symbols_costs_each_what_one_of_ten_thousand_does_wide_or_deep()
+    private void An_outline_of_a_hundred_thousand_symbols_costs_each_what_one_of_ten_thousand_does_wide_or_deep()
     {
         Measured(Wide(1000));
         double wideFew = Measured(Wide(10_000)) / 10_000.0;
@@ -42,8 +47,7 @@ public class OutlineTests
     /// <summary>Halving to the last row starting by the line and going up through its parents finds what reading every row
     /// from the end does, over seeded random outlines whose rows nest, some starting on their parent's line or on one
     /// another's, and over one whose rows a server listed out of order.</summary>
-    [Fact]
-    public void The_innermost_row_at_a_line_is_the_last_in_reading_order_whose_lines_hold_it()
+    private void The_innermost_row_at_a_line_is_the_last_in_reading_order_whose_lines_hold_it()
     {
         Random random = new(716);
         for (int round = 0; round < 200; round++)
@@ -60,8 +64,7 @@ public class OutlineTests
         Assert.Equal([2, -1, 0, 1, 0, -1], new[] { 3, 7, 11, 13, 20, 21 }.Select(unordered.InnermostAt));
     }
 
-    [Fact]
-    public void An_outline_made_again_keeps_each_unchanged_row_and_is_the_earlier_one_where_nothing_changed()
+    private void An_outline_made_again_keeps_each_unchanged_row_and_is_the_earlier_one_where_nothing_changed()
     {
         Node[] tree = [new Node("Program", 0, 20, [new Node("Main", 2, 8, []), new Node("Helper", 10, 18, [])])];
         Outline<Row> first = Make(tree);

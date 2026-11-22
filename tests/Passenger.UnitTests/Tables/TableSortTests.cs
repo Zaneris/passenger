@@ -13,29 +13,34 @@ public sealed class TableSortTests
     private static string[] Column(Table table, int column) => [.. Enumerable.Range(0, table.RowCount).Select(row => table.Cell(row, column))];
 
     [Fact]
-    public void A_column_of_numbers_sorts_by_their_values_its_empty_cells_last_both_ways()
+    public void A_tables_rows_sort_by_a_columns_numbers_dates_or_text() => Cases.All(
+        ("A column of numbers sorts by their values its empty cells last both ways", A_column_of_numbers_sorts_by_their_values_its_empty_cells_last_both_ways),
+        ("A column of dates sorts by when they are", A_column_of_dates_sorts_by_when_they_are),
+        ("A column of dates sorts by when they are those of the first centuries included", A_column_of_dates_sorts_by_when_they_are_those_of_the_first_centuries_included),
+        ("A column mixing kinds sorts as text its digits as numbers and case aside", A_column_mixing_kinds_sorts_as_text_its_digits_as_numbers_and_case_aside),
+        ("Rows alike keep the files order and each row keeps its files number", Rows_alike_keep_the_files_order_and_each_row_keeps_its_files_number),
+        ("A title sorts ascending then descending then in the files order and another starts ascending", A_title_sorts_ascending_then_descending_then_in_the_files_order_and_another_starts_ascending));
+
+    private void A_column_of_numbers_sorts_by_their_values_its_empty_cells_last_both_ways()
     {
         Table table = Csv("N\n10\n9\n\n100\n\"1,000.5\"\n2.5\n");
         Assert.Equal(["2.5", "9", "10", "100", "1,000.5", ""], Column(TableSort.By(table, 0, descending: false), 0));
         Assert.Equal(["1,000.5", "100", "10", "9", "2.5", ""], Column(TableSort.By(table, 0, descending: true), 0));
     }
 
-    [Fact]
-    public void A_column_of_dates_sorts_by_when_they_are()
+    private void A_column_of_dates_sorts_by_when_they_are()
     {
         Table table = Csv("When\n2024-03-01\n2023-12-31T08:00:00\n2024-01-15\n");
         Assert.Equal(["2023-12-31T08:00:00", "2024-01-15", "2024-03-01"], Column(TableSort.By(table, 0, descending: false), 0));
     }
 
-    [Fact]
-    public void A_column_of_dates_sorts_by_when_they_are_those_of_the_first_centuries_included()
+    private void A_column_of_dates_sorts_by_when_they_are_those_of_the_first_centuries_included()
     {
         Table table = Csv("When\n2026-01-01\n0099-12-31\n0001-02-01\n0100-01-01\n");
         Assert.Equal(["0001-02-01", "0099-12-31", "0100-01-01", "2026-01-01"], Column(TableSort.By(table, 0, descending: false), 0));
     }
 
-    [Fact]
-    public void A_column_mixing_kinds_sorts_as_text_its_digits_as_numbers_and_case_aside()
+    private void A_column_mixing_kinds_sorts_as_text_its_digits_as_numbers_and_case_aside()
     {
         CultureInfo was = CultureInfo.CurrentCulture;
         CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
@@ -50,8 +55,7 @@ public sealed class TableSortTests
         }
     }
 
-    [Fact]
-    public void Rows_alike_keep_the_files_order_and_each_row_keeps_its_files_number()
+    private void Rows_alike_keep_the_files_order_and_each_row_keeps_its_files_number()
     {
         Table table = Csv("Name,Team\nAda,B\nAlan,A\nGrace,B\nEdsger,A\n");
         Table sorted = TableSort.By(table, 1, descending: true);
@@ -62,8 +66,7 @@ public sealed class TableSortTests
         Assert.Equal(["Alan", "Edsger", "Ada", "Grace"], Column(TableSort.By(sorted, 1, descending: false), 0));
     }
 
-    [Fact]
-    public void A_title_sorts_ascending_then_descending_then_in_the_files_order_and_another_starts_ascending()
+    private void A_title_sorts_ascending_then_descending_then_in_the_files_order_and_another_starts_ascending()
     {
         Assert.Equal((2, false), TableSort.Next(null, 2));
         Assert.Equal((2, true), TableSort.Next((2, false), 2));

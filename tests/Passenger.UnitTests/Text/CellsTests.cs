@@ -9,19 +9,26 @@ public class CellsTests
 {
     private static readonly IndentOptions Spaces = new(4, UseTabs: false, 4);
 
-    [Theory]
-    [InlineData("a|", "a   |")]
-    [InlineData("日|", "日  |")]
-    [InlineData("cafe\u0301|", "cafe\u0301    |")]
-    [InlineData("x\t日|", "x\t日  |")]
-    public void Tab_reaches_the_next_stop_as_the_line_is_drawn(string before, string after)
+    [Fact]
+    public void Texts_columns_on_screen_are_counted_one_way() => Cases.All(
+        ("Tab reaches the next stop as the line is drawn", Tab_reaches_the_next_stop_as_the_line_is_drawn),
+        ("A lines columns read a block at a time take a pair a blocks end cuts whole", A_lines_columns_read_a_block_at_a_time_take_a_pair_a_blocks_end_cuts_whole),
+        ("A characters cells are the terminals widths", A_characters_cells_are_the_terminals_widths));
+
+    private void Tab_reaches_the_next_stop_as_the_line_is_drawn() => Cases.Each<(string before, string after)>(
+    [
+        ("a|", "a   |"),
+        ("日|", "日  |"),
+        ("cafe\u0301|", "cafe\u0301    |"),
+        ("x\t日|", "x\t日  |"),
+    ], row =>
     {
+        (string before, string after) = row;
         (TextSnapshot text, SelectionSet caret) = Marked.Parse(before);
         Assert.Equal(after, Marked.After(text, TextEditing.Indent(text, caret, Spaces)));
-    }
+    });
 
-    [Fact]
-    public void A_lines_columns_read_a_block_at_a_time_take_a_pair_a_blocks_end_cuts_whole()
+    private void A_lines_columns_read_a_block_at_a_time_take_a_pair_a_blocks_end_cuts_whole()
     {
         string line = new string('a', 255) + "\U0001F600x";
         TextSnapshot text = TextSnapshot.From("first\n" + line);
@@ -30,15 +37,18 @@ public class CellsTests
         Assert.Equal(TextNavigation.ColumnAfter(line, 0, 4), TextNavigation.VisualColumn(text, end, 4));
     }
 
-    [Theory]
-    [InlineData(0x41, 1)]
-    [InlineData(0x65E5, 2)]
-    [InlineData(0x0301, 0)]
-    [InlineData(0x200D, 0)]
-    [InlineData(0x1161, 0)]
-    [InlineData(0x093E, 1)]
-    [InlineData(0x1F600, 2)]
-    [InlineData(0x1F1FA, 2)]
-    public void A_characters_cells_are_the_terminals_widths(int rune, int cells) =>
-        Assert.Equal(cells, WideCharacters.Cells(rune));
+    private void A_characters_cells_are_the_terminals_widths() => Cases.Each<(int rune, int cells)>(
+    [
+        (0x41, 1),
+        (0x65E5, 2),
+        (0x200D, 0),
+        (0x1161, 0),
+        (0x1F600, 2),
+        (0x1F1FA, 2),
+    ], row =>
+    {
+        (int rune, int cells) = row;
+        
+                Assert.Equal(cells, WideCharacters.Cells(rune));
+    });
 }

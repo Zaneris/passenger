@@ -15,7 +15,14 @@ namespace Passenger.UnitTests.Text;
 public sealed class XmlEntitiesTests
 {
     [Fact]
-    public void A_value_with_a_reference_naming_no_character_reads_the_same_in_every_reader()
+    public void Xml_values_are_decoded_and_escaped_one_way() => Cases.All(
+        ("A value with a reference naming no character reads the same in every reader", A_value_with_a_reference_naming_no_character_reads_the_same_in_every_reader),
+        ("An elements text reads its cdata sections as they stand and decodes the rest", An_elements_text_reads_its_cdata_sections_as_they_stand_and_decodes_the_rest),
+        ("An msbuild elements text reads its cdata section as the value it holds", An_msbuild_elements_text_reads_its_cdata_section_as_the_value_it_holds),
+        ("A bindings path element holding a cdata section is never read as its markup", A_bindings_path_element_holding_a_cdata_section_is_never_read_as_its_markup),
+        ("A value written as an elements text escapes what would end it and reads back as it was", A_value_written_as_an_elements_text_escapes_what_would_end_it_and_reads_back_as_it_was));
+
+    private void A_value_with_a_reference_naming_no_character_reads_the_same_in_every_reader()
     {
         const string Raw = "Tom &amp; Jerry &bogus; &#x41;";
         const string Read = "Tom & Jerry &bogus; A";
@@ -28,16 +35,14 @@ public sealed class XmlEntitiesTests
             $"An element's text in a project read \"{Raw}\" as \"{XmlEntities.DecodeText(Raw)}\", unlike the XAML and .resx readers");
     }
 
-    [Fact]
-    public void An_elements_text_reads_its_cdata_sections_as_they_stand_and_decodes_the_rest()
+    private void An_elements_text_reads_its_cdata_sections_as_they_stand_and_decodes_the_rest()
     {
         Assert.Equal("<b> & <i>", XmlEntities.DecodeText("<![CDATA[<b>]]> &amp; <![CDATA[<i>]]>"));
         Assert.Equal("a &amp; b", XmlEntities.DecodeText("<![CDATA[a &amp; b]]>"));
         Assert.Equal("open &amp;", XmlEntities.DecodeText("<![CDATA[open &amp;"));
     }
 
-    [Fact]
-    public void An_msbuild_elements_text_reads_its_cdata_section_as_the_value_it_holds()
+    private void An_msbuild_elements_text_reads_its_cdata_section_as_the_value_it_holds()
     {
         const string Text = "<Project><ItemGroup><PackageReference Include=\"Shop\"><Version> <![CDATA[1.0.0]]> </Version></PackageReference></ItemGroup></Project>";
         XmlElement package = XmlTree.Parse(Text).Root!.Children[0].Children[0];
@@ -45,8 +50,7 @@ public sealed class XmlEntitiesTests
         Assert.True(version == "1.0.0", $"A package's version written in a CDATA section read as \"{version}\", so its version checks and links take the markup for the version");
     }
 
-    [Fact]
-    public void A_bindings_path_element_holding_a_cdata_section_is_never_read_as_its_markup()
+    private void A_bindings_path_element_holding_a_cdata_section_is_never_read_as_its_markup()
     {
         static (string Text, int Start)? PathOf(string written)
         {
@@ -60,8 +64,7 @@ public sealed class XmlEntitiesTests
             $"A binding's path in a CDATA section read as \"{PathOf("<![CDATA[Name]]>")?.Text}\", so its steps are checked as a path the build never reads");
     }
 
-    [Fact]
-    public void A_value_written_as_an_elements_text_escapes_what_would_end_it_and_reads_back_as_it_was()
+    private void A_value_written_as_an_elements_text_escapes_what_would_end_it_and_reads_back_as_it_was()
     {
         const string Value = "a < b & c > \"d\" 'e' ]]>";
         string written = XmlEntities.Encode(Value);

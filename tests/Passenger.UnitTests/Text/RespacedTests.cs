@@ -7,15 +7,23 @@ namespace Passenger.UnitTests.Text;
 /// reaches across the caret, and an edit changing code, or putting the caret among other code, is none.</summary>
 public sealed class RespacedTests
 {
-    [Theory]
-    [InlineData("x = new()[ {\n    |\n]}", "\n{\n    |\n", "x = new()\n{\n    |\n}", 1)]
-    [InlineData("    if (a)[ {\n        |\n    ]}", "\n    {\n        |\n    ", "    if (a)\n    {\n        |\n    }", 1)]
-    [InlineData("[{\n|\n]}", "{\n    |\n  ", "{\n    |\n  }", 2)]
-    [InlineData("f(() =>[{\n  |\n])", " {\n    |\n", "f(() => {\n    |\n)", 2)]
-    [InlineData("x =[ {\r\n    |\r\n]}", "\r\n{\r\n    |\r\n", "x =\r\n{\r\n    |\r\n}", 1)]
-    [InlineData("[{\n    |\n]}", "{\n    |\n", "{\n    |\n}", 0)]
-    public void The_edits_write_what_the_layout_does_in_white_space_alone_none_across_the_caret(string marked, string written, string laid, int count)
+    [Fact]
+    public void A_layouts_edit_around_the_caret_is_its_edits_to_each_run_of_white_space() => Cases.All(
+        ("The edits write what the layout does in white space alone none across the caret", The_edits_write_what_the_layout_does_in_white_space_alone_none_across_the_caret),
+        ("An edit changing code or putting the caret among other code is none", An_edit_changing_code_or_putting_the_caret_among_other_code_is_none),
+        ("An edit or a caret outside the text or the edit is none", An_edit_or_a_caret_outside_the_text_or_the_edit_is_none));
+
+    private void The_edits_write_what_the_layout_does_in_white_space_alone_none_across_the_caret() => Cases.Each<(string marked, string written, string laid, int count)>(
+    [
+        ("x = new()[ {\n    |\n]}", "\n{\n    |\n", "x = new()\n{\n    |\n}", 1),
+        ("    if (a)[ {\n        |\n    ]}", "\n    {\n        |\n    ", "    if (a)\n    {\n        |\n    }", 1),
+        ("[{\n|\n]}", "{\n    |\n  ", "{\n    |\n  }", 2),
+        ("f(() =>[{\n  |\n])", " {\n    |\n", "f(() => {\n    |\n)", 2),
+        ("x =[ {\r\n    |\r\n]}", "\r\n{\r\n    |\r\n", "x =\r\n{\r\n    |\r\n}", 1),
+        ("[{\n    |\n]}", "{\n    |\n", "{\n    |\n}", 0),
+    ], row =>
     {
+        (string marked, string written, string laid, int count) = row;
         (TextSnapshot text, TextEdit edit, int caret, int into) = Parse(marked, written);
         List<TextEdit>? edits = TextEditing.Respaced(text, edit, caret, into);
         Assert.NotNull(edits);
@@ -28,23 +36,24 @@ public sealed class RespacedTests
             Assert.False(made.Start < caret && made.End > caret, $"An edit at {made.Start} reached across the caret at {caret}");
         }
         Assert.Equal(laid.IndexOf('|', StringComparison.Ordinal), edit.Start + into);
-    }
+    });
 
-    [Theory]
-    [InlineData("[a b|]", "a c|")]
-    [InlineData("[a b|]", "a bc|")]
-    [InlineData("[{ |x }]", "{ x| }")]
-    [InlineData("[{ |x }]", "{ x |}")]
-    [InlineData("[{|}]", "{}|")]
-    [InlineData("[{|}]", "{ |} x")]
-    public void An_edit_changing_code_or_putting_the_caret_among_other_code_is_none(string marked, string written)
+    private void An_edit_changing_code_or_putting_the_caret_among_other_code_is_none() => Cases.Each<(string marked, string written)>(
+    [
+        ("[a b|]", "a c|"),
+        ("[a b|]", "a bc|"),
+        ("[{ |x }]", "{ x| }"),
+        ("[{ |x }]", "{ x |}"),
+        ("[{|}]", "{}|"),
+        ("[{|}]", "{ |} x"),
+    ], row =>
     {
+        (string marked, string written) = row;
         (TextSnapshot text, TextEdit edit, int caret, int into) = Parse(marked, written);
         Assert.Null(TextEditing.Respaced(text, edit, caret, into));
-    }
+    });
 
-    [Fact]
-    public void An_edit_or_a_caret_outside_the_text_or_the_edit_is_none()
+    private void An_edit_or_a_caret_outside_the_text_or_the_edit_is_none()
     {
         TextSnapshot text = TextSnapshot.From("{\n}");
         Assert.Null(TextEditing.Respaced(text, new TextEdit(1, 5, "\n"), 1, 0));

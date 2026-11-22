@@ -8,7 +8,12 @@ namespace Passenger.UnitTests.Text;
 public class UndoJoinTests
 {
     [Fact]
-    public void The_steps_made_since_a_place_undo_and_redo_as_one_and_those_before_it_alone()
+    public void Steps_of_undo_joined_undo_and_redo_as_one() => Cases.All(
+        ("The steps made since a place undo and redo as one and those before it alone", The_steps_made_since_a_place_undo_and_redo_as_one_and_those_before_it_alone),
+        ("A text saved after the last step is saved again by a redo and one saved between them never is", A_text_saved_after_the_last_step_is_saved_again_by_a_redo_and_one_saved_between_them_never_is),
+        ("One step made since the place or none is left as it is", One_step_made_since_the_place_or_none_is_left_as_it_is));
+
+    private void The_steps_made_since_a_place_undo_and_redo_as_one_and_those_before_it_alone()
     {
         TextDocument document = new("one two");
         Edit(document, 0, 3, "1");
@@ -28,8 +33,7 @@ public class UndoJoinTests
         Assert.False(document.CanUndo, "An undo was left after the step before the joined ones and the joined one were taken back");
     }
 
-    [Fact]
-    public void A_text_saved_after_the_last_step_is_saved_again_by_a_redo_and_one_saved_between_them_never_is()
+    private void A_text_saved_after_the_last_step_is_saved_again_by_a_redo_and_one_saved_between_them_never_is()
     {
         TextDocument document = new("a b");
         long place = document.UndoPlace;
@@ -54,8 +58,7 @@ public class UndoJoinTests
         Assert.True(between.IsModified, "The text after the joined step reads as the one saved between its edits");
     }
 
-    [Fact]
-    public void One_step_made_since_the_place_or_none_is_left_as_it_is()
+    private void One_step_made_since_the_place_or_none_is_left_as_it_is()
     {
         TextDocument document = new("abc");
         Edit(document, 0, 1, "x");

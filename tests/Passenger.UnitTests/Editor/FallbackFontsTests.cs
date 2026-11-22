@@ -8,10 +8,16 @@ namespace Passenger.UnitTests.Editor;
 /// emoji's fallback asked in emoji presentation's language.</summary>
 public class FallbackFontsTests
 {
+    [Fact]
+    public void The_fallback_collection_keeps_the_platforms_answers() => Cases.All(
+        ("A scripts letters share a bucket and scripts differ", A_scripts_letters_share_a_bucket_and_scripts_differ),
+        ("Characters common to scripts are kept by their page", Characters_common_to_scripts_are_kept_by_their_page),
+        ("A family is named through the collection unless its name cannot be", A_family_is_named_through_the_collection_unless_its_name_cannot_be),
+        ("An emojis fallback is asked in emoji presentations language and text in the cultures", An_emojis_fallback_is_asked_in_emoji_presentations_language_and_text_in_the_cultures));
+
     /// <summary>A script's letters share one kept answer and each script has its own, so a word asks the platform once and
     /// Hebrew never takes Arabic's face.</summary>
-    [Fact]
-    public void A_scripts_letters_share_a_bucket_and_scripts_differ()
+    private void A_scripts_letters_share_a_bucket_and_scripts_differ()
     {
         Assert.Equal(FallbackFonts.Bucket('ا'), FallbackFonts.Bucket('م'));
         Assert.Equal(FallbackFonts.Bucket('ש'), FallbackFonts.Bucket('ם'));
@@ -23,8 +29,7 @@ public class FallbackFontsTests
 
     /// <summary>Characters common to scripts (symbols, emoji, a script's punctuation) are kept by their page of 256, apart
     /// from every script's letters, so an emoji's face never draws an arrow or Japanese punctuation.</summary>
-    [Fact]
-    public void Characters_common_to_scripts_are_kept_by_their_page()
+    private void Characters_common_to_scripts_are_kept_by_their_page()
     {
         Assert.Equal(FallbackFonts.Bucket(0x1F680), FallbackFonts.Bucket(0x1F600));
         Assert.NotEqual(FallbackFonts.Bucket(0x1F680), FallbackFonts.Bucket(0x2192));
@@ -35,8 +40,7 @@ public class FallbackFontsTests
 
     /// <summary>A family named through the collection is found in it, so the collection's own fallback is asked for what it
     /// lacks; a name its form can't hold stays a plain family.</summary>
-    [Fact]
-    public void A_family_is_named_through_the_collection_unless_its_name_cannot_be()
+    private void A_family_is_named_through_the_collection_unless_its_name_cannot_be()
     {
         FontFamily named = FallbackFonts.Of("Cascadia Code");
         Assert.Equal("Cascadia Code", named.Name);
@@ -48,8 +52,7 @@ public class FallbackFontsTests
     /// <summary>A character presented as an emoji by default (a face, a hand, a skin tone, a flag's letter, a check mark) is
     /// asked for in emoji presentation's language, which names a colour face holding the whole cluster; one presented as text
     /// by default, and a script's letter, in the culture's.</summary>
-    [Fact]
-    public void An_emojis_fallback_is_asked_in_emoji_presentations_language_and_text_in_the_cultures()
+    private void An_emojis_fallback_is_asked_in_emoji_presentations_language_and_text_in_the_cultures()
     {
         System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.GetCultureInfo("fr-CA");
         int[] emoji = [0x1F600, 0x1F44D, 0x1F3FD, 0x1F469, 0x1F1E8, 0x2705];

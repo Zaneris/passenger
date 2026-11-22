@@ -9,7 +9,12 @@ namespace Passenger.UnitTests.Text;
 public class StoredChangeTests
 {
     [Fact]
-    public void A_byte_order_mark_added_or_removed_is_said_so()
+    public void A_files_text_stored_another_way_is_told_how() => Cases.All(
+        ("A byte order mark added or removed is said so", A_byte_order_mark_added_or_removed_is_said_so),
+        ("Another encoding is said from which to which", Another_encoding_is_said_from_which_to_which),
+        ("Stored as the same bytes nothing changed", Stored_as_the_same_bytes_nothing_changed));
+
+    private void A_byte_order_mark_added_or_removed_is_said_so()
     {
         FileText plain = FileText.FromBytes(Encoding.UTF8.GetBytes("class A\n{\n}\n"))!;
         Assert.Equal("Byte order mark added", plain.StoredChange(new UTF8Encoding(true), bom: true));
@@ -17,8 +22,7 @@ public class StoredChangeTests
         Assert.Equal("Byte order mark removed", marked.StoredChange(new UTF8Encoding(false), bom: false));
     }
 
-    [Fact]
-    public void Another_encoding_is_said_from_which_to_which()
+    private void Another_encoding_is_said_from_which_to_which()
     {
         FileText utf8 = FileText.FromBytes(Encoding.UTF8.GetBytes("Notes: café\n"))!;
         Assert.Equal("Encoding changed from UTF-8 to UTF-16 LE", utf8.StoredChange(Encoding.Unicode, bom: true));
@@ -27,8 +31,7 @@ public class StoredChangeTests
         Assert.Equal("Encoding changed from UTF-8 to ISO-8859-1", utf8.StoredChange(Encoding.Latin1, bom: false));
     }
 
-    [Fact]
-    public void Stored_as_the_same_bytes_nothing_changed()
+    private void Stored_as_the_same_bytes_nothing_changed()
     {
         FileText utf8 = FileText.FromBytes(Encoding.UTF8.GetBytes("Notes: café\n"))!;
         Assert.Null(utf8.StoredChange(new UTF8Encoding(false), bom: false));

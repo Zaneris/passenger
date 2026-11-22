@@ -12,7 +12,12 @@ public class DoubleTapTests
     private const string Search = "search";
 
     [Fact]
-    public void A_double_tap_reads_back_as_written_and_is_shown_by_its_modifiers_name()
+    public void A_double_tap_of_a_modifier_is_written_read_and_shown_as_a_shortcut() => Cases.All(
+        ("A double tap reads back as written and is shown by its modifiers name", A_double_tap_reads_back_as_written_and_is_shown_by_its_modifiers_name),
+        ("A modifier alone is read only as a double tap", A_modifier_alone_is_read_only_as_a_double_tap),
+        ("A modifier tapped twice within half a second runs its action and nothing between or slower does", A_modifier_tapped_twice_within_half_a_second_runs_its_action_and_nothing_between_or_slower_does));
+
+    private void A_double_tap_reads_back_as_written_and_is_shown_by_its_modifiers_name()
     {
         Shortcut shift = Shortcut.Parse("shift , shift");
         Assert.True(shift.IsDoubleTap, "\"shift , shift\" was read as something other than a double tap of Shift");
@@ -22,15 +27,18 @@ public class DoubleTapTests
         Assert.False(Shortcut.Parse("shift K , shift K").IsDoubleTap, "A chord of one key pressed twice was read as a double tap");
     }
 
-    [Theory]
-    [InlineData("shift")]
-    [InlineData("shift , control")]
-    [InlineData("control K , shift")]
-    public void A_modifier_alone_is_read_only_as_a_double_tap(string written) =>
-        Assert.Throws<FormatException>(() => Shortcut.Parse(written));
+    private void A_modifier_alone_is_read_only_as_a_double_tap() => Cases.Each<string>(
+    [
+        "shift",
+        "shift , control",
+        "control K , shift",
+    ], written =>
+    {
+        
+                Assert.Throws<FormatException>(() => Shortcut.Parse(written));
+    });
 
-    [Fact]
-    public void A_modifier_tapped_twice_within_half_a_second_runs_its_action_and_nothing_between_or_slower_does()
+    private void A_modifier_tapped_twice_within_half_a_second_runs_its_action_and_nothing_between_or_slower_does()
     {
         long now = 0;
         KeymapDispatcher keys = new(new Keymap("taps").Bind(Search, "shift , shift").Bind("letter", "control A"), () => now * Stopwatch.Frequency / 1000);

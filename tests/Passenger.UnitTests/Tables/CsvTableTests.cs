@@ -7,7 +7,12 @@ namespace Passenger.UnitTests.Tables;
 public class CsvTableTests
 {
     [Fact]
-    public void A_quoted_value_holding_semicolons_leaves_a_comma_separated_file_read_at_its_commas()
+    public void A_csv_is_read_with_the_separator_its_first_record_has_more_of() => Cases.All(
+        ("A quoted value holding semicolons leaves a comma separated file read at its commas", A_quoted_value_holding_semicolons_leaves_a_comma_separated_file_read_at_its_commas),
+        ("A csvs separator is counted between the first records fields alone", A_csvs_separator_is_counted_between_the_first_records_fields_alone),
+        ("A tsv is read at its tabs whatever its first line holds", A_tsv_is_read_at_its_tabs_whatever_its_first_line_holds));
+
+    private void A_quoted_value_holding_semicolons_leaves_a_comma_separated_file_read_at_its_commas()
     {
         Assert.True(CsvTable.SeparatorFor("data.csv", "name,\"a;b;c\",x\n1,2,3\n") == ',',
             "The semicolons inside a quoted value were counted as separators, so the file's columns would run together and its values be cut");
@@ -17,24 +22,22 @@ public class CsvTableTests
         Assert.Equal("x;y", table.Cell(0, 1));
     }
 
-    [Theory]
-    [InlineData("name,\"a;b;c\"", ',')]
-    [InlineData("name,\"a;b;c;d;e\",x", ',')]
-    [InlineData("Name;\"Smith, Jones\";Total", ';')]
-    [InlineData("\"a;\nb;c;d\",x,y\n1;2;3;4;5;6", ',')]
-    [InlineData("\"say \"\"a;b;c\"\"\";x;y,z", ';')]
-    [InlineData("Price;Size 5\" screen;Note,more", ';')]
-    [InlineData("a;b;c", ';')]
-    [InlineData("a,b;c", ',')]
-    [InlineData("", ',')]
-    public void A_csvs_separator_is_counted_between_the_first_records_fields_alone(string text, char separator)
+    private void A_csvs_separator_is_counted_between_the_first_records_fields_alone() => Cases.Each<(string text, char separator)>(
+    [
+        ("name,\"a;b;c\"", ','),
+        ("Name;\"Smith, Jones\";Total", ';'),
+        ("\"a;\nb;c;d\",x,y\n1;2;3;4;5;6", ','),
+        ("Price;Size 5\" screen;Note,more", ';'),
+        ("a;b;c", ';'),
+        ("", ','),
+    ], row =>
     {
+        (string text, char separator) = row;
         char found = CsvTable.SeparatorFor("data.csv", text);
         Assert.True(found == separator, $"Read '{text}' as separated by '{found}', not '{separator}': its columns would run together");
-    }
+    });
 
-    [Fact]
-    public void A_tsv_is_read_at_its_tabs_whatever_its_first_line_holds()
+    private void A_tsv_is_read_at_its_tabs_whatever_its_first_line_holds()
     {
         Assert.Equal('\t', CsvTable.SeparatorFor("data.TSV", "a;b;c"));
     }

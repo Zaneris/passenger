@@ -9,7 +9,12 @@ namespace Passenger.UnitTests.Text;
 public class LineOffsetsTests
 {
     [Fact]
-    public void Places_in_any_order_get_the_offsets_one_at_a_time_gives_whatever_their_breaks_lines_and_columns()
+    public void Many_places_turn_into_offsets_at_once_as_each_does_alone() => Cases.All(
+        ("Places in any order get the offsets one at a time gives whatever their breaks lines and columns", Places_in_any_order_get_the_offsets_one_at_a_time_gives_whatever_their_breaks_lines_and_columns),
+        ("Three thousand places over ten thousand lines seek a line from the ropes root a few times not once each", Three_thousand_places_over_ten_thousand_lines_seek_a_line_from_the_ropes_root_a_few_times_not_once_each),
+        ("Places far apart seek each line rather than read every line between", Places_far_apart_seek_each_line_rather_than_read_every_line_between));
+
+    private void Places_in_any_order_get_the_offsets_one_at_a_time_gives_whatever_their_breaks_lines_and_columns()
     {
         TextSnapshot text = TextSnapshot.From(Lines(10_000));
         Random random = new(1152);
@@ -27,8 +32,7 @@ public class LineOffsetsTests
         }
     }
 
-    [Fact]
-    public void Three_thousand_places_over_ten_thousand_lines_seek_a_line_from_the_ropes_root_a_few_times_not_once_each()
+    private void Three_thousand_places_over_ten_thousand_lines_seek_a_line_from_the_ropes_root_a_few_times_not_once_each()
     {
         TextSnapshot text = TextSnapshot.From(Lines(10_000));
         Random random = new(1250);
@@ -51,8 +55,7 @@ public class LineOffsetsTests
             $"3,000 places over 10,000 lines sought {together} lines from the rope's root together, {apart} one at a time: a walk down the rope for each place");
     }
 
-    [Fact]
-    public void Places_far_apart_seek_each_line_rather_than_read_every_line_between()
+    private void Places_far_apart_seek_each_line_rather_than_read_every_line_between()
     {
         TextSnapshot text = TextSnapshot.From(Lines(50_000));
         TextPosition[] places = [.. Enumerable.Range(0, 100).Select(i => new TextPosition((99 - i) * 500, 3))];

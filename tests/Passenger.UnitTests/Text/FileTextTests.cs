@@ -9,10 +9,18 @@ public sealed class FileTextTests
 {
     private const string Code = "class Café\r\n{\r\n    // 🚀 ü\r\n}\r\n";
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_UTF_32_file_with_its_mark_reads_as_its_text_and_saves_back_byte_for_byte(bool bigEndian)
+    [Fact]
+    public void A_files_bytes_are_read_by_their_mark_and_a_save_writes_them_as_they_were_read() => Cases.All(
+        ("A UTF 32 file with its mark reads as its text and saves back byte for byte", A_UTF_32_file_with_its_mark_reads_as_its_text_and_saves_back_byte_for_byte),
+        ("A UTF 16 file with its mark still reads as UTF 16", A_UTF_16_file_with_its_mark_still_reads_as_UTF_16),
+        ("A file is read into one array of its length", A_file_is_read_into_one_array_of_its_length),
+        ("A file read on after its probe is read into one array of its length", A_file_read_on_after_its_probe_is_read_into_one_array_of_its_length));
+
+    private void A_UTF_32_file_with_its_mark_reads_as_its_text_and_saves_back_byte_for_byte() => Cases.Each<bool>(
+    [
+        false,
+        true,
+    ], bigEndian =>
     {
         byte[] bytes = [.. new UTF32Encoding(bigEndian, byteOrderMark: true).GetPreamble(), .. new UTF32Encoding(bigEndian, byteOrderMark: false).GetBytes(Code)];
 
@@ -22,10 +30,9 @@ public sealed class FileTextTests
         Assert.True(read.Text == Code, $"A UTF-32 file read as {read.EncodingName} showed '{read.Text}', its characters wrong");
         Assert.Equal(bigEndian ? "UTF-32 BE" : "UTF-32 LE", read.EncodingName);
         Assert.True(FileText.Encoded(read.Text, read.Encoding, read.HasBom, read.CrBreaks).AsSpan().SequenceEqual(bytes), $"Saving a UTF-32 file read as {read.EncodingName} wrote other bytes, corrupting it");
-    }
+    });
 
-    [Fact]
-    public void A_UTF_16_file_with_its_mark_still_reads_as_UTF_16()
+    private void A_UTF_16_file_with_its_mark_still_reads_as_UTF_16()
     {
         byte[] bytes = [0xFF, 0xFE, .. Encoding.Unicode.GetBytes(Code)];
 
@@ -39,8 +46,7 @@ public sealed class FileTextTests
 
     /// <summary>A large file and an empty one, read as an open file is: each into one array of its length, so a file opened,
     /// changed on disk or saved costs its bytes once rather than the copies a growing buffer makes.</summary>
-    [Fact]
-    public void A_file_is_read_into_one_array_of_its_length()
+    private void A_file_is_read_into_one_array_of_its_length()
     {
         string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
         try
@@ -69,8 +75,7 @@ public sealed class FileTextTests
 
     /// <summary>The rest of a file after its first bytes were probed, as Local History reads what it keeps: in one array of
     /// the file's length, the probed bytes first; and from a stream of no length, as it comes.</summary>
-    [Fact]
-    public void A_file_read_on_after_its_probe_is_read_into_one_array_of_its_length()
+    private void A_file_read_on_after_its_probe_is_read_into_one_array_of_its_length()
     {
         byte[] file = [.. Enumerable.Range(0, 300_000).Select(i => (byte)('a' + i % 26))];
         using MemoryStream warm = new(file);

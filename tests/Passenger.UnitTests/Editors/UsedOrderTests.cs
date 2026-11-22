@@ -7,7 +7,11 @@ namespace Passenger.UnitTests.Editors;
 public sealed class UsedOrderTests
 {
     [Fact]
-    public void What_came_forward_last_comes_first_and_coming_again_moves_it_up()
+    public void The_switcher_lists_tabs_last_used_first() => Cases.All(
+        ("What came forward last comes first and coming again moves it up", What_came_forward_last_comes_first_and_coming_again_moves_it_up),
+        ("One gone or no longer open is left out and never used ones follow in the order given", One_gone_or_no_longer_open_is_left_out_and_never_used_ones_follow_in_the_order_given));
+
+    private void What_came_forward_last_comes_first_and_coming_again_moves_it_up()
     {
         UsedOrder<string> order = new();
         order.Came("one");
@@ -18,8 +22,7 @@ public sealed class UsedOrderTests
         Assert.Equal(["one", "three", "two"], order.Of(["one", "two", "three"]));
     }
 
-    [Fact]
-    public void One_gone_or_no_longer_open_is_left_out_and_never_used_ones_follow_in_the_order_given()
+    private void One_gone_or_no_longer_open_is_left_out_and_never_used_ones_follow_in_the_order_given()
     {
         UsedOrder<string> order = new();
         order.Came("one");

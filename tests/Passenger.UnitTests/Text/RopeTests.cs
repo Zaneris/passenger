@@ -6,29 +6,38 @@ namespace Passenger.UnitTests.Text;
 /// <summary>The rope under every document, read as a string holding the same text reads, its shape held after every edit.</summary>
 public class RopeTests
 {
-    [Theory]
-    [InlineData(0)]
-    [InlineData(1)]
-    [InlineData(RopeNode.MaxLeaf)]
-    [InlineData(RopeNode.MaxLeaf + 1)]
-    [InlineData(RopeNode.MaxLeaf * RopeNode.MaxChildren + 1)]
-    [InlineData(300_000)]
-    public void Text_of_any_length_reads_back_whole_with_its_lines_where_a_string_has_them(int length)
+    [Fact]
+    public void A_rope_reads_back_what_was_written_through_seeded_edits_splits_and_levels() => Cases.All(
+        ("Text of any length reads back whole with its lines where a string has them", Text_of_any_length_reads_back_whole_with_its_lines_where_a_string_has_them),
+        ("A seeded run of random edits reads as a string given the same edits reads", A_seeded_run_of_random_edits_reads_as_a_string_given_the_same_edits_reads),
+        ("A leaf filled past its size splits into leaves that fit and reads the same", A_leaf_filled_past_its_size_splits_into_leaves_that_fit_and_reads_the_same),
+        ("A rope grows a level past a branch of leaves and comes back down as its text goes", A_rope_grows_a_level_past_a_branch_of_leaves_and_comes_back_down_as_its_text_goes));
+
+    private void Text_of_any_length_reads_back_whole_with_its_lines_where_a_string_has_them() => Cases.Each<int>(
+    [
+        0,
+        1,
+        RopeNode.MaxLeaf,
+        RopeNode.MaxLeaf + 1,
+        RopeNode.MaxLeaf * RopeNode.MaxChildren + 1,
+        300_000,
+    ], length =>
     {
         string text = Texts.Random(new Random(length), length);
         TextSnapshot snapshot = TextSnapshot.From(text);
         RopeShape.Check(Rope.Build(text));
         Assert.Equal(text, snapshot.ToString());
         Model.Check(snapshot, text, new Random(7), probes: 200);
-    }
+    });
 
     /// <summary>Two thousand edits of every size (typing, a line, a pasted block, the whole text) at seeded random places,
     /// each checked against the same edit of a string, every version kept on the way read again at the end.</summary>
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void A_seeded_run_of_random_edits_reads_as_a_string_given_the_same_edits_reads(int seed)
+    private void A_seeded_run_of_random_edits_reads_as_a_string_given_the_same_edits_reads() => Cases.Each<int>(
+    [
+        1,
+        2,
+        3,
+    ], seed =>
     {
         Random random = new(seed);
         string model = Texts.Random(random, 40_000);
@@ -55,10 +64,9 @@ public class RopeTests
         {
             Assert.True(text == version.ToString(), "A version of the text read differently after later edits: an edit changed a snapshot taken before it");
         }
-    }
+    });
 
-    [Fact]
-    public void A_leaf_filled_past_its_size_splits_into_leaves_that_fit_and_reads_the_same()
+    private void A_leaf_filled_past_its_size_splits_into_leaves_that_fit_and_reads_the_same()
     {
         string text = new('a', RopeNode.MaxLeaf);
         RopeNode rope = Rope.Replace(Rope.Build(text), RopeNode.MaxLeaf / 2, 0, "b");
@@ -67,8 +75,7 @@ public class RopeTests
         Assert.Equal(text.Insert(RopeNode.MaxLeaf / 2, "b"), ToText(rope));
     }
 
-    [Fact]
-    public void A_rope_grows_a_level_past_a_branch_of_leaves_and_comes_back_down_as_its_text_goes()
+    private void A_rope_grows_a_level_past_a_branch_of_leaves_and_comes_back_down_as_its_text_goes()
     {
         string text = Texts.Random(new Random(11), RopeNode.MaxLeaf * RopeNode.MaxChildren + 1);
         RopeNode rope = Rope.Build(text);
@@ -83,11 +90,19 @@ public class RopeTests
         Assert.Equal(1, TextSnapshot.From("x").Replace(0, 1, string.Empty).LineCount);
     }
 
-    [Theory]
-    [InlineData(RopeNode.MaxLeaf - 2)]
-    [InlineData(RopeNode.MaxLeaf - 1)]
-    [InlineData(RopeNode.MaxLeaf)]
-    public void Text_built_into_leaves_never_has_a_surrogate_pair_cut_between_two(int at)
+    [Fact]
+    public void A_rope_keeps_surrogate_pairs_crlf_breaks_and_needles_whole_across_its_leaves() => Cases.All(
+        ("Text built into leaves never has a surrogate pair cut between two", Text_built_into_leaves_never_has_a_surrogate_pair_cut_between_two),
+        ("A line ending in CRLF holds its text without the CR and a place inside the break is the lines end", A_line_ending_in_CRLF_holds_its_text_without_the_CR_and_a_place_inside_the_break_is_the_lines_end),
+        ("A needle across the end of a block read is found and overlapping ones only when asked", A_needle_across_the_end_of_a_block_read_is_found_and_overlapping_ones_only_when_asked),
+        ("Edits applied together make the text each made in turn from the last makes", Edits_applied_together_make_the_text_each_made_in_turn_from_the_last_makes));
+
+    private void Text_built_into_leaves_never_has_a_surrogate_pair_cut_between_two() => Cases.Each<int>(
+    [
+        RopeNode.MaxLeaf - 2,
+        RopeNode.MaxLeaf - 1,
+        RopeNode.MaxLeaf,
+    ], at =>
     {
         string text = new string('a', at) + "\U0001F600" + new string('b', RopeNode.MaxLeaf * 3);
         RopeShape.Check(Rope.Build(text));
@@ -98,10 +113,9 @@ public class RopeTests
             chunks.Append(chunk.Span);
         });
         Assert.Equal(text, chunks.ToString());
-    }
+    });
 
-    [Fact]
-    public void A_line_ending_in_CRLF_holds_its_text_without_the_CR_and_a_place_inside_the_break_is_the_lines_end()
+    private void A_line_ending_in_CRLF_holds_its_text_without_the_CR_and_a_place_inside_the_break_is_the_lines_end()
     {
         TextSnapshot text = TextSnapshot.From("one\r\ntwo\nthree\r\n");
         Assert.Equal(4, text.LineCount);
@@ -116,8 +130,7 @@ public class RopeTests
         Assert.Equal(1, text.GetLineFromOffset(5));
     }
 
-    [Fact]
-    public void A_needle_across_the_end_of_a_block_read_is_found_and_overlapping_ones_only_when_asked()
+    private void A_needle_across_the_end_of_a_block_read_is_found_and_overlapping_ones_only_when_asked()
     {
         const int Block = 1 << 16;
         string text = new string('x', Block - 2) + "abab" + new string('x', 10) + "aaa";
@@ -130,8 +143,7 @@ public class RopeTests
         Assert.Empty(snapshot.Occurrences(string.Empty));
     }
 
-    [Fact]
-    public void Edits_applied_together_make_the_text_each_made_in_turn_from_the_last_makes()
+    private void Edits_applied_together_make_the_text_each_made_in_turn_from_the_last_makes()
     {
         TextSnapshot text = TextSnapshot.From("alpha beta\ngamma delta\n");
         TextEdit[] edits = [new(0, 5, "A"), new(6, 4, string.Empty), new(11, 0, "+"), new(text.Length, 0, "end")];

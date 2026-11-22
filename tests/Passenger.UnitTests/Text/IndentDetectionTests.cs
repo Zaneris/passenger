@@ -9,10 +9,18 @@ public sealed class IndentDetectionTests
 {
     private static string? Detected(string text) => Indentation.Detect(text, 4) is { } found ? found.UseTabs ? "tabs" : found.Size.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
 
+    [Fact]
+    public void A_files_indentation_is_found_from_its_own_lines() => Cases.All(
+        ("Continuations 8 deep in a file of 4 leave it 4", Continuations_8_deep_in_a_file_of_4_leave_it_4),
+        ("A file of 8 stays 8", A_file_of_8_stays_8),
+        ("Python continued 4 deep in a file of 2 is 2", Python_continued_4_deep_in_a_file_of_2_is_2),
+        ("Python docstring lines take no step", Python_docstring_lines_take_no_step),
+        ("A Python file with no block detects none", A_Python_file_with_no_block_detects_none),
+        ("Other files read as before", Other_files_read_as_before));
+
     /// <summary>PyYAML's dumper.py, its shape: methods at 4, bodies at 8, each call's arguments continued 8 deeper, so a step of 8
     /// outnumbers one of 4.</summary>
-    [Fact]
-    public void Continuations_8_deep_in_a_file_of_4_leave_it_4()
+    private void Continuations_8_deep_in_a_file_of_4_leave_it_4()
     {
         const string Dumper = "class Dumper(Emitter, Serializer, Representer, Resolver):\n\n"
             + "    def __init__(self, stream,\n            default_style=None, default_flow_style=False,\n            canonical=None, indent=None, width=None,\n"
@@ -27,8 +35,7 @@ public sealed class IndentDetectionTests
 
     /// <summary>A file of 8 stays 8: one whose lines stand only at 8's levels, one aligning a few lines halfway, and one at 4's
     /// levels that never steps by 4.</summary>
-    [Fact]
-    public void A_file_of_8_stays_8()
+    private void A_file_of_8_stays_8()
     {
         Assert.Equal("8", Detected("int f(int a)\n{\n        if (a)\n        {\n                return 1;\n        }\n        return 0;\n}\n"));
         Assert.Equal("8", Detected("int f(int a)\n{\n        if (a)\n                return g(1,\n                    2);\n        if (b)\n                return 2;\n"
@@ -38,8 +45,7 @@ public sealed class IndentDetectionTests
 
     /// <summary>googletest's shape: Python's blocks indented by 2, each call's arguments continued 4 deeper, so a step of 4
     /// outnumbers one of 2 unless the lines inside brackets, whose indentation is no block's, take no step.</summary>
-    [Fact]
-    public void Python_continued_4_deep_in_a_file_of_2_is_2()
+    private void Python_continued_4_deep_in_a_file_of_2_is_2()
     {
         const string Test = "class GMockLeakTest(gmock_test_utils.TestCase):\n\n  def testCatchesLeakedMockByDefault(self):\n    self.assertNotEqual(\n"
             + "        0,\n        gmock_test_utils.Subprocess(\n            TEST_WITH_EXPECT_CALL, env=environ\n        ).exit_code,\n    )\n"
@@ -52,8 +58,7 @@ public sealed class IndentDetectionTests
 
     /// <summary>A docstring's lines are a string's text, whose indentation is no block's: parameters whose words go on a column
     /// deeper, as AutoRest writes them, outnumber the steps of a short file's code of 4 unless they take no step.</summary>
-    [Fact]
-    public void Python_docstring_lines_take_no_step()
+    private void Python_docstring_lines_take_no_step()
     {
         const string Configuration = "class Configuration:\n    \"\"\"Configuration for the service.\n\n    :param url: The URL of the service account, container, or blob\n"
             + "     that is the target of the desired operation. Required.\n    :type url: str\n    :param version: Specifies the version of the operation to use\n"
@@ -67,8 +72,7 @@ public sealed class IndentDetectionTests
 
     /// <summary>A Python file whose only indented lines are continued, or inside its strings, shows no block's indentation of its
     /// own, so it takes the language's.</summary>
-    [Fact]
-    public void A_Python_file_with_no_block_detects_none()
+    private void A_Python_file_with_no_block_detects_none()
     {
         Assert.Null(Python("helps['ams'] = \"\"\"\ntype: group\nshort-summary: Manage Azure Media Services resources.\n  long: words\n  more: words\n\"\"\"\n"));
         Assert.Null(Python("TABLE = (\n    1, 2, 3,\n    4, 5, 6,\n    7, 8, 9,\n)\n"));
@@ -80,8 +84,7 @@ public sealed class IndentDetectionTests
         : null;
 
     /// <summary>What no rule here changes: a file of 4, of 2, of tabs, and one with no step standing out.</summary>
-    [Fact]
-    public void Other_files_read_as_before()
+    private void Other_files_read_as_before()
     {
         Assert.Equal("4", Detected("class A:\n    def f(self):\n        return 1\n"));
         Assert.Equal("2", Detected("a:\n  b:\n    c: 1\n  d: 2\n"));

@@ -13,27 +13,31 @@ public sealed class IndentConversionTests
     }
 
     [Fact]
-    public void Spaces_become_a_tab_a_level_and_what_a_level_leaves_over_stays_spaces()
+    public void Indentation_converts_between_tabs_and_spaces_a_level_at_a_time_leaving_kept_lines() => Cases.All(
+        ("Spaces become a tab a level and what a level leaves over stays spaces", Spaces_become_a_tab_a_level_and_what_a_level_leaves_over_stays_spaces),
+        ("Tabs become spaces to their stops and a tab after the words stays", Tabs_become_spaces_to_their_stops_and_a_tab_after_the_words_stays),
+        ("Two spaces a level become a tab each", Two_spaces_a_level_become_a_tab_each),
+        ("A line already written so and a whitespace run longer than a read are handled", A_line_already_written_so_and_a_whitespace_run_longer_than_a_read_are_handled),
+        ("A line kept is left as it is and counted only where it would have changed", A_line_kept_is_left_as_it_is_and_counted_only_where_it_would_have_changed));
+
+    private void Spaces_become_a_tab_a_level_and_what_a_level_leaves_over_stays_spaces()
     {
         Assert.Equal("a\n\tb  = 1;\n\t\t  c\n\n\td\r\n",
             Converted("a\n    b  = 1;\n          c\n\n    d\r\n", new IndentOptions(4), new IndentOptions(4, UseTabs: true, TabWidth: 4)));
     }
 
-    [Fact]
-    public void Tabs_become_spaces_to_their_stops_and_a_tab_after_the_words_stays()
+    private void Tabs_become_spaces_to_their_stops_and_a_tab_after_the_words_stays()
     {
         Assert.Equal("        a\tb\n    c\n",
             Converted("\t\ta\tb\n  \tc\n", new IndentOptions(4, UseTabs: true, TabWidth: 4), new IndentOptions(4, UseTabs: false, TabWidth: 4)));
     }
 
-    [Fact]
-    public void Two_spaces_a_level_become_a_tab_each()
+    private void Two_spaces_a_level_become_a_tab_each()
     {
         Assert.Equal("\tx\n\t\ty\n", Converted("  x\n    y\n", new IndentOptions(2, TabWidth: 4), new IndentOptions(2, UseTabs: true, TabWidth: 2)));
     }
 
-    [Fact]
-    public void A_line_already_written_so_and_a_whitespace_run_longer_than_a_read_are_handled()
+    private void A_line_already_written_so_and_a_whitespace_run_longer_than_a_read_are_handled()
     {
         TextSnapshot tabbed = TextSnapshot.From("\tx\n\t\ty\n");
         Assert.Empty(Indentation.Convert(tabbed, new IndentOptions(4, true, 4), new IndentOptions(4, true, 4)).Edits);
@@ -41,8 +45,7 @@ public sealed class IndentConversionTests
         Assert.Equal(new string('\t', 100) + "z\n", Converted(deep, new IndentOptions(4), new IndentOptions(4, UseTabs: true, TabWidth: 4)));
     }
 
-    [Fact]
-    public void A_line_kept_is_left_as_it_is_and_counted_only_where_it_would_have_changed()
+    private void A_line_kept_is_left_as_it_is_and_counted_only_where_it_would_have_changed()
     {
         TextSnapshot text = TextSnapshot.From("a\n    b\n    c\n\td\n    e\n");
         (List<TextEdit> edits, int kept) = Indentation.Convert(text, new IndentOptions(4), new IndentOptions(4, UseTabs: true, TabWidth: 4), new HashSet<int> { 2, 3 });
@@ -54,10 +57,17 @@ public sealed class IndentConversionTests
         Indentation.FirstBlockAtRisk(TextSnapshot.From(text), new IndentOptions(size, TabWidth: tabWidth == 0 ? size : tabWidth), toTabs, new HashSet<int>(kept),
             new HashSet<string>(StringComparer.Ordinal) { "class", "def", "if" });
 
+    [Fact]
+    public void Python_blocks_at_risk_from_a_conversion_are_told_by_their_parents_levels() => Cases.All(
+        ("A block opened between levels is at risk from tabs alone", A_block_opened_between_levels_is_at_risk_from_tabs_alone),
+        ("Only a blocks parent needs to be a whole number of levels deep", Only_a_blocks_parent_needs_to_be_a_whole_number_of_levels_deep),
+        ("A line kept is no blocks and a hidden start may be one", A_line_kept_is_no_blocks_and_a_hidden_start_may_be_one),
+        ("A line going on from the one before opens no block", A_line_going_on_from_the_one_before_opens_no_block),
+        ("A tab a file may read unlike the reader is at risk either way", A_tab_a_file_may_read_unlike_the_reader_is_at_risk_either_way));
+
     /// <summary>A file of 4-column levels read at 8, as a detected indent can be: the class's method would stay in spaces, and the
     /// tab under it is no deeper to a reader counting a tab as one column.</summary>
-    [Fact]
-    public void A_block_opened_between_levels_is_at_risk_from_tabs_alone()
+    private void A_block_opened_between_levels_is_at_risk_from_tabs_alone()
     {
         const string Code = "class A:\n    def f(self):\n        return 1\n";
         Assert.Equal(1, AtRisk(Code, 8));
@@ -66,16 +76,14 @@ public sealed class IndentConversionTests
         Assert.Equal(1, AtRisk("if a:\n  if b:\n    c()\n", 4));
     }
 
-    [Fact]
-    public void Only_a_blocks_parent_needs_to_be_a_whole_number_of_levels_deep()
+    private void Only_a_blocks_parent_needs_to_be_a_whole_number_of_levels_deep()
     {
         Assert.Null(AtRisk("x = call(1,\n         2)\n", 4));
         Assert.Null(AtRisk("if a:\n      b()\n      c()\nd()\n", 4));
         Assert.Null(AtRisk("if a:\n    b()\n  # a comment\n  iffy()\n", 4));
     }
 
-    [Fact]
-    public void A_line_kept_is_no_blocks_and_a_hidden_start_may_be_one()
+    private void A_line_kept_is_no_blocks_and_a_hidden_start_may_be_one()
     {
         Assert.Null(AtRisk("x = \"\"\"\n  if a:\n\"\"\"\n", 4, kept: [1, 2]));
         Assert.Equal(0, AtRisk("  \\\nif a:\n    b()\n", 4));
@@ -85,8 +93,7 @@ public sealed class IndentConversionTests
     /// <summary>A comprehension's <c>for</c> and <c>if</c>, and a conditional's <c>else</c>, on lines of their own between levels
     /// open no block inside their brackets, nor does a line after a backslash, which Python reads no indentation of; a real
     /// block between levels is still refused.</summary>
-    [Fact]
-    public void A_line_going_on_from_the_one_before_opens_no_block()
+    private void A_line_going_on_from_the_one_before_opens_no_block()
     {
         const string Code = "class A:\n    def f(self):\n        return [x\n                  for x in self.items\n                  if x]\n\n"
             + "    def g(self):\n        y = (1 if self.a\n             else 2)\n        z = self.b + \\\n          if_value\n        return y\n";
@@ -101,8 +108,7 @@ public sealed class IndentConversionTests
 
     /// <summary>A reader's tab reaches the next multiple of 8 and counts as one column too. Tabs before spaces keep that order at
     /// any width up to 8; a tab after a space, or a width past 8, may not, so either way of converting waits on it.</summary>
-    [Fact]
-    public void A_tab_a_file_may_read_unlike_the_reader_is_at_risk_either_way()
+    private void A_tab_a_file_may_read_unlike_the_reader_is_at_risk_either_way()
     {
         const string Mixed = "if a:\n\t    \tb()\n";
         Assert.Equal(1, AtRisk(Mixed, 4, toTabs: false));

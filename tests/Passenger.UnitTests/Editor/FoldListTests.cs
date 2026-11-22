@@ -8,7 +8,12 @@ namespace Passenger.UnitTests.Editor;
 public class FoldListTests
 {
     [Fact]
-    public void Folded_at_starts_folds_the_regions_starting_there_and_opens_the_rest()
+    public void Folds_found_again_keep_what_the_person_folded_and_remake_only_what_changed() => Cases.All(
+        ("Folded at starts folds the regions starting there and opens the rest", Folded_at_starts_folds_the_regions_starting_there_and_opens_the_rest),
+        ("Folded at reads each region where the edits since carried it", Folded_at_reads_each_region_where_the_edits_since_carried_it),
+        ("Folding one region of six thousand four hundred copies one run of them", Folding_one_region_of_six_thousand_four_hundred_copies_one_run_of_them));
+
+    private void Folded_at_starts_folds_the_regions_starting_there_and_opens_the_rest()
     {
         FoldList open = FoldList.Of(Regions(300, folded: [7, 8, 200]));
         int[] starts = [Start(7), Start(130), Start(299)];
@@ -23,8 +28,7 @@ public class FoldListTests
         Assert.DoesNotContain(folded.FoldedAt([]), r => r.Folded);
     }
 
-    [Fact]
-    public void Folded_at_reads_each_region_where_the_edits_since_carried_it()
+    private void Folded_at_reads_each_region_where_the_edits_since_carried_it()
     {
         FoldList carried = FoldList.Of(Regions(300, folded: [])).Through([new TextEdit(0, 0, "// one more line\n")]);
         int shift = "// one more line\n".Length;
@@ -34,8 +38,7 @@ public class FoldListTests
         Assert.Equal(carried, folded.FoldedAt([]));
     }
 
-    [Fact]
-    public void Folding_one_region_of_six_thousand_four_hundred_copies_one_run_of_them()
+    private void Folding_one_region_of_six_thousand_four_hundred_copies_one_run_of_them()
     {
         FoldList open = FoldList.Of(Regions(6400, folded: []));
         int[] one = [Start(3200)];

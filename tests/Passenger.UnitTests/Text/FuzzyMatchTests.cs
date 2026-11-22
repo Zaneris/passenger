@@ -21,7 +21,14 @@ public class FuzzyMatchTests
     ];
 
     [Fact]
-    public void A_files_name_ranks_by_exact_then_prefix_then_humps_then_inside_then_letters_close_in_order()
+    public void A_name_or_label_ranks_exact_then_prefix_then_humps_then_inside_and_letters_out_of_order_match_nothing() => Cases.All(
+        ("A files name ranks by exact then prefix then humps then inside then letters close in order", A_files_name_ranks_by_exact_then_prefix_then_humps_then_inside_then_letters_close_in_order),
+        ("Initials of a names words match it across case separators and runs of capitals", Initials_of_a_names_words_match_it_across_case_separators_and_runs_of_capitals),
+        ("A query whose letters are not in the name in order or are spread through it matches nothing", A_query_whose_letters_are_not_in_the_name_in_order_or_are_spread_through_it_matches_nothing),
+        ("A query with a slash matches along the path either slash alike inside first then letters in order", A_query_with_a_slash_matches_along_the_path_either_slash_alike_inside_first_then_letters_in_order),
+        ("A completion label ranks by prefix in its case then any case then humps from its start then later then inside", A_completion_label_ranks_by_prefix_in_its_case_then_any_case_then_humps_from_its_start_then_later_then_inside));
+
+    private void A_files_name_ranks_by_exact_then_prefix_then_humps_then_inside_then_letters_close_in_order()
     {
         Assert.Equal(
             ["src/Editor/Editor.cs", "src/deep/er/still/Editor.cs", "src/Editor/EditorArea.cs", "src/Editor/CodeEditor.cs", "tests/Editor/MyEditorTests.cs",
@@ -29,31 +36,34 @@ public class FuzzyMatchTests
             Ranked("editor", Files));
     }
 
-    [Theory]
-    [InlineData("CE", "src/Editor/CodeEditor.cs")]
-    [InlineData("coed", "src/Editor/CodeEditor.cs")]
-    [InlineData("fm", "src/fuzzy_match.py")]
-    [InlineData("ipa", "src/IPAddress.cs")]
-    [InlineData("ad", "src/IPAddress.cs")]
-    [InlineData("kel", "src/Kelvin.cs")]
-    public void Initials_of_a_names_words_match_it_across_case_separators_and_runs_of_capitals(string query, string path)
+    private void Initials_of_a_names_words_match_it_across_case_separators_and_runs_of_capitals() => Cases.Each<(string query, string path)>(
+    [
+        ("CE", "src/Editor/CodeEditor.cs"),
+        ("coed", "src/Editor/CodeEditor.cs"),
+        ("fm", "src/fuzzy_match.py"),
+        ("ipa", "src/IPAddress.cs"),
+        ("ad", "src/IPAddress.cs"),
+        ("kel", "src/Kelvin.cs"),
+    ], row =>
     {
+        (string query, string path) = row;
         Assert.NotNull(FuzzyMatch.Score(query, path));
-    }
+    });
 
-    [Theory]
-    [InlineData("xyz", "src/Editor/CodeEditor.cs")]
-    [InlineData("ce", "src/Comment/Plain.cs")]
-    [InlineData("ec", "src/Editor/CodeEditor.cs")]
-    [InlineData("eoz", "src/abcdefghijklmnopqrstuvwxyz.cs")]
-    [InlineData("src", "src/Editor/CodeEditor.cs")]
-    public void A_query_whose_letters_are_not_in_the_name_in_order_or_are_spread_through_it_matches_nothing(string query, string path)
+    private void A_query_whose_letters_are_not_in_the_name_in_order_or_are_spread_through_it_matches_nothing() => Cases.Each<(string query, string path)>(
+    [
+        ("xyz", "src/Editor/CodeEditor.cs"),
+        ("ce", "src/Comment/Plain.cs"),
+        ("ec", "src/Editor/CodeEditor.cs"),
+        ("eoz", "src/abcdefghijklmnopqrstuvwxyz.cs"),
+        ("src", "src/Editor/CodeEditor.cs"),
+    ], row =>
     {
+        (string query, string path) = row;
         Assert.Null(FuzzyMatch.Score(query, path));
-    }
+    });
 
-    [Fact]
-    public void A_query_with_a_slash_matches_along_the_path_either_slash_alike_inside_first_then_letters_in_order()
+    private void A_query_with_a_slash_matches_along_the_path_either_slash_alike_inside_first_then_letters_in_order()
     {
         int? inside = FuzzyMatch.Score("editor/code", "src/Editor/CodeEditor.cs");
         Assert.Equal(inside, FuzzyMatch.Score("editor\\code", "src\\Editor\\CodeEditor.cs"));
@@ -63,8 +73,7 @@ public class FuzzyMatchTests
         Assert.Null(FuzzyMatch.Score("tests/code", "src/Editor/CodeEditor.cs"));
     }
 
-    [Fact]
-    public void A_completion_label_ranks_by_prefix_in_its_case_then_any_case_then_humps_from_its_start_then_later_then_inside()
+    private void A_completion_label_ranks_by_prefix_in_its_case_then_any_case_then_humps_from_its_start_then_later_then_inside()
     {
         string[] labels = ["Asbestos", "ToStringBuilder", "StringBuilder", "SByte", "sbyte", "Absolute"];
         Assert.Equal(["sbyte", "SByte", "StringBuilder", "ToStringBuilder", "Asbestos"],
@@ -73,10 +82,16 @@ public class FuzzyMatchTests
         Assert.Null(FuzzyMatch.Label("s", "Absolute"));
     }
 
+    [Fact]
+    public void Scoring_allocates_nothing_and_a_long_query_or_path_matches_as_a_short_one() => Cases.All(
+        ("The score of a file read with its letters is the score of its path for every query", The_score_of_a_file_read_with_its_letters_is_the_score_of_its_path_for_every_query),
+        ("Scoring names paths and labels allocates nothing", Scoring_names_paths_and_labels_allocates_nothing),
+        ("Scoring a query and path too long for the stack allocates nothing once the shared pool holds nothing", Scoring_a_query_and_path_too_long_for_the_stack_allocates_nothing_once_the_shared_pool_holds_nothing),
+        ("A query and path too long for the stack match along the path as short ones do and a query longer than the path matches nothing", A_query_and_path_too_long_for_the_stack_match_along_the_path_as_short_ones_do_and_a_query_longer_than_the_path_matches_nothing));
+
     /// <summary>The letters a file is indexed with only ever pass over a file the query cannot match, so the quick score is the
     /// full one for every query and file, a letter matched in another case (the Kelvin sign's k) included.</summary>
-    [Fact]
-    public void The_score_of_a_file_read_with_its_letters_is_the_score_of_its_path_for_every_query()
+    private void The_score_of_a_file_read_with_its_letters_is_the_score_of_its_path_for_every_query()
     {
         string[] paths = [.. Files, "src/Kelvin.cs", "src/IPAddress.cs", "docs\\read_me.md", "src/Straße.cs", "src/a1b2.cs"];
         string[] queries = ["e", "ed", "editor", "CE", "kel", "KEL", "ipa", "read/me", "docs\\", "strasse", "straß", "12", "a1", "x", "/", "e/c"];
@@ -94,8 +109,7 @@ public class FuzzyMatchTests
     /// <summary>Each call is measured apart, so a failure names the calls that allocated, in how many rounds, and how many
     /// methods the runtime compiled on this thread meanwhile: bytes in every round are the scoring's garbage, bytes in one
     /// round alone something done once.</summary>
-    [Fact]
-    public void Scoring_names_paths_and_labels_allocates_nothing()
+    private void Scoring_names_paths_and_labels_allocates_nothing()
     {
         string longPath = string.Join('/', Enumerable.Repeat("folder", 60)) + "/CodeEditor.cs";
         string longQuery = string.Join('\\', Enumerable.Repeat("fold", 70));
@@ -148,8 +162,7 @@ public class FuzzyMatchTests
     }
 
     /// <summary>A collection under memory pressure can leave the shared pool holding nothing, so the next to rent an array makes one.</summary>
-    [Fact]
-    public void Scoring_a_query_and_path_too_long_for_the_stack_allocates_nothing_once_the_shared_pool_holds_nothing()
+    private void Scoring_a_query_and_path_too_long_for_the_stack_allocates_nothing_once_the_shared_pool_holds_nothing()
     {
         string longPath = string.Join('\\', Enumerable.Repeat("folder", 60)) + "\\CodeEditor.cs";
         string longQuery = string.Join('/', Enumerable.Repeat("folder", 40));
@@ -168,8 +181,7 @@ public class FuzzyMatchTests
         Assert.Equal(600 - longPath.Length, score);
     }
 
-    [Fact]
-    public void A_query_and_path_too_long_for_the_stack_match_along_the_path_as_short_ones_do_and_a_query_longer_than_the_path_matches_nothing()
+    private void A_query_and_path_too_long_for_the_stack_match_along_the_path_as_short_ones_do_and_a_query_longer_than_the_path_matches_nothing()
     {
         string path = string.Join('\\', Enumerable.Repeat("folder", 60)) + "\\CodeEditor.cs";
         string query = string.Join('/', Enumerable.Repeat("FOLDER", 59)) + "/code";

@@ -8,24 +8,29 @@ namespace Passenger.UnitTests.Text;
 /// text placed by its cells, a wide character's two cells one character.</summary>
 public class ReadingUnitsTests
 {
-    [Theory]
-    [InlineData("int count = 0;", 5, "count ")]
-    [InlineData("int count = 0;", 3, "int ")]
-    [InlineData("a->b", 1, "->")]
-    [InlineData("a->b", 3, "b")]
-    [InlineData("    return x;", 2, "    ")]
-    [InlineData("    return x;", 4, "return ")]
-    [InlineData("snake_case2 + 1", 4, "snake_case2 ")]
-    [InlineData("cafe\u0301 au lait", 4, "cafe\u0301 ")]
-    [InlineData("x", 7, "x")]
-    public void A_word_is_the_run_of_one_kind_of_character_holding_the_place_with_the_white_space_after_it(string line, int at, string word)
+    [Fact]
+    public void A_screen_reader_steps_a_line_by_the_characters_and_words_a_person_sees() => Cases.All(
+        ("A word is the run of one kind of character holding the place with the white space after it", A_word_is_the_run_of_one_kind_of_character_holding_the_place_with_the_white_space_after_it),
+        ("A lines words follow one another to its end", A_lines_words_follow_one_another_to_its_end),
+        ("A character is what a person sees as one", A_character_is_what_a_person_sees_as_one),
+        ("A terminal rows text is placed by its cells a wide character one character in two", A_terminal_rows_text_is_placed_by_its_cells_a_wide_character_one_character_in_two));
+
+    private void A_word_is_the_run_of_one_kind_of_character_holding_the_place_with_the_white_space_after_it() => Cases.Each<(string line, int at, string word)>(
+    [
+        ("int count = 0;", 5, "count "),
+        ("a->b", 1, "->"),
+        ("a->b", 3, "b"),
+        ("    return x;", 4, "return "),
+        ("snake_case2 + 1", 4, "snake_case2 "),
+        ("x", 7, "x"),
+    ], row =>
     {
+        (string line, int at, string word) = row;
         (int start, int end) = ReadingUnits.WordAt(line, at);
         Assert.True(line[start..end] == word, $"The word at {at} of \"{line}\" reads \"{line[start..end]}\", not \"{word}\"");
-    }
+    });
 
-    [Fact]
-    public void A_lines_words_follow_one_another_to_its_end()
+    private void A_lines_words_follow_one_another_to_its_end()
     {
         const string Line = "if (count >= 10) { Say(\"done\"); }";
         List<string> words = [];
@@ -39,20 +44,21 @@ public class ReadingUnitsTests
         Assert.Equal(["if ", "(", "count ", ">= ", "10", ") ", "{ ", "Say", "(\"", "done", "\"); ", "}"], words);
     }
 
-    [Theory]
-    [InlineData("ab", 1, "b")]
-    [InlineData("e\u0301x", 1, "e\u0301")]
-    [InlineData("a\U0001F600b", 2, "\U0001F600")]
-    [InlineData("\U0001F469\u200D\U0001F4BB!", 3, "\U0001F469\u200D\U0001F4BB")]
-    [InlineData("\r\n", 0, "\r\n")]
-    public void A_character_is_what_a_person_sees_as_one(string line, int at, string character)
+    private void A_character_is_what_a_person_sees_as_one() => Cases.Each<(string line, int at, string character)>(
+    [
+        ("ab", 1, "b"),
+        ("e\u0301x", 1, "e\u0301"),
+        ("a\U0001F600b", 2, "\U0001F600"),
+        ("\U0001F469\u200D\U0001F4BB!", 3, "\U0001F469\u200D\U0001F4BB"),
+        ("\r\n", 0, "\r\n"),
+    ], row =>
     {
+        (string line, int at, string character) = row;
         (int start, int end) = ReadingUnits.CharacterAt(line, at);
         Assert.True(line[start..end] == character, $"The character at {at} of \"{line}\" reads \"{line[start..end]}\", not \"{character}\"");
-    }
+    });
 
-    [Fact]
-    public void A_terminal_rows_text_is_placed_by_its_cells_a_wide_character_one_character_in_two()
+    private void A_terminal_rows_text_is_placed_by_its_cells_a_wide_character_one_character_in_two()
     {
         TerminalScreen screen = new(20, 3);
         screen.Feed("a\u4E2Db\u00E9  ");

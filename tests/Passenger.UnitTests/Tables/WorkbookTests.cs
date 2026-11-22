@@ -15,15 +15,21 @@ public class WorkbookTests
     private const string DateStyles = "<numFmts><numFmt numFmtId=\"165\" formatCode=\"yyyy\\-mm\\-dd\"/></numFmts><cellXfs><xf numFmtId=\"0\"/><xf numFmtId=\"165\"/></cellXfs>";
 
     [Fact]
-    public void A_date_cell_earlier_than_a_workbooks_dates_reach_shows_as_written_and_the_sheet_opens()
+    public void A_workbooks_sheet_reads_its_dates_and_cells_as_they_are() => Cases.All(
+        ("A date cell earlier than a workbooks dates reach shows as written and the sheet opens", A_date_cell_earlier_than_a_workbooks_dates_reach_shows_as_written_and_the_sheet_opens),
+        ("An ISO date in a 1904 date workbook shows the date as written whatever its style", An_ISO_date_in_a_1904_date_workbook_shows_the_date_as_written_whatever_its_style),
+        ("An ISO date in a 1900 date workbook shows the date as written", An_ISO_date_in_a_1900_date_workbook_shows_the_date_as_written),
+        ("A small workbook holding a cell at the last column of each row reads in a few megabytes", A_small_workbook_holding_a_cell_at_the_last_column_of_each_row_reads_in_a_few_megabytes),
+        ("A rows cells show at their columns with the gaps between empty and one out of order left out", A_rows_cells_show_at_their_columns_with_the_gaps_between_empty_and_one_out_of_order_left_out));
+
+    private void A_date_cell_earlier_than_a_workbooks_dates_reach_shows_as_written_and_the_sheet_opens()
     {
         Table sheet = Sheet(Book("<row r=\"1\"><c r=\"A1\" t=\"d\"><v>0001-02-01</v></c><c r=\"B1\" t=\"d\"><v>2023-03-15</v></c></row>", date1904: false, DateStyles));
         Assert.Equal("0001-02-01", sheet.Cell(0, 0));
         Assert.Equal(new DateTime(2023, 3, 15).ToString("d", CultureInfo.CurrentCulture), sheet.Cell(0, 1));
     }
 
-    [Fact]
-    public void An_ISO_date_in_a_1904_date_workbook_shows_the_date_as_written_whatever_its_style()
+    private void An_ISO_date_in_a_1904_date_workbook_shows_the_date_as_written_whatever_its_style()
     {
         Table sheet = Sheet(Book("<row r=\"1\"><c r=\"A1\" t=\"d\"><v>2023-03-15</v></c><c r=\"B1\" t=\"d\" s=\"1\"><v>2023-03-15T00:00:00</v></c>"
             + "<c r=\"C1\" s=\"1\"><v>43538</v></c><c r=\"D1\" t=\"d\"><v>2023-03-15T10:30:00</v></c></row>", date1904: true, DateStyles));
@@ -37,16 +43,14 @@ public class WorkbookTests
         Assert.True(sheet.IsNumber(0, 0), "A date should be drawn against its cell's right edge, as a number is");
     }
 
-    [Fact]
-    public void An_ISO_date_in_a_1900_date_workbook_shows_the_date_as_written()
+    private void An_ISO_date_in_a_1900_date_workbook_shows_the_date_as_written()
     {
         Table sheet = Sheet(Book("<row r=\"1\"><c r=\"A1\" t=\"d\" s=\"1\"><v>2023-03-15</v></c><c r=\"B1\" t=\"d\"><v>2023-03-15</v></c></row>", date1904: false, DateStyles));
         Assert.Equal("2023-03-15", sheet.Cell(0, 0));
         Assert.Equal(new DateTime(2023, 3, 15).ToString("d", CultureInfo.CurrentCulture), sheet.Cell(0, 1));
     }
 
-    [Fact]
-    public void A_small_workbook_holding_a_cell_at_the_last_column_of_each_row_reads_in_a_few_megabytes()
+    private void A_small_workbook_holding_a_cell_at_the_last_column_of_each_row_reads_in_a_few_megabytes()
     {
         StringBuilder rows = new();
         for (int row = 1; row <= 200; row++)
@@ -66,8 +70,7 @@ public class WorkbookTests
         Assert.False(sheet.IsNumber(0, 0), "A column a row has no cell in should be empty");
     }
 
-    [Fact]
-    public void A_rows_cells_show_at_their_columns_with_the_gaps_between_empty_and_one_out_of_order_left_out()
+    private void A_rows_cells_show_at_their_columns_with_the_gaps_between_empty_and_one_out_of_order_left_out()
     {
         Table sheet = Sheet(Book("<row r=\"1\"><c r=\"B1\" t=\"inlineStr\"><is><t>b</t></is></c><c r=\"D1\"><v>4</v></c><c><v>5</v></c><c r=\"C1\"><v>3</v></c></row>"
             + "<row r=\"3\"><c><v>1</v></c><c><v>2</v></c><c r=\"F3\"/></row>"));

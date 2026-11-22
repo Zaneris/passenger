@@ -15,7 +15,11 @@ public class ServerEditsFitTests
         Indentation.Fit(text, LineEndings.Fit(text, edits, eol), indent);
 
     [Fact]
-    public void A_six_space_files_line_put_back_a_level_is_written_as_the_server_wrote_it()
+    public void A_servers_edits_take_the_files_line_endings_and_indentation() => Cases.All(
+        ("A six space files line put back a level is written as the server wrote it", A_six_space_files_line_put_back_a_level_is_written_as_the_server_wrote_it),
+        ("Edits that write what the file has in its line breaks and indentation come to nothing", Edits_that_write_what_the_file_has_in_its_line_breaks_and_indentation_come_to_nothing));
+
+    private void A_six_space_files_line_put_back_a_level_is_written_as_the_server_wrote_it()
     {
         TextSnapshot text = TextSnapshot.From(Sixes);
         int ragged = Sixes.IndexOf("                  return", StringComparison.Ordinal);
@@ -29,8 +33,7 @@ public class ServerEditsFitTests
         Assert.Equal(formatted, text.Apply(Fitted(text, "\n", SixSpaces, broken)).ToString());
     }
 
-    [Fact]
-    public void Edits_that_write_what_the_file_has_in_its_line_breaks_and_indentation_come_to_nothing()
+    private void Edits_that_write_what_the_file_has_in_its_line_breaks_and_indentation_come_to_nothing()
     {
         TextSnapshot sixes = TextSnapshot.From(Sixes);
         int indent = Sixes.IndexOf("      public", StringComparison.Ordinal);

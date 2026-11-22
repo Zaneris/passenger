@@ -8,22 +8,30 @@ namespace Passenger.UnitTests.Editor;
 /// and a drag as Alt-click's Quick Evaluate shares Alt-drag's column.</summary>
 public class MouseShortcutTests
 {
-    [Theory]
-    [InlineData("alt button1")]
-    [InlineData("meta shift button1")]
-    [InlineData("control button2")]
-    [InlineData("button4")]
-    [InlineData("alt button1 doubleClick")]
-    [InlineData("meta control alt shift button5 doubleClick")]
-    public void A_mouse_shortcut_reads_back_as_it_is_written(string written)
+    [Fact]
+    public void A_mouse_shortcut_reads_back_as_written_and_is_shown_and_given_as_menus_name_it() => Cases.All(
+        ("A mouse shortcut reads back as it is written", A_mouse_shortcut_reads_back_as_it_is_written),
+        ("A mouse shortcut is shown by its modifiers button and clicks", A_mouse_shortcut_is_shown_by_its_modifiers_button_and_clicks),
+        ("A click and a drag share a gesture where two clicks cannot", A_click_and_a_drag_share_a_gesture_where_two_clicks_cannot),
+        ("An action set from a persons keymap has exactly its listed gestures and takes one from another click", An_action_set_from_a_persons_keymap_has_exactly_its_listed_gestures_and_takes_one_from_another_click),
+        ("A double click runs the one clicks action only where the keymap gives it none of its own", A_double_click_runs_the_one_clicks_action_only_where_the_keymap_gives_it_none_of_its_own));
+
+    private void A_mouse_shortcut_reads_back_as_it_is_written() => Cases.Each<string>(
+    [
+        "alt button1",
+        "meta shift button1",
+        "control button2",
+        "button4",
+        "alt button1 doubleClick",
+        "meta control alt shift button5 doubleClick",
+    ], written =>
     {
         MouseShortcut gesture = MouseShortcut.Parse(written);
         Assert.Equal(written, gesture.Notation());
         Assert.Equal(gesture, MouseShortcut.Parse(gesture.Notation()));
-    }
+    });
 
-    [Fact]
-    public void A_mouse_shortcut_is_shown_by_its_modifiers_button_and_clicks()
+    private void A_mouse_shortcut_is_shown_by_its_modifiers_button_and_clicks()
     {
         bool mac = OperatingSystem.IsMacOS();
         Assert.Equal(mac ? "⌥Click" : "Alt+Click", MouseShortcut.Parse("alt button1").Display());
@@ -34,8 +42,7 @@ public class MouseShortcutTests
         Assert.Equal("Forward Button Double-Click", MouseShortcut.Parse("button5 doubleClick").Display());
     }
 
-    [Fact]
-    public void A_click_and_a_drag_share_a_gesture_where_two_clicks_cannot()
+    private void A_click_and_a_drag_share_a_gesture_where_two_clicks_cannot()
     {
         Keymap keymap = new Keymap("shared").Bind(EditorActions.ColumnSelectionDrag, "alt button1").Bind("quick", "alt button1");
         MouseShortcut alt = MouseShortcut.Parse("alt button1");
@@ -47,8 +54,7 @@ public class MouseShortcutTests
             "Another drag given Alt-click was not told it takes it from the drag that has it");
     }
 
-    [Fact]
-    public void An_action_set_from_a_persons_keymap_has_exactly_its_listed_gestures_and_takes_one_from_another_click()
+    private void An_action_set_from_a_persons_keymap_has_exactly_its_listed_gestures_and_takes_one_from_another_click()
     {
         Keymap keymap = new Keymap("set")
             .Bind("declaration", "F12", "meta button1")
@@ -67,8 +73,7 @@ public class MouseShortcutTests
         Assert.True(keymap.MouseShortcutsFor("split").Count == 0, "Split kept gestures its list no longer named");
     }
 
-    [Fact]
-    public void A_double_click_runs_the_one_clicks_action_only_where_the_keymap_gives_it_none_of_its_own()
+    private void A_double_click_runs_the_one_clicks_action_only_where_the_keymap_gives_it_none_of_its_own()
     {
         Keymap keymap = new Keymap("clicks").Bind("back", "button4").Bind("open", "alt button1").Bind("split", "alt button1 doubleClick");
         Assert.Equal("back", keymap.ActionForAnyClick(new MouseShortcut(MouseButton.XButton1, KeyModifiers.None, 2)));
