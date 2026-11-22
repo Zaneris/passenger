@@ -71,6 +71,8 @@ public sealed class GodotAddonTests : IDisposable
 
             private bool ending;
 
+            private long spun;
+
             public override void _Ready()
             {
                 int answer = 6 * 7;
@@ -97,6 +99,7 @@ public sealed class GodotAddonTests : IDisposable
             public override void _Process(double delta)
             {
                 frames++;
+                Spin();
                 // The instance asked to end, among several Godot's Play starts, quits once the test says so.
                 if (ending && System.IO.File.Exists(ProjectSettings.GlobalizePath("res://end.txt")))
                 {
@@ -107,6 +110,17 @@ public sealed class GodotAddonTests : IDisposable
                 {
                     System.IO.File.WriteAllText(ProjectSettings.GlobalizePath("res://pressed.txt"), "pressed");
                 }
+            }
+
+            // A loop that calls nothing, where the profiler's sampler can stop the game, so its profile holds the game's own C#.
+            private void Spin()
+            {
+                long sum = 0;
+                for (int i = 0; i < 2000000; i++)
+                {
+                    sum += i ^ frames;
+                }
+                spun = sum;
             }
         }
 
@@ -540,8 +554,9 @@ public sealed class GodotAddonTests : IDisposable
             Ui.WaitFor(() => window.Profiling?.Game is { } recording && recording.Count > 30, () => $"Godot's frames of the relayed game to come ({window.Profiling?.Game?.Count ?? 0}; Godot said: {Said()})",
                 TimeSpan.FromMinutes(1));
             Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the relayed game's snapshot", TimeSpan.FromMinutes(2));
-            Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 30, Samples: > 0 },
-                $"The relayed game's profile lacks Godot's frames or its samples: {read.Message}, {read.Snapshot?.GameFrames.Count} frames, {read.Snapshot?.Samples} samples");
+            Assert.True(read.Snapshot is { Game: not null, GameFrames.Count: > 30 } snapshot && snapshot.HotSpots.Any(h => h.Name.StartsWith("Main.Spin", StringComparison.Ordinal) && h.Self > 0),
+                $"The relayed game's profile lacks Godot's frames or the game's own C#: {read.Message}, {read.Snapshot?.GameFrames.Count} frames, sampled "
+                + string.Join("; ", read.Snapshot?.HotSpots.Take(8).Select(h => $"{h.Name} {h.Self}/{h.Total}") ?? []));
             TestFolders.Write(folder, "stop.txt", "stop\n");
             Ui.WaitFor(() => window.Session.Games.Count == 0, () => $"the game to end with Godot's Stop ({Games(window)}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
         }
