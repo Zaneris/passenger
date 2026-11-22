@@ -30,6 +30,13 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `SoundCuesTests`' `A_command_failing_in_a_shell_plays_its_cue_once_and_Read_as_Text_reads_the_last_command_by_its_marks(kind: "pwsh")`,
+  CI 44970786971 to 44995132904 (Linux), and `Debugging.SyntheticVariablesTests`'
+  `A_step_out_lists_what_the_method_stepped_out_of_returned`, CI 44968934038 (Linux gate shard 2), a class run beside the
+  pwsh case, which passed 10 ms before: "left programs' runtime files … clr-debug-pipe-…, dotnet-diagnostic-…-socket".
+  **The IDE**: a terminal kills its shell as it closes, and PowerShell, a .NET program, killed takes none of its runtime
+  files away. The terminal now takes them as it ends its shell (f89230392, #2103); neither the Mac nor the Linux VM has
+  PowerShell, so the case is left to CI.
 - `DebuggerTests`' `A_debugger_killed_while_its_program_is_paused_takes_the_program_with_it`, CI 44989932645 and
   44995132904 (Linux report shard 2, macOS report shard 3): "left programs' runtime files … dotnet-diagnostic-…-socket,
   clr-debug-pipe-…-in, -out". **A race in the IDE**: the files were the debug adapter's, which the test kills a moment
