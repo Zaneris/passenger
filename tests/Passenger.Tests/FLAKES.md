@@ -86,6 +86,17 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-21
 
+- `McpAspireStandInTests`' `An_agent_reads_a_services_request_duration_through_telemetry_metrics`, CI 44962354408
+  (Windows, report shard 1, at 85366e457): "The agent was not told the web service's request duration", its last reading
+  hearing web idle with no ASP.NET Core instrument, and "web answered 0 requests" though web's console showed its one
+  request answered, in 5,184 ms beside Kestrel's word that its thread pool was starved. **The test waited wrong**: its
+  loop of requests ended for good at the first one slower than its client's 5 s, whose timeout, a cancellation, passed a
+  catch that took only the test's own stop, so web was sent nothing more while the agent read it, and a reading hears
+  only requests ended while it listens. It sends the next request past a slow one, and its stand-in for DCP reads the
+  notifications it subscribes to, which unread filled their socket once web logged every request, the IDE then ending
+  the AppHost's sessions (web killed 33.5 s in on the Windows VM) (ac125bd68). The run before's "took no session in
+  10 s (… answered another request at once)" (CI 44953680429, below) is now asked once more by the IDE wherever the port
+  answers at once after, saying so (a2f61982f, #2094).
 - `MauiAndroidTests`' `A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree`,
   CI 44970786971 (Linux, report shard 1, the shard #2095 sets up Android's emulator for): it skipped, "No Android device
   is connected and no emulator is made", and failed for "left programs' runtime files … dotnet-diagnostic-…-socket".
