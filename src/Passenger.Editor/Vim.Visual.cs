@@ -475,8 +475,8 @@ public sealed partial class Vim
             return;
         }
         Region r = regions[Math.Clamp(visualPrimary, 0, regions.Count - 1)];
-        view.SetMark('<', Math.Min(r.Low, text.Length));
-        view.SetMark('>', Math.Min(r.High, text.Length));
+        view.SetMark('<', Math.Min(r.Low, text.Length), text);
+        view.SetMark('>', Math.Min(r.High, text.Length), text);
         lastVisual = (Mode, r.Cursor < r.Anchor, blockColumns);
     }
 
@@ -563,6 +563,8 @@ public sealed partial class Vim
             }
             if (moved is not { } reached)
             {
+                // A $ that cannot go its count of lines still aims at the line's end.
+                visualAims[i] = command.Name == "$" && !block ? int.MaxValue : visualAims[i];
                 continue;
             }
             // Past the last line a visual cursor stands at its end, after its last character.

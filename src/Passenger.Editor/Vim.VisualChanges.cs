@@ -312,7 +312,7 @@ public sealed partial class Vim
                 bool afterFirst = above && keptBlockLeft != 0 && anchorLine.Length > 0;
                 int place = !after ? (above ? r.Cursor : anchorLine.Start)
                     : above ? (afterFirst ? TextNavigation.NextGrapheme(text, anchorLine.Start) : anchorLine.Start)
-                    : aim == int.MaxValue ? LastCharOf(text, r.Cursor)
+                    : aim == int.MaxValue ? Settled(text, r.Cursor, breakEnds)
                     : onIt ? Settled(text, cursor, breakEnds)
                     : Math.Min(CharEnd(text, r.Cursor), VimMotions.LineOf(text, r.Cursor).End);
                 inserts.Add(Selection.At(place));

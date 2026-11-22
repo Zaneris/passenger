@@ -281,7 +281,7 @@ public sealed partial class Vim
     private VimResult Jumped(TextSnapshot text, SelectionSet selections, IVimView view, int to)
     {
         int from = selections.Primary.Caret;
-        view.SetMark('\'', from);
+        view.SetMark('\'', from, text);
         return new VimResult(true, SelectionSet.Single(Settled(text, to, breakEnds))) { JumpedFrom = from };
     }
 

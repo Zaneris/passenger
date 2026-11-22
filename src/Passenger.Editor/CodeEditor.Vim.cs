@@ -496,7 +496,10 @@ public sealed partial class CodeEditor
     private sealed class EditorVimView(CodeEditor editor) : IVimView
     {
         /// <summary>Each document's marks, held by anchors so edits carry them, shared by every editor showing it.</summary>
-        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextDocument, Dictionary<char, Anchor>> Marks = new();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextDocument, Dictionary<char, HeldMark>> Marks = new();
+
+        /// <summary>A mark's character and its line's start, and the column it was set in (<see cref="VimMarks.Place"/>).</summary>
+        private sealed record HeldMark(Anchor At, Anchor LineStart, int Column);
 
         public IndentOptions Indent => editor.Indent;
 
@@ -521,25 +524,25 @@ public sealed partial class CodeEditor
         }
 
         public int? Mark(char name, TextSnapshot text) =>
-            Marks.TryGetValue(editor.document, out Dictionary<char, Anchor>? held) && held.TryGetValue(name, out Anchor? anchor) && anchor.IsLive
-                ? Math.Min(anchor.Offset, text.Length)
+            Marks.TryGetValue(editor.document, out Dictionary<char, HeldMark>? held) && held.TryGetValue(name, out HeldMark? mark) && mark.At.IsLive
+                ? VimMarks.Place(text, mark.At.Offset, mark.LineStart.Offset, mark.Column)
                 : null;
 
-        public void SetMark(char name, int offset)
+        public void SetMark(char name, int offset, TextSnapshot text)
         {
-            Dictionary<char, Anchor> held = Marks.GetOrCreateValue(editor.document);
-            if (held.TryGetValue(name, out Anchor? before))
-            {
-                before.Remove();
-            }
-            held[name] = editor.document.AnchorAt(Math.Clamp(offset, 0, editor.document.Snapshot.Length), AnchorGravity.Before);
+            EraseMark(name);
+            int at = Math.Clamp(offset, 0, editor.document.Snapshot.Length);
+            int lineStart = VimMotions.LineOf(editor.document.Snapshot, at).Start;
+            Marks.GetOrCreateValue(editor.document)[name] = new HeldMark(
+                editor.document.AnchorAt(at, AnchorGravity.Before), editor.document.AnchorAt(lineStart, AnchorGravity.Before), at - lineStart);
         }
 
         public void EraseMark(char name)
         {
-            if (Marks.TryGetValue(editor.document, out Dictionary<char, Anchor>? held) && held.Remove(name, out Anchor? anchor))
+            if (Marks.TryGetValue(editor.document, out Dictionary<char, HeldMark>? held) && held.Remove(name, out HeldMark? mark))
             {
-                anchor.Remove();
+                mark.At.Remove();
+                mark.LineStart.Remove();
             }
         }
 

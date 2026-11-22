@@ -401,14 +401,14 @@ public sealed partial class Vim
     }
 
     /// <summary>m: the mark named set at the caret; ' and ` set the place '' goes back to.</summary>
-    private VimResult SetMark(Command command, SelectionSet selections, IVimView view)
+    private VimResult SetMark(Command command, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         char name = command.Argument![0];
         if (!(char.IsAsciiLetter(name) || name is '\'' or '`' or '<' or '>' or '[' or ']'))
         {
             return VimResult.Held;
         }
-        view.SetMark(name == '`' ? '\'' : name, selections.Primary.Caret);
+        view.SetMark(name == '`' ? '\'' : name, selections.Primary.Caret, text);
         return new VimResult(true, selections);
     }
 }

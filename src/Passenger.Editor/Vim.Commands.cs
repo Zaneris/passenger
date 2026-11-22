@@ -235,7 +235,7 @@ public sealed partial class Vim
             case "q" or "@":
                 return Macro(command);
             case "m":
-                return SetMark(command, selections, view);
+                return SetMark(command, text, selections, view);
             case VimKeys.CtrlO:
                 return Asked(VimRequestKind.Older) with { Request = new VimRequest(VimRequestKind.Older, Count: n) };
             case VimKeys.CtrlI or VimKeys.Tab:
@@ -341,7 +341,7 @@ public sealed partial class Vim
         int from = selections.Primary.Caret;
         if (Jumping.Contains(command.Name) && moved.Primary.Caret != from)
         {
-            view.SetMark('\'', from);
+            view.SetMark('\'', from, text);
             result = result with { JumpedFrom = from };
         }
         return result;

@@ -46,8 +46,8 @@ public interface IVimView
     /// set; null where it was never set.</summary>
     int? Mark(char name, TextSnapshot text);
 
-    /// <summary>Sets the mark <paramref name="name"/> at an offset of the text shown.</summary>
-    void SetMark(char name, int offset);
+    /// <summary>Sets the mark <paramref name="name"/> at an offset of the text shown, <paramref name="text"/>.</summary>
+    void SetMark(char name, int offset, TextSnapshot text);
 
     /// <summary>Takes the mark <paramref name="name"/> away, as a delete of its line does; nothing where it is not set.</summary>
     void EraseMark(char name);
@@ -57,7 +57,9 @@ public interface IVimView
 /// host without an editor.</summary>
 public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", MarkupKind markup = MarkupKind.None) : IVimView
 {
-    private readonly Dictionary<char, int> marks = [];
+    /// <summary>Each mark's character and the start of its line, carried through edits (<see cref="Follow"/>), and the
+    /// column it was set in.</summary>
+    private readonly Dictionary<char, (int At, int LineStart, int Column)> marks = [];
 
     public string? LineComment { get; init; }
 
@@ -93,9 +95,13 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
         };
     }
 
-    public int? Mark(char name, TextSnapshot text) => marks.TryGetValue(name, out int at) ? Math.Min(at, text.Length) : null;
+    public int? Mark(char name, TextSnapshot text) => marks.TryGetValue(name, out (int At, int LineStart, int Column) held) ? VimMarks.Place(text, held.At, held.LineStart, held.Column) : null;
 
-    public void SetMark(char name, int offset) => marks[name] = offset;
+    public void SetMark(char name, int offset, TextSnapshot text)
+    {
+        int lineStart = VimMotions.LineOf(text, Math.Min(offset, text.Length)).Start;
+        marks[name] = (offset, lineStart, offset - lineStart);
+    }
 
     public void EraseMark(char name) => marks.Remove(name);
 
@@ -105,8 +111,24 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
     {
         foreach (char name in marks.Keys.ToList())
         {
-            marks[name] = TextEditing.MapOffset(marks[name], edits, afterInsertions: false);
+            (int at, int lineStart, int column) = marks[name];
+            marks[name] = (TextEditing.MapOffset(at, edits, afterInsertions: false), TextEditing.MapOffset(lineStart, edits, afterInsertions: false), column);
         }
+    }
+}
+
+/// <summary>Where Vim keeps a mark: on the line its character goes to, in the column it was set in whatever is put or
+/// taken before it on that line, but carried along when that line is joined to the one above.</summary>
+internal static class VimMarks
+{
+    /// <summary>A mark's place from its character's offset and its line's start, each carried through the edits since it
+    /// was set (a line's start before text put there), and the column it was set in; never past its line's end.</summary>
+    public static int Place(TextSnapshot text, int at, int lineStart, int column)
+    {
+        at = Math.Min(at, text.Length);
+        LineSpan line = VimMotions.LineOf(text, at);
+        int from = VimMotions.LineOf(text, Math.Min(lineStart, text.Length)).Line == line.Line ? Math.Min(lineStart, text.Length) : line.Start;
+        return Math.Min(from + column, line.End);
     }
 }
 

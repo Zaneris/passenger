@@ -207,7 +207,10 @@ public sealed partial class VimTests
         ($"( and ) about a paragraph opened by a sentence's end; {ToFix}",
             (vimCase, _, passenger) => vimCase.Keys.Any(key => key is "(" or ")") && passenger.Seen.Contains(OpenedByAnEnd)),
         ($"Visual block mode's corners: a block over a line's last character, its I and A, ~ and J after o; {ToFix}", (vimCase, _, _) => vimCase.Uses(Block)),
-        ($"I and A over a visual stretch by characters or lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(VisualInsert)),
+        ($"A over a visual stretch by characters or lines after another visual operator, which Vim's places by where that "
+            + $"operator's stretch began; {ToFix}",
+            (vimCase, _, _) => vimCase.Commands.Where((command, at) => command.Uses.Contains(VisualInsert)
+                && vimCase.Commands.Take(at).Any(before => before.Keys[0] is "v" or "V" or VimKeys.CtrlV && !before.Uses.Contains(LeftVisual))).Any()),
     ];
 
     /// <summary>Lines with the empty ones set aside.</summary>
