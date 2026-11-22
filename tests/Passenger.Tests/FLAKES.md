@@ -30,6 +30,20 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `GodotTuneTests`' `A_tuned_value_reaches_the_game_and_is_kept_where_asked`, CI 45047787920 (Linux report shard 3), at
+  1ba3ef0e1, its second step, and CI 44984656678 (Windows gate shard 2), its first: "Waited 180 s for the colour picker
+  over Tint's swatch". **A race in the IDE**: the Live Visual Tree showed a Godot game's monitors' line only as the first
+  came, a second after the game connected, pushing the tree and the properties under it down 21 points, and a press
+  whose button moves before its release opens nothing; the runners reached the swatch's click about then. A probe
+  holding the click across the line's coming opened nothing on the Mac. The line holds its room from the game's start,
+  saying its monitors are coming (3528dd5c7); the test passed on the Mac and the Linux VM.
+- `GodotAddonTests`' `The_addon_plays_debugs_and_relays_godots_editor_games`, CI 45047787920 (macOS report shard 4, in
+  the gate's job 1), at 1ba3ef0e1, and CI 44989932645 (macOS gate shard 2): "The relayed game's profile lacks Godot's
+  frames or its samples: Snapshot of process 66198: 0 samples, … 37 frames, 0 samples". **The test**: its game ran a few
+  microseconds of C# a frame at some 3,000 frames a second, so the third of a second recorded held 12 samples on the
+  Mac, two of them the game's own and the rest the profiling session's start, against a runner's sampler catching
+  several times fewer; the game spins in a loop that calls nothing each frame (102 samples of it on the Mac) and the
+  test holds the profile to that C# (296358317); it passed on the Mac and the Linux VM.
 - `HomeDotnetTests`' `The_dotnet_a_global_json_asks_for_in_the_home_folder_or_its_paths_is_the_one_a_folder_uses`, CI
   45041101576 (macOS report shard 3, on the image with Xcode 27, as its deal began just after the simulator classes),
   at 27115546e: "find_symbol failed: ... Passenger waited 4 minutes for the C# language server to restore Lib, which has
