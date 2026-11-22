@@ -117,8 +117,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
     /// <summary>The Avalonia preview: a window drawn from the last build following its text as it is typed and styles
     /// as their PreviewWith; the caret's element outlined and a click selecting its start tag; a phone's and a tablet's
-    /// size beside the design size; an Avalonia 11 app's previewer found in its packages with obj and bin moved; and,
-    /// in the XAML workspace, what the caret's element sets itself.</summary>
+    /// size beside the design size; an Avalonia 11 app's previewer found in its packages with obj and bin moved; in the
+    /// XAML workspace, what the caret's element sets itself; and a shared library's view drawn in its desktop head.</summary>
     [AvaloniaFact]
     public void The_avalonia_preview_draws_the_window_follows_the_caret_and_sizes_and_shows_what_an_element_sets()
     {
@@ -127,6 +127,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Flow.StepApart("an Avalonia preview draws its root at a phone's and a tablet's size beside its design size", () => new XamlTests(app), t => t.An_avalonia_preview_draws_its_root_at_a_phones_and_a_tablets_size_beside_its_design_size());
         Flow.StepApart("an app on Avalonia 11 with its obj and bin folders moved previews from its package's previewer", () => new XamlTests(app), t => t.An_app_on_Avalonia_11_with_its_obj_and_bin_folders_moved_previews_from_its_packages_previewer());
         Flow.StepApart("in the XAML workspace the preview shows what the caret's element sets itself while no app runs", () => new XamlTests(app), t => t.In_the_xaml_workspace_the_preview_shows_what_the_carets_element_sets_itself_while_no_app_runs());
+        Flow.Step("a shared library's view previews in the desktop head that runs it, once Build for XAML Preview built that head", XamlLibraryPreviewTests.A_shared_librarys_view_previews_in_the_desktop_head_that_runs_it);
     }
 
     /// <summary>An Avalonia previewer's life: sent nothing until its session started; an edit's preview settling on its

@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
@@ -10,11 +9,11 @@ namespace Passenger.Tests;
 /// <summary>A view of Avalonia's cross-platform solution (<c>dotnet new avalonia.xplat</c>, its desktop head and shared
 /// library as the template makes them), whose XAML lives in a library with no runtime configuration of its own, previews
 /// as an app's does: drawn in the desktop head that runs it. The preview says to build that head, Build for XAML Preview
-/// builds it, and the view is drawn at its design size, then at a phone's.</summary>
-public sealed class XamlLibraryPreviewTests
+/// builds it, and the view is drawn at its design size, then at a phone's. A step of <see cref="XamlTests"/>' preview
+/// flow.</summary>
+internal static class XamlLibraryPreviewTests
 {
-    [AvaloniaFact]
-    public void A_shared_librarys_view_previews_in_the_desktop_head_that_runs_it()
+    public static void A_shared_librarys_view_previews_in_the_desktop_head_that_runs_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("avalonia-xplat-preview"));
         Ui.AwaitPumped(Waiting.Apart(() => AvaloniaApp.CreateCrossPlatformAsync(folder, "XApp")), "dotnet new avalonia.xplat", TimeSpan.FromMinutes(6));

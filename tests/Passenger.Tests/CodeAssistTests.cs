@@ -3333,13 +3333,23 @@ public sealed class CodeAssistBytesTests : IClassFixture<CodeAssistTests.Project
         project.Reset();
     }
 
+    /// <summary>C#'s longest answers: a completion list costs the UI thread little of its reading, and ten thousand usages
+    /// and four thousand implementations are listed whole.</summary>
+    [AvaloniaFact]
+    public void Csharps_longest_answers_are_read_off_the_UI_thread_and_listed_whole()
+    {
+        Flow.StepApart("a statement's completion list is read off the UI thread", () => new CodeAssistBytesTests(project),
+            t => t.A_statements_completion_list_is_read_off_the_UI_thread());
+        Flow.StepApart("Find Usages lists ten thousand usages and Derived Symbols four thousand implementations", () => new CodeAssistResponsivenessTests(project),
+            t => t.Find_usages_lists_ten_thousand_usages_and_derived_symbols_four_thousand_implementations());
+    }
+
     /// <summary>The server's completion list is read where its answer arrives, never on the UI thread: a list of
     /// hundreds more items (a file with the usings a project's implicit ones bring, against one with none) costs the UI
     /// thread, from the key to the list open, less than a third of what reading those items takes, counted rather than
     /// timed. The window starts a server of its own: a warm server, once a test had it index the types of namespaces not
     /// imported, lists them whole in both files, which leaves the two lists near enough alike.</summary>
-    [AvaloniaFact]
-    public void A_statements_completion_list_is_read_off_the_UI_thread()
+    private void A_statements_completion_list_is_read_off_the_UI_thread()
     {
         string bare = project.PathOf("Bare.cs");
         string used = project.PathOf("Used.cs");
@@ -3414,8 +3424,8 @@ public sealed class CodeAssistBytesTests : IClassFixture<CodeAssistTests.Project
 }
 
 /// <summary>The language server's longest lists, on the code help's project with thousands of usages and implementations
-/// written into it.</summary>
-public sealed class CodeAssistResponsivenessTests : IClassFixture<CodeAssistTests.Project>
+/// written into it: a step of <see cref="CodeAssistBytesTests"/>' flow.</summary>
+public sealed class CodeAssistResponsivenessTests
 {
     private readonly CodeAssistTests.Project project;
 
@@ -3427,8 +3437,7 @@ public sealed class CodeAssistResponsivenessTests : IClassFixture<CodeAssistTest
 
     /// <summary>Find Usages lists ten thousand usages and Derived Symbols four thousand implementations, each with its line
     /// of code read from its closed file. Both lists' files are written at once, so one server loads them.</summary>
-    [AvaloniaFact]
-    public void Find_usages_lists_ten_thousand_usages_and_derived_symbols_four_thousand_implementations()
+    internal void Find_usages_lists_ten_thousand_usages_and_derived_symbols_four_thousand_implementations()
     {
         for (int file = 0; file < 4; file++)
         {
