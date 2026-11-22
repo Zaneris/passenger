@@ -1,6 +1,8 @@
 using System.Text;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Workspace;
@@ -93,8 +95,9 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
         window.Close();
     }
 
-    /// <summary>What a statement's ';' typed on a new line of its own in Last() allocates on the UI thread from its change,
-    /// and the most a frame does from then until it is laid out; the least of three rounds.</summary>
+    /// <summary>What a statement's ';' typed on a new line of its own in Last() allocates on the UI thread from its change
+    /// to the end of its handling, and the most a frame does from then until it is laid out, each frame the headless input
+    /// draws as it settles after the key taking its share of what that ran; the least of three rounds.</summary>
     private (long Key, long Frame) LaidOut(MainWindow window, string file)
     {
         window.OpenFile(project.PathOf(file));
@@ -111,14 +114,22 @@ public sealed class LongFileAssistTests : IClassFixture<LongFileAssistTests.Proj
             Ui.Settle();
             GC.Collect(1, GCCollectionMode.Forced, blocking: true);
             GC.WaitForPendingFinalizers();
-            // From the key's change: the work come due before it runs as the key is sent.
+            // From the key's change to its handling's end: the work and frames the input runs before and after it are not the key's.
             long? changed = null;
+            long? handled = null;
             void Changed(object? sender, DocumentChangedEventArgs e) => changed ??= GC.GetAllocatedBytesForCurrentThread();
+            void Handled(object? sender, TextInputEventArgs e) => handled ??= GC.GetAllocatedBytesForCurrentThread();
             editor.Document.ChangedFirst += Changed;
+            window.AddHandler(InputElement.TextInputEvent, Handled, RoutingStrategies.Bubble, handledEventsToo: true);
+            long drawn = editor.Frames;
             window.KeyTextInput(";");
+            long settled = GC.GetAllocatedBytesForCurrentThread();
+            window.RemoveHandler(InputElement.TextInputEvent, Handled);
             editor.Document.ChangedFirst -= Changed;
-            long key = GC.GetAllocatedBytesForCurrentThread() - (changed ?? throw new InvalidOperationException($"The ';' typed in {file} changed nothing"));
-            long frame = 0;
+            long key = (handled ?? throw new InvalidOperationException($"The ';' typed in {file} was never handled"))
+                - (changed ?? throw new InvalidOperationException($"The ';' typed in {file} changed nothing"));
+            // The input settles after the key, drawing as many frames as the work come due asks: each its share.
+            long frame = (settled - handled.Value) / Math.Max(1, editor.Frames - drawn);
             Deadline limit = Deadline.In(TimeSpan.FromSeconds(60).Scaled());
             while ((Line() != "        int n = 1;" || BackgroundWork.Pending > 0) && !limit.Passed)
             {
