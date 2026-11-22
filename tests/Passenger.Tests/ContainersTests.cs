@@ -923,7 +923,7 @@ public sealed class ContainersTests
         {
             DotnetProcess program = new(7, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = name };
             Ui.Launched(window, window.AttachProfilerAsync(program), "the profiler to attach to the stand-in tools' program");
-            foreach (string said in (string[])["more than the 1073741824 the IDE reads of one", "does not hold together", "does not hold together"])
+            foreach (string said in (string[])[$"more than the {Numbers.Said(1L << 30)} the IDE reads of one", "does not hold together", "does not hold together"])
             {
                 Assert.Null(Ui.Await(window.MemorySnapshotAsync(), "the memory snapshot's answer"));
                 Assert.StartsWith("No memory snapshot: ", window.Status, StringComparison.Ordinal);
