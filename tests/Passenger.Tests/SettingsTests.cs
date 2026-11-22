@@ -23,9 +23,9 @@ namespace Passenger.Tests;
 /// settings opens on them again, and another Passenger's change to them is followed even where the watcher lost it.</summary>
 public sealed class SettingsTests : IDisposable
 {
-    /// <summary>Settings previews a change in every window and editor, applies it to the next window too, and a close
-    /// unapplied or Cancel puts back the last apply, as one flow, each step the check one test made in an instance of
-    /// its own.</summary>
+    /// <summary>Settings previews a change in every window and editor and applies it to the next window too, the font the
+    /// size actions and the zoom wheel it turns on change as well, and a close unapplied or Cancel puts back the last
+    /// apply, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void Settings_previews_applies_and_cancels_each_change_where_a_person_sees_it()
     {
@@ -33,6 +33,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("preview overlays other windows and external changes without undoing them on close", t => t.Preview_overlays_other_windows_and_external_changes_without_undoing_them_on_close());
         Flow.StepApart<SettingsTests>("soft wrap and the terminals size and cursor show as changed in settings and go back as it closes unapplied", t => t.Soft_wrap_and_the_terminals_size_and_cursor_show_as_changed_in_settings_and_go_back_as_it_closes_unapplied());
         Flow.StepApart<SettingsTests>("a change reaches every editor and the next window opens on it", t => t.A_change_reaches_every_editor_and_the_next_window_opens_on_it());
+        Flow.StepApart<SettingsTests>("the font size actions and the zoom wheel change the editor's font and the next window opens on it", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it());
         Flow.StepApart<SettingsTests>("terminal preferences apply to the view and are kept for the next window", t => t.Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window());
     }
 
@@ -662,6 +663,64 @@ public sealed class SettingsTests : IDisposable
         again.KeepSettings();
         Assert.Equal(17, again.Settings.EditorFontSize);
         Assert.Equal(17, again.EditorArea.CodeEditor.FontSize);
+        again.Close();
+    }
+
+    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it()
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        window.Show();
+        window.KeepSettings();
+        window.OpenFolder(folder);
+        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
+        window.OpenFile(Path.Combine(folder, "One.cs"));
+        Ui.Settle();
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Assert.Equal(13, editor.FontSize);
+
+        MenuEntry view = MainMenu.Build(window.Actions.All).Single(m => m.Title == "View");
+        MenuEntry active = view.Items!.Single(m => m.Title == "Active Editor");
+        Assert.Equal([AppActions.SoftWrap, null, AppActions.ShowWhitespaces, null, AppActions.IncreaseFontSize, AppActions.DecreaseFontSize, AppActions.ResetFontSize],
+            active.Items!.Select(i => i.Action));
+
+        Assert.True(window.RunFromMenu(AppActions.IncreaseFontSize));
+        Assert.Equal(14, editor.FontSize);
+        Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
+        Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
+        Assert.Equal(12, editor.FontSize);
+        Assert.True(window.RunFromMenu(AppActions.ResetFontSize));
+        Assert.Equal(13, editor.FontSize);
+
+        // Until Settings turns it on, the wheel with Cmd (Ctrl elsewhere) leaves the font as it is.
+        Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), window)!.Value;
+        RawInputModifiers zoom = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
+        window.MouseWheel(over, new Vector(0, 1), zoom);
+        Ui.Settle();
+        Assert.Equal(13, editor.FontSize);
+        SettingsDialog dialog = window.ShowSettings();
+        Ui.Settle();
+        dialog.Query = "mouse wheel";
+        Ui.Settle();
+        Assert.Equal([OperatingSystem.IsMacOS() ? "Change font size with ⌘Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel"], dialog.Shown);
+        dialog.Change(s => s with { WheelZoom = true });
+        dialog.Ok();
+        Ui.Settle();
+        for (int notch = 0; notch < 3; notch++)
+        {
+            window.MouseWheel(over, new Vector(0, 1), zoom);
+        }
+        window.MouseWheel(over, new Vector(0, -1), zoom);
+        Ui.Settle();
+        Assert.Equal(15, editor.FontSize);
+        Assert.Equal(15, window.Settings.EditorFontSize);
+        window.Close();
+
+        MainWindow again = new() { Width = 1200, Height = 800, StateFolder = settings };
+        again.Show();
+        again.KeepSettings();
+        Ui.Settle();
+        Assert.Equal(15, again.Settings.EditorFontSize);
+        Assert.Equal(15, again.EditorArea.CodeEditor.FontSize);
         again.Close();
     }
 

@@ -19,24 +19,22 @@ namespace Passenger.Tests;
 
 /// <summary>View, Active Editor, through the window: Soft-Wrap (a Markdown or text file opens wrapped, as Settings'
 /// masks say), each row from a word, the line's later rows from its indent, its number beside its first row only, and
-/// every key, click and mark finding the row it is on; Show Whitespaces' dots and arrows; and Increase, Decrease and
-/// Reset Font Size and Cmd+wheel (Ctrl+wheel elsewhere) changing the font Settings keeps.</summary>
+/// every key, click and mark finding the row it is on; and Show Whitespaces' dots and arrows.</summary>
+[SameOnEverySystem]
 public sealed class ActiveEditorTests : ActiveEditorFolders
 {
     /// <summary>Soft wrap: a Markdown file opens wrapped at the editor's width numbered by its first row, Down and Up
     /// go by rows and End and Home by IntelliJ's rules, a click on a wrapped row puts the caret on the character
-    /// clicked, a narrower window wraps again keeping the line at the top, folds and a breakpoint stay on their lines
-    /// among wrapped ones, and the font size actions and the zoom wheel change the editor's font for the next window
-    /// too.</summary>
+    /// clicked, a narrower window wraps again keeping the line at the top, and folds and a breakpoint stay on their
+    /// lines among wrapped ones.</summary>
     [AvaloniaFact]
-    public void Soft_wrap_wraps_at_the_editors_width_and_moves_clicks_folds_and_zooms_by_rows()
+    public void Soft_wrap_wraps_at_the_editors_width_and_moves_clicks_and_folds_by_rows()
     {
         Flow.StepApart<ActiveEditorTests>("a Markdown file opens wrapped at the editor's width each row from a word and its number by its first row only", t => t.A_Markdown_file_opens_wrapped_at_the_editors_width_each_row_from_a_word_and_its_number_by_its_first_row_only());
         Flow.StepApart<ActiveEditorTests>("down and Up go by rows End and Home by IntelliJ's rules and typing where a row wraps keeps the caret after it", t => t.Down_and_Up_go_by_rows_End_and_Home_by_IntelliJs_rules_and_typing_where_a_row_wraps_keeps_the_caret_after_it());
         Flow.StepApart<ActiveEditorTests>("a click on a wrapped row puts the caret on the character clicked and one past a row's end at that end", t => t.A_click_on_a_wrapped_row_puts_the_caret_on_the_character_clicked_and_one_past_a_rows_end_at_that_end());
         Flow.StepApart<ActiveEditorTests>("a narrower window wraps the text again at its width and keeps the line at the top", t => t.A_narrower_window_wraps_the_text_again_at_its_width_and_keeps_the_line_at_the_top());
         Flow.StepApart<ActiveEditorTests>("folding and a breakpoint stay on their lines with wrapped lines above and among them", t => t.Folding_and_a_breakpoint_stay_on_their_lines_with_wrapped_lines_above_and_among_them());
-        Flow.StepApart<ActiveEditorTests>("the font size actions and the zoom wheel change the editor's font and the next window opens on it", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it());
     }
 
     private void A_Markdown_file_opens_wrapped_at_the_editors_width_each_row_from_a_word_and_its_number_by_its_first_row_only()
@@ -279,64 +277,6 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.DoesNotContain(editor.FoldRegions, r => r.Folded);
         Assert.True(GutterBeside(window, editor, sum.Start).Contains(dot), "The breakpoint left its line's first row as the method unfolded.");
         window.Close();
-    }
-
-    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it()
-    {
-        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
-        window.Show();
-        window.KeepSettings();
-        window.OpenFolder(folder);
-        File.WriteAllText(Path.Combine(folder, "One.cs"), "class One { }\n");
-        window.OpenFile(Path.Combine(folder, "One.cs"));
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Assert.Equal(13, editor.FontSize);
-
-        MenuEntry view = MainMenu.Build(window.Actions.All).Single(m => m.Title == "View");
-        MenuEntry active = view.Items!.Single(m => m.Title == "Active Editor");
-        Assert.Equal([AppActions.SoftWrap, null, AppActions.ShowWhitespaces, null, AppActions.IncreaseFontSize, AppActions.DecreaseFontSize, AppActions.ResetFontSize],
-            active.Items!.Select(i => i.Action));
-
-        Assert.True(window.RunFromMenu(AppActions.IncreaseFontSize));
-        Assert.Equal(14, editor.FontSize);
-        Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
-        Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
-        Assert.Equal(12, editor.FontSize);
-        Assert.True(window.RunFromMenu(AppActions.ResetFontSize));
-        Assert.Equal(13, editor.FontSize);
-
-        // Until Settings turns it on, the wheel with Cmd (Ctrl elsewhere) leaves the font as it is.
-        Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), window)!.Value;
-        RawInputModifiers zoom = OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
-        window.MouseWheel(over, new Vector(0, 1), zoom);
-        Ui.Settle();
-        Assert.Equal(13, editor.FontSize);
-        SettingsDialog dialog = window.ShowSettings();
-        Ui.Settle();
-        dialog.Query = "mouse wheel";
-        Ui.Settle();
-        Assert.Equal([OperatingSystem.IsMacOS() ? "Change font size with ⌘Mouse Wheel" : "Change font size with Ctrl+Mouse Wheel"], dialog.Shown);
-        dialog.Change(s => s with { WheelZoom = true });
-        dialog.Ok();
-        Ui.Settle();
-        for (int notch = 0; notch < 3; notch++)
-        {
-            window.MouseWheel(over, new Vector(0, 1), zoom);
-        }
-        window.MouseWheel(over, new Vector(0, -1), zoom);
-        Ui.Settle();
-        Assert.Equal(15, editor.FontSize);
-        Assert.Equal(15, window.Settings.EditorFontSize);
-        window.Close();
-
-        MainWindow again = new() { Width = 1200, Height = 800, StateFolder = settings };
-        again.Show();
-        again.KeepSettings();
-        Ui.Settle();
-        Assert.Equal(15, again.Settings.EditorFontSize);
-        Assert.Equal(15, again.EditorArea.CodeEditor.FontSize);
-        again.Close();
     }
 }
 
