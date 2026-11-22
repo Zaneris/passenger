@@ -30,6 +30,26 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `HomeDotnetTests`' `The_dotnet_a_global_json_asks_for_in_the_home_folder_or_its_paths_is_the_one_a_folder_uses`, CI
+  45041101576 (macOS report shard 3, on the image with Xcode 27, as its deal began just after the simulator classes),
+  at 27115546e: "find_symbol failed: ... Passenger waited 4 minutes for the C# language server to restore Lib, which has
+  not come", the server's log saying "Could not find dotnet executable from PATH". **A race in the IDE**: an agent's
+  Passenger on a runtime apart from any dotnet, given launchd's bare PATH, started its language server ahead of its
+  window (`HeadStart`) before the window put the installation it found first on Passenger's PATH, and Roslyn's server
+  finds the dotnet it restores with on its PATH alone, never DOTNET_HOST_PATH, so its restore could not start and never
+  said it ended; the Mac lost that race in 2 of 2 starts. The server is given the folder's dotnet first on its PATH as
+  it starts (`ChildProcesses.FindingDotnet`) (cf7612a2d).
+- `ProjectWindowsTests`' `Solutions_open_in_windows_of_their_own_and_come_back_each_on_its_own_layout`, CI 45041101576
+  (macOS report shard 3), at 27115546e: "A start after the quit reopened .../beta-fd3f88fc and .../alpha-9cff842d, not
+  both solutions", at the second start after the system's quit. **A race in the IDE**: the start before reopened alpha
+  in its window and beta in a new one at once, and each was kept among the recent ones as opened when its folder's kept
+  state, read off the window's thread, landed, so beta, landing first, was kept as the older and the next start reopened
+  it first. An open is now kept as of when it was asked for, in the order asked (ab2800a77); not met on the Mac.
+- `GodotTests`' `A_debugged_and_profiled_game_ends_and_shows_its_tree`, CI 45041101576 (macOS report shard 3, alone), at
+  27115546e: "The call tree beside the GDScript names no time of the C# method the GDScript called". **The test**: the
+  C# method the GDScript calls spun a tenth of the game's own spin, 47 samples of it on the Mac against the runner's
+  sampler catching several times fewer, so a run there could catch none; it spins as long as the game's (806 samples on
+  the Mac), and the message names the C# functions sampled (6f4ab91c0).
 - `LongFileAssistTests`' `A_key_in_a_file_of_twenty_thousand_lines_costs_what_it_changed_…`, CI 45033982948 (Windows
   report shard 3) and 44984656678 (Windows gate shard 1): "A ';' allocated 144,008 bytes on the UI thread in a file of
   20,000 lines, against 76,896 in a short one: it read the file there" (156,424 against 75,272), and in 1 of 2 runs on
