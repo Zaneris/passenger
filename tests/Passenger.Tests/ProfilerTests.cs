@@ -92,7 +92,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
     /// on; a memory snapshot of a profiled program counts its heap by type and leaving the folder ends the run; Attach
     /// Profiler that cannot write its snapshot releases EventPipe and leaves the program running; Get Snapshot of a
     /// program whose runtime refuses the stop still reads the run; Attach Profiler profiles a program run in the
-    /// terminal and the app dotnet watch runs.</summary>
+    /// terminal and the app dotnet watch runs; a session started on a program is on once its start returns.</summary>
     [AvaloniaFact]
     public void Attach_Profiler_and_Get_Snapshot_take_a_running_program_and_let_it_go_running()
     {
@@ -121,6 +121,9 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             t.Attach_Profiler_profiles_the_program_run_in_the_terminal_and_the_app_dotnet_watch_runs();
             OpenWindows.CloseAll();
         });
+        Flow.Step("a session started to hear a program from its first moment has its providers on once its start returns",
+            () => Ui.AwaitPumped(Waiting.Apart(SessionStartTests.A_session_started_to_hear_a_program_from_its_first_moment_has_its_providers_on_once_its_start_returns),
+                "ten sessions started and stopped on this process", TimeSpan.FromMinutes(2)));
     }
 
     private void Profile_builds_and_runs_the_configuration_and_its_end_shows_the_snapshot()

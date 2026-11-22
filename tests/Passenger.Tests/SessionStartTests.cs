@@ -6,12 +6,11 @@ namespace Passenger.Tests;
 
 /// <summary>A session Passenger starts to hear a program from its first moment is on once its start returns, though the
 /// runtime may answer the start before it turns the session's providers on: what the program does from then is heard. The
-/// program here is the test's own process, whose provider of its own tells whether the session turned it on yet.</summary>
-[Collection(Alone.Name)]
-public sealed class SessionStartTests
+/// program here is the test's own process, whose provider of its own tells whether the session turned it on yet. A step of
+/// <see cref="ProfilerTests"/>' flow, which runs alone.</summary>
+internal static class SessionStartTests
 {
-    [Fact]
-    public async Task A_session_started_to_hear_a_program_from_its_first_moment_has_its_providers_on_once_its_start_returns()
+    internal static async Task A_session_started_to_hear_a_program_from_its_first_moment_has_its_providers_on_once_its_start_returns()
     {
         CancellationToken cancel = TestContext.Current.CancellationToken;
         using SessionMark mark = new();

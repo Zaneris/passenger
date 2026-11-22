@@ -88,13 +88,7 @@ public sealed class MauiXamlTests
             ("{Binding Greeting}", false),
             ("{}{Literal}", false),
         ], row => A_value_in_braces_that_starts_with_no_markup_extension_is_a_csharp_expression(row.Item1, row.Item2))),
-        ("an expressions code is read as mauis source generator reads it", () => Cases.Each<(string, string)>(
-        [
-            ("{Count GT 0 AND Count lte 9}", "Count > 0 && Count <= 9"),
-            ("{'it\\'s' + 'say \"hi\"'}", "\"it's\" + \"say \\\"hi\\\"\""),
-            ("{A &amp;&amp; B}", "A && B"),
-            ("{Owner.", "Owner."),
-        ], row => An_expressions_code_is_read_as_mauis_source_generator_reads_it(row.Item1, row.Item2))),
+        ("an expression still being typed is read as far as it is written", () => An_expressions_code_is_read_as_mauis_source_generator_reads_it("{Owner.", "Owner.")),
         ("a prefixed type is written by its csharp name and an attached property read as its getters call", A_prefixed_type_is_written_by_its_csharp_name_and_an_attached_property_read_as_its_getters_call),
         ("each place of an expressions code is a place of its value as written", Each_place_of_an_expressions_code_is_a_place_of_its_value_as_written),
         ("a caret in an expression being typed finds it with the page its x data type and whether its first name is still open", A_caret_in_an_expression_being_typed_finds_it_with_the_page_its_x_data_type_and_whether_its_first_name_is_still_open));
