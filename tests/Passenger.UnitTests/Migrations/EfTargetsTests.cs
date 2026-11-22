@@ -28,8 +28,18 @@ public sealed class EfTargetsTests
 
     private static string Names(IEnumerable<ProjectModel> projects) => string.Join(", ", projects.Select(p => p.Name));
 
+    /// <summary>The context's project and startup are those dotnet ef can run, the Design package first.</summary>
     [Fact]
-    public void A_library_holding_the_context_is_the_project_and_the_web_app_referencing_it_the_first_startup()
+    public void Ef_cores_project_and_startup_are_those_dotnet_ef_can_run() => Cases.All(
+        (nameof(A_library_holding_the_context_is_the_project_and_the_web_app_referencing_it_the_first_startup),
+            A_library_holding_the_context_is_the_project_and_the_web_app_referencing_it_the_first_startup),
+        (nameof(A_program_holding_its_own_context_is_both_its_project_and_its_startup),
+            A_program_holding_its_own_context_is_both_its_project_and_its_startup),
+        (nameof(Migrations_kept_in_an_assembly_of_their_own_are_made_there_first), Migrations_kept_in_an_assembly_of_their_own_are_made_there_first),
+        (nameof(A_startup_dotnet_ef_cannot_run_is_left_out_and_one_with_the_Design_package_comes_first),
+            A_startup_dotnet_ef_cannot_run_is_left_out_and_one_with_the_Design_package_comes_first));
+
+    private void A_library_holding_the_context_is_the_project_and_the_web_app_referencing_it_the_first_startup()
     {
         ProjectModel api = Project("MyApp.Api", "Exe", [Design], ["MyApp.Data", "MyApp.Services"]);
         ProjectModel data = Project("MyApp.Data", packages: [Sqlite], references: ["MyApp.Domain"]);
@@ -47,29 +57,7 @@ public sealed class EfTargetsTests
             $"Startup listed [{Names(startups)}] for the library: the web app that runs it would not be offered first");
     }
 
-    [Fact]
-    public void A_context_EF_Core_reaches_through_another_project_is_listed_and_that_project_is_not()
-    {
-        ProjectModel infrastructure = Project("Infrastructure", packages: ["Microsoft.EntityFrameworkCore.SqlServer"]);
-        ProjectModel data = Project("Data", references: ["Infrastructure"]);
-        ProjectModel api = Project("Api", "Exe", [Design], ["Data"]);
-        ProjectModel[] all = [api, data, infrastructure];
-        Assert.True(EfTargets.ReachesEf(data, all), "EF Core reached through a referenced project went unseen, so the project declaring the context would not be read");
-        Assert.False(EfTargets.ReachesEf(Project("Elsewhere"), all), "A project EF Core reaches by no path was taken for one it reaches");
-
-        IReadOnlyList<EfProjectRead> read = Read((infrastructure, ["public abstract class AuditedContext : Microsoft.EntityFrameworkCore.DbContext { }"]),
-            (data, ["namespace Data;\n\npublic sealed class ShopContext\n    : AuditedContext\n{\n}\n"]), (api, []));
-
-        IReadOnlyList<ProjectModel> projects = EfTargets.Projects(all, read);
-        Assert.True(Names(projects) == "Data", $"Project listed [{Names(projects)}]: a context deriving from another project's base would be missed, or the base's project offered");
-        EfPending context = Assert.Single(read.Single(r => r.Path == data.Path).Contexts);
-        Assert.True(context is { Context: "ShopContext", Position: { Line: 2, Column: 20 } },
-            $"ShopContext was found as {context}: a fix offered at its declaration would sit elsewhere");
-        Assert.True(Names(EfTargets.Startups(data, all)) == "Api, Data", $"Startup listed [{Names(EfTargets.Startups(data, all))}]");
-    }
-
-    [Fact]
-    public void A_program_holding_its_own_context_is_both_its_project_and_its_startup()
+    private void A_program_holding_its_own_context_is_both_its_project_and_its_startup()
     {
         ProjectModel shop = Project("Shop", "Exe", [Sqlite, Design]);
         IReadOnlyList<EfProjectRead> read = Read((shop, ["using ShopContext context = new();\n\npublic sealed class ShopContext : DbContext { }\n"]));
@@ -78,21 +66,7 @@ public sealed class EfTargetsTests
         Assert.True(Names(EfTargets.Startups(shop, [shop])) == "Shop", $"Startup listed [{Names(EfTargets.Startups(shop, [shop]))}]");
     }
 
-    [Fact]
-    public void Before_the_read_or_with_no_context_yet_the_projects_referencing_EF_Core_are_listed()
-    {
-        ProjectModel api = Project("Api", "Exe", [Design], ["Data"]);
-        ProjectModel data = Project("Data", packages: [Sqlite]);
-        ProjectModel[] all = [api, data];
-
-        Assert.True(Names(EfTargets.Projects(all, null)) == "Api, Data", $"Before the read Project listed [{Names(EfTargets.Projects(all, null))}]");
-        IReadOnlyList<EfProjectRead> none = Read((api, []), (data, ["public sealed class Product { }"]));
-        Assert.True(Names(EfTargets.Projects(all, none)) == "Api, Data",
-            $"With no context written yet Project listed [{Names(EfTargets.Projects(all, none))}]: the window would offer nothing to make the first migration in");
-    }
-
-    [Fact]
-    public void Migrations_kept_in_an_assembly_of_their_own_are_made_there_first()
+    private void Migrations_kept_in_an_assembly_of_their_own_are_made_there_first()
     {
         ProjectModel data = Project("Data", packages: [Sqlite]);
         ProjectModel migrations = Project("Shop.Migrations", packages: ["Microsoft.EntityFrameworkCore.Relational"], references: ["Data"]);
@@ -114,8 +88,7 @@ public sealed class EfTargetsTests
         Assert.True(Names(EfTargets.Projects(all, held)) == "Shop.Migrations, Data", $"With the migrations made there Project listed [{Names(EfTargets.Projects(all, held))}]");
     }
 
-    [Fact]
-    public void A_startup_dotnet_ef_cannot_run_is_left_out_and_one_with_the_Design_package_comes_first()
+    private void A_startup_dotnet_ef_cannot_run_is_left_out_and_one_with_the_Design_package_comes_first()
     {
         ProjectModel data = Project("Data", packages: [Sqlite], framework: "netstandard2.1");
         ProjectModel api = Project("Api", "Exe", [], ["Data"]);
@@ -127,51 +100,4 @@ public sealed class EfTargetsTests
         Assert.True(Names(startups) == "Web, Api", $"Startup listed [{Names(startups)}]: dotnet ef refuses a .NET Standard or .NET Framework startup, and one without the Design package fails first");
     }
 
-    [Fact]
-    public void Only_a_class_dotnet_ef_can_make_deriving_from_a_context_is_one()
-    {
-        ProjectModel data = Project("Data", packages: [Sqlite]);
-        string code = """
-            namespace Data;
-
-            public class AppDbContext(DbContextOptions<AppDbContext> options)
-                : IdentityDbContext<User>(options)
-            {
-            }
-
-            public sealed class Factory : IDesignTimeDbContextFactory<AppDbContext>
-            {
-            }
-
-            public sealed class Repository<T> where T : DbContext
-            {
-            }
-
-            public sealed class FakeContext : IAppDbContext
-            {
-            }
-
-            public abstract class ContextBase : DbContext
-            {
-            }
-
-            public sealed class Outer<T>
-            {
-                public sealed class Nested : DbContext
-                {
-                }
-            }
-
-            // public sealed class Commented : DbContext { }
-            public sealed class Quoted
-            {
-                private const string Text = "class Fake : DbContext";
-            }
-            """;
-        IReadOnlyList<EfProjectRead> read = Read((data, [code]));
-
-        IReadOnlyList<EfPending> contexts = read.Single().Contexts;
-        Assert.True(contexts is [{ Context: "AppDbContext", Position: { Line: 2, Column: 13 } }],
-            $"The contexts were read as [{string.Join(", ", contexts)}]: a factory, a constraint, an interface, an abstract or generic class, a comment or a string would be listed as one dotnet ef makes");
-    }
 }

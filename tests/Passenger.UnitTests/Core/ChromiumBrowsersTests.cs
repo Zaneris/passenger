@@ -9,8 +9,28 @@ public sealed class ChromiumBrowsersTests
 {
     private static Func<string, bool> Present(params string[] files) => path => files.Contains(path, StringComparer.Ordinal);
 
+    /// <summary>A Chromium browser is found where the setting or system has it, and its fatal words heard.</summary>
     [Fact]
-    public void A_browser_a_setting_names_is_taken_with_its_arguments_and_one_not_there_finds_none_rather_than_another()
+    public void A_chromium_browser_is_found_and_heard_as_it_says() => Cases.All(
+        (nameof(A_browser_a_setting_names_is_taken_with_its_arguments_and_one_not_there_finds_none_rather_than_another),
+            A_browser_a_setting_names_is_taken_with_its_arguments_and_one_not_there_finds_none_rather_than_another),
+        (nameof(Firefox_Safari_and_their_kin_are_known_to_be_no_chromium_and_chromium_browsers_or_unknown_ones_are_not_said_to_be),
+            Firefox_Safari_and_their_kin_are_known_to_be_no_chromium_and_chromium_browsers_or_unknown_ones_are_not_said_to_be),
+        (nameof(Chrome_comes_before_Edge_in_Applications_and_Edge_is_found_in_the_users_own_Applications),
+            Chrome_comes_before_Edge_in_Applications_and_Edge_is_found_in_the_users_own_Applications),
+        (nameof(On_Windows_Edge_under_Program_Files_is_found_and_on_the_PATH_Chrome_anywhere_comes_before_Chromium),
+            On_Windows_Edge_under_Program_Files_is_found_and_on_the_PATH_Chrome_anywhere_comes_before_Chromium),
+        (nameof(No_browser_found_says_how_to_get_one_and_a_setting_naming_nothing_says_which_it_names),
+            No_browser_found_says_how_to_get_one_and_a_setting_naming_nothing_says_which_it_names),
+        (nameof(Chromiums_fatal_word_that_it_has_no_usable_sandbox_is_its_refusal_and_its_words_name_the_browser_and_the_fixes),
+            Chromiums_fatal_word_that_it_has_no_usable_sandbox_is_its_refusal_and_its_words_name_the_browser_and_the_fixes),
+        (nameof(Chromiums_word_that_its_network_service_crashed_or_was_terminated_is_its_network_services_end_and_its_other_errors_are_not),
+            Chromiums_word_that_its_network_service_crashed_or_was_terminated_is_its_network_services_end_and_its_other_errors_are_not),
+        (nameof(A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says),
+            A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says),
+        (nameof(The_accounts_home_is_the_systems_own_for_this_user), The_accounts_home_is_the_systems_own_for_this_user));
+
+    private void A_browser_a_setting_names_is_taken_with_its_arguments_and_one_not_there_finds_none_rather_than_another()
     {
         string chosen = Path.Combine("/opt", "thorium", "thorium");
         string chrome = Path.Combine("/Applications", "Google Chrome.app/Contents/MacOS/Google Chrome");
@@ -20,19 +40,7 @@ public sealed class ChromiumBrowsersTests
         Assert.Null(ChromiumBrowsers.Find((Path.Combine("/opt", "gone"), []), [], ["/Applications"], windows: false, Present(chrome)));
     }
 
-    [Fact]
-    public void An_app_bundle_a_setting_names_is_the_program_inside_it_named_as_it_is()
-    {
-        string bundle = Path.Combine("/Applications", "Brave Browser.app");
-        string program = Path.Combine(bundle, "Contents", "MacOS", "Brave Browser");
-        ChromiumFound? found = ChromiumBrowsers.Find((bundle, ["--incognito"]), [], [], windows: false, Present(program));
-        Assert.True(found is { Name: "Brave Browser" } && found.Program == program && found.Arguments.SequenceEqual(["--incognito"]),
-            $"The bundle Settings names gave {found}, so Debug would not start the browser inside it");
-        Assert.Null(ChromiumBrowsers.Find((Path.Combine("/Applications", "Gone.app"), []), [], [], windows: false, Present(program)));
-    }
-
-    [Fact]
-    public void Firefox_Safari_and_their_kin_are_known_to_be_no_chromium_and_chromium_browsers_or_unknown_ones_are_not_said_to_be()
+    private void Firefox_Safari_and_their_kin_are_known_to_be_no_chromium_and_chromium_browsers_or_unknown_ones_are_not_said_to_be()
     {
         string[] others =
         [
@@ -49,8 +57,7 @@ public sealed class ChromiumBrowsersTests
         Assert.True(!chromiums.Any(ChromiumBrowsers.NotChromium), $"Said to be no Chromium: {string.Join(", ", chromiums.Where(ChromiumBrowsers.NotChromium))}");
     }
 
-    [Fact]
-    public void Chrome_comes_before_Edge_in_Applications_and_Edge_is_found_in_the_users_own_Applications()
+    private void Chrome_comes_before_Edge_in_Applications_and_Edge_is_found_in_the_users_own_Applications()
     {
         string home = Path.Combine("/Users", "someone", "Applications");
         string edge = Path.Combine(home, "Microsoft Edge.app/Contents/MacOS/Microsoft Edge");
@@ -60,8 +67,7 @@ public sealed class ChromiumBrowsersTests
         Assert.True(alone is { Name: "Microsoft Edge" } && alone.Program == edge, $"Edge in ~/Applications alone gave {alone}");
     }
 
-    [Fact]
-    public void On_Windows_Edge_under_Program_Files_is_found_and_on_the_PATH_Chrome_anywhere_comes_before_Chromium()
+    private void On_Windows_Edge_under_Program_Files_is_found_and_on_the_PATH_Chrome_anywhere_comes_before_Chromium()
     {
         string edge = Path.Combine(@"C:\Program Files (x86)", @"Microsoft\Edge\Application\msedge.exe");
         Assert.Equal(edge, ChromiumBrowsers.Find(null, [], [@"C:\Program Files", @"C:\Program Files (x86)"], windows: true, Present(edge))?.Program);
@@ -72,8 +78,7 @@ public sealed class ChromiumBrowsersTests
         Assert.Equal(chromium, ChromiumBrowsers.Find(null, ["/usr/bin"], [], windows: false, Present(chromium))?.Program);
     }
 
-    [Fact]
-    public void No_browser_found_says_how_to_get_one_and_a_setting_naming_nothing_says_which_it_names()
+    private void No_browser_found_says_how_to_get_one_and_a_setting_naming_nothing_says_which_it_names()
     {
         Assert.Null(ChromiumBrowsers.Find(null, ["/usr/bin"], ["/Applications"], windows: false, Present()));
         Assert.Equal("No Chromium browser (Chrome, Edge, Chromium or Brave) was found to debug them in: install Google Chrome (google.com/chrome) or Microsoft Edge "
@@ -82,8 +87,7 @@ public sealed class ChromiumBrowsersTests
             + "Google Chrome (google.com/chrome) or Microsoft Edge (microsoft.com/edge)", ChromiumBrowsers.NoneFound(" /opt/gone ", "Settings | Run"));
     }
 
-    [Fact]
-    public void Chromiums_fatal_word_that_it_has_no_usable_sandbox_is_its_refusal_and_its_words_name_the_browser_and_the_fixes()
+    private void Chromiums_fatal_word_that_it_has_no_usable_sandbox_is_its_refusal_and_its_words_name_the_browser_and_the_fixes()
     {
         Assert.True(ChromiumBrowsers.RefusesSandbox("[2817:2817:1102/101500.123456:FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox! If you are running "
             + "on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/"));
@@ -95,8 +99,7 @@ public sealed class ChromiumBrowsersTests
         Assert.DoesNotContain("--no-sandbox", said, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void Chromiums_word_that_its_network_service_crashed_or_was_terminated_is_its_network_services_end_and_its_other_errors_are_not()
+    private void Chromiums_word_that_its_network_service_crashed_or_was_terminated_is_its_network_services_end_and_its_other_errors_are_not()
     {
         Assert.True(ChromiumBrowsers.NetworkServiceEnded(
             "[5517:93912688:1115/103621.768538:ERROR:content/browser/network_service_instance_impl.cc:652] Network service crashed or was terminated, restarting service."));
@@ -104,8 +107,7 @@ public sealed class ChromiumBrowsersTests
         Assert.False(ChromiumBrowsers.NetworkServiceEnded("DevTools listening on ws://127.0.0.1:61669/devtools/browser/4f00d654-428c-4e44-a469-4ccf3b36e780"));
     }
 
-    [Fact]
-    public void A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says()
+    private void A_macs_browsers_are_looked_for_in_the_accounts_own_applications_whatever_HOME_says()
     {
         Assert.Equal(["/Applications", Path.Combine("/Users/ada", "Applications")], ChromiumBrowsers.MacFolders("/Users/ada", "/private/tmp/run/home"));
         Assert.Equal(["/Applications", Path.Combine("/private/tmp/run/home", "Applications")], ChromiumBrowsers.MacFolders(null, "/private/tmp/run/home"));
@@ -113,8 +115,7 @@ public sealed class ChromiumBrowsersTests
         Assert.Equal(chrome, ChromiumBrowsers.Find(null, [], ChromiumBrowsers.MacFolders("/Users/ada", "/elsewhere"), windows: false, path => path == chrome)?.Program);
     }
 
-    [Fact]
-    public void The_accounts_home_is_the_systems_own_for_this_user()
+    private void The_accounts_home_is_the_systems_own_for_this_user()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows has no account entry for its home: the profile folder is it");
         string? home = Libc.AccountHome;

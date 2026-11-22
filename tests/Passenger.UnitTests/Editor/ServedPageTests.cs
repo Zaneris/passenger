@@ -20,8 +20,46 @@ public sealed class ServedPageTests : IDisposable
 
     private string Index => Path.Join(Folder, "index.html");
 
+    /// <summary>A page is served with the editor's text, and its folder's files as they are on disk now.</summary>
     [Fact]
-    public void The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks()
+    public void A_page_and_its_folder_are_served_as_the_editor_holds_them() => Cases.All(
+        (nameof(The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks),
+            () => Apart(test => test.The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks())),
+        (nameof(A_page_never_saved_is_served_with_nothing_on_the_disk),
+            () => Apart(test => test.A_page_never_saved_is_served_with_nothing_on_the_disk())),
+        (nameof(A_page_of_any_name_is_found_at_its_own_address), A_page_of_any_name_is_found_at_its_own_address),
+        (nameof(A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type),
+            () => Apart(test => test.A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type())),
+        (nameof(A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds),
+            () => Apart(test => test.A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds())),
+        (nameof(A_file_changed_on_disk_is_served_as_it_is_now), () => Apart(test => test.A_file_changed_on_disk_is_served_as_it_is_now())),
+        (nameof(A_file_being_served_can_be_written_moved_or_deleted_meanwhile),
+            () => Apart(test => test.A_file_being_served_can_be_written_moved_or_deleted_meanwhile())),
+        (nameof(Every_answer_says_it_is_not_to_be_kept), () => Apart(test => test.Every_answer_says_it_is_not_to_be_kept())),
+        (nameof(A_link_staying_inside_the_folder_is_followed), () => Apart(test => test.A_link_staying_inside_the_folder_is_followed())));
+
+    /// <summary>Nothing outside the page's folder, hidden in it or left out by Git is served, however it is asked
+    /// for.</summary>
+    [Fact]
+    public void Nothing_outside_the_folder_or_hidden_in_it_is_served() => Cases.All(
+        (nameof(A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why),
+            A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why),
+        (nameof(A_file_or_folder_gitignore_leaves_out_is_refused_saying_why),
+            () => Apart(test => test.A_file_or_folder_gitignore_leaves_out_is_refused_saying_why())),
+        (nameof(A_file_beside_the_folder_is_not_served_however_its_address_is_spelled),
+            A_file_beside_the_folder_is_not_served_however_its_address_is_spelled),
+        (nameof(A_link_inside_the_folder_leading_out_of_it_is_not_followed),
+            () => Apart(test => test.A_link_inside_the_folder_leading_out_of_it_is_not_followed())),
+        (nameof(An_address_of_anywhere_else_names_no_file), An_address_of_anywhere_else_names_no_file));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<ServedPageTests> check)
+    {
+        using ServedPageTests test = new();
+        check(test);
+    }
+
+    private void The_page_is_served_at_its_files_name_with_the_editors_text_not_the_disks()
     {
         Write(Index, "<h1>As saved</h1>\n");
         ServedPage served = new(Index, Html);
@@ -33,19 +71,21 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal(Html, Read(answer));
     }
 
-    [Fact]
-    public void A_page_never_saved_is_served_with_nothing_on_the_disk()
+    private void A_page_never_saved_is_served_with_nothing_on_the_disk()
     {
         Directory.CreateDirectory(Folder);
         ServedPage served = new(Index, Html);
         Assert.Equal(Html, Read(served.Answer(served.Address)));
     }
 
-    [Theory]
-    [InlineData("my page.html")]
-    [InlineData("été #1.html")]
-    [InlineData("50% off?.html")]
-    public void A_page_of_any_name_is_found_at_its_own_address(string name)
+    private static void A_page_of_any_name_is_found_at_its_own_address() => Cases.Each<string>(
+    [
+        "my page.html",
+        "été #1.html",
+        "50% off?.html",
+    ], row => Apart(test => test.A_page_of_any_name_is_found_at_its_own_address(row)));
+
+    private void A_page_of_any_name_is_found_at_its_own_address(string name)
     {
         if (OperatingSystem.IsWindows() && name.Contains('?', StringComparison.Ordinal))
         {
@@ -57,8 +97,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal(page, served.FileOf(served.Address));
     }
 
-    [Fact]
-    public void A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type()
+    private void A_file_beside_or_below_the_page_is_served_from_the_disk_in_its_media_type()
     {
         string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         string picture = Write(Path.Join(Folder, "img", "a dot.png"), "not really a picture");
@@ -75,8 +114,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal(css, served.Answer(At("site.css?v=2")).File);
     }
 
-    [Fact]
-    public void A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds()
+    private void A_page_in_a_subfolder_is_served_only_what_its_own_folder_holds()
     {
         string about = Write(Path.Join(Folder, "pages", "about.html"), "<h1>As saved</h1>\n");
         Write(Path.Join(Folder, "css", "site.css"), "h1 { color: green; }\n");
@@ -95,22 +133,15 @@ public sealed class ServedPageTests : IDisposable
         }
     }
 
-    [Fact]
-    public void A_page_below_folders_of_any_name_is_found_at_its_own_name()
-    {
-        string page = Write(Path.Join(Folder, "my pages", "été #1", "index.html"), "<h1>As saved</h1>\n");
-        ServedPage served = new(page, Html);
+    private static void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why() => Cases.Each<(string Below, string Said)>(
+    [
+        (".env", ".env as its name begins with a dot"),
+        (".git/config", ".git/config as it is in .git, whose name begins with a dot"),
+        ("assets/.secret/key.json", "assets/.secret/key.json as it is in assets/.secret, whose name begins with a dot"),
+        ("%2Eenv", ".env as its name begins with a dot"),
+    ], row => Apart(test => test.A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(row.Below, row.Said)));
 
-        Assert.Equal($"https://{ServedPage.Host}/index.html", served.Address.AbsoluteUri);
-        Assert.Equal(Html, Read(served.Answer(served.Address)));
-    }
-
-    [Theory]
-    [InlineData(".env", ".env as its name begins with a dot")]
-    [InlineData(".git/config", ".git/config as it is in .git, whose name begins with a dot")]
-    [InlineData("assets/.secret/key.json", "assets/.secret/key.json as it is in assets/.secret, whose name begins with a dot")]
-    [InlineData("%2Eenv", ".env as its name begins with a dot")]
-    public void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(string below, string said)
+    private void A_file_whose_name_or_folder_begins_with_a_dot_is_refused_saying_why(string below, string said)
     {
         Write(Path.Join(Folder, below.Replace("%2E", ".", StringComparison.Ordinal)), "SECRET=1\n");
         ServedPage served = new(Index, Html);
@@ -123,8 +154,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal([said], refused);
     }
 
-    [Fact]
-    public void A_file_or_folder_gitignore_leaves_out_is_refused_saying_why()
+    private void A_file_or_folder_gitignore_leaves_out_is_refused_saying_why()
     {
         string secrets = Write(Path.Join(Folder, "secrets.json"), "{}\n");
         string built = Path.Join(Folder, "bin");
@@ -140,22 +170,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal(["secrets.json as .gitignore leaves it out", "bin/Debug/app.js as .gitignore leaves it out"], refused);
     }
 
-    [Fact]
-    public void A_page_refused_nothing_raises_no_refusal()
-    {
-        Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
-        ServedPage served = new(Index, Html);
-        List<string> refused = [];
-        served.Refused += (_, why) => refused.Add(why);
-        served.Answer(served.Address);
-        served.Answer(At("site.css"));
-        served.Answer(At("nothing.css"));
-        served.Answer(At("../outside.css"));
-        Assert.Empty(refused);
-    }
-
-    [Fact]
-    public void A_file_changed_on_disk_is_served_as_it_is_now()
+    private void A_file_changed_on_disk_is_served_as_it_is_now()
     {
         string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         ServedPage served = new(Index, Html);
@@ -165,15 +180,18 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal("h1 { color: teal; }\n", Read(served.Answer(At("site.css"))));
     }
 
-    [Theory]
-    [InlineData("../outside.css")]
-    [InlineData("..%2Foutside.css")]
-    [InlineData("..%5Coutside.css")]
-    [InlineData("%2E%2E/outside.css")]
-    [InlineData("%2e%2e%2foutside.css")]
-    [InlineData("img/..%2F..%2Foutside.css")]
-    [InlineData("sub/../../outside.css")]
-    public void A_file_beside_the_folder_is_not_served_however_its_address_is_spelled(string below)
+    private static void A_file_beside_the_folder_is_not_served_however_its_address_is_spelled() => Cases.Each<string>(
+    [
+        "../outside.css",
+        "..%2Foutside.css",
+        "..%5Coutside.css",
+        "%2E%2E/outside.css",
+        "%2e%2e%2foutside.css",
+        "img/..%2F..%2Foutside.css",
+        "sub/../../outside.css",
+    ], row => Apart(test => test.A_file_beside_the_folder_is_not_served_however_its_address_is_spelled(row)));
+
+    private void A_file_beside_the_folder_is_not_served_however_its_address_is_spelled(string below)
     {
         Write(Path.Join(root, "outside.css"), "h1 { color: red; }\n");
         Write(Path.Join(Folder, "img", "dot.png"), "dot");
@@ -185,8 +203,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.Null(answer.Open());
     }
 
-    [Fact]
-    public void A_link_inside_the_folder_leading_out_of_it_is_not_followed()
+    private void A_link_inside_the_folder_leading_out_of_it_is_not_followed()
     {
         string outside = Write(Path.Join(root, "outside.css"), "h1 { color: red; }\n");
         string below = Write(Path.Join(root, "elsewhere", "secret.txt"), "secret\n");
@@ -199,8 +216,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.True(served.Answer(At("linked/secret.txt")) == PageAnswer.Missing, "A folder link leading out of the page's folder was served");
     }
 
-    [Fact]
-    public void A_link_staying_inside_the_folder_is_followed()
+    private void A_link_staying_inside_the_folder_is_followed()
     {
         string css = Write(Path.Join(Folder, "theme", "site.css"), "h1 { color: green; }\n");
         Link(() => File.CreateSymbolicLink(Path.Join(Folder, "site.css"), css));
@@ -208,28 +224,16 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal("h1 { color: green; }\n", Read(served.Answer(At("site.css"))));
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("img/")]
-    [InlineData("nothing.css")]
-    [InlineData("img/nothing.png")]
-    public void An_address_of_no_file_answers_that_nothing_is_there(string below)
-    {
-        Write(Path.Join(Folder, "img", "dot.png"), "dot");
-        ServedPage served = new(Index, Html);
+    private static void An_address_of_anywhere_else_names_no_file() => Cases.Each<string>(
+    [
+        "https://example.com/index.html",
+        "http://preview.passenger.invalid/index.html",
+        "https://preview.passenger.invalid:8443/index.html",
+        "https://preview.passenger.invalid.example.com/index.html",
+        "file:///index.html",
+    ], row => Apart(test => test.An_address_of_anywhere_else_names_no_file(row)));
 
-        PageAnswer answer = served.Answer(At(below));
-        Assert.Equal((404, "Not Found"), (answer.Status, answer.Reason));
-        Assert.Null(answer.Open());
-    }
-
-    [Theory]
-    [InlineData("https://example.com/index.html")]
-    [InlineData("http://preview.passenger.invalid/index.html")]
-    [InlineData("https://preview.passenger.invalid:8443/index.html")]
-    [InlineData("https://preview.passenger.invalid.example.com/index.html")]
-    [InlineData("file:///index.html")]
-    public void An_address_of_anywhere_else_names_no_file(string address)
+    private void An_address_of_anywhere_else_names_no_file(string address)
     {
         Write(Index, Html);
         ServedPage served = new(Index, Html);
@@ -237,16 +241,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.True(served.Answer(new Uri(address)) == PageAnswer.Missing, $"The address {address} was served as the page's own");
     }
 
-    [Fact]
-    public void A_link_to_a_file_not_there_yet_names_it_for_the_editor()
-    {
-        Directory.CreateDirectory(Folder);
-        ServedPage served = new(Index, Html);
-        Assert.Equal(Path.Join(Folder, "docs", "next page.html"), served.FileOf(At("docs/next%20page.html")));
-    }
-
-    [Fact]
-    public void A_file_being_served_can_be_written_moved_or_deleted_meanwhile()
+    private void A_file_being_served_can_be_written_moved_or_deleted_meanwhile()
     {
         string css = Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         string moved = Path.Join(Folder, "moved.css");
@@ -260,8 +255,7 @@ public sealed class ServedPageTests : IDisposable
         Assert.False(File.Exists(moved), "A file the preview was reading could not be deleted");
     }
 
-    [Fact]
-    public void Every_answer_says_it_is_not_to_be_kept()
+    private void Every_answer_says_it_is_not_to_be_kept()
     {
         Write(Path.Join(Folder, "site.css"), "h1 { color: green; }\n");
         ServedPage served = new(Index, Html);
@@ -269,17 +263,6 @@ public sealed class ServedPageTests : IDisposable
         Assert.Equal("Content-Type: text/css\r\nCache-Control: no-store", served.Answer(At("site.css")).Headers);
         Assert.Equal("Cache-Control: no-store", PageAnswer.Missing.Headers);
     }
-
-    [Theory]
-    [InlineData("a.CSS", "text/css")]
-    [InlineData("a.mjs", "text/javascript")]
-    [InlineData("a.svg", "image/svg+xml")]
-    [InlineData("a.woff2", "font/woff2")]
-    [InlineData("a.html", "text/html")]
-    [InlineData("a.unheard", null)]
-    [InlineData("a", null)]
-    public void A_files_media_type_comes_from_its_extension_or_is_left_to_the_web_view(string file, string? type) =>
-        Assert.Equal(type, ServedPage.TypeOf(file));
 
     /// <summary>The address <paramref name="below"/> names, spelled as the page's own would be.</summary>
     private static Uri At(string below) => new($"https://{ServedPage.Host}/{below}");

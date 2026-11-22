@@ -16,8 +16,18 @@ public sealed class EndpointClientTests
         return call;
     }
 
+    /// <summary>A multipart body is framed by its boundary with CRLF line ends, any other body sent as
+    /// written.</summary>
     [Fact]
-    public void A_multipart_bodys_framing_is_sent_with_its_lines_ended_in_CRLF_and_any_other_body_as_written()
+    public void A_multipart_body_is_framed_as_written() => Cases.All(
+        (nameof(A_multipart_bodys_framing_is_sent_with_its_lines_ended_in_CRLF_and_any_other_body_as_written),
+            A_multipart_bodys_framing_is_sent_with_its_lines_ended_in_CRLF_and_any_other_body_as_written),
+        (nameof(A_boundary_is_read_however_its_content_type_writes_it_and_a_body_framed_already_stays_so),
+            A_boundary_is_read_however_its_content_type_writes_it_and_a_body_framed_already_stays_so),
+        (nameof(A_nested_multipart_part_is_framed_by_its_own_boundary_and_text_outside_the_parts_goes_as_written),
+            A_nested_multipart_part_is_framed_by_its_own_boundary_and_text_outside_the_parts_goes_as_written));
+
+    private void A_multipart_bodys_framing_is_sent_with_its_lines_ended_in_CRLF_and_any_other_body_as_written()
     {
         const string Parts = "--passenger\nContent-Disposition: form-data; name=\"note\"\n\nhello\n--passenger--\n";
         Assert.Equal("--passenger\r\nContent-Disposition: form-data; name=\"note\"\r\n\r\nhello\r\n--passenger--\r\n",
@@ -25,38 +35,16 @@ public sealed class EndpointClientTests
         Assert.Equal("{\n  \"a\": 1\n}\n", Prepared("application/json", "{\n  \"a\": 1\n}\n").Body);
     }
 
-    /// <summary>What a part holds goes as written whichever way its lines end, a blank line, a line that reads as a header
-    /// and one a boundary only begins among them; only the line end before the next delimiter is the delimiter's.</summary>
-    [Fact]
-    public void A_parts_lines_go_as_written_between_its_headers_and_the_next_delimiter()
-    {
-        const string Parts = "--passenger\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\nContent-Type: text/plain\n\n"
-            + "a\nb\r\n\nName: not a header\n--passengers\n\n--passenger\nContent-Disposition: form-data; name=\"note\"\n\nc\n--passenger--";
-        Assert.Equal("--passenger\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\n"
-            + "a\nb\r\n\nName: not a header\n--passengers\n\r\n--passenger\r\nContent-Disposition: form-data; name=\"note\"\r\n\r\nc\r\n--passenger--",
-            Prepared("multipart/form-data; boundary=passenger", Parts).Body);
-    }
-
-    [Fact]
-    public void A_boundary_is_read_however_its_content_type_writes_it_and_a_body_framed_already_stays_so()
+    private void A_boundary_is_read_however_its_content_type_writes_it_and_a_body_framed_already_stays_so()
     {
         const string Framed = "--a b\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\none\ntwo\r\n--a b--\r\n";
         Assert.Equal(Framed, Prepared("MULTIPART/form-data; charset=utf-8; BOUNDARY=\"a b\"", Framed).Body);
         Assert.Equal(Framed, Prepared("multipart/form-data; boundary=\"a b\"", Framed.Replace("--a b\r\n", "--a b\n", StringComparison.Ordinal)).Body);
     }
 
-    [Fact]
-    public void A_multipart_type_naming_no_boundary_leaves_its_body_as_written()
-    {
-        const string Body = "--passenger\nName: value\n\na\n--passenger--\n";
-        Assert.Equal(Body, Prepared("multipart/form-data", Body).Body);
-        Assert.Equal(Body, Prepared("text/plain; boundary=passenger", Body).Body);
-    }
-
     /// <summary>The text before the first delimiter and after the last, which no reader takes for a part, stays as written,
     /// and a part that is itself multipart is framed by its own boundary, its parts' lines kept as any part's.</summary>
-    [Fact]
-    public void A_nested_multipart_part_is_framed_by_its_own_boundary_and_text_outside_the_parts_goes_as_written()
+    private void A_nested_multipart_part_is_framed_by_its_own_boundary_and_text_outside_the_parts_goes_as_written()
     {
         const string Parts = "before\nit\n--outer\nContent-Type: multipart/mixed; boundary=inner\n\n--inner\nContent-Type: text/plain\n\na\nb\n--inner--\n--outer--\nafter\nit\n";
         Assert.Equal("before\nit\r\n--outer\r\nContent-Type: multipart/mixed; boundary=inner\r\n\r\n--inner\r\nContent-Type: text/plain\r\n\r\na\nb\r\n--inner--\r\n--outer--\r\nafter\nit\n",

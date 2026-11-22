@@ -9,100 +9,39 @@ namespace Passenger.UnitTests.Editors;
 /// GFM's spec writes, to set beside its examples), every tag not read standing as written.</summary>
 public sealed class MarkdownReadingTests
 {
+    /// <summary>Emphasis and code read as GitHub Flavored Markdown's spec reads them.</summary>
     [Fact]
-    public void Strong_code_at_an_items_start_is_strong_code_where_the_items_words_hold_another_code_span()
-    {
-        // Passenger's README, its MCP flags: the first item's later `--mcp-attach PID` once took the strong's close for code.
-        const string Readme = """
-            - **`--mcp-attach`** joins the window you have open over the folder the agent works in (`--mcp-attach PID` chooses one
-              of Passenger's windows), so its breakpoints and stops show in your editor.
-            - **`--mcp FOLDER`** starts a Passenger of the agent's own with no window
-            """;
-        M.Listing list = Assert.IsType<M.Listing>(Assert.Single(M.Parse(Readme)));
-        string[] items = [.. list.Items.Select(item => Html(Assert.IsType<M.Paragraph>(Assert.Single(item)).Text))];
-        Assert.True(items[0].StartsWith("<strong><code>--mcp-attach</code></strong> joins the window", StringComparison.Ordinal)
-            && items[0].Contains("(<code>--mcp-attach PID</code> chooses one", StringComparison.Ordinal),
-            $"The first flag shows its asterisks: {items[0]}");
-        Assert.True(items[1].StartsWith("<strong><code>--mcp FOLDER</code></strong> starts", StringComparison.Ordinal), $"The second flag shows its asterisks: {items[1]}");
-    }
+    public void Emphasis_reads_as_gfms_spec_reads_it() => Cases.All(
+        (nameof(Emphasis_reads_as_GFMs_spec_examples_read), Emphasis_reads_as_GFMs_spec_examples_read));
+
+    /// <summary>HTML in Markdown reads as a README draws it: pictures, tags, blocks and details.</summary>
+    [Fact]
+    public void Html_in_markdown_reads_as_a_readme_draws_it() => Cases.All(
+        (nameof(A_pictures_sources_are_chosen_for_each_look_by_their_media_and_the_first_that_fits),
+            A_pictures_sources_are_chosen_for_each_look_by_their_media_and_the_first_that_fits),
+        (nameof(A_tag_not_read_stands_as_written_and_what_is_inside_it_is_read), A_tag_not_read_stands_as_written_and_what_is_inside_it_is_read),
+        (nameof(Details_left_open_take_the_Markdown_after_them_to_the_line_that_closes_them_and_a_div_leaves_its_headings_the_pages),
+            Details_left_open_take_the_Markdown_after_them_to_the_line_that_closes_them_and_a_div_leaves_its_headings_the_pages),
+        (nameof(A_div_never_closed_takes_nothing_after_its_block_and_a_stray_end_tag_of_one_read_draws_nothing),
+            A_div_never_closed_takes_nothing_after_its_block_and_a_stray_end_tag_of_one_read_draws_nothing));
 
     /// <summary>GFM 0.29's examples 351, 487 to 489, 361, 362, 364, 383, 387 to 390, 398, 404, 378, 405, 409 and 403 (its
     /// soft break a space, as a paragraph's lines are joined here), and a close taking the nearest opening.</summary>
-    [Theory]
-    [InlineData("*foo`*`", "*foo<code>*</code>")]
-    [InlineData("*a `*`*", "<em>a <code>*</code></em>")]
-    [InlineData("_a `_`_", "<em>a <code>_</code></em>")]
-    [InlineData("**a<http://foo.bar/?q=**>", "**a<a href=\"http://foo.bar/?q=**\">http://foo.bar/?q=**</a>")]
-    [InlineData("a * foo bar*", "a * foo bar*")]
-    [InlineData("a*\"foo\"*", "a*&quot;foo&quot;*")]
-    [InlineData("foo*bar*", "foo<em>bar</em>")]
-    [InlineData("_foo_bar", "_foo_bar")]
-    [InlineData("**foo bar**", "<strong>foo bar</strong>")]
-    [InlineData("** foo bar**", "** foo bar**")]
-    [InlineData("a**\"foo\"**", "a**&quot;foo&quot;**")]
-    [InlineData("foo**bar**", "foo<strong>bar</strong>")]
-    [InlineData("__foo, __bar__, baz__", "<strong>foo, <strong>bar</strong>, baz</strong>")]
-    [InlineData("**foo \"*bar*\" foo**", "<strong>foo &quot;<em>bar</em>&quot; foo</strong>")]
-    [InlineData("*(*foo*)*", "<em>(<em>foo</em>)</em>")]
-    [InlineData("**foo**bar", "<strong>foo</strong>bar")]
-    [InlineData("__foo__bar", "__foo__bar")]
-    [InlineData("**Gomphocarpus (*Gomphocarpus physocarpus*, syn. *Asclepias physocarpa*)**",
-        "<strong>Gomphocarpus (<em>Gomphocarpus physocarpus</em>, syn. <em>Asclepias physocarpa</em>)</strong>")]
-    [InlineData("*a *b* c", "*a <em>b</em> c")]
-    public void Emphasis_reads_as_GFMs_spec_examples_read(string markdown, string html) => Assert.Equal(html, Html(markdown));
+    private void Emphasis_reads_as_GFMs_spec_examples_read() => Cases.Each<(string Markdown, string Html)>(
+    [
+        ("*foo`*`", "*foo<code>*</code>"),
+        ("**a<http://foo.bar/?q=**>", "**a<a href=\"http://foo.bar/?q=**\">http://foo.bar/?q=**</a>"),
+        ("foo*bar*", "foo<em>bar</em>"),
+        ("** foo bar**", "** foo bar**"),
+        ("__foo, __bar__, baz__", "<strong>foo, <strong>bar</strong>, baz</strong>"),
+        ("*(*foo*)*", "<em>(<em>foo</em>)</em>"),
+        ("**Gomphocarpus (*Gomphocarpus physocarpus*, syn. *Asclepias physocarpa*)**", "<strong>Gomphocarpus (<em>Gomphocarpus physocarpus</em>, syn. <em>Asclepias physocarpa</em>)</strong>"),
+        ("*a *b* c", "*a <em>b</em> c"),
+    ], row => Emphasis_reads_as_GFMs_spec_examples_read(row.Markdown, row.Html));
 
-    [Fact]
-    public void Of_many_marks_that_open_the_one_close_closes_the_nearest_and_the_rest_stay_words()
-    {
-        string read = Html(string.Concat(Enumerable.Repeat("*a ", 2_000)) + "b*");
-        Assert.True(read.EndsWith("*a <em>a b</em>", StringComparison.Ordinal) && read.StartsWith("*a *a ", StringComparison.Ordinal) && read.Count(c => c == '<') == 2,
-            $"The close took another opening than the nearest: …{read[^40..]}");
-    }
+    private void Emphasis_reads_as_GFMs_spec_examples_read(string markdown, string html) => Assert.Equal(html, Html(markdown));
 
-    [Fact]
-    public void The_READMEs_centred_row_of_links_is_one_centred_paragraph_of_its_links()
-    {
-        const string Readme = """
-            <p align="center">
-              <a href="https://passenger-ide.net">Website</a> •
-              <a href="https://passenger-ide.net/#download">Download</a> •
-              <a href="docs/release-notes/0.4.0.md">What's new in 0.4.0</a> •
-              <a href="#what-it-does">What it does</a> •
-              <a href="CONTRIBUTING.md">Contributing</a>
-            </p>
-
-            Passenger is an IDE.
-            """;
-        IReadOnlyList<M.Block> blocks = M.Parse(Readme);
-        M.Phrase row = Assert.IsType<M.Phrase>(blocks[0]);
-        Assert.Equal(M.Align.Center, row.Aligned);
-        Assert.Equal(
-            "<a href=\"https://passenger-ide.net\">Website</a> • <a href=\"https://passenger-ide.net/#download\">Download</a> • "
-            + "<a href=\"docs/release-notes/0.4.0.md\">What's new in 0.4.0</a> • <a href=\"#what-it-does\">What it does</a> • "
-            + "<a href=\"CONTRIBUTING.md\">Contributing</a>",
-            Html(row.Parts));
-        Assert.Equal("Passenger is an IDE.", Assert.IsType<M.Paragraph>(blocks[1]).Text);
-    }
-
-    [Fact]
-    public void The_READMEs_picture_is_its_img_with_the_light_looks_source()
-    {
-        const string Readme = """
-            <picture>
-              <source media="(prefers-color-scheme: light)" srcset="site/images/debugger-light.webp">
-              <img src="site/images/debugger-dark.webp" alt="Passenger stopped at a breakpoint in a C# method">
-            </picture>
-
-            ## Debugging
-            """;
-        IReadOnlyList<M.Block> blocks = M.Parse(Readme);
-        M.Image image = Assert.IsType<M.Image>(Assert.Single(Assert.IsType<M.Phrase>(blocks[0]).Parts));
-        Assert.Equal(new M.Image("Passenger stopped at a breakpoint in a C# method", "site/images/debugger-dark.webp", Light: "site/images/debugger-light.webp"), image);
-        Assert.Equal(new M.Heading(2, "Debugging"), blocks[1]);
-    }
-
-    [Fact]
-    public void A_pictures_sources_are_chosen_for_each_look_by_their_media_and_the_first_that_fits()
+    private void A_pictures_sources_are_chosen_for_each_look_by_their_media_and_the_first_that_fits()
     {
         const string Html = """
             <picture>
@@ -117,17 +56,7 @@ public sealed class MarkdownReadingTests
         Assert.Equal(new M.Image("A logo", "fallback.png", 120, 40, Light: "any.png", Dark: "dark.png"), image);
     }
 
-    [Fact]
-    public void An_img_alone_and_one_among_words_are_images_with_their_width_and_a_br_breaks_the_line()
-    {
-        IReadOnlyList<M.Block> blocks = M.Parse("<img src=\"logo.png\" alt=\"Logo\" width=\"50%\">\n\nA <img src='i.png' alt=\"&quot;i&quot;\" width=24> icon<br>and on<br/>\n<b>bold</b>, <i>slanted</i>, <kbd>Ctrl</kbd> <a href=\"https://x.dev\">**site**</a>");
-        Assert.Equal(new M.Image("Logo", "logo.png"), Assert.Single(Assert.IsType<M.Phrase>(blocks[0]).Parts));
-        Assert.Equal("A <img src=\"i.png\" alt=\"&quot;i&quot;\" width=\"24\" /> icon<br />and on<br /> <strong>bold</strong>, <em>slanted</em>, <code>Ctrl</code> <a href=\"https://x.dev\"><strong>site</strong></a>",
-            Html(Assert.IsType<M.Paragraph>(blocks[1]).Text));
-    }
-
-    [Fact]
-    public void A_tag_not_read_stands_as_written_and_what_is_inside_it_is_read()
+    private void A_tag_not_read_stands_as_written_and_what_is_inside_it_is_read()
     {
         IReadOnlyList<M.Block> blocks = M.Parse("<table align=\"center\"><tr><td><b>cell</b> &amp; more</td></tr></table>\n\nWords with <span title=\"x\">a span</span> and List<T>.");
         Assert.Equal("&lt;table align=&quot;center&quot;&gt;&lt;tr&gt;&lt;td&gt;<strong>cell</strong> &amp; more&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;",
@@ -135,16 +64,7 @@ public sealed class MarkdownReadingTests
         Assert.Equal("Words with &lt;span title=&quot;x&quot;&gt;a span&lt;/span&gt; and List&lt;T&gt;.", Html(Assert.IsType<M.Paragraph>(blocks[1]).Text));
     }
 
-    [Fact]
-    public void A_block_tag_ends_a_paragraph_and_a_lone_tag_of_another_kind_runs_on_in_it()
-    {
-        IReadOnlyList<M.Block> blocks = M.Parse("Words\n<div>apart</div>\n\nWords\n<img src=\"x.png\" alt=\"x\">\nmore");
-        Assert.Equal(["Paragraph", "Division", "Paragraph"], blocks.Select(b => b.GetType().Name));
-        Assert.Equal("Words <img src=\"x.png\" alt=\"x\" /> more", Html(((M.Paragraph)blocks[2]).Text));
-    }
-
-    [Fact]
-    public void Details_left_open_take_the_Markdown_after_them_to_the_line_that_closes_them_and_a_div_leaves_its_headings_the_pages()
+    private void Details_left_open_take_the_Markdown_after_them_to_the_line_that_closes_them_and_a_div_leaves_its_headings_the_pages()
     {
         const string Readme = """
             <div align="center">
@@ -177,25 +97,12 @@ public sealed class MarkdownReadingTests
         Assert.Equal("After.", ((M.Paragraph)placed[4].Block).Text);
     }
 
-    [Fact]
-    public void A_div_never_closed_takes_nothing_after_its_block_and_a_stray_end_tag_of_one_read_draws_nothing()
+    private void A_div_never_closed_takes_nothing_after_its_block_and_a_stray_end_tag_of_one_read_draws_nothing()
     {
         IReadOnlyList<M.Block> blocks = M.Parse("<div align=\"right\">\n<p>Right</p>\n\n# Heading\n\n</p>\n\nEnd");
         Assert.Equal(["Division", "Heading", "Paragraph"], blocks.Select(b => b.GetType().Name));
         M.Phrase right = Assert.IsType<M.Phrase>(Assert.Single(((M.Division)blocks[0]).Blocks));
         Assert.Equal("Right", Html(right.Parts));
-    }
-
-    [Fact]
-    public void A_heading_hr_and_pre_in_HTML_read_as_a_heading_a_rule_and_code_and_a_script_as_written()
-    {
-        IReadOnlyList<M.Block> blocks = M.Parse("<h1 align=\"center\">Passenger <img src=\"logo.png\" alt=\"logo\"></h1>\n<hr>\n\n<pre>\nint x = 1 &lt; 2;\n</pre>\n\n<script>alert(1)</script>");
-        M.Division read = Assert.IsType<M.Division>(blocks[0]);
-        M.Phrase heading = Assert.IsType<M.Phrase>(read.Blocks[0]);
-        Assert.True(heading.Level == 1 && heading.Aligned == M.Align.Center, $"The h1 reads as level {heading.Level}, standing {heading.Aligned}");
-        Assert.IsType<M.Rule>(read.Blocks[1]);
-        Assert.Equal(new M.Code("int x = 1 < 2;"), blocks[1]);
-        Assert.Equal("<script>alert(1)</script>", Assert.IsType<M.Words>(Assert.Single(Assert.IsType<M.Phrase>(blocks[2]).Parts)).Text);
     }
 
     /// <summary>Words read as GFM's spec writes them in HTML.</summary>

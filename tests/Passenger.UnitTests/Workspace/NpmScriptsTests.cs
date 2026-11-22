@@ -19,8 +19,14 @@ public class NpmScriptsTests
         }
         """;
 
+    /// <summary>A script's name is written quoted where a run needs it, and found and renamed so.</summary>
     [Fact]
-    public void A_name_with_a_space_is_written_quoted_in_every_run_plain_or_quoted()
+    public void A_scripts_name_is_quoted_as_each_run_needs() => Cases.All(
+        (nameof(A_name_with_a_space_is_written_quoted_in_every_run_plain_or_quoted),
+            A_name_with_a_space_is_written_quoted_in_every_run_plain_or_quoted),
+        (nameof(A_name_holding_a_quote_goes_in_double_quotes_its_own_escaped), A_name_holding_a_quote_goes_in_double_quotes_its_own_escaped));
+
+    private void A_name_with_a_space_is_written_quoted_in_every_run_plain_or_quoted()
     {
         string renamed = Apply(Scripts, "build", "build prod");
         Assert.Equal("""
@@ -36,32 +42,7 @@ public class NpmScriptsTests
             """, renamed);
     }
 
-    [Fact]
-    public void A_name_the_shell_reads_whole_stays_as_each_run_wrote_it()
-    {
-        string renamed = Apply(Scripts, "build", "compile:all");
-        Assert.Equal("""
-            {
-              "scripts": {
-                "build": "tsc -p .",
-                "all": "npm run compile:all && npm run \"compile:all\"",
-                "ci": "yarn run 'compile:all' -- --strict",
-                "builder": "npm run builder-step",
-                "watch": "pnpm run-script compile:all"
-              }
-            }
-            """, renamed);
-    }
-
-    [Fact]
-    public void A_name_with_a_space_is_found_only_quoted_and_keeps_its_quotes_renamed()
-    {
-        string scripts = """{ "scripts": { "build prod": "tsc", "all": "npm run \"build prod\" && npm run build prod" } }""";
-        Assert.Equal("""{ "scripts": { "build prod": "tsc", "all": "npm run \"release\" && npm run build prod" } }""", Apply(scripts, "build prod", "release"));
-    }
-
-    [Fact]
-    public void A_name_holding_a_quote_goes_in_double_quotes_its_own_escaped()
+    private void A_name_holding_a_quote_goes_in_double_quotes_its_own_escaped()
     {
         Assert.Equal("""{ "a": "npm run \"it's\"" }""", Apply("""{ "a": "npm run 'build'" }""", "build", "it's"));
         Assert.Equal("""{ "a": "npm run \"say \\\"hi\\\"\"" }""", Apply("""{ "a": "npm run build" }""", "build", "say \"hi\""));

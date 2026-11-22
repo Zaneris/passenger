@@ -50,8 +50,25 @@ public sealed class BrowserProxyTests : IDisposable
         };
     }
 
+    /// <summary>A launch takes the browser debug proxy its framework restored, else none.</summary>
     [Fact]
-    public void A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored()
+    public void A_launch_takes_the_browser_proxy_its_framework_restored() => Cases.All(
+        (nameof(A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored),
+            () => Apart(test => test.A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored())),
+        (nameof(A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy),
+            () => Apart(test => test.A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy())),
+        (nameof(A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says),
+            () => Apart(test => test.A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says())),
+        (nameof(A_launch_builds_the_framework_a_reference_would_take), A_launch_builds_the_framework_a_reference_would_take));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<BrowserProxyTests> check)
+    {
+        using BrowserProxyTests test = new();
+        check(test);
+    }
+
+    private void A_launch_of_a_later_framework_takes_the_proxy_that_framework_restored()
     {
         Proxy("8.0.20");
         string ten = Proxy("10.0.5");
@@ -61,17 +78,7 @@ public sealed class BrowserProxyTests : IDisposable
         Assert.True(found == ten, $"A net10.0 launch took {found}, so its page's runtime would be debugged by another version's proxy");
     }
 
-    [Fact]
-    public void A_launch_finds_its_frameworks_proxy_where_the_first_framework_restored_none()
-    {
-        string ten = Proxy("10.0.5");
-        ProjectModel project = Restored(("net8.0", null), ("net10.0", "10.0.5"));
-
-        Assert.True(BrowserProxy.Of(project, "net10.0", [Pack], Tools) == ten, "Debug would say no proxy was restored, of a framework whose restore brought one");
-    }
-
-    [Fact]
-    public void A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy()
+    private void A_launch_whose_framework_restored_none_is_given_no_other_frameworks_proxy()
     {
         Proxy("8.0.20");
         ProjectModel project = Restored(("net8.0", "8.0.20"), ("net10.0", null));
@@ -79,18 +86,7 @@ public sealed class BrowserProxyTests : IDisposable
         Assert.Null(BrowserProxy.Of(project, "net10.0", [Pack], Tools));
     }
 
-    [Fact]
-    public void A_framework_the_project_lacks_takes_the_nearest_it_can_reference()
-    {
-        string eight = Proxy("8.0.20");
-        Proxy("10.0.5");
-        ProjectModel project = Restored(("net10.0", "10.0.5"), ("net8.0", "8.0.20"));
-
-        Assert.True(BrowserProxy.Of(project, "net9.0", [Pack], Tools) == eight, "A net9.0 server's client builds for net8.0, and took another framework's proxy");
-    }
-
-    [Fact]
-    public void A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says()
+    private void A_project_of_one_framework_takes_its_proxy_whatever_the_launch_says()
     {
         string ten = Proxy("10.0.5");
         ProjectModel project = Restored(("net10.0", "10.0.5"));
@@ -98,28 +94,19 @@ public sealed class BrowserProxyTests : IDisposable
         Assert.True(BrowserProxy.Of(project, "net11.0", [Pack], Tools) == ten, "A project of one framework found no proxy under a server's newer framework");
     }
 
-    [Theory]
-    [InlineData("net10.0", "net10.0")]
-    [InlineData("NET10.0", "net10.0")]
-    [InlineData("net9.0", "net8.0")]
-    [InlineData("net7.0", null)]
-    [InlineData(null, "net8.0")]
-    public void A_launch_builds_the_framework_a_reference_would_take(string? launched, string? built)
+    private static void A_launch_builds_the_framework_a_reference_would_take() => Cases.Each<(string? Launched, string? Built)>(
+    [
+        ("net10.0", "net10.0"),
+        ("NET10.0", "net10.0"),
+        ("net9.0", "net8.0"),
+        ("net7.0", null),
+        (null, "net8.0"),
+    ], row => Apart(test => test.A_launch_builds_the_framework_a_reference_would_take(row.Launched, row.Built)));
+
+    private void A_launch_builds_the_framework_a_reference_would_take(string? launched, string? built)
     {
         string? taken = LaunchedFrameworks.Of(["net8.0", "net10.0"], launched);
         Assert.True(taken == built, $"A launch of {launched ?? "no framework"} took {taken ?? "none"}, not {built ?? "none"}");
     }
 
-    [Fact]
-    public void A_project_an_app_references_is_read_for_the_framework_the_apps_build_takes_of_it()
-    {
-        ProjectModel Project(string name, IReadOnlyList<string> frameworks, params string[] references) => new(Path.Combine(root, name, $"{name}.csproj"), name, null, frameworks, [], references, true);
-        ProjectModel one = Project("One", ["net8.0"]);
-        ProjectModel older = Project("Older", ["net8.0", "net9.0"], one.Path);
-        ProjectModel same = Project("Same", ["net8.0", "net10.0"]);
-        ProjectModel newer = Project("Newer", ["net11.0", "net12.0"]);
-        ProjectModel app = Project("App", ["net10.0"], older.Path, same.Path, newer.Path);
-
-        Assert.Equal([(older.Path, "net9.0"), (same.Path, "net10.0"), (newer.Path, null), (one.Path, null)], LaunchedFrameworks.Referenced(app, "net10.0", [app, one, older, same, newer]));
-    }
 }

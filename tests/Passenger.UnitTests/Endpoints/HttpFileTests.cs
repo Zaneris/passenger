@@ -6,8 +6,14 @@ namespace Passenger.UnitTests.Endpoints;
 /// request's criterion, which fails every answer saying why, so a typo never turns a check off.</summary>
 public sealed class HttpFileTests
 {
+    /// <summary>A file's criterion that does not read is its problem and fails its request's check.</summary>
     [Fact]
-    public void A_criterion_that_does_not_read_is_the_files_problem_and_fails_its_requests_check()
+    public void An_http_files_criteria_are_its_problem_where_they_do_not_read() => Cases.All(
+        (nameof(A_criterion_that_does_not_read_is_the_files_problem_and_fails_its_requests_check),
+            A_criterion_that_does_not_read_is_the_files_problem_and_fails_its_requests_check),
+        (nameof(A_file_whose_criteria_all_read_has_no_problem), A_file_whose_criteria_all_read_has_no_problem));
+
+    private void A_criterion_that_does_not_read_is_the_files_problem_and_fails_its_requests_check()
     {
         string[] lines = ["### Health", "# @expect status 20O", "# @expect body contains ok", "GET http://localhost:5000/health"];
         HttpFile file = HttpFile.Parse("api.http", string.Join("\n", lines));
@@ -25,8 +31,7 @@ public sealed class HttpFileTests
         Assert.True(results[1].Passed, $"The criterion that reads failed on a 200 whose body is ok: {results[1].Actual}");
     }
 
-    [Fact]
-    public void A_file_whose_criteria_all_read_has_no_problem()
+    private void A_file_whose_criteria_all_read_has_no_problem()
     {
         HttpFile file = HttpFile.Parse("api.http", "# @expect status 2xx\n# @expect json $.items[0].name equals \"Ada\"\nGET http://localhost:5000/items\n");
 

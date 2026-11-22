@@ -12,8 +12,15 @@ public sealed class FreshReadsTests
 
     private static long At(double seconds) => (long)(seconds * Stopwatch.Frequency);
 
+    /// <summary>A read asked again within the moment is the same read, and past it none.</summary>
     [Fact]
-    public void A_read_asked_again_within_the_moment_is_the_same_read_and_past_it_none()
+    public void A_read_is_shared_only_within_the_moment() => Cases.All(
+        (nameof(A_read_asked_again_within_the_moment_is_the_same_read_and_past_it_none),
+            A_read_asked_again_within_the_moment_is_the_same_read_and_past_it_none),
+        (nameof(Keeping_a_read_lets_go_of_every_read_ended_past_the_moment_and_keeps_those_under_way),
+            Keeping_a_read_lets_go_of_every_read_ended_past_the_moment_and_keeps_those_under_way));
+
+    private void A_read_asked_again_within_the_moment_is_the_same_read_and_past_it_none()
     {
         FreshReads<string?> reads = new(Moment, StringComparer.OrdinalIgnoreCase);
         Task<string?> first = Task.FromResult<string?>("shop");
@@ -23,8 +30,7 @@ public sealed class FreshReadsTests
         Assert.False(reads.TryGet("http://localhost:5000", At(10), out _), "A read ended a moment ago was still given, where the app is asked afresh");
     }
 
-    [Fact]
-    public void Keeping_a_read_lets_go_of_every_read_ended_past_the_moment_and_keeps_those_under_way()
+    private void Keeping_a_read_lets_go_of_every_read_ended_past_the_moment_and_keeps_those_under_way()
     {
         FreshReads<string?> reads = new(Moment, StringComparer.OrdinalIgnoreCase);
         TaskCompletionSource<string?> slow = new();

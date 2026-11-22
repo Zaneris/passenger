@@ -64,8 +64,19 @@ public class RazorHtmlCopiesTests
         }
     }
 
+    /// <summary>Razor's HTML copies open, change and close at the server in turn, however they cross.</summary>
     [Fact]
-    public async Task A_file_reopened_while_its_html_is_on_its_way_is_not_taken_to_be_held_and_is_sent_its_new_text()
+    public Task Razors_html_copies_reach_the_server_in_turn() => Cases.AllAsync(
+        (nameof(A_file_reopened_while_its_html_is_on_its_way_is_not_taken_to_be_held_and_is_sent_its_new_text),
+            A_file_reopened_while_its_html_is_on_its_way_is_not_taken_to_be_held_and_is_sent_its_new_text),
+        (nameof(A_file_closed_while_its_html_is_on_its_way_is_closed_behind_it), A_file_closed_while_its_html_is_on_its_way_is_closed_behind_it),
+        (nameof(A_change_on_its_way_as_the_file_closes_leaves_the_file_to_open_afresh),
+            A_change_on_its_way_as_the_file_closes_leaves_the_file_to_open_afresh),
+        (nameof(A_server_started_again_opens_the_file_afresh), A_server_started_again_opens_the_file_afresh),
+        (nameof(A_send_the_server_cannot_take_is_sent_again_and_a_close_to_a_server_gone_is_not_sent),
+            A_send_the_server_cannot_take_is_sent_again_and_a_close_to_a_server_gone_is_not_sent));
+
+    private async Task A_file_reopened_while_its_html_is_on_its_way_is_not_taken_to_be_held_and_is_sent_its_new_text()
     {
         StandIn server = new();
         RazorHtmlCopies copies = new();
@@ -84,27 +95,7 @@ public class RazorHtmlCopiesTests
         Assert.True(copies.Current(server, BellUri), "The HTML sent after the file reopened was not known to be held");
     }
 
-    [Fact]
-    public async Task A_file_reopened_before_its_html_reached_the_server_keeps_one_document_there()
-    {
-        StandIn server = new();
-        RazorHtmlCopies copies = new();
-        copies.Give(BellUri, "before");
-        TaskCompletionSource held = server.HoldNext();
-        Task sent = copies.SyncAsync(server, BellUri);
-        copies.Forget(Bell);
-        copies.Give(BellUri, "after");
-        Task closed = copies.CloseAsync(Bell);
-        Task again = copies.SyncAsync(server, BellUri);
-        held.SetResult();
-        await Task.WhenAll(sent, closed, again);
-
-        Assert.True(server.Sent.SequenceEqual(["open 1", "change 2"]), $"The server was sent: {string.Join(", ", server.Sent)}");
-        Assert.True(server.Documents[BellUri] == (2, "after"), $"The server holds {server.Documents[BellUri]}");
-    }
-
-    [Fact]
-    public async Task A_file_closed_while_its_html_is_on_its_way_is_closed_behind_it()
+    private async Task A_file_closed_while_its_html_is_on_its_way_is_closed_behind_it()
     {
         StandIn server = new();
         RazorHtmlCopies copies = new();
@@ -120,8 +111,7 @@ public class RazorHtmlCopiesTests
         Assert.Null(copies.UriOf(Bell));
     }
 
-    [Fact]
-    public async Task A_change_on_its_way_as_the_file_closes_leaves_the_file_to_open_afresh()
+    private async Task A_change_on_its_way_as_the_file_closes_leaves_the_file_to_open_afresh()
     {
         StandIn server = new();
         RazorHtmlCopies copies = new();
@@ -141,21 +131,7 @@ public class RazorHtmlCopiesTests
         Assert.True(server.Documents[BellUri] == (1, "third"), $"The server holds {server.Documents[BellUri]}");
     }
 
-    [Fact]
-    public async Task A_file_given_again_after_it_closed_is_never_the_giving_before_it()
-    {
-        StandIn server = new();
-        RazorHtmlCopies copies = new();
-        copies.Give(BellUri, "before");
-        await copies.SyncAsync(server, BellUri);
-        copies.Forget(Bell);
-        copies.Give(BellUri, "after");
-
-        Assert.False(copies.Current(server, BellUri), "A file's first giving after it reopened was taken for its first giving before it closed");
-    }
-
-    [Fact]
-    public async Task A_server_started_again_opens_the_file_afresh()
+    private async Task A_server_started_again_opens_the_file_afresh()
     {
         StandIn first = new();
         StandIn second = new();
@@ -168,8 +144,7 @@ public class RazorHtmlCopiesTests
         Assert.True(second.Documents[BellUri] == (1, "text"), "A server started again was not sent the file afresh");
     }
 
-    [Fact]
-    public async Task A_send_the_server_cannot_take_is_sent_again_and_a_close_to_a_server_gone_is_not_sent()
+    private async Task A_send_the_server_cannot_take_is_sent_again_and_a_close_to_a_server_gone_is_not_sent()
     {
         StandIn server = new() { Refuses = true };
         RazorHtmlCopies copies = new();

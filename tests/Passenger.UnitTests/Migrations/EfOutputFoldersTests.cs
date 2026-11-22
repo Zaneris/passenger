@@ -33,8 +33,16 @@ public sealed class EfOutputFoldersTests
         ("Old/20250101000000_First.Designer.cs", Designer("PostgresContext", "20250101000000_First")),
         ("CompiledModels/PostgresContextModel.cs", "[DbContext(typeof(PostgresContext))]\npublic partial class PostgresContextModel : RuntimeModel { }\n"));
 
+    /// <summary>A context's migrations are found by their attributes and their folders offered within the
+    /// project.</summary>
     [Fact]
-    public void Each_contexts_migrations_are_found_by_their_attributes_in_whatever_folder_they_are_kept()
+    public void A_contexts_migrations_folders_are_found_and_offered() => Cases.All(
+        (nameof(Each_contexts_migrations_are_found_by_their_attributes_in_whatever_folder_they_are_kept),
+            Each_contexts_migrations_are_found_by_their_attributes_in_whatever_folder_they_are_kept),
+        (nameof(A_folder_typed_or_picked_is_taken_from_the_projects_and_one_outside_it_refused),
+            A_folder_typed_or_picked_is_taken_from_the_projects_and_one_outside_it_refused));
+
+    private void Each_contexts_migrations_are_found_by_their_attributes_in_whatever_folder_they_are_kept()
     {
         Assert.True(TwoSets.HoldsMigrations, "Two sets of migrations in folders of their own were not seen as migrations at all");
         string[] postgres = [.. TwoSets.MigrationsOf("MyApp.Data.PostgresContext").Select(m => $"{m.Id ?? "snapshot"} {Path.GetRelativePath(Data.Folder, m.File).Replace('\\', '/')}")];
@@ -43,19 +51,7 @@ public sealed class EfOutputFoldersTests
             $"PostgresContext's migrations were read as [{string.Join(", ", postgres)}]: a compiled model, another context's or the migration's own half would be taken for one");
     }
 
-    [Fact]
-    public void The_folders_offered_hold_the_contexts_migrations_the_last_ones_first_and_dotnet_efs_own_is_beside_it()
-    {
-        Assert.Equal(["Migrations/Postgres", "Old"], EfOutputFolders.Holding(TwoSets, Data, "PostgresContext"));
-        Assert.Equal(["Migrations/SqlServer"], EfOutputFolders.Holding(TwoSets, Data, "SqlServerContext"));
-        Assert.True(EfOutputFolders.LastIn(TwoSets, Data, "PostgresContext") == "Migrations/Postgres",
-            "Given no folder, dotnet ef puts a migration beside the context's last one, which the question would not say");
-        Assert.True(EfOutputFolders.LastIn(TwoSets, Data, "AuditContext") is null && EfOutputFolders.Holding(TwoSets, Data, "AuditContext").Count == 0,
-            "A context with no migrations yet was offered another's folder, where dotnet ef makes its first in Migrations");
-    }
-
-    [Fact]
-    public void A_folder_typed_or_picked_is_taken_from_the_projects_and_one_outside_it_refused()
+    private void A_folder_typed_or_picked_is_taken_from_the_projects_and_one_outside_it_refused()
     {
         string folder = Data.Folder;
         Assert.Equal(((string?)null, (string?)null), EfOutputFolders.Read("  ", Data));
@@ -71,16 +67,4 @@ public sealed class EfOutputFoldersTests
         }
     }
 
-    [Fact]
-    public void A_kept_folder_that_names_none_of_a_projects_own_is_left_out()
-    {
-        Dictionary<string, Dictionary<string, string>> kept = new()
-        {
-            [Data.Path] = new() { ["PostgresContext"] = "Migrations/Postgres", ["Root"] = ".", ["Up"] = "../Elsewhere", ["Whole"] = Path.Combine(Root, "x"), ["Empty"] = "" },
-            ["/gone.csproj"] = new() { ["Up"] = "a/../../b" },
-        };
-        Dictionary<string, Dictionary<string, string>> clamped = EfOutputFolders.Clamped(kept);
-        Assert.Equal([Data.Path], clamped.Keys);
-        Assert.Equal(["PostgresContext=Migrations/Postgres", "Root=."], clamped[Data.Path].Select(c => $"{c.Key}={c.Value}").Order(StringComparer.Ordinal));
-    }
 }

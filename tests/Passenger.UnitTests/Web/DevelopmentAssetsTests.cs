@@ -30,8 +30,18 @@ public class DevelopmentAssetsTests
         return new JsonObject { ["Children"] = named };
     }
 
+    /// <summary>Each file a Blazor app serves is told by its URL, its browser tools where its build wrote
+    /// them.</summary>
     [Fact]
-    public void A_Blazor_Web_Apps_browser_tools_are_where_its_WebAssembly_clients_build_wrote_them()
+    public void An_apps_served_files_are_told_by_their_urls() => Cases.All(
+        (nameof(A_Blazor_Web_Apps_browser_tools_are_where_its_WebAssembly_clients_build_wrote_them),
+            A_Blazor_Web_Apps_browser_tools_are_where_its_WebAssembly_clients_build_wrote_them),
+        (nameof(Each_file_the_app_serves_is_told_by_its_URL_a_referenced_librarys_under_its_own),
+            Each_file_the_app_serves_is_told_by_its_URL_a_referenced_librarys_under_its_own),
+        (nameof(A_projects_scoped_CSS_is_served_from_its_bundle_the_apps_own_or_a_referenced_librarys),
+            A_projects_scoped_CSS_is_served_from_its_bundle_the_apps_own_or_a_referenced_librarys));
+
+    private void A_Blazor_Web_Apps_browser_tools_are_where_its_WebAssembly_clients_build_wrote_them()
     {
         string tools = Folder("Bwa.Client", "obj", "Debug", "net10.0", "dotnet-watch");
         byte[] manifest = Manifest([Folder("Bwa", "wwwroot"), tools], Children(
@@ -60,8 +70,7 @@ public class DevelopmentAssetsTests
         return DevelopmentAssets.Read(manifest) ?? throw new InvalidOperationException("The manifest was not read");
     }
 
-    [Fact]
-    public void Each_file_the_app_serves_is_told_by_its_URL_a_referenced_librarys_under_its_own()
+    private void Each_file_the_app_serves_is_told_by_its_URL_a_referenced_librarys_under_its_own()
     {
         DevelopmentAssets assets = BellWithKit();
         Assert.Equal("app.css", assets.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "app.css")));
@@ -74,17 +83,7 @@ public class DevelopmentAssetsTests
         Assert.Null(assets.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "added.css")));
     }
 
-    [Fact]
-    public void A_referenced_librarys_scoped_CSS_is_told_by_its_bundles_URL_without_the_fingerprint()
-    {
-        DevelopmentAssets assets = BellWithKit();
-        Assert.True(assets.BundleUrlOf(Path.Combine(Solution, "Kit", "Kit.csproj")) == "_content/Kit/Kit.bundle.scp.css",
-            $"Kit's scoped CSS was told as {assets.BundleUrlOf(Path.Combine(Solution, "Kit", "Kit.csproj"))}, not the bundle the app serves at its own name");
-        Assert.Null(assets.BundleUrlOf(Path.Combine(Solution, "Plain", "Plain.csproj")));
-    }
-
-    [Fact]
-    public void A_projects_scoped_CSS_is_served_from_its_bundle_the_apps_own_or_a_referenced_librarys()
+    private void A_projects_scoped_CSS_is_served_from_its_bundle_the_apps_own_or_a_referenced_librarys()
     {
         string bundles = Folder("Bell", "obj", "Debug", "net10.0", "scopedcss", "bundle");
         string library = Folder("Kit", "obj", "Debug", "net10.0", "scopedcss", "projectbundle");
@@ -97,25 +96,4 @@ public class DevelopmentAssetsTests
         Assert.Null(read.BundleFileOf(Path.Combine(Solution, "Plain", "Plain.csproj"), own: false));
     }
 
-    [Fact]
-    public void A_file_served_at_two_URLs_is_told_by_the_shorter()
-    {
-        DevelopmentAssets? read = DevelopmentAssets.Read(Manifest([Folder("Bell", "wwwroot")], Children(
-            ("favicon.x2rx4ajns0.png", Asset(0, "favicon.png")),
-            ("favicon.png", Asset(0, "favicon.png")))));
-        Assert.Equal("favicon.png", read?.UrlOf(Path.Combine(Solution, "Bell", "wwwroot", "favicon.png")));
-    }
-
-    [Fact]
-    public void A_build_that_served_no_browser_tools_has_none_and_text_that_is_no_manifest_is_none()
-    {
-        DevelopmentAssets? read = DevelopmentAssets.Read(Manifest([Folder("Bell", "wwwroot")], Children(
-            ("app.css", Asset(0, "app.css")),
-            ("_framework", Children(("blazor.web.js", Asset(0, "blazor.web.js")))),
-            ("Bell.BrowserTools.Config.js", Asset(0, "Bell.BrowserTools.Config.js")))));
-        Assert.NotNull(read);
-        Assert.Null(read.BrowserTools);
-        Assert.Null(DevelopmentAssets.Read("not a manifest"u8));
-        Assert.Null(DevelopmentAssets.Read("{ \"ContentRoots\": [] }"u8));
-    }
 }

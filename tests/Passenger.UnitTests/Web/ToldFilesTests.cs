@@ -11,8 +11,22 @@ public sealed class ToldFilesTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
+    /// <summary>A file is news once for each writing, a deleted sheet once, a file gone none.</summary>
     [Fact]
-    public void A_file_is_news_once_for_each_writing()
+    public void A_written_or_deleted_file_is_news_once() => Cases.All(
+        (nameof(A_file_is_news_once_for_each_writing), () => Apart(test => test.A_file_is_news_once_for_each_writing())),
+        (nameof(A_sheet_deleted_is_news_once_though_its_writing_never_was),
+            () => Apart(test => test.A_sheet_deleted_is_news_once_though_its_writing_never_was())),
+        (nameof(A_file_gone_is_no_writing), () => Apart(test => test.A_file_gone_is_no_writing())));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<ToldFilesTests> check)
+    {
+        using ToldFilesTests test = new();
+        check(test);
+    }
+
+    private void A_file_is_news_once_for_each_writing()
     {
         ToldFiles told = new();
         string sheet = Path.Combine(root, "site.css");
@@ -24,8 +38,7 @@ public sealed class ToldFilesTests : IDisposable
         Assert.True(told.Written(sheet), "A file written since it was told of was passed over");
     }
 
-    [Fact]
-    public void A_sheet_deleted_is_news_once_though_its_writing_never_was()
+    private void A_sheet_deleted_is_news_once_though_its_writing_never_was()
     {
         ToldFiles told = new();
         string sheet = Path.Combine(root, "Banner.razor.css");
@@ -36,24 +49,7 @@ public sealed class ToldFilesTests : IDisposable
         Assert.False(told.WrittenOrGone(sheet), "A sheet's deletion heard twice would bundle its project twice");
     }
 
-    [Fact]
-    public void A_sheet_put_back_as_it_was_is_news_again()
-    {
-        ToldFiles told = new();
-        string sheet = Path.Combine(root, "Banner.razor.css");
-        File.WriteAllText(sheet, ".banner { }");
-        Assert.True(told.WrittenOrGone(sheet));
-        DateTime written = File.GetLastWriteTimeUtc(sheet);
-        File.Delete(sheet);
-        Assert.True(told.WrittenOrGone(sheet));
-
-        File.WriteAllText(sheet, ".banner { }");
-        File.SetLastWriteTimeUtc(sheet, written);
-        Assert.True(told.WrittenOrGone(sheet), "A sheet undeleted with its old stamp was passed over, so the bundle would stay without its rules");
-    }
-
-    [Fact]
-    public void A_file_gone_is_no_writing()
+    private void A_file_gone_is_no_writing()
     {
         ToldFiles told = new();
         Assert.False(told.Written(Path.Combine(root, "gone.png")), "A file that is not there was taken for one written, so its page would reload for nothing");

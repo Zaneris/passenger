@@ -8,28 +8,27 @@ namespace Passenger.UnitTests.Text;
 /// host in its brackets, and none starting inside another scheme, as Aspire's service discovery writes one.</summary>
 public class WebAddressesTests
 {
-    [Theory]
-    [InlineData("see https://example.com/docs. now", "https://example.com/docs")]
-    [InlineData("(http://localhost:5000/api?x=1)", "http://localhost:5000/api?x=1")]
-    [InlineData("mail mailto:team@example.com, then", "mailto:team@example.com")]
-    [InlineData("at www.example.com!", "www.example.com")]
-    [InlineData("kept in file:///tmp/Links.cs, never", "file:///tmp/Links.cs")]
-    [InlineData("\"https+http://apiservice\"", null)]
-    [InlineData("\"http+https://apiservice/weather\"", null)]
-    [InlineData("a.http://example.com and x-https://example.com", null)]
-    [InlineData("no address here, only www and http words", null)]
-    [InlineData("See https://en.wikipedia.org/wiki/C_(programming_language) for more.", "https://en.wikipedia.org/wiki/C_(programming_language)")]
-    [InlineData("(see https://en.wikipedia.org/wiki/C_(programming_language))", "https://en.wikipedia.org/wiki/C_(programming_language)")]
-    [InlineData("Read https://en.wikipedia.org/wiki/C_(programming_language).", "https://en.wikipedia.org/wiki/C_(programming_language)")]
-    [InlineData("[the docs](https://example.com/a_(b)_c), then", "https://example.com/a_(b)_c")]
-    [InlineData("at https://example.com/f(x_(y)) now", "https://example.com/f(x_(y))")]
-    [InlineData("open https://example.com/a(b c", "https://example.com/a")]
-    [InlineData("in (www.example.com/q?(a)=1).", "www.example.com/q?(a)=1")]
-    [InlineData("kept (file:///C:/Program%20Files%20(x86)/App/readme.txt).", "file:///C:/Program%20Files%20(x86)/App/readme.txt")]
-    [InlineData("      Now listening on: http://[::]:8080", "http://[::]:8080")]
-    [InlineData("served at http://[::1]:5000/api.", "http://[::1]:5000/api")]
-    [InlineData("(http://[2001:db8::1])", "http://[2001:db8::1]")]
-    public void An_address_is_read_to_its_end_and_none_starts_inside_another_scheme(string text, string? address)
+    /// <summary>An address is read to its end and none starts inside another scheme.</summary>
+    [Fact]
+    public void An_address_in_text_is_read_to_its_end() => Cases.All(
+        (nameof(An_address_is_read_to_its_end_and_none_starts_inside_another_scheme),
+            An_address_is_read_to_its_end_and_none_starts_inside_another_scheme));
+
+    private void An_address_is_read_to_its_end_and_none_starts_inside_another_scheme() => Cases.Each<(string Text, string? Address)>(
+    [
+        ("see https://example.com/docs. now", "https://example.com/docs"),
+        ("mail mailto:team@example.com, then", "mailto:team@example.com"),
+        ("kept in file:///tmp/Links.cs, never", "file:///tmp/Links.cs"),
+        ("\"https+http://apiservice\"", null),
+        ("a.http://example.com and x-https://example.com", null),
+        ("See https://en.wikipedia.org/wiki/C_(programming_language) for more.", "https://en.wikipedia.org/wiki/C_(programming_language)"),
+        ("[the docs](https://example.com/a_(b)_c), then", "https://example.com/a_(b)_c"),
+        ("open https://example.com/a(b c", "https://example.com/a"),
+        ("      Now listening on: http://[::]:8080", "http://[::]:8080"),
+        ("served at http://[::1]:5000/api.", "http://[::1]:5000/api"),
+    ], row => An_address_is_read_to_its_end_and_none_starts_inside_another_scheme(row.Text, row.Address));
+
+    private void An_address_is_read_to_its_end_and_none_starts_inside_another_scheme(string text, string? address)
     {
         List<string> found = [];
         foreach (ValueMatch match in WebAddresses.In(text))

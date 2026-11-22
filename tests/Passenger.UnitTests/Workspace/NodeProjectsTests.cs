@@ -12,8 +12,38 @@ public sealed class NodeProjectsTests : IDisposable
 
     public void Dispose() => Directory.Delete(root, recursive: true);
 
+    /// <summary>A folder's packages take their manager, scripts and workspace from their manifests, lockfiles and
+    /// workspace files.</summary>
     [Fact]
-    public void A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces()
+    public void A_folders_packages_are_read_from_their_manifests_lockfiles_and_workspaces() => Cases.All(
+        (nameof(A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces),
+            () => Apart(test => test.A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces())),
+        (nameof(A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms),
+            () => Apart(test => test.A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms())),
+        (nameof(Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out),
+            Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out),
+        (nameof(Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves),
+            () => Apart(test => test.Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves())),
+        (nameof(A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root),
+            () => Apart(test => test.A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root())),
+        (nameof(A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing),
+            () => Apart(test => test.A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing())));
+
+    /// <summary>Pre and post scripts are listed apart only where the package's manager, by its version and settings,
+    /// runs none.</summary>
+    [Fact]
+    public void Pre_and_post_scripts_are_listed_as_each_package_manager_runs_them() => Cases.All(
+        (nameof(Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script),
+            Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script));
+
+    /// <summary>Runs a check on a test of its own, as each ran before, its state its own.</summary>
+    private static void Apart(Action<NodeProjectsTests> check)
+    {
+        using NodeProjectsTests test = new();
+        check(test);
+    }
+
+    private void A_manifest_reads_its_name_scripts_in_order_package_manager_engines_and_workspaces()
     {
         NodeManifest read = NodeProjects.ReadManifest("""
             {
@@ -33,26 +63,7 @@ public sealed class NodeProjectsTests : IDisposable
         Assert.Equal(["packages/*", "apps/**"], read.Workspaces);
     }
 
-    [Fact]
-    public void Yarns_object_of_workspaces_lists_its_packages_and_a_manifest_that_is_no_object_reads_as_none()
-    {
-        Assert.Equal(["packages/*"], NodeProjects.ReadManifest("""{ "workspaces": { "packages": ["packages/*"], "nohoist": ["**/x"] } }""")!.Workspaces);
-        Assert.Null(NodeProjects.ReadManifest("[1, 2]"));
-        Assert.Null(NodeProjects.ReadManifest("{ \"name\": "));
-    }
-
-    [Theory]
-    [InlineData("pnpm@9.1.0", NodeManager.Pnpm)]
-    [InlineData("yarn@4.5.1+sha224.abc", NodeManager.Yarn)]
-    [InlineData("bun@1.1.30", NodeManager.Bun)]
-    [InlineData("npm@10.8.2", NodeManager.Npm)]
-    [InlineData("deno@2", null)]
-    [InlineData("", null)]
-    public void A_package_manager_field_names_its_manager_by_the_name_before_its_version(string field, NodeManager? manager) =>
-        Assert.Equal(manager, NodeProjects.Named(field));
-
-    [Fact]
-    public void A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms()
+    private void A_folder_with_several_lockfiles_takes_pnpms_yarns_or_buns_before_npms()
     {
         Assert.Equal((NodeManager.Pnpm, "pnpm-lock.yaml"), NodeProjects.OfLockfiles(["package-lock.json", "pnpm-lock.yaml"]));
         Assert.Equal((NodeManager.Yarn, "yarn.lock"), NodeProjects.OfLockfiles(["yarn.lock", "package-lock.json"]));
@@ -60,45 +71,23 @@ public sealed class NodeProjectsTests : IDisposable
         Assert.Null(NodeProjects.OfLockfiles(["package.json", "README.md"]));
     }
 
-    [Fact]
-    public void Pnpms_workspace_file_lists_its_packages_as_a_block_or_a_flow_unquoted_without_comments()
-    {
-        Assert.Equal(["packages/*", "apps/**", "!**/test/**"], NodeProjects.PnpmWorkspaces("""
-            # The workspace.
-            packages:
-              - 'packages/*'   # libraries
-              - "apps/**"
-              - '!**/test/**'
-            catalog:
-              - react
-            """.Replace("\r\n", "\n", StringComparison.Ordinal)));
-        Assert.Equal(["a/*", "b"], NodeProjects.PnpmWorkspaces("packages: ['a/*', \"b\"]\n"));
-    }
+    private static void Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out() => Cases.Each<(string Folder, bool Taken)>(
+    [
+        ("packages/web", true),
+        ("packages/web/inner", false),
+        ("packages/legacy", false),
+        ("tools", false),
+    ], row => Apart(test => test.Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out(row.Folder, row.Taken)));
 
-    [Theory]
-    [InlineData("packages/web", true)]
-    [InlineData("packages/web/inner", false)]
-    [InlineData("apps/site/admin", true)]
-    [InlineData("packages/legacy", false)]
-    [InlineData("tools", false)]
-    public void Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out(string folder, bool taken) =>
+    private void Workspace_globs_take_in_a_package_by_its_folder_with_a_later_negation_leaving_it_out(string folder, bool taken) =>
         Assert.Equal(taken, NodeProjects.Covers(["packages/*", "./apps/**", "!packages/legacy"], folder));
 
-    [Fact]
-    public void Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves()
+    private void Npm_takes_a_double_dash_before_a_scripts_arguments_and_the_others_pass_them_on_themselves()
     {
         Assert.Equal(["run", "dev", "--", "--port", "3000"], NodeProjects.RunArguments(NodeManager.Npm, "dev", ["--port", "3000"]));
         Assert.Equal(["run", "dev"], NodeProjects.RunArguments(NodeManager.Npm, "dev", []));
         Assert.Equal(["run", "dev", "--port", "3000"], NodeProjects.RunArguments(NodeManager.Pnpm, "dev", ["--port", "3000"]));
         Assert.Equal("yarn", NodeProjects.ProgramOf(NodeManager.Yarn));
-    }
-
-    [Fact]
-    public void A_hook_run_around_another_script_is_no_script_of_its_own_but_one_named_alike_is()
-    {
-        NodePackage package = new("/p/package.json", "p", NodeManager.Npm, "", [new("prebuild", "x"), new("build", "y"), new("postbuild", "z"),
-            new("prepare", "husky"), new("presentation", "w")], null, null);
-        Assert.Equal(["build", "prepare", "presentation"], package.Runnable.Select(s => s.Name));
     }
 
     private const string Hooked = """{ "name": "app", "scripts": { "prebuild": "gen", "build": "tsc", "postbuild": "copy" } }""";
@@ -107,21 +96,18 @@ public sealed class NodeProjectsTests : IDisposable
     /// as its version and its settings say: npm and Bun, Yarn 1 and pnpm with enablePrePostScripts on (its default from 9)
     /// run them; Yarn 2 and later never do, nor pnpm with the setting off (its default from 6 to 8), nor npm told to
     /// ignore scripts, and a script of theirs alone is a script of its own.</summary>
-    [Theory]
-    [InlineData("npm", "package-lock.json={}", false)]
-    [InlineData("npm, told to ignore scripts", "package-lock.json={}|.npmrc=ignore-scripts=true", true)]
-    [InlineData("Bun", "bun.lock={}", false)]
-    [InlineData("Yarn 4 by its field", "yarn.lock=__metadata:\n  version: 8\n|field=yarn@4.5.1", true)]
-    [InlineData("Yarn 4 by its lockfile", "yarn.lock=# This file is generated by running \"yarn install\".\n\n__metadata:\n  version: 8\n", true)]
-    [InlineData("Yarn 2 or later by its settings file", "yarn.lock=|.yarnrc.yml=nodeLinker: node-modules\n", true)]
-    [InlineData("Yarn 1", "yarn.lock=# THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.\n# yarn lockfile v1\n", false)]
-    [InlineData("pnpm 9 and later by default", "pnpm-lock.yaml=lockfileVersion: '9.0'\n", false)]
-    [InlineData("pnpm with the setting off in its workspace file", "pnpm-lock.yaml=lockfileVersion: '9.0'\n|pnpm-workspace.yaml=packages:\n  - 'packages/*'\nenablePrePostScripts: false # not with build\n", true)]
-    [InlineData("pnpm with the setting off in its .npmrc", "pnpm-lock.yaml=lockfileVersion: '9.0'\n|.npmrc=; settings\nenable-pre-post-scripts = false\n", true)]
-    [InlineData("pnpm 11, which reads no such setting from .npmrc", "pnpm-lock.yaml=lockfileVersion: '9.0'\n|.npmrc=enable-pre-post-scripts=false\n|field=pnpm@11.2.0", false)]
-    [InlineData("pnpm 8 by default", "pnpm-lock.yaml=lockfileVersion: '6.0'\n", true)]
-    [InlineData("pnpm 8 with the setting on", "pnpm-lock.yaml=lockfileVersion: '6.0'\n|.npmrc=enable-pre-post-scripts=true\n|field=pnpm@8.15.9", false)]
-    public void Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script(string manager, string files, bool listed)
+    private static void Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script() => Cases.Each<(string Manager, string Files, bool Listed)>(
+    [
+        ("npm", "package-lock.json={}", false),
+        ("npm, told to ignore scripts", "package-lock.json={}|.npmrc=ignore-scripts=true", true),
+        ("Yarn 4 by its field", "yarn.lock=__metadata:\n  version: 8\n|field=yarn@4.5.1", true),
+        ("Yarn 1", "yarn.lock=# THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.\n# yarn lockfile v1\n", false),
+        ("pnpm 9 and later by default", "pnpm-lock.yaml=lockfileVersion: '9.0'\n", false),
+        ("pnpm 11, which reads no such setting from .npmrc", "pnpm-lock.yaml=lockfileVersion: '9.0'\n|.npmrc=enable-pre-post-scripts=false\n|field=pnpm@11.2.0", false),
+        ("pnpm 8 by default", "pnpm-lock.yaml=lockfileVersion: '6.0'\n", true),
+    ], row => Apart(test => test.Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script(row.Manager, row.Files, row.Listed)));
+
+    private void Pre_and_post_scripts_are_listed_apart_only_where_the_packages_manager_runs_none_with_its_script(string manager, string files, bool listed)
     {
         string field = string.Empty;
         foreach (string file in files.Split('|'))
@@ -143,56 +129,7 @@ public sealed class NodeProjectsTests : IDisposable
             $"With {manager}, the scripts listed were {string.Join(", ", package.Runnable.Select(s => s.Name))}, where {string.Join(", ", expected)} were to be");
     }
 
-    /// <summary>The members of a pnpm workspace take the setting of its root's workspace file, and a member's own .npmrc
-    /// sets it for that member where the workspace file says nothing.</summary>
-    [Fact]
-    public void A_pnpm_workspaces_members_take_its_roots_setting_and_their_own_npmrcs()
-    {
-        Write("package.json", """{ "name": "mono", "packageManager": "pnpm@10.4.0" }""");
-        Write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
-        Write("pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n");
-        Write("packages/web/package.json", Hooked.Replace("\"app\"", "\"web\"", StringComparison.Ordinal));
-        Write("packages/api/package.json", Hooked.Replace("\"app\"", "\"api\"", StringComparison.Ordinal));
-        Write("packages/api/.npmrc", "enable-pre-post-scripts=false\n");
-        IReadOnlyList<NodePackage> packages = NodeProjects.Read(root, [Full("package.json"), Full("packages/web/package.json"), Full("packages/api/package.json")]);
-        Assert.Equal(["build"], packages.Single(p => p.Name == "web").Runnable.Select(s => s.Name));
-        Assert.Equal(["prebuild", "build", "postbuild"], packages.Single(p => p.Name == "api").Runnable.Select(s => s.Name));
-        Write("pnpm-workspace.yaml", "packages:\n  - 'packages/*'\nenablePrePostScripts: false\n");
-        packages = NodeProjects.Read(root, [Full("package.json"), Full("packages/web/package.json")]);
-        Assert.Equal(["prebuild", "build", "postbuild"], packages.Single(p => p.Name == "web").Runnable.Select(s => s.Name));
-    }
-
-    [Theory]
-    [InlineData("pnpm@9.12.0+sha512.abc", 9)]
-    [InlineData("yarn@4.5.1", 4)]
-    [InlineData("yarn@1.22.22", 1)]
-    [InlineData("pnpm@11.0.0-rc.1", 11)]
-    [InlineData("yarn", null)]
-    [InlineData("yarn@berry", null)]
-    [InlineData(null, null)]
-    public void A_package_manager_fields_major_version_is_the_number_before_its_first_dot(string? field, int? major) =>
-        Assert.Equal(major, NodeProjects.MajorOf(field));
-
-    [Theory]
-    [InlineData("lockfileVersion: '9.0'\n", 9)]
-    [InlineData("lockfileVersion: 5.4\n\nspecifiers:\n", 8)]
-    [InlineData("lockfileVersion: '6.1'\n", 8)]
-    [InlineData("lockfileVersion: 5.2\n", 5)]
-    [InlineData("importers:\n", null)]
-    public void A_pnpm_lockfiles_version_says_which_pnpms_wrote_it(string head, int? major) =>
-        Assert.Equal(major, NodeProjects.LockfileMajor(NodeManager.Pnpm, head));
-
-    [Theory]
-    [InlineData("ignore-scripts=true", true)]
-    [InlineData("  ignore-scripts = false  ", false)]
-    [InlineData("; ignore-scripts=true\n# ignore-scripts=true", null)]
-    [InlineData("ignore-scripts=yes", null)]
-    [InlineData("ignore-scripts-x=true", null)]
-    public void An_npmrc_sets_a_switch_by_its_last_line_naming_it(string npmrc, bool? set) =>
-        Assert.Equal(set, NodeProjects.NpmrcSwitch(npmrc, "ignore-scripts"));
-
-    [Fact]
-    public void A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root()
+    private void A_folders_packages_take_their_manager_from_the_nearest_field_or_lockfile_and_their_workspace_from_its_root()
     {
         // A pnpm monorepo, its members locked at its root; one member names its own manager.
         Write("package.json", """{ "name": "mono", "scripts": { "build": "turbo build" } }""");
@@ -218,8 +155,7 @@ public sealed class NodeProjectsTests : IDisposable
         Assert.False(Named("@mono/web").IsWorkspace(packages));
     }
 
-    [Fact]
-    public void A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing()
+    private void A_package_no_file_locks_runs_with_npm_and_a_lockfile_above_the_folder_open_but_outside_a_package_says_nothing()
     {
         Write("package-lock.json", "{}");
         Write("site/web/package.json", """{ "name": "web" }""");

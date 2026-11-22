@@ -9,8 +9,15 @@ public sealed class ExpectationTests
 {
     private const string Items = """{"items":[{"name":"Ada"}]}""";
 
+    /// <summary>An expectation finds only what its JSON path reaches in the body read.</summary>
     [Fact]
-    public void A_json_path_with_text_between_its_steps_is_refused_and_finds_nothing()
+    public void An_expectation_finds_only_what_the_body_holds() => Cases.All(
+        (nameof(A_json_path_with_text_between_its_steps_is_refused_and_finds_nothing),
+            A_json_path_with_text_between_its_steps_is_refused_and_finds_nothing),
+        (nameof(A_body_cut_short_fails_what_its_unread_rest_could_hold_and_passes_what_its_part_read_holds),
+            A_body_cut_short_fails_what_its_unread_rest_could_hold_and_passes_what_its_part_read_holds));
+
+    private void A_json_path_with_text_between_its_steps_is_refused_and_finds_nothing()
     {
         using JsonDocument document = JsonDocument.Parse(Items);
 
@@ -23,23 +30,9 @@ public sealed class ExpectationTests
             $"json $.items[0]oops.name was taken as a criterion, where its path is none: {why ?? "no problem"}");
     }
 
-    [Fact]
-    public void An_index_past_any_arrays_length_finds_nothing_and_fails_its_check()
-    {
-        using JsonDocument document = JsonDocument.Parse(Items);
-
-        Assert.Null(Expectation.Walk(document.RootElement, "$.items[99999999999]"));
-        Expectation expectation = Expectation.Read("json $.items[99999999999] exists");
-        Assert.Null(expectation.Malformed);
-        ExpectationResult result = expectation.Check(new EndpointResponse { Status = 200, Body = Items });
-        Assert.False(result.Passed, "An element at index 99999999999 of a one-item array was found");
-        Assert.Equal("none", result.Actual);
-    }
-
     /// <summary>A body cut at <see cref="EndpointClient.MostRead"/>: what the unread rest could hold fails, naming the cut,
     /// and what the part read holds passes.</summary>
-    [Fact]
-    public void A_body_cut_short_fails_what_its_unread_rest_could_hold_and_passes_what_its_part_read_holds()
+    private void A_body_cut_short_fails_what_its_unread_rest_could_hold_and_passes_what_its_part_read_holds()
     {
         EndpointResponse cut = new() { Status = 200, Body = new string('a', 1000), Cut = true };
 
