@@ -23,8 +23,28 @@ public sealed record RuntimeFiles(int Id, long Started, IReadOnlyList<string> Pa
         return new RuntimeFiles(id, started, [Named("dotnet-diagnostic", "socket"), Named("clr-debug-pipe", "in"), Named("clr-debug-pipe", "out")]);
     }
 
+    /// <summary>How often <see cref="RemoveOnceGoneAsync"/> looks again whether a process has gone.</summary>
+    private static readonly TimeSpan LookEvery = TimeSpan.FromMilliseconds(5);
+
     /// <summary>The diagnostic port's socket, where its runtime makes it (<see cref="DiagnosticPorts"/>).</summary>
     public string Socket => Paths[0];
+
+    /// <summary>Removes each of <paramref name="left"/> as soon as its process has gone, for <paramref name="within"/> at
+    /// most: those of a process still running then are kept.</summary>
+    public static async Task RemoveOnceGoneAsync(IReadOnlyList<RuntimeFiles> left, TimeSpan within)
+    {
+        List<RuntimeFiles> waiting = [.. left];
+        Deadline until = Deadline.In(within);
+        while (true)
+        {
+            waiting.RemoveAll(files => files.Remove());
+            if (waiting.Count == 0 || until.Passed)
+            {
+                return;
+            }
+            await Task.Delay(LookEvery).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>Removes those still there once their process has gone: whether it has (its id and start no longer one
     /// running process's), so they are taken now; false while it runs, nothing taken.</summary>

@@ -124,17 +124,23 @@ internal static partial class Lifeline
     public static void Adopt(Process process) => AdoptGroup(process.Id);
 
     /// <summary>Puts a process group that leads itself on the watchdog's list: a child's, or a program the terminal started
-    /// in its pseudo-terminal.</summary>
+    /// in its pseudo-terminal. Its leader's runtime files are followed at once, not at the next look through the groups,
+    /// so a leader killed within a second of its start leaves them no more than one killed later.</summary>
     public static void AdoptGroup(int group)
     {
         if (OperatingSystem.IsWindows())
         {
             return;
         }
+        RuntimeFiles? leader = Followable(group);
         lock (Gate)
         {
             Groups.Add(group);
             Tell($"+{group}");
+            if (leader is not null)
+            {
+                Follow(leader);
+            }
             pruning ??= new Timer(_ => Prune(), null, PruneEvery, PruneEvery);
             following ??= new Timer(_ => FollowRuntimeFiles(), null, TimeSpan.Zero, FollowEvery);
             if (!endsGroupsAtExit)
@@ -296,20 +302,7 @@ internal static partial class Lifeline
     }
 
     /// <summary>Removes each killed program's runtime files as soon as it has gone, for <see cref="KillAgainFor"/> at most.</summary>
-    private static async Task RemoveOnceGoneAsync(RuntimeFiles[] left)
-    {
-        List<RuntimeFiles> waiting = [.. left];
-        Deadline until = Deadline.In(KillAgainFor);
-        while (true)
-        {
-            waiting.RemoveAll(files => files.Remove());
-            if (waiting.Count == 0 || until.Passed)
-            {
-                return;
-            }
-            await Task.Delay(KillAgainEvery).ConfigureAwait(false);
-        }
-    }
+    private static Task RemoveOnceGoneAsync(RuntimeFiles[] left) => RuntimeFiles.RemoveOnceGoneAsync(left, KillAgainFor);
 
     /// <summary>Whether a child's group is still listed (on Windows, its family still held): not yet found empty.</summary>
     public static bool Holds(int group)
@@ -357,8 +350,7 @@ internal static partial class Lifeline
         Dictionary<int, RuntimeFiles> come = [];
         foreach (int id in groups.SelectMany(DotnetProcesses.InGroup).Prepend(Environment.ProcessId).Distinct())
         {
-            if ((!told.ContainsKey(id) || gone.Contains(id)) && RuntimeFiles.Of(id) is { } files
-                && !files.Paths.Any(path => path.Contains('\n', StringComparison.Ordinal)))
+            if ((!told.ContainsKey(id) || gone.Contains(id)) && Followable(id) is { } files)
             {
                 come[id] = files;
             }
@@ -375,17 +367,29 @@ internal static partial class Lifeline
                     left.Add(files);
                 }
             }
-            foreach ((int id, RuntimeFiles files) in come)
+            foreach (RuntimeFiles files in come.Values)
             {
-                if (Told.TryAdd(id, files))
-                {
-                    TellFiles(files);
-                }
+                Follow(files);
             }
         }
         foreach (RuntimeFiles files in left)
         {
             files.Remove();
+        }
+    }
+
+    /// <summary>A process's runtime files, where the watchdog can be told them, a line each; null where they cannot be read.
+    /// Read outside the gate, as a process's environment is a call into the system.</summary>
+    private static RuntimeFiles? Followable(int id) =>
+        RuntimeFiles.Of(id) is { } files && !files.Paths.Any(path => path.Contains('\n', StringComparison.Ordinal)) ? files : null;
+
+    /// <summary>Follows a process's runtime files, told to the watchdog, unless they are followed already: those of an
+    /// earlier process of its id are struck off as it is found gone. Under the gate.</summary>
+    private static void Follow(RuntimeFiles files)
+    {
+        if (Told.TryAdd(files.Id, files))
+        {
+            TellFiles(files);
         }
     }
 
