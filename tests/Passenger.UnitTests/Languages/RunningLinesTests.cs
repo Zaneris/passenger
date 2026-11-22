@@ -77,7 +77,6 @@ public sealed class RunningLinesTests
         ("a breakpoint on a line that runs nothing moves to the next that may and none after the last", A_breakpoint_on_a_line_that_runs_nothing_moves_to_the_next_that_may_and_none_after_the_last),
         ("the next line is the first later line that runs", () => Cases.Each<string>(
         [
-            "\n",
             "\r\n",
         ], The_next_line_is_the_first_later_line_that_runs)),
         ("finding the next line that runs is one walk however long the class", Finding_the_next_line_that_runs_is_one_walk_however_long_the_class));

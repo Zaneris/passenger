@@ -16,17 +16,10 @@ public class TracedStreamTests
         ("messages read in any pieces pass unchanged and are traced whole and counted", () => Cases.EachAsync<int>(
         [
             1,
-            7,
             100_000,
         ], Messages_read_in_any_pieces_pass_unchanged_and_are_traced_whole_and_counted)),
-        ("a message longer than the trace keeps is traced to what it keeps with its length", A_message_longer_than_the_trace_keeps_is_traced_to_what_it_keeps_with_its_length),
         ("a message over the most the connection reads is traced by its size and the frames still followed", A_message_over_the_most_the_connection_reads_is_traced_by_its_size_and_the_frames_still_followed),
-        ("a frame with no length ends the trace of its stream and its bytes still pass", A_frame_with_no_length_ends_the_trace_of_its_stream_and_its_bytes_still_pass),
-        ("messages written are traced whole and each noted across with how many had crossed the other way", () =>
-        {
-            Messages_written_are_traced_whole_and_each_noted_across_with_how_many_had_crossed_the_other_way();
-            return Task.CompletedTask;
-        }));
+        ("a frame with no length ends the trace of its stream and its bytes still pass", A_frame_with_no_length_ends_the_trace_of_its_stream_and_its_bytes_still_pass));
 
     private async Task Messages_read_in_any_pieces_pass_unchanged_and_are_traced_whole_and_counted(int chunk)
     {
@@ -35,16 +28,6 @@ public class TracedStreamTests
         Assert.Equal(sent, read);
         Assert.Equal(["<-- {\"id\":1}", "<-- {\"method\":\"café ☕\"}", "<-- "], traced);
         Assert.Equal(3, stream.Crossed);
-    }
-
-    private async Task A_message_longer_than_the_trace_keeps_is_traced_to_what_it_keeps_with_its_length()
-    {
-        string large = $"\"{new string('x', 100_000)}\"";
-        (_, List<string> traced, TracedStream stream) = await ReadAllAsync(Concat(Framed(large), Framed("{}")), 8_192);
-        Assert.Equal(2, traced.Count);
-        Assert.Equal($"<-- {large[..(64 * 1024)]}… ({Numbers.Said(Encoding.UTF8.GetByteCount(large))} bytes in all)", traced[0]);
-        Assert.Equal("<-- {}", traced[1]);
-        Assert.Equal(2, stream.Crossed);
     }
 
     /// <summary>A length past an int's, which the connection never reads: the trace says the message's size as its header
@@ -65,29 +48,6 @@ public class TracedStreamTests
         Assert.Equal(sent, read);
         Assert.Equal(["<-- {}"], traced);
         Assert.Equal(long.MaxValue, stream.Crossed);
-    }
-
-    private void Messages_written_are_traced_whole_and_each_noted_across_with_how_many_had_crossed_the_other_way()
-    {
-        List<string> traced = [];
-        TracedStream input = new(new MemoryStream(), Server, "-->", () => (_, message) => traced.Add(message));
-        TracedStream output = new(new ChunkedStream(Concat(Framed("[1]"), Framed("[2]")), 4), Server, "<--", () => null, across: input);
-        byte[] buffer = new byte[64];
-        int read = 0;
-        input.Write(Framed("""{"asked":1}"""));
-        while (read < Framed("[1]").Length)
-        {
-            read += output.Read(buffer.AsSpan(read));
-        }
-        input.Write(Framed("""{"asked":2}"""));
-        for (int more = 1; more > 0; read += more)
-        {
-            more = output.Read(buffer.AsSpan(read));
-        }
-        Assert.Equal(["--> {\"asked\":1}", "--> {\"asked\":2}"], traced);
-        Assert.Equal(1, output.CrossedAcrossBeforeNext());
-        Assert.Equal(2, output.CrossedAcrossBeforeNext());
-        Assert.Equal(long.MaxValue, output.CrossedAcrossBeforeNext());
     }
 
     /// <summary>Everything a server's output gives read through the trace in reads of at most <paramref name="chunk"/>

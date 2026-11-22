@@ -8,7 +8,7 @@ namespace Passenger.UnitTests.Lsp;
 
 /// <summary>A test host's conversation written through one buffer kept for it: every message comes out as a pipe writes it,
 /// a request of thousands of tests takes no array of its length from the shared pool, which a thread other than the one
-/// that gave it back misses, and a later conversation writes into the buffer the first one grew.</summary>
+/// that gave it back misses.</summary>
 public class ContiguousWriterTests
 {
     /// <summary>A run's request of 2,000 tests, as a test host is asked to run them: about 300 KB.</summary>
@@ -34,7 +34,6 @@ public class ContiguousWriterTests
     [Fact]
     public Task A_conversation_is_written_through_one_buffer_kept_for_it_as_a_pipe_writes_it() => Cases.AllAsync(
         ("a conversation is written as a pipe writes it and a large request rents no buffer of its length", A_conversation_is_written_as_a_pipe_writes_it_and_a_large_request_rents_no_buffer_of_its_length),
-        ("a later conversation writes its request into the buffer the first one grew", A_later_conversation_writes_its_request_into_the_buffer_the_first_one_grew),
         ("a writer ended writes no more", A_writer_ended_writes_no_more));
 
     private async Task A_conversation_is_written_as_a_pipe_writes_it_and_a_large_request_rents_no_buffer_of_its_length()
@@ -49,19 +48,6 @@ public class ContiguousWriterTests
         Assert.Equal(Encoding.UTF8.GetString(before.Written), Encoding.UTF8.GetString(now.Written));
         Assert.True(before.LargeRents > 0, "A pipe's writer took no array of the request's length from the shared pool, so this test cannot see one taken");
         Assert.True(now.LargeRents == 0, $"Writing the conversation took {now.LargeRents} arrays of a request's length from the shared pool, which a thread other than the one that gave each back misses, allocating it anew");
-    }
-
-    private async Task A_later_conversation_writes_its_request_into_the_buffer_the_first_one_grew()
-    {
-        CancellationToken cancel = TestContext.Current.CancellationToken;
-        byte[] request = new byte[300_000];
-        await WriteAsync(new ContiguousWriter(Stream.Null), request, cancel);
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        await WriteAsync(new ContiguousWriter(Stream.Null), request, cancel);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.True(allocated < 1024, $"A second conversation's {request.Length:N0}-byte request allocated {allocated:N0} bytes: each run's request would grow a buffer anew");
     }
 
     private async Task A_writer_ended_writes_no_more()

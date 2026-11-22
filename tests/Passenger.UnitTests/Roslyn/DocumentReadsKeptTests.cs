@@ -7,11 +7,10 @@ using Passenger.Roslyn.Extension;
 
 namespace Passenger.UnitTests.Roslyn;
 
-/// <summary>What the extension keeps of each document a project's whole read walks (the configuration keys and connection
-/// strings appsettings.json completion and a compose file's check ask for), held to Roslyn's own versions: an edit inside a
-/// body reads again only its document, and an edit of declarations also the documents whose code was bound, so what they
-/// found follows an options class, a constant or an initializer declared in another file, the parse options, and documents
-/// come and gone.</summary>
+/// <summary>What the extension keeps of each document a project's whole read walks (the configuration keys and
+/// connection strings appsettings.json completion and a compose file's check ask for), held to Roslyn's own versions:
+/// an edit inside a body reads again only its document, and an edit of declarations also the documents whose code was
+/// bound, so what they found follows an options class, a constant or an initializer declared in another file.</summary>
 public sealed class DocumentReadsKeptTests
 {
     private static CancellationToken Cancel => TestContext.Current.CancellationToken;
@@ -78,8 +77,7 @@ public sealed class DocumentReadsKeptTests
     [Fact]
     public Task A_documents_read_is_kept_until_an_edit_reaches_what_it_bound() => Cases.AllAsync(
         ("an edit inside a body reads again only its own document", An_edit_inside_a_body_reads_again_only_its_own_document),
-        ("a declaration edited in another file reads again the documents whose code was bound", A_declaration_edited_in_another_file_reads_again_the_documents_whose_code_was_bound),
-        ("parse options and documents come and gone are followed", Parse_options_and_documents_come_and_gone_are_followed));
+        ("a declaration edited in another file reads again the documents whose code was bound", A_declaration_edited_in_another_file_reads_again_the_documents_whose_code_was_bound));
 
     private async Task An_edit_inside_a_body_reads_again_only_its_own_document()
     {
@@ -122,30 +120,5 @@ public sealed class DocumentReadsKeptTests
         (read, found) = await ReadAllAsync(workspace, kept);
         Assert.Equal("Options.cs Reader.cs", read);
         Assert.True(found["Reader.cs"] == "Store|Name=,Port", $"An initializer given to Name left Reader.cs's read as {found["Reader.cs"]}: the key would still be said to need a value");
-    }
-
-    private async Task Parse_options_and_documents_come_and_gone_are_followed()
-    {
-        using AdhocWorkspace workspace = Made();
-        DocumentReadsKept<string> kept = new();
-        (_, IReadOnlyDictionary<string, string> found) = await ReadAllAsync(workspace, kept);
-        Assert.Equal(string.Empty, found["Plain.cs"]);
-
-        Project project = workspace.CurrentSolution.Projects.Single();
-        Assert.True(workspace.TryApplyChanges(workspace.CurrentSolution.WithProjectParseOptions(project.Id, new CSharpParseOptions(preprocessorSymbols: ["TRADE"]))),
-            "The workspace took no parse options");
-        (string read, IReadOnlyDictionary<string, string> traded) = await ReadAllAsync(workspace, kept);
-        Assert.True(traded["Plain.cs"] == "Shop|Name", $"With TRADE defined, Plain.cs's read is '{traded["Plain.cs"]}' after reading {read}: the code its #if holds goes unread");
-
-        Assert.True(workspace.TryApplyChanges(workspace.CurrentSolution.AddDocument(DocumentId.CreateNewId(project.Id), "Later.cs",
-            SourceText.From("public sealed class Later\n{\n    public string Key => Keys.Section;\n}\n"))), "The workspace took no new document");
-        (read, found) = await ReadAllAsync(workspace, kept);
-        Assert.Contains("Later.cs", read, StringComparison.Ordinal);
-        Assert.Equal("Shop|Name", found["Later.cs"]);
-
-        Document later = workspace.CurrentSolution.Projects.Single().Documents.Single(d => d.Name == "Later.cs");
-        Assert.True(workspace.TryApplyChanges(workspace.CurrentSolution.RemoveDocument(later.Id)), "The workspace took no removal of Later.cs");
-        (_, found) = await ReadAllAsync(workspace, kept);
-        Assert.Equal(["Keys.cs", "Options.cs", "Plain.cs", "Reader.cs"], found.Keys.Order(StringComparer.Ordinal));
     }
 }

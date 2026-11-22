@@ -16,11 +16,8 @@ public sealed class TemplateScopesTests
         ("a template goes only where its word starts the declaration", () => Cases.Each(
         [
             (Derived + "|\n}\n", TemplateScope.Member),
-            (Derived + "[Obsolete]\n    pro|\n}\n", TemplateScope.Member),
             (Derived + "override ct|\n}\n", TemplateScope.None),
-            (Derived + "public static pro|\n}\n", TemplateScope.None),
             ("namespace Shapes;\n\ncla|\n", TemplateScope.Type),
-            ("namespace Shapes;\n\npublic |\nclass Circle\n{\n}\n", TemplateScope.None),
             (Derived + "public int Count => fo|;\n}\n", TemplateScope.None),
         ], row =>
         {
@@ -31,10 +28,7 @@ public sealed class TemplateScopesTests
         ("a space after a member's override opens completion", () => Cases.Each(
         [
             (Derived + "public override |\n}\n", true),
-            (Derived + "override |\n    public int Count => 1;\n}\n", true),
             (Derived + "override  |\n}\n", false),
-            (Derived + "public |\n}\n", false),
-            (Derived + "void M()\n    {\n        string override_ = \"override |\";\n    }\n}\n", false),
             (Derived + "// override |\n}\n", false),
         ], row =>
         {

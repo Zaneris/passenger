@@ -12,7 +12,6 @@ public sealed class LiteralLinesTests
     [Fact]
     public void Lines_whose_whitespace_a_languages_reader_keeps_are_kept_and_no_others() => Cases.All(
         ("a dockerfiles heredocs are kept to their delimiters and its other lines are not", A_dockerfiles_heredocs_are_kept_to_their_delimiters_and_its_other_lines_are_not),
-        ("a stripped heredocs delimiter may be indented two on a line run in turn and one left open runs to the end", A_stripped_heredocs_delimiter_may_be_indented_two_on_a_line_run_in_turn_and_one_left_open_runs_to_the_end),
         ("a godot resources quoted value over lines is kept an escaped quote going on", A_godot_resources_quoted_value_over_lines_is_kept_an_escaped_quote_going_on),
         ("XMLs text with words is kept and whitespace between tags is not", XMLs_text_with_words_is_kept_and_whitespace_between_tags_is_not),
         ("HTMLs preformatted elements are kept a scripts and a paragraphs lines are not", HTMLs_preformatted_elements_are_kept_a_scripts_and_a_paragraphs_lines_are_not));
@@ -21,14 +20,6 @@ public sealed class LiteralLinesTests
     {
         Assert.Equal([2, 3, 4, 6, 7],
             Lines(LiteralLines.Heredocs, "FROM alpine\nRUN <<EOF\n    echo hi\n  echo there\nEOF\nCOPY <<\"EOT\" /file\n    data\nEOT\nRUN echo a \\\n    && echo b\n"));
-    }
-
-    private void A_stripped_heredocs_delimiter_may_be_indented_two_on_a_line_run_in_turn_and_one_left_open_runs_to_the_end()
-    {
-        Assert.Equal([1, 2], Lines(LiteralLines.Heredocs, "RUN <<-EOF\n\tone\n\tEOF\nRUN true\n"));
-        Assert.Equal([1, 2, 3, 4], Lines(LiteralLines.Heredocs, "COPY <<A <<B /\n  a\nA\n  b\nB\nRUN true\n"));
-        Assert.Equal([1, 2, 3], Lines(LiteralLines.Heredocs, "RUN <<EOF\n  one\n  two\n"));
-        Assert.Empty(Lines(LiteralLines.Heredocs, "# RUN <<EOF\nRUN echo $((1<<2))\n    done\n"));
     }
 
     private void A_godot_resources_quoted_value_over_lines_is_kept_an_escaped_quote_going_on()

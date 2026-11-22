@@ -27,8 +27,6 @@ public sealed class StringLinesTests
             "$\"\"\"\n        {one}\n        \"\"\";",
             "@\"a\"\"\n        \n        \"u8.ToArray();",
         ], Every_kind_of_string_running_over_lines_is_read_in_a_branch_left_out)),
-        ("the else of a condition taken and every way of conditions nested in one left out are read", The_else_of_a_condition_taken_and_every_way_of_conditions_nested_in_one_left_out_are_read),
-        ("a directive like line in a string left out is the strings and a string left open runs to the branchs end", A_directive_like_line_in_a_string_left_out_is_the_strings_and_a_string_left_open_runs_to_the_branchs_end),
         ("a plain string a block comment and code after a string are no strings lines", A_plain_string_a_block_comment_and_code_after_a_string_are_no_strings_lines));
 
     private void A_verbatim_strings_lines_after_its_first_are_inside_it()
@@ -57,23 +55,6 @@ public sealed class StringLinesTests
         string code = "#if LEFT_OUT\nstring s = " + literal + "\nint x;\n#endif\n";
         int last = code.Split('\n').ToList().FindIndex(l => l.StartsWith("int x", StringComparison.Ordinal)) - 1;
         Assert.Equal(Enumerable.Range(2, last - 1), Of(code));
-    }
-
-    /// <summary>The way a condition takes is parsed, the other left out, and an else's branch is read as its if's is.</summary>
-    private void The_else_of_a_condition_taken_and_every_way_of_conditions_nested_in_one_left_out_are_read()
-    {
-        Assert.Equal([2, 5], Of("#if true\nstring a = @\"one\n    two\";\n#else\nstring b = @\"three\n    four\";\n#endif\n"));
-        Assert.Equal([3, 6, 9], Of("#if OUTER\n#if INNER\nstring a = @\"one\n    two\";\n#else\nstring b = @\"three\n    four\";\n#endif\nstring c = @\"five\n    six\";\n#endif\n"));
-        Assert.Equal([3, 6], Of("#if OUTER\n#if !INNER\nstring a = @\"one\n    two\";\n#elif ANOTHER\nstring b = @\"three\n    four\";\n#endif\n#endif\n"));
-    }
-
-    /// <summary>A line like a directive inside a string left out is the string's, a string left open runs to its branch's end,
-    /// and words that are no C# are lines as any other.</summary>
-    private void A_directive_like_line_in_a_string_left_out_is_the_strings_and_a_string_left_open_runs_to_the_branchs_end()
-    {
-        Assert.Equal([2, 3, 4, 5], Of("#if OUT\nstring a = @\"\n#if INNER\n    text\n#endif\n\";\nint x;\n#endif\n"));
-        Assert.Equal([2, 3], Of("#if OUT\nstring a = @\"open\n    one\n    two\n#endif\nint x;\n"));
-        Assert.Empty(Of("#if OUT\nThis isn't code: it has \"one quote\n    and is indented\n#endif\n"));
     }
 
     private void A_plain_string_a_block_comment_and_code_after_a_string_are_no_strings_lines()

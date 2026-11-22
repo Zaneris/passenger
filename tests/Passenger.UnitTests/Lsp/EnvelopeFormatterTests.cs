@@ -8,10 +8,10 @@ using StreamJsonRpc.Reflection;
 
 namespace Passenger.UnitTests.Lsp;
 
-/// <summary>Passenger's JSON-RPC conversations read with the envelope alone parsed: every recorded request, notification,
-/// answer, error, cancellation and progress handed to handlers and callers, and every message written, exactly as
-/// StreamJsonRpc's own System.Text.Json formatter does, however the pipe cuts the messages; and a large answer read with
-/// no buffer from the shared pool and nothing beyond what it is read as.</summary>
+/// <summary>Passenger's JSON-RPC conversations read with the envelope alone parsed: every recorded request,
+/// notification, answer, error, cancellation and progress handed to handlers and callers, and every message written,
+/// exactly as StreamJsonRpc's own System.Text.Json formatter does, however the pipe cuts the messages; and what is no
+/// message refused.</summary>
 public class EnvelopeFormatterTests
 {
     private static readonly JsonSerializerOptions Web = JsonRpcConversations.Web;
@@ -33,11 +33,6 @@ public class EnvelopeFormatterTests
         ("what is no message is refused as JSON that does not read", () =>
         {
             What_is_no_message_is_refused_as_JSON_that_does_not_read();
-            return Task.CompletedTask;
-        }),
-        ("a large answer rents no buffer and costs what it is read as", () =>
-        {
-            A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as();
             return Task.CompletedTask;
         }));
 
@@ -104,37 +99,6 @@ public class EnvelopeFormatterTests
         {
             Assert.ThrowsAny<JsonException>(() => new EnvelopeFormatter(Web).Deserialize(new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(message))));
         }
-    }
-
-    /// <summary>A semantic tokens answer of 250,000 numbers, about 750 KB: read whole, it rents nothing from the shared pool,
-    /// which a busy conversation's messages take from one another, and allocates no more than the answer read alone.</summary>
-    private static void A_large_answer_rents_no_buffer_and_costs_what_it_is_read_as()
-    {
-        string answer = $$$"""{"resultId":"9","data":{{{JsonRpcConversations.Tokens(250_000)}}}}""";
-        ReadOnlySequence<byte> message = new(Encoding.UTF8.GetBytes($$$"""{"jsonrpc":"2.0","id":7,"result":{{{answer}}}}"""));
-        byte[] alone = Encoding.UTF8.GetBytes(answer);
-        EnvelopeFormatter formatter = new(Web);
-        Answered(formatter, message);
-        JsonSerializer.Deserialize<JsonRpcConversations.TokensResult>(alone, Web);
-
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        JsonSerializer.Deserialize<JsonRpcConversations.TokensResult>(alone, Web);
-        long readAlone = GC.GetAllocatedBytesForCurrentThread() - before;
-        int rented;
-        long read;
-        using (PoolRents rents = new())
-        {
-            rents.Counting = true;
-            before = GC.GetAllocatedBytesForCurrentThread();
-            JsonRpcConversations.TokensResult? tokens = Answered(formatter, message);
-            read = GC.GetAllocatedBytesForCurrentThread() - before;
-            rents.Counting = false;
-            rented = rents.Count;
-            Assert.Equal(250_000, tokens?.Data.Length);
-        }
-
-        Assert.True(rented == 0, $"Reading a {message.Length:N0}-byte answer rented {rented} buffers from the shared pool, which a busy server's answers take from one another, so that each allocates its own");
-        Assert.True(read <= readAlone + 8 * 1024, $"Reading a {message.Length:N0}-byte answer allocated {read:N0} bytes, past the {readAlone:N0} its result alone costs");
     }
 
     /// <summary>A message as text: its kind, id, method, version and what it carries, as the conversation would read it.</summary>

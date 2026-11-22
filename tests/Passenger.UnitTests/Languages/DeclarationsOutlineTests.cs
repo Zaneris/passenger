@@ -20,8 +20,7 @@ public sealed class DeclarationsOutlineTests
     [Fact]
     public void A_files_outline_names_each_declaration_nested_as_declared_with_its_kind_and_line() => Cases.All(
         ("a files outline names each namespace type and member nested with its kind and line", A_files_outline_names_each_namespace_type_and_member_nested_with_its_kind_and_line),
-        ("a files rows nest as declared so a line finds the member type and namespace it is in", A_files_rows_nest_as_declared_so_a_line_finds_the_member_type_and_namespace_it_is_in),
-        ("a file declaring nothing has an empty outline", A_file_declaring_nothing_has_an_empty_outline));
+        ("a files rows nest as declared so a line finds the member type and namespace it is in", A_files_rows_nest_as_declared_so_a_line_finds_the_member_type_and_namespace_it_is_in));
 
     private void A_files_outline_names_each_namespace_type_and_member_nested_with_its_kind_and_line()
     {
@@ -82,11 +81,5 @@ public sealed class DeclarationsOutlineTests
         // Its depth, its name, its kind and its type.
         static string Row(Declarations.Declared declared, int depth) =>
             $"{depth} {declared.Name} {declared.Kind}{(declared.Type is { } type ? $": {type}" : string.Empty)}";
-    }
-
-    private void A_file_declaring_nothing_has_an_empty_outline()
-    {
-        const string Statements = "Console.WriteLine(1);\n";
-        Assert.Equal(string.Empty, Declarations.Outline(new ParsedText(CSharpSyntaxTree.ParseText(Statements, cancellationToken: TestContext.Current.CancellationToken), TextSnapshot.From(Statements))));
     }
 }

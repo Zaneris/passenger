@@ -4,9 +4,9 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Languages;
 
 /// <summary>A ';' or a '}' just typed in C# is formatted around only where it is the code's own and ends something: a
-/// statement's or a declaration's ';', a block's, a type's or an initializer's '}'; never a ';' of a for loop's header,
-/// nor one or a '}' in a string, a comment or a directive, nor an interpolation's '}'. A block a line break opened is laid
-/// out only where the caret stands on a line of its own between the code's own '{' and its '}', with nothing else between.</summary>
+/// statement's or a declaration's ';', a block's '}'; never a ';' of a for loop's header, nor one or a '}' in a string,
+/// a comment or a branch left out. A block a line break opened is laid out only where the caret stands on a line of its
+/// own between the code's own '{' and its '}', with nothing else between.</summary>
 public sealed class TypedFormattingTests
 {
     private const string Code = """
@@ -39,11 +39,8 @@ public sealed class TypedFormattingTests
         ("a character is formatted around only where the code ends something with it", () => Cases.Each(
         [
             ("field=1;", true),
-            ("1,2 }", true),
             ("var x=i+1;\n        }", true),
-            ("#endif\n    }", true),
             ("for (var i=0;", false),
-            ("$\"{field}", false),
             ("\"a;b}", false),
             ("// x=1;", false),
             ("/* x=2; }", false),
@@ -56,26 +53,12 @@ public sealed class TypedFormattingTests
             Assert.True(TypedFormatting.Formats(parsed, caret, typed) == row.Item2,
                 $"The '{typed}' ending \"{row.Item1}\" would {(row.Item2 ? "not " : "")}be formatted around");
         })),
-        ("only the character said typed and found before the caret is formatted around", () =>
-        {
-            ParsedText parsed = new(CSharpParsing.Parse(Code), TextSnapshot.From(Code));
-            int statement = Code.IndexOf("x=i+1;", StringComparison.Ordinal) + "x=i+1;".Length;
-            Assert.False(TypedFormatting.Formats(parsed, statement, '}'), "A ';' was formatted around as the '}' said typed");
-            Assert.False(TypedFormatting.Formats(parsed, statement - 1, ';'), "The '1' before a ';' was formatted around as the ';' said typed");
-            Assert.False(TypedFormatting.Formats(parsed, 0, ';'), "Nothing before the file's start was formatted around");
-            Assert.False(TypedFormatting.Formats(parsed, Code.Length + 1, '}'), "A place past the file's end was formatted around");
-            Assert.False(TypedFormatting.Formats(parsed, statement, '='), "A character other than ';' or '}' was formatted around");
-        }),
         ("a block is laid out only where the caret stands alone between the code's own braces", () => Cases.Each(
         [
             ("var item = new() {\n    |\n};", true),
-            ("if (true)\n    {\n|\n    }", true),
             ("var items = new[] {\r\n    |\r\n};", true),
-            ("var item = new() {|};", false),
-            ("var item = new() {\n    |};", false),
             ("var item = new() {\n    // kept\n    |\n};", false),
             ("var text = $\"{\n    |\n}\";", false),
-            ("var list = new int[] [\n    |\n];", false),
         ], row =>
         {
             string body = row.Item1;

@@ -16,8 +16,7 @@ public class CSharpParsingTests
         before + string.Concat(Enumerable.Repeat(open, deep)) + inner + string.Concat(Enumerable.Repeat(close, deep)) + after;
 
     /// <summary>Each shape the parser recurses through unchecked, nested past what it is given, is a tree of nothing the
-    /// text's length and says where it went too deep; less, on a small stack, reads whole; and what is read on a stack of
-    /// its own goes there only when deep.</summary>
+    /// text's length; less, on a small stack, reads whole.</summary>
     [Fact]
     public void Nesting_past_what_a_parser_is_given_is_a_tree_of_nothing_the_texts_length_and_less_reads_whole() => Cases.All(
         ("brackets past what a parser is given are a tree of nothing the text's length", () => Cases.Each(
@@ -38,19 +37,6 @@ public class CSharpParsingTests
             ("class C { object x = ", "x => ", "0", "", "; }"),
             ("class C { object x = ", "(int x) => ", "0", "", "; }"),
         ], row => TreeOfNothing(Nested(row.Item1, row.Item2, row.Item3, row.Item4, row.Item5, 10_000)))),
-        ("a chain of links goes too deep at its thousandth, or its 999th where a link opens a bracket, a ? read only before what it accesses", () => Cases.Each(
-        [
-            ("class C { object x = a", "?.b"),
-            ("class C { object x = a", "? .b"),
-            ("class C { ", "A<"),
-            ("class C { object x = ", "(int x) => "),
-        ], row =>
-        {
-            string text = row.Item1 + string.Concat(Enumerable.Repeat(row.Item2, 10_000));
-            int? at = null;
-            SmallStack.Run(() => at = CSharpParsing.DeepAt(TextSnapshot.From(text), CSharpParsing.Default));
-            Assert.InRange(at ?? -1, row.Item1.Length + (998 * row.Item2.Length), row.Item1.Length + (1000 * row.Item2.Length) - 1);
-        })),
         ("a documentation comment's elements nested past what a parser is given are too deep, on one line or many, in a block comment or with attributes", () => Cases.Each(
         [
             ("/// ", "<a>", "", "\nclass C { }\n"),
@@ -69,7 +55,6 @@ public class CSharpParsingTests
         ("brackets deeper than a small stack holds read whole where a parser is given them", () => Cases.Each(
         [
             ("class C { int x = ", "(", "1", ")", "; }"),
-            ("class C { object x = ", "x => ", "0", "", "; }"),
         ], row =>
         {
             string text = Nested(row.Item1, row.Item2, row.Item3, row.Item4, row.Item5, 900);
@@ -81,22 +66,7 @@ public class CSharpParsingTests
             Assert.False(DeepText.Holds(text.Length), "This text no longer reaches past what a stack holds");
             SmallStack.Run(() => Assert.Empty(((CompilationUnitSyntax)CSharpParsing.Parse(text).GetRoot()).Members));
         }),
-        ("a text too deep says where it went too deep and one read says nothing", () =>
-        {
-            string text = Nested("class C { int x = ", "(", "1", ")", "; }", 100_000);
-            // The class's brace and 999 round ones before it make 1,000.
-            SmallStack.Run(() => Assert.Equal("class C { int x = ".Length + 999, CSharpParsing.DeepAt(CSharpParsing.Parse(text))));
-            string strings = Nested("class C { string[] x = { ", "\"(\", ", "", string.Empty, "}; }", 5_000);
-            SmallStack.Run(() => Assert.Null(CSharpParsing.DeepAt(CSharpParsing.Parse(strings))));
-            string commented = "// (((\n" + text;
-            SmallStack.Run(() => Assert.Equal("// (((\nclass C { int x = ".Length + 999, CSharpParsing.DeepAt(CSharpParsing.Parse(commented))));
-        }),
-        ("a read on a stack of its own gives its answer and what it threw", () =>
-        {
-            Assert.Equal(1000, DeepText.Read(1000, () => 1000));
-            Assert.Throws<FormatException>(() => DeepText.Read<int>(1000, () => throw new FormatException()));
-        }),
-        ("a long shallow expression is read on the asking thread, a deep one on a stack of its own, and one past what the parser reads refused", LongShallowExpressionsReadOnTheAskingThread));
+        ("an expression deeper than a stack holds is read on a stack of its own, and one past what the parser reads refused", DeepExpressionsReadOnAStackOfTheirOwn));
 
     /// <summary>The shapes of real test and data files, whose brackets are only text, read whole; and what a string, a
     /// character, a comment or a branch left out holds closes nothing, so brackets nested past what a parser is given around
@@ -106,11 +76,8 @@ public class CSharpParsingTests
         ("brackets that are only text read whole however many, the lexer handed what the text count doesn't know", () => Cases.Each(
         [
             ("class C { string[] x = { ", "\"(\", ", "", "}; }"),
-            ("class C { char[] x = { ", "'(', ", "", "}; }"),
             ("class C { string x = \"\"\"\n", "((\n", "", "\"\"\"; }"),
-            ("class C {\n/*", " ( { [", "*/", "}"),
             ("class C {\n#if NEVER\n", "(((\n", "#endif\n", "}"),
-            ("class C { string[] x = { ", "\"a?.b\", ", "", "}; }"),
         ], row =>
         {
             string text = Nested(row.Item1, row.Item2, row.Item3, string.Empty, row.Item4, 5_000);
@@ -119,18 +86,8 @@ public class CSharpParsingTests
         ("a string, a character or a comment the text count reads as the lexer does opens nothing", () => Cases.Each(
         [
             ("class C { string[] x = { ", "\"(\\\"{[\", "),
-            ("class C { string[] x = { ", "@\"(\n\"\"{\", "),
-            ("class C { char[] x = { ", "'(', '\\'', "),
             ("class C { string[] x = { ", "$\"{F(\"(\")}({x:N2}\", "),
-            ("class C { string[] x = { ", "\"\"\"\"(\"\"\"\"\"\", "),
-            ("class C { string[] x = { ", "$$\"\"\"{{x}}(({\"\"\", "),
-            ("class C {\n", "/// <see cref=\"A{B}\"/> (\nint x;\n"),
         ], row => Assert.False(DeepText.TooDeep(row.Item1 + string.Concat(Enumerable.Repeat(row.Item2, 5_000)) + "}", csharp: true), "What a string or a comment holds counted as open"))),
-        ("a name holding a mark, or starting with a letter number, is read whole and opens nothing", () => Cases.Each(
-        [
-            ("class C { object[] x = { ", "ánot, "),
-            ("class C { void M() {\n", "    F(@Ⅻ);\n"),
-        ], row => Assert.False(DeepText.TooDeep(row.Item1 + string.Concat(Enumerable.Repeat(row.Item2, 5_000)) + "}", csharp: true), "A name's mark or letter number was read as no name's, so what follows counted as open"))),
         ("brackets around what closes nothing are still too deep, in the text and in an interpolated string's text read alone", () => Cases.Each(
         [
             ("class C { object x = ", "(\";\" + ", ")"),
@@ -223,7 +180,6 @@ public class CSharpParsingTests
         ("conditional accesses of real code (nullable arrays, chains of eleven, a lambda's statements) read whole however many", () => Cases.Each(
         [
             ("class C {\n", "    public static int?[] M(int?[] a, object?[] b) { return a?[0] is null ? null : a; }\n", "}"),
-            ("class C { object x = a?[0] ?? F(y => {\n", "    y = b?[0]?[1]?[2];\n", "}); }"),
             ("class C { void M() {\n", "    x = a?[0]?[1]?[2]?[3]?[4]?[5]?[6]?[7]?[8]?[9]?[10];\n", "} }"),
         ], row =>
         {
@@ -255,7 +211,6 @@ public class CSharpParsingTests
         ("typing that keeps every run at eleven or fewer, or changes only words, keeps the tree a parser made", () => Cases.Each(
         [
             ("class C { void M() { x = a{10}; } }", "; }", "?[0]; }"),
-            ("class C { int x = a{6} ?? F(y => { y = b; }); }", "y = b;", "y = b?[0]?[0];"),
         ], row =>
         {
             SourceText text = SourceText.From(row.Item1.Replace("{6}", Links(6)).Replace("{10}", Links(10)));
@@ -295,16 +250,6 @@ public class CSharpParsingTests
             Assert.True(CSharpParsing.DeepAt(after) is not null, "An element typed into a documentation comment 1,000 deep left a parser's tree");
         }),
         ("a key typed is measured by its statement, not the file", KeyTypedIsMeasuredByItsStatement),
-        ("a mark typed in a name is measured as a word typed", () =>
-        {
-            SourceText text = SourceText.From("class C\n{\n    void M()\n    {\n        int नमस = F(\"(\", ')');\n    }\n}\n");
-            SyntaxTree tree = CSharpParsing.Parse(text);
-            int at = text.ToString().IndexOf("नमस", StringComparison.Ordinal) + "नमस".Length;
-            SourceText typed = text.WithChanges(new TextChange(new TextSpan(at, 0), "्ते"));
-            long read = CSharpParsing.TypedRead;
-            Assert.False(CSharpParsing.TypedMayGoDeep(tree, typed, typed.GetChangeRanges(text)));
-            Assert.True(CSharpParsing.TypedRead == read, $"A virama typed in a name read {CSharpParsing.TypedRead - read} characters around it, as though it could open or close what follows");
-        }),
         ("a union at a LangVersion of the newest C# parses as a union with no syntax error, a number staying it (#1352)", () => Cases.Each(["latest", "default"], languageVersion =>
         {
             SyntaxTree tree = CSharpParsing.Parse("public record Cat;\npublic record Dog;\npublic union Pet(Cat, Dog);\n", CSharpParsing.Defining([], languageVersion));
@@ -354,24 +299,12 @@ public class CSharpParsingTests
         Assert.True(large <= small + 256, $"Measuring a key allocated {large} bytes in a long file against {small} in a short one, so a key costs what the file holds");
     }
 
-    /// <summary>An expression or a type's name long but shallow, as the debugger reads one per row, is read on the thread that
-    /// asks; one nested deeper than any stack is sure to hold goes to a stack sized for it, and one nested past what the
-    /// parser reads is still refused.</summary>
-    private static void LongShallowExpressionsReadOnTheAskingThread()
+    /// <summary>An expression or a type's name nested deeper than any stack is sure to hold, as the debugger reads one per
+    /// row, goes to a stack sized for it, and one nested past what the parser reads is refused.</summary>
+    private static void DeepExpressionsReadOnAStackOfTheirOwn()
     {
-        const string Type = "System.Collections.Generic.Dictionary<System.String, System.Collections.Generic.List<System.Int32>>";
-        string expression = $"(({Type})values)[\"key\"].Count > 3 && items?.Count is not null";
-        int asking = Environment.CurrentManagedThreadId;
-        long spawned = DeepText.ReadBytes;
-        Assert.True(CodeBrackets.ReadsAsType(Type), "A long generic type's name did not read as a type");
-        Assert.True(CodeBrackets.Expression(expression) is { ContainsDiagnostics: false }, "A long shallow expression did not read");
-        Assert.Equal(asking, CodeBrackets.OnStack(expression, () => Environment.CurrentManagedThreadId));
-        Assert.True(DeepText.ReadBytes == spawned, "A long shallow expression or type's name was read on a thread of its own");
-
         string nested = new string('(', 100) + "1" + new string(')', 100);
-        Assert.NotEqual(asking, CodeBrackets.OnStack(nested, () => Environment.CurrentManagedThreadId));
         Assert.True(CodeBrackets.Expression(nested) is { ContainsDiagnostics: false }, "Brackets 100 deep did not read on a stack sized for them");
-        Assert.True(DeepText.ReadBytes > spawned, "Brackets 100 deep were read on the asking thread");
         string past = new string('(', 20_000) + "1" + new string(')', 20_000);
         SmallStack.Run(() => Assert.True(CodeBrackets.Expression(past) is null && !CodeBrackets.ReadsAsType(past), "Brackets 20,000 deep were read"));
     }

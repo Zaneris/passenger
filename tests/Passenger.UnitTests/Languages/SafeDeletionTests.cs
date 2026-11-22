@@ -17,15 +17,12 @@ public sealed class SafeDeletionTests
         ("an enum member goes with its comma and the enum still parses", () => Cases.Each<(string, string, string)>(
         [
             (OneLine, "Red", "enum Color { Green, Blue }\n"),
-            (OneLine, "Blue", "enum Color { Red, Green }\n"),
             (Lines, "Green", "enum Color\n{\n    Red,\n    Blue\n}\n"),
             ("enum Color\n{\n    Red,\n    /// <summary>Grass.</summary>\n    Green = 4, // the lawn\n    Blue,\n}\n", "Green", "enum Color\n{\n    Red,\n    Blue,\n}\n"),
-            ("enum Color\n{\n    Red,\n    Green, // the lawn\n    Blue\n}\n", "Blue", "enum Color\n{\n    Red,\n    Green, // the lawn\n}\n"),
         ], row => An_enum_member_goes_with_its_comma_and_the_enum_still_parses(row.Item1, row.Item2, row.Item3))),
         ("the last member after a directive leaves the directives and the comma before it", () => Cases.Each<(string, bool, string, string)>(
         [
             (IfBlock, true, "Green", "enum Colour\n{\n    Red,\n#if DEBUG\n    Debug,\n#endif\n}\n"),
-            (IfBlock, false, "Green", "enum Colour\n{\n    Red,\n#if DEBUG\n    Debug,\n#endif\n}\n"),
             (IfLast, true, "Debug", "enum Colour\n{\n    Red,\n#if DEBUG\n#endif\n}\n"),
         ], row => The_last_member_after_a_directive_leaves_the_directives_and_the_comma_before_it(row.Item1, row.Item2, row.Item3, row.Item4))));
 

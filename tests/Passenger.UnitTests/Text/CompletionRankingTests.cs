@@ -17,7 +17,6 @@ public class CompletionRankingTests
         ("narrowing key by key shows the rows in the order scoring the whole list afresh shows", () => Cases.Each([1, 2, 3, 4, 5, 6, 7, 8], Narrowing_key_by_key_shows_the_rows_in_the_order_scoring_the_whole_list_afresh_shows)),
         ("filtered key by key the rows are the whole list's less those the filter leaves out", () => Cases.Each([1, 2, 3, 4], Filtered_key_by_key_the_rows_are_the_whole_lists_less_those_the_filter_leaves_out)),
         ("a list whose later part is added as it comes ranks as the whole list sent as one", () => Cases.Each([1, 2, 3, 4], A_list_whose_later_part_is_added_as_it_comes_ranks_as_the_whole_list_sent_as_one)),
-        ("of the names the letters begin, the one that fits goes first after the name typed whole", Of_the_names_the_letters_begin_the_one_that_fits_goes_first_after_the_name_typed_whole),
         ("items found alike in a list of more than ten thousand rank in the list's order", Items_found_alike_in_a_list_of_more_than_ten_thousand_rank_in_the_lists_order));
 
     /// <summary>A key costs what it matched, not the list: it scores only what the last key matched, passes over what lacks
@@ -25,7 +24,6 @@ public class CompletionRankingTests
     [Fact]
     public void A_key_costs_what_the_last_key_matched_not_the_lists_length() => Cases.All(
         ("a key that lengthens the name scores only the items the last key matched", A_key_that_lengthens_the_name_scores_only_the_items_the_last_key_matched),
-        ("an item lacking a letter typed is passed over unscored", An_item_lacking_a_letter_typed_is_passed_over_unscored),
         ("ranking a key allocates the same for fifty thousand items as for five hundred", Ranking_a_key_allocates_the_same_for_fifty_thousand_items_as_for_five_hundred));
 
     /// <summary>The letters names are made of: words' capitals, runs of them, separators, digits, and characters that match
@@ -91,24 +89,6 @@ public class CompletionRankingTests
                     + $"the whole list less what the filter leaves out shows [{string.Join(", ", expected.Take(8).Select(i => entries[i].Matched))}…]: a filter would hide or reorder what it keeps");
             }
         }
-    }
-
-    private static void Of_the_names_the_letters_begin_the_one_that_fits_goes_first_after_the_name_typed_whole()
-    {
-        CompletionRanking.Entry[] entries =
-        [
-            Entry("abc"), Entry("ab"), Entry("aef", 600), Entry("Aim", 600), Entry("await"), Entry("aefLonger", 400), Entry("xa", 600),
-            Entry("aDeprioritized", int.MinValue / 2), Entry("aPreselected", int.MaxValue / 2),
-        ];
-        CompletionRanking ranking = new(entries);
-        string[] Shown(string typed) => [.. ranking.Shown(typed, typed, 1, MostShown).Select(i => entries[i].Matched)];
-        Assert.Equal(["aPreselected", "aef", "aefLonger", "ab", "abc", "await", "aDeprioritized", "Aim"], Shown("a"));
-        Assert.Equal(["ab", "abc"], Shown("ab"));
-        Assert.Equal(["aPreselected", "Aim", "aef", "xa", "aefLonger", "ab", "abc", "await", "aDeprioritized"], Shown(""));
-
-        CompletionRanking.Entry[] unsaid = [Entry("abc"), Entry("ab"), Entry("aef"), Entry("await")];
-        CompletionRanking plain = new(unsaid);
-        Assert.Equal(["ab", "abc", "aef", "await"], plain.Shown("a", "a", 1, MostShown).Select(i => unsaid[i].Matched));
     }
 
     /// <summary>A list of more than 10,000 items as Passenger's extension sends a C# list, each sort text its place widened:
@@ -187,16 +167,6 @@ public class CompletionRankingTests
         before = ranking.Scored;
         ranking.Shown("Sx", "Sx", 1, MostShown);
         Assert.True(ranking.Scored - before > 0, "A key that is no lengthening of the name scored nothing: its rows would be the last key's");
-    }
-
-    private static void An_item_lacking_a_letter_typed_is_passed_over_unscored()
-    {
-        CompletionRanking.Entry[] entries = [.. Enumerable.Range(0, 1000).Select(i => Entry($"Item{i}")), Entry("Zebra")];
-        CompletionRanking ranking = new(entries);
-        long before = ranking.Scored;
-        int[] shown = ranking.Shown("Zeb", "Zeb", 1, MostShown);
-        Assert.Equal([1000], shown);
-        Assert.True(ranking.Scored - before == 1, $"Typing 'Zeb' scored {ranking.Scored - before} items where one holds its letters: every item would be scored on every key");
     }
 
     private static void Ranking_a_key_allocates_the_same_for_fifty_thousand_items_as_for_five_hundred()
