@@ -337,8 +337,7 @@ BUILT_IN = {
         code=dict(keyword="blue", string="string", escape="yellow", number="number", type="cyan", struct="cyan",
                   method="method", member="member", event="pink", tag="blue", attribute="cyan", heading="blue"),
     ),
-    # Words at WCAG AAA's 7:1 on every ground they are read on, marks and edges at 4.5:1; comments in italics, so they
-    # read as comments without their colour; the one Passenger follows the system's high contrast to (ThemeSource).
+    # Italic comments read as comments without colour; Passenger takes this for the system's high contrast (ThemeSource).
     "High Contrast": dict(
         about="every word and edge at its clearest: words at WCAG AAA's 7 to 1 on what they are read on, strong edges, a yellow "
               "accent and a cyan focus by night, deep blue and magenta by day, comments in italics, the theme Passenger takes "

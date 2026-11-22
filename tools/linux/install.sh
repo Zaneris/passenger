@@ -1,16 +1,8 @@
 #!/bin/sh
-# Installs Passenger from the passenger/ folder this script is in (an unpacked Passenger-linux-<arch>.tar.gz), or
-# removes it again:
-#   ./install.sh                         for you alone: ~/.local/opt/passenger, ~/.local/bin/passenger-ide, and Passenger
-#                                        in your applications menu with its icon and file types (~/.local/share)
-#   sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger-ide, /usr/share/applications
-#   ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
-#   ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
-#   ./install.sh --archive FILE --sha256 SUM [--system]  installs the archive FILE, only where its SHA-256 is SUM,
-#                                        copied and unpacked where only this user writes
-#   ./install.sh --from FOLDER --keep-replaced  also keeps the release it replaces beside FOLDER (or FILE) until the next start
-# Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
-# run again refreshes the menu entry, icons and command.
+# Installs Passenger from the passenger/ folder this script is in (an unpacked Passenger-linux-<arch>.tar.gz) for this
+# user, or with --system for everyone, or removes it again; ./install.sh --help says each way. Installing a newer
+# release's folder the same way replaces the old files and keeps the settings; the installed script run again refreshes
+# the menu entry, icons and command.
 set -eu
 
 app=io.github.zaneris.passenger
@@ -23,7 +15,20 @@ fail() {
 }
 
 usage() {
-    sed -n '2,15s/^# \{0,1\}//p' "$0"
+    cat <<'EOF'
+Installs Passenger from the passenger/ folder this script is in (an unpacked Passenger-linux-<arch>.tar.gz), or
+removes it again:
+  ./install.sh                         for you alone: ~/.local/opt/passenger, ~/.local/bin/passenger-ide, and Passenger
+                                       in your applications menu with its icon and file types (~/.local/share)
+  sudo ./install.sh --system           for everyone: /opt/passenger, /usr/local/bin/passenger-ide, /usr/share/applications
+  ./install.sh --uninstall [--system]  removes what that install added, and leaves the settings (~/.local/share/Passenger)
+  ./install.sh --from FOLDER [--system] installs the unpacked passenger/ folder FOLDER rather than this script's own
+  ./install.sh --archive FILE --sha256 SUM [--system]  installs the archive FILE, only where its SHA-256 is SUM,
+                                       copied and unpacked where only this user writes
+  ./install.sh --from FOLDER --keep-replaced  also keeps the release it replaces beside FOLDER (or FILE) until the next start
+Installing a newer release's folder the same way replaces the old files and keeps the settings; the installed script
+run again refreshes the menu entry, icons and command.
+EOF
 }
 
 system=
@@ -217,8 +222,7 @@ if [ -n "$uninstall" ]; then
     exit 0
 fi
 
-# The archive copied where only this user writes before its SHA-256 is taken, so what is checked is what is unpacked,
-# whoever can write where it was.
+# Checked as a copy only this user writes, so what is unpacked is what was checked, whoever can write where it was.
 if [ -n "$archive" ]; then
     mkdir -p "$(dirname "$dest")"
     unpacking=$(mktemp -d "$(dirname "$dest")/.passenger-archive.XXXXXX") || fail "no folder could be made in $(dirname "$dest") to unpack $archive in"

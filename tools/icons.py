@@ -150,10 +150,7 @@ ICONS = [
     ("Filter", "Filter", "20_regular"),
     # The Step Library window's stripe button: the shelf of steps a project's features may be written in.
     ("StepLibrary", "Library", "20_regular"),
-    # A project by what it builds, wherever a project is listed, where no window's icon says it: a Functions app's bolt, a
-    # .NET MAUI app's phone and laptop, a mobile app's phone, a Blazor app's globe on a screen, a web app's page of the web,
-    # an Avalonia app's screen, a WPF app's window, a Windows Forms app's form, another windowed app's window of apps, a
-    # class library's shelf and a shared project's folder linked into others.
+    # A project by what it builds, wherever a project is listed, where no window's icon says it.
     ("FunctionsApp", "Flash", "20_regular"),
     ("MauiApp", "Phone Laptop", "20_regular"),
     ("MobileApp", "Phone", "20_regular"),

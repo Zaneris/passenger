@@ -10,8 +10,7 @@ if [ ! -x "$build/Passenger" ]; then
     echo "passenger: no build at $build; run just build first" >&2
     exit 1
 fi
-# The app host finds .NET by DOTNET_ROOT, else the installer's folder: a .NET dotnet-install put in ~/.dotnet, which a
-# client may start this without, is named where it holds the runtime the build takes and the installer's folder doesn't.
+# The app host finds .NET by DOTNET_ROOT, else the installer's: name ~/.dotnet where it alone holds the build's runtime.
 runtime=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$build/Passenger.runtimeconfig.json" | head -n 1)
 if [ -z "${DOTNET_ROOT:-}" ] && [ -n "$runtime" ] && [ -d "$HOME/.dotnet/shared/Microsoft.NETCore.App/$runtime" ] \
     && [ ! -d "/usr/local/share/dotnet/shared/Microsoft.NETCore.App/$runtime" ]; then

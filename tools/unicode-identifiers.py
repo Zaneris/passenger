@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """Writes src/Passenger.Workspace/GDScript/UnicodeIdentifiers.cs from Unicode's security and character data.
 
-The characters a GDScript identifier starts with (XID_Start and '_') and goes on with (XID_Continue), as Godot's tokenizer
-reads them from the tables its char_range is written from (DerivedCoreProperties.txt, Unicode 17.0.0 in Godot 4.7). What
-Godot's spoof check of an identifier reads (ICU's uspoof_check, through TextServerAdvanced::spoof_check): the
-characters an identifier may have (Identifier_Status Allowed, ICU's recommended and inclusion sets), each one's augmented
-script set (Script_Extensions, Han's, Hiragana's, Katakana's, Hangul's and Bopomofo's augmented as UTS #39 section 5.1
-says, Common and Inherited every script), the characters whose combining class is neither 0 nor 230, which a hidden dot
-looks past, and those after which a combining dot above is hidden (i, j, dotless i and j, l, the Soft_Dotted, and those
-confusables.txt reads as one of them). VERSION is the Unicode version of the ICU Godot carries (ICU 78.3 in Godot 4.7).
-The files are fetched once into artifacts/unicode/<version>/. THIRD_PARTY_NOTICES.md carries the Unicode licence.
-"""
+The characters a GDScript identifier starts with (XID_Start and '_') and goes on with (XID_Continue), as Godot's
+tokenizer reads them from DerivedCoreProperties.txt (Unicode 17.0.0 in Godot 4.7); and what Godot's spoof check of an
+identifier reads (ICU's uspoof_check, through its TextServerAdvanced): the characters it may have (Identifier_Status
+Allowed, ICU's recommended and inclusion sets), each one's augmented script set (Script_Extensions, CJK's augmented as
+UTS #39 section 5.1 says, Common and Inherited every script), those of combining class neither 0 nor 230, which a hidden
+dot looks past, and those after which a combining dot above is hidden (i, j, dotless i and j, l, the Soft_Dotted and
+their confusables). VERSION is the Unicode of the ICU Godot carries (ICU 78.3 in Godot 4.7); its files, under the
+licence THIRD_PARTY_NOTICES.md carries, are fetched once into artifacts/unicode/<version>/."""
 import importlib.util
 import os
 
