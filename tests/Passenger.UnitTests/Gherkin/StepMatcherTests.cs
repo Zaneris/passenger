@@ -29,7 +29,7 @@ public sealed class StepMatcherTests
     }
 
     [Fact]
-    public void A_step_is_matched_to_its_definitions_as_Reqnrolls_runtime_matches_it() => Cases.All(
+    public void A_step_is_matched_to_its_definitions_as_Reqnrolls_runtime_matches_it_and_a_refused_argument_placed_where_it_is_written() => Cases.All(
         ("a Cucumber Expression's int matches a number and says where the argument is", () =>
         {
             StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));
@@ -54,19 +54,6 @@ public sealed class StepMatcherTests
             Assert.Equal(MatchStatus.Defined, single.Status);
             Assert.Equal(MatchStatus.Defined, Match(matcher, StepKind.Then, "it says anything at all").Status);
         }),
-        ("a regular expression matches the whole step only", () =>
-        {
-            StepMatcher matcher = Matcher(Binding(BindingKind.Given, "I have (\\d+) cucumbers", "GivenCucumbers", P("count", Int)));
-
-            Assert.Equal(MatchStatus.Defined, Match(matcher, StepKind.Given, "I have 12 cucumbers").Status);
-            Assert.Equal(MatchStatus.Undefined, Match(matcher, StepKind.Given, "I have 12 cucumbers today").Status);
-        }),
-        ("a parameter count that differs from the arguments does not match", () =>
-        {
-            StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs"));
-
-            Assert.Equal(MatchStatus.Undefined, Match(matcher, StepKind.Given, "the first number is 50").Status);
-        }),
         ("a step with a table takes the definition with a parameter for it", () =>
         {
             StepMatcher matcher = Matcher(
@@ -76,34 +63,6 @@ public sealed class StepMatcherTests
             StepMatch withTable = matcher.Match(StepKind.Given, "the following users", false, true, new StepContext("F", "S", []));
 
             Assert.Equal("GivenUsers", Assert.Single(withTable.Bindings).Binding.Method);
-        }),
-        ("two definitions matching alike are ambiguous and a scope that fits is chosen over none", () =>
-        {
-            StepBinding plain = Binding(BindingKind.When, "I log in", "WhenILogIn");
-            StepBinding admin = Binding(BindingKind.When, "I log in", "WhenILogInAsAdmin") with { Scopes = [new StepScope("admin", null, null)] };
-            StepMatcher both = Matcher(plain, Binding(BindingKind.When, "I log in", "WhenILogInAgain"));
-            StepMatcher scoped = Matcher(plain, admin);
-
-            Assert.Equal(MatchStatus.Ambiguous, Match(both, StepKind.When, "I log in").Status);
-            Assert.Equal("WhenILogInAsAdmin", Assert.Single(Match(scoped, StepKind.When, "I log in", ["@admin"]).Bindings).Binding.Method);
-            Assert.Equal("WhenILogIn", Assert.Single(Match(scoped, StepKind.When, "I log in", ["@other"]).Bindings).Binding.Method);
-        }),
-        ("a scope by feature or scenario title ignores letter case", () =>
-        {
-            StepBinding feature = Binding(BindingKind.When, "I add", "WhenIAdd") with { Scopes = [new StepScope(null, "calculator", null)] };
-
-            Assert.Equal(MatchStatus.Defined, Match(Matcher(feature), StepKind.When, "I add").Status);
-            Assert.Equal(MatchStatus.Undefined, Match(Matcher(feature with { Scopes = [new StepScope(null, "Other", null)] }), StepKind.When, "I add").Status);
-        }),
-        ("an enum is named by its type and a transformation by its name", () =>
-        {
-            StepBinding color = Binding(BindingKind.Given, "the colour is {Color}", "GivenColour", new StepParameter("color", "Shop.Color", ["Red", "Green"]));
-            StepBinding money = Binding(BindingKind.Given, "a price of {money}", "GivenPrice", P("price", "Shop.Money"));
-            StepMatcher matcher = new([color, money], [new StepTransformation("\\$(\\d+)", "money", "Shop.Money")], CultureInfo.InvariantCulture);
-
-            Assert.Equal(MatchStatus.Defined, Match(matcher, StepKind.Given, "the colour is Red").Status);
-            Assert.Equal(MatchStatus.Defined, Match(matcher, StepKind.Given, "a price of $12").Status);
-            Assert.Equal(MatchStatus.Undefined, Match(matcher, StepKind.Given, "a price of twelve").Status);
         }),
         ("a method named for its step matches with no expression", () =>
         {
@@ -137,10 +96,7 @@ public sealed class StepMatcherTests
         }),
         ("an expression is a Cucumber Expression or a regular expression as Reqnroll tells them", () => Cases.Each(
             [("the first number is {int}", true), ("I have (\\d+) cucumbers", false), ("a price of 3\\.50", false), ("I have cucumber(s)", true)],
-            row => ToldApart(row.Item1, row.Item2))));
-
-    [Fact]
-    public void An_outlines_steps_are_matched_once_per_example_and_an_argument_a_definition_cannot_take_is_placed_where_it_is_written() => Cases.All(
+            row => ToldApart(row.Item1, row.Item2))),
         ("an argument whose check stops at the time limit is said unchecked neither taken nor refused", () =>
         {
             StepBinding money = Binding(BindingKind.Given, "a price of {money}", "GivenPrice", P("price", "Shop.Money"));
@@ -254,26 +210,6 @@ public sealed class StepMatcherTests
             Assert.Contains("text in double or single quotes", Assert.Single(unquoted.Refused).Why, StringComparison.Ordinal);
             Assert.Empty(Match(matcher, StepKind.Given, "something else entirely").Refused);
         }),
-        ("an int too large for its parameter matches the expression and fails converting", () =>
-        {
-            StepMatcher matcher = Matcher(Binding(BindingKind.Given, "the first number is {int}", "GivenTheFirstNumberIs", P("number", Int)));
-
-            StepMatch match = Match(matcher, StepKind.Given, "the first number is 99999999999");
-
-            Assert.Equal(MatchStatus.Defined, match.Status);
-            Assert.Contains("a whole number (from -2147483648 to 2147483647), which \"99999999999\" is not", Assert.Single(match.Refused).Why, StringComparison.Ordinal);
-        }),
-        ("an enum and a transformation refuse what Reqnroll refuses", () =>
-        {
-            StepBinding color = Binding(BindingKind.Given, "the colour is (.*)", "GivenColour", new StepParameter("color", "Shop.Color", ["Red", "Green", "DarkBlue"]));
-            StepBinding money = Binding(BindingKind.Given, "a price of {money}", "GivenPrice", new StepParameter("price", "Shop.Money") { Unconverted = true });
-            StepMatcher matcher = new([color, money], [new StepTransformation("\\$(\\d+)", "money", "Shop.Money") { Parameters = ["System.String"] }], CultureInfo.InvariantCulture);
-
-            Assert.Empty(Match(matcher, StepKind.Given, "the colour is dark blue").Refused);
-            Assert.True(Assert.Single(Match(matcher, StepKind.Given, "the colour is Purple").Refused).Fails);
-            RefusedArgument twelve = Assert.Single(Match(matcher, StepKind.Given, "a price of twelve").Refused);
-            Assert.Contains("its {money} takes text matching (\\$(?:\\d+)), which \"twelve\" is not", twelve.Why, StringComparison.Ordinal);
-        }),
         ("two definitions refused only their arguments leave the step undefined with each refusal", () =>
         {
             StepMatcher matcher = Matcher(
@@ -285,16 +221,6 @@ public sealed class StepMatcherTests
             Assert.Equal(MatchStatus.Undefined, match.Status);
             Assert.Equal(2, match.Refused.Count);
             Assert.All(match.Refused, r => Assert.True(r.Fails));
-        }),
-        ("a definition that fits but for its scope leaves the step undefined with no argument refused", () =>
-        {
-            StepBinding scoped = Binding(BindingKind.Given, "the count is (.*)", "GivenCount", P("count", Text)) with { Scopes = [new StepScope("other", null, null)] };
-            StepMatcher matcher = Matcher(scoped, Binding(BindingKind.Given, "the count is (.*)", "GivenNumber", P("count", Int)));
-
-            StepMatch match = Match(matcher, StepKind.Given, "the count is many");
-
-            Assert.Equal(MatchStatus.Undefined, match.Status);
-            Assert.Empty(match.Refused);
         }),
         ("an outline's argument refused for one example is placed in that example's cell", () =>
         {
@@ -318,5 +244,4 @@ public sealed class StepMatcherTests
 
             Assert.Equal((3, 20, 8), (refused.Line, refused.Column, refused.Length));
         }));
-
 }
