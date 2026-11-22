@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 /// <summary>A theme's fonts as a person meets them: the code's family and size and the window's family are the theme's until
 /// Settings names its own, which wins, and Reset Font Size goes back to the theme's size; and a size every earlier version
 /// kept whether or not the person set it, 13, is read as none set.</summary>
+[AboutMacOS]
 public sealed class ThemeFontsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("theme-fonts-");

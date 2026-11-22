@@ -20,6 +20,7 @@ namespace Passenger.Tests;
 /// Window menu lists the windows and Next and Previous Solution Window step between them; quitting closes them all and a
 /// start reopens each, while one closed alone stays closed; and the settings are the process's, a change in one window
 /// followed by every other and kept whole in settings.json, another Passenger's too.</summary>
+[AboutMacOS]
 public sealed class ProjectWindowsTests : ProjectWindowsFolders
 {
     /// <summary>A window closed, after an agent's call, before its server's first colours or with its first load never

@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// whatever its configuration and the Godot setting say, while a person's window runs its game as configured. Godot is a
 /// stand-in that keeps the arguments it was started with and ends, so no window opens here whatever Passenger asks of it,
 /// and no Godot is needed; the game is one of GDScript alone, which needs no build.</summary>
+[AboutMacOS]
 public sealed class GodotUnseenTests : McpRig
 {
     private readonly string game = PathNames.Canonical(TestFolders.Create("godot-unseen-"));

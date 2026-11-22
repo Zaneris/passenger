@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// <summary>What reading Git's state of a large binary file allocates, counted on every thread: the class runs alone, as
 /// whatever a class beside the window tests allocates meanwhile would count as the IDE's.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class GitFileFormsBytesTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("git-forms-");

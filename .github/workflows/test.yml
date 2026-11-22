@@ -1,10 +1,10 @@
 # The solution built (warnings are errors) and its tests run on macOS (arm64), Windows and Linux (Ubuntu LTS, x64) in
 # two lanes: the gate (the [Gate] tests and the unit tests), whose failure fails the caller, and, when the caller asks,
-# the report lane (every other test, its classes marked [SameOnEverySystem] on Linux alone), whose failures are listed for
-# triage and fail nothing. Each lane's tests are split across shards that run at once, the report lane's last ones in the
-# gate's jobs once their gate tests end, and each job runs its tests in several processes at once, the
-# results in artifacts/test-results. Every restore is locked to the packages.lock.json files. Actions are pinned to a
-# release's commit.
+# the report lane (every other test, its classes marked [SameOnEverySystem] on Linux alone, and on macOS only its
+# classes marked [AboutMacOS]), whose failures are listed for triage and fail nothing. Each lane's tests are split
+# across shards that run at once, the report lane's last ones in the gate's jobs once their gate tests end, and each job
+# runs its tests in several processes at once, the results in artifacts/test-results. Every restore is locked to the
+# packages.lock.json files. Actions are pinned to a release's commit.
 name: Test
 
 on:
@@ -86,14 +86,14 @@ jobs:
       TEST_MINUTES: 60
       # Whether this job sets up what the report lane's classes needing a set-up of minutes need (test-shards.py's
       # SET_UPS): the mobile workloads and devices in the shards mobile_shards names, which run those classes last,
-      # apart (two on macOS, whose simulator classes take about 50 minutes), and Aspire's runtime in the second's.
+      # apart (two on macOS, whose simulator classes take about 30 minutes), and Aspire's runtime in Linux's second.
       # Windows sets up neither: no Android emulator runs on its runner, no iOS app builds there, and its real AppHosts
-      # skip by design.
+      # skip by design; macOS's report lane has no class of real AppHosts, none reaching macOS's own behaviour.
       MOBILE: ${{ matrix.lane == 'report' && contains(format(' {0} ', matrix.mobile_shards), format(' {0} ', matrix.shard)) }}
-      ASPIRE: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system != 'Windows' }}
+      ASPIRE: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system == 'Linux' }}
       # Aspire's dashboard and orchestrator, and the run's own aspire CLI, downloaded by the restore and named in the
       # tests' build (Passenger.Tests.csproj) where the job sets up for them.
-      PassengerAspireRuntime: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system != 'Windows' }}
+      PassengerAspireRuntime: ${{ matrix.lane == 'report' && matrix.shard == 2 && matrix.system == 'Linux' }}
     defaults:
       run:
         shell: bash
@@ -325,11 +325,11 @@ jobs:
             exit 1
           fi
 
-      # Both lanes, which together are the system's whole suite (whole.txt), as each lane's deal reads both: a class with
-      # tests outside its lane that TestTimes.json has no seconds in the lane for is weighed by its share of them, and the
-      # report lane's shards in the gate's jobs begin as the gate's tests end. The report lane's classes marked [SameOnEverySystem] are listed on Linux alone. A listing
-      # that names no test or says discovery failed (xunit #3576) is asked again, up to three tries. The step fails where
-      # both lanes together list more tests than the suite may (test-shards.py's MOST_TESTS).
+      # Both lanes, the system's whole suite (whole.txt), as each lane's deal reads both: a class with tests outside its
+      # lane that TestTimes.json has no seconds in the lane for is weighed by its share of them, and the report lane's
+      # shards in the gate's jobs begin as the gate's tests end. The report lane lists [SameOnEverySystem] on Linux alone,
+      # and on macOS only [AboutMacOS]. A listing naming no test or saying discovery failed (xunit #3576) is asked again,
+      # up to three tries; the step fails where both lanes list more tests than the suite may (test-shards.py's MOST_TESTS).
       - name: List the tests
         env:
           SYSTEM: ${{ matrix.system }}

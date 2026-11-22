@@ -27,6 +27,7 @@ namespace Passenger.Tests;
 /// Reference... adds and takes out a project reference, however the others are laid out, which the Dependencies, the
 /// build and the language server follow, the rest of the project file as it was; Add, Class/Interface... writes each kind
 /// of type; Open In, Terminal starts a shell in the folder; and Tools' Compare shows two files' differences.</summary>
+[AboutMacOS]
 public sealed class SolutionViewTests : IDisposable
 {
     private static readonly string Library = TestProjects.Library();

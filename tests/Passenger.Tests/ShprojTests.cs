@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// MSBuild reads it (a wildcard's and a list's too), each undone in one step, a folder deleted coming back as it was; an
 /// import is taken and dropped through Add Reference and the Dependencies; Add Existing Project adds a .shproj; a test in a
 /// shared file is found from code; and a shared file opens with the C# of a project importing it.</summary>
+[AboutMacOS]
 public sealed class ShprojTests : IDisposable
 {
     private const string Items = """

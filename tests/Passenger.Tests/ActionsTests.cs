@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 
 /// <summary>The window's actions as a person finds and runs them: every one Find Action lists runs where it was asked
 /// for or says why it cannot, and the shortcuts a window's menus and popups show are the ones its own keys run.</summary>
+[AboutMacOS]
 public sealed class ActionsTests : IDisposable
 {
     /// <summary>What Find Action lists but this test leaves alone: the IDE's end, the system's file and folder pickers, Finder

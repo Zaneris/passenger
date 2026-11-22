@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// file and a subfolder. A malformed value, or a flag the mode asked for does not take, ends it at once with exit code 2
 /// and a line on standard error saying what is wrong, never a silent default or a stack trace. A solution or project it
 /// names, as Windows does for one double-clicked, opens in the window as the workspace.</summary>
+[AboutMacOS]
 public sealed class CommandLineTests : IDisposable
 {
     private static readonly string Passenger = Product.Program;

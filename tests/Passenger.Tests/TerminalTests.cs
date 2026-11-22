@@ -28,6 +28,7 @@ namespace Passenger.Tests;
 /// the terminal runs its program in a tab of its own, which reads what is typed there and draws as it likes, and which
 /// Stop ends with all it started. What a program writes or reads comes from the TerminalCases debuggee, the same bytes on
 /// every system, so Windows checks what ConPTY makes of them.</summary>
+[AboutMacOS]
 public sealed class TerminalTests
 {
     /// <summary>A shell in the Terminal starts in the window's folder, takes commands and hides as it exits; a full-

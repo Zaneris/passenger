@@ -22,6 +22,7 @@ namespace Passenger.Tests;
 /// moves the file or folder and its open tabs with it, its project including and removing what it did; a delete goes to
 /// the Trash and closes its tab, and a project's leaves the solution; a name already there is refused with
 /// why.</summary>
+[AboutMacOS]
 public sealed class ExplorerFilesTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("files-");

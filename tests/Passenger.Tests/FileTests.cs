@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 
 /// <summary>Files through the whole window: opened from a folder or dropped from the file manager, edited, saved with the
 /// platform's own Save shortcut, and written back the way they were stored, or as UTF-8 when that would lose a character.</summary>
+[AboutMacOS]
 public sealed partial class FileTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("test-");

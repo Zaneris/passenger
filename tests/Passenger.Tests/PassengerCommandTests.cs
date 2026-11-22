@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// installed; on Windows its folder put on and taken off the user's Path as the installer's hooks do, over a registry key
 /// of the test's own, and the program it carries run. Each run hands a folder, a file and a caret, named from the folder it
 /// was started in, to the Passenger running (the test's), whose window on the folder takes them, and the command ends.</summary>
+[AboutMacOS]
 public sealed class PassengerCommandTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("command-"));

@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// the newest three keep their objects, a program that ends as it is snapshot is said to have ended, one that ends in the
 /// snapshot's own full collection leaves the snapshot taken, a snapshot given up leaves no dump behind, and a hardened
 /// program on macOS is snapshot from its runtime's own heap dump.</summary>
+[AboutMacOS]
 public sealed class MemorySnapshotsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("memory-");

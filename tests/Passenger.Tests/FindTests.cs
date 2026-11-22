@@ -12,6 +12,7 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>Find and replace through the window, with the platform's own shortcuts.</summary>
+[AboutMacOS]
 public sealed class FindTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("find-");

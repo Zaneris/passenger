@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 /// draws. On Linux without Xvfb, or on macOS with a Godot before 4.5, it skips saying why. Run alone: it holds a game to its
 /// frames.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class McpGodotFramesTests : McpRig
 {
     /// <summary>The player, an orange square, steps right each press of the right arrow.</summary>

@@ -22,6 +22,7 @@ namespace Passenger.Tests;
 /// button and the default one lit under the pointer and deeper while pressed.
 /// <see cref="Check"/> is the rule, which the tests that open the other dialogs (a refactoring's, Conflicts, a feed's)
 /// hold their dialogs to as well.</summary>
+[AboutMacOS]
 public sealed class DialogButtonsTests : IDisposable
 {
     /// <summary>The buttons that read as text, whose words stand at their left as a line of text's do.</summary>

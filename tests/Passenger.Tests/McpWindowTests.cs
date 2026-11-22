@@ -19,6 +19,7 @@ namespace Passenger.Tests;
 
 /// <summary>Agents joining the window a person is using (<c>--mcp-attach</c>): what the window asks them before
 /// an agent's first change, what it shows of their work, and what each tool answers there.</summary>
+[AboutMacOS]
 public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 {
     /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>

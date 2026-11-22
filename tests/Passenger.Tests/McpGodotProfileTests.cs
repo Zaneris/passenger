@@ -107,6 +107,7 @@ public sealed class GodotProfileGameFolder : IAsyncLifetime
 /// tree read through app_tree, GODOT given to the game, its own arguments kept and its --path given once; Debug stops it at
 /// a breakpoint in its script. Without a Godot 4 .NET build, each skips saying why.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class McpGodotProfileTests : McpRig, IClassFixture<GodotProfileGameFolder>
 {
     private const string Game = "Spinner: 🕹 Debug Game";

@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// lights' room at its left; and on Linux alone the choice of the merged bar, on at first, a right press on it showing
 /// the window manager's menu. Where Windows decides what a press in the bar is (its caption, a button, the bar's own),
 /// the roles it asks are checked, as no test sees the system's own window.</summary>
+[AboutMacOS]
 public sealed class TitleBarTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("title-bar-");

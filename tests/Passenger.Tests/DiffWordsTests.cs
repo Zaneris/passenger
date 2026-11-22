@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// words at first, the diff's Settings choosing lines, characters or nothing, which the next diff keeps), in a change
 /// bar's popup and the file beside it (Highlight Words turning them off), in the merge window's three panes, and in a
 /// large file changed all over.</summary>
+[AboutMacOS]
 public sealed class DiffWordsTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n";

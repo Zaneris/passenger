@@ -21,6 +21,7 @@ namespace Passenger.Tests;
 /// client: a project worked through it (its tests, packages, actions, publish, Git and the terminal), a folder given it in
 /// other letter case, a start or a load that runs long, and an assembly written into .NET's packs that no project references,
 /// which the language server never hears of.</summary>
+[AboutMacOS]
 public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 {
     /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>

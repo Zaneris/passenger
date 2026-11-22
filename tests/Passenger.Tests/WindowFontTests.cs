@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 
 /// <summary>The window's typeface: the Inter Passenger carries, its hinted faces, until Settings › Appearance chooses
 /// another, which then draws every window's and popup's words, the Git log's commits and the Explorer's rows among them.</summary>
+[AboutMacOS]
 public sealed partial class WindowFontTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("windowfont-"));

@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// restored from nuget.org: Avalonia's cross-platform app's iOS head, and a MAUI app made before its template gave its Apple
 /// heads scenes (a SceneDelegate made since the banner asked kept as it is). Each skips, saying why, off a Mac or without its
 /// workloads.</summary>
+[AboutMacOS]
 public sealed partial class MobileHeadEditsTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(8);

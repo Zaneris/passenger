@@ -14,6 +14,7 @@ namespace Passenger.Tests;
 /// makes for each control's peer, as AppKit does for VoiceOver: an Avalonia update that renames its element class, its
 /// making or its value property fails here, as does an answer that strays from the control's text or a key that costs
 /// more with a reader's element than its change.</summary>
+[AboutMacOS]
 public sealed partial class MacTextElementsTests
 {
     /// <summary>VoiceOver reads the editor's element as a text area by line, range and character and moves its caret,

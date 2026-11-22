@@ -22,6 +22,7 @@ namespace Passenger.Tests;
 /// folder is never joined, and on a person's window an agent's open of another folder is theirs to allow; an agent let in
 /// on one folder is asked again once the person opens another there, and Settings keep a folder let in always from
 /// another window meanwhile. What is held to a time is <see cref="McpAttachTimingTests"/>'.</summary>
+[AboutMacOS]
 public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
 {
     /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>

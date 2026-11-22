@@ -19,6 +19,7 @@ namespace Passenger.Tests;
 /// the iOS workload, Xcode or an iPhone simulator, the simulator's relay, or nuget.org's Avalonia iOS packages. Debugged
 /// through the window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class AvaloniaSimulatorTests
 {
     private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));

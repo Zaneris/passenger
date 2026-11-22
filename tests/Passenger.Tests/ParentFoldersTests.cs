@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 /// root among them, and passed over in a parent another user owns, or where another user put it in the person's own: the
 /// log says where and why; an exFAT volume's folders are the person's. Another user's folder or file is the walk's stand-in
 /// for one (<see cref="FoldersUp.HeldByAnother"/>), as a test makes none of its own.</summary>
+[AboutMacOS]
 public sealed class ParentFoldersTests : IDisposable
 {
     private const UnixFileMode Shown = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead

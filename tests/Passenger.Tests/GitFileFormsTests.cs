@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 
 /// <summary>Files git keeps in another form than the disk's, over real working trees: one a filter smudges (as LFS and
 /// git-crypt do) and one in Windows-1252, each compared, blamed and rolled back as the disk has it.</summary>
+[AboutMacOS]
 public sealed class GitFileFormsTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("git-forms-");

@@ -18,6 +18,7 @@ namespace Passenger.Tests;
 /// console app, an ASP.NET Core app and a self-contained app, the profile it saves as the SDK's own .pubxml (which dotnet
 /// publish takes as it is), one there already found and changed only once the person agrees, Publish Again after a
 /// restart, Stop, a failed build, and Publish greyed with why for a project that does not publish.</summary>
+[AboutMacOS]
 public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
 {
     private const string ConsoleProject = $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <OutputType>Exe</OutputType>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"

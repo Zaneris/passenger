@@ -21,6 +21,7 @@ namespace Passenger.Tests;
 /// <summary>Settings: a search narrows the pages to those with an option whose words match and shows only those options;
 /// a change is in force the moment it is applied, in every editor (one a split makes later too), a window that keeps its
 /// settings opens on them again, and another Passenger's change to them is followed even where the watcher lost it.</summary>
+[AboutMacOS]
 public sealed class SettingsTests : IDisposable
 {
     /// <summary>Settings previews a change in every window and editor and applies it to the next window too, the font the

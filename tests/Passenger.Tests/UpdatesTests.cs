@@ -33,6 +33,7 @@ namespace Passenger.Tests;
 /// version's disk image is made once for the class (<see cref="DiskImages"/>), each Linux release's archive by the test
 /// (<see cref="LinuxInstall"/>). Agents' relays running from an installed copy are the build's own, started as an agent
 /// starts one (<see cref="McpRig"/>).</summary>
+[AboutMacOS]
 public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages>
 {
     /// <summary>The downloads the release workflow publishes with every release, by fixed names.</summary>

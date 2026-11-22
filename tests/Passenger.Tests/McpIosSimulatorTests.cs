@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// why, off a Mac, without the iOS workload, Xcode or an iPhone simulator, or nuget.org's Avalonia iOS packages. Alone, the
 /// simulator shared with AvaloniaSimulatorTests; a simulator the run booted is shut down at its end.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class McpIosSimulatorTests : McpRig
 {
     private const string Name = "XApp";

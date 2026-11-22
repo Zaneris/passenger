@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 
 /// <summary>The window's arrangement as a person meets it: each a setting whose default a theme may give and the person's
 /// own choice wins over. The editor's tabs down a side, gone between by a click, a drag and the keys.</summary>
+[AboutMacOS]
 public sealed class WindowArrangementTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("arrangement-");

@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// types, its packs' reference assemblies) is found there. Its Passengers are processes of their own, so it runs beside
 /// the window tests (<see cref="Beside"/>).</summary>
 [Collection(Beside.Name)]
+[AboutMacOS]
 public sealed class LinkedDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, IClassFixture<LinkedDotnetTests.Linked>
 {
     /// <summary>Why the tests skip on Windows.</summary>

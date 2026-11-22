@@ -24,6 +24,7 @@ namespace Passenger.Tests;
 /// language server unless the test's edits go into the program debugged (Hot Reload works them out in the server), the
 /// debugger and the file's own parse answering the rest. Debugged, and the console's answers timed, so run alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixture<DebuggerTests.Sleeper>, IClassFixture<RestoredFolders>, IAsyncLifetime
 {
     private readonly Sum sum;

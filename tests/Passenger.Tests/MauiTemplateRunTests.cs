@@ -18,6 +18,7 @@ namespace Passenger.Tests;
 /// watch, a saved edit reaches it as it runs. Skips, saying why, without MAUI's workload, whose template makes the app, or, for a build, without the
 /// workload of any head the app's restore reads. Its packages come from nuget.org, as no restore of the solution's brings
 /// them, so it is never one of the gate's.</summary>
+[AboutMacOS]
 public sealed class MauiTemplateRunTests
 {
     private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(15));

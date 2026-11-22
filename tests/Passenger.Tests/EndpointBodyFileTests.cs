@@ -6,6 +6,7 @@ namespace Passenger.Tests;
 /// <summary>A request's body named as a file (<c>&lt; ./body.json</c>) that is a FIFO is refused at once, each time it is
 /// sent, saying so: nothing is sent, and no read is left waiting for a writer that may never come.</summary>
 [Collection(Beside.Name)]
+[AboutMacOS]
 public sealed partial class EndpointBodyFileTests
 {
     /// <summary>The error open gives a writer that will not wait while no reader has the FIFO open or waits to.</summary>

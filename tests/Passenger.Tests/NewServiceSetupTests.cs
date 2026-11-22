@@ -18,6 +18,7 @@ namespace Passenger.Tests;
 /// a Docker launch profile beside the template's own, its container configuration chosen; compose.yaml with it as a
 /// service, its Compose configuration chosen and brought up by the first Run; a class library offered none, saying why;
 /// the choice kept for the next service; and one Undo taking the whole creation back.</summary>
+[AboutMacOS]
 public sealed class NewServiceSetupTests : IDisposable
 {
     private readonly string settings = TestFolders.Create("settings-");

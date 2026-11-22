@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// <summary>The main menu: its menus from the action catalog, each item with the shortcut the keymap gives it now and
 /// disabled where it cannot run; an item chosen runs its action, an editing one where the focus is. The toolbar's menus,
 /// opened by a click, take the keys. A submenu opens beside its item, never over it.</summary>
+[AboutMacOS]
 public sealed class MenuTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("menu-");

@@ -20,6 +20,7 @@ namespace Passenger.Tests;
 /// a Mac, without MAUI's and iOS's workloads, Xcode or an iPhone simulator, or the simulator's relay. Debugged through the
 /// window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class MauiSimulatorTests
 {
     private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));

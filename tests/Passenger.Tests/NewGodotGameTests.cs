@@ -14,6 +14,7 @@ namespace Passenger.Tests;
 /// own editor builds and loads it on; in GDScript it makes the game's folder alone, which opens and runs the same.
 /// Godot runs headless with the run's user folders; without a Godot 4 .NET build, the tests that run it skip saying
 /// why.</summary>
+[AboutMacOS]
 public sealed class NewGodotGameTests : IDisposable
 {
     private readonly string settings = TestFolders.Create("settings-");

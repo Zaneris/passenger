@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// this machine, with no Windows profile; on Linux a target must be chosen. An app's Avalonia desktop head runs on this
 /// machine with nothing chosen, on every system. Plans are worked out with no build, so no emulator is needed; where
 /// MSBuild cannot say what a head builds for want of MAUI's workloads, it skips there, saying so.</summary>
+[AboutMacOS]
 public sealed class MauiRunTargetTests
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(2);

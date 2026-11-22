@@ -9,6 +9,7 @@ namespace Passenger.Tests;
 /// macOS's own monotonic clock run on. So a test the machine slept through goes on as it wakes, rather than every wait
 /// giving up at once. Read, not slept through: the two clocks agree now.</summary>
 [Collection(Beside.Name)]
+[AboutMacOS]
 public sealed partial class WaitsClockTests
 {
     [Fact]

@@ -2,13 +2,13 @@
 """Which of a system's CI shards runs each test class, and the checks that every test runs in exactly one of them.
 
 A lane is a part of the suite: the gate's [Gate] tests and the unit tests, the report lane's every other test (off
-ONE_SYSTEM, but its classes marked [SameOnEverySystem]), or all. `list` writes a lane as `dotnet test --list-tests`
-prints it, asking again while a project names no test or says discovery failed, and fails above the suite's most tests.
-`split` deals its classes by their seconds in the lane on that system in TestTimes.json (else the others'), the longest
-first, each where its shard ends soonest by its kinds of class (one in another lane's job from that one's end, one in a
-job building the check first from that build's end), and to one of a job's test processes, the same in every shard;
-`check` fails unless every test is in exactly one. `test` runs a hand; `ended` names the classes it did not run whole;
-`cover` fails unless every test has one result; `failures` tables misses; `update` rewrites TestTimes.json."""
+ONE_SYSTEM, none marked [SameOnEverySystem]; on MAC_OS, only those marked [AboutMacOS]), or all. `list` writes a lane as
+`dotnet test --list-tests` prints it, again while a project names no test or says discovery failed, failing above the
+suite's most tests. `split` deals its classes by their seconds in the lane on that system in TestTimes.json (else the
+others'), the longest first, each where its shard ends soonest by its kinds of class (one in another lane's job from
+that one's end, one in a job building the check first from that build's end), and to one of a job's test processes, the
+same in every shard; `check` fails unless every test is in exactly one. `test` runs a hand; `ended` names the classes it
+did not run whole; `cover` fails unless every test has one result; `failures` tables misses; `update` writes the times."""
 import argparse
 import ctypes
 import glob
@@ -41,6 +41,10 @@ GATE = "Gate"
 # (tests/Passenger.Tests/SameOnEverySystem.cs), and the one system whose report lane runs it: the others leave it out.
 SAME = "SameOnEverySystem"
 ONE_SYSTEM = "Linux"
+# The trait [AboutMacOS] gives a report class that reaches macOS's own behaviour (tests/Passenger.Tests/AboutMacOS.cs),
+# and the system whose report lane runs only those: the others stand in for it in every other report class.
+ABOUT_MAC_OS = "AboutMacOS"
+MAC_OS = "macOS"
 # How long a class's tests take on each system in each of a job's test processes, by how many there are, for each of
 # their seconds in a process alone (TestTimes.json's): the deal's model of a job of several, and the measure by which
 # `update` keeps the seconds a lone process's: the median `cover` reported for each system's report lane, for two in CI
@@ -188,10 +192,12 @@ def projects(lane):
 
 def lane_filter(lane, system=None):
     """dotnet test's filter that selects a lane's tests from its projects, empty for all; on a system but ONE_SYSTEM, the
-    report lane's leaves out the classes marked [SameOnEverySystem], which ONE_SYSTEM's runs."""
+    report lane's leaves out the classes marked [SameOnEverySystem], which ONE_SYSTEM's runs, and on MAC_OS it takes only
+    the classes marked [AboutMacOS]."""
     chosen = {"gate": f"{GATE}=true|FullyQualifiedName~{UNIT_PREFIX}",
               "report": f"{GATE}!=true&FullyQualifiedName!~{UNIT_PREFIX}", "all": ""}[lane]
-    return chosen + (f"&{SAME}!=true" if lane == "report" and system not in (None, ONE_SYSTEM) else "")
+    return (chosen + (f"&{SAME}!=true" if lane == "report" and system not in (None, ONE_SYSTEM) else "")
+            + (f"&{ABOUT_MAC_OS}=true" if lane == "report" and system == MAC_OS else ""))
 
 
 def both(*filters):
@@ -742,7 +748,8 @@ def split(arguments):
           + ", then its Alone classes'"
           + (f"; the last {arguments.after_of} each in the job of a shard of the lane {arguments.after} lists, once "
              "that shard's tests end" if arguments.after else "")
-          + (f"; the classes marked [{SAME}] only on {ONE_SYSTEM}" if arguments.lane == "report" else "")
+          + (f"; the classes marked [{SAME}] only on {ONE_SYSTEM}, and on {MAC_OS} only those marked [{ABOUT_MAC_OS}]"
+             if arguments.lane == "report" else "")
           + (f"; the classes needing {' or '.join(arguments.apart)}, which only the jobs of shards "
              f"{', '.join(map(str, arguments.apart_shards))} set up, last in them, apart from the rest, at "
              f"{APART_MARGIN:g} times their seconds, the rest there at {SET_UP_PACE[arguments.system]:g} times theirs"
@@ -1450,7 +1457,8 @@ def main():
     command.add_argument("out", help="the file the listing goes to")
     command.add_argument("--lane", choices=LANES, default="all", help="the part of the suite to list")
     command.add_argument("--system", choices=SYSTEMS, help="the system whose part of the lane to list: off ONE_SYSTEM "
-                         "the report lane has no class marked [SameOnEverySystem]; every system's where none is given")
+                         "the report lane has no class marked [SameOnEverySystem], and on MAC_OS only those marked "
+                         "[AboutMacOS]; every system's where none is given")
     command.add_argument("--settings", help="a shard's dotnet test settings, to list only its hand")
     command.add_argument("--tries", type=int, default=TRIES)
     command.add_argument("--beside", nargs="*", default=[], help="what dotnet test --list-tests printed for the suite's "

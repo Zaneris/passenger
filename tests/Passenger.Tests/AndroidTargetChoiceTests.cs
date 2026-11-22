@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// device connected, or with no system image for this machine's processor. It sets the process's ANDROID_AVD_HOME, so it
 /// runs alone. A run on an Android target leaves the other platforms' targets listed.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class AndroidTargetChoiceTests : IDisposable
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(4);

@@ -22,6 +22,7 @@ namespace Passenger.Tests;
 /// over one keymap stay with it, Reset Shortcuts gives back the chosen keymap's own, a shortcut another action has is
 /// warned of as ever, no key of any keymap runs two actions, and the keys checked against Rider's keymaps are those they
 /// resolve to.</summary>
+[AboutMacOS]
 public sealed class KeymapChoiceTests : IDisposable
 {
     private const string Source = "class One { int item; int Two() => item + item; }\n";

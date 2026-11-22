@@ -31,6 +31,7 @@ namespace Passenger.Tests;
 /// Automation, Linux's AT-SPI and macOS's accessibility all read. A walk goes down from a window's peer as a platform's
 /// bridge does, finds what it wants by the name a person would hear, and presses it through the peer's own provider, never
 /// through the control.</summary>
+[AboutMacOS]
 public sealed class AccessibilityTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("accessibility-");

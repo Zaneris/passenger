@@ -16,6 +16,7 @@ namespace Passenger.Tests;
 /// and the run configurations, and the solution the folder's files now pick is the one the Explorer and the language
 /// server both open. Linux's way of watching, a watch for each kept folder from a pool with a limit, is chosen here on
 /// any system, since only the kernel's own running out is Linux's alone.</summary>
+[AboutMacOS]
 public sealed class FolderWatchTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("watch-"));

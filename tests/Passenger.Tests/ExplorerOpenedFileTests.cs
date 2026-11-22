@@ -14,6 +14,7 @@ namespace Passenger.Tests;
 /// however the rows were chosen since, in the Files view where the solution does not hold it; Always Select Opened File,
 /// in its options, has it follow the file shown or keep its row; Open Files with Single Click opens a file on a plain
 /// click, the keys kept on its row; Settings › Explorer holds the same options.</summary>
+[AboutMacOS]
 public sealed class ExplorerOpenedFileTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("explorer-opened-"));

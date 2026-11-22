@@ -24,6 +24,7 @@ namespace Passenger.Tests;
 /// Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged through the window, so alone; each test's waits
 /// end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class MauiCatalystTests : McpRig
 {
     private static TimeSpan Slow => Limits.WithinHang(TimeSpan.FromMinutes(8));

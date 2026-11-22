@@ -18,6 +18,7 @@ namespace Passenger.Tests;
 /// offers each mobile template a missing workload brings. It sets process-wide stand-ins (the .NET's too) and the
 /// environment (ANDROID_HOME, DEVELOPER_DIR, HOME, JAVA_HOME, TMPDIR): it runs alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class MobileNeedsWindowTests : IDisposable
 {
     private static readonly TimeSpan Slow = TimeSpan.FromMinutes(3);

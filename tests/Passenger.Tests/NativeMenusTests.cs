@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// refuses a second NativeMenu: held on the Dock by that exporter itself, made in the headless test process over
 /// Avalonia's native library as its macOS platform makes it as setup ends, its menu read and chosen from as the Dock asks
 /// the app for it; and held in the code, which gives no menu outside NativeMenus.</summary>
+[AboutMacOS]
 public sealed partial class NativeMenusTests
 {
     [AvaloniaFact]

@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 /// downloaded app damaged, or a system-wide Linux install its user cannot write. It runs from a copy in the state's
 /// cache, and the app's folder is left as it was.</summary>
 [Collection(Beside.Name)]
+[AboutMacOS]
 public sealed class InstalledAppTests : McpRig, IClassFixture<RestoredFolders>
 {
     private readonly RestoredFolders folders;

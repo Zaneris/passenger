@@ -172,6 +172,7 @@ public sealed class DesktopHeadAppFolder : IAsyncLifetime
 /// inspector starts it through its BuildAvaloniaApp() on Avalonia's headless platform in the Main's place, before the Main,
 /// so no window reaches a screen and the app tools see and use it as they do any app's.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class McpUnseenAppTests : McpRig, IClassFixture<DesktopAgentAppFolder>, IClassFixture<HeadlessCarryingAppFolder>, IClassFixture<PlatformChoosingAppFolder>,
     IClassFixture<NamedProgramAppFolder>, IClassFixture<DesktopHeadAppFolder>, IClassFixture<Avalonia120AppFolder>
 {

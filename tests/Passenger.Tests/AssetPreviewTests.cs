@@ -16,6 +16,7 @@ using SkiaSharp;
 namespace Passenger.Tests;
 
 /// <summary>Local images and fonts through ordinary file opening, read-only actions and the editor tab lifecycle.</summary>
+[AboutMacOS]
 public sealed class AssetPreviewTests : IDisposable
 {
     private readonly string folder = TestFolders.Create("assets-");

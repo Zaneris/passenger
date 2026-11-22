@@ -18,6 +18,7 @@ namespace Passenger.Tests;
 /// headless; without a Godot 4 (a .NET build for C#), or without the archive, each test skips saying why. Godot runs,
 /// so alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class GodotExportTests
 {
     /// <summary>The variable naming a .tpz of Godot's export templates of the Godot found, its version's, which the export

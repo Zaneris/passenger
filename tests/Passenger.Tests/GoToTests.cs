@@ -13,6 +13,7 @@ namespace Passenger.Tests;
 /// Symbols and Derived Symbols with their choosers, and the places the IDE keeps as a person works: Recent Locations
 /// with each place's code, Last and Next Edit Location, Recently Changed Files. Each test opens its own window, on the
 /// server the last one left running (<see cref="SharedProject"/>).</summary>
+[AboutMacOS]
 public sealed class GoToTests : IClassFixture<GoToTests.Project>
 {
     /// <summary>Lines from zero, as the editor counts them.</summary>

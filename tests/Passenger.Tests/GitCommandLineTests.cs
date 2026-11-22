@@ -10,6 +10,7 @@ namespace Passenger.Tests;
 /// <summary>What the window hands git names the files and repository the person means, however many and however they
 /// are named: thousands of long paths commit and roll back, a folder whose name ends in a space is its own repository,
 /// and a\b.txt is not a/b.txt off Windows; and a repository's folder deleted under a window starts no git there.</summary>
+[AboutMacOS]
 public sealed class GitCommandLineTests : IDisposable
 {
     private const string Original = "class Shop\n{\n    int count;\n}\n";

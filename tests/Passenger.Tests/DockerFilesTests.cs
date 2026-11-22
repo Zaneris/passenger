@@ -24,6 +24,7 @@ namespace Passenger.Tests;
 /// properties, and Add > Docker Compose the solution's compose.yaml, each one command Undo takes back. The servers' tests
 /// skip, saying why, without a Node.js that runs them; the folder is never restored (its nuget.config names no feed that
 /// is there), so nothing reaches nuget.org.</summary>
+[AboutMacOS]
 public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
 {
     private readonly Shop app;

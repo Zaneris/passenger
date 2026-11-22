@@ -15,6 +15,7 @@ namespace Passenger.Tests;
 /// the name the pointer rests on, under the name's line in the diff's own window, whether diffs open as tabs of the
 /// editors or in windows of their own; its other side, the last commit's text, which no language server has read, shows
 /// none.</summary>
+[AboutMacOS]
 public sealed class DiffCardTests : IDisposable
 {
     private const string Shop = "public sealed class Shop\n{\n    /// <summary>The price of a number of items.</summary>\n"

@@ -17,6 +17,7 @@ namespace Passenger.Tests;
 /// Passenger the system translates, with no SDK it loads, offers Passenger for this computer and installs no SDK. It
 /// changes what Passenger finds and the process's PATH and DOTNET_ROOT, so it runs alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class MachineDotnetTests : IDisposable
 {
     /// <summary>A folder holding the .NET 8 SDK alone (Microsoft's archive unpacked), for the test of a machine with it only.</summary>

@@ -12,6 +12,7 @@ namespace Passenger.Tests;
 /// <summary>Addresses written in a file's comments and strings, as a person meets them in the editor: each is underlined as a
 /// link, found by the language's own reading of what is a comment or a string, and Go to Declaration's gesture opens it in
 /// the browser, where a plain click only places the caret; the hover card says where it leads.</summary>
+[AboutMacOS]
 public sealed class CodeLinksTests : IDisposable
 {
     private const string Issue = "https://github.com/Zaneris/passenger/issues/1903";

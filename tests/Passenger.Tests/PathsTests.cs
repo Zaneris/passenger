@@ -21,6 +21,7 @@ namespace Passenger.Tests;
 /// itself, commits it and binds a breakpoint in it, though Git, MSBuild and the debugger name it by the disk's own names.
 /// Its window starts no C# language server, which none of that asks. Debugged, so run alone.</summary>
 [Collection(Alone.Name)]
+[AboutMacOS]
 public sealed class PathsTests : IDisposable
 {
     /// <summary>Why a spelling in other letter case is not tried on Linux.</summary>
@@ -127,6 +128,7 @@ public sealed class PathsTests : IDisposable
 /// <summary>A folder the command line names in other letter case is the disk's everywhere it goes; a project the solution
 /// names in other letter case than its folder is the one its files build in and take their namespace from; and a sibling
 /// folder whose name begins with the open folder's is not inside it.</summary>
+[AboutMacOS]
 public sealed class ProjectPathsTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(TestFolders.Create("paths-"));
@@ -248,6 +250,7 @@ public sealed class ProjectPathsTests : IDisposable
 /// <summary>In a folder that tells letter case apart (a case-sensitive APFS volume on macOS, a folder made case-sensitive on
 /// Windows, any folder on Linux), README.md and readme.md are two files: each opens as a document of its own with its own
 /// text, the Explorer lists each, and what is typed into one is saved to it alone.</summary>
+[AboutMacOS]
 public sealed class CaseTellingFolderTests : IDisposable
 {
     private readonly string root = PathNames.Canonical(TestFolders.Create("case-"));
