@@ -48,6 +48,37 @@ public sealed class TablesAndFlowsTests
             Assert.Equal(1, 2);
         })));
         Assert.True(Said(allWaited).Contains("The row a waiting check holds failed", StringComparison.Ordinal), $"A waiting joined check's failure went unnamed: {Said(allWaited)}");
+        List<string> checkedRows = [];
+        Exception skipAndFail = Assert.ThrowsAny<Exception>(() => Cases.All(
+            ("a check that holds", () => checkedRows.Add("held")),
+            ("a check that skips here", () => Assert.Skip("not on this system")),
+            ("a check that fails", () =>
+            {
+                checkedRows.Add("failed");
+                Assert.Equal(1, 2);
+            })));
+        Assert.True(skipAndFail is not SkipException && checkedRows.SequenceEqual(["held", "failed"])
+            && Said(skipAndFail).Contains("The row a check that fails failed", StringComparison.Ordinal) && !Said(skipAndFail).Contains("skips here", StringComparison.Ordinal),
+            $"A table with a row that skipped did not run the others and fail naming only the row that failed: {Said(skipAndFail)}");
+        Cases.All(("a check that holds", () => { }), ("a check that skips here", () => Assert.Skip("not on this system")));
+        // Caught by hand, as a skip Assert.Throws meets skips this test.
+        string? everySkipped = SkipOf(() => Cases.Each(["Linux", "Windows"], system => Assert.Skip($"not on {system}")));
+        Assert.True(everySkipped?.Contains("\"Linux\": not on Linux; \"Windows\": not on Windows", StringComparison.Ordinal) == true,
+            $"A table whose every row skipped did not skip naming each row's reason: {everySkipped}");
+        string? waitedSkip = null;
+        try
+        {
+            await Cases.AllAsync(("a waiting check that skips", async () =>
+            {
+                await Task.Yield();
+                Assert.Skip("not on this system");
+            }));
+        }
+        catch (SkipException skip)
+        {
+            waitedSkip = skip.Message;
+        }
+        Assert.True(waitedSkip?.Contains("a waiting check that skips: not on this system", StringComparison.Ordinal) == true, $"A waiting table whose every row skipped did not skip: {waitedSkip}");
 
         Flow.Step("the first step holds", () => { });
         Assert.Equal(4, Flow.Step("a step hands on what it made", () => 4));
@@ -56,6 +87,20 @@ public sealed class TablesAndFlowsTests
         Assert.True(Said(step).Contains("step 4 failed, so this no longer holds: the fourth step holds", StringComparison.Ordinal)
             && Said(step).Contains("(the step before it: a step that waits holds)", StringComparison.Ordinal),
             $"A flow's failure did not name its step and the steps before it: {Said(step)}");
+    }
+
+    /// <summary>What a skip said, or null where the check did not skip.</summary>
+    private static string? SkipOf(Action check)
+    {
+        try
+        {
+            check();
+            return null;
+        }
+        catch (SkipException skip)
+        {
+            return skip.Message;
+        }
     }
 
     /// <summary>An exception's words with those of each it carries, as a runner writes them.</summary>
