@@ -87,6 +87,30 @@ public sealed class TablesAndFlowsTests
         Assert.True(Said(step).Contains("step 4 failed, so this no longer holds: the fourth step holds", StringComparison.Ordinal)
             && Said(step).Contains("(the step before it: a step that waits holds)", StringComparison.Ordinal),
             $"A flow's failure did not name its step and the steps before it: {Said(step)}");
+
+        List<int> apart = [];
+        Flow.StepApart<Apart>("a step apart has an instance of its own", made => apart.Add(made.Number));
+        Flow.StepApart("the next another, made by its constructor, the one before disposed", () => new Apart(), made => apart.Add(made.Number + (made.Disposed ? 100 : 0)));
+        Assert.True(apart.Count == 2 && apart[1] == apart[0] + 1 && Apart.Disposals >= 2,
+            $"Steps apart did not each have an instance of their own disposed after it: {string.Join(", ", apart)}, {Apart.Disposals} disposed");
+    }
+
+    /// <summary>A test class's instance as a step apart makes one: numbered as made, and counted as disposed.</summary>
+    private sealed class Apart : IDisposable
+    {
+        private static int made;
+
+        public static int Disposals { get; private set; }
+
+        public int Number { get; } = Interlocked.Increment(ref made);
+
+        public bool Disposed { get; private set; }
+
+        public void Dispose()
+        {
+            Disposed = true;
+            Disposals++;
+        }
     }
 
     /// <summary>What a skip said, or null where the check did not skip.</summary>

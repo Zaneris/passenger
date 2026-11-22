@@ -57,6 +57,40 @@ public static class Flow
         return made;
     }
 
+    /// <summary>A step in an instance of its own of the test's class, made by <paramref name="make"/> (its constructor,
+    /// with any fixture it takes) and disposed after it, as each step was once a test of its own with its own instance:
+    /// for a class whose tests each set up, and put back, what the steps would otherwise share.</summary>
+    public static void StepApart<TTest>(string name, Func<TTest> make, Action<TTest> step) => Step(name, () =>
+    {
+        TTest apart = make();
+        try
+        {
+            step(apart);
+        }
+        finally
+        {
+            (apart as IDisposable)?.Dispose();
+        }
+    });
+
+    /// <summary><see cref="StepApart{TTest}(string, Func{TTest}, Action{TTest})"/> for a class made with no
+    /// arguments.</summary>
+    public static void StepApart<TTest>(string name, Action<TTest> step) where TTest : new() => StepApart(name, () => new TTest(), step);
+
+    /// <summary><see cref="StepApart{TTest}(string, Func{TTest}, Action{TTest})"/> for a step that waits.</summary>
+    public static Task StepApartAsync<TTest>(string name, Func<TTest> make, Func<TTest, Task> step) => StepAsync(name, async () =>
+    {
+        TTest apart = make();
+        try
+        {
+            await step(apart);
+        }
+        finally
+        {
+            (apart as IDisposable)?.Dispose();
+        }
+    });
+
     private static void Pass(string name, long began)
     {
         if (TestContext.Current.Test is { } test)
