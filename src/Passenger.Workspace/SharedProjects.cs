@@ -76,7 +76,7 @@ public static class SharedProjects
             {
                 continue;
             }
-            List<Func<string, bool>> excluded = Patterns(folder, ProjectItems.Value(item, "Exclude"), once: true);
+            List<Func<string, bool>> excluded = Patterns(folder, ProjectItems.Value(item, "Exclude"), exclude: true);
             string? link = ProjectItems.Value(item, MSBuildNames.Link) is { Length: > 0 } linked ? linked : null;
             string? dependent = ProjectItems.Value(item, MSBuildNames.DependentUpon) is { Length: > 0 } upon ? upon : null;
             foreach (string part in ItemPaths.Parts(include))
@@ -246,7 +246,7 @@ public static class SharedProjects
     internal static bool Includes(string folder, XElement item, string file) =>
         ProjectItems.Value(item, "Include") is { } include
         && ItemPaths.Parts(include).Select(p => ProjectItems.PathOf(folder, p)).OfType<ItemPath>().Any(named => named.Glob ? Matching(named)(file) : PathNames.Same(named.Whole, file))
-        && !Patterns(folder, ProjectItems.Value(item, "Exclude"), once: true).Any(excluded => excluded(file));
+        && !Patterns(folder, ProjectItems.Value(item, "Exclude"), exclude: true).Any(excluded => excluded(file));
 
     private static bool Is(XElement item, string type) => item.Name.LocalName.Equals(type, StringComparison.OrdinalIgnoreCase);
 
@@ -336,9 +336,10 @@ public static class SharedProjects
     internal static IEnumerable<XElement> ItemsIn(XElement root) =>
         root.Descendants().Where(e => e.Parent is { } group && ProjectItems.IsItemGroup(group) && !group.Ancestors().Any(a => a.Name.LocalName == "Target"));
 
-    /// <summary>What an Exclude or Remove names, each a test of a path; an Exclude's glob read <paramref name="once"/>.</summary>
-    private static List<Func<string, bool>> Patterns(string folder, string? value, bool once = false) =>
-        [.. ItemPaths.Parts(value).Select(p => ProjectItems.PathOf(folder, p, once)).OfType<ItemPath>().Select(Matching)];
+    /// <summary>What an Exclude or Remove names, each a test of a path; an <paramref name="exclude"/> read as MSBuild reads
+    /// one.</summary>
+    private static List<Func<string, bool>> Patterns(string folder, string? value, bool exclude = false) =>
+        [.. ItemPaths.Parts(value).Select(p => ProjectItems.PathOf(folder, p, exclude: exclude)).OfType<ItemPath>().Select(Matching)];
 
     private static Func<string, bool> Matching(ItemPath named) => path => ItemPaths.Matches(named, path, PathNames.CaseIgnoredIn);
 

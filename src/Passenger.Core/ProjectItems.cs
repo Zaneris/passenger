@@ -28,7 +28,8 @@ public static class ProjectItems
 
     /// <summary>What a value names from the file's folder (its own folder named as such, else relative, else whole), its
     /// path made whole (<see cref="ItemPath.FromFolder"/>); null for a list or one naming anything else MSBuild expands. An
-    /// Exclude and an Import read a glob only <paramref name="once"/>.</summary>
-    public static ItemPath? PathOf(string folder, string written, bool once = false) =>
-        ItemPaths.Read(FromThisFolder(written.Trim()).Replace('\\', '/'), once)?.FromFolder(folder);
+    /// Exclude and an Import read a glob only <paramref name="once"/>, an <paramref name="exclude"/> its escaped wildcards
+    /// as wildcards (<see cref="ItemPaths.Read"/>).</summary>
+    public static ItemPath? PathOf(string folder, string written, bool once = false, bool exclude = false) =>
+        ItemPaths.Read(FromThisFolder(written.Trim()).Replace('\\', '/'), once, exclude)?.FromFolder(folder);
 }

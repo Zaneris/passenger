@@ -45,15 +45,19 @@ public static class ItemPaths
     }
 
     /// <summary>The one path a value leads with (a glob's by its folder); null for a list or anything MSBuild expands. An
-    /// Exclude and an Import read a glob only <paramref name="once"/>.</summary>
-    public static ItemPath? Read(string written, bool once = false)
+    /// Exclude and an Import read a glob only <paramref name="once"/>. An escaped wildcard beside one written makes a value a
+    /// plain name; alone, it is a wildcard only in an <paramref name="exclude"/>, which MSBuild unescapes before it matches.</summary>
+    public static ItemPath? Read(string written, bool once = false, bool exclude = false)
     {
         if (written.Contains(';') || Expands(written))
         {
             return null;
         }
-        int wild = written.IndexOfAny(['*', '?']);
-        bool glob = wild >= 0 && !EscapesWildcard(written);
+        once |= exclude;
+        int raw = written.IndexOfAny(['*', '?']);
+        bool escaped = EscapesWildcard(written);
+        bool glob = raw >= 0 ? !escaped : exclude && escaped;
+        int wild = raw >= 0 ? raw : FirstEscapedWildcard(written);
         string head = (glob ? written[..Math.Max(0, written.LastIndexOfAny(['\\', '/'], wild))] : written).TrimEnd('\\', '/');
         bool twice = glob && !once;
         return new ItemPath(twice ? Unescaped(Unescaped(head)) : Unescaped(head), written[head.Length..], glob, twice);
@@ -69,8 +73,14 @@ public static class ItemPaths
     {
         string[] names = path.Split(Separators);
         string[] parts = [.. named.Path.Length == 0 ? [] : named.Path.Split(Separators), .. named.Wildcards.Split(Separators, StringSplitOptions.RemoveEmptyEntries)];
-        return Matches(parts, names, name => caseIgnoredIn(path[..names.Take(name).Sum(n => n.Length + 1)]));
+        Func<int, bool> caseIgnoredAt = name => caseIgnoredIn(path[..names.Take(name).Sum(n => n.Length + 1)]);
+        // A plain name's '*' and '?' are its own characters (an escaped wildcard's), naming the one file of that name.
+        return named.Glob ? Matches(parts, names, caseIgnoredAt)
+            : parts.Length == names.Length && Enumerable.Range(0, parts.Length).All(at => SameName(parts[at], names[at], at, caseIgnoredAt));
     }
+
+    private static bool SameName(string part, string name, int at, Func<int, bool> caseIgnoredAt) =>
+        part.Equals(name, StringComparison.Ordinal) || part.Equals(name, StringComparison.OrdinalIgnoreCase) && caseIgnoredAt(at);
 
     /// <summary>Whether names match a glob's parts in order: a part <c>**</c> any number of names, <c>*</c> and <c>?</c>
     /// within one, a name differing only in letter case where <paramref name="caseIgnoredAt"/> says its folder (by the
@@ -144,6 +154,11 @@ public static class ItemPaths
         }
         return false;
     }
+
+    /// <summary>Where a value's first escaped wildcard stands; -1 where it has none.</summary>
+    private static int FirstEscapedWildcard(string written) =>
+        new[] { written.IndexOf("%2A", StringComparison.OrdinalIgnoreCase), written.IndexOf("%3F", StringComparison.OrdinalIgnoreCase) }
+            .Where(at => at >= 0).DefaultIfEmpty(-1).Min();
 
     private static bool EscapesWildcard(string written) =>
         written.Contains("%2A", StringComparison.OrdinalIgnoreCase) || written.Contains("%3F", StringComparison.OrdinalIgnoreCase);
