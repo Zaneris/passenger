@@ -6,10 +6,10 @@ using System.Reflection.PortableExecutable;
 namespace Passenger.Tests;
 
 /// <summary>Where a built assembly lets go of a task a call returned: the IL pops it (a discard, a call as a statement, a
-/// lambda for a delegate that returns nothing) or stores it in a lambda's parameter named _, placed by the PDB. Read
-/// from the IL, which knows each call's type, as the source alone does not. Not counted: an awaited result (the task
-/// Task.WhenAny finished with), and what a static Observe(Task) or Dismiss(Task) lets go of, these being where others'
-/// tasks go.</summary>
+/// lambda for a delegate that returns nothing) or stores it in a lambda's parameter named _, or hands a timed wait's task
+/// straight to Ended, which leaves its timeout unobserved, placed by the PDB. Read from the IL, which knows each call's
+/// type, as the source alone does not. Not counted: an awaited result (the task Task.WhenAny finished with), and what a
+/// static Observe(Task) or Dismiss(Task) lets go of, these being where others' tasks go.</summary>
 internal static class DroppedTasks
 {
     public static IReadOnlyList<(string File, int Line)> In(string assembly)
@@ -33,6 +33,7 @@ internal static class DroppedTasks
                 .OrderBy(p => p.SequenceNumber).Select(p => metadata.GetString(p.Name))];
             BlobReader il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILReader();
             int? task = null;
+            int? timedWait = null;
             while (il.RemainingBytes > 0)
             {
                 int offset = il.Offset;
@@ -40,9 +41,17 @@ internal static class DroppedTasks
                 code = code == 0xFE ? 0xFE00 | il.ReadByte() : code;
                 int stored = -1;
                 bool returnsTask = false;
+                bool waitsTimed = false;
                 if (code is 0x28 or 0x6F)
                 {
-                    returnsTask = signatures.ReturnsTask(MetadataTokens.EntityHandle(il.ReadInt32()));
+                    EntityHandle callee = MetadataTokens.EntityHandle(il.ReadInt32());
+                    returnsTask = signatures.ReturnsTask(callee);
+                    (string name, bool timed) = signatures.Called(callee);
+                    waitsTimed = name == "WaitAsync" && timed;
+                    if (name == "Ended" && timedWait is { } wait && points.LastOrDefault(p => p.Offset <= wait) is { Document.IsNil: false } waited)
+                    {
+                        found.Add((debug.GetString(debug.GetDocument(waited.Document).Name), waited.StartLine));
+                    }
                 }
                 else if (code is 0x10 or 0xFE0B)
                 {
@@ -59,6 +68,7 @@ internal static class DroppedTasks
                     found.Add((debug.GetString(debug.GetDocument(at.Document).Name), at.StartLine));
                 }
                 task = returnsTask ? offset : null;
+                timedWait = waitsTimed ? offset : null;
             }
         }
         return [.. found.Distinct()];
@@ -83,11 +93,42 @@ internal static class DroppedTasks
     {
         private static readonly TypeName Other = new("?", []);
 
-        /// <summary>A static method whose one parameter is a Task: an observer's or a dismisser's shape.</summary>
+        /// <summary>A static method whose one Task is its first parameter, the rest the caller's place: an observer's or a
+        /// dismisser's shape.</summary>
         public bool TakesOnlyATask(MethodDefinition method)
         {
             MethodSignature<TypeName> signature = method.DecodeSignature(this, null);
-            return !signature.Header.IsInstance && signature.ParameterTypes is [{ Name: "System.Threading.Tasks.Task" }];
+            return !signature.Header.IsInstance && signature.ParameterTypes is [{ Name: "System.Threading.Tasks.Task" }, ..]
+                && signature.ParameterTypes.Skip(1).All(p => p.Name != "System.Threading.Tasks.Task");
+        }
+
+        /// <summary>A called method's name, and whether a TimeSpan is among its parameters.</summary>
+        public (string Name, bool Timed) Called(EntityHandle called)
+        {
+            if (called.Kind == HandleKind.MethodSpecification)
+            {
+                called = metadata.GetMethodSpecification((MethodSpecificationHandle)called).Method;
+            }
+            (string name, BlobHandle signature) = called.Kind switch
+            {
+                HandleKind.MethodDefinition => (metadata.GetString(metadata.GetMethodDefinition((MethodDefinitionHandle)called).Name),
+                    metadata.GetMethodDefinition((MethodDefinitionHandle)called).Signature),
+                HandleKind.MemberReference => (metadata.GetString(metadata.GetMemberReference((MemberReferenceHandle)called).Name),
+                    metadata.GetMemberReference((MemberReferenceHandle)called).Signature),
+                _ => (string.Empty, default),
+            };
+            if (signature.IsNil)
+            {
+                return (name, false);
+            }
+            BlobReader reader = metadata.GetBlobReader(signature);
+            if (reader.ReadSignatureHeader().Kind != SignatureKind.Method)
+            {
+                return (name, false);
+            }
+            reader.Reset();
+            MethodSignature<TypeName> decoded = new SignatureDecoder<TypeName, object?>(this, metadata, null).DecodeMethodSignature(ref reader);
+            return (name, decoded.ParameterTypes.Any(p => p.Name == "System.TimeSpan"));
         }
 
         public bool ReturnsTask(EntityHandle called)

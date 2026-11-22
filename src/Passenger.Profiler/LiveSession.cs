@@ -62,7 +62,7 @@ internal sealed class LiveSession : IAsyncDisposable
     {
         await stop();
         source.StopProcessing();
-        await Ended.WaitAsync(TimeSpan.FromSeconds(5)).Ended();
+        await Ended.EndedWithin(TimeSpan.FromSeconds(5));
         source.Dispose();
     }
 }

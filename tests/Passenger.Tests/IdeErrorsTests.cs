@@ -288,8 +288,9 @@ public sealed class IdeErrorsTests : IDisposable
 
     /// <summary>Every place src's code lets go of a task it started (DroppedTasks): a discard, a call as a statement, a
     /// lambda for a delegate that returns nothing, a continuation that only marks a fault seen among them (that is
-    /// UnawaitedWork.Dismiss's). Passed over: a folder of no .NET project (the debugger's relay is C), a project not built,
-    /// the container tools (only the solution's build and the release make them).</summary>
+    /// UnawaitedWork.Dismiss's), a timed wait's own task waited on through Ended. Passed over: a folder of no .NET project
+    /// (the debugger's relay is C), a project not built, the container tools (only the solution's build and the release
+    /// make them).</summary>
     [Gate]
     [AvaloniaFact]
     public void Nothing_in_src_leaves_a_fault_in_the_work_it_starts_for_the_garbage_collector_to_find()
@@ -319,7 +320,8 @@ public sealed class IdeErrorsTests : IDisposable
         }
         Assert.Contains("Passenger.App", read);
         Assert.True(found.Count == 0, $"Work whose task is let go reports its fault only once the task is collected, which may be never; "
-            + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app), or to UnawaitedWork.Dismiss where its fault is no one's to hear:\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
+            + $"give it to IdeErrors.Observe (Core.UnawaitedWork.Observe below the app), or to UnawaitedWork.Dismiss where its fault is no one's to hear, "
+            + $"and a timed wait waited on however it ends to UnawaitedWork.EndedWithin, never WaitAsync's own task to Ended:\n{string.Join('\n', found.Order(StringComparer.Ordinal))}");
     }
 
     [Gate]
@@ -410,11 +412,15 @@ public sealed class IdeErrorsTests : IDisposable
         MainWindow window = new() { Width = 800, Height = 600 };
         window.Show();
         Dispatcher.UIThread.Post(() => throw new ArgumentException("A posted job went wrong in a test"));
+        // A timed wait's fault is never thrown, so it carries no stack: where its task was observed stands in for one.
+        IdeErrors.Observe(new TaskCompletionSource().Task.WaitAsync(TimeSpan.Zero, TestContext.Current.CancellationToken));
         Ui.Settle();
         FailOnIdeErrorsAttribute check = new();
         System.Reflection.MethodInfo self = typeof(IdeErrorsTests).GetMethod(nameof(A_window_test_in_which_the_ide_caught_an_error_fails_naming_it))!;
         InvalidOperationException failed = Assert.Throws<InvalidOperationException>(() => check.After(self, null!));
         Assert.Contains("ArgumentException: A posted job went wrong in a test", failed.Message, StringComparison.Ordinal);
+        Assert.Contains($"TimeoutException: The operation has timed out.\n   at {nameof(A_window_test_in_which_the_ide_caught_an_error_fails_naming_it)} in ", failed.Message, StringComparison.Ordinal);
+        Assert.Contains($"{nameof(IdeErrorsTests)}.cs:line ", failed.Message, StringComparison.Ordinal);
         Assert.Empty(IdeErrors.Errors);
         window.Close();
     }

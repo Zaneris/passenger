@@ -151,7 +151,7 @@ public sealed class CredentialProviders
                 // The provider ended already.
             }
             await ChildProcesses.EndThroughInputAsync(process, TimeSpan.FromSeconds(5));
-            await Task.WhenAll(reading, draining).WaitAsync(TimeSpan.FromSeconds(5)).Ended();
+            await Task.WhenAll(reading, draining).EndedWithin(TimeSpan.FromSeconds(5));
             writing.Dispose();
         }
 

@@ -106,10 +106,11 @@ public static class AdapterProgram
         }
 
         // A fault in work nothing awaits, as it happens: on the error stream, and in the engine's log when it is kept.
-        Passenger.Core.UnawaitedWork.Install(error =>
+        Passenger.Core.UnawaitedWork.Install((error, observedAt) =>
         {
-            Console.Error.WriteLine($"Error: {error}");
-            Log($"Error: {error}");
+            string details = Passenger.Core.UnawaitedWork.Details(error, observedAt);
+            Console.Error.WriteLine($"Error: {details}");
+            Log($"Error: {details}");
         });
         Log("Starting");
         // No program the adapter launches may hold the protocol: on macOS and Linux it is given descriptors 0, 1 and 2 as its own.

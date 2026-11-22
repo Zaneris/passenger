@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia.Logging;
 using Avalonia.Threading;
 
@@ -27,7 +28,7 @@ public static class IdeErrors
 
     /// <summary>The exceptions reported already: one the dispatcher caught also faults its operation's task, which nobody
     /// observes, so it comes round again as an unobserved task's.</summary>
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Exception, object> Seen = [];
+    private static readonly ConditionalWeakTable<Exception, object> Seen = [];
     private static Dispatcher? hooked;
 
     /// <summary>An error was reported, a repeat with its count so far; raised on the UI thread.</summary>
@@ -91,7 +92,7 @@ public static class IdeErrors
         {
             if (!Lsp.LanguageServer.IsDroppedAnswer(e.Exception))
             {
-                Report(Single(e.Exception));
+                Report(Single(e.Exception), Unobserved);
             }
             e.SetObserved();
         };
@@ -126,7 +127,11 @@ public static class IdeErrors
 
     /// <summary>Logs an error and shows it, from any thread. A repeat counts against the error listed already and is
     /// one line in the log, its details being there from the first time.</summary>
-    public static void Report(Exception error)
+    public static void Report(Exception error) => Report(error, observedAt: null);
+
+    /// <summary>An error as <see cref="Report(Exception)"/> reports it, its task observed at <paramref name="observedAt"/>,
+    /// which its details say where it carries no stack (<see cref="Core.UnawaitedWork.Details"/>).</summary>
+    public static void Report(Exception error, string? observedAt)
     {
         lock (Gate)
         {
@@ -135,8 +140,11 @@ public static class IdeErrors
                 return;
             }
         }
-        List(new IdeError(DateTime.Now, error.GetType().Name, error.Message, error.ToString()));
+        List(new IdeError(DateTime.Now, error.GetType().Name, error.Message, Core.UnawaitedWork.Details(error, observedAt)));
     }
+
+    /// <summary>Where a fault no one observed was found: as its task was collected, its place unknown.</summary>
+    private const string Unobserved = "the collection of a task whose fault nothing observed";
 
     /// <summary>Logs and shows, from any thread, an error a run before this one ended on (<see cref="CrashFile"/>), at the
     /// time it came, as one caught now is.</summary>
@@ -172,9 +180,9 @@ public static class IdeErrors
 
     /// <summary>Work started that nothing awaits (a handler's, a menu item's, a callback's, a method's that returns before
     /// it ends): its fault is reported as it faults, as an exception escaping a handler is, never only once the task is
-    /// collected. A cancelled task is no fault.</summary>
-    public static void Observe(Task work) =>
-        _ = work.ContinueWith(faulted => Report(Single(faulted.Exception!)), CancellationToken.None,
+    /// collected, and where it carries no stack, with the place it was observed. A cancelled task is no fault.</summary>
+    public static void Observe(Task work, [CallerMemberName] string member = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0) =>
+        _ = work.ContinueWith(faulted => Report(Single(faulted.Exception!), Core.UnawaitedWork.ObservedAt(member, file, line)), CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     /// <summary>A task's one exception as itself; several as the AggregateException holding them.</summary>

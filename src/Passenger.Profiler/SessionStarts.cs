@@ -123,7 +123,7 @@ public static class SessionStarts
         UnawaitedWork.Dismiss(read);
         if (await EventPipeStops.StopAsync(session, limit, cancel))
         {
-            await read.WaitAsync(limit, cancel).Ended();
+            await read.EndedWithin(limit, cancel);
         }
     }
 
