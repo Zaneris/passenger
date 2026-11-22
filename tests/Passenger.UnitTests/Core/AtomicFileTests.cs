@@ -13,11 +13,11 @@ public sealed class AtomicFileTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_file_written_whole_replaces_the_old_at_once_and_a_link_stays_a_link() => Cases.All(
-        ("A link written through its target stays the link and the file it names takes the bytes", () => Fresh(test => test.A_link_written_through_its_target_stays_the_link_and_the_file_it_names_takes_the_bytes())),
-        ("A link to a link is written to the file at the end of both", () => Fresh(test => test.A_link_to_a_link_is_written_to_the_file_at_the_end_of_both())),
-        ("A link whose file is not there yet makes that file and stays the link", () => Fresh(test => test.A_link_whose_file_is_not_there_yet_makes_that_file_and_stays_the_link())),
-        ("A path that is no link is its own target whether or not it is there", () => Fresh(test => test.A_path_that_is_no_link_is_its_own_target_whether_or_not_it_is_there())));
+    public void A_file_written_whole_replaces_the_old_at_once_and_a_link_stays_a_link() => Cases.AllApart<AtomicFileTests>(
+        ("A link written through its target stays the link and the file it names takes the bytes", test => test.A_link_written_through_its_target_stays_the_link_and_the_file_it_names_takes_the_bytes()),
+        ("A link to a link is written to the file at the end of both", test => test.A_link_to_a_link_is_written_to_the_file_at_the_end_of_both()),
+        ("A link whose file is not there yet makes that file and stays the link", test => test.A_link_whose_file_is_not_there_yet_makes_that_file_and_stays_the_link()),
+        ("A path that is no link is its own target whether or not it is there", test => test.A_path_that_is_no_link_is_its_own_target_whether_or_not_it_is_there()));
 
     private void A_link_written_through_its_target_stays_the_link_and_the_file_it_names_takes_the_bytes()
     {
@@ -74,10 +74,10 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
-    public void A_write_over_a_file_another_program_holds_lands_or_is_refused_keeping_the_file() => Cases.All(
-        ("A write lands over a file another program reads sharing its deletion which reads on in the old one", () => Fresh(test => test.A_write_lands_over_a_file_another_program_reads_sharing_its_deletion_which_reads_on_in_the_old_one())),
-        ("On Windows a write over a file another program reads sharing no deletion is refused and the file kept", () => Fresh(test => test.On_Windows_a_write_over_a_file_another_program_reads_sharing_no_deletion_is_refused_and_the_file_kept())),
-        ("A file written to be new takes its place only where none is leaving one made meanwhile as it is", () => Fresh(test => test.A_file_written_to_be_new_takes_its_place_only_where_none_is_leaving_one_made_meanwhile_as_it_is())));
+    public void A_write_over_a_file_another_program_holds_lands_or_is_refused_keeping_the_file() => Cases.AllApart<AtomicFileTests>(
+        ("A write lands over a file another program reads sharing its deletion which reads on in the old one", test => test.A_write_lands_over_a_file_another_program_reads_sharing_its_deletion_which_reads_on_in_the_old_one()),
+        ("On Windows a write over a file another program reads sharing no deletion is refused and the file kept", test => test.On_Windows_a_write_over_a_file_another_program_reads_sharing_no_deletion_is_refused_and_the_file_kept()),
+        ("A file written to be new takes its place only where none is leaving one made meanwhile as it is", test => test.A_file_written_to_be_new_takes_its_place_only_where_none_is_leaving_one_made_meanwhile_as_it_is()));
 
     private void A_write_lands_over_a_file_another_program_reads_sharing_its_deletion_which_reads_on_in_the_old_one()
     {
@@ -139,12 +139,5 @@ public sealed class AtomicFileTests : IDisposable
         {
             Assert.Skip($"Windows lets this user make no symlink: {refused.Message}");
         }
-    }
-
-    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
-    private static void Fresh(Action<AtomicFileTests> check)
-    {
-        using AtomicFileTests test = new();
-        check(test);
     }
 }

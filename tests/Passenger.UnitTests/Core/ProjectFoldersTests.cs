@@ -14,11 +14,11 @@ public sealed class ProjectFoldersTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_projects_own_folders_leave_out_its_output_and_another_projects() => Cases.All(
-        ("A projects own folders pass over build output dependencies hidden folders and another projects", () => Fresh(test => test.A_projects_own_folders_pass_over_build_output_dependencies_hidden_folders_and_another_projects())),
-        ("The folders walk and a projects files pass over build output in another letter case as its own folders do", () => Fresh(test => test.The_folders_walk_and_a_projects_files_pass_over_build_output_in_another_letter_case_as_its_own_folders_do())),
-        ("Build output in another letter case is passed over where case is ignored and the folders other names only as written", () => Fresh(test => test.Build_output_in_another_letter_case_is_passed_over_where_case_is_ignored_and_the_folders_other_names_only_as_written())),
-        ("A resource is found by its embedded name only in the projects own folders", () => Fresh(test => test.A_resource_is_found_by_its_embedded_name_only_in_the_projects_own_folders())));
+    public void A_projects_own_folders_leave_out_its_output_and_another_projects() => Cases.AllApart<ProjectFoldersTests>(
+        ("A projects own folders pass over build output dependencies hidden folders and another projects", test => test.A_projects_own_folders_pass_over_build_output_dependencies_hidden_folders_and_another_projects()),
+        ("The folders walk and a projects files pass over build output in another letter case as its own folders do", test => test.The_folders_walk_and_a_projects_files_pass_over_build_output_in_another_letter_case_as_its_own_folders_do()),
+        ("Build output in another letter case is passed over where case is ignored and the folders other names only as written", test => test.Build_output_in_another_letter_case_is_passed_over_where_case_is_ignored_and_the_folders_other_names_only_as_written()),
+        ("A resource is found by its embedded name only in the projects own folders", test => test.A_resource_is_found_by_its_embedded_name_only_in_the_projects_own_folders()));
 
     private void A_projects_own_folders_pass_over_build_output_dependencies_hidden_folders_and_another_projects()
     {
@@ -112,12 +112,5 @@ public sealed class ProjectFoldersTests : IDisposable
         Assert.Equal([Path.Join(project, "Pages", "Strings")], ResourceFiles.Named(project, "Shop", "Shop.Pages.Strings"));
         Assert.True(ResourceFiles.Named(project, "Shop", "Shop.Tests.Strings").Count == 0,
             "Shop.Tests.Strings was found in the nested Tests project's folder, as if Shop's own");
-    }
-
-    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
-    private static void Fresh(Action<ProjectFoldersTests> check)
-    {
-        using ProjectFoldersTests test = new();
-        check(test);
     }
 }

@@ -13,13 +13,13 @@ public sealed class EditorConfigTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void An_editorconfigs_sections_and_values_read_as_the_format_says_comments_left_out() => Cases.All(
-        ("A section whose range runs backwards matches no file and the sections around it still apply", () => Fresh(test => test.A_section_whose_range_runs_backwards_matches_no_file_and_the_sections_around_it_still_apply())),
-        ("Each section that matches no file is named by where its glob is in the text and why", () => Fresh(test => test.Each_section_that_matches_no_file_is_named_by_where_its_glob_is_in_the_text_and_why())),
-        ("A values word is its first in lower case without the comment after it", () => Fresh(test => test.A_values_word_is_its_first_in_lower_case_without_the_comment_after_it())),
-        ("A flag and a number are read from a values word whatever comment follows", () => Fresh(test => test.A_flag_and_a_number_are_read_from_a_values_word_whatever_comment_follows())),
-        ("A files values followed by a comment say what their word says", () => Fresh(test => test.A_files_values_followed_by_a_comment_say_what_their_word_says())),
-        ("Braces nested as deep as a glob may still match", () => Fresh(test => test.Braces_nested_as_deep_as_a_glob_may_still_match())));
+    public void An_editorconfigs_sections_and_values_read_as_the_format_says_comments_left_out() => Cases.AllApart<EditorConfigTests>(
+        ("A section whose range runs backwards matches no file and the sections around it still apply", test => test.A_section_whose_range_runs_backwards_matches_no_file_and_the_sections_around_it_still_apply()),
+        ("Each section that matches no file is named by where its glob is in the text and why", test => test.Each_section_that_matches_no_file_is_named_by_where_its_glob_is_in_the_text_and_why()),
+        ("A values word is its first in lower case without the comment after it", test => test.A_values_word_is_its_first_in_lower_case_without_the_comment_after_it()),
+        ("A flag and a number are read from a values word whatever comment follows", test => test.A_flag_and_a_number_are_read_from_a_values_word_whatever_comment_follows()),
+        ("A files values followed by a comment say what their word says", test => test.A_files_values_followed_by_a_comment_say_what_their_word_says()),
+        ("Braces nested as deep as a glob may still match", test => test.Braces_nested_as_deep_as_a_glob_may_still_match()));
 
     private void A_section_whose_range_runs_backwards_matches_no_file_and_the_sections_around_it_still_apply()
     {
@@ -98,12 +98,12 @@ public sealed class EditorConfigTests : IDisposable
     }
 
     [Fact]
-    public void An_editorconfig_glob_matches_braces_ranges_and_brackets_as_the_format_says_at_once() => Cases.All(
-        ("A glob of many stars against a long name is answered at once", () => Fresh(test => test.A_glob_of_many_stars_against_a_long_name_is_answered_at_once())),
-        ("A number range matches a whole number between its ends", () => Fresh(test => test.A_number_range_matches_a_whole_number_between_its_ends())),
-        ("A bracket matches one of its characters as the format says", () => Fresh(test => test.A_bracket_matches_one_of_its_characters_as_the_format_says())),
-        ("A backslash in a bracket takes the next character as itself", () => Fresh(test => test.A_backslash_in_a_bracket_takes_the_next_character_as_itself())),
-        ("A dash first in a bracket is itself and a range across a slash never matches one", () => Fresh(test => test.A_dash_first_in_a_bracket_is_itself_and_a_range_across_a_slash_never_matches_one())));
+    public void An_editorconfig_glob_matches_braces_ranges_and_brackets_as_the_format_says_at_once() => Cases.AllApart<EditorConfigTests>(
+        ("A glob of many stars against a long name is answered at once", test => test.A_glob_of_many_stars_against_a_long_name_is_answered_at_once()),
+        ("A number range matches a whole number between its ends", test => test.A_number_range_matches_a_whole_number_between_its_ends()),
+        ("A bracket matches one of its characters as the format says", test => test.A_bracket_matches_one_of_its_characters_as_the_format_says()),
+        ("A backslash in a bracket takes the next character as itself", test => test.A_backslash_in_a_bracket_takes_the_next_character_as_itself()),
+        ("A dash first in a bracket is itself and a range across a slash never matches one", test => test.A_dash_first_in_a_bracket_is_itself_and_a_range_across_a_slash_never_matches_one()));
 
     /// <summary>A section's glob is the repository's text, matched on the window's thread as a file opens: one whose stars
     /// could be laid along a name in more ways than any machine could try (21 of them over 80 letters) is answered at once.</summary>
@@ -172,11 +172,4 @@ public sealed class EditorConfigTests : IDisposable
         
                 Assert.True(EditorConfig.Matches(glob, relative) == matches, $"[{glob}] {(matches ? "did not match" : "matched")} {relative}");
     });
-
-    /// <summary>A check on a test of its own, as it ran alone: its own state, let go after it.</summary>
-    private static void Fresh(Action<EditorConfigTests> check)
-    {
-        using EditorConfigTests test = new();
-        check(test);
-    }
 }

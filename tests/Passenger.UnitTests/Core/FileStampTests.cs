@@ -12,9 +12,9 @@ public sealed class FileStampTests : IDisposable
     public void Dispose() => Directory.Delete(root, recursive: true);
 
     [Fact]
-    public void A_files_stamp_is_the_file_a_read_of_its_path_reads() => Cases.All(
-        ("A links stamp moves as the file at the end of its links is written", () => Fresh(test => test.A_links_stamp_moves_as_the_file_at_the_end_of_its_links_is_written())),
-        ("A link to nothing links that go round and a file not there have no stamp", () => Fresh(test => test.A_link_to_nothing_links_that_go_round_and_a_file_not_there_have_no_stamp())));
+    public void A_files_stamp_is_the_file_a_read_of_its_path_reads() => Cases.AllApart<FileStampTests>(
+        ("A links stamp moves as the file at the end of its links is written", test => test.A_links_stamp_moves_as_the_file_at_the_end_of_its_links_is_written()),
+        ("A link to nothing links that go round and a file not there have no stamp", test => test.A_link_to_nothing_links_that_go_round_and_a_file_not_there_have_no_stamp()));
 
     private void A_links_stamp_moves_as_the_file_at_the_end_of_its_links_is_written()
     {
@@ -63,12 +63,5 @@ public sealed class FileStampTests : IDisposable
         {
             Assert.Skip($"Windows lets this user make no symlink: {refused.Message}");
         }
-    }
-
-    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
-    private static void Fresh(Action<FileStampTests> check)
-    {
-        using FileStampTests test = new();
-        check(test);
     }
 }

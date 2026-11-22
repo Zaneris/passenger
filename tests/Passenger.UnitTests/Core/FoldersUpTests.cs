@@ -27,14 +27,14 @@ public sealed class FoldersUpTests : IDisposable
         FoldersUp.WhyNot(owner, group, mode, Me, g => g == MyGroup, u => u == Bob ? "bob" : $"uid {u}", g => g == Staff ? "staff" : $"gid {g}");
 
     [Fact]
-    public void A_walk_up_reads_the_persons_own_folders_and_ends_before_one_another_user_may_write() => Cases.All(
-        ("A walk from no folder reads nothing", () => Fresh(test => test.A_walk_from_no_folder_reads_nothing())),
-        ("The persons own folders are read whatever their mode and roots where no other may write", () => Fresh(test => test.The_persons_own_folders_are_read_whatever_their_mode_and_roots_where_no_other_may_write())),
-        ("A folder another user owns ends the walk naming them whatever its mode", () => Fresh(test => test.A_folder_another_user_owns_ends_the_walk_naming_them_whatever_its_mode())),
-        ("A folder root owns that every user may write ends the walk as tmp does its sticky bit notwithstanding", () => Fresh(test => test.A_folder_root_owns_that_every_user_may_write_ends_the_walk_as_tmp_does_its_sticky_bit_notwithstanding())),
-        ("A group may write a folder root owns only where it is the persons own", () => Fresh(test => test.A_group_may_write_a_folder_root_owns_only_where_it_is_the_persons_own())),
-        ("A group is the persons own where it is named as they are and lists no one else", () => Fresh(test => test.A_group_is_the_persons_own_where_it_is_named_as_they_are_and_lists_no_one_else())),
-        ("On Windows the persons the systems the Administrators and a services folders are read", () => Fresh(test => test.On_Windows_the_persons_the_systems_the_Administrators_and_a_services_folders_are_read())));
+    public void A_walk_up_reads_the_persons_own_folders_and_ends_before_one_another_user_may_write() => Cases.AllApart<FoldersUpTests>(
+        ("A walk from no folder reads nothing", test => test.A_walk_from_no_folder_reads_nothing()),
+        ("The persons own folders are read whatever their mode and roots where no other may write", test => test.The_persons_own_folders_are_read_whatever_their_mode_and_roots_where_no_other_may_write()),
+        ("A folder another user owns ends the walk naming them whatever its mode", test => test.A_folder_another_user_owns_ends_the_walk_naming_them_whatever_its_mode()),
+        ("A folder root owns that every user may write ends the walk as tmp does its sticky bit notwithstanding", test => test.A_folder_root_owns_that_every_user_may_write_ends_the_walk_as_tmp_does_its_sticky_bit_notwithstanding()),
+        ("A group may write a folder root owns only where it is the persons own", test => test.A_group_may_write_a_folder_root_owns_only_where_it_is_the_persons_own()),
+        ("A group is the persons own where it is named as they are and lists no one else", test => test.A_group_is_the_persons_own_where_it_is_named_as_they_are_and_lists_no_one_else()),
+        ("On Windows the persons the systems the Administrators and a services folders are read", test => test.On_Windows_the_persons_the_systems_the_Administrators_and_a_services_folders_are_read()));
 
     private void A_walk_from_no_folder_reads_nothing()
     {
@@ -87,14 +87,14 @@ public sealed class FoldersUpTests : IDisposable
     }
 
     [Fact]
-    public void On_windows_another_accounts_folder_ends_the_walk_and_what_another_user_put_above_is_passed_over() => Cases.All(
-        ("On Windows a folder another account owns or whose owner is unread ends the walk", () => Fresh(test => test.On_Windows_a_folder_another_account_owns_or_whose_owner_is_unread_ends_the_walk())),
-        ("On Windows a volume keeping no owners is the persons as Windows lets everyone write there", () => Fresh(test => test.On_Windows_a_volume_keeping_no_owners_is_the_persons_as_Windows_lets_everyone_write_there())),
-        ("A global json in a parent another user owns is passed over and nothing above it read while the persons own parent is", () => Fresh(test => test.A_global_json_in_a_parent_another_user_owns_is_passed_over_and_nothing_above_it_read_while_the_persons_own_parent_is())),
-        ("A global json in the persons own parent every user may write is still read", () => Fresh(test => test.A_global_json_in_the_persons_own_parent_every_user_may_write_is_still_read())),
-        ("A global json another user put in the persons own parent is passed over for the next one up", () => Fresh(test => test.A_global_json_another_user_put_in_the_persons_own_parent_is_passed_over_for_the_next_one_up())),
-        ("A node modules another user made in an accepted folder is passed over with all it holds", () => Fresh(test => test.A_node_modules_another_user_made_in_an_accepted_folder_is_passed_over_with_all_it_holds())),
-        ("A folder not there is passed and the walk goes on above it", () => Fresh(test => test.A_folder_not_there_is_passed_and_the_walk_goes_on_above_it())));
+    public void On_windows_another_accounts_folder_ends_the_walk_and_what_another_user_put_above_is_passed_over() => Cases.AllApart<FoldersUpTests>(
+        ("On Windows a folder another account owns or whose owner is unread ends the walk", test => test.On_Windows_a_folder_another_account_owns_or_whose_owner_is_unread_ends_the_walk()),
+        ("On Windows a volume keeping no owners is the persons as Windows lets everyone write there", test => test.On_Windows_a_volume_keeping_no_owners_is_the_persons_as_Windows_lets_everyone_write_there()),
+        ("A global json in a parent another user owns is passed over and nothing above it read while the persons own parent is", test => test.A_global_json_in_a_parent_another_user_owns_is_passed_over_and_nothing_above_it_read_while_the_persons_own_parent_is()),
+        ("A global json in the persons own parent every user may write is still read", test => test.A_global_json_in_the_persons_own_parent_every_user_may_write_is_still_read()),
+        ("A global json another user put in the persons own parent is passed over for the next one up", test => test.A_global_json_another_user_put_in_the_persons_own_parent_is_passed_over_for_the_next_one_up()),
+        ("A node modules another user made in an accepted folder is passed over with all it holds", test => test.A_node_modules_another_user_made_in_an_accepted_folder_is_passed_over_with_all_it_holds()),
+        ("A folder not there is passed and the walk goes on above it", test => test.A_folder_not_there_is_passed_and_the_walk_goes_on_above_it()));
 
     private void On_Windows_a_folder_another_account_owns_or_whose_owner_is_unread_ends_the_walk()
     {
@@ -189,12 +189,5 @@ public sealed class FoldersUpTests : IDisposable
             File.SetUnixFileMode(folder, mode);
         }
         return folder;
-    }
-
-    /// <summary>A check on a test of its own, as it ran alone: its own folder, let go after it.</summary>
-    private static void Fresh(Action<FoldersUpTests> check)
-    {
-        using FoldersUpTests test = new();
-        check(test);
     }
 }

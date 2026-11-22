@@ -32,11 +32,11 @@ public sealed class LandedFilesTests : IDisposable
     private static string? Land(LandedFiles landed, params (string From, string To)[] files) => landed.Land(files, new HashSet<string>(), _ => { });
 
     [Fact]
-    public void A_landed_file_is_put_and_taken_back_byte_for_byte_by_undo_and_redo() => Cases.All(
-        ("A binary file and text no save keeps land byte for byte and undo takes them away and redo gives them back", () => Fresh(test => test.A_binary_file_and_text_no_save_keeps_land_byte_for_byte_and_undo_takes_them_away_and_redo_gives_them_back())),
-        ("A binary file landed over is put back byte for byte never deleted as one the command made", () => Fresh(test => test.A_binary_file_landed_over_is_put_back_byte_for_byte_never_deleted_as_one_the_command_made())),
-        ("A file that already holds the bytes is no part of the command", () => Fresh(test => test.A_file_that_already_holds_the_bytes_is_no_part_of_the_command())),
-        ("A file changed since is named and stays as it is", () => Fresh(test => test.A_file_changed_since_is_named_and_stays_as_it_is())));
+    public void A_landed_file_is_put_and_taken_back_byte_for_byte_by_undo_and_redo() => Cases.AllApart<LandedFilesTests>(
+        ("A binary file and text no save keeps land byte for byte and undo takes them away and redo gives them back", test => test.A_binary_file_and_text_no_save_keeps_land_byte_for_byte_and_undo_takes_them_away_and_redo_gives_them_back()),
+        ("A binary file landed over is put back byte for byte never deleted as one the command made", test => test.A_binary_file_landed_over_is_put_back_byte_for_byte_never_deleted_as_one_the_command_made()),
+        ("A file that already holds the bytes is no part of the command", test => test.A_file_that_already_holds_the_bytes_is_no_part_of_the_command()),
+        ("A file changed since is named and stays as it is", test => test.A_file_changed_since_is_named_and_stays_as_it_is()));
 
     private void A_binary_file_and_text_no_save_keeps_land_byte_for_byte_and_undo_takes_them_away_and_redo_gives_them_back()
     {
@@ -96,10 +96,10 @@ public sealed class LandedFilesTests : IDisposable
     }
 
     [Fact]
-    public void A_file_changed_since_or_refused_by_the_disk_is_named_and_left_as_it_is() => Cases.All(
-        ("A file made again since undo is named before redo writes over it", () => Fresh(test => test.A_file_made_again_since_undo_is_named_before_redo_writes_over_it())),
-        ("A file with its own undo is written and kept out of what undo puts back", () => Fresh(test => test.A_file_with_its_own_undo_is_written_and_kept_out_of_what_undo_puts_back())),
-        ("A write the disk refuses says why those before it staying for undo to take back", () => Fresh(test => test.A_write_the_disk_refuses_says_why_those_before_it_staying_for_undo_to_take_back())));
+    public void A_file_changed_since_or_refused_by_the_disk_is_named_and_left_as_it_is() => Cases.AllApart<LandedFilesTests>(
+        ("A file made again since undo is named before redo writes over it", test => test.A_file_made_again_since_undo_is_named_before_redo_writes_over_it()),
+        ("A file with its own undo is written and kept out of what undo puts back", test => test.A_file_with_its_own_undo_is_written_and_kept_out_of_what_undo_puts_back()),
+        ("A write the disk refuses says why those before it staying for undo to take back", test => test.A_write_the_disk_refuses_says_why_those_before_it_staying_for_undo_to_take_back()));
 
     private void A_file_made_again_since_undo_is_named_before_redo_writes_over_it()
     {
@@ -135,12 +135,5 @@ public sealed class LandedFilesTests : IDisposable
         Assert.Null(landed.Put(redo: false, _ => { }));
         Assert.False(File.Exists(first), "Taken back, the file the command made stayed");
         new FileInfo(refused).IsReadOnly = false;
-    }
-
-    /// <summary>A check on a test of its own, as it ran alone: its own state, let go after it.</summary>
-    private static void Fresh(Action<LandedFilesTests> check)
-    {
-        using LandedFilesTests test = new();
-        check(test);
     }
 }
