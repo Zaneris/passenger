@@ -21,15 +21,120 @@ namespace Passenger.Tests;
 /// an agent's first change, what it shows of their work, and what each tool answers there.</summary>
 public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 {
+    /// <summary>The fixture each step of a flow takes for an instance of its own.</summary>
+    private readonly RestoredFolders restored;
+
     public McpWindowTests(RestoredFolders folders)
-        : base(folders)
+        : base(folders) => restored = folders;
+
+    /// <summary>The gate's answers of an attached agent as one flow: an answer its operation's outcome whatever the
+    /// status bar says, an action none has or one that cannot run an error saying why, the person's run configuration
+    /// saved as a launch profile, a call meeting a fault of the IDE's answered with it, and vcs_log with a path
+    /// following renames, each step the gate test it names in an instance of its own.</summary>
+    [AvaloniaFact]
+    public void An_attached_agents_answers_and_refusals_are_its_operations_own_and_a_fault_of_the_IDEs_said_and_logged()
     {
+        Flow.StepApart("an agents answer is its operations outcome whatever the status bar says meanwhile", () => new McpWindowTests(restored), t => t.An_agents_answer_is_its_operations_outcome_whatever_the_status_bar_says_meanwhile());
+        Flow.StepApart("an agents action no action has or one that cannot run here is an error saying why", () => new McpWindowTests(restored), t => t.An_agents_action_no_action_has_or_one_that_cannot_run_here_is_an_error_saying_why());
+        Flow.StepApart("an agent saves the persons run configuration as a launch profile and is told why not for a generated one", () => new McpWindowTests(restored), t => t.An_agent_saves_the_persons_run_configuration_as_a_launch_profile_and_is_told_why_not_for_a_generated_one());
+        Flow.StepApart("an agents call that meets a fault of the IDEs is answered with it and logged", () => new McpWindowTests(restored), t => t.An_agents_call_that_meets_a_fault_of_the_IDEs_is_answered_with_it_and_logged());
+        Flow.StepApart("an agents vcs log with a path lists the commits show history does renames followed", () => new McpWindowTests(restored), t => t.An_agents_vcs_log_with_a_path_lists_the_commits_show_history_does_renames_followed());
+    }
+
+    /// <summary>The gate's attach as one flow: a breakpoint an attached agent sets seen by the person, the MCP server
+    /// off asking to let an agent in and on and off again, an agent asked before its first run with the window ceasing
+    /// to wait once it gives up or goes, and each solution window's own socket, each step the gate test it names in an
+    /// instance of its own.</summary>
+    [AvaloniaFact]
+    public void An_agent_attaches_to_its_folders_window_only_as_the_person_lets_it_asking_before_it_first_runs()
+    {
+        Flow.StepApart("an agent attached to the window sets a breakpoint the person sees", () => new McpWindowTests(restored), t => t.An_agent_attached_to_the_window_sets_a_breakpoint_the_person_sees());
+        Flow.StepApart("with the MCP server off the window asks to let an agent in on it lets agents in unasked and off again shuts them out", () => new McpWindowTests(restored), t => t.With_the_MCP_server_off_the_window_asks_to_let_an_agent_in_on_it_lets_agents_in_unasked_and_off_again_shuts_them_out());
+        Flow.StepApart("an agent asks before its first run and the window stops waiting when it gives up or goes", () => new McpWindowTests(restored), t => t.An_agent_asks_before_its_first_run_and_the_window_stops_waiting_when_it_gives_up_or_goes());
+        Flow.StepApart("each solution window has its own socket and an agent attaches to the one over its folder", () => new McpWindowTests(restored), t => t.Each_solution_window_has_its_own_socket_and_an_agent_attaches_to_the_one_over_its_folder());
+    }
+
+    /// <summary>An attached agent's work in the person's window as one flow, each step one test's check in an instance
+    /// of its own: a diff tab named a diff of its file, a package change as the NuGet window's work waiting its turn, a
+    /// save the person makes while the agent's replace writes kept as theirs, the NuGet window left unbuilt, a push
+    /// asking the person for a login, and a terminal command in a shell of its own that the person's program never
+    /// takes.</summary>
+    [AvaloniaFact]
+    public void An_agents_work_shows_in_the_persons_window_as_its_own_never_taking_the_persons_saves_or_programs()
+    {
+        Flow.StepApart("an agent sees a diff tab in the persons window named as a diff of its file", () => new McpWindowTests(restored), t => t.An_agent_sees_a_diff_tab_in_the_persons_window_named_as_a_diff_of_its_file());
+        Flow.StepApart("an agents package change shows as the nuget windows work and waits its turn behind the windows own", () => new McpWindowTests(restored), t => t.An_agents_package_change_shows_as_the_nuget_windows_work_and_waits_its_turn_behind_the_windows_own());
+        Flow.StepApart("a save the person makes while an agents replace writes is their own change in local history", () => new McpWindowTests(restored), t => t.A_save_the_person_makes_while_an_agents_replace_writes_is_their_own_change_in_local_history());
+        Flow.StepApart("an agents package search and install leave the nuget window unbuilt until the person opens it", () => new McpWindowTests(restored), t => t.An_agents_package_search_and_install_leave_the_nuget_window_unbuilt_until_the_person_opens_it());
+        Flow.StepApart("an agents push to a remote that asks for a login asks the person at the window", () => new McpWindowTests(restored), t => t.An_agents_push_to_a_remote_that_asks_for_a_login_asks_the_person_at_the_window());
+        Flow.StepApart("an agents terminal command runs in a shell of its own and never reaches the persons program", () => new McpWindowTests(restored), t => t.An_agents_terminal_command_runs_in_a_shell_of_its_own_and_never_reaches_the_persons_program());
+        Flow.StepApart("a persons program in the terminal never takes an agents command and the window keeps one agent shell", () => new McpWindowTests(restored), t => t.A_persons_program_in_the_terminal_never_takes_an_agents_command_and_the_window_keeps_one_agent_shell());
+    }
+
+    /// <summary>What an attached agent is refused as one flow, each step one test's check in an instance of its own:
+    /// what would run a folder's code before it is trusted, trusting it through the person's window, committing,
+    /// stashing or checking out a file stored through a git filter there, quitting the person's Passenger, and closing
+    /// their solution though every tool is allowed, each refusal told why.</summary>
+    [AvaloniaFact]
+    public void An_attached_agent_never_does_what_the_person_alone_may_and_runs_nothing_of_a_folder_not_trusted()
+    {
+        Flow.StepApart("an agent in a window whose folder is not trusted is refused what would run its code and cannot trust it", () => new McpWindowTests(restored), t => t.An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_what_would_run_its_code_and_cannot_trust_it());
+        Flow.StepApart("an agents input into the persons window never trusts its folder and is told why", () => new McpWindowTests(restored), t => t.An_agents_input_into_the_persons_window_never_trusts_its_folder_and_is_told_why());
+        Flow.StepApart("an agents commit in a folder not trusted leaves out a file stored through a git filter saying why", () => new McpWindowTests(restored), t => t.An_agents_commit_in_a_folder_not_trusted_leaves_out_a_file_stored_through_a_git_filter_saying_why());
+        Flow.StepApart("an agents stash and checkout in a folder not trusted are refused where git would write out a file stored through a filter", () => new McpWindowTests(restored), t => t.An_agents_stash_and_checkout_in_a_folder_not_trusted_are_refused_where_git_would_write_out_a_file_stored_through_a_filter());
+        Flow.StepApart("an attached agent never quits the persons passenger and is told why", () => new McpWindowTests(restored), t => t.An_attached_agent_never_quits_the_persons_passenger_and_is_told_why());
+        Flow.StepApart("an attached agent allowed every tool never closes the persons solution and is told why", () => new McpWindowTests(restored), t => t.An_attached_agent_allowed_every_tool_never_closes_the_persons_solution_and_is_told_why());
+    }
+
+    /// <summary>An agent's code questions while the server loads as one flow, each step one test's check in an instance
+    /// of its own: a file come into a project that did not load said why, find_symbol answering without a file still
+    /// loading and naming it, Reformat of a file not taken in refused naming it, a MAUI expression's rename waiting for
+    /// its moved file, a compose file's definition waiting for the YAML server, and a definition asked while the server
+    /// loads again refused past the wait.</summary>
+    [AvaloniaFact]
+    public void An_agents_code_question_waits_for_what_its_file_needs_loaded_and_is_refused_saying_what_past_the_wait()
+    {
+        Flow.StepApart("an agent asking of a file come into a project that did not load hears why while the project loads again", () => new McpWindowTests(restored), t => t.An_agent_asking_of_a_file_come_into_a_project_that_did_not_load_hears_why_while_the_project_loads_again());
+        Flow.StepApart("an agents find symbol answers without a file still loading naming it while a tool of its project waits for it", () => new McpWindowTests(restored), t => t.An_agents_find_symbol_answers_without_a_file_still_loading_naming_it_while_a_tool_of_its_project_waits_for_it());
+        Flow.StepApart("an agents Reformat Code of a file the server has not taken in yet is refused naming it", () => new McpWindowTests(restored), t => t.An_agents_Reformat_Code_of_a_file_the_server_has_not_taken_in_yet_is_refused_naming_it());
+        Flow.StepApart("an agents rename in a maui expression asked as a type rename moved its file waits for the server to take the file in", () => new McpWindowTests(restored), t => t.An_agents_rename_in_a_maui_expression_asked_as_a_type_rename_moved_its_file_waits_for_the_server_to_take_the_file_in());
+        Flow.StepApart("an agents definition on a compose file waits saying so for the yaml server to start and past the wait is refused as still starting", () => new McpWindowTests(restored), t => t.An_agents_definition_on_a_compose_file_waits_saying_so_for_the_yaml_server_to_start_and_past_the_wait_is_refused_as_still_starting());
+        Flow.StepApart("an agents definition asked while the server loads again past the wait is refused as still loading", () => new McpWindowTests(restored), t => t.An_agents_definition_asked_while_the_server_loads_again_past_the_wait_is_refused_as_still_loading());
+    }
+
+    /// <summary>An agent's questions of a restore's and a generator's code as one flow, each step one test's check in
+    /// an instance of its own: a restored generator's declaration waiting for its run past the server's word that
+    /// diagnostics moved, for the server to read what the build wrote again, with no watcher telling it, refused where
+    /// the server never reads it, and to the end of its project's load batch, a restore's code waiting for its
+    /// project's load again, and a restore that left its assets as they were waiting for none.</summary>
+    [AvaloniaFact]
+    public void An_agents_definition_of_generated_or_restored_code_waits_for_the_servers_rerun_and_load_never_answering_as_before()
+    {
+        Flow.StepApart("an agents definition of what a restored generator declares waits for its run though the server says its diagnostics moved first", () => new McpWindowTests(restored), t => t.An_agents_definition_of_what_a_restored_generator_declares_waits_for_its_run_though_the_server_says_its_diagnostics_moved_first());
+        Flow.StepApart("an agents definition of what a restored generator declares waits for the server to read what its build wrote again", () => new McpWindowTests(restored), t => t.An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_server_to_read_what_its_build_wrote_again());
+        Flow.StepApart("an agents definition of what a restored generator declares goes to it though no watcher tells the server what the build wrote again", () => new McpWindowTests(restored), t => t.An_agents_definition_of_what_a_restored_generator_declares_goes_to_it_though_no_watcher_tells_the_server_what_the_build_wrote_again());
+        Flow.StepApart("an agents definition of what a restored generator declares is refused naming what the build wrote again where the server never reads it", () => new McpWindowTests(restored), t => t.An_agents_definition_of_what_a_restored_generator_declares_is_refused_naming_what_the_build_wrote_again_where_the_server_never_reads_it());
+        Flow.StepApart("an agents definition of what a restored generator declares waits for the end of the batch its project loaded again in", () => new McpWindowTests(restored), t => t.An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in());
+        Flow.StepApart("an agents definition of what a restore brought waits for its projects load again though another projects load ends first", () => new McpWindowTests(restored), t => t.An_agents_definition_of_what_a_restore_brought_waits_for_its_projects_load_again_though_another_projects_load_ends_first());
+        Flow.StepApart("an agents question after a restore that left its assets as they were waits for no later load", () => new McpWindowTests(restored), t => t.An_agents_question_after_a_restore_that_left_its_assets_as_they_were_waits_for_no_later_load());
+    }
+
+    /// <summary>An attached agent's faults and costs as one flow, each step one test's check in an instance of its own:
+    /// a failing call leaving its exception and stack in the log, removing any exception turning it off in its answer
+    /// and the Breakpoints window, an action on a file whose grammar failed refused at once, and a question of an open
+    /// file costing the window what it asks, not the file's size.</summary>
+    [AvaloniaFact]
+    public void An_agents_failed_call_is_logged_whole_and_its_questions_cost_the_window_what_they_ask()
+    {
+        Flow.StepApart("an agents call that fails leaves its exception and stack in the log", () => new McpWindowTests(restored), t => t.An_agents_call_that_fails_leaves_its_exception_and_stack_in_the_log());
+        Flow.StepApart("an agents remove of any exception turns it off in its answer and the breakpoints window", () => new McpWindowTests(restored), t => t.An_agents_remove_of_any_exception_turns_it_off_in_its_answer_and_the_breakpoints_window());
+        Flow.StepApart("an agents action on a file whose grammar failed is refused at once saying so", () => new McpWindowTests(restored), t => t.An_agents_action_on_a_file_whose_grammar_failed_is_refused_at_once_saying_so());
+        Flow.StepApart("an agents question of an open file costs the window what it asks not the files size", () => new McpWindowTests(restored), t => t.An_agents_question_of_an_open_file_costs_the_window_what_it_asks_not_the_files_size());
     }
 
     /// <summary>A diff's tab in the person's window is named a diff of its file in the agent's workspace, never as the file's
     /// own tab: among the open files and as the file shown, at its file's side's caret.</summary>
-    [AvaloniaFact]
-    public void An_agent_sees_a_diff_tab_in_the_persons_window_named_as_a_diff_of_its_file()
+    private void An_agent_sees_a_diff_tab_in_the_persons_window_named_as_a_diff_of_its_file()
     {
         string repo = PathNames.Canonical(TestFolders.Create("mcp-diff-tab-"));
         DeleteAtEnd(repo);
@@ -62,8 +167,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's package change is the NuGet window's own: the window shows it as its work while dotnet runs and
     /// lists the package installed once it is, and while the window's own change runs the agent's is refused, saying what is
     /// under way.</summary>
-    [AvaloniaFact]
-    public void An_agents_package_change_shows_as_the_nuget_windows_work_and_waits_its_turn_behind_the_windows_own()
+    private void An_agents_package_change_shows_as_the_nuget_windows_work_and_waits_its_turn_behind_the_windows_own()
     {
         string library = PathNames.Canonical(TestFolders.Create("mcp-nuget-window-"));
         DeleteAtEnd(library);
@@ -137,8 +241,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>A file the person saves while an agent's Replace in Files writes its closed files is their own change in Local
     /// History, where it was filed under the agent's replace, whose change set keeps only the replace's own writes.</summary>
-    [AvaloniaFact]
-    public void A_save_the_person_makes_while_an_agents_replace_writes_is_their_own_change_in_local_history()
+    private void A_save_the_person_makes_while_an_agents_replace_writes_is_their_own_change_in_local_history()
     {
         string root = PathNames.Canonical(TestFolders.Create("mcp-replace-history-"));
         DeleteAtEnd(root);
@@ -183,8 +286,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent searches the folder's feeds and installs a package with the NuGet window never built, its view
     /// made only as the person opens it, where the package is listed installed.</summary>
-    [AvaloniaFact]
-    public void An_agents_package_search_and_install_leave_the_nuget_window_unbuilt_until_the_person_opens_it()
+    private void An_agents_package_search_and_install_leave_the_nuget_window_unbuilt_until_the_person_opens_it()
     {
         string library = PathNames.Canonical(TestFolders.Create("mcp-nuget-unbuilt-"));
         DeleteAtEnd(library);
@@ -292,8 +394,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// would run its code, in the words the window greys its actions with, and a search of the feeds its nuget.config names,
     /// asking the person nothing; workspace says why, C# answers and a build are refused too, as the server's instructions say
     /// with each tool the rule refuses named, and the agent cannot trust the folder itself.</summary>
-    [AvaloniaFact]
-    public void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_what_would_run_its_code_and_cannot_trust_it()
+    private void An_agent_in_a_window_whose_folder_is_not_trusted_is_refused_what_would_run_its_code_and_cannot_trust_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-untrusted-"));
         File.WriteAllText(Path.Combine(folder, "App.csproj"), TestProjects.Console());
@@ -347,8 +448,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// never reaches the question, and its click at the point of the banner's Trust Folder, where the person's click trusts
     /// the folder, leaves it untrusted; the agent is told why each time, the status bar saying it too, and the person's
     /// own click then trusts it.</summary>
-    [AvaloniaFact]
-    public void An_agents_input_into_the_persons_window_never_trusts_its_folder_and_is_told_why()
+    private void An_agents_input_into_the_persons_window_never_trusts_its_folder_and_is_told_why()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-input-trust-"));
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
@@ -395,8 +495,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's commit in a window whose folder is not trusted is refused a file Git stores through a filter,
     /// which does not run there, saying why before anything is committed; a commit of every changed file leaves that one
     /// out, saying which and why, and commits the file beside it.</summary>
-    [AvaloniaFact]
-    public void An_agents_commit_in_a_folder_not_trusted_leaves_out_a_file_stored_through_a_git_filter_saying_why()
+    private void An_agents_commit_in_a_folder_not_trusted_leaves_out_a_file_stored_through_a_git_filter_saying_why()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-untrusted-filter-"));
         DeleteAtEnd(folder);
@@ -434,8 +533,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's stash and checkout in a window whose folder is not trusted are refused, saying why, before
     /// anything is saved or written, where git would store or write out a file it stores through a filter, which does not
     /// run there: the file's bytes, the branch and the stashes stay as they were.</summary>
-    [AvaloniaFact]
-    public void An_agents_stash_and_checkout_in_a_folder_not_trusted_are_refused_where_git_would_write_out_a_file_stored_through_a_filter()
+    private void An_agents_stash_and_checkout_in_a_folder_not_trusted_are_refused_where_git_would_write_out_a_file_stored_through_a_filter()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-untrusted-filter-writes-"));
         DeleteAtEnd(folder);
@@ -551,8 +649,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An attached agent never quits the person's Passenger: its ide_action of Exit is refused, so is Exit chosen
     /// in Find Action by its keys, and, where the window draws its own buttons, its click on Close of the last window; the
     /// agent is told why each time, the status bar saying it too, and the window stays open.</summary>
-    [AvaloniaFact]
-    public void An_attached_agent_never_quits_the_persons_passenger_and_is_told_why()
+    private void An_attached_agent_never_quits_the_persons_passenger_and_is_told_why()
     {
         string folder = PathNames.Canonical(Plain("mcp-quit-"));
         MainWindow window = AgentsWindow(folder, languageServer: false);
@@ -605,8 +702,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An attached agent never closes the person's solution, though it was allowed every tool: ide_actions lists
     /// Close Solution greyed saying it is the person's, its ide_action is refused, so is Close Solution chosen in Find
     /// Action by its keys, the agent told why each time and the status bar saying it too, and the folder stays open.</summary>
-    [AvaloniaFact]
-    public void An_attached_agent_allowed_every_tool_never_closes_the_persons_solution_and_is_told_why()
+    private void An_attached_agent_allowed_every_tool_never_closes_the_persons_solution_and_is_told_why()
     {
         string folder = PathNames.Canonical(Plain("mcp-close-"));
         MainWindow window = AgentsWindow(folder, languageServer: false);
@@ -654,8 +750,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>A file whose grammar failed reading it can never tell the lines inside its strings, so Convert Indentation is
     /// refused at once saying the grammar failed, where the agent waited out its minute for a reading that never came and
     /// was then told the file was still being read.</summary>
-    [AvaloniaFact]
-    public void An_agents_action_on_a_file_whose_grammar_failed_is_refused_at_once_saying_so()
+    private void An_agents_action_on_a_file_whose_grammar_failed_is_refused_at_once_saying_so()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-grammar-failed-"));
         DeleteAtEnd(folder);
@@ -733,8 +828,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// the project again for it is held (its design-time builds not yet given), is in none of the server's projects, and no
     /// load of the project can take it in until the project is mended: an agent's outline of it says at once that the
     /// project did not load and why, never that the file is not loaded yet once the wait for it has run out.</summary>
-    [AvaloniaFact]
-    public void An_agent_asking_of_a_file_come_into_a_project_that_did_not_load_hears_why_while_the_project_loads_again()
+    private void An_agent_asking_of_a_file_come_into_a_project_that_did_not_load_hears_why_while_the_project_loads_again()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-unloaded-came-"));
         DeleteAtEnd(folder);
@@ -771,8 +865,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// design-time builds not yet given), so in none of the server's projects once the wait for it runs out: an agent's
     /// find_symbol over the solution answers with what the loaded code declares, naming the file it went without, where it
     /// was refused whole; a tool asked of a file of that project still waits for it, refused naming it once the wait runs out.</summary>
-    [AvaloniaFact]
-    public void An_agents_find_symbol_answers_without_a_file_still_loading_naming_it_while_a_tool_of_its_project_waits_for_it()
+    private void An_agents_find_symbol_answers_without_a_file_still_loading_naming_it_while_a_tool_of_its_project_waits_for_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-still-loading-"));
         DeleteAtEnd(folder);
@@ -816,8 +909,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// whether it changed; on a file come into a project while the server's load of the project again for it is held, so the
     /// server, ready, has not taken it in, a refusal naming the file and the project it is not loaded into yet, as the status
     /// bar says it, where the server's state alone was said ("C# ready") and the agent heard only that the action ran.</summary>
-    [AvaloniaFact]
-    public void An_agents_Reformat_Code_of_a_file_the_server_has_not_taken_in_yet_is_refused_naming_it()
+    private void An_agents_Reformat_Code_of_a_file_the_server_has_not_taken_in_yet_is_refused_naming_it()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-reformat-untaken-"));
         DeleteAtEnd(folder);
@@ -862,8 +954,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// before that load, is heard just after it ends (held to then). An agent's definition of the InitializeComponent the
     /// generator declares, asked before the first load, goes to that declaration once the generator has run, never
     /// answering nothing because the word came first.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_its_run_though_the_server_says_its_diagnostics_moved_first()
+    private void An_agents_definition_of_what_a_restored_generator_declares_waits_for_its_run_though_the_server_says_its_diagnostics_moved_first()
     {
         string folder = McpNavigationTests.MauiPage("mcp-maui-refreshed-");
         DeleteAtEnd(folder);
@@ -913,8 +1004,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// read of them until it hears of them, held back here past the generators' run. An agent's definition of the
     /// InitializeComponent the generator declares waits, saying so, until the server has read them, never answering nothing
     /// because the generator ran on the settings of the load before the restore.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_server_to_read_what_its_build_wrote_again()
+    private void An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_server_to_read_what_its_build_wrote_again()
     {
         string folder = McpNavigationTests.MauiPage("mcp-maui-unread-");
         DeleteAtEnd(folder);
@@ -966,8 +1056,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// (held back throughout, as a loaded Mac's watcher, behind the system's, misses a file written in place). An agent's
     /// definition of the InitializeComponent the generator declares goes to it, the wait telling the server of what it holds
     /// otherwise than the disk, never answering nothing as of the global usings before the restore.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_of_what_a_restored_generator_declares_goes_to_it_though_no_watcher_tells_the_server_what_the_build_wrote_again()
+    private void An_agents_definition_of_what_a_restored_generator_declares_goes_to_it_though_no_watcher_tells_the_server_what_the_build_wrote_again()
     {
         string folder = McpNavigationTests.MauiPage("mcp-maui-untold-");
         DeleteAtEnd(folder);
@@ -980,8 +1069,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>As above, the server never taking the disk's text of the files the build after the restore wrote again,
     /// though told it changed (held back here throughout): the agent's definition is refused once the wait for them has
     /// run out, saying it waited for the server to read them, never answering nothing as of the text before.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_of_what_a_restored_generator_declares_is_refused_naming_what_the_build_wrote_again_where_the_server_never_reads_it()
+    private void An_agents_definition_of_what_a_restored_generator_declares_is_refused_naming_what_the_build_wrote_again_where_the_server_never_reads_it()
     {
         string folder = McpNavigationTests.MauiPage("mcp-maui-unheard-");
         DeleteAtEnd(folder);
@@ -1040,8 +1128,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// the project once more in that batch keeps its end): an agent's definition of the InitializeComponent MAUI's generator
     /// declares, asked as the folder opens, waits through the batch's end and the generators' run it queues, saying so,
     /// and goes to that declaration, never answering nothing as of the code before the generator ran.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in()
+    private void An_agents_definition_of_what_a_restored_generator_declares_waits_for_the_end_of_the_batch_its_project_loaded_again_in()
     {
         string folder = McpNavigationTests.MauiPage("mcp-maui-batch-");
         DeleteAtEnd(folder);
@@ -1100,8 +1187,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// then at once renames the method the expression calls from the expression, the server's load taking in the moved file
     /// held back until then: the rename waits, saying so, until the server has the file in its project, then renames the
     /// method there and in the expression, never refusing the expression as naming nothing.</summary>
-    [AvaloniaFact]
-    public void An_agents_rename_in_a_maui_expression_asked_as_a_type_rename_moved_its_file_waits_for_the_server_to_take_the_file_in()
+    private void An_agents_rename_in_a_maui_expression_asked_as_a_type_rename_moved_its_file_waits_for_the_server_to_take_the_file_in()
     {
         (string folder, string page) = McpNavigationTests.MauiPageCallingHelper("mcp-maui-moved-");
         DeleteAtEnd(folder);
@@ -1154,8 +1240,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's definition on a compose file asked as the YAML language server starts (held here, as a first start
     /// on a loaded machine holds it) waits, saying so, and past the agent's wait is refused as the server still starting
     /// after it; asked again once the server is up, it answers. Skipped without a Node.js that runs the YAML server.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_on_a_compose_file_waits_saying_so_for_the_yaml_server_to_start_and_past_the_wait_is_refused_as_still_starting()
+    private void An_agents_definition_on_a_compose_file_waits_saying_so_for_the_yaml_server_to_start_and_past_the_wait_is_refused_as_still_starting()
     {
         DockerFilesTests.Shop.SkipWithoutNode(yaml: true);
         const string Compose = "services:\n  web:\n    image: nginx:1.27\n    depends_on: [api]\n  api:\n    build: .\n";
@@ -1206,8 +1291,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// server may say nothing of a load under way: the agent's definition of the InitializeComponent MAUI's generator
     /// declares, asked as the folder opens, is refused as the server still loading once the wait is over, never answered as
     /// nothing from the load before the restore.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_asked_while_the_server_loads_again_past_the_wait_is_refused_as_still_loading()
+    private void An_agents_definition_asked_while_the_server_loads_again_past_the_wait_is_refused_as_still_loading()
     {
         string? limitWas = Environment.GetEnvironmentVariable(PassengerTools.ServerLimitVariable);
         TimeSpan limit = Waits.Of(TimeSpan.FromSeconds(15)) + TimeSpan.FromSeconds(10).Scaled();
@@ -1260,8 +1344,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// restores the second, which fails, no feed holding its package. An agent's definition of the class the first's
     /// restore brought waits, saying so, for the first project's load again after its restore, never answering as of its
     /// load before it because another project's load ended in between.</summary>
-    [AvaloniaFact]
-    public void An_agents_definition_of_what_a_restore_brought_waits_for_its_projects_load_again_though_another_projects_load_ends_first()
+    private void An_agents_definition_of_what_a_restore_brought_waits_for_its_projects_load_again_though_another_projects_load_ends_first()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-restored-apart-"));
         DeleteAtEnd(folder);
@@ -1327,8 +1410,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// server has said nothing of its loads for its quiet time that wait is let go for good, so a later load of another
     /// project, its design-time build held here, keeps no agent's question waiting for a load that will never come:
     /// definition of what the first restore brought answers while that build is held.</summary>
-    [AvaloniaFact]
-    public void An_agents_question_after_a_restore_that_left_its_assets_as_they_were_waits_for_no_later_load()
+    private void An_agents_question_after_a_restore_that_left_its_assets_as_they_were_waits_for_no_later_load()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-restored-same-"));
         DeleteAtEnd(folder);
@@ -1391,8 +1473,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// which the agent's own file tools may have written, is looked at off the UI thread and the file read only once its
     /// length or time changed, so editor_text of one line of an open 20,000-line file allocates on the UI thread about what
     /// one of a ten-line file does; and the agent's own write is still taken before its next question.</summary>
-    [AvaloniaFact]
-    public void An_agents_question_of_an_open_file_costs_the_window_what_it_asks_not_the_files_size()
+    private void An_agents_question_of_an_open_file_costs_the_window_what_it_asks_not_the_files_size()
     {
         string small = Path.Combine(Folder, "Small.txt");
         string large = Path.Combine(Folder, "Large.txt");
@@ -1468,8 +1549,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's call that fails as a file can (an action whose file another program holds), which the agent hears
     /// in the failure's own words alone, leaves the failure in passenger.log whole: the tool, the exception and the frames it
     /// was thrown through.</summary>
-    [AvaloniaFact]
-    public void An_agents_call_that_fails_leaves_its_exception_and_stack_in_the_log()
+    private void An_agents_call_that_fails_leaves_its_exception_and_stack_in_the_log()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         window.Actions.Add(new IdeAction("tests.held", "Held", "Tests", _ => ThrowAsHeld()));
@@ -1500,8 +1580,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's remove of "Any exception", the row every folder keeps, turns it off: its answer and the
     /// Breakpoints window show it off, so the program no longer breaks on every exception.</summary>
-    [AvaloniaFact]
-    public void An_agents_remove_of_any_exception_turns_it_off_in_its_answer_and_the_breakpoints_window()
+    private void An_agents_remove_of_any_exception_turns_it_off_in_its_answer_and_the_breakpoints_window()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         ExceptionBreakpoint any = window.Debugger.Breakpoints.FindException(ExceptionBreakpoint.AnyException)!;
@@ -1759,8 +1838,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's push to a remote that asks for a login, on a window the person is at, puts the question to them,
     /// saying the answer goes to git and never to the agent, the agent's call waiting; once they sign in, the push goes and
     /// the agent is told so.</summary>
-    [AvaloniaFact]
-    public void An_agents_push_to_a_remote_that_asks_for_a_login_asks_the_person_at_the_window()
+    private void An_agents_push_to_a_remote_that_asks_for_a_login_asks_the_person_at_the_window()
     {
         string repository = TestFolders.Create("mcp-login-");
         DeleteAtEnd(repository);
@@ -1812,8 +1890,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's terminal command runs in a shell of the agents' own, its Agent Shell tab, while the person's tab
     /// runs cat: what cat reads is left untouched, the person's tab stays the one shown, and the agent hears what its
     /// command printed. Before, the command was typed into whatever the shown tab ran.</summary>
-    [AvaloniaFact]
-    public void An_agents_terminal_command_runs_in_a_shell_of_its_own_and_never_reaches_the_persons_program()
+    private void An_agents_terminal_command_runs_in_a_shell_of_its_own_and_never_reaches_the_persons_program()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         window.TerminalPanel.Shell = OperatingSystem.IsWindows() ? ("cmd.exe", []) : ("/bin/sh", []);
@@ -1850,8 +1927,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
     /// the Agent Shell starts waits for that start, which leaves one Agent Shell tab; a shell that could not start is said
     /// to the agent and leaves at most one tab, which the next start takes the place of; and once the agent runs the
     /// configuration itself, its program takes the agent's line.</summary>
-    [AvaloniaFact]
-    public void A_persons_program_in_the_terminal_never_takes_an_agents_command_and_the_window_keeps_one_agent_shell()
+    private void A_persons_program_in_the_terminal_never_takes_an_agents_command_and_the_window_keeps_one_agent_shell()
     {
         MainWindow window = AgentsWindow(Folder, languageServer: false);
         global::Passenger.App.ToolWindows.TerminalPanel terminal = window.TerminalPanel;
@@ -1937,198 +2013,5 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             terminal.Tabs.Count(t => t.Name == global::Passenger.App.ToolWindows.TerminalPanel.AgentShellName);
 
         static string Tabs(global::Passenger.App.ToolWindows.TerminalPanel terminal) => string.Join(", ", terminal.Tabs.Select(t => t.Name));
-    }
-}
-
-/// <summary>McpWindowTests' agents on the person's window where one debugs through the window (a program in the terminal,
-/// stopped, evaluated and typed into), so the class runs alone; with a project file's diagnostics during a build, and the
-/// window's keys while ten thousand usages land.</summary>
-[Collection(Alone.Name)]
-public sealed class McpWindowDebuggingTests : McpRig, IClassFixture<RestoredFolders>
-{
-    public McpWindowDebuggingTests(RestoredFolders folders)
-        : base(folders)
-    {
-    }
-
-    /// <summary>An agent's diagnostics for a project file wait for that file's own checks alone, never for a build running
-    /// meanwhile.</summary>
-    [AvaloniaFact]
-    public void An_agents_diagnostics_for_a_project_file_come_from_its_own_checks_while_a_build_runs()
-    {
-        File.WriteAllText(Path.Combine(Folder, "Directory.Build.targets"), """
-            <Project>
-              <Target Name="Slow" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' And Exists('slow')">
-                <Exec Condition="'$(OS)' != 'Windows_NT'" Command="echo $$ &gt; slow.pid; exec sleep 120" />
-                <Exec Condition="'$(OS)' == 'Windows_NT'" Command="powershell -NoProfile -Command &quot;Set-Content -Path slow.pid -Value $PID; Start-Sleep -Seconds 120&quot;" />
-              </Target>
-            </Project>
-            """);
-        File.WriteAllText(Path.Combine(Folder, "slow"), string.Empty);
-        MainWindow window = AgentsWindow(Folder, languageServer: false);
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-        OwnProcess step = default;
-        try
-        {
-            Assert.True(window.Perform(AppActions.Build));
-            step = OwnProcess.Of(Processes.WrittenId(Path.Combine(Folder, "slow.pid"), "the build's slow step to start"));
-
-            window.OpenFile(Path.Combine(Folder, "Sum.csproj"));
-            window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(6, 0));
-            window.KeyTextInput("<Import Project=\"Missing.props\" />");
-            Task<JsonElement> diagnostics = Waiting.Apart(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Sum.csproj" }));
-            JsonElement answer = Ui.AwaitPumped(diagnostics, "the project file's diagnostics", AgentLimit);
-            JsonElement missing = Assert.Single(answer.EnumerateArray());
-            Assert.Contains("Missing.props", missing.GetProperty("message").GetString(), StringComparison.Ordinal);
-            // The build's step sleeps two minutes, so an answer that waited for the build comes after it.
-            Assert.True(window.IsBuilding, "The build ended before the agent's diagnostics were answered: they waited for it");
-        }
-        finally
-        {
-            window.Perform(AppActions.Stop);
-            step.Kill();
-            Ui.PumpUntil(() => !window.IsBuilding, "the build to stop", TimeSpan.FromMinutes(1));
-            Gone(client);
-            window.Close();
-        }
-    }
-
-    /// <summary>On the person's window an agent is asked once, the first time, before it runs a configuration, sets a
-    /// breakpoint, debugs, evaluates code in the paused program (setting a value there unasked after) or types into its
-    /// input; saving and stopping are never asked about. The configuration uses the terminal: run answers with what the
-    /// program's tab shows, debug_start stops at a breakpoint on Main's first line, debug_input types into its tab, and
-    /// output reads the tab, the program's end in it.</summary>
-    [AvaloniaFact]
-    public void An_agent_is_asked_once_before_it_first_runs_sets_a_breakpoint_evaluates_or_types_into_a_program_in_the_terminal()
-    {
-        Write("Program.cs", File.ReadAllText(Debugging.Helpers.Debuggees.Source("TerminalConsoleApp", "Program.cs")));
-        MainWindow window = AgentsWindow(Folder, languageServer: false);
-        window.SetConfigurations([new global::Passenger.App.Run.RunConfiguration
-        {
-            Name = "In the terminal",
-            Project = Path.Combine(window.Folder!, "Sum.csproj"),
-            Console = global::Passenger.App.Run.ConsoleKind.Terminal,
-        }], "In the terminal");
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-        try
-        {
-            Assert.Equal("Nothing to save", Unasked(window, client, McpTools.SaveAll).GetString());
-            JsonElement ran = Asked(window, client, McpTools.Run, "run a configuration", new() { ["waitSeconds"] = 5 });
-            string output = ran.GetProperty("output").GetString()!;
-            Assert.True(ran.GetProperty("stillRunning").GetBoolean() && output.Contains("red at the third row's fifth column", StringComparison.Ordinal),
-                $"The run in the terminal was answered without the program waiting for its key in its tab: {ran}");
-            Assert.Equal("Stopped", Unasked(window, client, McpTools.Stop).GetString());
-            WaitFor(() => window.RunInTerminal is { IsRunning: false }, "the program in the terminal to end");
-
-            Asked(window, client, McpTools.BreakpointSet, "set a breakpoint", new() { ["path"] = "Program.cs", ["line"] = 1 });
-            Unasked(window, client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 24 });
-            JsonElement stop = Asked(window, client, McpTools.DebugStart, "debug a configuration");
-            Assert.True(stop.GetProperty("state").GetString() == "paused" && stop.GetProperty("location").GetString()!.StartsWith("Program.cs:1:", StringComparison.Ordinal),
-                $"Debugged in the terminal, the program did not stop on Main's first line: {stop}");
-            Assert.Equal("42", Asked(window, client, McpTools.DebugEvaluate, "evaluate an expression", new() { ["expression"] = "6 * 7" }).GetProperty("value").GetString());
-            Assert.Equal("0", Unasked(window, client, McpTools.DebugEvaluate, new() { ["expression"] = "args.Length" }).GetProperty("value").GetString());
-            string set = Unasked(window, client, McpTools.DebugEvaluate, new() { ["expression"] = "line", ["value"] = "\"forty\"" }).GetProperty("value").GetString()!;
-            Assert.Contains("forty", set, StringComparison.Ordinal);
-            set = Unasked(window, client, McpTools.DebugEvaluate, new() { ["expression"] = "line", ["value"] = "\"again\"" }).GetProperty("value").GetString()!;
-            Assert.Contains("again", set, StringComparison.Ordinal);
-
-            Await(Waiting.Apart(() => Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 1, ["remove"] = true })), "the breakpoint's removal");
-            Await(Waiting.Apart(() => Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 24, ["remove"] = true })), "the other breakpoint's removal");
-            Await(Waiting.Apart(() => Call(client, McpTools.DebugContinue, new() { ["waitSeconds"] = 1 })), "the program let go");
-            WaitFor(() => window.Debugger.Session?.Terminal?.Session.Screen.Lines.Any(l => l.Text() == "key?") == true, "the program to ask for a key in its tab");
-            Asked(window, client, McpTools.DebugInput, "type into the program's console", new() { ["text"] = "q", ["newline"] = false });
-            Unasked(window, client, McpTools.DebugInput, new() { ["text"] = "hello" });
-            WaitFor(() => !window.Debugger.IsDebugging && window.Debugger.Session?.Terminal?.Ended.IsCompleted == true, "the program's end");
-            string shown = Await(Waiting.Apart(() => Call(client, McpTools.Output, new() { ["of"] = "debug" })), "the program's output").GetString()!;
-            // A key typed before ReadKey takes the terminal is echoed by the terminal's own line discipline, as anywhere.
-            Assert.True((shown.Contains("key? key q", StringComparison.Ordinal) || shown.Contains("key? qkey q", StringComparison.Ordinal)) && shown.Contains("line hello", StringComparison.Ordinal)
-                && shown.Contains("Process finished with exit code 3.", StringComparison.Ordinal), $"output read, of the program's tab:\n{shown}");
-        }
-        finally
-        {
-            Gone(client);
-            window.Close();
-        }
-    }
-
-    /// <summary>While an attached agent's ten thousand usages are found, each with its line read from its closed file, the
-    /// window takes every key typed; the files the answer only counted are read through within, and from where one file's
-    /// places run past the limit, to every place.</summary>
-    [AvaloniaFact]
-    public void The_window_takes_keys_while_an_attached_agent_finds_ten_thousand_usages_each_with_its_line()
-    {
-        // Every call under a long comment, so a usage's line read from its file's start reads each file 2,500 times over.
-        for (int file = 0; file < 4; file++)
-        {
-            System.Text.StringBuilder text = new($"static class Uses{file}\n{{\n    public static int All()\n    {{\n        int total = 0;\n");
-            for (int call = 0; call < 2500; call++)
-            {
-                text.Append("        // ").Append('=', 100).Append('\n');
-                text.Append("        total += Helper.Twice(").Append(call).Append(");\n");
-            }
-            Write($"Uses{file}.cs", text.Append("        return total;\n    }\n}\n").ToString());
-        }
-        Write("Notes.txt", string.Empty);
-        MainWindow window = AgentsWindow(Folder);
-        window.OpenFile(Path.Combine(window.Folder!, "Helper.cs"));
-        window.OpenFile(Path.Combine(window.Folder!, "Notes.txt"));
-        window.EditorArea.CodeEditor.Focus();
-        Ui.Settle();
-        McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
-        try
-        {
-            // The language server has the folder loaded before the window is timed, which is the server's work, not the agent's.
-            Await(Waiting.Apart(() => Call(client, McpTools.Diagnostics, new() { ["path"] = "Helper.cs" })), "the language server");
-
-            Task<JsonElement> usages = Waiting.Apart(() => Call(client, McpTools.Usages, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 }));
-            int typed = 0;
-            // The call's own limit ends this if Passenger never answers.
-            while (!usages.IsCompleted)
-            {
-                window.KeyTextInput("x");
-                typed++;
-                Ui.Hold(TimeSpan.FromMilliseconds(50), "a pause between keys, as a person types");
-            }
-            JsonElement answered = Ui.AwaitPumped(usages, "the usages");
-            Ui.Settle();
-            Assert.Equal(new string('x', typed), window.EditorArea.Active!.Text.Snapshot.ToString());
-
-            List<(string Path, int Line, int Column, string Text)> found = [.. Used(answered)];
-            foreach (string counted in answered.GetProperty("files").EnumerateArray().Where(f => f.TryGetProperty("count", out _)).Select(f => f.GetProperty("path").GetString()!))
-            {
-                for (int? from = null; ;)
-                {
-                    Dictionary<string, object?> asked = new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23, ["within"] = counted };
-                    if (from is int line)
-                    {
-                        asked["from"] = line;
-                    }
-                    JsonElement part = Await(Waiting.Apart(() => Call(client, McpTools.Usages, asked)), $"the usages within {counted} from {from}");
-                    found.AddRange(Used(part));
-                    if (!part.TryGetProperty("more", out JsonElement more))
-                    {
-                        break;
-                    }
-                    int next = int.Parse(Regex.Match(more.GetString()!, @"from (\d+) with within").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                    Assert.True(next > (from ?? 0), $"usages within {counted} from {from} said to read on from {next}: {more}");
-                    from = next;
-                }
-            }
-
-            Assert.Equal(10_002, found.Distinct().Count());
-            Assert.Equal(10_002, found.Count);
-            Assert.All(found, place => Assert.Contains("Twice(", place.Text, StringComparison.Ordinal));
-            Assert.Contains(found, place => place.Path == "Uses3.cs" && place.Line == 5005 && place.Text == "total += Helper.Twice(2499);");
-
-            JsonElement callers = Await(Waiting.Apart(() => Call(client, McpTools.Hierarchy, new() { ["path"] = "Helper.cs", ["line"] = 3, ["column"] = 23 })), "the callers");
-            Assert.Equal(["Uses0.cs:7 total += Helper.Twice(0);", "Uses1.cs:7 total += Helper.Twice(0);", "Uses2.cs:7 total += Helper.Twice(0);", "Uses3.cs:7 total += Helper.Twice(0);"],
-                callers.EnumerateArray().Select(c => $"{c.GetProperty("path").GetString()}:{c.GetProperty("line").GetInt32()} {c.GetProperty("text").GetString()}")
-                    .Where(c => c.StartsWith("Uses", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
-        }
-        finally
-        {
-            Gone(client);
-            window.Close();
-        }
     }
 }
