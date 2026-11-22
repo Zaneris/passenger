@@ -207,7 +207,6 @@ public sealed partial class VimTests
         ($"Visual mode's cursor goes past the last line; {ToFix}", (_, _, passenger) => passenger.Seen.Contains(VisualPastEnd)),
         ($"Visual block mode's corners: a block over a line's last character, its I and A, ~ and J after o; {ToFix}", (vimCase, _, _) => vimCase.Uses(Block)),
         ($"I and A over a visual stretch by characters or lines; {ToFix}", (vimCase, _, _) => vimCase.Uses(VisualInsert)),
-        ($"A mark on a line a change deleted still stands for . to change to; {ToFix}", (vimCase, _, _) => vimCase.Uses(MarkChange) && vimCase.Keys.Contains(".")),
     ];
 
     /// <summary>Lines with the empty ones set aside.</summary>
@@ -225,7 +224,6 @@ public sealed partial class VimTests
 
     private const string Block = "visual block mode";
     private const string VisualInsert = "I or A in visual mode";
-    private const string MarkChange = "a change to a mark";
     private const string TypedEnter = "Enter typed in insert mode";
     private const string OpensLine = "o or O";
     private const string LoneEmptyLine = "a text of one empty line";
@@ -427,7 +425,6 @@ public sealed partial class VimTests
                 Moved(Motion(random, text));
                 string back = Pick(random, ["d'a", "y`a", "`a", "'a", "c`a"]);
                 keys.AddRange(Each(back));
-                uses.UnionWith(back[0] is 'c' or 'd' ? [MarkChange] : []);
                 if (back[0] == 'c')
                 {
                     keys.AddRange(Typing(random));
@@ -572,7 +569,7 @@ public sealed partial class VimTests
     /// <summary>The keys through Vim mode as an editor takes them: what Vim mode does done, a command line run command by
     /// command, and in insert mode each key typed as the editor types it, Enter carrying its line's indent; a key that
     /// asks the host for more is marked <paramref name="asked"/>.</summary>
-    private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, IVimView view,
+    private static (TextSnapshot Text, SelectionSet Carets) Drive(Vim vim, TextSnapshot text, SelectionSet carets, IEnumerable<string> keys, VimTextView view,
         HashSet<string> seen)
     {
         foreach (string key in keys)
@@ -595,7 +592,7 @@ public sealed partial class VimTests
                     {
                         (text, carets) = Drive(vim, text, carets, keysOf, view, seen);
                     }
-                    (text, carets) = Applied(ran, text, carets);
+                    (text, carets) = Applied(ran, text, carets, view);
                     carets = Vim.Settled(text, carets, view.KeepsFinalLineBreak);
                     if (ran.MessageIsError)
                     {
@@ -614,11 +611,12 @@ public sealed partial class VimTests
                 };
                 if (typed is not null)
                 {
+                    view.Follow(typed.Edits);
                     (text, carets) = (text.Apply(typed.Edits), typed.Selections);
                 }
                 continue;
             }
-            (text, carets) = Applied(result, text, carets);
+            (text, carets) = Applied(result, text, carets, view);
             if (vim.Mode == VimMode.Normal)
             {
                 carets = Vim.Settled(text, carets, view.KeepsFinalLineBreak);
@@ -639,10 +637,12 @@ public sealed partial class VimTests
         seen.UnionWith(Vim.IsVisual(vim.Mode) && vim.VisualCursors(carets).Any(cursor => cursor >= text.Length) ? [VisualPastEnd] : []);
     }
 
-    private static (TextSnapshot, SelectionSet) Applied(VimResult result, TextSnapshot text, SelectionSet carets)
+    /// <summary>What Vim mode did applied to the text, its marks carried through the edits as an editor's anchors are.</summary>
+    private static (TextSnapshot, SelectionSet) Applied(VimResult result, TextSnapshot text, SelectionSet carets, VimTextView view)
     {
         foreach (EditPlan edit in result.Edits ?? [])
         {
+            view.Follow(edit.Edits);
             (text, carets) = (text.Apply(edit.Edits), edit.Selections);
         }
         return result.Edits is not { Count: > 0 } && result.Selections is { } moved ? (text, moved) : (text, carets);

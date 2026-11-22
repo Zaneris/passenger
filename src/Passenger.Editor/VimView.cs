@@ -48,6 +48,9 @@ public interface IVimView
 
     /// <summary>Sets the mark <paramref name="name"/> at an offset of the text shown.</summary>
     void SetMark(char name, int offset);
+
+    /// <summary>Takes the mark <paramref name="name"/> away, as a delete of its line does; nothing where it is not set.</summary>
+    void EraseMark(char name);
 }
 
 /// <summary>A view of the text with no screen: every line one row and every line shown, for Vim mode's tests and any
@@ -93,6 +96,18 @@ public sealed class VimTextView(IndentOptions indent, string lineEnding = "\n", 
     public int? Mark(char name, TextSnapshot text) => marks.TryGetValue(name, out int at) ? Math.Min(at, text.Length) : null;
 
     public void SetMark(char name, int offset) => marks[name] = offset;
+
+    public void EraseMark(char name) => marks.Remove(name);
+
+    /// <summary>The marks carried through edits made to the text (sorted, in the old text's coordinates), as an editor's
+    /// anchors carry them: one in text taken out lands where it was taken.</summary>
+    public void Follow(IReadOnlyList<TextEdit> edits)
+    {
+        foreach (char name in marks.Keys.ToList())
+        {
+            marks[name] = TextEditing.MapOffset(marks[name], edits, afterInsertions: false);
+        }
+    }
 }
 
 /// <summary>Words Vim mode has for the status bar, and whether they tell of a failure.</summary>

@@ -81,6 +81,7 @@ public sealed partial class Vim
         if (op is "d" or "c" && !empty)
         {
             Registers.Delete(command.Register, taken, Jumps.Contains(command.Name));
+            EraseMarks(text, stretches, op == "c", view);
         }
         else if (op == "y")
         {
@@ -92,6 +93,23 @@ public sealed partial class Vim
             Remember(command);
         }
         return VimRegisters.IsClipboard(command.Register) && op is "d" or "c" or "y" ? result with { Clipboard = taken } : result;
+    }
+
+    /// <summary>The marks a mark command sets, which a delete of their line erases.</summary>
+    private const string Marked = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    /// <summary>The marks on lines a delete or change takes out whole erased, as Vim erases them: a stretch of lines its
+    /// own (a change's but its first, which it keeps), any other the lines between its ends.</summary>
+    private static void EraseMarks(TextSnapshot text, List<Stretch> stretches, bool change, IVimView view)
+    {
+        foreach (char name in Marked)
+        {
+            if (view.Mark(name, text) is { } at && text.GetLineFromOffset(at) is int line
+                && stretches.Any(s => s.Lines ? line >= s.First + (change ? 1 : 0) && line <= s.Last : line > s.First && line < s.Last))
+            {
+                view.EraseMark(name);
+            }
+        }
     }
 
     private static Stretch Whole(TextSnapshot text, int first, int last, int caret)

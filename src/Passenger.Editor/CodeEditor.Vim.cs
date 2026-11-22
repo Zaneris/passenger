@@ -535,6 +535,14 @@ public sealed partial class CodeEditor
             held[name] = editor.document.AnchorAt(Math.Clamp(offset, 0, editor.document.Snapshot.Length), AnchorGravity.Before);
         }
 
+        public void EraseMark(char name)
+        {
+            if (Marks.TryGetValue(editor.document, out Dictionary<char, Anchor>? held) && held.Remove(name, out Anchor? anchor))
+            {
+                anchor.Remove();
+            }
+        }
+
         public int LineShown(TextSnapshot text, VimScreenLine at, int count)
         {
             double height = editor.metrics.LineHeight;

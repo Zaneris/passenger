@@ -671,7 +671,8 @@ public sealed partial class Vim
 
     /// <summary>:m and :t: the lines named moved, or copied, below the line the address after them names (0 for above the
     /// first, its + and - counted from the caret's line), the caret on the first non-blank of the last line put; a move
-    /// into its own lines refused.</summary>
+    /// into its own lines refused. A move takes the lines between round the lines named, so what is in them (a mark, a
+    /// fold) goes with them.</summary>
     private VimResult MovedOrCopied(bool move, string args, int first, int end, int caretLine, TextSnapshot text, IVimView view)
     {
         int at = 0;
@@ -698,23 +699,26 @@ public sealed partial class Vim
             return new VimResult(true, SelectionSet.Single(VimMotions.FirstNonBlank(text, end, breakEnds)));
         }
         string eol = view.LineEnding;
-        LineSpan top = text.GetLine(first);
-        string lines = text.GetText(top.Start, text.GetLine(end).End - top.Start);
-        LineSpan under = below >= 0 ? text.GetLine(below) : default;
-        TextEdit put = below < 0 ? new TextEdit(0, 0, lines + eol)
+        // A copy puts the lines named below the line named; a move puts the lines between on the other side of them.
+        (int From, int To, int Below) put = !move ? (first, end, below) : below < first ? (below + 1, first - 1, end) : (end + 1, below, first - 1);
+        LineSpan top = text.GetLine(put.From);
+        LineSpan bottom = text.GetLine(put.To);
+        string lines = text.GetText(top.Start, bottom.End - top.Start);
+        LineSpan under = put.Below >= 0 ? text.GetLine(put.Below) : default;
+        TextEdit added = put.Below < 0 ? new TextEdit(0, 0, lines + eol)
             : under.BreakLength > 0 ? new TextEdit(under.EndIncludingBreak, 0, lines + eol)
             : new TextEdit(under.End, 0, eol + lines);
-        List<TextEdit> edits = [put];
+        List<TextEdit> edits = [added];
         if (move)
         {
-            Stretch taken = Whole(text, first, end, top.Start);
+            Stretch taken = Whole(text, put.From, put.To, top.Start);
             edits.Add(new TextEdit(taken.Start, taken.End - taken.Start, string.Empty));
             edits.Sort((a, b) => a.Start.CompareTo(b.Start));
         }
         TextSnapshot after = text.Apply(edits);
         EditPlan plan = new(edits, SelectionSet.Single(VimMotions.FirstNonBlank(after, landed, breakEnds)), EditKind.Other)
         {
-            Moved = move ? [new TextMove(top.Start, lines.Length, after.GetLineStart(landed - count + 1))] : [],
+            Moved = move ? [new TextMove(top.Start, lines.Length, after.GetLineStart(below < first ? landed + 1 : first))] : [],
         };
         return new VimResult(true, Edits: [plan]);
     }
