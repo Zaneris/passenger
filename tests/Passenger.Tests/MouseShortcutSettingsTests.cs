@@ -33,8 +33,7 @@ public sealed class MouseShortcutSettingsTests : IDisposable
         TestFolders.Delete(settings);
     }
 
-    [AvaloniaFact]
-    public void A_mouse_shortcut_added_in_Settings_says_its_conflict_first_runs_its_action_and_is_kept_after_a_restart()
+    internal void A_mouse_shortcut_added_in_Settings_says_its_conflict_first_runs_its_action_and_is_kept_after_a_restart()
     {
         MouseShortcut gesture = MouseShortcut.Parse(Declaration);
         MainWindow window = Open();
@@ -94,8 +93,7 @@ public sealed class MouseShortcutSettingsTests : IDisposable
 
     /// <summary>The settings.json of a build that kept a person's keys without their gestures: Go to Declaration given a
     /// key of the person's keeps the gesture its keymap gives it.</summary>
-    [AvaloniaFact]
-    public void A_settings_json_of_keys_alone_keeps_the_keymaps_gestures_for_the_actions_it_names()
+    internal void A_settings_json_of_keys_alone_keeps_the_keymaps_gestures_for_the_actions_it_names()
     {
         // Version 2, the last before an action's own shortcuts gave its gestures too.
         File.WriteAllText(Path.Combine(settings, "settings.json"),

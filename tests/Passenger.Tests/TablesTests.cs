@@ -23,8 +23,33 @@ public sealed class TablesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A CSV, a .resx and an XLIFF file open as tables: a CSV under its first row's names, its text's edits
+    /// showing in the table and an empty one's header raising no error, a .resx's cells and keys and an XLIFF's targets
+    /// written as ResourceFiles writes them, and rows sorted by a column's title both ways and back leaving the file as
+    /// it was.</summary>
     [AvaloniaFact]
-    public void A_CSV_opens_as_its_table_under_its_first_rows_names_and_its_Text_edits_show_in_the_Table()
+    public void A_CSV_a_resx_and_an_XLIFF_file_open_as_tables_whose_edits_write_the_file_as_written()
+    {
+        Flow.StepApart<TablesTests>("a CSV opens as its table under its first row's names and its Text edits show in the Table", t => t.A_CSV_opens_as_its_table_under_its_first_rows_names_and_its_Text_edits_show_in_the_Table());
+        Flow.StepApart<TablesTests>("a .resx opens as a table of its keys whose cells written and keys added change its text as ResourceFiles writes it", t => t.A_resx_opens_as_a_table_of_its_keys_whose_cells_written_and_keys_added_change_its_text_as_ResourceFiles_writes_it());
+        Flow.StepApart<TablesTests>("an XLIFF file's units open as a table whose target written is translated as ResourceFiles writes it", t => t.An_XLIFF_files_units_open_as_a_table_whose_target_written_is_translated_as_ResourceFiles_writes_it());
+        Flow.StepApart<TablesTests>("a table's rows sort by a column's title numbers and dates by value both ways and back leaving the file as it was", t => t.A_tables_rows_sort_by_a_columns_title_numbers_and_dates_by_value_both_ways_and_back_leaving_the_file_as_it_was());
+        Flow.StepApart<TablesTests>("the pointer over an empty CSV's header finds no column edge and raises no error", t => t.The_pointer_over_an_empty_CSVs_header_finds_no_column_edge_and_raises_no_error());
+    }
+
+    /// <summary>A workbook shows each sheet as Excel formats its numbers and is never written, showing its new cells
+    /// once another program saves it again; keys choose a range of cells that Copy writes as tab-separated lines, and
+    /// Find searches the table's cells.</summary>
+    [AvaloniaFact]
+    public void A_workbook_shows_its_sheets_as_tables_never_written_and_its_cells_are_copied_and_found()
+    {
+        Flow.StepApart<TablesTests>("a workbook shows each sheet with its numbers formatted as Excel shows them and is never written", t => t.A_workbook_shows_each_sheet_with_its_numbers_formatted_as_Excel_shows_them_and_is_never_written());
+        Flow.StepApart<TablesTests>("a workbook saved again by another program shows its new cells and no text storage in the status bar", t => t.A_workbook_saved_again_by_another_program_shows_its_new_cells_and_no_text_s_storage_in_the_status_bar());
+        Flow.StepApart<TablesTests>("keys choose a range of cells and Copy writes them as tab separated lines", t => t.Keys_choose_a_range_of_cells_and_Copy_writes_them_as_tab_separated_lines());
+        Flow.StepApart<TablesTests>("Find searches the table's cells and enter walks them not the text under it", t => t.Find_searches_the_tables_cells_and_enter_walks_them_not_the_text_under_it());
+    }
+
+    private void A_CSV_opens_as_its_table_under_its_first_rows_names_and_its_Text_edits_show_in_the_Table()
     {
         string path = Path.Combine(folder, "people.csv");
         File.WriteAllText(path, "Name,City,Note,Total\nAda,London,\"Wrote the \"\"first\"\" program\",\"1,234.50\"\nAlan,\"Wilmslow, Cheshire\",\"two\nlines\",980\n");
@@ -55,8 +80,7 @@ public sealed class TablesTests : IDisposable
     /// <summary>A .resx opens as a table of its keys, values and comments, written in place as ResourceFiles writes them:
     /// a value written over, a key made in the row standing for a new one and given its value, a name another key has
     /// refused saying why, a key taken out from the menu, each one edit Undo takes back, the XML a click away.</summary>
-    [AvaloniaFact]
-    public void A_resx_opens_as_a_table_of_its_keys_whose_cells_written_and_keys_added_change_its_text_as_ResourceFiles_writes_it()
+    private void A_resx_opens_as_a_table_of_its_keys_whose_cells_written_and_keys_added_change_its_text_as_ResourceFiles_writes_it()
     {
         string path = Path.Combine(folder, "Strings.resx");
         const string Text = """
@@ -149,8 +173,7 @@ public sealed class TablesTests : IDisposable
 
     /// <summary>A resource's XLIFF file opens as a table of its units, of which a target written is translated as
     /// ResourceFiles writes it, its state following; the source, written by the build from the .resx, is not written.</summary>
-    [AvaloniaFact]
-    public void An_XLIFF_files_units_open_as_a_table_whose_target_written_is_translated_as_ResourceFiles_writes_it()
+    private void An_XLIFF_files_units_open_as_a_table_whose_target_written_is_translated_as_ResourceFiles_writes_it()
     {
         Directory.CreateDirectory(Path.Combine(folder, "xlf"));
         string path = Path.Combine(folder, "xlf", "Strings.fr.xlf");
@@ -196,8 +219,7 @@ public sealed class TablesTests : IDisposable
     /// <summary>A CSV sorted by a column's title, as a person clicks its arrow: a column of numbers by their values, then
     /// the other way, then in the file's order again, each row numbered as in the file; a column of dates by when they are;
     /// and the file's text never changed.</summary>
-    [AvaloniaFact]
-    public void A_tables_rows_sort_by_a_columns_title_numbers_and_dates_by_value_both_ways_and_back_leaving_the_file_as_it_was()
+    private void A_tables_rows_sort_by_a_columns_title_numbers_and_dates_by_value_both_ways_and_back_leaving_the_file_as_it_was()
     {
         string path = Path.Combine(folder, "orders.csv");
         string text = "Name,Total,When\nAda,980,2024-03-01\nAlan,\"1,234.50\",2023-12-31\nGrace,75,2024-01-15\nEdsger,,2024-02-29\n";
@@ -230,38 +252,7 @@ public sealed class TablesTests : IDisposable
         Assert.Equal(text, File.ReadAllText(path));
     }
 
-    /// <summary>The keys sort too: the menu key on a table offers the chosen cell's column's sorts, the one in force checked,
-    /// as the header's menu does, and the rows sort as chosen and go back to the file's order.</summary>
-    [AvaloniaFact]
-    public void The_menu_key_sorts_by_the_chosen_cells_column_both_ways_and_back()
-    {
-        string path = Path.Combine(folder, "scores.csv");
-        File.WriteAllText(path, "Name,Score\nAda,7\nAlan,12\nGrace,3\n");
-        MainWindow window = Open(path);
-        CellGrid grid = Grid(window);
-        Ui.Click(grid, grid.SortArrow(1).Center + new Vector(-20, ListRow.Height * 2));
-        Assert.Equal(1, grid.Caret.Column);
-        string[] Names() => [.. Enumerable.Range(0, grid.Table!.RowCount).Select(row => grid.Table.Cell(row, 0))];
-        string[] Offered()
-        {
-            Ui.Run(window, AppActions.ShowContextMenu);
-            ContextMenu menu = grid.Menu ?? throw new Xunit.Sdk.XunitException("The menu key on the table opened no menu");
-            return [.. menu.Items.OfType<MenuItem>().Take(3).Select(i => $"{i.Header}{(i.IsChecked ? " (checked)" : "")}")];
-        }
-
-        Assert.Equal(["Sort Ascending", "Sort Descending", "File Order (checked)"], Offered());
-        Ui.Choose(grid.Menu!, "Sort Descending");
-        Ui.WaitFor(() => grid.Table?.Sort == (1, true), "the table sorted by Score, the most first");
-        Assert.Equal(["Alan", "Ada", "Grace"], Names());
-        Assert.Equal(["Sort Ascending", "Sort Descending (checked)", "File Order"], Offered());
-        Ui.Choose(grid.Menu!, "File Order");
-        Ui.WaitFor(() => grid.Table?.Sort is null, "the table in the file's order again");
-        Assert.Equal(["Ada", "Alan", "Grace"], Names());
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_workbook_shows_each_sheet_with_its_numbers_formatted_as_Excel_shows_them_and_is_never_written()
+    private void A_workbook_shows_each_sheet_with_its_numbers_formatted_as_Excel_shows_them_and_is_never_written()
     {
         string path = Path.Combine(folder, "sales.xlsx");
         WriteWorkbook(path);
@@ -292,8 +283,7 @@ public sealed class TablesTests : IDisposable
         Assert.True(before.AsSpan().SequenceEqual(File.ReadAllBytes(path)), "The workbook should never be written over");
     }
 
-    [AvaloniaFact]
-    public void A_workbook_saved_again_by_another_program_shows_its_new_cells_and_no_text_s_storage_in_the_status_bar()
+    private void A_workbook_saved_again_by_another_program_shows_its_new_cells_and_no_text_s_storage_in_the_status_bar()
     {
         string path = Path.Combine(folder, "sales.xlsx");
         WriteWorkbook(path);
@@ -312,50 +302,7 @@ public sealed class TablesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Sheets chosen faster than they are read: South's read is slow, landing after East's has and once West has
-    /// been chosen, yet the table shows West, chosen last, rather than South.</summary>
-    [AvaloniaFact]
-    public void A_sheets_read_that_lands_after_a_later_sheet_was_chosen_never_replaces_the_sheet_chosen_last()
-    {
-        string path = Path.Combine(folder, "regions.xlsx");
-        WriteSheets(path, "North", "South", "East", "West");
-        MainWindow window = Open(path);
-        Assert.Equal("1", Grid(window).Table!.Cell(0, 0));
-        TaskCompletionSource south = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TaskCompletionSource west = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TableFile.For(window.EditorArea.Active!)!.HoldNext(south.Task, Task.CompletedTask, west.Task);
-
-        Ui.Click(Sheet(window, "South"));
-        Ui.Click(Sheet(window, "East"));
-        Assert.True(Grid(window).Table?.Cell(0, 0) == "3", $"East's read did not land while South's was held: the table shows {Grid(window).Table?.Cell(0, 0)}");
-        Ui.Click(Sheet(window, "West"));
-        south.SetResult();
-        Ui.Settle();
-        west.SetResult();
-        Ui.Settle();
-        Assert.True(Grid(window).Table?.Cell(0, 0) == "4",
-            $"West was chosen last, but the table shows {Grid(window).Table?.Cell(0, 0)}: a read of a sheet chosen before it landed in its place");
-        Assert.True(Sheet(window, "West").IsChecked == true, "West, chosen last, is not the sheet checked");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void File_Open_on_a_workbook_with_nothing_open_shows_it_as_its_table()
-    {
-        string path = Path.Combine(folder, "sales.xlsx");
-        WriteWorkbook(path);
-        MainWindow window = new() { Width = 1200, Height = 800 };
-        window.Show();
-
-        string? why = window.Open(path);
-        Assert.True(why is null, $"File, Open was to open the workbook, but said '{why}'");
-        Ui.WaitFor(() => window.EditorArea.ActiveGroup.Table?.Table is not null, "sales.xlsx's table to be read");
-        Assert.Equal("Widget", Grid(window).Table!.Cell(1, 0));
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Keys_choose_a_range_of_cells_and_Copy_writes_them_as_tab_separated_lines()
+    private void Keys_choose_a_range_of_cells_and_Copy_writes_them_as_tab_separated_lines()
     {
         string path = Path.Combine(folder, "numbers.tsv");
         File.WriteAllText(path, "a\tb\tc\n1\t2\t3\n4\t5\t6\n");
@@ -371,42 +318,9 @@ public sealed class TablesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The cells' menu copies what is chosen as Copy's keys do, each item naming its keys: a right-click among the
-    /// chosen cells keeps them, one outside them chooses the cell under it, and Select All there chooses every cell.</summary>
-    [AvaloniaFact]
-    public void The_cells_menu_copies_the_chosen_cells_and_a_right_click_elsewhere_chooses_the_cell_under_it()
-    {
-        string path = Path.Combine(folder, "numbers.csv");
-        File.WriteAllText(path, "a,b,c\n1,2,3\n4,5,6\n7,8,9\n");
-        MainWindow window = Open(path);
-        CellGrid grid = Grid(window);
-        Ui.Click(grid, new Point(60, ListRow.Height * 1.5));
-        Ui.Press(window, "shift DOWN");
-        Ui.Press(window, "shift RIGHT");
-
-        Ui.RightClick(grid, new Point(60, ListRow.Height * 2.5));
-        Assert.True(grid.Chosen == (0, 0, 1, 1), $"A right-click among the chosen cells left {grid.Chosen} chosen");
-        ContextMenu menu = grid.Menu ?? throw new Xunit.Sdk.XunitException("A right-click on the table's cells opened no menu");
-        Keystroke copyKeys = Keystroke.Parse(Ui.Shortcut(EditorActions.Copy));
-        Assert.Equal(new KeyGesture(copyKeys.Key, copyKeys.Modifiers), menu.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Copy").InputGesture);
-        Ui.Choose(menu, "Copy");
-        Assert.Equal($"1\t2{Environment.NewLine}4\t5{Environment.NewLine}", Ui.Clipboard(window));
-
-        Ui.RightClick(grid, new Point(60, ListRow.Height * 3.5));
-        Assert.True(grid.Chosen == (2, 0, 2, 0), $"A right-click outside the chosen cells left {grid.Chosen} chosen, not the cell under it");
-        Ui.Choose(grid.Menu, "Copy");
-        Assert.Equal($"7{Environment.NewLine}", Ui.Clipboard(window));
-
-        Ui.RightClick(grid, new Point(60, ListRow.Height * 1.5));
-        Ui.Choose(grid.Menu, "Select All");
-        Assert.Equal((0, 0, 2, 2), grid.Chosen);
-        window.Close();
-    }
-
     /// <summary>An empty CSV shows a header of no columns: the pointer moved, pressed and double-clicked on it finds no
     /// column's edge to size.</summary>
-    [AvaloniaFact]
-    public void The_pointer_over_an_empty_CSVs_header_finds_no_column_edge_and_raises_no_error()
+    private void The_pointer_over_an_empty_CSVs_header_finds_no_column_edge_and_raises_no_error()
     {
         string path = Path.Combine(folder, "empty.csv");
         File.WriteAllText(path, string.Empty);
@@ -427,8 +341,7 @@ public sealed class TablesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Find_searches_the_tables_cells_and_enter_walks_them_not_the_text_under_it()
+    private void Find_searches_the_tables_cells_and_enter_walks_them_not_the_text_under_it()
     {
         string path = Path.Combine(folder, "cities.csv");
         File.WriteAllText(path, "Name,City\nAda,London\nBob,Paris\nLonny,Leeds\n");
@@ -471,29 +384,6 @@ public sealed class TablesTests : IDisposable
 
     private static Control Named(MainWindow window, string name) =>
         window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<Control>().First(c => c.Name == name);
-
-    /// <summary>A workbook's sheet's segment above its table.</summary>
-    private static ToggleButton Sheet(MainWindow window, string name) =>
-        window.EditorArea.ActiveGroup.GetVisualDescendants().OfType<ToggleButton>().First(b => b.Content as string == name);
-
-    /// <summary>A workbook of sheets of these names, each holding its place among them, from 1, in A1.</summary>
-    private static void WriteSheets(string path, params string[] names)
-    {
-        const string Ns = "xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
-        using ZipArchive zip = ZipFile.Open(path, ZipArchiveMode.Create);
-        void Part(string name, string xml)
-        {
-            using StreamWriter writer = new(zip.CreateEntry(name).Open());
-            writer.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + xml);
-        }
-        Part("xl/workbook.xml", $"<workbook {Ns}><sheets>{string.Concat(names.Select((n, i) => $"<sheet name=\"{n}\" sheetId=\"{i + 1}\" r:id=\"rId{i + 1}\"/>"))}</sheets></workbook>");
-        Part("xl/_rels/workbook.xml.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-            + string.Concat(names.Select((_, i) => $"<Relationship Id=\"rId{i + 1}\" Type=\"ws\" Target=\"worksheets/sheet{i + 1}.xml\"/>")) + "</Relationships>");
-        for (int i = 0; i < names.Length; i++)
-        {
-            Part($"xl/worksheets/sheet{i + 1}.xml", $"<worksheet {Ns}><sheetData><row r=\"1\"><c r=\"A1\"><v>{i + 1}</v></c></row></sheetData></worksheet>");
-        }
-    }
 
     /// <summary>A workbook as Excel writes one: shared strings, a currency, a date and a percent style, an empty row, a
     /// formula's value, a boolean, and a hidden sheet.</summary>

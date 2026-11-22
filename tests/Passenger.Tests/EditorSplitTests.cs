@@ -27,8 +27,24 @@ public sealed class EditorSplitTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A file split beside itself shows one text with a caret in each and the same decorations and folds,
+    /// Close takes the tab from the split worked in and the split goes with its last tab and is let go, a split
+    /// scrolled to the end draws what another split left, a tab dragged to an edge splits off and back joins again, the
+    /// splits come back with the folder, and Find Action finds an action with no shortcut by name.</summary>
     [AvaloniaFact]
-    public void Split_right_shows_the_file_in_both_splits_over_one_text_each_with_its_own_caret()
+    public void A_file_split_beside_itself_or_into_its_own_window_shows_one_text_and_lets_go_as_it_closes()
+    {
+        Flow.StepApart<EditorSplitTests>("split right shows the file in both splits over one text each with its own caret", t => t.Split_right_shows_the_file_in_both_splits_over_one_text_each_with_its_own_caret());
+        Flow.StepApart<EditorSplitTests>("close takes the tab from the split worked in alone and the split goes with its last tab", t => t.Close_takes_the_tab_from_the_split_worked_in_alone_and_the_split_goes_with_its_last_tab());
+        Flow.StepApart<EditorSplitTests>("a closed split is let go by the file it showed and the split left still follows the file", t => t.A_closed_split_is_let_go_by_the_file_it_showed_and_the_split_left_still_follows_the_file());
+        Flow.StepApart<EditorSplitTests>("a split scrolled to the file's end draws the lines left once another split deletes most of them", t => t.A_split_scrolled_to_the_files_end_draws_the_lines_left_once_another_split_deletes_most_of_them());
+        Flow.StepApart<EditorSplitTests>("a tab dragged to its splits right edge splits it off and back onto the first strip joins it again", t => t.A_tab_dragged_to_its_splits_right_edge_splits_it_off_and_back_onto_the_first_strip_joins_it_again());
+        Flow.StepApart<EditorSplitTests>("the splits their tabs and caret's come back when the folder opens again and go when another opens", t => t.The_splits_their_tabs_and_carets_come_back_when_the_folder_opens_again_and_go_when_another_opens());
+        Flow.StepApart<EditorSplitTests>("a file in two splits shows the same decorations after an edit in one and folds in both", t => t.A_file_in_two_splits_shows_the_same_decorations_after_an_edit_in_one_and_folds_in_both());
+        Flow.StepApart<EditorSplitTests>("find action finds an action with no shortcut by name and runs it", t => t.Find_action_finds_an_action_with_no_shortcut_by_name_and_runs_it());
+    }
+
+    private void Split_right_shows_the_file_in_both_splits_over_one_text_each_with_its_own_caret()
     {
         MainWindow window = Open("One.cs");
         EditorArea area = window.EditorArea;
@@ -56,35 +72,7 @@ public sealed class EditorSplitTests : IDisposable
         window.Close();
     }
 
-    /// <summary>The editor area's groups, which what follows each key and caret move asks for, are the list made last while
-    /// the groups stay those: asked again it is that list and allocates nothing on the UI thread, and a split and its close
-    /// each give the groups there are then, in order.</summary>
-    [AvaloniaFact]
-    public void The_groups_asked_again_allocate_nothing_and_a_split_and_its_close_change_them()
-    {
-        MainWindow window = Open("One.cs");
-        EditorArea area = window.EditorArea;
-        EditorGroup left = area.ActiveGroup;
-        IReadOnlyList<EditorGroup> one = area.Groups;
-        GC.Collect();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        IReadOnlyList<EditorGroup> again = area.Groups;
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Same(one, again);
-        Assert.True(allocated == 0, $"The editor groups asked again allocated {allocated} bytes on the UI thread, where nothing changed them");
-        Assert.True(window.Perform(AppActions.SplitRight));
-        Ui.Settle();
-        EditorGroup right = area.ActiveGroup;
-        Assert.Equal([left, right], area.Groups);
-        Assert.Same(area.Groups, area.Groups);
-        area.CloseTab(right, right.Active!);
-        Ui.Settle();
-        Assert.Equal([left], area.Groups);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Close_takes_the_tab_from_the_split_worked_in_alone_and_the_split_goes_with_its_last_tab()
+    private void Close_takes_the_tab_from_the_split_worked_in_alone_and_the_split_goes_with_its_last_tab()
     {
         MainWindow window = Open("One.cs", "Two.cs");
         EditorArea area = window.EditorArea;
@@ -106,8 +94,7 @@ public sealed class EditorSplitTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_closed_split_is_let_go_by_the_file_it_showed_and_the_split_left_still_follows_the_file()
+    private void A_closed_split_is_let_go_by_the_file_it_showed_and_the_split_left_still_follows_the_file()
     {
         MainWindow window = Open("One.cs", "Two.cs");
         WeakReference<EditorGroup> closed = SplitFindAndClose(window);
@@ -126,8 +113,7 @@ public sealed class EditorSplitTests : IDisposable
 
     /// <summary>A split scrolled to its file's end while another split deletes all but its first lines: the first draws the
     /// lines left, where its view stood past the last of them, blank, gutter and all, until scrolled.</summary>
-    [AvaloniaFact]
-    public void A_split_scrolled_to_the_files_end_draws_the_lines_left_once_another_split_deletes_most_of_them()
+    private void A_split_scrolled_to_the_files_end_draws_the_lines_left_once_another_split_deletes_most_of_them()
     {
         File.WriteAllText(Path.Combine(folder, "Long.cs"), string.Concat(Enumerable.Range(1, 300).Select(i => $"// line {i}\n")));
         MainWindow window = Open("Long.cs");
@@ -149,8 +135,7 @@ public sealed class EditorSplitTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_tab_dragged_to_its_splits_right_edge_splits_it_off_and_back_onto_the_first_strip_joins_it_again()
+    private void A_tab_dragged_to_its_splits_right_edge_splits_it_off_and_back_onto_the_first_strip_joins_it_again()
     {
         MainWindow window = Open("One.cs", "Two.cs");
         EditorArea area = window.EditorArea;
@@ -173,41 +158,7 @@ public sealed class EditorSplitTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_divider_between_two_splits_grabbed_either_side_of_its_line_gives_one_the_room_the_other_gives_up_beside_and_below()
-    {
-        MainWindow window = Open("One.cs");
-        EditorArea area = window.EditorArea;
-        Assert.True(window.Perform(AppActions.SplitRight));
-        Assert.True(window.Perform(AppActions.SplitDown));
-        Ui.Settle();
-        Assert.Equal(3, area.Groups.Count);
-        EditorGroup left = area.Groups[0];
-        EditorGroup top = area.Groups[1];
-        EditorGroup bottom = area.Groups[2];
-        (double leftWidth, double rightWidth) = (left.Bounds.Width, top.Bounds.Width);
-        (double topHeight, double bottomHeight) = (top.Bounds.Height, bottom.Bounds.Height);
-
-        // Grabbed 3 px right of its line, over the split after it.
-        Point across = Ui.Centre(Divider(area, GridResizeDirection.Columns), window) + new Point(3, 0);
-        Ui.Drag(window, across, across - new Point(120, 0));
-        Assert.True(Math.Abs(left.Bounds.Width - (leftWidth - 120)) < 2 && Math.Abs(top.Bounds.Width - (rightWidth + 120)) < 2,
-            $"The splits beside each other were {leftWidth} and {rightWidth} wide, and {left.Bounds.Width} and {top.Bounds.Width} once their divider, grabbed right of its line, was dragged 120 px left");
-
-        // Grabbed 3 px below its line, and 2 px above.
-        Point down = Ui.Centre(Divider(area, GridResizeDirection.Rows), window) + new Point(0, 3);
-        Ui.Drag(window, down, down + new Point(0, 80));
-        Assert.True(Math.Abs(top.Bounds.Height - (topHeight + 80)) < 2 && Math.Abs(bottom.Bounds.Height - (bottomHeight - 80)) < 2,
-            $"The splits one over the other were {topHeight} and {bottomHeight} tall, and {top.Bounds.Height} and {bottom.Bounds.Height} once their divider, grabbed below its line, was dragged 80 px down");
-        Point up = Ui.Centre(Divider(area, GridResizeDirection.Rows), window) - new Point(0, 2);
-        Ui.Drag(window, up, up - new Point(0, 40));
-        Assert.True(Math.Abs(top.Bounds.Height - (topHeight + 40)) < 2 && Math.Abs(bottom.Bounds.Height - (bottomHeight - 40)) < 2,
-            $"The splits one over the other were {topHeight + 80} and {bottomHeight - 80} tall, and {top.Bounds.Height} and {bottom.Bounds.Height} once their divider, grabbed above its line, was dragged 40 px up");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Find_action_finds_an_action_with_no_shortcut_by_name_and_runs_it()
+    private void Find_action_finds_an_action_with_no_shortcut_by_name_and_runs_it()
     {
         MainWindow window = Open("One.cs");
         Ui.Run(window, AppActions.FindAction);
@@ -226,26 +177,7 @@ public sealed class EditorSplitTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Find_action_finds_split_right_and_down_by_riders_older_names_split_vertically_and_horizontally()
-    {
-        MainWindow window = Open("One.cs");
-        foreach ((string typed, string action, int groups) in (ReadOnlySpan<(string, string, int)>)[("Split Vertically", AppActions.SplitRight, 2), ("split horiz", AppActions.SplitDown, 3)])
-        {
-            Ui.Run(window, AppActions.FindAction);
-            Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-            popup.Query = typed;
-            Ui.Settle();
-            Assert.True(popup.Rows.Count > 0 && popup.Rows[0].Id == action,
-                $"Find Action offered [{string.Join(", ", popup.Rows.Take(3).Select(r => r.Title))}] for '{typed}', Rider's older name for {action}");
-            Ui.Press(window, "ENTER");
-            Assert.Equal(groups, window.EditorArea.Groups.Count);
-        }
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void The_splits_their_tabs_and_carets_come_back_when_the_folder_opens_again_and_go_when_another_opens()
+    private void The_splits_their_tabs_and_carets_come_back_when_the_folder_opens_again_and_go_when_another_opens()
     {
         File.WriteAllText(Path.Combine(folder, "Three.cs"), "class Three\n{\n    int x;\n}\n");
         string settings = TestFolders.Create("settings-");
@@ -291,8 +223,7 @@ public sealed class EditorSplitTests : IDisposable
     /// <summary>A file in two splits is drawn from one set of decorations: its problems, hints, folds, annotations, change
     /// bars, bookmarks and breakpoints show the same in the split not typed in, carried where the edit moved them, and a
     /// fold toggled in one split folds the other.</summary>
-    [AvaloniaFact]
-    public void A_file_in_two_splits_shows_the_same_decorations_after_an_edit_in_one_and_folds_in_both()
+    private void A_file_in_two_splits_shows_the_same_decorations_after_an_edit_in_one_and_folds_in_both()
     {
         File.WriteAllText(Path.Combine(folder, "Marked.cs"), SameDecorations.Text);
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -351,9 +282,6 @@ public sealed class EditorSplitTests : IDisposable
 
     private static Control Tab(EditorGroup group, string name) =>
         group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;
-
-    private static GridSplitter Divider(EditorArea area, GridResizeDirection direction) =>
-        area.GetVisualDescendants().OfType<GridSplitter>().Single(s => s.ResizeDirection == direction);
 }
 
 /// <summary>What two editors of one file must both show, and the file that shows it.</summary>

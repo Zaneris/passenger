@@ -16,8 +16,19 @@ namespace Passenger.Tests;
 /// more with a reader's element than its change.</summary>
 public sealed partial class MacTextElementsTests
 {
+    /// <summary>VoiceOver reads the editor's element as a text area by line, range and character and moves its caret,
+    /// hears what typing, deleting and moving the caret changed, reads the terminal's lines back while refusing changes
+    /// and hearing new output alone, and costs a key on a long file what it does on a short one.</summary>
     [AvaloniaFact]
-    public void The_editors_element_is_a_text_area_reading_its_text_by_line_range_and_character_and_moving_its_caret()
+    public void VoiceOver_reads_the_editors_and_the_terminals_text_and_hears_what_changed()
+    {
+        Flow.StepApart<MacTextElementsTests>("the editor's element is a text area reading its text by line range and character and moving its caret", t => t.The_editors_element_is_a_text_area_reading_its_text_by_line_range_and_character_and_moving_its_caret());
+        Flow.StepApart<MacTextElementsTests>("typing deleting and moving the caret tell VoiceOver what changed and where the caret went", t => t.Typing_deleting_and_moving_the_caret_tell_VoiceOver_what_changed_and_where_the_caret_went());
+        Flow.StepApart<MacTextElementsTests>("the terminal's element reads its lines back refuses changes and tells new output alone", t => t.The_terminals_element_reads_its_lines_back_refuses_changes_and_tells_new_output_alone());
+        Flow.StepApart<MacTextElementsTests>("a key costs no more with VoiceOver's element on a long file than on a short one", t => t.A_key_costs_no_more_with_VoiceOvers_element_on_a_long_file_than_on_a_short_one());
+    }
+
+    private void The_editors_element_is_a_text_area_reading_its_text_by_line_range_and_character_and_moving_its_caret()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
         const string Third = "    int count = 10; // \U0001F469\u200D\U0001F4BB\n";
@@ -75,8 +86,7 @@ public sealed partial class MacTextElementsTests
             "VoiceOver may change a read-only editor's text");
     }
 
-    [AvaloniaFact]
-    public void Typing_deleting_and_moving_the_caret_tell_VoiceOver_what_changed_and_where_the_caret_went()
+    private void Typing_deleting_and_moving_the_caret_tell_VoiceOver_what_changed_and_where_the_caret_went()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
         EditorRig rig = new("int total;\nreturn total;\n");
@@ -134,8 +144,7 @@ public sealed partial class MacTextElementsTests
         }
     }
 
-    [AvaloniaFact]
-    public void The_terminals_element_reads_its_lines_back_refuses_changes_and_tells_new_output_alone()
+    private void The_terminals_element_reads_its_lines_back_refuses_changes_and_tells_new_output_alone()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
         TerminalSession session = new(40, 5);
@@ -188,8 +197,7 @@ public sealed partial class MacTextElementsTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_key_costs_no_more_with_VoiceOvers_element_on_a_long_file_than_on_a_short_one()
+    private void A_key_costs_no_more_with_VoiceOvers_element_on_a_long_file_than_on_a_short_one()
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
         long small = KeyBytes(40);
@@ -217,46 +225,6 @@ public sealed partial class MacTextElementsTests
                 rig.Type(i % 2 == 0 ? "x" : "y");
                 rig.Press("LEFT");
                 least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-            }
-            rig.Window.Close();
-            return least;
-        }
-    }
-
-    /// <summary>VoiceOver's questions that may name the whole text (a range's string and attributed string, what a Select
-    /// All selected) give its first <see cref="AccessibleText.MostRead"/> characters and allocate on the UI thread in
-    /// 100,000 lines what they do in 4,000, where they read the whole text.</summary>
-    [AvaloniaFact]
-    public void Voiceovers_questions_of_the_whole_text_cost_in_100000_lines_what_they_do_in_4000()
-    {
-        Assert.SkipUnless(OperatingSystem.IsMacOS(), "NSAccessibility is macOS's");
-        long small = Asked(4_000);
-        long large = Asked(100_000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"VoiceOver's questions of the whole text allocated {small:N0} bytes in 4,000 lines and {large:N0} in 100,000");
-        Assert.True(large <= small + 1024,
-            $"VoiceOver's questions of the whole text allocated {large:N0} bytes on the UI thread in 100,000 lines against {small:N0} in 4,000: the text was read whole");
-
-        static long Asked(int lines)
-        {
-            EditorRig rig = new(string.Concat(Enumerable.Range(0, lines).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n")));
-            using MacBridge.Pool pool = new();
-            nint element = MacBridge.ElementOf(rig.Editor);
-            MacBridge.NSRange whole = new(0, (nuint)rig.Text.Length);
-            MacBridge.Send(element, "setAccessibilitySelectedTextRange:", whole);
-            Ui.Settle();
-            long least = long.MaxValue;
-            for (int round = 0; round < 4; round++)
-            {
-                GC.Collect(1, GCCollectionMode.Forced, blocking: true);
-                GC.WaitForPendingFinalizers();
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                nint read = MacBridge.Send(element, "accessibilityStringForRange:", whole);
-                nint attributed = MacBridge.Send(element, "accessibilityAttributedStringForRange:", whole);
-                nint selected = MacBridge.Send(element, "accessibilitySelectedText");
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-                string?[] answers = [MacBridge.String(read), MacBridge.String(MacBridge.Send(attributed, "string")), MacBridge.String(selected)];
-                Assert.True(answers.All(a => a == rig.Text[..AccessibleText.MostRead]),
-                    $"VoiceOver's questions of the whole text were answered with {string.Join(", ", answers.Select(a => a?.Length))} characters, not the text's first {AccessibleText.MostRead:N0}");
             }
             rig.Window.Close();
             return least;

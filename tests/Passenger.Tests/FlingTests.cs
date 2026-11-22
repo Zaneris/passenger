@@ -20,8 +20,18 @@ namespace Passenger.Tests;
 [Collection(Alone.Name)]
 public sealed class FlingTests
 {
+    /// <summary>A fling through lines of many colours leaves the finalizer next to nothing per line, blanks between
+    /// tokens adding no run to a line, and a fling through a long file keeps the colours and hints a short one's
+    /// does.</summary>
     [AvaloniaFact]
-    public void Blanks_between_tokens_add_no_run_to_a_line_so_it_is_laid_out_in_as_many_runs_as_without_them()
+    public void A_fling_through_a_long_file_of_many_colours_costs_what_a_short_one_does()
+    {
+        Flow.StepApart<FlingTests>("blanks between tokens add no run to a line so it is laid out in as many runs as without them", t => t.Blanks_between_tokens_add_no_run_to_a_line_so_it_is_laid_out_in_as_many_runs_as_without_them());
+        Flow.StepApart<FlingTests>("a fling through lines of many colours leaves the finalizer next to nothing per line", t => t.A_fling_through_lines_of_many_colours_leaves_the_finalizer_next_to_nothing_per_line());
+        Flow.StepApart<FlingTests>("a fling through a long file keeps the colours and hints a short one's does", t => t.A_fling_through_a_long_file_keeps_the_colours_and_hints_a_short_ones_does());
+    }
+
+    private void Blanks_between_tokens_add_no_run_to_a_line_so_it_is_laid_out_in_as_many_runs_as_without_them()
     {
         long Runs(string line)
         {
@@ -40,8 +50,7 @@ public sealed class FlingTests
             $"Twenty lines with blanks between their tokens were laid out in {spaced} runs, and the same tokens without them in {packed}: each blank between two colours makes a glyph run and a buffer split of its own");
     }
 
-    [AvaloniaFact]
-    public void A_fling_through_lines_of_many_colours_leaves_the_finalizer_next_to_nothing_per_line()
+    private void A_fling_through_lines_of_many_colours_leaves_the_finalizer_next_to_nothing_per_line()
     {
         const int Lines = 2400;
         EditorRig rig = new(string.Join('\n', Enumerable.Range(0, Lines).Select(Line)));
@@ -75,8 +84,7 @@ public sealed class FlingTests
             + "is promoted with what it holds, and takes the pooled arrays it shares out of the pool");
     }
 
-    [AvaloniaFact]
-    public void A_fling_through_a_long_file_keeps_the_colours_and_hints_a_short_ones_does()
+    private void A_fling_through_a_long_file_keeps_the_colours_and_hints_a_short_ones_does()
     {
         (int Lines, int Hints, int Rows) Kept(int lines)
         {

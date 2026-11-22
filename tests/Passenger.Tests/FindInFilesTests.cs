@@ -33,6 +33,69 @@ public sealed class FindInFilesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Find in Files, the gate's checks as one flow: its options narrow the matches, an open file's unsaved
+    /// text searched; a match chosen goes to it; Replace All changes open and closed files, leaving a read-only file, a
+    /// regex that never ends and a text grown too long, saying why, and keeping an open file's caret, folds and
+    /// breakpoints; a regex's groups and each line's start replaced as written; and the Explorer dims what the search
+    /// passes over.</summary>
+    [AvaloniaFact]
+    public void Find_in_files_finds_and_replaces_across_the_folder_as_asked()
+    {
+        Flow.StepApart<FindInFilesTests>("the options narrow the matches and an open file's unsaved text is searched", t => t.The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched());
+        Flow.StepApart<FindInFilesTests>("choosing a match goes to it and Replace All changes open and closed files", t => t.Choosing_a_match_goes_to_it_and_replace_all_changes_open_and_closed_files());
+        Flow.StepApart<FindInFilesTests>("Replace All across a read only file replaces in the rest and says which file it left and why", t => t.Replace_all_across_a_read_only_file_replaces_in_the_rest_and_says_which_file_it_left_and_why());
+        Flow.StepApart<FindInFilesTests>("a regex backtracking without end in a file is said to stop there to the popup and an agent and Replace All leaves that file", t => t.A_regex_backtracking_without_end_in_a_file_is_said_to_stop_there_to_the_popup_and_an_agent_and_replace_all_leaves_that_file());
+        Flow.StepApart<FindInFilesTests>("Replace All that would make a file's text too long leaves it and says so", t => t.Replace_all_that_would_make_a_files_text_too_long_leaves_it_and_says_so());
+        Flow.StepApart<FindInFilesTests>("Replace All over an open file keeps its caret folds and breakpoints", t => t.Replace_all_over_an_open_file_keeps_its_caret_folds_and_breakpoints());
+        Flow.StepApart<FindInFilesTests>("Replace in Files fills a regex's groups from each match where it stands and words take an alternation whole", t => t.Replace_in_files_fills_a_regexs_groups_from_each_match_where_it_stands_and_words_take_an_alternation_whole());
+        Flow.StepApart<FindInFilesTests>("replacing every line's start in files comments each line and leaves each file's end alone", t => t.Replacing_every_lines_start_in_files_comments_each_line_and_leaves_each_files_end_alone());
+        Flow.StepApart<FindInFilesTests>("the explorer dims what Find in Files and Go to File pass over and a monorepo's packages of source are searched and shown as code", t => t.The_explorer_dims_what_find_in_files_and_go_to_file_pass_over_and_a_monorepos_packages_of_source_are_searched_and_shown_as_code());
+    }
+
+    /// <summary>Recent Files, bookmarks and breakpoints, the gate's checks as one flow: Recent Files offers the files
+    /// behind the one in front and opens one where it was left, bookmarks toggle, move with their lines and Next goes
+    /// round the files, a file left open as a folder opens is carried by nothing of the session left, and keys typed
+    /// above two thousand breakpoints carry them without costing each.</summary>
+    [AvaloniaFact]
+    public void Recent_files_bookmarks_and_breakpoints_follow_the_files_and_hold_nothing_once_let_go()
+    {
+        Flow.StepApart<FindInFilesTests>("recent files offers the files behind the one in front and opens one where it was left", t => t.Recent_files_offers_the_files_behind_the_one_in_front_and_opens_one_where_it_was_left());
+        Flow.StepApart<FindInFilesTests>("bookmarks toggle move with their lines and next goes round the files", t => t.Bookmarks_toggle_move_with_their_lines_and_next_goes_round_the_files());
+        Flow.StepApart<FindInFilesTests>("a file left open as a folder opens is carried by nothing of the session left", t => t.A_file_left_open_as_a_folder_opens_is_carried_by_nothing_of_the_session_left());
+        Flow.StepApart<FindInFilesTests>("keys typed above two thousand breakpoints carry them on the UI thread without costing each", t => t.Keys_typed_above_two_thousand_breakpoints_carry_them_on_the_UI_thread_without_costing_each());
+    }
+
+    /// <summary>Replace in Files writes each file as its bytes hold (8-bit, UTF-16, binary passed over) and replaces
+    /// each match, past the list's thousand too or none once stopped, as one step of Undo and one change set, an
+    /// agent's too; an Undo a closed file refused names it and leaves both files as the replace left them, a file a
+    /// link leads outside the folder is left, and large closed files cost the window's thread what small ones
+    /// do.</summary>
+    [AvaloniaFact]
+    public void Replace_in_files_writes_each_file_as_its_bytes_hold_and_is_one_undo_that_never_loses_a_change()
+    {
+        Flow.StepApart<FindInFilesTests>("a line with three matches is one row with each bold and Replace All still replaces each", t => t.A_line_with_three_matches_is_one_row_with_each_bold_and_replace_all_still_replaces_each());
+        Flow.StepApart<FindInFilesTests>("Replace All with a character a closed 8 bit file cannot hold writes it as UTF-8 not a question mark", t => t.Replace_all_with_a_character_a_closed_8_bit_file_cannot_hold_writes_it_as_UTF_8_not_a_question_mark());
+        Flow.StepApart<FindInFilesTests>("a UTF 16 file is found and replaced in as the editor reads it and a binary file is still passed over", t => t.A_UTF_16_file_is_found_and_replaced_in_as_the_editor_reads_it_and_a_binary_file_is_still_passed_over());
+        Flow.StepApart<FindInFilesTests>("Replace All past the list's thousand matches replaces every match in the scope and says how many", t => t.Replace_all_past_the_lists_thousand_matches_replaces_every_match_in_the_scope_and_says_how_many());
+        Flow.StepApart<FindInFilesTests>("Replace All past the list's thousand matches is stopped by Stop while it finds them replacing nothing", t => t.Replace_all_past_the_lists_thousand_matches_is_stopped_by_Stop_while_it_finds_them_replacing_nothing());
+        Flow.StepApart<FindInFilesTests>("Replace All across open and closed files is one undo and one change set named for it", t => t.Replace_all_across_open_and_closed_files_is_one_undo_and_one_change_set_named_for_it());
+        Flow.StepApart<FindInFilesTests>("an agent's Replace in Files is one undo across the files it changed", t => t.An_agents_replace_in_files_is_one_undo_across_the_files_it_changed());
+        Flow.StepApart<FindInFilesTests>("undo of a replace is refused naming a closed file changed while its question was open", t => t.Undo_of_a_replace_is_refused_naming_a_closed_file_changed_while_its_question_was_open());
+        Flow.StepApart<FindInFilesTests>("undo of a replace refused by its closed file leaves both files as the replace left them with undo offered", t => t.Undo_of_a_replace_refused_by_its_closed_file_leaves_both_files_as_the_replace_left_them_with_undo_offered());
+        Flow.StepApart<FindInFilesTests>("Replace All and Replace in Files leave a file outside the folder that a link in it leads to", t => t.Replace_all_and_replace_in_files_leave_a_file_outside_the_folder_that_a_link_in_it_leads_to());
+        Flow.StepApart<FindInFilesTests>("a replace across large closed files costs the window thread what one across small ones does", t => t.A_replace_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does());
+    }
+
+    /// <summary>Find in Files searches and replaces only in the scope chosen: a directory scope inside node_modules or
+    /// bin is searched though the folder's search passes over it, and the popup closed is let go with its preview and
+    /// the file it showed.</summary>
+    [AvaloniaFact]
+    public void Find_in_files_searches_and_replaces_only_in_the_scope_chosen_and_lets_go_once_closed()
+    {
+        Flow.StepApart<FindInFilesTests>("a directory scope inside node_modules or bin is searched and replaced in though the folder's search passes over it", t => t.A_directory_scope_inside_node_modules_or_bin_is_searched_and_replaced_in_though_the_folders_search_passes_over_it());
+        Flow.StepApart<FindInFilesTests>("Find in Files closed is let go with its preview and the file it showed", t => t.Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void The_options_narrow_the_matches_and_an_open_files_unsaved_text_is_searched()
@@ -99,8 +162,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>A line with three matches is one row, each of them bold, the count still counting matches; the keys move
     /// row by row, the preview marking every match on the row's line, Enter going to its first; Replace All replaces each.</summary>
-    [AvaloniaFact]
-    public void A_line_with_three_matches_is_one_row_with_each_bold_and_replace_all_still_replaces_each()
+    private void A_line_with_three_matches_is_one_row_with_each_bold_and_replace_all_still_replaces_each()
     {
         string gamma = Path.Combine(folder, "Gamma.cs");
         File.WriteAllText(gamma, "class Gamma\n{\n    int tally = tally + tally;\n    int other = tally;\n}\n");
@@ -147,67 +209,7 @@ public sealed class FindInFilesTests : IDisposable
             preview.Highlights.Select(h => preview.Document.Snapshot.GetPosition(h.Start)).Select(p => (p.Line, p.Column));
     }
 
-    /// <summary>The matches kept in the Find window follow their file while it is open: a method commented out after the
-    /// search reads so in its row, at the line a line typed above moved it to, the code beside shows the file as it now reads,
-    /// and Go to lands on the match where it now is. A file opened after the search is followed from then on.</summary>
-    [AvaloniaFact]
-    public void Matches_kept_in_the_Find_window_follow_their_open_file_a_method_commented_out_reading_so()
-    {
-        string beta = PathNames.Canonical(Path.Combine(folder, "Beta.cs"));
-        string delta = PathNames.Canonical(Path.Combine(folder, "Delta.cs"));
-        File.WriteAllText(delta, "class Delta\n{\n    void Run() { }\n}\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.OpenFile(beta);
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Ui.Search(popup, "() { }");
-            Assert.Equal("2 matches in 2 files", popup.Status);
-            Ui.Press(window, OperatingSystem.IsMacOS() ? "meta ENTER" : "control ENTER");
-            Assert.Equal("Occurrences of '() { }'", window.Find.Shown);
-            Passenger.App.ToolWindows.FindRow Kept(string path) => window.Find.Rows.Single(r => r.Usage?.Path == path);
-            Assert.Equal(beta, window.Find.Selected?.Usage?.Path);
-
-            editor.Focus();
-            Ui.PlaceAfter(editor, "    void");
-            Ui.Run(window, EditorActions.ToggleLineComment);
-            Ui.PlaceAfter(editor, "things");
-            Ui.Press(window, "ENTER");
-            Assert.Equal("// the count of things\n\nclass Beta\n{\n    // void Count() { }\n}\n", editor.Document.Snapshot.ToString());
-            Passenger.App.ToolWindows.FindRow commented = Kept(beta);
-            TreeList tree = window.Find.GetVisualDescendants().OfType<TreeList>().Single();
-            string drawn = string.Join(" ", Ui.Row(tree, commented).GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text));
-            Assert.True(commented is { Label: "// void Count() { }", Detail: "5", Usage: { Line: 4, Column: 17, LineText: "    // void Count() { }" } }
-                && drawn.Contains("5 ", StringComparison.Ordinal) && drawn.Contains("// void Count() { }", StringComparison.Ordinal),
-                $"Commented out and moved down a line, the method's match reads '{commented.Label}' at line {commented.Detail} (column {commented.Usage?.Column + 1}), "
-                + $"its row drawn as '{drawn}', where the line now reads '    // void Count() {{ }}' at line 5");
-            CodeEditor beside = window.Find.Preview;
-            TextPosition marked = beside.Highlights.Count == 1 ? beside.Document.Snapshot.GetPosition(beside.Highlights[0].Start) : default;
-            Assert.True(beside.Document.Snapshot.ToString() == editor.Document.Snapshot.ToString() && marked == new TextPosition(4, 17),
-                $"The code beside the Find window's rows reads '{beside.Document.Snapshot}' marked at {marked}, where the file now reads as typed with the match at 5:18");
-
-            window.Find.FocusRows();
-            Ui.Press(window, "ENTER");
-            Selection chosen = editor.Selections.Primary;
-            Assert.True(window.EditorArea.Active?.Path == beta && editor.Document.Snapshot.GetPosition(chosen.Start) == new TextPosition(4, 17),
-                $"Go to on the commented match went to {window.EditorArea.Active?.Name} at {editor.Document.Snapshot.GetPosition(chosen.Start)}, not to where it now is at 5:18");
-
-            window.OpenFile(delta);
-            Ui.Settle();
-            editor.Selections = SelectionSet.Single(0);
-            Ui.Press(window, "ENTER");
-            Assert.True(Kept(delta) is { Detail: "4", Usage.Line: 3, Label: "void Run() { }" },
-                $"A line typed at the top of a file opened after the search left its match at line {Kept(delta).Detail}, reading '{Kept(delta).Label}', where it is now line 4");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Replace_all_with_a_character_a_closed_8_bit_file_cannot_hold_writes_it_as_UTF_8_not_a_question_mark()
+    private void Replace_all_with_a_character_a_closed_8_bit_file_cannot_hold_writes_it_as_UTF_8_not_a_question_mark()
     {
         string path = Path.Combine(folder, "Gamma.cs");
         File.WriteAllBytes(path, System.Text.Encoding.Latin1.GetBytes("// Prix: 5 francs, déjà payés\nclass Gamma { }\n"));
@@ -229,8 +231,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>1,100 matches, ten to a file: the list stops at 1,000, so ten files' matches are past it, for the popup's
     /// Replace All and an agent's replace_in_files alike.</summary>
-    [AvaloniaFact]
-    public void Replace_all_past_the_lists_thousand_matches_replaces_every_match_in_the_scope_and_says_how_many()
+    private void Replace_all_past_the_lists_thousand_matches_replaces_every_match_in_the_scope_and_says_how_many()
     {
         TestFolders.WriteAll(folder, Enumerable.Range(0, 110).Select(file =>
             ($"Tally{file:000}.txt", string.Concat(Enumerable.Range(0, 10).Select(i => $"tally {i} of {file}\n")))));
@@ -264,8 +265,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>Replace All past the list's 1,000 matches finds every match under the window's work, which Stop ends: held,
     /// the status says it is finding them and Stop is offered; stopped, nothing is asked or replaced and the window is
     /// free, a Replace All asked again replacing every match.</summary>
-    [AvaloniaFact]
-    public void Replace_all_past_the_lists_thousand_matches_is_stopped_by_Stop_while_it_finds_them_replacing_nothing()
+    private void Replace_all_past_the_lists_thousand_matches_is_stopped_by_Stop_while_it_finds_them_replacing_nothing()
     {
         TestFolders.WriteAll(folder, Enumerable.Range(0, 110).Select(file =>
             ($"Tally{file:000}.txt", string.Concat(Enumerable.Range(0, 10).Select(i => $"tally {i} of {file}\n")))));
@@ -309,8 +309,7 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_UTF_16_file_is_found_and_replaced_in_as_the_editor_reads_it_and_a_binary_file_is_still_passed_over()
+    private void A_UTF_16_file_is_found_and_replaced_in_as_the_editor_reads_it_and_a_binary_file_is_still_passed_over()
     {
         string little = Path.Combine(folder, "Wide.cs");
         string big = Path.Combine(folder, "WideBig.cs");
@@ -375,8 +374,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>Replace All across an open file and closed ones is one command: one Undo, asked once, takes every file back,
     /// on disk and in the editor, and one Redo makes it again; Local History keeps what it wrote as one change set named
     /// for it, not a change of each file's own.</summary>
-    [AvaloniaFact]
-    public void Replace_all_across_open_and_closed_files_is_one_undo_and_one_change_set_named_for_it()
+    private void Replace_all_across_open_and_closed_files_is_one_undo_and_one_change_set_named_for_it()
     {
         const string Named = "Replace 'count' with 'total'";
         string alpha = Path.Combine(folder, "Alpha.cs");
@@ -429,77 +427,9 @@ public sealed class FindInFilesTests : IDisposable
         window.Close();
     }
 
-    /// <summary>With Local History shown, Undo and Redo of a Replace All across an open file and a closed one, and a revert
-    /// from the history, each say what they did, and the status bar still says so once the IDE is quiet, Local History
-    /// having followed their writes.</summary>
-    [AvaloniaFact]
-    public void Undo_redo_and_a_revert_with_local_history_shown_keep_saying_what_they_did()
-    {
-        const string Named = "Replace 'count' with 'total'";
-        string alpha = Path.Combine(folder, "Alpha.cs");
-        MainWindow window = Open();
-        window.OpenFile(Path.Combine(folder, "Beta.cs"));
-        Ui.Settle();
-        window.Confirm = (_, _, _) => Task.FromResult(true);
-        Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
-        Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
-        FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
-        popup.Words = true;
-        Ui.Search(popup, "count");
-        popup.Replacement = "total";
-        popup.RequestReplace();
-        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
-        Assert.Equal("Replaced 3 matches in 2 files", window.Status);
-        Ui.Press(window, "ESCAPE");
-        Ui.Landed(() => history.Rows.Any(r => r.Title == Named) && history.Diff is not null, "the replace's change set shown in Local History");
-
-        window.EditorArea.CodeEditor.Focus();
-        KeepsSaying(window, () => Ui.Run(window, EditorActions.Undo, settle: false), $"Undone: {Named}",
-            () => File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal), "Undo");
-        KeepsSaying(window, () => Ui.Run(window, EditorActions.Redo, settle: false), $"Redone: {Named}",
-            () => File.ReadAllText(alpha).Contains("int total;", StringComparison.Ordinal), "Redo");
-
-        Passenger.App.History.HistoryRow replaced = history.Rows.Last(r => r.Title == Named);
-        history.Select(replaced);
-        Ui.Landed(() => history.Selected?.Set == replaced.Set && history.Diff is not null, "the replace's change set chosen in Local History");
-        Task? reverting = null;
-        KeepsSaying(window, () => reverting = history.RevertAsync(), Passenger.App.History.HistoryTab.RevertName(replaced),
-            () => reverting!.IsCompleted && File.ReadAllText(alpha).Contains("int count;", StringComparison.Ordinal), "The revert");
-        window.Close();
-    }
-
-    /// <summary>Does what <paramref name="act"/> does, waits for the status bar to say <paramref name="words"/> and then for
-    /// the IDE to be quiet, and checks it still says them, naming all it said meanwhile.</summary>
-    private static void KeepsSaying(MainWindow window, Action act, string words, Func<bool> done, string what)
-    {
-        TextBlock status = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "StatusText");
-        List<string?> said = [];
-        EventHandler<Avalonia.AvaloniaPropertyChangedEventArgs> heard = (_, e) =>
-        {
-            if (e.Property == TextBlock.TextProperty)
-            {
-                said.Add(status.Text);
-            }
-        };
-        status.PropertyChanged += heard;
-        try
-        {
-            act();
-            Ui.PumpUntil(() => said.Contains(words) && done(), $"{what} to say '{words}'");
-            Ui.Settle();
-        }
-        finally
-        {
-            status.PropertyChanged -= heard;
-        }
-        Assert.True(window.Status == words,
-            $"{what}'s words were taken away with Local History shown, so the person isn't told what it did: the status bar says '{window.Status}' after saying [{string.Join(" | ", said)}]");
-    }
-
     /// <summary>An agent's replace_in_files is the same one command, its open file saved: one Undo in the window takes every
     /// file back.</summary>
-    [AvaloniaFact]
-    public void An_agents_replace_in_files_is_one_undo_across_the_files_it_changed()
+    private void An_agents_replace_in_files_is_one_undo_across_the_files_it_changed()
     {
         string alpha = Path.Combine(folder, "Alpha.cs");
         MainWindow window = Open();
@@ -524,8 +454,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>Replace in Files reads no closed file on the window's thread, and makes its writes and the texts its Undo
     /// keeps off it: a replace across three closed files of 2 MB each costs that thread no more than one across three
     /// small ones, where a read of one of them there costs at least its bytes.</summary>
-    [AvaloniaFact]
-    public void A_replace_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does()
+    private void A_replace_across_large_closed_files_costs_the_window_thread_what_one_across_small_ones_does()
     {
         const int Large = 2 * 1024 * 1024;
         string smalls = Path.Combine(folder, "small");
@@ -573,136 +502,9 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
-    /// <summary>Undo and Redo of a replace read and write the closed files it changed off the window's thread: across three
-    /// closed files of 2 MB each they cost that thread no more than across three small ones, where a read of one of them
-    /// there costs at least its bytes.</summary>
-    [AvaloniaFact]
-    public void Undo_and_redo_of_a_replace_across_large_closed_files_cost_the_window_thread_what_small_ones_do()
-    {
-        const int Large = 2 * 1024 * 1024;
-        string smalls = Path.Combine(folder, "small");
-        string larges = Path.Combine(folder, "large");
-        Directory.CreateDirectory(smalls);
-        Directory.CreateDirectory(larges);
-        const string Filler = "// a line of filler, with nothing in it to replace\n";
-        string filler = string.Concat(Enumerable.Repeat(Filler, Large / Filler.Length + 1));
-        for (int i = 0; i < 3; i++)
-        {
-            File.WriteAllText(Path.Combine(smalls, $"Small{i}.txt"), "int count;\n");
-            File.WriteAllText(Path.Combine(larges, $"Large{i}.txt"), "int count;\n" + filler);
-        }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        window.Confirm = (_, _, _) => Task.FromResult(true);
-        try
-        {
-            (long undoFew, long redoFew) = Costs(smalls);
-            (long undoMany, long redoMany) = Costs(larges);
-            Assert.True(undoMany < undoFew + Large,
-                $"Undo of a replace across three closed files of 2 MB allocated {undoMany / 1024} KB on the window's thread, across three small ones {undoFew / 1024} KB: the files are read or written there, stalling the window as they grow");
-            Assert.True(redoMany < redoFew + Large,
-                $"Redo of a replace across three closed files of 2 MB allocated {redoMany / 1024} KB on the window's thread, across three small ones {redoFew / 1024} KB: the files are read or written there, stalling the window as they grow");
-            Assert.Equal("int total;\n" + filler, File.ReadAllText(Path.Combine(larges, "Large0.txt")));
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        // The least an Undo and a Redo of a replace in the folder's files, run from the Explorer, allocated on the window's thread.
-        (long Undo, long Redo) Costs(string directory)
-        {
-            SearchQuery query = new("count", WholeWords: true);
-            FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, directory, true, null, null), CancellationToken.None),
-                $"the search in {Path.GetFileName(directory)}");
-            Assert.Empty(Ui.Await(window.ReplaceInFilesAsync(query, "total", found), $"the replace in {Path.GetFileName(directory)}").Refused);
-            string name = FilesReplaced.Title(query, "total");
-            string row = PathNames.Canonical(directory);
-            window.ExplorerView.Reveal(row);
-            Ui.Settle();
-            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == row));
-            long undo = long.MaxValue;
-            long redo = long.MaxValue;
-            for (int round = 0; round < 2; round++)
-            {
-                undo = Math.Min(undo, Cost(EditorActions.Undo, $"Undone: {name}", "int count;\n"));
-                redo = Math.Min(redo, Cost(EditorActions.Redo, $"Redone: {name}", "int total;\n"));
-            }
-            return (undo, redo);
-
-            long Cost(string action, string said, string first)
-            {
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                Ui.Run(window, action);
-                Ui.WaitFor(() => window.Status == said, () => $"{action} of the replace in {Path.GetFileName(directory)}; the status says '{window.Status}'");
-                long cost = GC.GetAllocatedBytesForCurrentThread() - before;
-                foreach (string file in Directory.GetFiles(directory))
-                {
-                    Assert.StartsWith(first, File.ReadAllText(file), StringComparison.Ordinal);
-                }
-                return cost;
-            }
-        }
-    }
-
-    /// <summary>Two Undo presses made before the first one's question shows give one question, for the latest replace, and
-    /// once it is answered the next, for the replace before it: never two questions about one replace, the second then
-    /// refused as taken back already.</summary>
-    [AvaloniaFact]
-    public void Two_undo_presses_before_the_first_asks_give_one_question_then_the_one_for_the_replace_before()
-    {
-        string alpha = Path.Combine(folder, "Alpha.cs");
-        string alphaBefore = File.ReadAllText(alpha);
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            string first = Replace("count", "total");
-            string second = Replace("total", "sum");
-            List<string> asked = [];
-            TaskCompletionSource<bool> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            window.Confirm = (_, text, _) =>
-            {
-                asked.Add(text);
-                return answer.Task;
-            };
-            string row = PathNames.Canonical(alpha);
-            window.ExplorerView.Reveal(row);
-            Ui.Settle();
-            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == row));
-            Ui.Run(window, EditorActions.Undo, settle: false);
-            Ui.Run(window, EditorActions.Undo, settle: false);
-            Ui.WaitFor(() => asked.Count > 0, "Undo's question");
-            Ui.Hold(TimeSpan.FromMilliseconds(300), "a moment in which the second press would ask too");
-            Assert.True(asked.Count == 1, $"Two Undo presses asked {asked.Count} questions at once: [{string.Join(" | ", asked)}]");
-            Assert.StartsWith($"Undo {second}?", asked[0], StringComparison.Ordinal);
-
-            TaskCompletionSource<bool> answered = answer;
-            answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            answered.SetResult(true);
-            Ui.WaitFor(() => asked.Count == 2, () => $"the second press's question once the first Undo was made; the status says '{window.Status}'");
-            Assert.StartsWith($"Undo {first}?", asked[1], StringComparison.Ordinal);
-            answer.SetResult(true);
-            Ui.WaitFor(() => window.Status == $"Undone: {first}", () => $"the second Undo; the status says '{window.Status}'");
-            Assert.Equal(alphaBefore, File.ReadAllText(alpha));
-        }
-        finally
-        {
-            window.Close();
-        }
-
-        // A replace across the folder's files: its name in Undo.
-        string Replace(string what, string with)
-        {
-            SearchQuery query = new(what, WholeWords: true);
-            FilesFound found = Ui.Await(window.FindInFilesAsync(query, new SearchScope(SearchScopeKind.Directory, null, folder, true, null, null), CancellationToken.None), $"the search for {what}");
-            Assert.Empty(Ui.Await(window.ReplaceInFilesAsync(query, with, found), $"the replace of {what}").Refused);
-            return FilesReplaced.Title(query, with);
-        }
-    }
-
     /// <summary>Undo of a replace across closed files is refused, naming the file, when one changed while its question was
     /// open, every file left as it was; once that file is as the replace left it again, Undo takes the replace back.</summary>
-    [AvaloniaFact]
-    public void Undo_of_a_replace_is_refused_naming_a_closed_file_changed_while_its_question_was_open()
+    private void Undo_of_a_replace_is_refused_naming_a_closed_file_changed_while_its_question_was_open()
     {
         string alpha = Path.Combine(folder, "Alpha.cs");
         string beta = Path.Combine(folder, "Beta.cs");
@@ -749,8 +551,7 @@ public sealed class FindInFilesTests : IDisposable
     /// <summary>Undo of a replace across an open file and a closed one the disk then refuses (made read-only) takes back what
     /// it had done before the refusal: both files are as the replace left them, Undo still offered for the open file; once
     /// the closed file is writable again, Undo takes the whole replace back.</summary>
-    [AvaloniaFact]
-    public void Undo_of_a_replace_refused_by_its_closed_file_leaves_both_files_as_the_replace_left_them_with_undo_offered()
+    private void Undo_of_a_replace_refused_by_its_closed_file_leaves_both_files_as_the_replace_left_them_with_undo_offered()
     {
         string alpha = Path.Combine(folder, "Alpha.cs");
         string beta = Path.Combine(folder, "Beta.cs");
@@ -823,8 +624,7 @@ public sealed class FindInFilesTests : IDisposable
 
     /// <summary>A link in the folder to a file outside it (a cloned repository may carry one): Find in Files lists its match,
     /// but Replace All and an agent's replace_in_files leave the file outside as it was, saying why, and replace the rest.</summary>
-    [AvaloniaFact]
-    public void Replace_all_and_replace_in_files_leave_a_file_outside_the_folder_that_a_link_in_it_leads_to()
+    private void Replace_all_and_replace_in_files_leave_a_file_outside_the_folder_that_a_link_in_it_leads_to()
     {
         string outside = TestFolders.Create("outside-");
         try
@@ -1143,26 +943,6 @@ public sealed class FindInFilesTests : IDisposable
         return least;
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_matched_lines_arrow_is_one_ligature_only_while_Settings_enables_ligatures()
-    {
-        File.WriteAllText(Path.Combine(folder, "Gamma.cs"), "class Gamma\n{\n    int Twice(int x) => x * 2;\n}\n");
-        MainWindow window = Open();
-        foreach (bool ligatures in (bool[])[false, true])
-        {
-            window.ApplySettings(window.Settings with { Ligatures = ligatures });
-            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Ui.Search(popup, "Twice");
-            Ui.Settle();
-            TextBlock line = popup.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Inlines is { Count: > 0 } runs && runs.Text?.Contains("=>", StringComparison.Ordinal) == true);
-            Assert.True(PlainArrow(line) != ligatures,
-                ligatures ? "With ligatures enabled, a matched line's => is drawn as = and >, where the editor joins them" : "With ligatures off, a matched line's => is drawn as one arrow, where the editor draws = and >");
-            Ui.Press(window, "Escape");
-        }
-        window.Close();
-    }
-
     /// <summary>The Explorer dims what Find in Files, Go to File and the watcher pass over, by one list: each of its
     /// names, and a packages folder NuGet restored into, in packages.config's layout or the global folder's; Git's
     /// store is not listed at all. A JavaScript monorepo's packages of source are searched, offered and shown as
@@ -1226,48 +1006,10 @@ public sealed class FindInFilesTests : IDisposable
         }
     }
 
-    /// <summary>A build folder in another letter case (Bin, Obj, Node_Modules) is the build's own where its folder ignores
-    /// case, as on macOS and Windows, so Find in Files and Go to File pass over its files as they do bin's and obj's; where
-    /// case is told apart it is a folder of the person's, searched and offered.</summary>
-    [AvaloniaFact]
-    public void Find_in_files_and_go_to_file_pass_over_a_build_folder_in_another_letter_case_where_case_is_ignored()
-    {
-        string root = PathNames.Canonical(folder);
-        string[] output = [Path.Combine("Bin", "Debug", "needle.cs"), Path.Combine("Obj", "needle.cs"), Path.Combine("Node_Modules", "pad", "needle.js")];
-        foreach (string file in output)
-        {
-            TestFolders.Write(folder, file.Replace(Path.DirectorySeparatorChar, '/'), "// needle\n");
-        }
-        TestFolders.Write(folder, "src/needle.cs", "// needle\n");
-        bool caseIgnored = PathNames.CaseIgnoredIn(root);
-        string[] expected = [.. (caseIgnored ? [] : output).Append(Path.Combine("src", "needle.cs")).Order(StringComparer.Ordinal)];
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            FindInFilesPopup popup = window.ShowFindInFiles(replace: false)!;
-            Ui.Search(popup, "needle");
-            string[] found = Found(popup, root);
-            Assert.True(found.SequenceEqual(expected), $"Find in Files found needle in [{string.Join(", ", found)}], where {(caseIgnored ? "Bin, Obj and Node_Modules are the build's own" : "Bin, Obj and Node_Modules are the person's folders")}");
-            Ui.Press(window, "ESCAPE");
-
-            Ui.Press(window, Ui.Shortcut(AppActions.GoToFile));
-            window.KeyTextInput("needle");
-            Ui.Settle();
-            string[] offered = [.. Assert.IsType<GoToFilePopup>(window.Popup).Rows.Select(hit => hit.RelativePath).Order(StringComparer.Ordinal)];
-            Assert.True(offered.SequenceEqual(expected), $"Go to File offers [{string.Join(", ", offered)}] for needle, where {(caseIgnored ? "Bin, Obj and Node_Modules are the build's own" : "Bin, Obj and Node_Modules are the person's folders")}");
-            Ui.Press(window, "ESCAPE");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A directory chosen inside a folder the folder's search passes over (node_modules, bin) is searched all the
     /// same, from the Explorer's menu on its dimmed row or named in the popup, and Replace in Files changes its files
     /// alone.</summary>
-    [AvaloniaFact]
-    public void A_directory_scope_inside_node_modules_or_bin_is_searched_and_replaced_in_though_the_folders_search_passes_over_it()
+    private void A_directory_scope_inside_node_modules_or_bin_is_searched_and_replaced_in_though_the_folders_search_passes_over_it()
     {
         TestFolders.Write(folder, "node_modules/pkg/index.js", "// needle in package\n");
         TestFolders.Write(folder, "bin/Debug/out.txt", "needle in bin\n");
@@ -1322,19 +1064,9 @@ public sealed class FindInFilesTests : IDisposable
     private static string[] Found(FindInFilesPopup popup, string root) =>
         [.. popup.Matches.Select(m => Path.GetRelativePath(root, m.Path)).Distinct().Order(StringComparer.Ordinal)];
 
-    /// <summary>Whether a line draws = and > as the font's own glyphs for them, not a ligature's.</summary>
-    private static bool PlainArrow(TextBlock line)
-    {
-        ShapedTextRun[] runs = [.. line.TextLayout.TextLines.SelectMany(l => l.TextRuns).OfType<ShapedTextRun>()];
-        GlyphTypeface font = runs[0].GlyphRun.GlyphTypeface;
-        HashSet<ushort> drawn = [.. runs.SelectMany(r => r.ShapedBuffer).Select(g => g.GlyphIndex)];
-        return drawn.Contains(font.CharacterToGlyphMap['=']) && drawn.Contains(font.CharacterToGlyphMap['>']);
-    }
-
     /// <summary>Find in Files closed with a match in its preview: the popup, its preview editor and the file it showed go,
     /// so each search made leaves nothing behind for the window's life.</summary>
-    [AvaloniaFact]
-    public void Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed()
+    private void Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed()
     {
         MainWindow window = Open();
         WeakReference<FindInFilesPopup> closed = SearchAndClose(window);

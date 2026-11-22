@@ -21,8 +21,21 @@ public sealed class AccessibleTextTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A reader reads the editor as a document named by its file whose value follows the caret, its text by
+    /// range, line, word and character with what a key changed, scrolls it into view and takes its caret, soft wrap and
+    /// folds leaving the file's lines as they are, and reads the terminal's lines from its scrollback, told of output
+    /// as the lines it changed.</summary>
     [AvaloniaFact]
-    public void The_editors_text_reads_by_range_line_word_and_character_and_tells_what_a_key_changed()
+    public void A_reader_reads_the_editors_and_the_terminals_text_as_the_file_and_the_scrollback_hold_it()
+    {
+        Flow.StepApart<AccessibleTextTests>("the editor's text reads by range line word and character and tells what a key changed", t => t.The_editors_text_reads_by_range_line_word_and_character_and_tells_what_a_key_changed());
+        Flow.StepApart<AccessibleTextTests>("a reader scrolls the editor's text into view and takes its caret and hears its line change", t => t.A_reader_scrolls_the_editors_text_into_view_and_takes_its_caret_and_hears_its_line_change());
+        Flow.StepApart<AccessibleTextTests>("soft wrap and folds leave the file's lines as they are and change only where they are drawn", t => t.Soft_wrap_and_folds_leave_the_files_lines_as_they_are_and_change_only_where_they_are_drawn());
+        Flow.StepApart<AccessibleTextTests>("the editor is a document named by its file whose value follows the caret from line to line", t => t.The_editor_is_a_document_named_by_its_file_whose_value_follows_the_caret_from_line_to_line());
+        Flow.StepApart<AccessibleTextTests>("the terminal's lines read from its scrollback as kept and output is told as the lines it changed", t => t.The_terminals_lines_read_from_its_scrollback_as_kept_and_output_is_told_as_the_lines_it_changed());
+    }
+
+    private void The_editors_text_reads_by_range_line_word_and_character_and_tells_what_a_key_changed()
     {
         const string Text = "class Shop\r\n{\r\n    int count = 10;\r\n}\r\n";
         EditorRig rig = new(Text);
@@ -57,8 +70,7 @@ public sealed class AccessibleTextTests : IDisposable
         Assert.True(text.Read(text.LineAt(text.Caret)) == "    int total = 10;", $"After typing, the caret's line reads \"{text.Read(text.LineAt(text.Caret))}\"");
     }
 
-    [AvaloniaFact]
-    public void A_reader_scrolls_the_editors_text_into_view_and_takes_its_caret_and_hears_its_line_change()
+    private void A_reader_scrolls_the_editors_text_into_view_and_takes_its_caret_and_hears_its_line_change()
     {
         string text = string.Concat(Enumerable.Range(0, 400).Select(i => $"line {i}\n"));
         EditorRig rig = new(text);
@@ -84,8 +96,7 @@ public sealed class AccessibleTextTests : IDisposable
         Assert.True(model.CaretLine == "lixne 301" && lines == 2 && model.Selected is [{ Length: 0 }], $"Typing on the line told {lines} line changes and reads \"{model.CaretLine}\"");
     }
 
-    [AvaloniaFact]
-    public void Soft_wrap_and_folds_leave_the_files_lines_as_they_are_and_change_only_where_they_are_drawn()
+    private void Soft_wrap_and_folds_leave_the_files_lines_as_they_are_and_change_only_where_they_are_drawn()
     {
         string longLine = string.Join(' ', Enumerable.Range(0, 60).Select(i => $"word{i}"));
         string text = $"header\n{longLine}\nbody\n{{\n    folded();\n    away();\n}}\ntail\n";
@@ -112,8 +123,7 @@ public sealed class AccessibleTextTests : IDisposable
         Assert.True(model.BoundsOf(tail) is [var after] && after.Y > rows[^1].Y, $"The line after the fold is drawn at {string.Join("; ", model.BoundsOf(tail))}");
     }
 
-    [AvaloniaFact]
-    public void The_editor_is_a_document_named_by_its_file_whose_value_follows_the_caret_from_line_to_line()
+    private void The_editor_is_a_document_named_by_its_file_whose_value_follows_the_caret_from_line_to_line()
     {
         string notes = Path.Combine(folder, "notes.txt");
         File.WriteAllText(notes, "first line\nsecond line\n");
@@ -152,8 +162,7 @@ public sealed class AccessibleTextTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void The_terminals_lines_read_from_its_scrollback_as_kept_and_output_is_told_as_the_lines_it_changed()
+    private void The_terminals_lines_read_from_its_scrollback_as_kept_and_output_is_told_as_the_lines_it_changed()
     {
         TerminalSession session = new(40, 5);
         TerminalView view = new() { Session = session };
@@ -210,79 +219,5 @@ public sealed class AccessibleTextTests : IDisposable
         {
             window.Close();
         }
-    }
-
-    /// <summary>A reader asking where the whole text is drawn, as UI Automation and VoiceOver ask of a Select All, costs what
-    /// asking it of a screen's text does: in 100,000 lines against 200, in one line soft wrap makes thousands of rows of
-    /// against one of a hundred, and in a terminal's full scrollback against a screen's output, the question allocates on
-    /// the UI thread what the smaller one does, each answer the rows on screen.</summary>
-    [AvaloniaFact]
-    public void Where_the_whole_text_is_drawn_costs_a_reader_what_a_screens_text_does()
-    {
-        static string Lines(int count) => string.Concat(Enumerable.Range(0, count).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n"));
-        static string Words(int count) => string.Join(' ', Enumerable.Range(0, count).Select(i => $"word{i}")) + "\n";
-        (long Bytes, int Rows) Editor(string text, bool wrapped)
-        {
-            EditorRig rig = new(text);
-            try
-            {
-                rig.Editor.SoftWrap = wrapped;
-                Ui.Settle();
-                return Asked(rig.Editor.AccessibleText);
-            }
-            finally
-            {
-                rig.Window.Close();
-            }
-        }
-        (long Bytes, int Rows) Terminal(int lines)
-        {
-            TerminalSession session = new(40, 20);
-            TerminalView view = new() { Session = session };
-            Window window = new() { Width = 500, Height = 500, Content = view };
-            window.Show();
-            try
-            {
-                session.Say(string.Concat(Enumerable.Range(0, lines).Select(i => $"line {i}\r\n")));
-                Ui.Settle();
-                return Asked(view.AccessibleText);
-            }
-            finally
-            {
-                window.Close();
-            }
-        }
-
-        (long Bytes, int Rows)[] costs =
-        [
-            Editor(Lines(200), wrapped: false), Editor(Lines(100_000), wrapped: false),
-            Editor(Words(1_000), wrapped: true), Editor(Words(50_000), wrapped: true),
-            Terminal(40), Terminal(TerminalScreen.ScrollbackLimit + 100),
-        ];
-        string[] cases = ["100,000 lines", "a line of thousands of rows", "a terminal's full scrollback"];
-        for (int k = 0; k < cases.Length; k++)
-        {
-            ((long small, int smallRows), (long large, int largeRows)) = (costs[2 * k], costs[(2 * k) + 1]);
-            TestContext.Current.TestOutputHelper?.WriteLine($"Where the whole text is drawn: {small:N0} bytes for {smallRows} rows in the smaller text, {large:N0} for {largeRows} in {cases[k]}");
-            Assert.True(largeRows == smallRows && smallRows > 10, $"Where the whole of {cases[k]} is drawn was answered in {largeRows} rows, against {smallRows} in the smaller text");
-            Assert.True(large <= small + 1024,
-                $"Where the whole of {cases[k]} is drawn allocated {large:N0} bytes on the UI thread, against {small:N0} in the smaller text: rows out of view were laid out to be passed over");
-        }
-    }
-
-    /// <summary>The least a question of where the whole text is drawn allocates over a few askings, and the rows it answered.</summary>
-    private static (long Bytes, int Rows) Asked(AccessibleText text)
-    {
-        long least = long.MaxValue;
-        int rows = 0;
-        for (int round = 0; round < 4; round++)
-        {
-            GC.Collect(1, GCCollectionMode.Forced, blocking: true);
-            GC.WaitForPendingFinalizers();
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            rows = text.BoundsOf(new TextRange(0, text.Length)).Count;
-            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
-        return (least, rows);
     }
 }

@@ -102,55 +102,39 @@ public sealed class FileColoursTests : FileColoursFolder
 
         """;
 
-    private const string Sass = """
-        // The theme's colours.
-        @use "sass:math";
-        $accent: #3b82f6 !default;
-
-        /* A frame round a card. */
-        @mixin framed($width) {
-            border: $width solid $accent;
-        }
-
-        .card > h2 {
-            padding: math.div(24px, 2);
-            &:hover { color: darken($accent, 10%); }
-            @include framed(1px);
-            #{$side}-margin: 0;
-        }
-
-        """;
-
-    private const string Less = """
-        // The theme's colours.
-        @accent: #3b82f6;
-        @import (reference) "base.less";
-
-        /* A frame round a card. */
-        .framed(@width) {
-            border: @width solid @accent;
-        }
-
-        .card > h2 {
-            padding: 12px;
-            &:hover { color: darken(@accent, 10%); }
-            .framed(1px);
-            @{side}-margin: 0;
-        }
-
-        """;
-
-    private const string Paml = """
-        <!-- The main window. -->
-        <Window xmlns="https://github.com/avaloniaui"
-                Title="Shapes &amp; areas">
-          <TextBlock Text="Hello" />
-        </Window>
-
-        """;
-
+    /// <summary>Each kind of file is coloured as its language in the theme's colours: a project file, settings, a
+    /// workflow, a readme and a script, a Markdown file's blocks as their own files, GDScript, a scene and a shader,
+    /// each kind in its own colour dark and light and a repository's code colour scheme on the theme's ground, two JSON
+    /// documents sharing a tokenizer keeping their own states, and a comment written in each language's own
+    /// way.</summary>
     [AvaloniaFact]
-    public void A_project_file_settings_a_workflow_a_readme_and_a_script_each_show_their_tokens_in_Riders_colours()
+    public void Each_kind_of_file_is_coloured_as_its_language_in_the_themes_colours()
+    {
+        Flow.StepApart<FileColoursTests>("a project file settings a workflow a readme and a script each show their tokens in Riders colours", t => t.A_project_file_settings_a_workflow_a_readme_and_a_script_each_show_their_tokens_in_Riders_colours());
+        Flow.StepApart<FileColoursTests>("a Markdown file's JSONC and tsx blocks and raw html are coloured as their own files are", t => t.A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are());
+        Flow.StepApart<FileColoursTests>("a GDScript file a scene and a shader show their tokens as their kinds", t => t.A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds());
+        Flow.StepApart<FileColoursTests>("each kind is drawn in its own colour in the dark theme and the light", t => t.Each_kind_is_drawn_in_its_own_colour_in_the_dark_theme_and_the_light());
+        Flow.StepApart<FileColoursTests>("a code colour scheme from the repository draws the code in its colours on the theme's ground under either theme", t => t.A_code_colour_scheme_from_the_repository_draws_the_code_in_its_colours_on_the_themes_ground_under_either_theme());
+        Flow.StepApart<FileColoursTests>("two JSON documents keep independent states when their tokenizer is shared", t => t.Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared());
+        Flow.StepApart<FileColoursTests>("comment with line comment writes each languages own comment and block comment wraps XML in its own", t => t.Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own());
+    }
+
+    /// <summary>Colours follow what is typed and never hold the window: typing after an XML comment and a Markdown
+    /// fence keeps colours right, a line the grammar runs out of time on or too long to colour leaves the lines after
+    /// it as they read and is read once a pass, and a tag at the caret lights its pair, reading only the tags near
+    /// it.</summary>
+    [AvaloniaFact]
+    public void Colours_follow_typing_and_a_line_too_long_or_slow_to_colour_never_holds_the_window()
+    {
+        Flow.StepApart<FileColoursTests>("typing keeps colours right after an XML comment and a Markdown code fence open and close", t => t.Typing_keeps_colours_right_after_an_XML_comment_and_a_Markdown_code_fence_open_and_close());
+        Flow.StepApart<FileColoursTests>("a comment line the grammar runs out of time on leaves the next line's keyword a keyword", t => t.A_comment_line_the_grammar_runs_out_of_time_on_leaves_the_next_lines_keyword_a_keyword());
+        Flow.StepApart<FileColoursTests>("a line too long to colour that opens a comment leaves the next line in the comment", t => t.A_line_too_long_to_colour_that_opens_a_comment_leaves_the_next_line_in_the_comment());
+        Flow.StepApart<FileColoursTests>("a line too long to colour is read once a pass and not for a key that leaves its state as it was", t => t.A_line_too_long_to_colour_is_read_once_a_pass_and_not_for_a_key_that_leaves_its_state_as_it_was());
+        Flow.StepApart<FileColoursTests>("a tag name at the caret lights up with its pairs and brackets pair only outside strings", t => t.A_tag_name_at_the_caret_lights_up_with_its_pairs_and_brackets_pair_only_outside_strings());
+        Flow.StepApart<FileColoursTests>("moving the caret onto a tags name reads only the tags near it and Matching Brace goes as far as its pair", t => t.Moving_the_caret_onto_a_tags_name_reads_only_the_tags_near_it_and_Matching_Brace_goes_as_far_as_its_pair());
+    }
+
+    private void A_project_file_settings_a_workflow_a_readme_and_a_script_each_show_their_tokens_in_Riders_colours()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Shapes.csproj", Project);
@@ -200,51 +184,10 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_web_page_its_style_and_script_and_a_Dockerfile_show_their_tokens_too()
-    {
-        MainWindow window = Window();
-        CodeEditor editor = Open(window, "index.html", "<!DOCTYPE html>\n<html lang=\"en\">\n<!-- The list. -->\n<ul class=\"list\">&amp;</ul>\n<script>\n    const shapes = [\"circle\"];\n</script>\n</html>\n");
-        Assert.Equal(TokenKind.Tag, KindOf(editor, "<ul"));
-        Assert.Equal(TokenKind.AttributeName, KindOf(editor, "class"));
-        Assert.Equal(TokenKind.AttributeValue, KindOf(editor, "\"list\""));
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "<!-- The list. -->"));
-        Assert.Equal(TokenKind.Entity, KindOf(editor, "&amp;"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "const"));
-        Assert.Equal(TokenKind.String, KindOf(editor, "\"circle\""));
-
-        editor = Open(window, "site.css", "/* The page. */\nbody > .list {\n    margin: 0 auto 12px;\n    color: var(--accent);\n}\n");
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "/* The page. */"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, ".list"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "margin"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "12px"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "var"));
-
-        editor = Open(window, "shapes.ts", "// Areas.\nexport class Circle implements Shape {\n    area(): number {\n        return Math.PI * this.radius ** 2;\n    }\n}\n");
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "export"));
-        Assert.Equal(TokenKind.Class, KindOf(editor, "Circle"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "area"));
-        Assert.Equal(TokenKind.Field, KindOf(editor, "radius"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "2"));
-
-        editor = Open(window, "list.js", "function total(shapes) {\n    return shapes.length; // all of them\n}\n");
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "function"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "total"));
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "// all of them"));
-
-        editor = Open(window, "Dockerfile", "# Two stages.\nFROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\nRUN dotnet publish -o /app \"Shapes.csproj\"\n");
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "# Two stages."));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "FROM"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "RUN"));
-        Assert.Equal(TokenKind.String, KindOf(editor, "\"Shapes.csproj\""));
-        window.Close();
-    }
-
     /// <summary>A script whose first line, a comment, the grammar runs out of its time reading, as a grammar reading its
     /// patterns for the first time on a busy machine does: the line keeps its comment's colour, and the next line is read
     /// from where the comment's line began, its keyword a keyword rather than more of the comment.</summary>
-    [AvaloniaFact]
-    public void A_comment_line_the_grammar_runs_out_of_time_on_leaves_the_next_lines_keyword_a_keyword()
+    private void A_comment_line_the_grammar_runs_out_of_time_on_leaves_the_next_lines_keyword_a_keyword()
     {
         string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
         Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1");
@@ -268,39 +211,10 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
-    /// <summary>Razor's grammar includes both HTML and C#: colouring a standalone file must not depend on a
-    /// language server, a Blazor project, or the SDK's project templates.</summary>
-    [AvaloniaFact]
-    public void A_standalone_Razor_file_colours_its_markup_and_embedded_CSharp()
-    {
-        MainWindow window = Window();
-        try
-        {
-            CodeEditor editor = Open(window, "Greeting.razor", """
-                <h1 class="greeting">@Title</h1>
-                @code {
-                    // The greeting.
-                    private string Title = "Hello";
-                }
-                """);
-            Assert.Equal(TokenKind.Tag, KindOf(editor, "<h1"));
-            Assert.Equal(TokenKind.AttributeName, KindOf(editor, "class"));
-            Assert.Equal(TokenKind.AttributeValue, KindOf(editor, "\"greeting\""));
-            Assert.Equal(TokenKind.Comment, KindOf(editor, "// The greeting."));
-            Assert.Equal(TokenKind.Keyword, KindOf(editor, "private"));
-            Assert.Equal(TokenKind.String, KindOf(editor, "\"Hello\""));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A line too long to colour, a script's holding a long string, that opens a block comment closed on the next
     /// line, read within a long line's time as this machine has it: the next line's text is coloured as the comment it is
     /// in, and the code after the comment as code.</summary>
-    [AvaloniaFact]
-    public void A_line_too_long_to_colour_that_opens_a_comment_leaves_the_next_line_in_the_comment()
+    private void A_line_too_long_to_colour_that_opens_a_comment_leaves_the_next_line_in_the_comment()
     {
         string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
         // The line takes 20 to 50 ms of a developer's machine's 100: the run's machine has as many times that as it is slower.
@@ -327,8 +241,7 @@ public sealed class FileColoursTests : FileColoursFolder
     /// 100 ms: opening the script reads it once, a key typed in it once more, and a key on the line above, which leaves
     /// the state the long line begins in as it was, not at all; the comment it opens at its end, never reached, leaves
     /// the next line code.</summary>
-    [AvaloniaFact]
-    public void A_line_too_long_to_colour_is_read_once_a_pass_and_not_for_a_key_that_leaves_its_state_as_it_was()
+    private void A_line_too_long_to_colour_is_read_once_a_pass_and_not_for_a_key_that_leaves_its_state_as_it_was()
     {
         string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
         Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "100");
@@ -365,134 +278,9 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
-    /// <summary>A script's first line that runs out of its time in one pass, as a loaded machine has it, and is read
-    /// within it in the next ends in the same state both times: a key on it that leaves its state as it was reads the
-    /// line too long to colour after it in neither pass but the first. The first pass gives a line 1 ms; the key's, 1 s.</summary>
-    [AvaloniaFact]
-    public void A_first_line_run_out_of_its_time_then_read_within_it_leaves_the_long_line_after_it_unread()
-    {
-        string? was = Environment.GetEnvironmentVariable(TextMateHighlighter.LineTimeVariable);
-        Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1");
-        MainWindow window = Window();
-        try
-        {
-            // About 20 ms of the grammar's reading however warm: out of 1 ms, well within 1 s.
-            string first = "const before = " + string.Concat(Enumerable.Repeat("(a,b)=>", 700)) + "1;";
-            string longLine = string.Concat(Enumerable.Repeat("(a,b)=>", 10_000)) + "1;";
-            string text = first + "\n" + longLine + "\nfunction after() {}\n";
-            CodeEditor editor = Open(window, "vendor.min.js", text);
-            TextMateHighlighter colours = (TextMateHighlighter)window.EditorArea.Active!.Highlighter!;
-            long outOfTime = colours.LinesOutOfTime;
-            Assert.True(outOfTime >= 1 && colours.LongLines.Read == 1,
-                $"Opening a script with 1 ms a line ran {outOfTime} lines out of their time and read its long line {colours.LongLines.Read} times, where its first line runs out and the long line is read once");
-
-            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, "1000");
-            editor.Selections = SelectionSet.Single(text.IndexOf("before", StringComparison.Ordinal) + 2);
-            editor.Focus();
-            window.KeyTextInput("x");
-            Ui.Settle();
-            Assert.True(colours.LinesOutOfTime == outOfTime, $"The first line ran out of 1 s, {colours.LinesOutOfTime - outOfTime} lines in all, where it takes about 20 ms");
-            Assert.True(colours.LongLines.Read == 1,
-                $"A key on the first line, its state left as it was, had the long line after it read {colours.LongLines.Read - 1} more times: the first line ran out of its time as the file opened, and its state then was not the one it ends in");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(TextMateHighlighter.LineTimeVariable, was);
-            window.Close();
-        }
-    }
-
-    /// <summary>A YAML key that reads as a typed scalar (on, true, null) is a key in a flow mapping as in a block mapping:
-    /// the four keys of <c>{ on: 1, true: 2, null: 3, x: 4 }</c> are coloured alike, as keys.</summary>
-    [AvaloniaFact]
-    public void A_yaml_flow_mappings_keys_on_true_and_null_are_coloured_as_keys_as_x_is()
-    {
-        MainWindow window = Window();
-        try
-        {
-            CodeEditor editor = Open(window, "flow.yml", "{ on: 1, true: 2, null: 3, x: 4 }\nblock:\n  on: 5\n");
-            TokenKind?[] kinds = [.. ((string[])["on", "true", "null", "x"]).Select(key => KindOf(editor, key))];
-            Assert.True(kinds.All(kind => kind == TokenKind.YamlKey),
-                $"The flow mapping's keys on, true, null and x are coloured {string.Join(", ", kinds)}: a key that reads as a value is not coloured as the key it is");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A YAML key is a key quoted or not, and one that reads as a typed scalar (off, 200) is a key under a
-    /// <c>%YAML 1.1</c> directive as under 1.2: its value's numbers, anchors and aliases stay plain, and a tag is one
-    /// keyword.</summary>
-    [AvaloniaFact]
-    public void A_yaml_files_quoted_keys_and_its_typed_keys_under_YAML_1_1_are_keys_and_its_numbers_anchors_and_tags_keep_their_colours()
-    {
-        MainWindow window = Window();
-        try
-        {
-            CodeEditor editor = Open(window, "versions.yml", "%YAML 1.1\n---\noff: no\n\"quoted key\": 'value'\n200: !!str 12\nbase: &shared 3.5\nother: *shared\n");
-            (string Stretch, TokenKind Kind)[] wanted =
-            [
-                ("off", TokenKind.YamlKey), ("\"quoted key\"", TokenKind.YamlKey), ("'value'", TokenKind.String), ("200", TokenKind.YamlKey),
-                ("!!str", TokenKind.Keyword), ("12", TokenKind.Text), ("&shared", TokenKind.Text), ("3.5", TokenKind.Text), ("*shared", TokenKind.Text),
-            ];
-            string[] wrong = [.. wanted.Where(w => KindOf(editor, w.Stretch) != w.Kind).Select(w => $"{w.Stretch} is {KindOf(editor, w.Stretch, settle: false)?.ToString() ?? "mixed"}, not {w.Kind}")];
-            Assert.True(wrong.Length == 0, $"A YAML file's keys, values and tags are not coloured as what they are: {string.Join("; ", wrong)}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>A quoted heredoc ends only at a line that is its delimiter alone, as bash ends one: a line of the body that
-    /// starts with the delimiter and goes on (<c>END suffix</c>) is the heredoc's string, as are the lines after it up to
-    /// the bare <c>END</c>, and with <c>&lt;&lt;-</c> up to the delimiter after tabs alone.</summary>
-    [AvaloniaFact]
-    public void A_shell_heredoc_runs_past_a_line_that_starts_with_its_delimiter_and_goes_on()
-    {
-        MainWindow window = Window();
-        try
-        {
-            CodeEditor editor = Open(window, "notes.sh",
-                "cat <<'END'\nfirst line\nEND suffix\nstill the heredoc\nEND\ncat <<-'TABBED'\n\tTABBED too\n\tstill tabbed\n\tTABBED\nfor name in a b; do\n    echo \"$name\"\ndone\n");
-            foreach (string body in (string[])["END suffix", "still the heredoc", "TABBED too", "still tabbed"])
-            {
-                TokenKind? kind = KindOf(editor, body);
-                Assert.True(kind == TokenKind.String, $"The heredoc's line '{body}' is coloured {kind?.ToString() ?? "in several kinds"}: the heredoc ended before its bare delimiter, its text coloured as commands");
-            }
-            Assert.Equal(TokenKind.Keyword, KindOf(editor, "for"));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    /// <summary>In a Markdown file's C# block, a raw string opened with six quotes holding a run of five ends at six: the
-    /// line after the five is the string's, and the line after the string's end is code.</summary>
-    [AvaloniaFact]
-    public void A_markdown_csharp_blocks_raw_string_of_six_quotes_ends_at_six_not_at_five()
-    {
-        MainWindow window = Window();
-        try
-        {
-            CodeEditor editor = Open(window, "RAW.md", "# Raw\n\n```csharp\nstring text = \"\"\"\"\"\"\n    five quotes \"\"\"\"\" and on\n    \"\"\"\"\"\";\nreturn text;\n```\n");
-            TokenKind? inside = KindOf(editor, "and on");
-            Assert.True(inside == TokenKind.String, $"The six-quote raw string's text after five quotes is coloured {inside?.ToString() ?? "in several kinds"}: the string ended at five");
-            TokenKind? after = KindOf(editor, "return");
-            Assert.True(after == TokenKind.Keyword, $"The line after the raw string is coloured {after?.ToString() ?? "in several kinds"}: the string ran on past its six quotes");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A Markdown file's blocks of JSON with comments and of TSX, and its raw HTML, are coloured as their own files
     /// are: the jsonc block's comment and key, the tsx block's comment and keywords, and the HTML's tag, attribute and value.</summary>
-    [AvaloniaFact]
-    public void A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are()
+    private void A_markdown_files_jsonc_and_tsx_blocks_and_raw_html_are_coloured_as_their_own_files_are()
     {
         MainWindow window = Window();
         try
@@ -511,44 +299,9 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
-    /// <summary>A JSX element in a .tsx file, a .jsx file and a Markdown file's tsx block is markup: its tags and attribute
-    /// names in theirs colours, its text and the code in its braces as code; the TypeScript around it, a parameter's type
-    /// and a variable's among it, as before.</summary>
-    [AvaloniaFact]
-    public void A_tsx_files_jsx_element_is_coloured_as_markup_and_the_typescript_around_it_as_code()
-    {
-        MainWindow window = Window();
-        try
-        {
-            const string Element = "    return <div className=\"card\" hidden={!shown}>Welcome, {title}</div>;\n}\n";
-            (string Stretch, TokenKind Kind)[] markup = [("<div", TokenKind.Tag), ("className", TokenKind.AttributeName), ("\"card\"", TokenKind.String),
-                ("hidden", TokenKind.AttributeName), ("!shown", TokenKind.Text), ("Welcome,", TokenKind.Text), ("</div>", TokenKind.Tag)];
-            (string Stretch, TokenKind Kind)[] typed = [("// A card.", TokenKind.Comment), ("export", TokenKind.Keyword), ("Card", TokenKind.Method),
-                ("string", TokenKind.Keyword), ("const", TokenKind.Keyword), ("boolean", TokenKind.Keyword), ("return", TokenKind.Keyword)];
-            string Wrong(CodeEditor editor, IEnumerable<(string Stretch, TokenKind Kind)> expected) => string.Join("; ", expected
-                .Select(e => (e.Stretch, e.Kind, Found: KindOf(editor, e.Stretch))).Where(e => e.Found != e.Kind)
-                .Select(e => $"{e.Stretch} as {e.Found?.ToString() ?? "several kinds"}, not {e.Kind}"));
-
-            string tsx = "// A card.\nexport function Card({ title }: { title: string }) {\n    const shown: boolean = title.length > 0;\n" + Element;
-            string wrong = Wrong(Open(window, "Card.tsx", tsx), [.. markup, .. typed]);
-            Assert.True(wrong.Length == 0, $"A .tsx file's JSX element or the TypeScript around it is coloured wrongly: {wrong}");
-
-            wrong = Wrong(Open(window, "Card.jsx", "// A card.\nexport function Card({ title }) {\n    const shown = title.length > 0;\n" + Element), markup);
-            Assert.True(wrong.Length == 0, $"A .jsx file's JSX element is coloured wrongly: {wrong}");
-
-            wrong = Wrong(Open(window, "CARD.md", "# Components\n\n```tsx\n" + tsx + "```\n"), [.. markup, .. typed]);
-            Assert.True(wrong.Length == 0, $"A Markdown tsx block's JSX element or the TypeScript around it is coloured wrongly: {wrong}");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>A shared tokenizer's scratch buffers must not become a document's saved state or colours. Leave
     /// a comment open in one file, then edit both files before comparing their colours with fresh passes.</summary>
-    [AvaloniaFact]
-    public void Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared()
+    private void Two_JSON_documents_keep_independent_states_when_their_tokenizer_is_shared()
     {
         MainWindow first = Window();
         MainWindow second = Window();
@@ -586,78 +339,7 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
-    /// <summary>SCSS and Less coloured by their own grammars, as CSS is, with their variables, mixins and nesting, and
-    /// commented with <c>//</c>; an Avalonia file of the old extension (.paml) as the XAML it is. A Less variable ends
-    /// with its value.</summary>
-    [AvaloniaFact]
-    public void A_stylesheet_in_SCSS_or_Less_and_an_Avalonia_paml_file_show_their_tokens_as_their_kinds()
-    {
-        MainWindow window = Window();
-        CodeEditor editor = Open(window, "theme.scss", Sass);
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "// The theme's colours."));
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "/* A frame round a card. */"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "@use"));
-        Assert.Equal(TokenKind.String, KindOf(editor, "\"sass:math\""));
-        Assert.Equal(TokenKind.Field, KindOf(editor, "$accent"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "#3b82f6"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "!default"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "@mixin"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "framed"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "border"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, ".card"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, "h2"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "24px"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, "&:hover"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "darken"));
-        Assert.Equal(TokenKind.Field, KindOf(editor, "$side"));
-        LineComment(window, editor, "    padding: math.div(24px, 2);\n", "    // padding: math.div(24px, 2);\n");
-
-        editor = Open(window, "theme.less", Less);
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "// The theme's colours."));
-        Assert.Equal(TokenKind.Field, KindOf(editor, "@accent"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "#3b82f6"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "@import"));
-        Assert.Equal(TokenKind.String, KindOf(editor, "\"base.less\""));
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "/* A frame round a card. */"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, ".framed"));
-        Assert.Equal(TokenKind.Field, KindOf(editor, "@width"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "border"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, ".card"));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "padding"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "12px"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, "&:hover"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "darken"));
-        LineComment(window, editor, "    padding: 12px;\n", "    // padding: 12px;\n");
-
-        editor = Open(window, "Main.paml", Paml);
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "<!-- The main window. -->"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, "<Window"));
-        Assert.Equal(TokenKind.AttributeName, KindOf(editor, "xmlns"));
-        Assert.Equal(TokenKind.AttributeValue, KindOf(editor, "\"Hello\""));
-        Assert.Equal(TokenKind.Entity, KindOf(editor, "&amp;"));
-        Assert.Equal(TokenKind.Tag, KindOf(editor, "</Window>"));
-        LineComment(window, editor, "  <TextBlock Text=\"Hello\" />\n", "  <!--<TextBlock Text=\"Hello\" />-->\n");
-        Ui.PlaceAfter(editor, "areas\">");
-        Ui.Press(window, "ENTER");
-        Assert.Contains("areas\">\n  \n  <TextBlock", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        window.Close();
-
-        // Comment with Line Comment on a line writes the language's comment there, and takes it off again.
-        static void LineComment(MainWindow window, CodeEditor editor, string line, string commented)
-        {
-            string text = editor.Document.Snapshot.ToString();
-            editor.Focus();
-            editor.Selections = SelectionSet.Single(text.IndexOf(line, StringComparison.Ordinal) + 6);
-            Ui.Run(window, EditorActions.ToggleLineComment);
-            Assert.Contains(commented, editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-            Assert.Equal(TokenKind.Comment, KindOf(editor, commented.Trim()));
-            Ui.Run(window, EditorActions.ToggleLineComment);
-            Assert.Equal(text, editor.Document.Snapshot.ToString());
-        }
-    }
-
-    [AvaloniaFact]
-    public void Each_kind_is_drawn_in_its_own_colour_in_the_dark_theme_and_the_light()
+    private void Each_kind_is_drawn_in_its_own_colour_in_the_dark_theme_and_the_light()
     {
         MainWindow window = Window();
         (string File, string Text, string Token, TokenKind Kind)[] shown =
@@ -690,8 +372,7 @@ public sealed class FileColoursTests : FileColoursFolder
 
     /// <summary>Settings' Colour scheme: the themes repository's code colour scheme (Reef) for the code under either theme, at once, the editor keeping the
     /// theme's ground; the theme's own scheme back again.</summary>
-    [AvaloniaFact]
-    public void A_code_colour_scheme_from_the_repository_draws_the_code_in_its_colours_on_the_themes_ground_under_either_theme()
+    private void A_code_colour_scheme_from_the_repository_draws_the_code_in_its_colours_on_the_themes_ground_under_either_theme()
     {
         MainWindow window = Window();
         try
@@ -725,8 +406,7 @@ public sealed class FileColoursTests : FileColoursFolder
         }
     }
 
-    [AvaloniaFact]
-    public void Typing_keeps_colours_right_after_an_XML_comment_and_a_Markdown_code_fence_open_and_close()
+    private void Typing_keeps_colours_right_after_an_XML_comment_and_a_Markdown_code_fence_open_and_close()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Shapes.csproj", Project);
@@ -776,82 +456,10 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
-    /// <summary>The files a solution keeps beside its code edit as their kinds: a .gitignore and an .editorconfig comment
-    /// a line with '#', the .editorconfig coloured as INI is; a solution filter and a solution's launch profiles are the JSON
-    /// they are, coloured and folded; and the status bar names a XAML file XAML and a project file MSBuild, not XML.</summary>
-    [AvaloniaFact]
-    public void An_ignore_file_an_editorconfig_and_a_solution_filter_edit_as_their_kinds_and_the_status_bar_names_XAML()
-    {
-        MainWindow window = Window();
-        CodeEditor editor = Open(window, ".gitignore", "bin/\nobj/\n");
-        editor.Focus();
-        editor.Selections = SelectionSet.Single(0);
-        Ui.Run(window, EditorActions.ToggleLineComment);
-        Assert.Equal("# bin/\nobj/\n", editor.Document.Snapshot.ToString());
-        Assert.Equal("Ignore", window.LanguageShown);
-
-        const string Config = "root = true\n\n[*.cs]\nindent_style = space\n";
-        editor = Open(window, "config/.editorconfig", Config);
-        editor.Focus();
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "indent_style"));
-        editor.Selections = SelectionSet.Single(Config.IndexOf("indent_style", StringComparison.Ordinal));
-        Ui.Run(window, EditorActions.ToggleLineComment);
-        Assert.Contains("\n# indent_style = space\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "# indent_style = space"));
-        Assert.Equal("EditorConfig", window.LanguageShown);
-
-        editor = Open(window, "Shop.slnf", """
-            {
-              "solution": {
-                "path": "Shop.slnx",
-                "projects": [
-                  "src/Api/Api.csproj"
-                ]
-              }
-            }
-
-            """);
-        Assert.Equal("JSON", window.LanguageShown);
-        Assert.Equal(TokenKind.JsonKey, KindOf(editor, "\"solution\""));
-        Assert.Equal(TokenKind.String, KindOf(editor, "\"Shop.slnx\""));
-        Assert.True(editor.FoldRegions.Count >= 3, $"The solution filter has {editor.FoldRegions.Count} folds, where its object, its solution and its projects each fold");
-        foreach (string launches in (string[])["Shop.slnLaunch", "Shop.slnLaunch.user"])
-        {
-            editor = Open(window, launches, "[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": []\n  }\n]");
-            Assert.True(window.LanguageShown == "JSON" && KindOf(editor, "\"Name\"") == TokenKind.JsonKey,
-                $"{launches}, Visual Studio's launch profiles, edits as {window.LanguageShown} rather than the JSON it is");
-        }
-
-        Open(window, "Views/MainView.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\" />\n");
-        Assert.Equal("XAML", window.LanguageShown);
-        Open(window, "Shapes.csproj", Project);
-        Assert.Equal("MSBuild", window.LanguageShown);
-        window.Close();
-    }
-
-    /// <summary>An .http file is HTTP: its request's method coloured a keyword, its comments comments, and a line commented
-    /// with '#'.</summary>
-    [AvaloniaFact]
-    public void An_http_file_is_coloured_as_HTTP_and_comments_a_line_with_a_hash()
-    {
-        MainWindow window = Window();
-        const string Requests = "### All items\n# Every item there is\nGET https://example.com/items\nAccept: application/json\n";
-        CodeEditor editor = Open(window, "api.http", Requests);
-        editor.Focus();
-        Assert.Equal("HTTP", window.LanguageShown);
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "GET"));
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "# Every item there is"));
-        editor.Selections = SelectionSet.Single(Requests.IndexOf("Accept", StringComparison.Ordinal));
-        Ui.Run(window, EditorActions.ToggleLineComment);
-        Assert.Contains("\n# Accept: application/json\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
-        window.Close();
-    }
-
     /// <summary>Godot's files in their kinds' colours: a GDScript file's keywords, function, class, string, number and
     /// comment, a scene's sections, strings and paths, and a shader's comment and number; a script names itself GDScript, indents
     /// with a tab where its lines say nothing, and comments a line with '#'.</summary>
-    [AvaloniaFact]
-    public void A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds()
+    private void A_GDScript_file_a_scene_and_a_shader_show_their_tokens_as_their_kinds()
     {
         MainWindow window = Window();
         const string Script = "extends Node2D\n\n## How fast it spins.\n@export var speed: float = 2.5\n\nfunc _process(delta: float) -> void:\n"
@@ -887,36 +495,7 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
-    /// <summary>A Python file's tokens show as their kinds: its word operators and self as keywords, a built-in type as a
-    /// class, an f-string's text as a string however its field's format spec reads, and the code after it as code; a Markdown
-    /// file's python block is coloured as the file is.</summary>
-    [AvaloniaFact]
-    public void A_python_file_and_a_markdown_python_block_show_their_tokens_as_their_kinds()
-    {
-        MainWindow window = Window();
-        const string Code = "# Sums a day's orders.\nimport json\n\nclass Shop(Base):\n    \"\"\"The shop.\"\"\"\n\n    def total(self, rows: list) -> int:\n"
-            + "        if rows and not self.closed:\n            return sum(rows) + 42\n        return f\"none {rows:'>10} left\"\n\n    def after(self):\n        pass\n";
-        CodeEditor editor = Open(window, "shop.py", Code);
-        editor.Focus();
-        Assert.Equal("Python", window.LanguageShown);
-        (string Stretch, TokenKind Kind)[] expected = [("# Sums a day's orders.", TokenKind.Comment), ("import", TokenKind.Keyword), ("class", TokenKind.Keyword),
-            ("Shop", TokenKind.Class), ("Base", TokenKind.Class), ("\"\"\"The shop.\"\"\"", TokenKind.String), ("def", TokenKind.Keyword), ("total", TokenKind.Method),
-            ("self", TokenKind.Keyword), ("list", TokenKind.Class), ("and", TokenKind.Keyword), ("not", TokenKind.Keyword), ("return", TokenKind.Keyword),
-            ("42", TokenKind.Number), ("none ", TokenKind.String), (" left", TokenKind.String), ("after", TokenKind.Method), ("pass", TokenKind.Keyword)];
-        string[] wrong = [.. expected.Select(e => (e.Stretch, e.Kind, Found: KindOf(editor, e.Stretch))).Where(e => e.Found != e.Kind)
-            .Select(e => $"{e.Stretch} as {e.Found?.ToString() ?? "several kinds"}, not {e.Kind}")];
-        Assert.True(wrong.Length == 0, $"Python's tokens are not coloured as their kinds: {string.Join("; ", wrong)}");
-
-        editor = Open(window, "NOTES.md", "# Notes\n\n```python\n# The sum.\ndef total():\n    return 42\n```\n");
-        Assert.Equal(TokenKind.Comment, KindOf(editor, "# The sum."));
-        Assert.Equal(TokenKind.Keyword, KindOf(editor, "def"));
-        Assert.Equal(TokenKind.Method, KindOf(editor, "total"));
-        Assert.Equal(TokenKind.Number, KindOf(editor, "42"));
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own()
+    private void Comment_with_line_comment_writes_each_languages_own_comment_and_block_comment_wraps_XML_in_its_own()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "ci.yml", Workflow);
@@ -967,8 +546,7 @@ public sealed class FileColoursTests : FileColoursFolder
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_tag_name_at_the_caret_lights_up_with_its_pairs_and_brackets_pair_only_outside_strings()
+    private void A_tag_name_at_the_caret_lights_up_with_its_pairs_and_brackets_pair_only_outside_strings()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Shapes.csproj", Project);
@@ -1010,8 +588,7 @@ public sealed class FileColoursTests : FileColoursFolder
     /// near the caret only: onto the root element's start tag or its end tag in 1,900 lines of XML, a move and the pair
     /// it lights up allocate on the UI thread what they do in a hundred lines. In 20,000 lines the root's pair is too
     /// far to light up; Move Caret to Matching Brace, asked once, still goes there and back.</summary>
-    [AvaloniaFact]
-    public void Moving_the_caret_onto_a_tags_name_reads_only_the_tags_near_it_and_Matching_Brace_goes_as_far_as_its_pair()
+    private void Moving_the_caret_onto_a_tags_name_reads_only_the_tags_near_it_and_Matching_Brace_goes_as_far_as_its_pair()
     {
         MainWindow window = Window();
         (long longStart, long longEnd) = TagMoves(window, "Long.xml", Groups(95));
@@ -1038,49 +615,29 @@ public sealed class FileColoursTests : FileColoursFolder
         Assert.Equal(start, editor.Selections.Primary.Caret);
         window.Close();
     }
-
-    /// <summary>The caret moved onto a bracket finds its pair among the lines near it: onto the brace that opens a JSON
-    /// file of 30,000 items, or after the one that closes it, a move reads no more than the 2,000 lines beside it and
-    /// allocates on the UI thread what a move onto one in 100 items does. That pair is too far to light up; an item's
-    /// braces still light up together, and Move Caret to Matching Brace, asked once, still goes from the first brace to
-    /// the last and back.</summary>
-    [AvaloniaFact]
-    public void Moving_the_caret_onto_a_bracket_reads_only_the_lines_near_it_and_Matching_Brace_goes_as_far_as_its_pair()
-    {
-        MainWindow window = Window();
-        string large = Items(30_000);
-        (long longBytes, long longLines) = BracketMoves(window, "Long.json", large, paired: false);
-        (long shortBytes, long shortLines) = BracketMoves(window, "Short.json", Items(100), paired: true);
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A move onto the outer brace and back read {longLines:N0} lines and allocated {longBytes:N0} bytes in 30,000 items, {shortLines:N0} lines and {shortBytes:N0} bytes in 100.");
-        Assert.True(longLines <= 2 * 2_000,
-            $"A move onto the brace around 30,000 items and after its pair read {longLines:N0} lines on the UI thread looking for the pairs, more than the 2,000 near each");
-        Assert.True(longBytes <= shortBytes + (16 * 1024),
-            $"A move onto the brace around 30,000 items allocated {longBytes / 1024.0:F1} KB on the UI thread, against {shortBytes / 1024.0:F1} KB in 100");
-
-        CodeEditor editor = Open(window, "Long.json", large);
-        int item = large.IndexOf("{ \"id\": 15000,", StringComparison.Ordinal);
-        Assert.Equal((item, large.IndexOf('}', item)), PairAt(editor, item));
-        int end = large.LastIndexOf('}');
-        editor.Selections = SelectionSet.Single(0);
-        editor.Focus();
-        Ui.Run(window, EditorActions.MatchBrace);
-        Assert.Equal(end, editor.Selections.Primary.Caret);
-        Ui.Run(window, EditorActions.MatchBrace);
-        Assert.Equal(0, editor.Selections.Primary.Caret);
-        window.Close();
-    }
 }
 
 /// <summary>A key in a long file of a language TextMate colours costs the UI thread what one in a short file does, counted
 /// in the lines the grammar reads and the bytes the UI thread allocates.</summary>
 public sealed class FileColoursResponsivenessTests : FileColoursFolder
 {
+    /// <summary>A key colours only what it changed: in twenty thousand lines of XML or five thousand of Markdown it
+    /// reads the line it changed, at the end of twenty thousand line comments it costs what it does in one block
+    /// comment, a parse landing after a key hands the screen what its worker read, and a union typed has its name in a
+    /// struct's colour where it is declared.</summary>
+    [AvaloniaFact]
+    public void A_key_colours_only_what_it_changed_however_long_the_file()
+    {
+        Flow.StepApart<FileColoursResponsivenessTests>("a key in twenty thousand lines of XML or five thousand of Markdown reads the line it changed", t => t.A_key_in_twenty_thousand_lines_of_XML_or_five_thousand_of_Markdown_reads_the_line_it_changed());
+        Flow.StepApart<FileColoursResponsivenessTests>("a key at the end of twenty thousand line comments costs what it does in one block comment", t => t.A_key_at_the_end_of_twenty_thousand_line_comments_costs_what_it_does_in_one_block_comment());
+        Flow.StepApart<FileColoursResponsivenessTests>("a parse landing after a key hands the screen the colours its worker read", t => t.A_parse_landing_after_a_key_hands_the_screen_the_colours_its_worker_read());
+        Flow.StepApart<FileColoursResponsivenessTests>("a union typed has its name in a struct's colour where it is declared", t => t.A_union_typed_has_its_name_in_a_structs_colour_where_it_is_declared());
+    }
+
     /// <summary>A key in a file of 20,000 lines of XML, or 5,000 of Markdown, has the grammar read the line it changed,
     /// off the UI thread, and the UI thread do what a key in a short file of the language costs it; a comment opened at the
     /// top is read to the end of the file and lands whole.</summary>
-    [AvaloniaFact]
-    public void A_key_in_twenty_thousand_lines_of_XML_or_five_thousand_of_Markdown_reads_the_line_it_changed()
+    private void A_key_in_twenty_thousand_lines_of_XML_or_five_thousand_of_Markdown_reads_the_line_it_changed()
     {
         string large = Groups(1000);
         Assert.True(large.Count(c => c == '\n') > 20_000);
@@ -1126,8 +683,7 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
     /// <summary>A key typed at the end of 20,000 <c>//</c> lines costs the UI thread about what one at the end of as
     /// many lines inside one <c>/* */</c> does, and the comments are still coloured as comments, on screen and far from
     /// it.</summary>
-    [AvaloniaFact]
-    public void A_key_at_the_end_of_twenty_thousand_line_comments_costs_what_it_does_in_one_block_comment()
+    private void A_key_at_the_end_of_twenty_thousand_line_comments_costs_what_it_does_in_one_block_comment()
     {
         string[] lines = [.. Enumerable.Range(0, 20_000).Select(i => $"The notes, line {i}")];
         string head = "namespace Notes;\n\npublic static class Kept\n{\n    public const int Count = 1;\n}\n\n";
@@ -1168,8 +724,7 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
 
     /// <summary>A C# 15 union typed into a file has its name in a struct's colour at its declaration, as a record struct's
     /// is, from the parser's colours alone.</summary>
-    [AvaloniaFact]
-    public void A_union_typed_has_its_name_in_a_structs_colour_where_it_is_declared()
+    private void A_union_typed_has_its_name_in_a_structs_colour_where_it_is_declared()
     {
         MainWindow window = Window();
         CodeEditor editor = Open(window, "Pets.cs", "public sealed record Cat(string Name);\npublic sealed record Dog(string Name);\n");
@@ -1184,8 +739,7 @@ public sealed class FileColoursResponsivenessTests : FileColoursFolder
     /// <summary>The parse a key starts classifies the lines on screen on its worker, and its landing hands them to the
     /// screen: the frame after it classifies nothing again on the UI thread. A key classifies again at most the line it
     /// changed, counted in the characters classified there, not a time.</summary>
-    [AvaloniaFact]
-    public void A_parse_landing_after_a_key_hands_the_screen_the_colours_its_worker_read()
+    private void A_parse_landing_after_a_key_hands_the_screen_the_colours_its_worker_read()
     {
         StringBuilder code = new("namespace Shapes;\n\npublic static class Areas\n{\n");
         for (int i = 0; i < 400; i++)

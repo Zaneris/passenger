@@ -19,10 +19,23 @@ namespace Passenger.Tests;
 /// drawn whole in a colour face, its modifier and joiner with it (#1551).</summary>
 public sealed class FontFallbackTests
 {
+    /// <summary>What the editor draws: text the code font lacks in the platform's own fallback, an emoji with its skin
+    /// tone or joiner as one colour glyph in the editor and the terminal, a selection grown along a line in the
+    /// selection's colour in the editor and a console, and a word chosen in Markdown or plain text lighting its other
+    /// places, written 200,000 times costing the window's thread what 2,000 do.</summary>
+    [AvaloniaFact]
+    public void What_the_editor_draws_takes_the_platforms_fallback_the_selections_colour_and_lights_a_words_places()
+    {
+        Flow.StepApart<FontFallbackTests>("text the code font lacks is drawn in the platforms own fallback after settings loaded every font", t => t.Text_the_code_font_lacks_is_drawn_in_the_platforms_own_fallback_after_settings_loaded_every_font());
+        Flow.StepApart<MouseSelectionTests>("a selection grown forward along a line is drawn in the selection's colour in the editor and a console", t => t.A_selection_grown_forward_along_a_line_is_drawn_in_the_selections_colour_in_the_editor_and_a_console());
+        Flow.StepApart<WordPlacesTests>("a word chosen in markdown or plain text lights its other places and marks each on the scrollbar", t => t.A_word_chosen_in_markdown_or_plain_text_lights_its_other_places_and_marks_each_on_the_scrollbar());
+        Flow.StepApart<WordPlacesTests>("a word written 200,000 times lights the thousand around it costing the window's thread what 2,000 do", t => t.A_word_written_200_000_times_lights_the_thousand_around_it_costing_the_windows_thread_what_2_000_do());
+        Flow.StepApart<FontFallbackTests>("an emoji with its skin tone or joiner is drawn as one colour glyph in the editor and the terminal", t => t.An_emoji_with_its_skin_tone_or_joiner_is_drawn_as_one_colour_glyph_in_the_editor_and_the_terminal());
+    }
+
     /// <summary>Arabic, Hebrew, Devanagari and Japanese in strings, typed once Settings' list of installed monospaced fonts
     /// has loaded every family, are each drawn in the face the platform names for the character.</summary>
-    [AvaloniaFact]
-    public void Text_the_code_font_lacks_is_drawn_in_the_platforms_own_fallback_after_settings_loaded_every_font()
+    private void Text_the_code_font_lacks_is_drawn_in_the_platforms_own_fallback_after_settings_loaded_every_font()
     {
         Ui.Await(CodeFonts.InstalledAsync(), "the installed monospaced fonts, which loads every family");
         string[] samples = ["الحساب", "שלום", "नमस्ते", "日本語"];
@@ -56,8 +69,7 @@ public sealed class FontFallbackTests
     /// one glyph of a face with colour glyphs, in the editor and in the terminal: a culture's fallback may name a text face
     /// for the first code point alone (fontconfig's Noto Sans Symbols2 for the hand), which leaves the skin tone a missing
     /// glyph's box beside a monochrome hand (#1551). Skipped where the platform names no colour face for an emoji.</summary>
-    [AvaloniaFact]
-    public void An_emoji_with_its_skin_tone_or_joiner_is_drawn_as_one_colour_glyph_in_the_editor_and_the_terminal()
+    private void An_emoji_with_its_skin_tone_or_joiner_is_drawn_as_one_colour_glyph_in_the_editor_and_the_terminal()
     {
         string[] emoji = ["\U0001F44D\U0001F3FD", "\U0001F600", "\U0001F469\u200D\U0001F4BB"];
         EditorRig rig = new($"string s = \"{string.Join(' ', emoji)}\";\n");

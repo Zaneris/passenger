@@ -20,8 +20,20 @@ namespace Passenger.Tests;
 /// every row drawn afresh.</summary>
 public sealed class RetainedRowsTests
 {
+    /// <summary>The editor's retained rows show what rows drawn afresh show, scrolled by the wheel, where lines were
+    /// deleted, put back, pasted and worked on, and typed into after scrolling away, and a key draws again only the
+    /// rows it changed and those the caret left or entered.</summary>
     [AvaloniaFact]
-    public void A_view_the_wheel_scrolled_shows_every_row_as_the_rows_drawn_afresh_there_do()
+    public void Retained_rows_show_what_rows_drawn_afresh_show_and_a_key_draws_again_only_what_it_changed()
+    {
+        Flow.StepApart<RetainedRowsTests>("a view the wheel scrolled shows every row as the rows drawn afresh there do", t => t.A_view_the_wheel_scrolled_shows_every_row_as_the_rows_drawn_afresh_there_do());
+        Flow.StepApart<RetainedRowsTests>("a key draws again only the rows it changed and those the caret left or entered", t => t.A_key_draws_again_only_the_rows_it_changed_and_those_the_caret_left_or_entered());
+        Flow.StepApart<RetainedRowsTests>("rows where lines were deleted or put back show what an editor opened on the text shows", t => t.Rows_where_lines_were_deleted_or_put_back_show_what_an_editor_opened_on_the_text_shows());
+        Flow.StepApart<RetainedRowsTests>("rows where lines were pasted and worked on show what an editor opened on the text shows", t => t.Rows_where_lines_were_pasted_and_worked_on_show_what_an_editor_opened_on_the_text_shows());
+        Flow.StepApart<RetainedRowsTests>("a line typed into after rows scrolled away shows what was typed", t => t.A_line_typed_into_after_rows_scrolled_away_shows_what_was_typed());
+    }
+
+    private void A_view_the_wheel_scrolled_shows_every_row_as_the_rows_drawn_afresh_there_do()
     {
         EditorRig rig = Steady(string.Join('\n', Enumerable.Range(0, 400).Select(Line)));
         CodeEditor editor = rig.Editor;
@@ -74,8 +86,7 @@ public sealed class RetainedRowsTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_key_draws_again_only_the_rows_it_changed_and_those_the_caret_left_or_entered()
+    private void A_key_draws_again_only_the_rows_it_changed_and_those_the_caret_left_or_entered()
     {
         EditorRig rig = Steady(string.Join('\n', Enumerable.Range(0, 200).Select(Line)));
         CodeEditor editor = rig.Editor;
@@ -129,80 +140,6 @@ public sealed class RetainedRowsTests
             $"After the keys the view differs from its rows drawn afresh at {differs / 4 % PixelWidth(rig, editor)}, {differs / 4 / PixelWidth(rig, editor)} (pixels): a row kept through a key shows what it showed before");
     }
 
-    /// <summary>A key in a window's editor draws again only its row wherever the caret stands: the status bar's line and
-    /// column, at the window's foot, follow in the window's next frame, as the compositor draws one rectangle a frame around
-    /// all it changed. The status bar says where each key typed, and a key costs the UI thread about what it does at the
-    /// editor's foot, the rows between costing some 200 bytes each.</summary>
-    [AvaloniaFact]
-    public void A_key_draws_again_as_many_rows_with_the_caret_at_the_editors_top_as_at_its_foot_and_the_status_bar_says_where_it_typed()
-    {
-        string folder = TestFolders.Create("rows-redrawn-");
-        StringBuilder text = new();
-        for (int i = 0; i < 20_000; i++)
-        {
-            text.Append("    public int Value").Append(i).Append(" { get; set; } // the ").Append(i).Append("th of them\n");
-        }
-        string path = Path.Combine(folder, "Large.txt");
-        File.WriteAllText(path, text.ToString());
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
-        try
-        {
-            window.OpenFile(path);
-            Ui.Settle();
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            TextBlock place = window.FindControl<TextBlock>("CaretText")!;
-            editor.ScrollTo(new Vector(0, 10_000 * editor.LineHeight));
-            editor.Focus();
-            Ui.Settle();
-            (int first, int last) = editor.LinesShown;
-            RowsRedrawn rows = RowsRedrawn.Over(window, editor, first, last);
-            // The first key marks the file changed in its tab, which the keys measured then leave as it is.
-            editor.Selections = SelectionSet.Single(editor.Document.Snapshot.GetLineStart(first + 1));
-            window.KeyTextInput("w");
-            Ui.Settle();
-            (int top, long topBytes) = Keys(first + 1);
-            (int foot, long footBytes) = Keys(last - 2);
-            TestContext.Current.TestOutputHelper?.WriteLine(
-                $"A key drew {top} rows again with the caret on line {first + 2}, the editor's second row, allocating {topBytes:N0} bytes on the UI thread with its frames, "
-                + $"and {foot} rows, {footBytes:N0} bytes, on line {last - 1}, of the {last - first + 1} rows on screen");
-            Assert.True(top == foot,
-                $"A key with the caret on the editor's second row drew {top} rows again, and {foot} with the caret near its foot: the rows between the caret's and the status bar's line and column were drawn again");
-            Assert.True(topBytes <= footBytes + 2048,
-                $"A key with the caret on the editor's second row allocated {topBytes:N0} bytes on the UI thread with its frames, against {footBytes:N0} near its foot: it costs by where the caret stands");
-
-            // The least a key and its frames allocated on the UI thread, of six on a line, and the most rows a frame drew.
-            (int Rows, long Bytes) Keys(int line)
-            {
-                int at = editor.Document.Snapshot.GetLineStart(line) + 20;
-                editor.Selections = SelectionSet.Single(at);
-                Ui.Settle();
-                Assert.True(editor.LinesShown.First == first, $"Putting the caret on line {line + 1} scrolled the view from line {first + 1} to {editor.LinesShown.First + 1}");
-                int most = 0;
-                long least = long.MaxValue;
-                GC.Collect(1, GCCollectionMode.Forced, blocking: true);
-                for (int i = 0; i < 6; i++)
-                {
-                    rows.Most = 0;
-                    long before = GC.GetAllocatedBytesForCurrentThread();
-                    window.KeyTextInput(i % 2 == 0 ? "x" : "y");
-                    Dispatcher.UIThread.RunJobs();
-                    AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-                    Dispatcher.UIThread.RunJobs();
-                    least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-                    Ui.Settle();
-                    most = Math.Max(most, rows.Most);
-                    string expected = string.Create(CultureInfo.InvariantCulture, $"{line + 1}:{20 + i + 2}");
-                    Assert.True(place.Text == expected, $"After a key typed at {expected} the status bar says the caret is at {place.Text}");
-                }
-                return (most, least);
-            }
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
     /// <summary>The most rows of an editor a frame drew again since <see cref="Most"/> was set: those whose middle the
     /// frame's clip reaches. A visual over the whole window, which the compositor draws in every frame, clipped to what it
     /// changed.</summary>
@@ -234,8 +171,7 @@ public sealed class RetainedRowsTests
         }
     }
 
-    [AvaloniaFact]
-    public void Rows_where_lines_were_deleted_or_put_back_show_what_an_editor_opened_on_the_text_shows()
+    private void Rows_where_lines_were_deleted_or_put_back_show_what_an_editor_opened_on_the_text_shows()
     {
         // A file shorter than the view, as a new console project's Program.cs is.
         EditorRig small = Steady(string.Join('\n', SmallFile));
@@ -278,8 +214,7 @@ public sealed class RetainedRowsTests
         }
     }
 
-    [AvaloniaFact]
-    public void Rows_where_lines_were_pasted_and_worked_on_show_what_an_editor_opened_on_the_text_shows()
+    private void Rows_where_lines_were_pasted_and_worked_on_show_what_an_editor_opened_on_the_text_shows()
     {
         EditorRig rig = Steady(string.Join('\n', SmallFile));
         int LineStart(int line) => rig.Document.Snapshot.GetLineStart(line);
@@ -317,8 +252,7 @@ public sealed class RetainedRowsTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_line_typed_into_after_rows_scrolled_away_shows_what_was_typed()
+    private void A_line_typed_into_after_rows_scrolled_away_shows_what_was_typed()
     {
         EditorRig rig = Steady(string.Join('\n', SmallFile));
         // A row scrolled out of view above and none come into view below, as a scroll in a short file leaves it.

@@ -18,10 +18,27 @@ public sealed class ListKeysTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The keys stay where the person works and act on the row chosen: Enter, F4, Space and Delete on a
+    /// bookmark's, a commit's and a breakpoint's row, a popup from an Explorer row giving it the keys back, each tool
+    /// window shown with the keys inside, Escape giving the editor the keys, the menu key opening a row's menu under
+    /// it, and the status bar's last message and the terminal's last command opening as text.</summary>
+    [AvaloniaFact]
+    public void The_keys_stay_where_the_person_is_working_and_a_lists_keys_act_on_its_row()
+    {
+        Flow.StepApart<ListKeysTests>("enter and F4 on a bookmark's row go to its line and Delete takes it out", t => t.Enter_and_F4_on_a_bookmarks_row_go_to_its_line_and_Delete_takes_it_out());
+        Flow.StepApart<ListKeysTests>("space on a commit row flips its box and F4 opens its file", t => t.Space_on_a_commit_row_flips_its_box_and_F4_opens_its_file());
+        Flow.StepApart<ListKeysTests>("the Breakpoints window opens with the keys on its chosen breakpoint and Delete takes each out in turn", t => t.The_Breakpoints_window_opens_with_the_keys_on_its_chosen_breakpoint_and_Delete_takes_each_out_in_turn());
+        Flow.StepApart<KeysPlaceTests>("a popup opened from an Explorer row gives the row the keys back as it closes", t => t.A_popup_opened_from_an_Explorer_row_gives_the_row_the_keys_back_as_it_closes());
+        Flow.StepApart<KeysPlaceTests>("each tool window's keys show it with the keys inside it", t => t.Each_tool_windows_keys_show_it_with_the_keys_inside_it());
+        Flow.StepApart<KeysPlaceTests>("escape in a tool window gives the editor the keys with the window still shown", t => t.Escape_in_a_tool_window_gives_the_editor_the_keys_with_the_window_still_shown());
+        Flow.StepApart<KeysPlaceTests>("the menu key opens a row's menu under the chosen row wherever the pointer is", t => t.The_menu_key_opens_a_rows_menu_under_the_chosen_row_wherever_the_pointer_is());
+        Flow.StepApart<ReadAsTextTests>("the status bar's last message opens as text in every keymap and Escape gives its bar the keys back", t => t.The_status_bars_last_message_opens_as_text_in_every_keymap_and_Escape_gives_its_bar_the_keys_back());
+        Flow.StepApart<ReadAsTextTests>("the terminal's last command and its output open as text and Escape gives the terminal its keys back", t => t.The_terminals_last_command_and_its_output_open_as_text_and_Escape_gives_the_terminal_its_keys_back());
+    }
+
     /// <summary>In the Bookmarks window, Enter on a bookmark's row goes to its line as a double click does, F4 too, and
     /// Delete takes the bookmark out.</summary>
-    [AvaloniaFact]
-    public void Enter_and_F4_on_a_bookmarks_row_go_to_its_line_and_Delete_takes_it_out()
+    private void Enter_and_F4_on_a_bookmarks_row_go_to_its_line_and_Delete_takes_it_out()
     {
         TestFolders.Write(folder, "Alpha.txt", "first\nsecond\nthird\n");
         TestFolders.Write(folder, "Beta.txt", "one\ntwo\n");
@@ -63,8 +80,7 @@ public sealed class ListKeysTests : IDisposable
 
     /// <summary>In the Commit window, Space on a changed file's row flips its box, and F4 opens the file (Enter's diff is
     /// DiffTabsTests').</summary>
-    [AvaloniaFact]
-    public void Space_on_a_commit_row_flips_its_box_and_F4_opens_its_file()
+    private void Space_on_a_commit_row_flips_its_box_and_F4_opens_its_file()
     {
         TestFolders.Write(folder, "Notes.txt", "notes\n");
         TestFolders.Write(folder, "Other.txt", "other\n");
@@ -97,8 +113,7 @@ public sealed class ListKeysTests : IDisposable
 
     /// <summary>The Breakpoints window opens with the keys on its chosen breakpoint's row; an exception breakpoint added by
     /// its type's name takes them on its own row, and Delete takes each out in turn, the keys going on to the next.</summary>
-    [AvaloniaFact]
-    public void The_Breakpoints_window_opens_with_the_keys_on_its_chosen_breakpoint_and_Delete_takes_each_out_in_turn()
+    private void The_Breakpoints_window_opens_with_the_keys_on_its_chosen_breakpoint_and_Delete_takes_each_out_in_turn()
     {
         TestFolders.Write(folder, "Program.cs", "int one = 1;\nint two = 2;\nSystem.Console.WriteLine(one + two);\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

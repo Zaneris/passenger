@@ -15,7 +15,11 @@ public sealed class StatusLineTests
         + "where it opens again from its row";
 
     [AvaloniaFact]
-    public void A_long_message_is_cut_with_an_ellipsis_while_the_path_keeps_its_room_up_to_its_share()
+    public void A_message_and_a_path_share_the_status_line_each_cut_at_its_share_with_an_ellipsis() => Cases.All(
+        ("A long message is cut with an ellipsis while the path keeps its room up to its share", A_long_message_is_cut_with_an_ellipsis_while_the_path_keeps_its_room_up_to_its_share),
+        ("A path longer than its share is cut at it beside a long message and gives way to a short one", A_path_longer_than_its_share_is_cut_at_it_beside_a_long_message_and_gives_way_to_a_short_one));
+
+    private void A_long_message_is_cut_with_an_ellipsis_while_the_path_keeps_its_room_up_to_its_share()
     {
         (TextBlock path, TextBlock message) = Laid("src › Greenhouse.Core › Forecast.cs", Long, 700);
         Assert.Equal(path.DesiredSize.Width, path.Bounds.Width, 0.5);
@@ -23,8 +27,7 @@ public sealed class StatusLineTests
         Assert.True(message.TextLayout.TextLines.Any(line => line.HasCollapsed), "The long message is not cut with an ellipsis");
     }
 
-    [AvaloniaFact]
-    public void A_path_longer_than_its_share_is_cut_at_it_beside_a_long_message_and_gives_way_to_a_short_one()
+    private void A_path_longer_than_its_share_is_cut_at_it_beside_a_long_message_and_gives_way_to_a_short_one()
     {
         string deep = string.Join(" › ", Enumerable.Repeat("Processing", 12)) + " › RefundCalculator.cs";
         (TextBlock path, TextBlock message) = Laid(deep, Long, 700);

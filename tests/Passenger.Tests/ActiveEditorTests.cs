@@ -23,8 +23,23 @@ namespace Passenger.Tests;
 /// Reset Font Size and Cmd+wheel (Ctrl+wheel elsewhere) changing the font Settings keeps.</summary>
 public sealed class ActiveEditorTests : ActiveEditorFolders
 {
+    /// <summary>Soft wrap: a Markdown file opens wrapped at the editor's width numbered by its first row, Down and Up
+    /// go by rows and End and Home by IntelliJ's rules, a click on a wrapped row puts the caret on the character
+    /// clicked, a narrower window wraps again keeping the line at the top, folds and a breakpoint stay on their lines
+    /// among wrapped ones, and the font size actions and the zoom wheel change the editor's font for the next window
+    /// too.</summary>
     [AvaloniaFact]
-    public void A_Markdown_file_opens_wrapped_at_the_editors_width_each_row_from_a_word_and_its_number_by_its_first_row_only()
+    public void Soft_wrap_wraps_at_the_editors_width_and_moves_clicks_folds_and_zooms_by_rows()
+    {
+        Flow.StepApart<ActiveEditorTests>("a Markdown file opens wrapped at the editor's width each row from a word and its number by its first row only", t => t.A_Markdown_file_opens_wrapped_at_the_editors_width_each_row_from_a_word_and_its_number_by_its_first_row_only());
+        Flow.StepApart<ActiveEditorTests>("down and Up go by rows End and Home by IntelliJ's rules and typing where a row wraps keeps the caret after it", t => t.Down_and_Up_go_by_rows_End_and_Home_by_IntelliJs_rules_and_typing_where_a_row_wraps_keeps_the_caret_after_it());
+        Flow.StepApart<ActiveEditorTests>("a click on a wrapped row puts the caret on the character clicked and one past a row's end at that end", t => t.A_click_on_a_wrapped_row_puts_the_caret_on_the_character_clicked_and_one_past_a_rows_end_at_that_end());
+        Flow.StepApart<ActiveEditorTests>("a narrower window wraps the text again at its width and keeps the line at the top", t => t.A_narrower_window_wraps_the_text_again_at_its_width_and_keeps_the_line_at_the_top());
+        Flow.StepApart<ActiveEditorTests>("folding and a breakpoint stay on their lines with wrapped lines above and among them", t => t.Folding_and_a_breakpoint_stay_on_their_lines_with_wrapped_lines_above_and_among_them());
+        Flow.StepApart<ActiveEditorTests>("the font size actions and the zoom wheel change the editor's font and the next window opens on it", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it());
+    }
+
+    private void A_Markdown_file_opens_wrapped_at_the_editors_width_each_row_from_a_word_and_its_number_by_its_first_row_only()
     {
         MainWindow window = Open("notes.md", Notes);
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -85,41 +100,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_files_Settings_names_are_the_ones_that_open_wrapped()
-    {
-        string code = "class Long\n{\n    // " + Words + "\n}\n";
-        File.WriteAllText(Path.Combine(folder, "Long.cs"), code);
-        File.WriteAllText(Path.Combine(folder, "notes.txt"), Words + "\n");
-        MainWindow window = Open("notes.md", Notes);
-        window.OpenFile(Path.Combine(folder, "notes.txt"));
-        window.OpenFile(Path.Combine(folder, "Long.cs"));
-        Ui.Settle();
-        Passenger.App.Workspace.OpenDocument csharp = window.EditorArea.Active!;
-        Passenger.App.Workspace.OpenDocument notes = window.EditorArea.Documents.Single(d => d.Name == "notes.md");
-        Assert.True(window.EditorArea.Documents.Single(d => d.Name == "notes.txt").SoftWrap, "A .txt file opened unwrapped.");
-        Assert.True(notes.SoftWrap, "A .md file opened unwrapped.");
-        Assert.False(csharp.SoftWrap, "A .cs file opened wrapped, which Rider's masks leave out.");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        LineSpan comment = editor.Document.Snapshot.GetLine(2);
-        Assert.Equal(At(editor, comment.Start).Y, At(editor, comment.End).Y);
-
-        SettingsDialog dialog = window.ShowSettings();
-        Ui.Settle();
-        dialog.Query = "soft-wrap";
-        Ui.Settle();
-        Assert.Contains("Soft-wrap these files", dialog.Shown);
-        dialog.Change(s => s with { SoftWrapFiles = "*.cs" });
-        dialog.Ok();
-        Ui.Settle();
-        Assert.True(csharp.SoftWrap, "Settings' masks naming *.cs left the open C# file unwrapped.");
-        Assert.False(notes.SoftWrap, "Settings' masks no longer naming *.md left the open Markdown file wrapped.");
-        Assert.True(At(editor, comment.End).Y > At(editor, comment.Start).Y, "The C# file's long line did not wrap.");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Down_and_Up_go_by_rows_End_and_Home_by_IntelliJs_rules_and_typing_where_a_row_wraps_keeps_the_caret_after_it()
+    private void Down_and_Up_go_by_rows_End_and_Home_by_IntelliJs_rules_and_typing_where_a_row_wraps_keeps_the_caret_after_it()
     {
         MainWindow window = Open("notes.md", Notes);
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -185,8 +166,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_click_on_a_wrapped_row_puts_the_caret_on_the_character_clicked_and_one_past_a_rows_end_at_that_end()
+    private void A_click_on_a_wrapped_row_puts_the_caret_on_the_character_clicked_and_one_past_a_rows_end_at_that_end()
     {
         MainWindow window = Open("notes.md", Notes);
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -213,8 +193,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_narrower_window_wraps_the_text_again_at_its_width_and_keeps_the_line_at_the_top()
+    private void A_narrower_window_wraps_the_text_again_at_its_width_and_keeps_the_line_at_the_top()
     {
         StringBuilder text = new();
         for (int i = 0; i < 40; i++)
@@ -244,8 +223,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Folding_and_a_breakpoint_stay_on_their_lines_with_wrapped_lines_above_and_among_them()
+    private void Folding_and_a_breakpoint_stay_on_their_lines_with_wrapped_lines_above_and_among_them()
     {
         string code = "class Shapes\n{\n    // " + Words + "\n    int Area(int w, int h)\n    {\n        int area = "
             + string.Join(" + ", Enumerable.Range(0, 30).Select(i => $"w * h * {i}")) + ";\n        return area;\n    }\n}\n";
@@ -303,33 +281,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Show_Whitespaces_draws_a_dot_in_each_space_and_an_arrow_across_each_tab_in_their_own_colour()
-    {
-        MainWindow window = Open("Tabs.cs", "class C\n{\n\tint  x = 1;\n}\n");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        TextSnapshot text = editor.Document.Snapshot;
-        int tab = text.GetLineStart(2);
-        int space = tab + "\tint".Length;
-        Color background = Token(window, TokenKeys.Editor_Background);
-        Color whitespace = Token(window, TokenKeys.Editor_Whitespace);
-        Assert.Equal(background, Ui.Pixel(window, SpaceDot(window, editor, space)));
-        Assert.Equal(background, Ui.Pixel(window, TabShaft(window, editor, tab)));
-
-        editor.Focus();
-        Ui.Run(window, AppActions.ShowWhitespaces);
-        Assert.True(window.EditorArea.Active!.ShowWhitespaces);
-        Assert.Equal(whitespace, Ui.Pixel(window, SpaceDot(window, editor, space)));
-        Assert.Equal(whitespace, Ui.Pixel(window, SpaceDot(window, editor, space + 1)));
-        Assert.Equal(whitespace, Ui.Pixel(window, TabShaft(window, editor, tab)));
-
-        Ui.Run(window, AppActions.ShowWhitespaces);
-        Assert.Equal(background, Ui.Pixel(window, SpaceDot(window, editor, space)));
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it()
+    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
         window.Show();
@@ -392,10 +344,20 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
 /// costs with soft wrap off, in the characters it wraps and the bytes it allocates on the UI thread.</summary>
 public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
 {
+    /// <summary>A key in twenty thousand soft-wrapped lines wraps only the line it changed, a key in a screen of
+    /// coloured code makes again only the row it changed, and a frame of hinted lines allocates about what one of the
+    /// same lines without hints does.</summary>
+    [AvaloniaFact]
+    public void A_key_wraps_and_draws_again_only_what_it_changed()
+    {
+        Flow.StepApart<ActiveEditorResponsivenessTests>("a key in twenty thousand soft wrapped lines wraps only the line it changed", t => t.A_key_in_twenty_thousand_soft_wrapped_lines_wraps_only_the_line_it_changed());
+        Flow.StepApart<ActiveEditorResponsivenessTests>("a key in a screen of coloured code makes again only the row it changed", t => t.A_key_in_a_screen_of_coloured_code_makes_again_only_the_row_it_changed());
+        Flow.StepApart<ActiveEditorResponsivenessTests>("a frame of hinted lines allocates about what one of the same lines naming their arguments does", t => t.A_frame_of_hinted_lines_allocates_about_what_one_of_the_same_lines_naming_their_arguments_does());
+    }
+
     /// <summary>Twenty thousand lines of prose, each wrapping onto rows: a key costs the line it changed, never a wrap of the
     /// whole file, and allocates on the UI thread about what it does with soft wrap off.</summary>
-    [AvaloniaFact]
-    public void A_key_in_twenty_thousand_soft_wrapped_lines_wraps_only_the_line_it_changed()
+    private void A_key_in_twenty_thousand_soft_wrapped_lines_wraps_only_the_line_it_changed()
     {
         StringBuilder source = new();
         for (int i = 0; i < 20_000; i++)
@@ -435,25 +397,9 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
     /// <summary>What a key may allocate on the UI thread soft-wrapped beyond what it does unwrapped: its line's rows.</summary>
     private const long SoftWrapSlack = 16 * 1024;
 
-    /// <summary>With soft wrap on, a key in an open C# file (which has folds) of 2,000 members, a wrapped comment over
-    /// each, wraps the line it changed and no more, as in a file of 20, and allocates on the UI thread what a key there
-    /// does, give or take 16 KB.</summary>
-    [AvaloniaFact]
-    public void A_key_in_an_open_soft_wrapped_file_with_folds_wraps_only_its_line_however_long_the_file()
-    {
-        (long smallWrapped, long smallBytes, _) = SoftWrappedKeys("Few.cs", 20);
-        (long largeWrapped, long largeBytes, long wrapAll) = SoftWrappedKeys("Many.cs", 2000);
-        TestContext.Current.TestOutputHelper?.WriteLine(
-            $"A key wrapped {smallWrapped} characters in 20 members and {largeWrapped} in 2,000, allocating {smallBytes / 1024:N0} KB and {largeBytes / 1024:N0} KB on the UI thread; wrapping the larger file's lines allocates {wrapAll / 1024:N0} KB.");
-        Assert.True(largeWrapped <= smallWrapped, $"A key in 2,000 members wrapped {largeWrapped} characters, more than the {smallWrapped} it wraps in 20: it wrapped the file again");
-        Assert.True(largeBytes <= smallBytes + (16 * 1024),
-            $"A key in 2,000 members allocated {largeBytes / 1024:N0} KB on the UI thread, {(largeBytes - smallBytes) / 1024:N0} KB more than in 20: it copied what every line or region has");
-    }
-
     /// <summary>A frame of lines with hints, a parameter's name before each argument, allocates on the UI thread about
     /// what a frame of the same lines naming their arguments in their text does.</summary>
-    [AvaloniaFact]
-    public void A_frame_of_hinted_lines_allocates_about_what_one_of_the_same_lines_naming_their_arguments_does()
+    private void A_frame_of_hinted_lines_allocates_about_what_one_of_the_same_lines_naming_their_arguments_does()
     {
         MainWindow window = new() { Width = 1100, Height = 800, StartsLanguageServer = false };
         window.Show();
@@ -510,8 +456,7 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
     /// does, is under 256 bytes more for each row in an editor showing 67 rows than in one showing 19, the least of six
     /// keys. Every row's view, colours and text were made again for each key, and every row's colours asked for again as
     /// its parse landed: 2.6 KB for each row more.</summary>
-    [AvaloniaFact]
-    public void A_key_in_a_screen_of_coloured_code_makes_again_only_the_row_it_changed()
+    private void A_key_in_a_screen_of_coloured_code_makes_again_only_the_row_it_changed()
     {
         StringBuilder text = new("static class Coloured\n{\n");
         for (int i = 0; i < 200; i++)

@@ -23,8 +23,7 @@ public sealed class MouseSelectionTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    [AvaloniaFact]
-    public void A_selection_grown_forward_along_a_line_is_drawn_in_the_selections_colour_in_the_editor_and_a_console()
+    internal void A_selection_grown_forward_along_a_line_is_drawn_in_the_selections_colour_in_the_editor_and_a_console()
     {
         string notes = Path.Combine(folder, "notes.txt");
         File.WriteAllText(notes, Lines);
@@ -66,8 +65,7 @@ public sealed class MouseSelectionTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Every_key_a_keymap_gives_Copy_copies_what_the_mouse_selected_in_the_Run_and_Debug_consoles()
+    internal void Every_key_a_keymap_gives_Copy_copies_what_the_mouse_selected_in_the_Run_and_Debug_consoles()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         ToolViews bottom = window.BottomPanel;

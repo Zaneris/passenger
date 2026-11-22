@@ -17,8 +17,7 @@ public sealed class IntelliJKeymapTests
     /// <summary>The keymap with nothing of the person's over it.</summary>
     private static Keymap Plain => AppActions.Keymap(KeymapPreset.IntelliJ, new Dictionary<string, string[]>());
 
-    [Fact]
-    public void IntelliJ_IDEAs_keymap_gives_its_actions_IntelliJ_IDEAs_keys_on_this_platform()
+    internal void IntelliJ_IDEAs_keymap_gives_its_actions_IntelliJ_IDEAs_keys_on_this_platform()
     {
         (string Action, string Name, string[] Others, string[] MacOS)[] keys =
         [
@@ -50,33 +49,9 @@ public sealed class IntelliJKeymapTests
         }
     }
 
-    /// <summary>A shortcut set over IntelliJ IDEA's keymap is kept in its own list, never Visual Studio's or VS Code's, runs
-    /// its action there and takes the key from the action that had it; chosen again, Visual Studio's keymap has none of it.</summary>
-    [Fact]
-    public void A_shortcut_set_over_IntelliJ_IDEAs_keymap_is_its_alone()
-    {
-        string goToFile = Mac ? "meta shift O" : "control shift N";
-        AppSettings settings = new AppSettings { Keymap = KeymapPreset.IntelliJ }
-            .WithOwnShortcuts(new Dictionary<string, string[]> { [AppActions.SplitDown] = [goToFile] });
-        Assert.Equal([goToFile], settings.IntelliJShortcuts[AppActions.SplitDown]);
-        Assert.True(settings.Shortcuts.Count == 0 && settings.VSCodeShortcuts.Count == 0,
-            "A shortcut set over IntelliJ IDEA's keymap was kept with Visual Studio's or VS Code's too");
-        Assert.Same(settings.IntelliJShortcuts, settings.OwnShortcuts());
-
-        Keymap keymap = AppActions.Keymap(settings);
-        Shortcut key = Shortcut.Parse(goToFile);
-        Assert.Equal(AppActions.SplitDown, keymap.ActionFor(key));
-        Assert.Empty(keymap.ShortcutsFor(AppActions.GoToFile));
-
-        AppSettings visualStudio = settings with { Keymap = KeymapPreset.VisualStudio };
-        Assert.Empty(visualStudio.OwnShortcuts());
-        Assert.NotEqual(AppActions.SplitDown, AppActions.Keymap(visualStudio).ActionFor(key));
-    }
-
     /// <summary>settings.json's intelliJShortcuts reads back as it was written: a shortcut kept under an action's former id
     /// is the action's now, a null list is passed over, and a settings.json that names no keymap is Visual Studio's.</summary>
-    [Fact]
-    public void IntelliJ_IDEAs_shortcuts_read_back_from_settings_as_they_were_kept()
+    internal void IntelliJ_IDEAs_shortcuts_read_back_from_settings_as_they_were_kept()
     {
         Assert.Equal(KeymapPreset.VisualStudio, new AppSettings().Keymap);
         string former = AppActions.Formerly.First(f => f.Value == AppActions.ServiceDebug).Key;

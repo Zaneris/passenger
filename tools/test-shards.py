@@ -63,7 +63,7 @@ TRIES = 3
 # counted (#2095): a new check joins a flow's step or a table's row where one fits (tests/Shared).
 MOST_TESTS = 2000
 # How many more it may list for now, while #2095's batches bring it down, lowered as each lands until it is 0.
-ALLOWANCE = 2297
+ALLOWANCE = 2039
 # A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit.
 HANG = "10m"
 # What a shard's dotnet test of a project wrote to its console, kept beside its results as it came (`test`), so a shard

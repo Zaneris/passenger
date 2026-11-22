@@ -18,8 +18,7 @@ public sealed class ShortcutTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    [AvaloniaFact]
-    public void A_click_after_a_chords_first_key_forgets_it_so_the_next_letter_is_typed_not_a_comment()
+    internal void A_click_after_a_chords_first_key_forgets_it_so_the_next_letter_is_typed_not_a_comment()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -37,8 +36,7 @@ public sealed class ShortcutTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_chords_first_key_is_forgotten_when_the_focus_moves_and_after_two_seconds_as_in_Rider()
+    internal void A_chords_first_key_is_forgotten_when_the_focus_moves_and_after_two_seconds_as_in_Rider()
     {
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -64,8 +62,7 @@ public sealed class ShortcutTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void On_Windows_AltGr_types_its_letter_where_the_layout_has_one_and_Ctrl_Alt_runs_its_shortcut_where_it_has_none()
+    internal void On_Windows_AltGr_types_its_letter_where_the_layout_has_one_and_Ctrl_Alt_runs_its_shortcut_where_it_has_none()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -90,8 +87,7 @@ public sealed class ShortcutTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void On_Windows_AltGr_types_its_character_into_the_terminal_rather_than_Ctrl_and_Alt_for_the_shell()
+    internal void On_Windows_AltGr_types_its_character_into_the_terminal_rather_than_Ctrl_and_Alt_for_the_shell()
     {
         if (!OperatingSystem.IsWindows())
         {

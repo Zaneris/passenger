@@ -20,8 +20,7 @@ public sealed class KeysPlaceTests : IDisposable
 
     /// <summary>Rename and Find Action opened from an Explorer row and closed by Escape give the row the keys back, so the
     /// next Down chooses the next row rather than moving the editor's caret.</summary>
-    [AvaloniaFact]
-    public void A_popup_opened_from_an_Explorer_row_gives_the_row_the_keys_back_as_it_closes()
+    internal void A_popup_opened_from_an_Explorer_row_gives_the_row_the_keys_back_as_it_closes()
     {
         foreach (string name in (string[])["Alpha.txt", "Beta.txt", "Gamma.txt", "Delta.txt"])
         {
@@ -53,53 +52,9 @@ public sealed class KeysPlaceTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A Shift range chosen down the Explorer goes on from its end once the keys come back: Find Action closed by
-    /// Escape, and Escape to the editor then the Explorer's keys, give them to the row that had them, not the range's start,
-    /// so the next Shift+Down takes in one more row and Down chooses the row after the range.</summary>
-    [AvaloniaFact]
-    public void The_keys_given_back_to_the_Explorer_go_on_from_the_end_of_a_Shift_range()
-    {
-        string[] names = [.. "abcdefghijkl".Select(c => $"{c}.txt")];
-        foreach (string name in names)
-        {
-            TestFolders.Write(folder, name, $"{name}\n");
-        }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        window.OpenFile("l.txt");
-        Ui.Settle();
-        string text = window.EditorArea.Active!.Text.Snapshot.ToString();
-        foreach ((string way, Action leave, Action back) in new (string, Action, Action)[]
-        {
-            ("Find Action closed by Escape", () => Ui.Run(window, AppActions.FindAction), () => Ui.Press(window, "ESCAPE")),
-            ("Escape then the Explorer's keys", () => Ui.Press(window, "ESCAPE"), () => Ui.Run(window, AppActions.FocusExplorer)),
-        })
-        {
-            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.Single(r => r.Name == "c.txt"));
-            for (int i = 0; i < 4; i++)
-            {
-                Ui.Press(window, "shift DOWN");
-            }
-            Assert.Equal(names[2..7], Chosen(window));
-            leave();
-            Assert.False(RowHasKeys(window, window.ExplorerView.Tree.Rows.Single(r => r.Name == "g.txt")), $"{way}: the keys never left the Explorer");
-            back();
-            Assert.True(RowHasKeys(window, window.ExplorerView.Tree.Rows.Single(r => r.Name == "g.txt")),
-                $"{way} gave the keys to {Focused(window)}, not back to g.txt, the row that had them at the Shift range's end");
-            Ui.Press(window, "shift DOWN");
-            Assert.True(Chosen(window).SequenceEqual(names[2..8]), $"{way}, Shift+Down chose {string.Join(", ", Chosen(window))}, not c.txt to h.txt");
-            Ui.Press(window, "DOWN");
-            Assert.True(Chosen(window).SequenceEqual(["i.txt"]), $"{way}, Shift+Down then Down chose {string.Join(", ", Chosen(window))}, not i.txt");
-        }
-        Assert.Equal(text, window.EditorArea.Active!.Text.Snapshot.ToString());
-        window.Close();
-
-        static string[] Chosen(MainWindow window) => [.. window.ExplorerView.SelectedNodes.Select(n => n.Name).Order(StringComparer.Ordinal)];
-    }
-
     /// <summary>Each tool window's keys show it and give it the keys, its search or its list's chosen row first, so what
     /// is typed next goes to it rather than into the open file.</summary>
-    [AvaloniaFact]
-    public void Each_tool_windows_keys_show_it_with_the_keys_inside_it()
+    internal void Each_tool_windows_keys_show_it_with_the_keys_inside_it()
     {
         TestFolders.Write(folder, "Notes.txt", "one\ntwo\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -135,8 +90,7 @@ public sealed class KeysPlaceTests : IDisposable
 
     /// <summary>Escape in a tool window with nothing of its own to cancel gives the editor the keys, the window still shown;
     /// a search with words in it takes Escape for itself first.</summary>
-    [AvaloniaFact]
-    public void Escape_in_a_tool_window_gives_the_editor_the_keys_with_the_window_still_shown()
+    internal void Escape_in_a_tool_window_gives_the_editor_the_keys_with_the_window_still_shown()
     {
         TestFolders.Write(folder, "Notes.txt", "one\ntwo\n");
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -162,8 +116,7 @@ public sealed class KeysPlaceTests : IDisposable
     /// <summary>The menu key (Shift+F10) opens a row's menu under the chosen row, its frame's corner at the row's bottom
     /// left, in the Explorer and in a tool window's list, wherever the pointer is, so a person at the keys finds it where
     /// they are.</summary>
-    [AvaloniaFact]
-    public void The_menu_key_opens_a_rows_menu_under_the_chosen_row_wherever_the_pointer_is()
+    internal void The_menu_key_opens_a_rows_menu_under_the_chosen_row_wherever_the_pointer_is()
     {
         foreach (string name in (string[])["Alpha.txt", "Beta.txt", "Gamma.txt"])
         {

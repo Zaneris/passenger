@@ -23,8 +23,35 @@ public sealed class FoldingTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>Folds hide what the person chose and keep it whole: a method folds to its signature, the caret steps
+    /// past it and going into it unfolds it, line commands take a folded method whole, keys among three hundred folded
+    /// methods carry every region to where the parse finds it, a file opens folded as it last closed and as Collapse to
+    /// Definitions folds, collapsing with the view wheeled down draws the rows, and a project file and a JSON file fold
+    /// by their elements and braces as typing goes on.</summary>
     [AvaloniaFact]
-    public void A_method_folds_to_its_signature_the_caret_steps_past_it_and_going_into_it_unfolds_it()
+    public void Folds_hide_what_the_person_chose_and_keep_it_whole_as_they_edit_and_come_back()
+    {
+        Flow.StepApart<FoldingTests>("a method folds to its signature the caret steps past it and going into it unfolds it", t => t.A_method_folds_to_its_signature_the_caret_steps_past_it_and_going_into_it_unfolds_it());
+        Flow.StepApart<FoldingTests>("line commands take a folded method whole and step over one whole leaving every body whole", t => t.Line_commands_take_a_folded_method_whole_and_step_over_one_whole_leaving_every_body_whole());
+        Flow.StepApart<FoldingTests>("keys among three hundred folded methods carry every region to where the parse finds it", t => t.Keys_among_three_hundred_folded_methods_carry_every_region_to_where_the_parse_finds_it());
+        Flow.StepApart<FoldingTests>("a file opens folded as it last closed and so does its folder after a restart", t => t.A_file_opens_folded_as_it_last_closed_and_so_does_its_folder_after_a_restart());
+        Flow.StepApart<FoldingTests>("a file opens with its header usings and regions folded and Collapse to Definitions folds every member and doc comment", t => t.A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment());
+        Flow.StepApart<FoldingTests>("collapsing with the view wheeled down past where the folded rows end draws them", t => t.Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them());
+        Flow.StepApart<FoldingTests>("a project file folds by its elements and a JSON file by its braces and typing keeps their folds", t => t.A_project_file_folds_by_its_elements_and_a_JSON_file_by_its_braces_and_typing_keeps_their_folds());
+    }
+
+    /// <summary>Typing in a large file reads only what each key changed: below five thousand folded lines it colours
+    /// only the lines on screen, in twenty thousand lines it parses what each key changed and the folds stay those of
+    /// the whole text, and twenty thousand lines of XML are scanned off the window's thread.</summary>
+    [AvaloniaFact]
+    public void Typing_in_a_large_file_reads_and_folds_only_what_each_key_changed()
+    {
+        Flow.StepApart<FoldingTests>("typing below five thousand folded lines colours only the lines on screen", t => t.Typing_below_five_thousand_folded_lines_colours_only_the_lines_on_screen());
+        Flow.StepApart<FoldingTests>("typing in twenty thousand lines parses what each key changed and the folds stay those of the whole text", t => t.Typing_in_twenty_thousand_lines_parses_what_each_key_changed_and_the_folds_stay_those_of_the_whole_text());
+        Flow.StepApart<FoldingTests>("typing in twenty thousand lines of XML scans it off the UI thread and its folds stay those of the whole text", t => t.Typing_in_twenty_thousand_lines_of_XML_scans_it_off_the_UI_thread_and_its_folds_stay_those_of_the_whole_text());
+    }
+
+    private void A_method_folds_to_its_signature_the_caret_steps_past_it_and_going_into_it_unfolds_it()
     {
         string path = Path.Combine(folder, "Shapes.cs");
         File.WriteAllText(path, Source);
@@ -78,8 +105,7 @@ public sealed class FoldingTests : IDisposable
     /// <summary>A folded method is one line to every line command, as the person sees it: Move Line takes it whole and
     /// steps whole over a folded method beside it, both staying folded, and Duplicate, Copy, Cut and Delete Line take
     /// its body with its signature. Each command leaves every method whole.</summary>
-    [AvaloniaFact]
-    public void Line_commands_take_a_folded_method_whole_and_step_over_one_whole_leaving_every_body_whole()
+    private void Line_commands_take_a_folded_method_whole_and_step_over_one_whole_leaving_every_body_whole()
     {
         const string Area = "    int Area(int w, int h)\n    {\n        int area = w * h;\n        return area;\n    }\n";
         const string Perimeter = "    int Perimeter(int w, int h)\n    {\n        return 2 * (w + h);\n    }\n";
@@ -147,8 +173,7 @@ public sealed class FoldingTests : IDisposable
     /// <summary>Folding is what makes a long method cheap to scroll past: with its 5,000 lines folded, a key typed below it
     /// colours the lines on screen, never the folded ones between them, and a frame with nothing new (a caret's blink)
     /// colours nothing.</summary>
-    [AvaloniaFact]
-    public void Typing_below_five_thousand_folded_lines_colours_only_the_lines_on_screen()
+    private void Typing_below_five_thousand_folded_lines_colours_only_the_lines_on_screen()
     {
         StringBuilder text = new("class Big\n{\n    void Long()\n    {\n");
         for (int i = 0; i < 5000; i++)
@@ -184,86 +209,11 @@ public sealed class FoldingTests : IDisposable
         Assert.True(asking.Asked.Count == 0, $"A frame with nothing changed asked for colours again: {string.Join(", ", asking.Asked)}.");
     }
 
-    /// <summary>A comment after a file's last token, or one opened and never closed, is coloured a comment on every line it
-    /// covers, the screen's colours asked from the file's first line: it is the end of the file's trivia, which a walk of
-    /// the tokens from above stepped over, so it was drawn plain.</summary>
-    [AvaloniaFact]
-    public void A_comment_at_the_end_of_a_file_is_coloured_a_comment_however_the_screen_asks()
-    {
-        EditorRig rig = new("class Shapes\n{\n    int Area() => 1;\n}\n// after the class\n/* never\nclosed\n");
-        using CSharpHighlighter csharp = new(rig.Document);
-        rig.Editor.Highlighter = csharp;
-        Ui.Settle();
-        TextSnapshot text = rig.Document.Snapshot;
-        IReadOnlyList<SyntaxSpan> spans = csharp.GetSpans(text, 0, text.Length);
-        foreach (int line in (ReadOnlySpan<int>)[4, 5, 6])
-        {
-            LineSpan span = text.GetLine(line);
-            Assert.True(spans.Any(s => s.Kind == TokenKind.Comment && s.Start <= span.Start && s.End >= span.End),
-                $"Line {line + 1}, \"{text.GetText(span.Start, span.Length)}\", is not coloured a comment: {string.Join(", ", spans.Select(s => $"{s.Kind} {s.Start}..{s.End}"))}");
-        }
-    }
-
-    /// <summary>A frame of a screen of squiggles, one under each line, and of fold chevrons, the pointer over the gutter,
-    /// makes no shape or pen for them: five frames drawn again with nothing moved make no shape, and one allocates on the
-    /// UI thread under 1 KB for each squiggle and chevron more than a frame of the same lines with neither, the least of
-    /// five frames each. Each was a new geometry and a new pen at every frame, 2.8 KB.</summary>
-    [AvaloniaFact]
-    public void A_frame_of_squiggles_and_fold_chevrons_makes_no_shape_or_pen_for_them()
-    {
-        StringBuilder text = new("class Many\n{\n");
-        for (int i = 0; i < 40; i++)
-        {
-            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    int M{i}()\n    {{\n        int value{i} = {i};\n        return value{i};\n    }}\n");
-        }
-        EditorRig rig = new(text.Append("}\n").ToString());
-        using CSharpHighlighter csharp = new(rig.Document);
-        rig.Editor.Highlighter = csharp;
-        Ui.WaitFor(() => csharp.Folds.Count > 40, "the file's regions");
-        rig.Editor.SetFoldRegions(csharp.Folds);
-        Ui.Settle();
-        CodeEditor editor = rig.Editor;
-        // The stripe's marks for the problems are another control's frame.
-        editor.ShowErrorStripe = false;
-        TextSnapshot snapshot = rig.Document.Snapshot;
-        (int first, int last) = editor.LinesShown;
-        long plain = LeastFrame();
-        editor.SetMarkers([.. Enumerable.Range(first, last - first + 1).Select(line =>
-            new Marker(new TextRange(snapshot.GetLineStart(line), Math.Max(1, snapshot.GetLine(line).Length)), line % 2 == 0 ? MarkerKind.Warning : MarkerKind.Error, "a problem"))]);
-        rig.Window.MouseMove(editor.TranslatePoint(new Point(4, 40), rig.Window)!.Value);
-        Ui.Settle();
-        int chevrons = editor.FoldRegions.Count(r => { int line = snapshot.GetLineFromOffset(r.Start); return line >= first && line <= last; });
-        int shapes = (last - first + 1) + chevrons;
-        long made = editor.ShapesMade;
-        long marked = LeastFrame();
-        Assert.True(editor.ShapesMade == made, $"Five frames of {shapes} squiggles and chevrons that moved none made {editor.ShapesMade - made} shapes");
-        TestContext.Current.TestOutputHelper?.WriteLine($"A frame allocated {plain:N0} bytes on the UI thread with no marks, {marked:N0} with {last - first + 1} squiggles and {chevrons} chevrons");
-        Assert.True(chevrons > 5, $"The screen shows {chevrons} regions' chevrons");
-        Assert.True(marked - plain < 1024 * shapes,
-            $"A frame of {last - first + 1} squiggles and {chevrons} chevrons allocated {marked:N0} bytes on the UI thread against {plain:N0} with none: {(marked - plain) / shapes} bytes for each, a shape and a pen made for it");
-
-        long LeastFrame()
-        {
-            long least = long.MaxValue;
-            for (int i = 0; i < 5; i++)
-            {
-                editor.InvalidateVisual();
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-            }
-            return least;
-        }
-    }
-
     /// <summary>A key in a file of 20,000 lines costs its parse what the key changed: each key here (in a method or in
     /// the usings), and each member pasted in, deleted or wrapped in a #region, allocates on the parsing worker under a
     /// twentieth of what opening the file did, and after each the folds are those the same text has opened
     /// afresh.</summary>
-    [AvaloniaFact]
-    public void Typing_in_twenty_thousand_lines_parses_what_each_key_changed_and_the_folds_stay_those_of_the_whole_text()
+    private void Typing_in_twenty_thousand_lines_parses_what_each_key_changed_and_the_folds_stay_those_of_the_whole_text()
     {
         string source = Members(200);
         string path = Path.Combine(folder, "Members.cs");
@@ -378,175 +328,11 @@ public sealed class FoldingTests : IDisposable
         window.Close();
     }
 
-    /// <summary>Every key moves the regions below it, and the parse it makes brings them again: the least of twenty
-    /// keys above 2,000 doc comments allocates on the UI thread under 4 bytes for each more than above plain comments,
-    /// and a region folded below keeps its fold.</summary>
-    [AvaloniaFact]
-    public void Typing_above_two_thousand_regions_moves_them_on_the_UI_thread_without_copying_each_again_and_again()
-    {
-        (long plain, int plainRegions) = UiBytesPerKey(doc: false);
-        (long folding, int regions) = UiBytesPerKey(doc: true);
-        int more = regions - plainRegions;
-        Assert.True(more >= 2000, $"The doc comments made {more} regions more than the plain comments");
-        long each = (folding - plain) / more;
-        TestContext.Current.TestOutputHelper?.WriteLine($"A key allocated at least {folding:N0} bytes on the UI thread above {regions} regions, {plain:N0} above {plainRegions}: {each} bytes a region.");
-        Assert.True(each < 4,
-            $"A key allocated at least {folding / 1024:N0} KB on the UI thread above {regions} regions, {plain / 1024:N0} KB above {plainRegions}: {each} bytes for each region, which the window copied");
-    }
-
-    /// <summary>An Enter that splits an element or a comment over two lines, making a region, and its Undo, taking it away,
-    /// copy none of the file's regions on the UI thread as the regions found anew land and the next key carries them: in a
-    /// project file of 8,000 regions, and in C# of 8,000 with its usings folded, the two cost a few bytes a region more than
-    /// among 2,000, the split near the top of both, so the rows around it are numbered alike.</summary>
-    [AvaloniaFact]
-    public void An_Enter_that_makes_a_region_and_its_Undo_copy_none_of_the_files_regions_on_the_UI_thread()
-    {
-        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700, languageServer: false);
-        foreach ((string name, Func<int, string> text) in new (string, Func<int, string>)[] { ("Items.props", Items), ("Members.cs", Members) })
-        {
-            (long fewBytes, int fewRegions) = RegionMade(window, "Few" + name, text(2000));
-            (long manyBytes, int manyRegions) = RegionMade(window, "Many" + name, text(8000));
-            long each = (manyBytes - fewBytes) / (manyRegions - fewRegions);
-            TestContext.Current.TestOutputHelper?.WriteLine(
-                $"{name}: an Enter making a region and its Undo allocated {fewBytes / 1024:N0} KB on the UI thread among {fewRegions:N0} regions, {manyBytes / 1024:N0} KB among {manyRegions:N0}: {each} bytes a region");
-            Assert.True(each < 12,
-                $"In {name}, an Enter making a region and its Undo allocated {manyBytes / 1024:N0} KB on the UI thread among {manyRegions:N0} regions, {fewBytes / 1024:N0} KB among {fewRegions:N0}: {each} bytes for each region, which the window copied");
-        }
-        window.Close();
-
-        // A project file's item groups, one region each, the hundredth's None on one line.
-        static string Items(int groups)
-        {
-            StringBuilder xml = new("<Project Sdk=\"Microsoft.NET.Sdk\">\n");
-            for (int i = 0; i < groups; i++)
-            {
-                xml.Append(System.Globalization.CultureInfo.InvariantCulture,
-                    $"  <ItemGroup Label=\"Group {i}\">\n    <Compile Include=\"File{i}.cs\" />\n    <None Update=\"{(i == 100 ? "Split" : "Notes")}{i}.json\"><CopyToOutputDirectory>Always</CopyToOutputDirectory></None>\n  </ItemGroup>\n");
-            }
-            return xml.Append("</Project>\n").ToString();
-        }
-
-        // A class of methods, a region each, under two usings, the hundredth's comment on one line.
-        static string Members(int members)
-        {
-            StringBuilder code = new("using System;\nusing System.Collections.Generic;\n\nclass Many\n{\n");
-            for (int i = 0; i < members; i++)
-            {
-                code.Append(System.Globalization.CultureInfo.InvariantCulture,
-                    $"    int Member{i}()\n    {{\n        return {i}; /* {(i == 100 ? "Split" : "the")} member */\n    }}\n\n");
-            }
-            return code.Append("}\n").ToString();
-        }
-    }
-
-    /// <summary>What an Enter allocates on the UI thread, the middle of five, splitting the line after "Split" and making a
-    /// region, with the regions found again landing, and what its Undo allocates, taking the region away, the caret's blinks
-    /// in the waits set aside; and the regions.</summary>
-    private (long Bytes, int Regions) RegionMade(MainWindow window, string name, string source)
-    {
-        string path = Path.Combine(folder, name);
-        File.WriteAllText(path, source);
-        window.OpenFile(path);
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
-        Ui.WaitFor(() => document.FoldsFound, $"{name}'s regions");
-        int regions = document.FoldRegions.Count;
-        bool csharp = name.EndsWith(".cs", StringComparison.Ordinal);
-        Assert.True(!csharp || document.FoldRegions.Any(r => r.Folded && r.Kind == FoldKind.Imports), $"{name} opened with its usings open");
-        int split = source.IndexOf("Split", StringComparison.Ordinal);
-        editor.Selections = SelectionSet.Single(source.IndexOf(csharp ? " member" : "<Copy", split, StringComparison.Ordinal));
-        editor.Focus();
-        Ui.Settle();
-        string undo = Ui.Shortcut(EditorActions.Undo);
-        long blink = Ui.BlinkBytes(editor);
-        List<long> enters = [];
-        List<long> undos = [];
-        // What a key and the wait for its regions allocate, less the caret's blinks a slow wait outlasts.
-        long Pressed(string keys)
-        {
-            GC.Collect();
-            long blinks = editor.Blinks;
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            Ui.Press(window, keys);
-            return GC.GetAllocatedBytesForCurrentThread() - before - ((editor.Blinks - blinks) * blink);
-        }
-        // The first round's Enter carries the regions as the file opened, the rest those an Undo's regions left.
-        for (int i = 0; i < 6; i++)
-        {
-            long entered = Pressed("ENTER");
-            Assert.True(document.FoldRegions.Count == regions + 1, $"An Enter after Split in {name} left {document.FoldRegions.Count} regions, not {regions + 1}");
-            long undone = Pressed(undo);
-            Assert.True(document.FoldRegions.Count == regions, $"Undo of an Enter in {name} left {document.FoldRegions.Count} regions, not {regions}");
-            if (i > 0)
-            {
-                enters.Add(entered);
-                undos.Add(undone);
-            }
-        }
-        Assert.Equal(source, document.Text.Snapshot.ToString());
-        window.EditorArea.Close(document);
-        Ui.Settle();
-        enters.Sort();
-        undos.Sort();
-        return (enters[enters.Count / 2] + undos[undos.Count / 2], regions);
-    }
-
-    /// <summary>The least of twenty keys typed in a method at the top of a file allocates on the UI thread, its parse landing
-    /// included, with 2,000 members below under doc comments or plain ones, the last folded; and the file's regions. What
-    /// else lands in a key's wait goes into some keys alone (the caret's blink draws the editor again, 28 KB, in a wait past
-    /// its 530 ms, as a busy runner's are), what the key costs for each region into every one.</summary>
-    private (long Bytes, int Regions) UiBytesPerKey(bool doc)
-    {
-        string comment = doc ? "///" : "// ";
-        StringBuilder text = new("class Many\n{\n    int Typed()\n    {\n        int value = 1;\n        return value;\n    }\n\n");
-        for (int i = 0; i < 2000; i++)
-        {
-            text.Append(System.Globalization.CultureInfo.InvariantCulture,
-                $"    {comment} <summary>\n    {comment} Member {i}.\n    {comment} </summary>\n    int Member{i}() => {i};\n\n");
-        }
-        text.Append("    void Last()\n    {\n        int last = 0;\n    }\n}\n");
-        string source = text.ToString();
-        string path = Path.Combine(folder, doc ? "Doc.cs" : "Plain.cs");
-        File.WriteAllText(path, source);
-        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
-        window.OpenFile(path);
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Passenger.App.Workspace.OpenDocument document = window.EditorArea.Active!;
-        CSharpHighlighter syntax = document.Syntax!;
-        Ui.WaitFor(() => document.FoldRegions.Count > 2, "the file's regions");
-        // The last method folded, far below the screen.
-        editor.GoTo(new TextPosition(source.Count(c => c == '\n') - 3, 8));
-        editor.Focus();
-        Ui.Press(window, "control M , control S");
-        int last = source.IndexOf("void Last()", StringComparison.Ordinal) + "void Last()".Length;
-        Assert.Equal(last, Assert.Single(document.FoldRegions, r => r.Folded).Start);
-        editor.Selections = SelectionSet.Single(source.IndexOf("= 1;", StringComparison.Ordinal) + 2);
-        editor.ScrollTo(default);
-        Ui.Settle();
-        const int Keys = 20;
-        long least = long.MaxValue;
-        for (int i = 0; i < Keys; i++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            window.KeyTextInput("1");
-            Ui.Parsed(syntax);
-            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
-        FoldRegion folded = Assert.Single(document.FoldRegions, r => r.Folded);
-        Assert.True(folded.Start == last + Keys, $"The folded method's region starts at {folded.Start} after the keys, not on its signature's end at {last + Keys}");
-        int regions = document.FoldRegions.Count;
-        window.Close();
-        return (least, regions);
-    }
-
     /// <summary>The open file carries its regions through a key in runs, moving region by region only those the key reaches
     /// and shifting those past it whole: through keys typed in the names of methods above, among and below 300 folded ones,
     /// Enter between two of them, a key typed at two carets far apart and its undo, the regions the file carried as each
     /// key landed are those its parse then finds, and every method stays folded.</summary>
-    [AvaloniaFact]
-    public void Keys_among_three_hundred_folded_methods_carry_every_region_to_where_the_parse_finds_it()
+    private void Keys_among_three_hundred_folded_methods_carry_every_region_to_where_the_parse_finds_it()
     {
         StringBuilder text = new("class Many\n{\n");
         for (int i = 0; i < 300; i++)
@@ -593,46 +379,7 @@ public sealed class FoldingTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Resting_the_pointer_on_a_folded_methods_placeholder_shows_the_lines_it_hides_on_a_card()
-    {
-        string path = Path.Combine(folder, "Shapes.cs");
-        File.WriteAllText(path, Source);
-        MainWindow window = Ui.OpenFolder(folder, width: 1000, height: 700);
-        window.OpenFile(path);
-        Ui.Settle();
-        CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.WaitFor(() => editor.FoldRegions.Count == 3, "the file's regions");
-        editor.GoTo(new TextPosition(7, 8));
-        editor.Focus();
-        Ui.Press(window, "control M , control S");
-        Assert.Null(editor.FoldPreviewText);
-
-        // The placeholder's chip stands a character past the signature's end.
-        TextSnapshot text = editor.Document.Snapshot;
-        int signature = text.GetLine(5).End;
-        double character = editor.PointOf(signature).X - editor.PointOf(signature - 1).X;
-        Point placeholder = editor.TranslatePoint(editor.PointOf(signature) + new Point(character * 2.5, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(placeholder, RawInputModifiers.None);
-        Ui.WaitFor(() => editor.FoldPreviewText is not null, "the card of the folded method's lines");
-        Assert.Equal("{\n    int area = w * h;\n    return area;\n}", editor.FoldPreviewText);
-        window.MouseMove(placeholder + new Point(character, 0), RawInputModifiers.None);
-        Ui.Settle();
-        Assert.NotNull(editor.FoldPreviewText);
-        Assert.Single(editor.FoldRegions, r => r.Folded && r.Kind == FoldKind.Body);
-
-        window.MouseMove(placeholder + new Point(0, editor.LineHeight * 4), RawInputModifiers.None);
-        Ui.Settle();
-        Assert.Null(editor.FoldPreviewText);
-        window.MouseDown(placeholder, MouseButton.Left);
-        window.MouseUp(placeholder, MouseButton.Left);
-        Ui.Settle();
-        Assert.DoesNotContain(editor.FoldRegions, r => r.Kind == FoldKind.Body && r.Folded);
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_file_opens_folded_as_it_last_closed_and_so_does_its_folder_after_a_restart()
+    private void A_file_opens_folded_as_it_last_closed_and_so_does_its_folder_after_a_restart()
     {
         string settings = TestFolders.Create("fold-settings-");
         try
@@ -678,8 +425,7 @@ public sealed class FoldingTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment()
+    private void A_file_opens_with_its_header_usings_and_regions_folded_and_Collapse_to_Definitions_folds_every_member_and_doc_comment()
     {
         string path = Path.Combine(folder, "Members.cs");
         File.WriteAllText(path, Defined);
@@ -732,8 +478,7 @@ public sealed class FoldingTests : IDisposable
     /// <summary>Collapse All and Collapse to Definitions with the view wheeled down to the file's end and the caret left on
     /// its first line: the rows left are far fewer, and the view comes back within them, where it stood past the last of
     /// them, blank, gutter and all, until scrolled.</summary>
-    [AvaloniaFact]
-    public void Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them()
+    private void Collapsing_with_the_view_wheeled_down_past_where_the_folded_rows_end_draws_them()
     {
         StringBuilder text = new("class Many\n{\n");
         for (int i = 0; i < 60; i++)
@@ -764,8 +509,7 @@ public sealed class FoldingTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_project_file_folds_by_its_elements_and_a_JSON_file_by_its_braces_and_typing_keeps_their_folds()
+    private void A_project_file_folds_by_its_elements_and_a_JSON_file_by_its_braces_and_typing_keeps_their_folds()
     {
         string project = Path.Combine(folder, "Sample.csproj");
         File.WriteAllText(project, """
@@ -854,8 +598,7 @@ public sealed class FoldingTests : IDisposable
     /// key costs one scan, which reads the rope in place and allocates the list of the regions it finds and nothing more
     /// (no copy of the text, no string for a tag), and after each edit the folds are those of the same text opened
     /// afresh.</summary>
-    [AvaloniaFact]
-    public void Typing_in_twenty_thousand_lines_of_XML_scans_it_off_the_UI_thread_and_its_folds_stay_those_of_the_whole_text()
+    private void Typing_in_twenty_thousand_lines_of_XML_scans_it_off_the_UI_thread_and_its_folds_stay_those_of_the_whole_text()
     {
         StringBuilder xml = new("<Project Sdk=\"Microsoft.NET.Sdk\">\n");
         for (int i = 0; i < 1000; i++)

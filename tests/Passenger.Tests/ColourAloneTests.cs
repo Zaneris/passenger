@@ -23,7 +23,14 @@ public sealed class ColourAloneTests
     private static readonly string Text = string.Concat(Enumerable.Range(0, 16).Select(_ => new string(' ', 26) + "\n"));
 
     [AvaloniaFact]
-    public void An_error_a_warning_and_a_suggestion_ink_different_lines_in_one_colour()
+    public void Each_state_inks_its_own_line_shape_or_sign_in_one_colour_in_the_gutter_the_stripe_a_diff_and_the_tests() => Cases.All(
+        ("An error a warning and a suggestion ink different lines in one colour", An_error_a_warning_and_a_suggestion_ink_different_lines_in_one_colour),
+        ("The gutters added changed conflicted and deleted marks ink different shapes in one colour", The_gutters_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour),
+        ("A diffs added removed changed and conflicted lines ink different signs in one colour", A_diffs_added_removed_changed_and_conflicted_lines_ink_different_signs_in_one_colour),
+        ("A tests marks before its run passed failed and running ink different shapes in one colour", A_tests_marks_before_its_run_passed_failed_and_running_ink_different_shapes_in_one_colour),
+        ("The stripes added changed conflicted and deleted marks ink different shapes in one colour", The_stripes_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour));
+
+    private void An_error_a_warning_and_a_suggestion_ink_different_lines_in_one_colour()
     {
         EditorRig rig = OneColour(TokenKeys.Editor_Error, TokenKeys.Editor_Warning, TokenKeys.Editor_Info);
         CodeEditor editor = rig.Editor;
@@ -36,8 +43,7 @@ public sealed class ColourAloneTests
         }), "the lines under code");
     }
 
-    [AvaloniaFact]
-    public void The_gutters_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour()
+    private void The_gutters_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour()
     {
         EditorRig rig = OneColour(TokenKeys.Vcs_Added, TokenKeys.Vcs_Modified, TokenKeys.Vcs_Conflict, TokenKeys.Vcs_Deleted);
         CodeEditor editor = rig.Editor;
@@ -51,8 +57,7 @@ public sealed class ColourAloneTests
         }), "the gutter's change marks");
     }
 
-    [AvaloniaFact]
-    public void A_diffs_added_removed_changed_and_conflicted_lines_ink_different_signs_in_one_colour()
+    private void A_diffs_added_removed_changed_and_conflicted_lines_ink_different_signs_in_one_colour()
     {
         EditorRig rig = OneColour(TokenKeys.Vcs_Added, TokenKeys.Vcs_Modified, TokenKeys.Vcs_Conflict, TokenKeys.Vcs_Deleted);
         CodeEditor editor = rig.Editor;
@@ -65,8 +70,7 @@ public sealed class ColourAloneTests
         }), "a diff's signs");
     }
 
-    [AvaloniaFact]
-    public void A_tests_marks_before_its_run_passed_failed_and_running_ink_different_shapes_in_one_colour()
+    private void A_tests_marks_before_its_run_passed_failed_and_running_ink_different_shapes_in_one_colour()
     {
         EditorRig rig = OneColour(TokenKeys.Test_Passed, TokenKeys.Run, TokenKeys.Test_Failed, TokenKeys.Editor_ExecutionPoint);
         CodeEditor editor = rig.Editor;
@@ -80,8 +84,7 @@ public sealed class ColourAloneTests
         }), "a test's gutter marks");
     }
 
-    [AvaloniaFact]
-    public void The_stripes_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour()
+    private void The_stripes_added_changed_conflicted_and_deleted_marks_ink_different_shapes_in_one_colour()
     {
         EditorRig rig = new(string.Concat(Enumerable.Range(0, 300).Select(i => $"line {i}\n")));
         foreach (string key in (string[])[TokenKeys.Vcs_Added, TokenKeys.Vcs_Modified, TokenKeys.Vcs_Conflict, TokenKeys.Vcs_Deleted])
@@ -101,24 +104,27 @@ public sealed class ColourAloneTests
     }
 
     [Fact]
-    public void Every_run_state_has_a_mark_of_its_own() => Apart(Enum.GetValues<RunState>().Where(s => s != RunState.None), RunRows.ShapeOf);
+    public void Every_state_problem_change_test_mark_and_changed_file_has_a_mark_of_its_own() => Cases.All(
+        ("Every run state has a mark of its own", Every_run_state_has_a_mark_of_its_own),
+        ("Every kind of problem has a line of its own", Every_kind_of_problem_has_a_line_of_its_own),
+        ("Every kind of change has a gutter shape and a diff sign of its own", Every_kind_of_change_has_a_gutter_shape_and_a_diff_sign_of_its_own),
+        ("Every test mark has a shape of its own", Every_test_mark_has_a_shape_of_its_own),
+        ("Every changed files kind has a letter and a word of its own", Every_changed_files_kind_has_a_letter_and_a_word_of_its_own));
 
-    [Fact]
-    public void Every_kind_of_problem_has_a_line_of_its_own() =>
+    private void Every_run_state_has_a_mark_of_its_own() => Apart(Enum.GetValues<RunState>().Where(s => s != RunState.None), RunRows.ShapeOf);
+
+    private void Every_kind_of_problem_has_a_line_of_its_own() =>
         Apart(Enum.GetValues<MarkerKind>().Where(k => k != MarkerKind.Unnecessary), Underlines.Of);
 
-    [Fact]
-    public void Every_kind_of_change_has_a_gutter_shape_and_a_diff_sign_of_its_own()
+    private void Every_kind_of_change_has_a_gutter_shape_and_a_diff_sign_of_its_own()
     {
         Apart(Enum.GetValues<ChangeMarkKind>(), ChangeShapes.Of);
         Apart(Enum.GetValues<ChangeMarkKind>(), DiffSigns.SignOf);
     }
 
-    [Fact]
-    public void Every_test_mark_has_a_shape_of_its_own() => Apart(Enum.GetValues<TestMarkKind>(), TestMarks.ShapeOf);
+    private void Every_test_mark_has_a_shape_of_its_own() => Apart(Enum.GetValues<TestMarkKind>(), TestMarks.ShapeOf);
 
-    [Fact]
-    public void Every_changed_files_kind_has_a_letter_and_a_word_of_its_own()
+    private void Every_changed_files_kind_has_a_letter_and_a_word_of_its_own()
     {
         Apart(Enum.GetValues<ChangeKind>(), ChangedFileRow.LetterOf);
         Apart(Enum.GetValues<ChangeKind>(), ChangedFileRow.WordOf);

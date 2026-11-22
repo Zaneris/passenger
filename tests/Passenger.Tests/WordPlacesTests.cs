@@ -20,8 +20,7 @@ public sealed class WordPlacesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
-    [AvaloniaFact]
-    public void A_word_chosen_in_markdown_or_plain_text_lights_its_other_places_and_marks_each_on_the_scrollbar()
+    internal void A_word_chosen_in_markdown_or_plain_text_lights_its_other_places_and_marks_each_on_the_scrollbar()
     {
         File.WriteAllText(Path.Combine(folder, "notes.md"), Notes);
         File.WriteAllText(Path.Combine(folder, "notes.txt"), Notes);
@@ -63,8 +62,7 @@ public sealed class WordPlacesTests : IDisposable
 
     /// <summary>The same word chosen in a file of 2,000 places and in one of 200,000, in turns: in both the thousand around
     /// it are lit, those on screen among them, and the window's thread allocates for the large what it does for the small.</summary>
-    [AvaloniaFact]
-    public void A_word_written_200_000_times_lights_the_thousand_around_it_costing_the_windows_thread_what_2_000_do()
+    internal void A_word_written_200_000_times_lights_the_thousand_around_it_costing_the_windows_thread_what_2_000_do()
     {
         const string Words = "word, sword and word\n";
         File.WriteAllText(Path.Combine(folder, "small.txt"), string.Concat(Enumerable.Repeat(Words, 1_000)));

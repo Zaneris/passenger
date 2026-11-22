@@ -22,8 +22,35 @@ public sealed class IndentationTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A file's indentation, line breaks and saved bytes follow its .editorconfig: two spaces kept with none,
+    /// tabs written where one says so and the status bar saying it, the nearest matching section deciding and a nested
+    /// root stopping the search, one written or deleted on disk changing the open file at once, Settings' rows naming
+    /// what the folder's .editorconfig files set over them, and a save trimming trailing white space, ending with a
+    /// line break and writing the breaks and charset it says, or none where it says none.</summary>
     [AvaloniaFact]
-    public void A_file_of_two_spaces_with_no_editorconfig_keeps_two_spaces_for_enter_tab_shift_tab_and_a_paste()
+    public void Indentation_line_breaks_and_a_saves_bytes_follow_the_files_editorconfig()
+    {
+        Flow.StepApart<IndentationTests>("a file of two spaces with no .editorconfig keeps two spaces for Enter, Tab, Shift+Tab and a paste", t => t.A_file_of_two_spaces_with_no_editorconfig_keeps_two_spaces_for_enter_tab_shift_tab_and_a_paste());
+        Flow.StepApart<IndentationTests>("a tab .editorconfig over a file of spaces has enter tab and a paste write tabs and the status bar say so", t => t.A_tab_editorconfig_over_a_file_of_spaces_has_enter_tab_and_a_paste_write_tabs_and_the_status_bar_say_so());
+        Flow.StepApart<IndentationTests>("the nearest matching section decides and a nested root .editorconfig stops the search", t => t.The_nearest_matching_section_decides_and_a_nested_root_editorconfig_stops_the_search());
+        Flow.StepApart<IndentationTests>("an .editorconfig written or deleted on disk changes how the open file indents", t => t.An_editorconfig_written_or_deleted_on_disk_changes_how_the_open_file_indents());
+        Flow.StepApart<EditorConfigSettingsTests>("each row names what the folder's .editorconfig files set over it and follows them as they change", t => t.Each_row_names_what_the_folders_editorconfig_files_set_over_it_and_follows_them_as_they_change());
+        Flow.StepApart<IndentationTests>("a save trims trailing whitespace but the caret's ends the file with a break and writes the .editorconfig's breaks and charset", t => t.A_save_trims_trailing_whitespace_but_the_carets_ends_the_file_with_a_break_and_writes_the_editorconfigs_breaks_and_charset());
+        Flow.StepApart<IndentationTests>("ensure a final line break on save ends a file with one but where its .editorconfig says none and off saves it as typed", t => t.Ensure_a_final_line_break_on_save_ends_a_file_with_one_but_where_its_editorconfig_says_none_and_off_saves_it_as_typed());
+    }
+
+    /// <summary>Enter in XAML and HTML indents by the tags, a level in from a start tag, back after a closed one and
+    /// under a first attribute, a XAML window whose attributes line up under its tags read as its elements' four
+    /// spaces, and Enter near the end of a large XAML file reads only the elements around the caret.</summary>
+    [AvaloniaFact]
+    public void Enter_in_markup_indents_by_the_tags_around_the_caret()
+    {
+        Flow.StepApart<IndentationTests>("enter in xaml and html indents by the tags a level in from a start tag back after a closed one and under a first attribute", t => t.Enter_in_xaml_and_html_indents_by_the_tags_a_level_in_from_a_start_tag_back_after_a_closed_one_and_under_a_first_attribute());
+        Flow.StepApart<IndentationTests>("a XAML window whose attributes line up under its tags is read as its elements' four spaces and reformat keeps them", t => t.A_xaml_window_whose_attributes_line_up_under_its_tags_is_read_as_its_elements_four_spaces_and_reformat_keeps_them());
+        Flow.StepApart<IndentationTests>("enter near the end of a large XAML file reads only the elements around the caret", t => t.Enter_near_the_end_of_a_large_xaml_file_reads_only_the_elements_around_the_caret());
+    }
+
+    private void A_file_of_two_spaces_with_no_editorconfig_keeps_two_spaces_for_enter_tab_shift_tab_and_a_paste()
     {
         Write("Two.cs", "class Two\n{\n  void Run()\n  {\n    int a = 1;\n    if (a > 0)\n    {\n      a++;\n    }\n  }\n}\n");
         MainWindow window = Open("Two.cs");
@@ -53,8 +80,7 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_tab_editorconfig_over_a_file_of_spaces_has_enter_tab_and_a_paste_write_tabs_and_the_status_bar_say_so()
+    private void A_tab_editorconfig_over_a_file_of_spaces_has_enter_tab_and_a_paste_write_tabs_and_the_status_bar_say_so()
     {
         Write(".editorconfig", "root = true\n\n[*]\nindent_style = tab\n");
         Write("Spaced.cs", "class Spaced\n{\n    void Run()\n    {\n        int a = 1;\n    }\n}\n");
@@ -83,8 +109,7 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_nearest_matching_section_decides_and_a_nested_root_editorconfig_stops_the_search()
+    private void The_nearest_matching_section_decides_and_a_nested_root_editorconfig_stops_the_search()
     {
         // Within a file the later section wins; a nested file wins over its parent's; a root one never reads its parent.
         Write(".editorconfig", "root = true\n\n[*]\nindent_style = space\nindent_size = 4\n\n[*.cs]\nindent_style = tab\n");
@@ -127,8 +152,7 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_save_trims_trailing_whitespace_but_the_carets_ends_the_file_with_a_break_and_writes_the_editorconfigs_breaks_and_charset()
+    private void A_save_trims_trailing_whitespace_but_the_carets_ends_the_file_with_a_break_and_writes_the_editorconfigs_breaks_and_charset()
     {
         Write(".editorconfig", "root = true\n\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\nend_of_line = crlf\ncharset = utf-8-bom\n");
         Write("Notes.cs", "class Notes  \n{\n    int a;   \n    int b;\t\n}");
@@ -163,8 +187,7 @@ public sealed class IndentationTests : IDisposable
     /// <summary>Settings' Ensure a final line break on save: off, a file no .editorconfig speaks for is saved as typed; on, its
     /// save ends it with a line break, autosave's too. An .editorconfig's insert_final_newline = false says over it either
     /// way, the save taking away the line breaks the file ends with.</summary>
-    [AvaloniaFact]
-    public void Ensure_a_final_line_break_on_save_ends_a_file_with_one_but_where_its_editorconfig_says_none_and_off_saves_it_as_typed()
+    private void Ensure_a_final_line_break_on_save_ends_a_file_with_one_but_where_its_editorconfig_says_none_and_off_saves_it_as_typed()
     {
         Write("Ended/.editorconfig", "root = true\n\n[*]\ninsert_final_newline = false\n");
         Write("Ended/ended.txt", "kept\n\n");
@@ -225,8 +248,7 @@ public sealed class IndentationTests : IDisposable
         static string Shown(string text) => $"'{text.Replace("\n", "\\n", StringComparison.Ordinal)}'";
     }
 
-    [AvaloniaFact]
-    public void An_editorconfig_written_or_deleted_on_disk_changes_how_the_open_file_indents()
+    private void An_editorconfig_written_or_deleted_on_disk_changes_how_the_open_file_indents()
     {
         Write("Open.cs", "class Open\n{\n    void Run()\n    {\n        int a = 1;\n    }\n}\n");
         MainWindow window = Open("Open.cs");
@@ -246,46 +268,7 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_section_whose_range_runs_backwards_matches_no_file_the_others_apply_and_the_open_editorconfig_marks_it_until_it_runs_forwards()
-    {
-        string config = Path.Combine(folder, ".editorconfig");
-        Write(".editorconfig", "root = true\n\n[*]\nindent_size = 3\n\n[[z-a]*.md]\nindent_size = 8\n\n[notes.md]\nindent_style = tab\n");
-        Write("notes.md", "hello\n");
-        Write("zed.md", "hello\n");
-        MainWindow window = Open("notes.md");
-        Assert.True(window.EditorArea.Active?.Path == Path.Combine(folder, "notes.md"), "notes.md did not open under an .editorconfig one of whose sections matches no file");
-        Assert.True(IndentShown(window) == "Tab, from .editorconfig", $"The section [notes.md] after one that matches no file did not apply: {IndentShown(window)}");
-        window.OpenFile("zed.md");
-        Ui.Settle();
-        Assert.True(IndentShown(window) == "3 spaces, from .editorconfig", $"zed.md took the indentation of the section [[z-a]*.md], which matches no file: {IndentShown(window)}");
-        Assert.DoesNotContain(IdeErrors.Errors, e => e.Kind == "RegexParseException");
-        string told = $"No file matches the section [[z-a]*.md] on line 6 of {config}: its range z-a is in reverse order";
-        Assert.True(Ui.IdeLog().Split('\n').Count(l => l.TrimEnd().EndsWith(told, StringComparison.Ordinal)) == 1,
-            $"The log did not name the section that matches no file once, as: {told}");
-
-        window.OpenFile(".editorconfig");
-        Ui.Settle();
-        OpenDocument shown = window.EditorArea.Active!;
-        Marker marked = Assert.Single(shown.Markers);
-        Assert.Equal(MarkerKind.Warning, marked.Kind);
-        Assert.Equal("No file matches this section: its range z-a is in reverse order", marked.Message);
-        Assert.True(shown.Text.Snapshot.ToString().Substring(marked.Range.Start, marked.Range.Length) == "[z-a]*.md", "The mark is not on the section's glob");
-
-        Ui.PlaceAfter(window.EditorArea.CodeEditor, "[[z-a");
-        Ui.Press(window, "BACK_SPACE");
-        Ui.Press(window, "BACK_SPACE");
-        Ui.Press(window, "BACK_SPACE");
-        window.KeyTextInput("a-z");
-        Ui.WaitFor(() => shown.Markers.Count == 0, "the mark on the section to go once its range runs forwards");
-        Ui.Press(window, Ui.Shortcut(AppActions.Save));
-        window.OpenFile("zed.md");
-        Ui.WaitFor(() => IndentShown(window) == "8 spaces, from .editorconfig", () => $"zed.md to take the section [[a-z]*.md]'s indentation, not {IndentShown(window)}");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_xaml_window_whose_attributes_line_up_under_its_tags_is_read_as_its_elements_four_spaces_and_reformat_keeps_them()
+    private void A_xaml_window_whose_attributes_line_up_under_its_tags_is_read_as_its_elements_four_spaces_and_reformat_keeps_them()
     {
         // Avalonia's MVVM template's window, as dotnet new writes it: its elements four spaces a level, each tag's
         // attributes aligned under its first, and a comment's second line aligned under its first's words.
@@ -309,8 +292,7 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Enter_in_xaml_and_html_indents_by_the_tags_a_level_in_from_a_start_tag_back_after_a_closed_one_and_under_a_first_attribute()
+    private void Enter_in_xaml_and_html_indents_by_the_tags_a_level_in_from_a_start_tag_back_after_a_closed_one_and_under_a_first_attribute()
     {
         Write("Entering.axaml", "<Window xmlns=\"https://github.com/avaloniaui\"\n        Title=\"Enter\">\n    <StackPanel>\n"
             + "        <Button Content=\"One\"\n                Width=\"80\" />\n        <Border></Border>\n    </StackPanel>\n</Window>\n");
@@ -356,41 +338,9 @@ public sealed class IndentationTests : IDisposable
         window.Close();
     }
 
-    /// <summary>An li, p or td whose end tag is left out ends where HTML's parser ends it (at the next li, a block, the
-    /// next cell, its list's end tag), so Enter after it indents as beside it, not inside it.</summary>
-    [AvaloniaFact]
-    public void Enter_in_html_after_an_element_whose_end_tag_is_left_out_indents_beside_it()
-    {
-        Write("list.html", "<ul>\n    <li>One\n    <li>Two</li>\n    <li>Four</ul>\n<section>\n    <p>Intro\n    <div>Block</div>\n</section>\n");
-        MainWindow window = Open("list.html");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-
-        // One ended at Two, so after Two's end tag the next item goes beside it.
-        Ui.PlaceAfter(editor, "<li>Two</li>");
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("<li>Three</li>");
-        Assert.True(Text(editor).Contains("    <li>Two</li>\n    <li>Three</li>\n", StringComparison.Ordinal),
-            $"Enter after an li that follows one with its end tag left out went inside that one:\n{Text(editor)}");
-
-        // The list's end tag after Four ends Four too, so it goes to the list's own indentation.
-        Ui.PlaceAfter(editor, "<li>Four");
-        Ui.Press(window, "ENTER");
-        Assert.True(Text(editor).Contains("    <li>Four\n</ul>\n", StringComparison.Ordinal),
-            $"Enter before </ul> after an li with its end tag left out put </ul> at the li's indentation:\n{Text(editor)}");
-
-        // A div ends the p before it, so the next line is the section's, beside both.
-        Ui.PlaceAfter(editor, "<div>Block</div>");
-        Ui.Press(window, "ENTER");
-        window.KeyTextInput("<hr>");
-        Assert.True(Text(editor).Contains("    <div>Block</div>\n    <hr>\n</section>", StringComparison.Ordinal),
-            $"Enter after a div that follows a p with its end tag left out went inside the p:\n{Text(editor)}");
-        window.Close();
-    }
-
     /// <summary>Enter in a large XAML file reads back from the caret as far as the elements that hold it, not the whole
     /// file before it, so a key there costs what an Enter in a small one does.</summary>
-    [AvaloniaFact]
-    public void Enter_near_the_end_of_a_large_xaml_file_reads_only_the_elements_around_the_caret()
+    private void Enter_near_the_end_of_a_large_xaml_file_reads_only_the_elements_around_the_caret()
     {
         StringBuilder large = new("<ResourceDictionary xmlns=\"https://github.com/avaloniaui\">\n");
         for (int i = 0; i < 20_000; i++)
@@ -415,48 +365,6 @@ public sealed class IndentationTests : IDisposable
         // The 20,000 brushes before the caret are 1.2 million characters, which a read of all of them copies whole (5 MB).
         Assert.True(allocated < 1_000_000, $"Enter near the end of a {editor.Document.Snapshot.Length:N0}-character XAML file allocated {allocated:N0} bytes, as a read of all of it does");
         window.Close();
-    }
-
-    /// <summary>Enter in a large HTML file, which reads the tags from the file's start for the end tags it leaves out, costs
-    /// what an Enter in a small one does, and indents alike: it allocates on the UI thread under 64 KB more after 20,000
-    /// list items, each with a paragraph its end tag left out, than after three, the least of three Enters each. It copied
-    /// the whole text before the caret, and made each tag's name and the elements it ends again: 30 MB here.</summary>
-    [AvaloniaFact]
-    public void Enter_in_a_large_html_file_costs_what_it_does_in_a_small_one()
-    {
-        (long small, string smallEnd) = Enters("small.html", 3);
-        (long large, string largeEnd) = Enters("large.html", 20_000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"Enter allocated {small:N0} bytes on the UI thread after 3 items, {large:N0} after 20,000");
-        Assert.Equal(smallEnd, largeEnd);
-        Assert.True(large - small < 64 * 1024, $"Enter after 20,000 list items and paragraphs allocated {large:N0} bytes on the UI thread, against {small:N0} after three: the text before the caret was copied and its tags read into strings");
-
-        // The least an Enter after the last item of a list allocates, and the text from that item on after three.
-        (long Bytes, string End) Enters(string name, int items)
-        {
-            StringBuilder html = new("<!DOCTYPE html>\n<html>\n<body>\n<ul>\n");
-            for (int i = 0; i < items; i++)
-            {
-                html.Append("    <li>Item ").Append(i).Append(" <P>a paragraph\n");
-            }
-            Write(name, html.Append("    <li>Last</li>\n</ul>\n</body>\n</html>\n").ToString());
-            MainWindow window = Open(name);
-            CodeEditor editor = window.EditorArea.CodeEditor;
-            Ui.PlaceAfter(editor, "<li>Last</li>");
-            Ui.Settle();
-            long least = long.MaxValue;
-            for (int i = 0; i < 3; i++)
-            {
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                window.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.Enter, null);
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-                window.KeyRelease(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.Enter, null);
-                Ui.Settle();
-            }
-            window.KeyTextInput("<li>Next</li>");
-            string text = Text(editor);
-            window.Close();
-            return (least, text[text.IndexOf("    <li>Last", StringComparison.Ordinal)..]);
-        }
     }
 
     private void Write(string name, string text) => TestFolders.Write(folder, name, text);

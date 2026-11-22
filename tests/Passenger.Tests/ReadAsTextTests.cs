@@ -49,8 +49,7 @@ public sealed class ReadAsTextTests : IDisposable
         Assert.True(had(), $"Escape from Read as Text gave the keys to {keysIn.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"}, not back to {where}");
     }
 
-    [AvaloniaFact]
-    public void The_status_bars_last_message_opens_as_text_in_every_keymap_and_Escape_gives_its_bar_the_keys_back()
+    internal void The_status_bars_last_message_opens_as_text_in_every_keymap_and_Escape_gives_its_bar_the_keys_back()
     {
         File.WriteAllText(Path.Combine(folder, "Notes.txt"), "one\ntwo\n");
         TestGit.Init(folder);
@@ -90,8 +89,7 @@ public sealed class ReadAsTextTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void The_terminals_last_command_and_its_output_open_as_text_and_Escape_gives_the_terminal_its_keys_back()
+    internal void The_terminals_last_command_and_its_output_open_as_text_and_Escape_gives_the_terminal_its_keys_back()
     {
         (MainWindow window, TerminalSession shell) = TerminalTests.Open(folder, OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh");
         try
@@ -120,46 +118,5 @@ public sealed class ReadAsTextTests : IDisposable
             screen.CursorColumn > 0 && screen.ScreenTop + screen.CursorRow > screen.FirstLine
             && screen.LineAt(screen.ScreenTop + screen.CursorRow - 1) is { } above
             && (above.Text() == output || (screen.CursorRow > 1 && above.Text().Length == 0 && screen.LineAt(screen.ScreenTop + screen.CursorRow - 2).Text() == output));
-    }
-
-    [AvaloniaFact]
-    public void A_diffs_changes_open_as_text_lines_removed_and_added_under_where_each_stands_and_Escape_gives_its_side_the_keys_back()
-    {
-        string path = Path.Combine(folder, "Shop.cs");
-        File.WriteAllText(path, "class Shop\n{\n    int count;\n\n    void Add() { count++; }\n}\n");
-        TestGit.Init(folder);
-        File.WriteAllText(path, "class Shop\n{\n    long count;\n\n    void Add() { count++; }\n    void Clear() { count = 0; }\n}\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            window.OpenFile(path);
-            Ui.Settle();
-            IDiffHost diff = Ui.Landed(window.ShowDiffAsync(window.EditorArea.Active!.Path), "the diff open")!;
-            DiffView shown = OpenDiffs.ViewOf(diff);
-            TopLevel keysIn = OpenDiffs.KeysOf(diff);
-            Ui.WaitFor(() => shown.Hunks.Count == 2, () => $"the diff's two changes, where it shows {shown.Hunks.Count}");
-            shown.Right.Focus();
-            Ui.Settle();
-            PlainTextView view = Opened(window, keysIn, "a diff");
-            Assert.Equal($"Changes: {shown.Subject}", view.Title);
-            string[] lines = view.Text.Split('\n');
-            string[] changes = [.. lines.SkipWhile(l => !l.StartsWith("Change ", StringComparison.Ordinal))];
-            Assert.True(changes.SequenceEqual(
-                [
-                    "Change 1 of 2: Line 3 of HEAD changed to Line 3 of Your version",
-                    "-     int count;",
-                    "+     long count;",
-                    string.Empty,
-                    "Change 2 of 2: Line 6 of Your version added",
-                    "+     void Clear() { count = 0; }",
-                ]), $"Read as Text in the diff read its changes as:\n{view.Text}");
-            Assert.True(lines[0] == shown.Said, $"Read as Text's diff begins \"{lines[0]}\", not what its bar says, \"{shown.Said}\"");
-            Escaped(window, keysIn, () => shown.Right.IsFocused, "the diff's side");
-            diff.Close();
-        }
-        finally
-        {
-            window.Close();
-        }
     }
 }

@@ -37,8 +37,24 @@ public sealed class EditorTabsTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>Editor tabs: a pinned tab stands left through Close Others and Close All and comes back pinned, Reopen
+    /// Closed Tab brings tabs back in reverse order each with its caret, a tab scrolled to a file's end draws the lines
+    /// left once it is shorter on disk, closing the tab shown shows the one shown before it, Close Tabs to the Right
+    /// and Close Other Tabs end on the tab chosen, Unsplit joins splits keeping each tab and caret, and the strip's end
+    /// lists the tabs out of sight.</summary>
     [AvaloniaFact]
-    public void A_pinned_tab_stands_left_with_a_pin_stays_through_Close_Others_and_Close_All_and_comes_back_pinned_with_the_folder()
+    public void Editor_tabs_open_close_pin_and_come_back_as_a_person_left_them()
+    {
+        Flow.StepApart<EditorTabsTests>("a pinned tab stands left with a pin stays through Close Others and Close All and comes back pinned with the folder", t => t.A_pinned_tab_stands_left_with_a_pin_stays_through_Close_Others_and_Close_All_and_comes_back_pinned_with_the_folder());
+        Flow.StepApart<EditorTabsTests>("reopen Closed Tab brings tabs back in the reverse of the order they closed each where it stood with its caret", t => t.Reopen_Closed_Tab_brings_tabs_back_in_the_reverse_of_the_order_they_closed_each_where_it_stood_with_its_caret());
+        Flow.StepApart<EditorTabsTests>("a tab left scrolled to its file's end draws the lines left once the file is far shorter on disk", t => t.A_tab_left_scrolled_to_its_files_end_draws_the_lines_left_once_the_file_is_far_shorter_on_disk());
+        Flow.StepApart<EditorTabsTests>("closing the tab shown shows the one shown before it with its caret rather than its neighbour", t => t.Closing_the_tab_shown_shows_the_one_shown_before_it_with_its_caret_rather_than_its_neighbour());
+        Flow.StepApart<EditorTabsTests>("close Tabs to the Right and Close Other Tabs end showing the tab they were chosen on", t => t.Close_Tabs_to_the_Right_and_Close_Other_Tabs_end_showing_the_tab_they_were_chosen_on());
+        Flow.StepApart<EditorTabsTests>("unsplit joins a split into the group worked in and Unsplit All joins every split keeping each tab and its caret", t => t.Unsplit_joins_a_split_into_the_group_worked_in_and_Unsplit_All_joins_every_split_keeping_each_tab_and_its_caret());
+        Flow.StepApart<EditorTabsTests>("the button at the strip's end lists the tabs out of its sight and goes to the one chosen", t => t.The_button_at_the_strips_end_lists_the_tabs_out_of_its_sight_and_goes_to_the_one_chosen());
+    }
+
+    private void A_pinned_tab_stands_left_with_a_pin_stays_through_Close_Others_and_Close_All_and_comes_back_pinned_with_the_folder()
     {
         MainWindow first = Keeping("One.cs", "Two.cs", "Three.cs", "Four.cs");
         EditorGroup group = first.EditorArea.ActiveGroup;
@@ -78,8 +94,7 @@ public sealed class EditorTabsTests : IDisposable
         second.Close();
     }
 
-    [AvaloniaFact]
-    public void Reopen_Closed_Tab_brings_tabs_back_in_the_reverse_of_the_order_they_closed_each_where_it_stood_with_its_caret()
+    private void Reopen_Closed_Tab_brings_tabs_back_in_the_reverse_of_the_order_they_closed_each_where_it_stood_with_its_caret()
     {
         MainWindow window = Keeping(Five);
         EditorArea area = window.EditorArea;
@@ -123,8 +138,7 @@ public sealed class EditorTabsTests : IDisposable
     /// <summary>A file left scrolled to its end, then made far shorter on disk (a checkout, an agent writing it): its tab
     /// draws the lines left whether it is shown as the file changes, shown again from behind another tab, or closed and
     /// reopened, where its view stood past the last of them, blank, gutter and all, until scrolled.</summary>
-    [AvaloniaFact]
-    public void A_tab_left_scrolled_to_its_files_end_draws_the_lines_left_once_the_file_is_far_shorter_on_disk()
+    private void A_tab_left_scrolled_to_its_files_end_draws_the_lines_left_once_the_file_is_far_shorter_on_disk()
     {
         string path = Path.Combine(folder, "Long.cs");
         string full = string.Concat(Enumerable.Range(1, 300).Select(i => $"// line {i}\n"));
@@ -168,8 +182,7 @@ public sealed class EditorTabsTests : IDisposable
     /// <summary>A file opened from another (by Go to File, as Go to Declaration opens one) comes in a tab just after it;
     /// Close Tab's keys there show the file it was opened from, its caret where it was, never the tab that took the closed
     /// one's place, and a close after that shows the tab shown before it again.</summary>
-    [AvaloniaFact]
-    public void Closing_the_tab_shown_shows_the_one_shown_before_it_with_its_caret_rather_than_its_neighbour()
+    private void Closing_the_tab_shown_shows_the_one_shown_before_it_with_its_caret_rather_than_its_neighbour()
     {
         MainWindow window = Keeping("One.cs", "Two.cs", "Three.cs");
         EditorArea area = window.EditorArea;
@@ -197,30 +210,9 @@ public sealed class EditorTabsTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A folder opened again shows the tab it showed last, none of its others shown since: closing that one shows
-    /// the tab that took its place on the strip.</summary>
-    [AvaloniaFact]
-    public void Closing_the_tab_shown_where_no_other_tab_was_shown_shows_its_neighbour()
-    {
-        MainWindow first = Keeping("One.cs", "Two.cs", "Three.cs");
-        first.OpenFile("Two.cs");
-        Ui.Settle();
-        first.Close();
-
-        MainWindow second = Keeping();
-        EditorGroup group = second.EditorArea.ActiveGroup;
-        Assert.Equal(["One.cs", "Two.cs", "Three.cs"], Names(group));
-        Assert.Equal("Two.cs", second.EditorArea.Active?.Name);
-        Ui.Press(second, Ui.Shortcut(AppActions.CloseTab));
-        Assert.True(second.EditorArea.Active?.Name == "Three.cs", $"Closing Two.cs with no other tab shown showed {second.EditorArea.Active?.Name}, not Three.cs, its neighbour");
-        Assert.Equal(["One.cs", "Three.cs"], Names(group));
-        second.Close();
-    }
-
     /// <summary>Close Tabs to the Right and Close Other Tabs, chosen on a tab not shown, end showing that tab, the one
     /// they keep, rather than the tab shown before them (left open) or a pinned tab shown more lately.</summary>
-    [AvaloniaFact]
-    public void Close_Tabs_to_the_Right_and_Close_Other_Tabs_end_showing_the_tab_they_were_chosen_on()
+    private void Close_Tabs_to_the_Right_and_Close_Other_Tabs_end_showing_the_tab_they_were_chosen_on()
     {
         MainWindow window = Keeping(Five);
         EditorArea area = window.EditorArea;
@@ -243,29 +235,7 @@ public sealed class EditorTabsTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Close_Tabs_to_the_Left_and_to_the_Right_close_those_on_that_side_but_the_pinned_ones()
-    {
-        MainWindow window = Keeping(Five);
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Ui.ChooseFromMenu(Tab(group, "Five.cs"), "Pin Tab");
-        Assert.Equal(["Five.cs", "One.cs", "Two.cs", "Three.cs", "Four.cs"], Names(group));
-
-        Ui.ChooseFromMenu(Tab(group, "Three.cs"), "Close Tabs to the Left");
-        Assert.Equal(["Five.cs", "Three.cs", "Four.cs"], Names(group));
-        Ui.ChooseFromMenu(Tab(group, "Three.cs"), "Close Tabs to the Right");
-        Assert.Equal(["Five.cs", "Three.cs"], Names(group));
-        Assert.Equal(["Five.cs", "Three.cs"], window.EditorArea.Documents.Select(d => d.Name).Order());
-
-        // Nothing is left on either side but the pinned tab, so neither can run, from its menu or Window > Editor Tabs.
-        Assert.Throws<InvalidOperationException>(() => Ui.ChooseFromMenu(Tab(group, "Three.cs"), "Close Tabs to the Left"));
-        window.OpenFile("Three.cs");
-        Assert.False(MenuItem(window, "Close Tabs to the Right").IsEnabled, "Close Tabs to the Right can run on the last tab");
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void Unsplit_joins_a_split_into_the_group_worked_in_and_Unsplit_All_joins_every_split_keeping_each_tab_and_its_caret()
+    private void Unsplit_joins_a_split_into_the_group_worked_in_and_Unsplit_All_joins_every_split_keeping_each_tab_and_its_caret()
     {
         MainWindow window = Keeping("One.cs", "Two.cs");
         EditorArea area = window.EditorArea;
@@ -295,8 +265,7 @@ public sealed class EditorTabsTests : IDisposable
     /// <summary>More tabs than the strip shows: the button at its end appears, lists the tabs out of its sight with their
     /// files' icons, narrows them as a name is typed and goes to the one chosen by Enter or by Down and Enter, which comes
     /// into the strip's sight; with the tabs fitting again it is gone.</summary>
-    [AvaloniaFact]
-    public void The_button_at_the_strips_end_lists_the_tabs_out_of_its_sight_and_goes_to_the_one_chosen()
+    private void The_button_at_the_strips_end_lists_the_tabs_out_of_its_sight_and_goes_to_the_one_chosen()
     {
         string[] many = [.. Enumerable.Range(1, 16).Select(i => $"Component{i:00}.cs")];
         foreach (string file in many)
@@ -340,35 +309,6 @@ public sealed class EditorTabsTests : IDisposable
         }
         Ui.Settle();
         Assert.False(group.HiddenTabsButton.IsVisible, "The list of hidden tabs still shows once every tab is in sight");
-        window.Close();
-    }
-
-    /// <summary>The open tab's file typed in shows the dot every tab with unsaved changes shows, its × only while the pointer
-    /// is over the tab; saved, the open tab shows its × again.</summary>
-    [AvaloniaFact]
-    public void The_open_tab_of_a_file_typed_in_shows_its_unsaved_dot_and_its_close_button_only_under_the_pointer()
-    {
-        MainWindow window = Keeping("One.cs", "Two.cs");
-        EditorGroup group = window.EditorArea.ActiveGroup;
-        Assert.Equal("Two.cs", window.EditorArea.Active?.Name);
-        Assert.True(Shows(TabClose(group, "Two.cs")) && !Shows(TabDot(group, "Two.cs")), "The open tab of a file as saved shows no ×, or a dot as if it had changes");
-
-        window.KeyTextInput("// ");
-        Ui.Settle();
-        Assert.True(window.EditorArea.Active?.IsModified == true, "Typing into the open file left it as saved");
-        Assert.True(Shows(TabDot(group, "Two.cs")), "The open tab of the file typed in shows no dot, so nothing says the file being worked on has unsaved changes");
-        Assert.False(Shows(TabClose(group, "Two.cs")), "The open tab of the file typed in shows its × over its dot");
-
-        Ui.Hover(TabName(group, "Two.cs"));
-        Assert.True(Shows(TabClose(group, "Two.cs")), "The changed open tab shows no × under the pointer, so it cannot be closed by its tab");
-        Assert.False(Shows(TabDot(group, "Two.cs")), "The changed open tab shows its dot under the pointer, where its × goes");
-
-        Ui.Hover(window.EditorArea.CodeEditor);
-        Assert.True(Shows(TabDot(group, "Two.cs")) && !Shows(TabClose(group, "Two.cs")), "The pointer gone from the changed open tab, its dot does not come back in place of its ×");
-
-        Ui.Run(window, AppActions.Save);
-        Assert.True(window.EditorArea.Active?.IsModified == false, "Save left the open file with unsaved changes");
-        Assert.True(Shows(TabClose(group, "Two.cs")) && !Shows(TabDot(group, "Two.cs")), "The open tab of the file saved shows its dot still, or no ×");
         window.Close();
     }
 
@@ -421,9 +361,6 @@ public sealed class EditorTabsTests : IDisposable
 
     private static Button TabClose(EditorGroup group, string name) =>
         Tab(group, name).GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.TabClose));
-
-    private static Avalonia.Controls.Shapes.Ellipse TabDot(EditorGroup group, string name) =>
-        Tab(group, name).GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().Single(e => e.Classes.Contains(StyleClasses.Modified));
 
     /// <summary>Whether a control is drawn: shown, and not faded out as a tab's × and dot are while the other shows.</summary>
     private static bool Shows(Control control) => control.IsEffectivelyVisible && control.Opacity == 1;

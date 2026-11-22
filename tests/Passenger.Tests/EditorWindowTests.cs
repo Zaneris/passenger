@@ -38,8 +38,21 @@ public sealed class EditorWindowTests : IDisposable
         TestFolders.Delete(folder);
     }
 
+    /// <summary>A tab opened in a new window works there over the same file with the IDE's keys and the same
+    /// decorations and folds, a tab dragged out opens a window under the pointer and dragged back joins the strip,
+    /// closing an editor window closes its tabs saving each as closing a tab does, and the window comes back where it
+    /// stood with its splits and tabs.</summary>
     [AvaloniaFact]
-    public void Open_tab_in_new_window_takes_the_tab_to_a_window_over_the_same_file_where_the_ides_keys_work_and_its_last_tab_closes_it()
+    public void A_tab_taken_to_an_editor_window_works_there_saves_as_it_closes_and_comes_back()
+    {
+        Flow.StepApart<EditorWindowTests>("open tab in new window takes the tab to a window over the same file where the IDE's keys work and its last tab closes it", t => t.Open_tab_in_new_window_takes_the_tab_to_a_window_over_the_same_file_where_the_ides_keys_work_and_its_last_tab_closes_it());
+        Flow.StepApart<EditorWindowTests>("a file in an editor window shows the same decorations as the main window's after an edit there and folds in both", t => t.A_file_in_an_editor_window_shows_the_same_decorations_as_the_main_windows_after_an_edit_there_and_folds_in_both());
+        Flow.StepApart<EditorWindowTests>("closing an editor window closes its tabs saving each as closing a tab does", t => t.Closing_an_editor_window_closes_its_tabs_saving_each_as_closing_a_tab_does());
+        Flow.StepApart<EditorWindowTests>("a tab dragged out of the main window opens in a window under the pointer and dragged back onto the strip joins it again", t => t.A_tab_dragged_out_of_the_main_window_opens_in_a_window_under_the_pointer_and_dragged_back_onto_the_strip_joins_it_again());
+        Flow.StepApart<EditorWindowTests>("an editor window comes back where it stood with its splits and tabs when the folder opens again", t => t.An_editor_window_comes_back_where_it_stood_with_its_splits_and_tabs_when_the_folder_opens_again());
+    }
+
+    private void Open_tab_in_new_window_takes_the_tab_to_a_window_over_the_same_file_where_the_ides_keys_work_and_its_last_tab_closes_it()
     {
         MainWindow window = Open(1200, 800, "Two.cs", "One.cs");
         EditorArea area = window.EditorArea;
@@ -90,8 +103,7 @@ public sealed class EditorWindowTests : IDisposable
     /// <summary>A file in the main window and an editor window is drawn from one set of decorations: what the IDE's services
     /// set on it shows the same in the main window after an edit in the other, carried where the edit moved it, and a fold
     /// toggled in one window folds the other.</summary>
-    [AvaloniaFact]
-    public void A_file_in_an_editor_window_shows_the_same_decorations_as_the_main_windows_after_an_edit_there_and_folds_in_both()
+    private void A_file_in_an_editor_window_shows_the_same_decorations_as_the_main_windows_after_an_edit_there_and_folds_in_both()
     {
         File.WriteAllText(Path.Combine(folder, "Marked.cs"), SameDecorations.Text);
         MainWindow window = Ui.OpenFolder(folder, width: 1200, height: 800, languageServer: false);
@@ -117,8 +129,7 @@ public sealed class EditorWindowTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Closing_an_editor_window_closes_its_tabs_saving_each_as_closing_a_tab_does()
+    private void Closing_an_editor_window_closes_its_tabs_saving_each_as_closing_a_tab_does()
     {
         MainWindow window = Open(1200, 800, "One.cs", "Two.cs");
         Ui.Press(window, "shift F4");
@@ -136,8 +147,7 @@ public sealed class EditorWindowTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void A_tab_dragged_out_of_the_main_window_opens_in_a_window_under_the_pointer_and_dragged_back_onto_the_strip_joins_it_again()
+    private void A_tab_dragged_out_of_the_main_window_opens_in_a_window_under_the_pointer_and_dragged_back_onto_the_strip_joins_it_again()
     {
         // Small enough that a window the size of its editors fits on the screen beside it.
         MainWindow window = Open(900, 600, "One.cs", "Two.cs");
@@ -165,8 +175,7 @@ public sealed class EditorWindowTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_editor_window_comes_back_where_it_stood_with_its_splits_and_tabs_when_the_folder_opens_again()
+    private void An_editor_window_comes_back_where_it_stood_with_its_splits_and_tabs_when_the_folder_opens_again()
     {
         string settings = TestFolders.Create("settings-");
         MainWindow first = new() { Width = 1200, Height = 800, StateFolder = settings };

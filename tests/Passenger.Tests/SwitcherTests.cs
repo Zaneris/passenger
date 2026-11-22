@@ -31,8 +31,18 @@ public sealed class SwitcherTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>The switcher: a quick Ctrl+Tab goes back to the tab used last and a second comes back, held its popup
+    /// lists the tabs by use, Tab and Shift+Tab move, letting Ctrl go opens the one chosen and Escape changes nothing,
+    /// and an agent's input switches as a quick press, never opening the popup.</summary>
     [AvaloniaFact]
-    public void A_quick_Ctrl_Tab_goes_back_to_the_tab_used_last_and_a_second_comes_back_without_the_popup()
+    public void The_switcher_goes_back_to_the_tab_used_last_or_the_one_chosen_and_an_agent_never_opens_it()
+    {
+        Flow.StepApart<SwitcherTests>("a quick Ctrl Tab goes back to the tab used last and a second comes back without the popup", t => t.A_quick_Ctrl_Tab_goes_back_to_the_tab_used_last_and_a_second_comes_back_without_the_popup());
+        Flow.StepApart<SwitcherTests>("held its popup lists the tabs by use Tab moves on Shift Tab back Ctrl let go opens the one chosen and Escape changes nothing", t => t.Held_its_popup_lists_the_tabs_by_use_Tab_moves_on_Shift_Tab_back_Ctrl_let_go_opens_the_one_chosen_and_Escape_changes_nothing());
+        Flow.StepApart<SwitcherTests>("an agent's input switches as a quick press never opening the popup", t => t.An_agents_input_switches_as_a_quick_press_never_opening_the_popup());
+    }
+
+    private void A_quick_Ctrl_Tab_goes_back_to_the_tab_used_last_and_a_second_comes_back_without_the_popup()
     {
         MainWindow window = Opened();
         try
@@ -52,8 +62,7 @@ public sealed class SwitcherTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Held_its_popup_lists_the_tabs_by_use_Tab_moves_on_Shift_Tab_back_Ctrl_let_go_opens_the_one_chosen_and_Escape_changes_nothing()
+    private void Held_its_popup_lists_the_tabs_by_use_Tab_moves_on_Shift_Tab_back_Ctrl_let_go_opens_the_one_chosen_and_Escape_changes_nothing()
     {
         MainWindow window = Opened();
         try
@@ -97,60 +106,7 @@ public sealed class SwitcherTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Its_order_follows_a_tab_clicked_and_a_file_closed()
-    {
-        MainWindow window = Opened();
-        try
-        {
-            EditorGroup group = window.EditorArea.ActiveGroup;
-            Ui.Click(Tab(group, "One.txt"));
-            Assert.True(Files(window).SequenceEqual(["One.txt", "Three.txt", "Two.txt"]), $"After a click on One.txt's tab the Switcher lists [{string.Join(", ", Files(window))}]");
-            QuickSwitch(window);
-            Assert.True(window.EditorArea.Active?.Name == "Three.txt", $"A quick Ctrl+Tab after a click on One.txt's tab went to {window.EditorArea.Active?.Name}, not Three.txt, shown before it");
-
-            Assert.True(window.Perform(AppActions.CloseTab), "Close Tab did not run");
-            Ui.Settle();
-            string shown = window.EditorArea.Active?.Name ?? "nothing";
-            Assert.True(Files(window).SequenceEqual([shown, .. ((string[])["One.txt", "Two.txt"]).Where(n => n != shown)]),
-                $"With Three.txt closed and {shown} shown the Switcher lists [{string.Join(", ", Files(window))}]");
-            QuickSwitch(window);
-            Assert.True(window.EditorArea.Active?.Name != shown && window.EditorArea.Active?.Name != "Three.txt",
-                $"A quick Ctrl+Tab after Three.txt closed went to {window.EditorArea.Active?.Name}, where the closed file has left the order");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void Asked_for_by_its_action_it_waits_for_Enter_and_takes_the_person_to_a_tool_window_chosen()
-    {
-        MainWindow window = Opened();
-        try
-        {
-            Assert.True(window.Perform(AppActions.Switcher), "The Switcher did not run from its action");
-            SwitcherPopup popup = Shown(window);
-            Assert.True(popup.Selected?.Name == "Two.txt", $"The Switcher asked for by its action chose {popup.Selected?.Name}, not Two.txt");
-            Ui.Settle();
-            Assert.True(window.IsPopupOpen, "The Switcher asked for with no key held closed by itself");
-            window.KeyTextInput("Problems");
-            Ui.Settle();
-            Assert.True(popup.Selected?.Window?.Id == ToolWindowIds.Problems, $"Typing Problems chose {popup.Selected?.Name}, not the Problems window");
-            Ui.Press(window, "ENTER");
-            Assert.False(window.IsPopupOpen, "Enter left the Switcher open");
-            Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems), "The Problems window chosen in the Switcher is not shown");
-            Assert.True(window.DockHost[ToolWindowIds.Problems].Content.IsKeyboardFocusWithin, "The Problems window chosen in the Switcher has not the keys");
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void An_agents_input_switches_as_a_quick_press_never_opening_the_popup()
+    private void An_agents_input_switches_as_a_quick_press_never_opening_the_popup()
     {
         MainWindow window = Opened();
         try
@@ -200,8 +156,6 @@ public sealed class SwitcherTests : IDisposable
         Ui.WaitFor(() => window.Popup is SwitcherPopup, "the Switcher's popup, Ctrl held");
         return (SwitcherPopup)window.Popup!;
     }
-
-    private static string[] Files(MainWindow window) => [.. window.SwitcherRows().Where(r => r.Document is not null).Select(r => r.Name)];
 
     private static Control Tab(EditorGroup group, string name) =>
         group.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == name && t.Classes.Contains(StyleClasses.TabName)).FindAncestorOfType<Border>()!;

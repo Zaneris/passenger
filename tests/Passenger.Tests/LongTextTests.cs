@@ -19,8 +19,41 @@ public sealed class LongTextTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A line of a million characters costs a key what a short one does: typing and moving, measuring and
+    /// allocating, a click far along it putting the caret on the character clicked, and edits to long lines leaving
+    /// every column where a fresh editor draws it.</summary>
     [AvaloniaFact]
-    public void Typing_and_moving_on_a_line_of_a_million_characters_costs_what_it_does_on_a_short_line()
+    public void A_line_of_a_million_characters_costs_a_key_what_a_short_line_does_and_draws_every_column_right()
+    {
+        Flow.StepApart<LongTextTests>("typing and moving on a line of a million characters costs what it does on a short line", t => t.Typing_and_moving_on_a_line_of_a_million_characters_costs_what_it_does_on_a_short_line());
+        Flow.StepApart<LongTextTests>("a key in a line of a million characters measures and allocates what one in ten thousand does", t => t.A_key_in_a_line_of_a_million_characters_measures_and_allocates_what_one_in_ten_thousand_does());
+        Flow.StepApart<LongTextTests>("a click far along a line of a million characters puts the caret on the character clicked", t => t.A_click_far_along_a_line_of_a_million_characters_puts_the_caret_on_the_character_clicked());
+        Flow.StepApart<LongTextTests>("edits to long lines leave every column where a fresh editor draws it", t => t.Edits_to_long_lines_leave_every_column_where_a_fresh_editor_draws_it());
+    }
+
+    /// <summary>Soft wrap costs what a small file does: a key in a soft-wrapped line of a million characters, showing
+    /// and resizing five hundred thousand soft-wrapped lines, and edits to long soft-wrapped lines leaving every column
+    /// on the row a fresh editor wraps it onto.</summary>
+    [AvaloniaFact]
+    public void Soft_wrap_over_long_lines_and_large_files_costs_what_a_small_one_does_and_wraps_as_a_fresh_editor()
+    {
+        Flow.StepApart<LongTextTests>("a key in a soft wrapped line of a million characters wraps and allocates what one in ten thousand does", t => t.A_key_in_a_soft_wrapped_line_of_a_million_characters_wraps_and_allocates_what_one_in_ten_thousand_does());
+        Flow.StepApart<LongTextTests>("showing and resizing a soft wrapped file of 500,000 lines costs the UI thread what one of 5,000 does", t => t.Showing_and_resizing_a_soft_wrapped_file_of_500_000_lines_costs_the_UI_thread_what_one_of_5_000_does());
+        Flow.StepApart<LongTextTests>("edits to long soft wrapped lines leave every column on the row a fresh editor wraps it onto", t => t.Edits_to_long_soft_wrapped_lines_leave_every_column_on_the_row_a_fresh_editor_wraps_it_onto());
+    }
+
+    /// <summary>A thousand carets cost what few do: Select All Occurrences of a word written five thousand times makes
+    /// a thousand carets and says so, a key with them costs the same in eight thousand methods as in a thousand, and
+    /// Left, Right and Backspace copy nothing around each caret.</summary>
+    [AvaloniaFact]
+    public void A_thousand_carets_cost_a_key_what_few_do()
+    {
+        Flow.StepApart<LongTextTests>("select all occurrences of a word written five thousand times makes a thousand carets and says so", t => t.Select_all_occurrences_of_a_word_written_five_thousand_times_makes_a_thousand_carets_and_says_so());
+        Flow.StepApart<LongTextTests>("a key with a thousand carets costs the same in eight thousand methods as in a thousand", t => t.A_key_with_a_thousand_carets_costs_the_same_in_eight_thousand_methods_as_in_a_thousand());
+        Flow.StepApart<LongTextTests>("left Right and Backspace with a thousand carets copy nothing around each caret", t => t.Left_Right_and_Backspace_with_a_thousand_carets_copy_nothing_around_each_caret());
+    }
+
+    private void Typing_and_moving_on_a_line_of_a_million_characters_costs_what_it_does_on_a_short_line()
     {
         StringBuilder text = new("short line above\n[");
         for (int i = 0; text.Length < 1_000_000; i++)
@@ -50,8 +83,7 @@ public sealed class LongTextTests : IDisposable
     /// <summary>A key in the middle of a line of a million characters of words, tabs, CJK, accented letters and emoji,
     /// whose columns only their graphemes' widths place, reads and allocates what a key in such a line of ten thousand
     /// does: the line's measure is carried through the edit, read again only around it.</summary>
-    [AvaloniaFact]
-    public void A_key_in_a_line_of_a_million_characters_measures_and_allocates_what_one_in_ten_thousand_does()
+    private void A_key_in_a_line_of_a_million_characters_measures_and_allocates_what_one_in_ten_thousand_does()
     {
         KeysInTheMiddle small = new(10_000, softWrap: false);
         KeysInTheMiddle large = new(1_000_000, softWrap: false);
@@ -74,8 +106,7 @@ public sealed class LongTextTests : IDisposable
     /// <summary>With soft wrap on, a key in the middle of a line of a million characters of words, tabs, CJK, accented
     /// letters and emoji reads and allocates what a key in such a line of ten thousand does: the line's rows are carried
     /// through the edit, wrapped again only from the row before it to the first row after it that starts where it did.</summary>
-    [AvaloniaFact]
-    public void A_key_in_a_soft_wrapped_line_of_a_million_characters_wraps_and_allocates_what_one_in_ten_thousand_does()
+    private void A_key_in_a_soft_wrapped_line_of_a_million_characters_wraps_and_allocates_what_one_in_ten_thousand_does()
     {
         KeysInTheMiddle small = new(10_000, softWrap: true);
         KeysInTheMiddle large = new(1_000_000, softWrap: true);
@@ -97,8 +128,7 @@ public sealed class LongTextTests : IDisposable
     /// <summary>With soft wrap on, showing a file of 500,000 lines and changing the view's width read and allocate on the UI
     /// thread what they do in a file of 5,000: the lines on screen are wrapped at once and the rest on the thread pool,
     /// the rows kept as they were until those land.</summary>
-    [AvaloniaFact]
-    public void Showing_and_resizing_a_soft_wrapped_file_of_500_000_lines_costs_the_UI_thread_what_one_of_5_000_does()
+    private void Showing_and_resizing_a_soft_wrapped_file_of_500_000_lines_costs_the_UI_thread_what_one_of_5_000_does()
     {
         WrappedFile small = new(5_000);
         WrappedFile large = new(500_000);
@@ -127,8 +157,7 @@ public sealed class LongTextTests : IDisposable
     /// Undo and Redo) of tabs, CJK, Arabic, emoji with their joiners and modifiers, flags, combining marks, a grapheme
     /// longer than any read whole and lone surrogates, one of them printable ASCII until an edit puts more in: after every
     /// edit each column of both lines is where a fresh editor of the same text, scrolled alike, draws it.</summary>
-    [AvaloniaFact]
-    public void Edits_to_long_lines_leave_every_column_where_a_fresh_editor_draws_it()
+    private void Edits_to_long_lines_leave_every_column_where_a_fresh_editor_draws_it()
     {
         Random random = new(548);
         string[] pieces =
@@ -228,8 +257,7 @@ public sealed class LongTextTests : IDisposable
     /// marks, a grapheme of 71 characters, lone surrogates and inlay hints, one line indented and one printable ASCII until
     /// an edit puts more in: after every edit each column of the long lines is drawn on the row, and at the place, where a
     /// fresh editor of the same text and hints draws it, so the rows carried through edits are those wrapping anew makes.</summary>
-    [AvaloniaFact]
-    public void Edits_to_long_soft_wrapped_lines_leave_every_column_on_the_row_a_fresh_editor_wraps_it_onto()
+    private void Edits_to_long_soft_wrapped_lines_leave_every_column_on_the_row_a_fresh_editor_wraps_it_onto()
     {
         Random random = new(578);
         string[] pieces =
@@ -343,30 +371,7 @@ public sealed class LongTextTests : IDisposable
         }
     }
 
-    /// <summary>Soft wrap turned on while the thread pool ends each wrap of the lines off screen before the window's thread
-    /// awaits it: the rows land once, on a later turn, never inside the window's reading of its rows, where each landing
-    /// wrapped the map it replaced again until the stack ran out (#1516), and every line is on the rows a fresh editor
-    /// wraps it onto.</summary>
-    [AvaloniaFact]
-    public void Soft_wrap_turned_on_while_the_thread_pool_ends_each_wrap_before_the_window_looks_lands_the_rows_once_on_a_later_turn()
-    {
-        string text = string.Concat(Enumerable.Range(0, 200).Select(i => string.Concat(Enumerable.Range(0, 40).Select(w => $"w{i}x{w} ")) + "\n"));
-        EditorRig rig = new(text);
-        using (BackgroundWork.AtOnce wrapping = BackgroundWork.EndingAtOnce())
-        {
-            rig.Editor.SoftWrap = true;
-            int unlanded = rig.Editor.RowsShown;
-            Ui.Settle();
-            Assert.True(rig.Editor.RowsShown > unlanded,
-                $"Turning soft wrap on showed {unlanded} rows as it returned and {rig.Editor.RowsShown} once settled: the wrap of the lines off screen landed inside the window's own reading of its rows");
-            Assert.True(wrapping.Ran == 1,
-                $"The lines off screen were wrapped {wrapping.Ran} times on the thread pool: landing, the wraps started wrapping the map they replaced again");
-        }
-        AssertRowsMatchAFreshEditor(rig, [0, 100, 199], "soft wrap turned on, the thread pool ending each wrap before the window looked");
-    }
-
-    [AvaloniaFact]
-    public void A_click_far_along_a_line_of_a_million_characters_puts_the_caret_on_the_character_clicked()
+    private void A_click_far_along_a_line_of_a_million_characters_puts_the_caret_on_the_character_clicked()
     {
         string line = string.Concat(Enumerable.Range(0, 100_000).Select(i => $"{i % 10}abcdefgh "));
         EditorRig rig = new("first\n" + line + "\nlast");
@@ -386,23 +391,7 @@ public sealed class LongTextTests : IDisposable
         Assert.Equal(target, rig.Caret);
     }
 
-    [AvaloniaFact]
-    public void Once_the_longest_line_is_deleted_there_is_nothing_to_scroll_sideways_to()
-    {
-        EditorRig rig = new("short\n" + new string('a', 5000) + "\nshort");
-        rig.PlaceCaret(6 + 5000);
-        Ui.Settle();
-        Assert.True(rig.Editor.ScrollOffset.X > 1000, "The view should have followed the caret to the long line's end.");
-
-        rig.Editor.Selections = SelectionSet.Single(new Selection(6, 6 + 5001));
-        rig.Press("BACK_SPACE");
-        rig.Editor.ScrollTo(new Vector(100_000, 0));
-        Ui.Settle();
-        Assert.True(rig.Editor.ScrollOffset.X < 1, $"With every line short, the view still scrolls sideways to {rig.Editor.ScrollOffset.X:F0}.");
-    }
-
-    [AvaloniaFact]
-    public void Select_all_occurrences_of_a_word_written_five_thousand_times_makes_a_thousand_carets_and_says_so()
+    private void Select_all_occurrences_of_a_word_written_five_thousand_times_makes_a_thousand_carets_and_says_so()
     {
         string path = Path.Combine(folder, "words.txt");
         File.WriteAllText(path, string.Concat(Enumerable.Repeat("cat sat\n", 5000)));
@@ -430,8 +419,7 @@ public sealed class LongTextTests : IDisposable
     /// <summary>A key with a thousand carets costs the UI thread what the carets cost, not the file's length: in eight
     /// thousand methods it allocates on the UI thread under 512 bytes a caret more than in a thousand (the text's deeper
     /// tree, about 200), where a copy of the larger file's text would be 4 MB more.</summary>
-    [AvaloniaFact]
-    public void A_key_with_a_thousand_carets_costs_the_same_in_eight_thousand_methods_as_in_a_thousand()
+    private void A_key_with_a_thousand_carets_costs_the_same_in_eight_thousand_methods_as_in_a_thousand()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         window.Show();
@@ -448,8 +436,7 @@ public sealed class LongTextTests : IDisposable
     /// thread under 512 bytes for each caret (its place in the carets' sets), and Backspace under 256 bytes for each caret
     /// more than typing a letter. A step back over a grapheme copied the 1,024 characters before every caret to find it,
     /// and Backspace a block of the line besides: 2.2 KB for each caret, and 2.7 KB more than a letter typed.</summary>
-    [AvaloniaFact]
-    public void Left_Right_and_Backspace_with_a_thousand_carets_copy_nothing_around_each_caret()
+    private void Left_Right_and_Backspace_with_a_thousand_carets_copy_nothing_around_each_caret()
     {
         StringBuilder text = new();
         for (int i = 0; i < SelectionSet.MaxCount; i++)

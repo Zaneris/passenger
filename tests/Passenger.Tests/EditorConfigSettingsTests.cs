@@ -16,8 +16,7 @@ public sealed class EditorConfigSettingsTests
     private const string LineLength = "Line length (columns)";
     private const string FinalLineBreak = "Ensure a final line break on save";
 
-    [AvaloniaFact]
-    public void Each_row_names_what_the_folders_editorconfig_files_set_over_it_and_follows_them_as_they_change()
+    internal void Each_row_names_what_the_folders_editorconfig_files_set_over_it_and_follows_them_as_they_change()
     {
         string folder = TestFolders.Create("editorconfig-settings-");
         string top = TestFolders.Write(folder, ".editorconfig", "root = true\n\n[*]\ninsert_final_newline = true\n\n[*.gd]\nmax_line_length = 120\n");

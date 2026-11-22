@@ -44,8 +44,48 @@ public sealed class KeymapChoiceTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>A keymap chosen in Settings (VS Code's, IntelliJ IDEA's) runs its keys in the editor and the IDE and is
+    /// kept after a restart, shortcuts set over it stay with it until Reset, each keymap's keys are those its source
+    /// resolves them to, the menus name them, and the mouse's gestures are the keymap's, one added in Settings saying
+    /// its conflict and kept, as a double Shift recorded runs its action.</summary>
     [AvaloniaFact]
-    public void VS_Code_chosen_in_Settings_runs_its_keys_in_the_editor_and_the_IDE_and_is_kept_after_a_restart()
+    public void A_keymap_chosen_runs_its_keys_everywhere_names_them_and_is_kept()
+    {
+        Flow.StepApart<KeymapChoiceTests>("VS Code chosen in Settings runs its keys in the editor and the IDE and is kept after a restart", t => t.VS_Code_chosen_in_Settings_runs_its_keys_in_the_editor_and_the_IDE_and_is_kept_after_a_restart());
+        Flow.StepApart<KeymapChoiceTests>("IntelliJ IDEA chosen in Settings runs its keys keeps its own shortcut and is kept after a restart", t => t.IntelliJ_IDEA_chosen_in_Settings_runs_its_keys_keeps_its_own_shortcut_and_is_kept_after_a_restart());
+        Flow.StepApart<IntelliJKeymapTests>("IntelliJ IDEA's keymap gives its actions IntelliJ IDEA's keys on this platform", t => t.IntelliJ_IDEAs_keymap_gives_its_actions_IntelliJ_IDEAs_keys_on_this_platform());
+        Flow.StepApart<IntelliJKeymapTests>("IntelliJ IDEA's shortcuts read back from settings as they were kept", t => t.IntelliJ_IDEAs_shortcuts_read_back_from_settings_as_they_were_kept());
+        Flow.StepApart<KeymapChoiceTests>("shortcuts set over one keymap stay with it and Reset Shortcuts gives back the chosen keymap's own", t => t.Shortcuts_set_over_one_keymap_stay_with_it_and_Reset_Shortcuts_gives_back_the_chosen_keymaps_own());
+        Flow.StepApart<KeymapChoiceTests>("each keymap's keys for Duplicate Parameter Info Toggle Case and Generate are those Rider's keymap resolves them to", t => t.Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to());
+        Flow.StepApart<KeymapChoiceTests>("the menus and the tool windows' buttons name the chosen keymap's keys", t => t.The_menus_and_the_tool_windows_buttons_name_the_chosen_keymaps_keys());
+        Flow.StepApart<KeymapChoiceTests>("the mouse's caret and column gestures are the keymap's in force", t => t.The_mouses_caret_and_column_gestures_are_the_keymaps_in_force());
+        Flow.StepApart<MouseShortcutSettingsTests>("a mouse shortcut added in Settings says its conflict first runs its action and is kept after a restart", t => t.A_mouse_shortcut_added_in_Settings_says_its_conflict_first_runs_its_action_and_is_kept_after_a_restart());
+        Flow.StepApart<MouseShortcutSettingsTests>("a settings json of keys alone keeps the keymap's gestures for the actions it names", t => t.A_settings_json_of_keys_alone_keeps_the_keymaps_gestures_for_the_actions_it_names());
+        Flow.StepApart<KeymapTests>("a double Shift recorded in the Keyboard Shortcut dialog runs its action from the editor", t => t.A_double_Shift_recorded_in_the_Keyboard_Shortcut_dialog_runs_its_action_from_the_editor());
+    }
+
+    /// <summary>Each key reaches what it is meant for where it is pressed: the terminal and a floating terminal keep
+    /// the shell's keys, a floating tool window runs the keymap chosen, IntelliJ IDEA's keys act by place (Duplicate,
+    /// Generate, View Breakpoints, Cmd+R), Copy copies what the mouse chose in the consoles, a chord's first key is
+    /// forgotten after a click, a focus move or two seconds, and on Windows AltGr types its character.</summary>
+    [AvaloniaFact]
+    public void Each_key_reaches_what_it_is_meant_for_in_the_place_it_is_pressed()
+    {
+        Flow.StepApart<KeymapChoiceTests>("in VS Code's keymap the terminal keeps what is typed and its key goes back to the editor", t => t.In_VS_Codes_keymap_the_terminal_keeps_what_is_typed_and_its_key_goes_back_to_the_editor());
+        Flow.StepApart<KeymapChoiceTests>("a floating tool window runs the keymap chosen and its search box keeps what is typed", t => t.A_floating_tool_window_runs_the_keymap_chosen_and_its_search_box_keeps_what_is_typed());
+        Flow.StepApart<KeymapChoiceTests>("a floating terminal keeps the shell's keys and lets the IDE's through", t => t.A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through());
+        Flow.StepApart<KeymapChoiceTests>("Duplicate's key duplicates the line in the editor and compares files in the Explorer", t => t.Duplicates_key_duplicates_the_line_in_the_editor_and_compares_files_in_the_Explorer());
+        Flow.StepApart<IntelliJPlaceKeysTests>("Generate's key in the Explorer opens New Item and in the editor does not", t => t.Generates_key_in_the_Explorer_opens_New_Item_and_in_the_editor_does_not());
+        Flow.StepApart<IntelliJPlaceKeysTests>("View Breakpoints' key on a breakpoint's line edits it and elsewhere lists the breakpoints", t => t.View_Breakpoints_key_on_a_breakpoints_line_edits_it_and_elsewhere_lists_the_breakpoints());
+        Flow.StepApart<MouseSelectionTests>("every key a keymap gives Copy copies what the mouse selected in the Run and Debug consoles", t => t.Every_key_a_keymap_gives_Copy_copies_what_the_mouse_selected_in_the_Run_and_Debug_consoles());
+        Flow.StepApart<ShortcutTests>("a click after a chord's first key forgets it so the next letter is typed not a comment", t => t.A_click_after_a_chords_first_key_forgets_it_so_the_next_letter_is_typed_not_a_comment());
+        Flow.StepApart<ShortcutTests>("a chord's first key is forgotten when the focus moves and after two seconds as in Rider", t => t.A_chords_first_key_is_forgotten_when_the_focus_moves_and_after_two_seconds_as_in_Rider());
+        Flow.StepApart<ShortcutTests>("on Windows AltGr types its letter where the layout has one and Ctrl Alt runs its shortcut where it has none", t => t.On_Windows_AltGr_types_its_letter_where_the_layout_has_one_and_Ctrl_Alt_runs_its_shortcut_where_it_has_none());
+        Flow.StepApart<ShortcutTests>("on Windows AltGr types its character into the terminal rather than Ctrl and Alt for the shell", t => t.On_Windows_AltGr_types_its_character_into_the_terminal_rather_than_Ctrl_and_Alt_for_the_shell());
+        Flow.StepApart<IntelliJPlaceKeysTests>("on the Mac Cmd R in the Run window reruns and in the editor replaces", t => t.On_the_Mac_Cmd_R_in_the_Run_window_reruns_and_in_the_editor_replaces());
+    }
+
+    private void VS_Code_chosen_in_Settings_runs_its_keys_in_the_editor_and_the_IDE_and_is_kept_after_a_restart()
     {
         // A person's settings.json from before there was a choice: Split Right given a key of their own.
         string ownKey = $"{Cmd} alt shift J";
@@ -106,8 +146,7 @@ public sealed class KeymapChoiceTests : IDisposable
     /// <summary>IntelliJ IDEA's keymap chosen in Settings runs its keys in the editor and the IDE, the menus and Find Action
     /// name them (Search Everywhere's double Shift too), a shortcut set over it is kept with it alone in settings.json, and
     /// after a restart it is still chosen with that shortcut, which Reset Shortcuts takes back to the keymap's own.</summary>
-    [AvaloniaFact]
-    public void IntelliJ_IDEA_chosen_in_Settings_runs_its_keys_keeps_its_own_shortcut_and_is_kept_after_a_restart()
+    private void IntelliJ_IDEA_chosen_in_Settings_runs_its_keys_keeps_its_own_shortcut_and_is_kept_after_a_restart()
     {
         string ownKey = $"{Cmd} alt shift Y";
         string goToFile = OperatingSystem.IsMacOS() ? "meta shift O" : "control shift N";
@@ -173,8 +212,7 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void Shortcuts_set_over_one_keymap_stay_with_it_and_Reset_Shortcuts_gives_back_the_chosen_keymaps_own()
+    private void Shortcuts_set_over_one_keymap_stay_with_it_and_Reset_Shortcuts_gives_back_the_chosen_keymaps_own()
     {
         MainWindow window = Open();
         try
@@ -222,116 +260,6 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    /// <summary>The Debug window's empty state offers Debug, named with the key that starts it in the keymap in force: Visual
-    /// Studio's, none in VS Code's (which binds it to no key), and one the person sets there, as each is chosen.</summary>
-    [AvaloniaFact]
-    public void The_Debug_windows_empty_text_names_the_key_that_starts_Debug_in_the_keymap_in_force()
-    {
-        MainWindow window = Open();
-        try
-        {
-            window.Perform(AppActions.ShowDebug);
-            Ui.Settle();
-            Passenger.App.ToolWindows.EmptyState empty = window.DebugWindow.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>()
-                .Single(t => t.Text == "Not debugging");
-            Assert.Equal($"Debug ({Shortcut.Parse("alt F5").Display()})", empty.Offered);
-
-            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
-            Ui.Settle();
-            Assert.Equal("Debug", empty.Offered);
-
-            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.Debug] = ["shift F9"] } });
-            Ui.Settle();
-            Assert.Equal($"Debug ({Shortcut.Parse("shift F9").Display()})", empty.Offered);
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    /// <summary>The toolbar's Run names the keys that run, a tool window's Hide the keys that hide it in the keymap chosen
-    /// (VS Code's, never Visual Studio's left behind), and the Run window, empty before anything has run, says what shows in
-    /// it and offers Run with its keys, until it has text and again once it is cleared.</summary>
-    [AvaloniaFact]
-    public void The_toolbars_Run_and_Hide_name_their_keys_and_the_empty_Run_window_says_how_to_run()
-    {
-        MainWindow window = Open();
-        try
-        {
-            string run = Shortcut.Parse("control F5").Display();
-            Button runButton = window.FindControl<Button>("RunButton")!;
-            Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
-            window.ShowToolWindow(ToolWindowIds.Run);
-            Ui.Settle();
-            Button hide = window.BottomPanel.Run.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
-                .GetVisualDescendants().OfType<Button>().Single(b => b.Name == AppActions.HideToolWindow);
-            Assert.Equal($"Hide ({Shortcut.Parse("shift ESCAPE").Display()})", ToolTip.GetTip(hide));
-            string? Said() => window.BottomPanel.Run.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>().SingleOrDefault(t => t.IsEffectivelyVisible) is { } empty
-                ? $"{empty.Text}: {empty.Offered}" : null;
-            Assert.Equal($"A program's output shows here: Run ({run})", Said());
-
-            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
-            Ui.Settle();
-            Assert.Equal($"Hide ({Shortcut.Parse($"{Cmd} J").Display()})", ToolTip.GetTip(hide));
-            Assert.Equal($"Run ({run})", ToolTip.GetTip(runButton));
-            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.RunProgram] = ["shift F9"] } });
-            Ui.Settle();
-            string own = Shortcut.Parse("shift F9").Display();
-            Assert.Equal($"Run ({own})", ToolTip.GetTip(runButton));
-            Assert.Equal($"A program's output shows here: Run ({own})", Said());
-
-            window.BottomPanel.Run.Append("Hello\n");
-            Ui.Settle();
-            Assert.True(Said() is null, $"The Run window still says \"{Said()}\" over a program's output");
-            window.BottomPanel.Run.Clear();
-            Ui.Settle();
-            Assert.Equal($"A program's output shows here: Run ({own})", Said());
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    /// <summary>The Debug window's evaluate box names the keys that add a watch there in the keymap in force: Complete
-    /// Statement's in Visual Studio's, Start New Line Before's in VS Code's (Ctrl+Shift+Enter in each, Cmd on the Mac),
-    /// Add to Watches' own once the person sets some, and none once they take them all away.</summary>
-    [AvaloniaFact]
-    public void The_evaluate_box_names_the_keys_that_add_a_watch_in_the_keymap_in_force()
-    {
-        MainWindow window = Open();
-        try
-        {
-            window.Perform(AppActions.ShowDebug);
-            Ui.Settle();
-            string Said() => window.DebugWindow.GetVisualDescendants().OfType<TextBox>()
-                .Single(t => t.PlaceholderText?.StartsWith("Evaluate expression", StringComparison.Ordinal) == true).PlaceholderText!;
-            string enter = Shortcut.Parse("ENTER").Display();
-            string watch = $"Evaluate expression ({enter}) or add a watch ({Shortcut.Parse($"{Cmd} shift ENTER").Display()})";
-            Assert.Equal(watch, Said());
-
-            window.ApplySettings(window.Settings with { Keymap = KeymapPreset.VSCode });
-            Ui.Settle();
-            Assert.Equal(watch, Said());
-
-            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.AddToWatches] = [$"{Cmd} alt W"] } });
-            Ui.Settle();
-            Assert.Equal($"Evaluate expression ({enter}) or add a watch ({Shortcut.Parse($"{Cmd} alt W").Display()})", Said());
-
-            window.ApplySettings(window.Settings with { VSCodeShortcuts = new() { [AppActions.AddToWatches] = [] } });
-            Ui.Settle();
-            Assert.Equal($"Evaluate expression ({enter})", Said());
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
     [AvaloniaFact]
     public void No_key_of_any_keymap_is_shown_on_two_actions_or_begins_a_chord_another_action_has()
     {
@@ -363,8 +291,7 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    [AvaloniaFact]
-    public void In_VS_Codes_keymap_the_terminal_keeps_what_is_typed_and_its_key_goes_back_to_the_editor()
+    private void In_VS_Codes_keymap_the_terminal_keeps_what_is_typed_and_its_key_goes_back_to_the_editor()
     {
         MainWindow window = Open();
         try
@@ -412,8 +339,7 @@ public sealed class KeymapChoiceTests : IDisposable
     /// <summary>A tool window floated off into a window of its own runs the keymap chosen, as the main window does: its
     /// search box keeps what is typed there, keys the IDE's editor has (Backspace, Left) included; Visual Studio's Find
     /// Action opens over it; and once VS Code's keymap is chosen, VS Code's Quick Open does, where it opened nothing before.</summary>
-    [AvaloniaFact]
-    public void A_floating_tool_window_runs_the_keymap_chosen_and_its_search_box_keeps_what_is_typed()
+    private void A_floating_tool_window_runs_the_keymap_chosen_and_its_search_box_keeps_what_is_typed()
     {
         MainWindow window = Open();
         try
@@ -458,8 +384,7 @@ public sealed class KeymapChoiceTests : IDisposable
     /// <summary>The terminal floated off into a window of its own keeps the shell's keys as it does docked: in VS Code's
     /// keymap a Ctrl+letter the keymap gives a tool window's action (Hide Active Tool Window's Ctrl+J) and what is typed go
     /// to the shell, while the terminal's own key, VS Code's Ctrl+`, is still the IDE's and closes it.</summary>
-    [AvaloniaFact]
-    public void A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through()
+    private void A_floating_terminal_keeps_the_shells_keys_and_lets_the_IDEs_through()
     {
         MainWindow window = Open();
         try
@@ -506,8 +431,7 @@ public sealed class KeymapChoiceTests : IDisposable
         return screen.ScreenTop + screen.CursorRow;
     }
 
-    [AvaloniaFact]
-    public void The_menus_and_the_tool_windows_buttons_name_the_chosen_keymaps_keys()
+    private void The_menus_and_the_tool_windows_buttons_name_the_chosen_keymaps_keys()
     {
         MainWindow window = Open();
         try
@@ -550,82 +474,12 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    /// <summary>The Run window's Rerun, Stop and Apply Hot Reload Changes and the Aspire window's Telemetry page
-    /// buttons name their actions' keys as every other tool button does, and the keys a person sets once they are set,
-    /// whether the window was shown or hidden then; the Build window's Rerun, which is Rebuild, names none.</summary>
-    [AvaloniaFact]
-    public void The_Run_windows_and_Telemetrys_buttons_name_their_actions_keys_and_those_set_over_them()
-    {
-        MainWindow window = Open();
-        try
-        {
-            window.ShowToolWindow(ToolWindowIds.Run);
-            Ui.Settle();
-            string rerun = Shortcut.Parse(OperatingSystem.IsMacOS() ? "alt shift F5" : "control shift F5").Display();
-            Assert.Equal([$"Rerun ({rerun})", $"Stop ({Shortcut.Parse("shift F5").Display()})", $"Apply Hot Reload Changes ({Shortcut.Parse("alt F10").Display()})"],
-                RunTips(window.BottomPanel.Run));
-            window.ShowToolWindow(ToolWindowIds.Build);
-            Ui.Settle();
-            Assert.Equal("Rerun", RunTips(window.BottomPanel.Build)[0]);
-
-            // Neither keymap gives Telemetry's two actions keys: the Aspire window's, which this folder's projects bring none of.
-            Ui.ServeEveryWindow(window);
-            window.ShowToolWindow(ToolWindowIds.Aspire);
-            window.AspireWindow.ShowTelemetry(TelemetryPage.Logs);
-            Ui.Settle();
-            TelemetryView telemetry = window.AspireWindow.Telemetry;
-            Button trace = telemetry.LogsPage.GetLogicalDescendants().OfType<Button>().Single(b => b.Name == AppActions.AspireShowTrace);
-            Button logs = telemetry.TracesPage.GetLogicalDescendants().OfType<Button>().Single(b => b.Name == AppActions.AspireShowRelatedLogs);
-            const string traceWords = "Show the structured log's trace and span";
-            const string logsWords = "Show a retained log of this trace and span";
-            Assert.Equal(traceWords, ToolTip.GetTip(trace) as string);
-            Assert.Equal(logsWords, ToolTip.GetTip(logs) as string);
-
-            // Keys set over Visual Studio's keymap while the Telemetry tab shows its logs, the Run window hidden.
-            Dictionary<string, string[]> own = new()
-            {
-                [AppActions.Rerun] = [$"{Cmd} alt shift J"],
-                [AppActions.Stop] = [$"{Cmd} alt shift K"],
-                [AppActions.ApplyHotReloadChanges] = [$"{Cmd} alt shift Y"],
-                [AppActions.AspireShowTrace] = [$"{Cmd} alt shift U"],
-                [AppActions.AspireShowRelatedLogs] = [$"{Cmd} alt shift O"],
-            };
-            string Keys(string action) => Shortcut.Parse(own[action][0]).Display();
-            window.ApplySettings(window.Settings with { Shortcuts = own });
-            Ui.Settle();
-            Assert.Equal($"{traceWords} ({Keys(AppActions.AspireShowTrace)})", ToolTip.GetTip(trace) as string);
-            window.AspireWindow.ShowTelemetry(TelemetryPage.Traces);
-            Ui.Settle();
-            Assert.Equal($"{logsWords} ({Keys(AppActions.AspireShowRelatedLogs)})", ToolTip.GetTip(logs) as string);
-            window.ShowToolWindow(ToolWindowIds.Run);
-            Ui.Settle();
-            Assert.Equal([$"Rerun ({Keys(AppActions.Rerun)})", $"Stop ({Keys(AppActions.Stop)})", $"Apply Hot Reload Changes ({Keys(AppActions.ApplyHotReloadChanges)})"],
-                RunTips(window.BottomPanel.Run));
-            window.ShowToolWindow(ToolWindowIds.Build);
-            Ui.Settle();
-            Assert.Equal("Rerun", RunTips(window.BottomPanel.Build)[0]);
-        }
-        finally
-        {
-            window.ApplySettings(new AppSettings());
-            window.Close();
-        }
-    }
-
-    /// <summary>The tips of a console's Rerun, Stop and Apply Hot Reload Changes, in that order.</summary>
-    private static string[] RunTips(OutputView console)
-    {
-        string[] tips = [.. console.GetLogicalDescendants().OfType<Button>().Select(b => ToolTip.GetTip(b) as string).OfType<string>()];
-        return [.. ((string[])["Rerun", "Stop", "Apply Hot Reload Changes"]).Select(words => tips.Single(tip => tip == words || tip.StartsWith($"{words} (", StringComparison.Ordinal)))];
-    }
-
     /// <summary>Duplicate, Compare Files, Show Diff, Parameter Info and its overloads' steps, Toggle Case, Generate, Clone
     /// Caret, the moves, Context Help (with External Documentation's), Show Usages, Quick Evaluate Expression, Open Solution
     /// and Open File have in each keymap the keys and gestures Rider's of that preset here resolves them to
     /// (<see cref="RiderKeymaps"/>), the Mac's Cmd+Up and Down too in Visual Studio's and IntelliJ IDEA's. A key Rider gives
     /// several by place has one action, the rest taking it there (<see cref="AppActions.KeysIn"/>); New is New Item.</summary>
-    [AvaloniaFact]
-    public void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
+    private void Each_keymaps_keys_for_Duplicate_Parameter_Info_Toggle_Case_and_Generate_are_those_Riders_keymap_resolves_them_to()
     {
         bool mac = OperatingSystem.IsMacOS();
         foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
@@ -676,36 +530,10 @@ public sealed class KeymapChoiceTests : IDisposable
         }
     }
 
-    /// <summary>The Switcher has in each keymap the keys Rider's of that preset here resolves its Switcher to, Ctrl+Tab going
-    /// on and Ctrl+Shift+Tab going back (Control on the Mac too), and no other action has them.</summary>
-    [AvaloniaFact]
-    public void Each_keymaps_Switcher_keys_are_those_Riders_keymap_resolves_them_to()
-    {
-        foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
-        {
-            AppActions.Choose(preset, new Dictionary<string, string[]>());
-            Keymap keymap = AppActions.Keymap();
-            string rider = RiderKeymaps.Of(preset);
-            IReadOnlyList<Shortcut> theirs = RiderKeymaps.Resolve(rider, "Switcher");
-            foreach ((string action, bool back) in new[] { (AppActions.Switcher, false), (AppActions.SwitcherBackward, true) })
-            {
-                string[] ours = [.. keymap.ShortcutsFor(action).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-                string[] expected = [.. theirs.Where(s => s.First.Modifiers.HasFlag(KeyModifiers.Shift) == back).Select(s => s.Notation()).Order(StringComparer.Ordinal)];
-                Assert.True(expected.Length > 0 && ours.SequenceEqual(expected),
-                    $"In {DefaultKeymaps.NameOf(preset)}'s keymap {action} runs from [{string.Join("; ", ours)}], where Rider's {rider} gives its Switcher [{string.Join("; ", expected)}]");
-                foreach (Shortcut key in keymap.ShortcutsFor(action))
-                {
-                    Assert.True(keymap.ActionFor(key) == action, $"In {DefaultKeymaps.NameOf(preset)}'s keymap {key.Notation()} runs {keymap.ActionFor(key)}, not {action}");
-                }
-            }
-        }
-    }
-
     /// <summary>Duplicate's key in Visual Studio's keymap (Cmd+D on the Mac, Ctrl+D elsewhere) duplicates the caret's line in
     /// the editor and, pressed in the Explorer on a file, compares it with the file chosen, leaving the editor's text as it
     /// was: Rider gives the key both, told apart by where it is pressed.</summary>
-    [AvaloniaFact]
-    public void Duplicates_key_duplicates_the_line_in_the_editor_and_compares_files_in_the_Explorer()
+    private void Duplicates_key_duplicates_the_line_in_the_editor_and_compares_files_in_the_Explorer()
     {
         string lines = Path.Combine(folder, "lines.txt");
         string other = Path.Combine(folder, "other.txt");
@@ -745,8 +573,7 @@ public sealed class KeymapChoiceTests : IDisposable
     /// are: each adds a caret and takes it away again, makes a column from the caret to a press that its drag goes on with,
     /// drags a column, and drags one beside the carets there are. Visual Studio's Alt-drag, a column there, adds a caret
     /// in VS Code's and drags nothing.</summary>
-    [AvaloniaFact]
-    public void The_mouses_caret_and_column_gestures_are_the_keymaps_in_force()
+    private void The_mouses_caret_and_column_gestures_are_the_keymaps_in_force()
     {
         File.WriteAllText(Path.Combine(folder, "columns.txt"), string.Concat(Enumerable.Repeat("abcdefgh\n", 6)));
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);

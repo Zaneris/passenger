@@ -31,8 +31,22 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
 
     public void Dispose() => TestFolders.Delete(settings);
 
+    /// <summary>Find in Files searches and replaces in the scope chosen alone: a project's files without a project
+    /// nested in it, a file mask and one after a bang, a folder's menu replacing only under it, a scope changed never
+    /// replacing files of the search before nor Replace All pressed as it changes replacing outside the new one, and
+    /// the scope and mask coming back when Find opens again and after a restart.</summary>
     [AvaloniaFact]
-    public void Changing_the_scope_cannot_replace_files_from_the_previous_search_before_the_next_search_finishes()
+    public void Find_in_files_searches_and_replaces_in_the_scope_chosen_alone()
+    {
+        Flow.StepApart("a search in one project finds only its files and leaves a project nested in it to itself", () => new FindInFilesScopeTests(shop), t => t.A_search_in_one_project_finds_only_its_files_and_leaves_a_project_nested_in_it_to_itself());
+        Flow.StepApart("a file mask leaves out other files and one after a bang leaves out what it matches", () => new FindInFilesScopeTests(shop), t => t.A_file_mask_leaves_out_other_files_and_one_after_a_bang_leaves_out_what_it_matches());
+        Flow.StepApart("Replace in Files from a folder's menu changes only the files under it", () => new FindInFilesScopeTests(shop), t => t.Replace_in_files_from_a_folders_menu_changes_only_the_files_under_it());
+        Flow.StepApart("changing the scope cannot replace files from the previous search before the next search finishes", () => new FindInFilesScopeTests(shop), t => t.Changing_the_scope_cannot_replace_files_from_the_previous_search_before_the_next_search_finishes());
+        Flow.StepApart("Replace All pressed as the scope changes replaces in the new scope alone", () => new FindInFilesScopeTests(shop), t => t.Replace_all_pressed_as_the_scope_changes_replaces_in_the_new_scope_alone());
+        Flow.StepApart("the scope and the mask come back when find opens again and after a restart", () => new FindInFilesScopeTests(shop), t => t.The_scope_and_the_mask_come_back_when_find_opens_again_and_after_a_restart());
+    }
+
+    private void Changing_the_scope_cannot_replace_files_from_the_previous_search_before_the_next_search_finishes()
     {
         MainWindow window = Open();
         try
@@ -69,8 +83,7 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
         }
     }
 
-    [AvaloniaFact]
-    public void A_search_in_one_project_finds_only_its_files_and_leaves_a_project_nested_in_it_to_itself()
+    private void A_search_in_one_project_finds_only_its_files_and_leaves_a_project_nested_in_it_to_itself()
     {
         MainWindow window = Open();
         window.OpenFile(Full("App/Main.cs"));
@@ -96,43 +109,7 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_Solution_views_Edit_menu_finds_in_a_folder_a_project_or_a_file_and_nowhere_else()
-    {
-        MainWindow window = Open();
-        FindInFilesPopup popup = FromMenu(window, Reveal(window, "App/Models"), "Find in Files…");
-        Assert.Equal((SearchScopeKind.Directory, Full("App/Models"), true), (popup.ScopeKind, popup.Directory, popup.Recursive));
-        Search(popup, "total");
-        string[] models = Found(popup);
-        Assert.True(models.SequenceEqual(["Line.cs", "notes.md", "Order.cs"]), $"Find in Files on the Models folder found [{string.Join(", ", models)}]");
-
-        Ui.Press(window, "alt Y");
-        Assert.False(popup.Recursive);
-        Assert.Equal(["notes.md", "Order.cs"], Found(popup));
-        Ui.Press(window, "ESCAPE");
-
-        popup = FromMenu(window, window.ExplorerView.Tree.Rows.First(r => r.Kind == NodeKind.Project && r.Name == "Lib"), "Find in Files…");
-        Assert.Equal((SearchScopeKind.Project, Full("Lib/Lib.csproj")), (popup.ScopeKind, popup.Project));
-        Search(popup, "total");
-        Assert.Equal(["Money.cs", "Money.g.cs"], Found(popup));
-        Ui.Press(window, "ESCAPE");
-
-        popup = FromMenu(window, Reveal(window, "Lib/Money.g.cs"), "Find in Files…");
-        Assert.Equal((SearchScopeKind.Scope, "Money.g.cs"), (popup.ScopeKind, popup.NamedScope));
-        Search(popup, "total");
-        Assert.Equal(["Money.g.cs"], Found(popup));
-        Ui.Press(window, "ESCAPE");
-
-        Reveal(window, "App/App.csproj");
-        window.ExplorerView.FocusRows();
-        Ui.Press(window, Ui.Shortcut(AppActions.FindInFiles));
-        popup = Assert.IsType<FindInFilesPopup>(window.Popup);
-        Assert.Equal((SearchScopeKind.Project, Full("App/App.csproj")), (popup.ScopeKind, popup.Project));
-        window.Close();
-    }
-
-    [AvaloniaFact]
-    public void A_file_mask_leaves_out_other_files_and_one_after_a_bang_leaves_out_what_it_matches()
+    private void A_file_mask_leaves_out_other_files_and_one_after_a_bang_leaves_out_what_it_matches()
     {
         MainWindow window = Open();
         FindInFilesPopup popup = Find(window);
@@ -167,8 +144,7 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Replace_in_files_from_a_folders_menu_changes_only_the_files_under_it()
+    private void Replace_in_files_from_a_folders_menu_changes_only_the_files_under_it()
     {
         MainWindow window = Open();
         window.Confirm = (_, _, _) => Task.FromResult(true);
@@ -199,8 +175,7 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
 
     /// <summary>Replace All acts on the query and scope as they stand, though the matches shown for a moment after the
     /// scope changes are still the last search's.</summary>
-    [AvaloniaFact]
-    public void Replace_all_pressed_as_the_scope_changes_replaces_in_the_new_scope_alone()
+    private void Replace_all_pressed_as_the_scope_changes_replaces_in_the_new_scope_alone()
     {
         string[] others = ["App/Models/Order.cs", "App/Plugins/Plugin.cs", "Lib/Money.cs", "Lib/Money.g.cs", "docs/total.md"];
         Dictionary<string, string> before = others.ToDictionary(f => f, f => File.ReadAllText(Full(f)));
@@ -234,8 +209,7 @@ public sealed class FindInFilesScopeTests : IClassFixture<FindInFilesScopeTests.
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_scope_and_the_mask_come_back_when_find_opens_again_and_after_a_restart()
+    private void The_scope_and_the_mask_come_back_when_find_opens_again_and_after_a_restart()
     {
         MainWindow first = Keeping(folder);
         FindInFilesPopup popup = Find(first);

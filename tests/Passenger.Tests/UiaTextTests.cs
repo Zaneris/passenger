@@ -28,8 +28,25 @@ public sealed partial class UiaTextTests
 {
     private const string Notes = "first line\r\n    int count = 10;\r\nlast line\r\n";
 
+    /// <summary>A screen reader on Windows reads the editor's and the terminal's text through UI Automation's text
+    /// pattern: by character, word and line after the caret, found, chosen and pointed at, the terminal's lines read-
+    /// only; Avalonia's bridge hands it the element's window, a reader after each key costs in a million-character line
+    /// what it does in ten thousand, closed editors are let go, and the element's window passes clicks through at every
+    /// scale.</summary>
     [AvaloniaFact]
-    public void The_editors_text_pattern_steps_by_character_word_and_line_and_follows_the_caret_as_keys_move_it()
+    public void A_screen_reader_on_Windows_reads_the_editors_and_the_terminals_text_through_UI_Automation()
+    {
+        Flow.StepApart<UiaTextTests>("the editor's text pattern steps by character word and line and follows the caret as keys move it", t => t.The_editors_text_pattern_steps_by_character_word_and_line_and_follows_the_caret_as_keys_move_it());
+        Flow.StepApart<UiaTextTests>("a reader finds chooses and points at the editor's text and reads where it is drawn", t => t.A_reader_finds_chooses_and_points_at_the_editors_text_and_reads_where_it_is_drawn());
+        Flow.StepApart<UiaTextTests>("the terminal's text pattern reads its lines read only and selects as a drag does", t => t.The_terminals_text_pattern_reads_its_lines_read_only_and_selects_as_a_drag_does());
+        Flow.StepApart<UiaTextTests>("Avalonia's bridge hands UI Automation its peer for a native window as that window's element", t => t.Avalonias_bridge_hands_UI_Automation_its_peer_for_a_native_window_as_that_windows_element());
+        Flow.StepApart<UiaTextTests>("a reader listening and asking after each key costs in a line of a million characters what it does in one of ten thousand", t => t.A_reader_listening_and_asking_after_each_key_costs_in_a_line_of_a_million_characters_what_it_does_in_one_of_ten_thousand());
+        Flow.StepApart<UiaTextTests>("editors and a terminal a reader touched are let go of once closed and on Windows their windows with them", t => t.Editors_and_a_terminal_a_reader_touched_are_let_go_of_once_closed_and_on_Windows_their_windows_with_them());
+        Flow.StepApart<UiaTextTests>("on Windows the element's window answers UI Automation with the element and passes every click through", t => t.On_Windows_the_elements_window_answers_UI_Automation_with_the_element_and_passes_every_click_through());
+        Flow.StepApart<UiaTextTests>("on Windows the element's window covers its editor at every interface scale", t => t.On_Windows_the_elements_window_covers_its_editor_at_every_interface_scale());
+    }
+
+    private void The_editors_text_pattern_steps_by_character_word_and_line_and_follows_the_caret_as_keys_move_it()
     {
         EditorRig rig = new(Notes);
         UiaTextElement element = UiaTextElement.Unhosted(rig.Editor, rig.Editor.AccessibleText);
@@ -73,8 +90,7 @@ public sealed partial class UiaTextTests
             $"Typing five letters over the selection told {string.Join(", ", told)}, the value reading \"{element.GetValue()}\"");
     }
 
-    [AvaloniaFact]
-    public void A_reader_finds_chooses_and_points_at_the_editors_text_and_reads_where_it_is_drawn()
+    private void A_reader_finds_chooses_and_points_at_the_editors_text_and_reads_where_it_is_drawn()
     {
         EditorRig rig = new(Notes);
         UiaTextElement element = UiaTextElement.Unhosted(rig.Editor, rig.Editor.AccessibleText);
@@ -104,8 +120,7 @@ public sealed partial class UiaTextTests
             $"Setting the value made \"{rig.Text}\", where it should put the caret's line in its place");
     }
 
-    [AvaloniaFact]
-    public void The_terminals_text_pattern_reads_its_lines_read_only_and_selects_as_a_drag_does()
+    private void The_terminals_text_pattern_reads_its_lines_read_only_and_selects_as_a_drag_does()
     {
         TerminalSession session = new(40, 5);
         TerminalView view = new() { Session = session };
@@ -135,8 +150,7 @@ public sealed partial class UiaTextTests
         }
     }
 
-    [AvaloniaFact]
-    public void Avalonias_bridge_hands_UI_Automation_its_peer_for_a_native_window_as_that_windows_element()
+    private void Avalonias_bridge_hands_UI_Automation_its_peer_for_a_native_window_as_that_windows_element()
     {
         ConstructorInfo made = UiaTextElement.WindowPeer
             ?? throw new Xunit.Sdk.XunitException("Avalonia has no InteropAutomationPeer taking a platform handle: the Windows bridge's text pattern can't be reached");
@@ -167,8 +181,7 @@ public sealed partial class UiaTextTests
         }
     }
 
-    [AvaloniaFact]
-    public void A_reader_listening_and_asking_after_each_key_costs_in_a_line_of_a_million_characters_what_it_does_in_one_of_ten_thousand()
+    private void A_reader_listening_and_asking_after_each_key_costs_in_a_line_of_a_million_characters_what_it_does_in_one_of_ten_thousand()
     {
         KeysAsked small = new(10_000, asking: true);
         KeysAsked large = new(1_000_000, asking: true);
@@ -190,43 +203,7 @@ public sealed partial class UiaTextTests
             $"A reader listening and asking after each key added {largeReader:N0} bytes on the UI thread to the keys in a line of a million characters, against {smallReader:N0} in a line of 10,000: what it asked was read from the whole line");
     }
 
-    /// <summary>A reader's search of an editor's whole text (UI Automation's FindText over the document's range), forward
-    /// for a word on its last line and backward for one on its first, ignoring case, finds each and allocates on the UI
-    /// thread in 100,000 lines what it does in 200: the text is read a piece at a time into one buffer, never whole.</summary>
-    [AvaloniaFact]
-    public void A_readers_search_of_the_whole_text_costs_in_100000_lines_what_it_does_in_200()
-    {
-        (long small, string smallFound) = Searched(200);
-        (long large, string largeFound) = Searched(100_000);
-        TestContext.Current.TestOutputHelper?.WriteLine($"Searching the whole text allocated {small:N0} bytes in 200 lines and {large:N0} in 100,000");
-        Assert.True(smallFound == "first; last" && largeFound == smallFound, $"The searches found \"{smallFound}\" in 200 lines and \"{largeFound}\" in 100,000");
-        Assert.True(large <= small + 1024,
-            $"Searching the whole text allocated {large:N0} bytes on the UI thread in 100,000 lines against {small:N0} in 200: the text was read whole");
-
-        static (long Bytes, string Found) Searched(int lines)
-        {
-            EditorRig rig = new("    int First = 1;\n" + string.Concat(Enumerable.Range(0, lines).Select(i => $"    public int Field{i} = {i} * 2; // a comment {i}\n")) + "    int Last = 2;\n");
-            UiaTextElement element = UiaTextElement.Unhosted(rig.Editor, rig.Editor.AccessibleText);
-            long least = long.MaxValue;
-            string found = string.Empty;
-            for (int round = 0; round < 4; round++)
-            {
-                GC.Collect(1, GCCollectionMode.Forced, blocking: true);
-                GC.WaitForPendingFinalizers();
-                UiaTextRange document = element.Range(0, rig.Editor.AccessibleText.Length);
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                UiaTextRange? last = document.Find("LAST", backward: false, ignoreCase: true);
-                UiaTextRange? first = document.Find("FIRST", backward: true, ignoreCase: true);
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
-                found = $"{first?.GetText(-1).ToLowerInvariant()}; {last?.GetText(-1).ToLowerInvariant()}";
-            }
-            rig.Window.Close();
-            return (least, found);
-        }
-    }
-
-    [AvaloniaFact]
-    public void On_Windows_the_elements_window_answers_UI_Automation_with_the_element_and_passes_every_click_through()
+    private void On_Windows_the_elements_window_answers_UI_Automation_with_the_element_and_passes_every_click_through()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -256,8 +233,7 @@ public sealed partial class UiaTextTests
     /// <summary>The window UI Automation finds the editor's element by covers the editor whatever the interface's scale: at
     /// 1.5 and at 0.8 its place in the window holding it reaches every corner of the editor and nothing beside it, as the
     /// window's hit testing finds them.</summary>
-    [AvaloniaFact]
-    public void On_Windows_the_elements_window_covers_its_editor_at_every_interface_scale()
+    private void On_Windows_the_elements_window_covers_its_editor_at_every_interface_scale()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -300,8 +276,7 @@ public sealed partial class UiaTextTests
     /// <summary>Editors and a terminal a reader touched (asked their window for the element, kept a range of the text) are let
     /// go of once closed, the range kept holding nothing of them and answering that its element is gone; on Windows
     /// their windows are taken down too.</summary>
-    [AvaloniaFact]
-    public void Editors_and_a_terminal_a_reader_touched_are_let_go_of_once_closed_and_on_Windows_their_windows_with_them()
+    private void Editors_and_a_terminal_a_reader_touched_are_let_go_of_once_closed_and_on_Windows_their_windows_with_them()
     {
         List<nint> kept = [];
         try

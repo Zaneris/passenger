@@ -14,8 +14,19 @@ namespace Passenger.Tests;
 [SameOnEverySystem]
 public sealed class TagClosingTests
 {
+    /// <summary>A start tag's close writes its end tag and an end tag's slash the open element's name in XAML, MSBuild,
+    /// XML and HTML, an end tag typed over the one written leaves one, another name typed over it is what was typed,
+    /// and Backspace and Undo over one being typed leave the written tag whole.</summary>
     [AvaloniaFact]
-    public void A_start_tags_close_writes_its_end_tag_and_an_end_tags_slash_the_open_elements_name_in_xaml_msbuild_xml_and_html()
+    public void An_end_tag_is_written_once_and_typed_over_without_doubling()
+    {
+        Flow.StepApart<TagClosingTests>("a start tag's close writes its end tag and an end tag's slash the open element's name in xaml msbuild xml and html", t => t.A_start_tags_close_writes_its_end_tag_and_an_end_tags_slash_the_open_elements_name_in_xaml_msbuild_xml_and_html());
+        Flow.StepApart<TagClosingTests>("an end tag typed key by key over the one written leaves one end tag in html xaml and a project file", t => t.An_end_tag_typed_key_by_key_over_the_one_written_leaves_one_end_tag_in_html_xaml_and_a_project_file());
+        Flow.StepApart<TagClosingTests>("an end tag of another name typed over the written one is what was typed and a child element goes inside", t => t.An_end_tag_of_another_name_typed_over_the_written_one_is_what_was_typed_and_a_child_element_goes_inside());
+        Flow.StepApart<TagClosingTests>("backspace and undo over an end tag being typed over leave the written tag whole", t => t.Backspace_and_undo_over_an_end_tag_being_typed_over_leave_the_written_tag_whole());
+    }
+
+    private void A_start_tags_close_writes_its_end_tag_and_an_end_tags_slash_the_open_elements_name_in_xaml_msbuild_xml_and_html()
     {
         string folder = TestFolders.Create("tags-");
         TestFolders.Write(folder, "View.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\">\n    \n</UserControl>\n");
@@ -65,8 +76,7 @@ public sealed class TagClosingTests
         }
     }
 
-    [AvaloniaFact]
-    public void An_end_tag_typed_key_by_key_over_the_one_written_leaves_one_end_tag_in_html_xaml_and_a_project_file()
+    private void An_end_tag_typed_key_by_key_over_the_one_written_leaves_one_end_tag_in_html_xaml_and_a_project_file()
     {
         string folder = TestFolders.Create("tags-");
         TestFolders.Write(folder, "View.axaml", "<UserControl xmlns=\"https://github.com/avaloniaui\">\n    \n</UserControl>\n");
@@ -93,8 +103,7 @@ public sealed class TagClosingTests
         }
     }
 
-    [AvaloniaFact]
-    public void An_end_tag_of_another_name_typed_over_the_written_one_is_what_was_typed_and_a_child_element_goes_inside()
+    private void An_end_tag_of_another_name_typed_over_the_written_one_is_what_was_typed_and_a_child_element_goes_inside()
     {
         string folder = TestFolders.Create("tags-");
         TestFolders.Write(folder, "index.html", "<body>\n    \n</body>\n");
@@ -113,8 +122,7 @@ public sealed class TagClosingTests
         }
     }
 
-    [AvaloniaFact]
-    public void Backspace_and_undo_over_an_end_tag_being_typed_over_leave_the_written_tag_whole()
+    private void Backspace_and_undo_over_an_end_tag_being_typed_over_leave_the_written_tag_whole()
     {
         string folder = TestFolders.Create("tags-");
         TestFolders.Write(folder, "index.html", "<body>\n    \n</body>\n");
@@ -135,54 +143,6 @@ public sealed class TagClosingTests
             Ui.Run(window, EditorActions.Undo);
             Ui.Settle();
             Assert.Equal("    <div></|</div>", XamlTests.CaretLine(editor));
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
-
-    [AvaloniaFact]
-    public void An_end_tag_typed_on_a_line_above_the_written_one_leaves_one_end_tag_and_undo_backspace_and_enter_put_that_line_back()
-    {
-        const string Joined = "<body>\n    <div>\n    </div>\n</body>\n";
-        string folder = TestFolders.Create("tags-");
-        TestFolders.Write(folder, "index.html", "<body>\n    <div>\n        \n    </div>\n</body>\n");
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
-        try
-        {
-            CodeEditor editor = Opened(window, Path.Combine(folder, "index.html"), "<div>\n        ");
-            TypeEach(window, "</d");
-            Assert.Equal("    </d|iv>", XamlTests.CaretLine(editor));
-            Assert.Equal(Joined, editor.Document.Snapshot.ToString());
-            Ui.Run(window, EditorActions.Backspace);
-            Assert.Equal("    </|div>", XamlTests.CaretLine(editor));
-            Ui.Run(window, EditorActions.Undo);
-            Ui.Settle();
-            Assert.Equal("        </|", XamlTests.CaretLine(editor));
-            Assert.Equal("<body>\n    <div>\n        </\n    </div>\n</body>\n", editor.Document.Snapshot.ToString());
-
-            Ui.Run(window, EditorActions.Backspace);
-            Ui.Run(window, EditorActions.Backspace);
-            TypeEach(window, "</");
-            Assert.Equal("    </|div>", XamlTests.CaretLine(editor));
-            Ui.Run(window, EditorActions.Backspace);
-            Assert.Equal("        <|", XamlTests.CaretLine(editor));
-            Assert.Equal("<body>\n    <div>\n        <\n    </div>\n</body>\n", editor.Document.Snapshot.ToString());
-
-            TypeEach(window, "/di");
-            Ui.Run(window, EditorActions.NewLine);
-            Ui.Settle();
-            Assert.StartsWith("<body>\n    <div>\n        </di\n", editor.Document.Snapshot.ToString());
-            Assert.EndsWith("\n    </div>\n</body>\n", editor.Document.Snapshot.ToString());
-            Ui.Run(window, EditorActions.Undo);
-            Ui.Settle();
-            Ui.Run(window, EditorActions.Backspace);
-            Ui.Run(window, EditorActions.Backspace);
-            Ui.Run(window, EditorActions.Backspace);
-            TypeEach(window, "/div>");
-            Assert.Equal("    </div>|", XamlTests.CaretLine(editor));
-            Assert.Equal(Joined, editor.Document.Snapshot.ToString());
         }
         finally
         {

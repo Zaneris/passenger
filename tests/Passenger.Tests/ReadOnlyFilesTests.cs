@@ -33,8 +33,38 @@ public sealed class ReadOnlyFilesTests : IDisposable
 
     public void Dispose() => TestFolders.Delete(folder);
 
+    /// <summary>A file shown read-only refuses every change, saying why: a decompiled tab's Save greys and leaves its
+    /// bytes and time, an unmodified file's Save writes nothing, every Edit menu action that would change a decompiled
+    /// file or the Run console's output greys, typing and an input method's text say so in the status bar, the Edit
+    /// menu greys over a read-only text box while Copy takes its text, and the colour picker's Choose greys
+    /// there.</summary>
     [AvaloniaFact]
-    public void A_decompiled_tabs_save_is_greyed_and_leaves_its_bytes_and_time_as_they_were()
+    public void A_file_shown_read_only_refuses_every_change_saying_why()
+    {
+        Flow.StepApart<ReadOnlyFilesTests>("a decompiled tab's Save is greyed and leaves its bytes and time as they were", t => t.A_decompiled_tabs_save_is_greyed_and_leaves_its_bytes_and_time_as_they_were());
+        Flow.StepApart<ReadOnlyFilesTests>("an unmodified file's Save is greyed and writes nothing", t => t.An_unmodified_files_save_is_greyed_and_writes_nothing());
+        Flow.StepApart<ReadOnlyFilesTests>("every action of the Edit menu that would change a decompiled file greys saying it is read only", t => t.Every_action_of_the_edit_menu_that_would_change_a_decompiled_file_greys_saying_it_is_read_only());
+        Flow.StepApart<ReadOnlyFilesTests>("typing into a decompiled file says in the status bar it is read only and an input method's text too", t => t.Typing_into_a_decompiled_file_says_in_the_status_bar_it_is_read_only_and_an_input_methods_text_too());
+        Flow.StepApart<ReadOnlyFilesTests>("every action of the Edit menu that would change the Run console's output greys saying it is read only its program's input taking its own", t => t.Every_action_of_the_edit_menu_that_would_change_the_Run_consoles_output_greys_saying_it_is_read_only_its_programs_input_taking_its_own());
+        Flow.StepApart<ReadOnlyFilesTests>("the Edit menu's changes grey over a read only text box saying so and copy takes its text", t => t.The_edit_menus_changes_grey_over_a_read_only_text_box_saying_so_and_copy_takes_its_text());
+        Flow.StepApart<ReadOnlyFilesTests>("the colour picker's Choose is greyed in a read only tab and enter writes nothing", t => t.The_colour_pickers_choose_is_greyed_in_a_read_only_tab_and_enter_writes_nothing());
+    }
+
+    /// <summary>A package's files and a read-only file refuse a person's or an agent's change, saying whose they are:
+    /// Replace in Files names a read-only open file as not replaced and replaces nothing in a package folder, an
+    /// agent's replace and edit leave a package folder in the open folder, a rename reaching a package's code is
+    /// refused whole, and an open package file's refusals name the package.</summary>
+    [AvaloniaFact]
+    public void A_packages_files_refuse_a_replace_a_rename_and_an_agents_edit_saying_whose_they_are()
+    {
+        Flow.StepApart<ReadOnlyFilesTests>("Replace in Files over the open files names a read only one as not replaced and leaves it", t => t.Replace_in_files_over_the_open_files_names_a_read_only_one_as_not_replaced_and_leaves_it());
+        Flow.StepApart<ReadOnlyFilesTests>("Replace in Files over a package folder replaces nothing there saying whose files they are", t => t.Replace_in_files_over_a_package_folder_replaces_nothing_there_saying_whose_files_they_are());
+        Flow.StepApart<ReadOnlyFilesTests>("an agent's Replace in Files and edit leave a package folder in the open folder saying whose files they are", t => t.An_agents_replace_in_files_and_edit_leave_a_package_folder_in_the_open_folder_saying_whose_files_they_are());
+        Flow.StepApart<ReadOnlyFilesTests>("a rename reaching a package's code is refused whole saying whose file it is", t => t.A_rename_reaching_a_packages_code_is_refused_whole_saying_whose_file_it_is());
+        Flow.StepApart<ReadOnlyFilesTests>("an open package file's refusals name the package whether typed into or an agent renames there", t => t.An_open_package_files_refusals_name_the_package_whether_typed_into_or_an_agent_renames_there());
+    }
+
+    private void A_decompiled_tabs_save_is_greyed_and_leaves_its_bytes_and_time_as_they_were()
     {
         string decompiled = Write("MetadataAsSource/A.cs", "class A   \n{\n}");
         DateTime written = File.GetLastWriteTimeUtc(decompiled);
@@ -57,8 +87,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_unmodified_files_save_is_greyed_and_writes_nothing()
+    private void An_unmodified_files_save_is_greyed_and_writes_nothing()
     {
         string notes = Write("Notes.txt", "notes   \nmore");
         DateTime written = File.GetLastWriteTimeUtc(notes);
@@ -78,8 +107,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Replace_in_files_over_the_open_files_names_a_read_only_one_as_not_replaced_and_leaves_it()
+    private void Replace_in_files_over_the_open_files_names_a_read_only_one_as_not_replaced_and_leaves_it()
     {
         string decompiled = Write("MetadataAsSource/A.cs", "class A\n{\n    // class B\n}\n");
         Write("Notes.cs", "// class notes\n");
@@ -99,8 +127,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// <summary>Replace All over a directory of a NuGet package folder (an in-repository .nuget/packages, which a directory
     /// scope walks though the folder's index leaves it out) asks nothing and replaces nothing there, saying whose files they
     /// are, every one left as NuGet restored it.</summary>
-    [AvaloniaFact]
-    public void Replace_in_files_over_a_package_folder_replaces_nothing_there_saying_whose_files_they_are()
+    private void Replace_in_files_over_a_package_folder_replaces_nothing_there_saying_whose_files_they_are()
     {
         string kit = WriteKitShop();
         MainWindow window = OpenShop(languageServer: false);
@@ -130,8 +157,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// <summary>An agent's replace_in_files over the open folder replaces in its own files and passes over the folder's
     /// .nuget/packages, which its index leaves out; over that directory it replaces nothing, saying whose files they are,
     /// and edit refuses a package's file so too, each left as NuGet restored it.</summary>
-    [AvaloniaFact]
-    public void An_agents_replace_in_files_and_edit_leave_a_package_folder_in_the_open_folder_saying_whose_files_they_are()
+    private void An_agents_replace_in_files_and_edit_leave_a_package_folder_in_the_open_folder_saying_whose_files_they_are()
     {
         string kit = WriteKitShop();
         string catalog = Path.Combine(folder, "Shop", "Catalog.cs");
@@ -154,8 +180,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// <summary>A rename whose edits reach a NuGet package's contentFiles code, which NuGet's props compile into the project
     /// from the package folder, is refused before anything changes, saying whose file it is: by the keys and for an agent,
     /// no file written and no command left for Undo.</summary>
-    [AvaloniaFact]
-    public void A_rename_reaching_a_packages_code_is_refused_whole_saying_whose_file_it_is()
+    private void A_rename_reaching_a_packages_code_is_refused_whole_saying_whose_file_it_is()
     {
         string kit = WriteKitShop();
         string catalog = Path.Combine(folder, "Shop", "Catalog.cs");
@@ -195,8 +220,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// <summary>A NuGet package's file open in the editor refuses every change in the package's words, as every refusal of
     /// it closed does: what is typed there says so in the status bar, the Edit menu's changes and Rename grey saying it, and
     /// an agent's rename starting there is refused so, the file left as NuGet restored it.</summary>
-    [AvaloniaFact]
-    public void An_open_package_files_refusals_name_the_package_whether_typed_into_or_an_agent_renames_there()
+    private void An_open_package_files_refusals_name_the_package_whether_typed_into_or_an_agent_renames_there()
     {
         string kit = WriteKitShop();
         // A rename waits for its server to read a file written a moment before.
@@ -230,32 +254,11 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void The_find_bars_replace_row_is_greyed_in_a_read_only_tab_saying_why()
-    {
-        Write("MetadataAsSource/A.cs", "class A\n{\n    // class B\n}\n");
-        MainWindow window = Open("MetadataAsSource/A.cs");
-        CodeEditor editor = window.EditorArea.CodeEditor;
-
-        Ui.Press(window, Ui.Shortcut(AppActions.Replace));
-        window.KeyTextInput("class");
-        Ui.Settle();
-        FindBar bar = window.EditorArea.FindBar;
-        Assert.Equal("1/2", bar.CountText);
-        Assert.False(bar.FindControl<Button>("ReplaceAllButton")!.IsEnabled, "Replace All is offered in a read-only tab");
-        Assert.False(bar.FindControl<Button>("ReplaceButton")!.IsEnabled, "Replace is offered in a read-only tab");
-        Assert.False(bar.FindControl<TextBox>("ReplaceWith")!.IsEnabled, "The replacement can be typed in a read-only tab");
-        Assert.Equal("A.cs is read-only", ToolTip.GetTip(bar.FindControl<Control>("ReplaceRow")!));
-        Assert.Equal("class A\n{\n    // class B\n}\n", editor.Document.Snapshot.ToString());
-        window.Close();
-    }
-
     /// <summary>On a decompiled file, every action of the Edit menu that would change it greys saying it is read-only, as
     /// every other editor action changing text does, and those that only copy, choose or find stay enabled, Replace among
     /// them (its replace row says why); the keys of those that change it say so in the status bar and change nothing. A
     /// text box with the keys over it takes its own Cut, Paste, Undo and Redo.</summary>
-    [AvaloniaFact]
-    public void Every_action_of_the_edit_menu_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
+    private void Every_action_of_the_edit_menu_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
         const string Text = "class A\n{\n    int b;\n    int c;\n}\n";
         Write("MetadataAsSource/A.cs", Text);
@@ -302,8 +305,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// <summary>Text typed into a decompiled file, a key's or what an input method composed and committed, changes nothing
     /// and says in the status bar that the file is read-only, as a key changing it does; the composition is drawn no
     /// more.</summary>
-    [AvaloniaFact]
-    public void Typing_into_a_decompiled_file_says_in_the_status_bar_it_is_read_only_and_an_input_methods_text_too()
+    private void Typing_into_a_decompiled_file_says_in_the_status_bar_it_is_read_only_and_an_input_methods_text_too()
     {
         const string Text = "class A\n{\n}\n";
         Write("MetadataAsSource/A.cs", Text);
@@ -339,8 +341,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// and what is typed there and the keys of those actions say it in the status bar, changing nothing. While its program
     /// reads its input, Paste, Backspace and New Line go to that input from the menu as from their keys, the rest greyed
     /// still; Copy, Select All and Find stay enabled throughout.</summary>
-    [AvaloniaFact]
-    public void Every_action_of_the_edit_menu_that_would_change_the_Run_consoles_output_greys_saying_it_is_read_only_its_programs_input_taking_its_own()
+    private void Every_action_of_the_edit_menu_that_would_change_the_Run_consoles_output_greys_saying_it_is_read_only_its_programs_input_taking_its_own()
     {
         const string Output = "alpha\nbeta\n";
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
@@ -386,8 +387,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
     /// <summary>A text box shown only to read and copy from, here IDE Internal Errors' details, greys the Edit menu's Undo,
     /// Redo, Cut and Paste saying its text is read-only, where they stayed enabled and ran as nothing; Copy and Select All
     /// stay enabled and copy from it.</summary>
-    [AvaloniaFact]
-    public void The_edit_menus_changes_grey_over_a_read_only_text_box_saying_so_and_copy_takes_its_text()
+    private void The_edit_menus_changes_grey_over_a_read_only_text_box_saying_so_and_copy_takes_its_text()
     {
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         // Thrown on purpose, for a details box to show; cleared as the test ends.
@@ -455,8 +455,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
 
     private static IEnumerable<string> ActionsIn(MenuEntry menu) => menu.Action is { } id ? [id] : (menu.Items ?? []).SelectMany(ActionsIn);
 
-    [AvaloniaFact]
-    public void The_colour_pickers_choose_is_greyed_in_a_read_only_tab_and_enter_writes_nothing()
+    private void The_colour_pickers_choose_is_greyed_in_a_read_only_tab_and_enter_writes_nothing()
     {
         const string Palette = "class Palette\n{\n    static object Red = Avalonia.Media.Color.Parse(\"#FF0000\");\n}\n";
         string decompiled = Write("MetadataAsSource/Palette.cs", Palette);

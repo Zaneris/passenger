@@ -33,6 +33,23 @@ public sealed class KeymapTests : IDisposable
         TestFolders.Delete(settings);
     }
 
+    /// <summary>Keyboard shortcuts, the gate's checks as one flow: a chord recorded shows as written and runs its
+    /// action from the editor, one another action has is listed and warned of and Remove takes it from that action, one
+    /// begun by another action's key is a conflict and Cancel keeps the keymap, Find Actions by Shortcut keeps a
+    /// keystroke's actions then a chord's, a shortcut set is kept after a restart and Reset gives the action its own
+    /// back, and the keypad's slash is its own key.</summary>
+    [AvaloniaFact]
+    public void A_shortcut_recorded_or_reset_runs_its_action_and_says_its_conflicts()
+    {
+        Flow.StepApart<KeymapTests>("a chord recorded in the Keyboard Shortcut dialog shows as Rider shows it and runs its action from the editor", t => t.A_chord_recorded_in_the_Keyboard_Shortcut_dialog_shows_as_Rider_shows_it_and_runs_its_action_from_the_editor());
+        Flow.StepApart<KeymapTests>("a chord another action has is listed and warned of and Remove takes it from that action", t => t.A_chord_another_action_has_is_listed_and_warned_of_and_Remove_takes_it_from_that_action());
+        Flow.StepApart<KeymapTests>("a chord begun by another action's key is a conflict as in Rider and Cancel keeps the keymap", t => t.A_chord_begun_by_another_actions_key_is_a_conflict_as_in_Rider_and_Cancel_keeps_the_keymap());
+        Flow.StepApart<KeymapTests>("Find Actions by Shortcut keeps the actions a keystroke starts and then the one a chord runs", t => t.Find_Actions_by_Shortcut_keeps_the_actions_a_keystroke_starts_and_then_the_one_a_chord_runs());
+        Flow.StepApart<KeymapTests>("a shortcut set is kept after a restart and Reset Shortcuts gives an action its own back", t => t.A_shortcut_set_is_kept_after_a_restart_and_Reset_Shortcuts_gives_an_action_its_own_back());
+        Flow.StepApart<KeymapTests>("a shortcut recorded on the keypad's slash is named as the keypad's kept and run by it alone", t => t.A_shortcut_recorded_on_the_keypads_slash_is_named_as_the_keypads_kept_and_run_by_it_alone());
+        Flow.StepApart<KeymapTests>("the comment actions run from the keypad's slash as from the main keys one each shown as its own key", t => t.The_comment_actions_run_from_the_keypads_slash_as_from_the_main_keys_one_each_shown_as_its_own_key());
+    }
+
     [Gate]
     [AvaloniaFact]
     public void A_chord_recorded_in_the_Keyboard_Shortcut_dialog_shows_as_Rider_shows_it_and_runs_its_action_from_the_editor()
@@ -76,8 +93,7 @@ public sealed class KeymapTests : IDisposable
 
     /// <summary>A modifier tapped twice in the Keyboard Shortcut dialog is recorded as its double tap, shown as one, and runs
     /// its action from the editor once kept.</summary>
-    [AvaloniaFact]
-    public void A_double_Shift_recorded_in_the_Keyboard_Shortcut_dialog_runs_its_action_from_the_editor()
+    internal void A_double_Shift_recorded_in_the_Keyboard_Shortcut_dialog_runs_its_action_from_the_editor()
     {
         MainWindow window = Open();
         try

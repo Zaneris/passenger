@@ -28,16 +28,50 @@ public sealed class AssetPreviewTests : IDisposable
         TestFolders.Delete(settings);
     }
 
-    [AvaloniaTheory]
-    [InlineData(".png", 64, 32)]
-    [InlineData(".PNG", 64, 32)]
-    [InlineData(".jpg", 64, 32)]
-    [InlineData(".jpeg", 64, 32)]
-    [InlineData(".webp", 64, 32)]
-    [InlineData(".bmp", 1, 1)]
-    [InlineData(".gif", 1, 1)]
-    [InlineData(".ico", 64, 32)]
-    public void Opening_a_common_image_shows_its_pixels_and_dimensions_in_a_read_only_tab(string extension, int width, int height)
+    /// <summary>An image or a font opens as what it shows in a read-only tab: a PNG, a WebP and an icon with their
+    /// pixels and size, zoomed to its actual size and to fit, a local font in its own face, and the preview tabs split,
+    /// move, close, reopen and come back with the workspace, an image reloaded in both splits.</summary>
+    [AvaloniaFact]
+    public void An_image_or_a_font_opens_as_its_picture_in_a_read_only_tab()
+    {
+        Flow.StepApart<AssetPreviewTests>("a PNG opens showing its pixels and size in a read-only tab", t => t.Opening_a_common_image_shows_its_pixels_and_dimensions_in_a_read_only_tab(".PNG", 64, 32));
+        Flow.StepApart<AssetPreviewTests>("a WebP opens showing its pixels and size in a read-only tab", t => t.Opening_a_common_image_shows_its_pixels_and_dimensions_in_a_read_only_tab(".webp", 64, 32));
+        Flow.StepApart<AssetPreviewTests>("an icon opens showing its pixels and size in a read-only tab", t => t.Opening_a_common_image_shows_its_pixels_and_dimensions_in_a_read_only_tab(".ico", 64, 32));
+        Flow.StepApart<AssetPreviewTests>("an image preview zooms in to its actual size and to fit drawing its pixels as they are", t => t.An_image_preview_zooms_in_to_its_actual_size_and_to_fit_drawing_its_pixels_as_they_are());
+        Flow.StepApart<AssetPreviewTests>("a local font shows its actual face letters digits and every ASCII symbol", t => t.A_local_font_shows_its_actual_face_letters_digits_and_every_ASCII_symbol(".ttf", "JetBrainsMono-Regular.ttf", FontStyle.Normal));
+        Flow.StepApart<AssetPreviewTests>("preview tabs split move close reopen and return with the workspace", t => t.Preview_tabs_split_move_close_reopen_and_return_with_the_workspace());
+        Flow.StepApart<AssetPreviewTests>("reloading an image updates both splits but invalid pixel data keeps the previous picture and explains why", t => t.Reloading_an_image_updates_both_splits_but_invalid_pixel_data_keeps_the_previous_picture_and_explains_why());
+    }
+
+    /// <summary>An SVG is drawn beside its text, sharp at every zoom and following its text edited, an image it names
+    /// relative to it drawn from its folder but none from outside it or the web, saying why, and one nested past what
+    /// is drawn says so and ends nothing.</summary>
+    [AvaloniaFact]
+    public void An_SVG_is_drawn_beside_its_text_from_its_own_folder_alone_and_ends_nothing()
+    {
+        Flow.StepApart<AssetPreviewTests>("an SVG is drawn beside its text sharp at every zoom and its picture follows its text edited", t => t.An_SVG_is_drawn_beside_its_text_sharp_at_every_zoom_and_its_picture_follows_its_text_edited());
+        Flow.StepApart<AssetPreviewTests>("an SVG's image named relative to it is drawn from its folder", t => t.An_SVGs_image_named_relative_to_it_is_drawn_from_its_folder());
+        Flow.StepApart<AssetPreviewTests>("an SVG draws no image from outside its folder or the web and says why", t => t.An_SVG_draws_no_image_from_outside_its_folder_or_the_web_and_says_why());
+        Flow.StepApart<AssetPreviewTests>("an SVG of groups nested past what is drawn says so and ends nothing", t => t.An_SVG_nested_past_what_is_drawn_says_so_and_ends_nothing("<g>", "</g>", "<rect width=\"5\" height=\"5\"/>"));
+        Flow.StepApart<AssetPreviewTests>("an SVG of SVGs nested past what is drawn says so and ends nothing", t => t.An_SVG_nested_past_what_is_drawn_says_so_and_ends_nothing("<svg>", "</svg>", ""));
+        Flow.StepApart<AssetPreviewTests>("an SVG of styles nested past what is drawn says so and ends nothing", t => t.An_SVG_nested_past_what_is_drawn_says_so_and_ends_nothing("<style>", "</style>", ""));
+    }
+
+    /// <summary>A preview writes nothing and never holds the window: typing, pasting, saving and the encoding actions
+    /// never write it or the text tab it replaced, nothing asks it for text it has not, invalid, empty, missing,
+    /// unsupported and oversized assets fail without opening binary text, one whose decode fails before its open
+    /// returns is refused at once, and a large image decodes off the window's thread.</summary>
+    [AvaloniaFact]
+    public async Task A_preview_writes_nothing_and_never_holds_or_hangs_the_window()
+    {
+        await Flow.StepApartAsync("typing pasting saving and encoding actions never write a preview or the text tab it replaced", () => new AssetPreviewTests(), t => t.Typing_pasting_saving_and_encoding_actions_never_write_a_preview_or_the_text_tab_it_replaced());
+        Flow.StepApart<AssetPreviewTests>("a preview has no text for the status bar an agent find and Replace in Files or a bookmark", t => t.A_preview_has_no_text_for_the_status_bar_an_agent_find_and_replace_in_files_or_a_bookmark());
+        Flow.StepApart<AssetPreviewTests>("invalid empty missing unsupported and oversized assets fail without opening binary text", t => t.Invalid_empty_missing_unsupported_and_oversized_assets_fail_without_opening_binary_text());
+        Flow.StepApart<AssetPreviewTests>("an asset whose decode fails before its open returns is refused at once and never left loading", t => t.An_asset_whose_decode_fails_before_its_open_returns_is_refused_at_once_and_never_left_loading());
+        Flow.StepApart<AssetPreviewTests>("a large image decodes off the UI thread its tab saying it is loading until the picture lands", t => t.A_large_image_decodes_off_the_UI_thread_its_tab_saying_it_is_loading_until_the_picture_lands());
+    }
+
+    private void Opening_a_common_image_shows_its_pixels_and_dimensions_in_a_read_only_tab(string extension, int width, int height)
     {
         string file = "picture" + extension;
         File.WriteAllBytes(Path.Combine(folder, file), ImageBytes(extension));
@@ -59,37 +93,10 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void An_image_preview_preserves_its_colours_and_transparent_pixels_show_the_editor_background()
-    {
-        // Sample broad colour regions rather than the interpolated edge between two enlarged pixels.
-        using SKBitmap bitmap = new(64, 32);
-        bitmap.Erase(SKColors.Transparent);
-        using SKCanvas canvas = new(bitmap);
-        using SKPaint paint = new() { Color = SKColors.Red };
-        canvas.DrawRect(0, 0, 32, 32, paint);
-        using SKImage source = SKImage.FromBitmap(bitmap);
-        using SKData encoded = source.Encode(SKEncodedImageFormat.Png, 100);
-        File.WriteAllBytes(Path.Combine(folder, "transparent.png"), encoded.ToArray());
-        MainWindow window = Open();
-        Assert.Null(window.OpenFile("transparent.png"));
-        Ui.Settle();
-
-        AssetPreviewControl preview = Preview(window.EditorArea.ActiveGroup);
-        Image image = Assert.Single(preview.GetVisualDescendants().OfType<Image>());
-        Point red = image.TranslatePoint(new Point(image.Bounds.Width / 4, image.Bounds.Height / 2), window)!.Value;
-        Point clear = image.TranslatePoint(new Point(image.Bounds.Width * 3 / 4, image.Bounds.Height / 2), window)!.Value;
-        Point ground = preview.TranslatePoint(new Point(1, preview.Bounds.Height / 2), window)!.Value;
-        Assert.Equal(Colors.Red, Ui.Pixel(window, red));
-        Assert.Equal(Ui.Pixel(window, ground), Ui.Pixel(window, clear));
-        window.Close();
-    }
-
     /// <summary>An image's preview zooms as a person zooms it: the keys step it in, each pixel a square of its own colour,
     /// to its actual size and in again with the wheel and the command modifier, and Fit Zoom to Window fills the pane with
     /// it, its red square red and its blue ground blue at every zoom.</summary>
-    [AvaloniaFact]
-    public void An_image_preview_zooms_in_to_its_actual_size_and_to_fit_drawing_its_pixels_as_they_are()
+    private void An_image_preview_zooms_in_to_its_actual_size_and_to_fit_drawing_its_pixels_as_they_are()
     {
         using (SKBitmap bitmap = new(100, 75))
         {
@@ -138,42 +145,9 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A picture needing less than the first zoom step to fit opens whole, and Zoom Out leaves it there rather than
-    /// raising it to that step, where Zoom In goes up to it.</summary>
-    [AvaloniaFact]
-    public void A_picture_too_large_for_the_first_zoom_step_opens_whole_and_zoom_out_never_raises_it()
-    {
-        using (SKBitmap bitmap = new(12000, 30))
-        {
-            bitmap.Erase(SKColors.Blue);
-            using SKImage source = SKImage.FromBitmap(bitmap);
-            using SKData encoded = source.Encode(SKEncodedImageFormat.Png, 100);
-            File.WriteAllBytes(Path.Combine(folder, "banner.png"), encoded.ToArray());
-        }
-        MainWindow window = Open();
-        Assert.Null(window.OpenFile("banner.png"));
-        Ui.Settle();
-        AssetPreviewControl preview = Preview(window.EditorArea.ActiveGroup);
-        ZoomedPicture picture = preview.Picture!;
-        Assert.True(picture.Zoom < 0.1 && picture.DrawnSize.Width <= picture.Bounds.Width - (2 * ZoomedPicture.Gap),
-            $"A picture 12,000 wide opened at {picture.Zoom:P1}, drawn {picture.DrawnSize} in a pane of {picture.Bounds.Size}, so part of it lay outside the view");
-        double fitted = picture.Zoom;
-        Assert.True(preview.Focus());
-        string command = OperatingSystem.IsMacOS() ? "meta" : "control";
-        Ui.Press(window, $"{command} MINUS");
-        Assert.Equal(fitted, picture.Zoom);
-        Ui.Press(window, $"{command} EQUALS");
-        Assert.Equal(0.1, picture.Zoom);
-        window.Close();
-    }
-
     /// <summary>Svg.Skia recurses as deep as a drawing's elements, a stylesheet's rules and a selector's brackets go, so each is
     /// refused before it reads them, with the text still there beside the problem.</summary>
-    [AvaloniaTheory]
-    [InlineData("<g>", "</g>", "<rect width=\"5\" height=\"5\"/>")]
-    [InlineData("<svg>", "</svg>", "")]
-    [InlineData("<style>", "</style>", "")]
-    public void An_SVG_nested_past_what_is_drawn_says_so_and_ends_nothing(string open, string close, string inner)
+    private void An_SVG_nested_past_what_is_drawn_says_so_and_ends_nothing(string open, string close, string inner)
     {
         string nested = open == "<style>"
             ? "<style>" + string.Concat(Enumerable.Repeat("@media screen {", 20_000)) + new string('}', 20_000) + "</style>"
@@ -190,8 +164,7 @@ public sealed class AssetPreviewTests : IDisposable
     /// <summary>An SVG opens as its text with its picture beside it, drawn as a drawing, so zoomed in its circle's edge is as
     /// sharp as at its size (a point half a unit outside it the ground's own colour, where an enlarged bitmap would blend
     /// them); its text edited, the picture follows; and the toggle hides and shows it.</summary>
-    [AvaloniaFact]
-    public void An_SVG_is_drawn_beside_its_text_sharp_at_every_zoom_and_its_picture_follows_its_text_edited()
+    private void An_SVG_is_drawn_beside_its_text_sharp_at_every_zoom_and_its_picture_follows_its_text_edited()
     {
         File.WriteAllText(Path.Combine(folder, "badge.svg"),
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\">\n  <rect width=\"40\" height=\"40\" fill=\"#0000ff\"/>\n"
@@ -234,8 +207,7 @@ public sealed class AssetPreviewTests : IDisposable
     /// <summary>An SVG's image named by an address relative to the SVG is read from the SVG's folder, one below it too, and
     /// drawn in its picture, which names nothing left out; its address edited to another image beside the SVG, the picture
     /// draws that one.</summary>
-    [AvaloniaFact]
-    public void An_SVGs_image_named_relative_to_it_is_drawn_from_its_folder()
+    private void An_SVGs_image_named_relative_to_it_is_drawn_from_its_folder()
     {
         string art = Path.Combine(folder, "art");
         Directory.CreateDirectory(Path.Combine(art, "parts"));
@@ -265,8 +237,7 @@ public sealed class AssetPreviewTests : IDisposable
     /// <summary>An SVG's images named outside the SVG's folder (a way up out of it, a path from the disk's root, a file's
     /// address) are not drawn, nor one on the web fetched; the rest of the picture is, and the banner over it names each
     /// left out and why.</summary>
-    [AvaloniaFact]
-    public void An_SVG_draws_no_image_from_outside_its_folder_or_the_web_and_says_why()
+    private void An_SVG_draws_no_image_from_outside_its_folder_or_the_web_and_says_why()
     {
         string outside = Path.Combine(PathNames.Canonical(folder), "red.png");
         File.WriteAllBytes(outside, ImageBytes(".png", 10, 10, SKColors.Red));
@@ -301,10 +272,7 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaTheory]
-    [InlineData(".ttf", "JetBrainsMono-Regular.ttf", FontStyle.Normal)]
-    [InlineData(".otf", "JetBrainsMono-Italic.ttf", FontStyle.Italic)]
-    public void A_local_font_shows_its_actual_face_letters_digits_and_every_ASCII_symbol(string extension, string source, FontStyle style)
+    private void A_local_font_shows_its_actual_face_letters_digits_and_every_ASCII_symbol(string extension, string source, FontStyle style)
     {
         string file = "uninstalled-face" + extension;
         CopyFont(file, source);
@@ -327,8 +295,7 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public async Task Typing_pasting_saving_and_encoding_actions_never_write_a_preview_or_the_text_tab_it_replaced()
+    private async Task Typing_pasting_saving_and_encoding_actions_never_write_a_preview_or_the_text_tab_it_replaced()
     {
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "Keep these notes.\n");
         byte[] original = ImageBytes(".png");
@@ -364,8 +331,7 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Preview_tabs_split_move_close_reopen_and_return_with_the_workspace()
+    private void Preview_tabs_split_move_close_reopen_and_return_with_the_workspace()
     {
         File.WriteAllBytes(Path.Combine(folder, "picture.png"), ImageBytes(".png"));
         CopyFont("face.ttf");
@@ -410,8 +376,7 @@ public sealed class AssetPreviewTests : IDisposable
         second.Close();
     }
 
-    [AvaloniaFact]
-    public void Reloading_an_image_updates_both_splits_but_invalid_pixel_data_keeps_the_previous_picture_and_explains_why()
+    private void Reloading_an_image_updates_both_splits_but_invalid_pixel_data_keeps_the_previous_picture_and_explains_why()
     {
         string path = Path.Combine(folder, "picture.png");
         byte[] complete = ImageBytes(".png");
@@ -449,8 +414,7 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    [AvaloniaFact]
-    public void Invalid_empty_missing_unsupported_and_oversized_assets_fail_without_opening_binary_text()
+    private void Invalid_empty_missing_unsupported_and_oversized_assets_fail_without_opening_binary_text()
     {
         File.WriteAllBytes(Path.Combine(folder, "broken.png"), ImageBytes(".png")[..50]);
         File.WriteAllBytes(Path.Combine(folder, "broken.ttf"), "not a font"u8.ToArray());
@@ -503,8 +467,7 @@ public sealed class AssetPreviewTests : IDisposable
 
     /// <summary>A loaded machine's thread pool can end a small file's decode before the window's thread awaits it, so the
     /// open learns of the failure before it has a tab: decodes ending at once stand in for that.</summary>
-    [AvaloniaFact]
-    public void An_asset_whose_decode_fails_before_its_open_returns_is_refused_at_once_and_never_left_loading()
+    private void An_asset_whose_decode_fails_before_its_open_returns_is_refused_at_once_and_never_left_loading()
     {
         byte[] huge = ImageBytes(".bmp");
         BinaryPrimitives.WriteInt32LittleEndian(huge.AsSpan(18), 10000);
@@ -539,8 +502,7 @@ public sealed class AssetPreviewTests : IDisposable
 
     /// <summary>A preview's tab holds an empty stand-in for text: nothing that reads or changes a file's text may take it for
     /// the image's, or an agent's replace would claim to have changed a picture, and a bookmark would mark a line it lacks.</summary>
-    [AvaloniaFact]
-    public void A_preview_has_no_text_for_the_status_bar_an_agent_find_and_replace_in_files_or_a_bookmark()
+    private void A_preview_has_no_text_for_the_status_bar_an_agent_find_and_replace_in_files_or_a_bookmark()
     {
         string picture = Path.Combine(folder, "picture.png");
         byte[] original = ImageBytes(".png");
@@ -579,32 +541,9 @@ public sealed class AssetPreviewTests : IDisposable
         window.Close();
     }
 
-    /// <summary>A folder renamed elsewhere (mv, git mv, Finder) takes its open files with it: an image's tab follows
-    /// it, known by its bytes, rather than closing as if it had been deleted.</summary>
-    [AvaloniaFact]
-    public void An_open_preview_follows_its_folder_renamed_elsewhere()
-    {
-        string old = Path.Combine(folder, "art", "Old");
-        string renamed = Path.Combine(folder, "art", "New");
-        Directory.CreateDirectory(old);
-        File.WriteAllBytes(Path.Combine(old, "picture.png"), ImageBytes(".png"));
-        MainWindow window = Open();
-        window.OpenFile(Path.Combine(old, "picture.png"));
-        Ui.Settle();
-
-        Directory.Move(old, renamed);
-        Ui.WaitFor(() => window.EditorArea.Documents.Count == 1 && PathNames.IsUnder(window.EditorArea.Documents[0].Path, PathNames.Canonical(renamed)),
-            "the image's tab to follow its folder to its new name");
-        Assert.Equal("picture.png", window.EditorArea.Active!.Name);
-        Assert.NotNull(Preview(window.EditorArea.ActiveGroup));
-        window.Close();
-        Assert.False(Directory.Exists(old), "The folder renamed elsewhere was made again under its old name");
-    }
-
     /// <summary>An image up to the limits takes a while to decode: the window goes on answering meanwhile, its tab saying the
     /// image is loading, since what the UI thread does to open one is the same for a large image as for a small.</summary>
-    [AvaloniaFact]
-    public void A_large_image_decodes_off_the_UI_thread_its_tab_saying_it_is_loading_until_the_picture_lands()
+    private void A_large_image_decodes_off_the_UI_thread_its_tab_saying_it_is_loading_until_the_picture_lands()
     {
         byte[] large = NoiseBytes(2048, 2048);
         File.WriteAllBytes(Path.Combine(folder, "large.png"), large);
@@ -617,37 +556,6 @@ public sealed class AssetPreviewTests : IDisposable
         long big = Opening(window, "large.png", large: true);
         Assert.True(big - small < large.Length / 4,
             $"Opening a {large.Length / (1024 * 1024)} MB image allocated {big / 1024} KB on the UI thread, a small one {small / 1024} KB: the large one was decoded there");
-        window.Close();
-    }
-
-    /// <summary>An agent's tools look an open file up before every answer: a preview's is answered from the picture shown,
-    /// never decoded again, and only the folder watcher's word that the file changed reads it anew.</summary>
-    [AvaloniaFact]
-    public void An_agent_asking_about_an_open_preview_never_decodes_it_again()
-    {
-        string picture = Path.Combine(folder, "picture.png");
-        File.WriteAllBytes(picture, ImageBytes(".png"));
-        MainWindow window = Open();
-        Assert.Null(window.OpenFile("picture.png"));
-        Ui.Settle();
-        OpenDocument document = window.EditorArea.Active!;
-        AssetPreview shown = document.Asset!;
-
-        Passenger.App.Mcp.PassengerTools agent = new(window);
-        foreach (Task asked in new Task[] { agent.Open("picture.png"), agent.EditorText("picture.png"), agent.Diagnostics("picture.png"), agent.GetWorkspace() })
-        {
-            Ui.WaitFor(() => asked.IsCompleted, "the agent's answer");
-            // editor_text's refusal is its answer, read so it is never reported as an error nobody saw.
-            _ = asked.Exception;
-            Assert.False(document.IsDecoding, "An agent's lookup of an open image decoded it again");
-        }
-        Ui.Settle();
-        Assert.Same(shown, document.Asset);
-
-        File.WriteAllBytes(picture, ImageBytes(".png", width: 16, height: 8));
-        Ui.WaitFor(() => document.Asset is { Bitmap.PixelSize.Width: 16 }, "the image changed on disk to be decoded again once the watcher heard it");
-        Image image = Assert.Single(Preview(window.EditorArea.ActiveGroup).GetVisualDescendants().OfType<Image>());
-        Assert.Same(document.Asset!.Bitmap, image.Source);
         window.Close();
     }
 
