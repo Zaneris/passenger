@@ -13,6 +13,9 @@ public sealed partial class Vim
     /// <summary>The column an operator's j or k aims at, set while the operator runs from a caret whose own j and k aim at it.</summary>
     private int? operatorAim;
 
+    /// <summary>Set for a . pressed where j and k aim at the line's end, which takes a block made again to each line's end.</summary>
+    private bool againToEnd;
+
     private static readonly HashSet<string> SingleMotions =
         ["h", "l", "j", "k", "0", "^", "$", "|", "w", "W", "b", "B", "e", "E", "G", ";", ",", "%", "{", "}", "(", ")", "H", "M", "L", VimKeys.Backspace, VimKeys.Enter, " ", "+", "-", "_", "n", "N", "*", "#"];
 
@@ -285,6 +288,7 @@ public sealed partial class Vim
             case "p" or "P" or "gp" or "gP":
                 return Put(command, text, selections, view);
             case ".":
+                againToEnd = aims is { Length: > 0 } aimed && aimed.All(a => a == int.MaxValue);
                 return Again(command.Count, text, selections, view);
             case "r":
                 return Changed(command, Replace(text, selections, n, command.Argument!, view));

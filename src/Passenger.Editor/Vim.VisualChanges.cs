@@ -224,7 +224,7 @@ public sealed partial class Vim
         if (extent.Mode == VimMode.VisualBlock)
         {
             int column = TextNavigation.VisualColumn(text, caret, tab);
-            blockColumns = (column, column + extent.Columns, extent.ToEnd);
+            blockColumns = (column, column + extent.Columns, extent.ToEnd || againToEnd);
             blockAgain = (column, column + extent.Columns);
             return new Region(caret, VimMotions.OffsetAtColumn(text, line, column + extent.Columns, tab));
         }

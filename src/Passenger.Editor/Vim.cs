@@ -230,12 +230,17 @@ public sealed partial class Vim(VimRegisters registers)
             : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
             : Run(command, text, selections, view);
         if ((command is { Operator: null, Name: "." or "p" or "P" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
-                or "S" or "Y" or "s" or "x" or "X" }
+                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
             || (command is { Operator: not null, Name: not ("i" or "a" or "$") } && ReferenceEquals(result, VimResult.Held)))
         {
             // One that can't act (nothing to repeat or put, nowhere to go, its operator's motion failing) keeps j and k's column.
             wantedFor = aimedFor;
+        }
+        if (command is { Operator: not null, Name: "$" } or { Operator: null, Name: "C" or "D" } && ReferenceEquals(result, VimResult.Held))
+        {
+            // An operator's $ cut short aims j and k at the line's end all the same.
+            (wantedFor, wanted) = (selections, [.. Enumerable.Repeat(int.MaxValue, selections.Count)]);
         }
         return Told(result, command?.Name);
     }
