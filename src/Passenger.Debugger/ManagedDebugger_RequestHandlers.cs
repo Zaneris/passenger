@@ -1235,6 +1235,8 @@ public partial class ManagedDebugger
                     _logger?.Invoke($"Error stopping process before terminating it: {stopResult}");
                 }
             }
+            // Taken while it runs: one attached to leaves them as one launched does, ended as it is.
+            Core.RuntimeFiles? left = _launchFiles ?? (_attachedId > 0 && !_throughRelay ? Core.RuntimeFiles.Of(_attachedId) : null);
             int terminated = _process.TryTerminate(0);
             if (terminated < 0)
             {
@@ -1246,10 +1248,9 @@ public partial class ManagedDebugger
                 _logger?.Invoke("The process had not exited 5 s after Terminate");
             }
             // Before the adapter goes, which may be at once: its runtime left its socket, ended as it was.
-            if (_launchExit is { } ended && _launchFiles is { } left)
+            if (left is not null)
             {
-                await ended.WaitAsync(TimeSpan.FromSeconds(5)).Ended().ConfigureAwait(false);
-                left.Remove();
+                await Core.RuntimeFiles.RemoveOnceGoneAsync([left], TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
         }
         await EndAsync().ConfigureAwait(false);
