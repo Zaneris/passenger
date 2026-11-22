@@ -67,6 +67,8 @@ ALLOWANCE = 0
 # A hung test is stopped and named after this, rather than holding its run or its shard's job to the job's own limit;
 # in minutes, as the tests read it for their long waits to end within (Limits.Hang).
 HANG = "10m"
+# What every dotnet test of the tests is given, so a test hung for HANG is stopped and named (`hang` prints it).
+HANG_ARGUMENTS = ["--blame-hang-timeout", HANG, "--blame-hang-dump-type", "none"]
 # What a shard's dotnet test of a project wrote to its console, kept beside its results as it came (`test`), so a shard
 # stopped partway leaves what it ran.
 CONSOLE_LOG = "console-{}.log"
@@ -845,7 +847,7 @@ def run_tests(arguments):
         for run in step:
             command = ["dotnet", "test", run["project"], "--no-build", "--settings", os.path.join(folder, run["settings"]),
                        "--results-directory", results, "--logger", f"trx;LogFileName={run['name']}.trx", "--logger",
-                       "console;verbosity=normal", "--blame-hang-timeout", HANG, "--blame-hang-dump-type", "none"]
+                       "console;verbosity=normal"] + HANG_ARGUMENTS
             sys.stdout.flush()
             log = open(os.path.join(results, CONSOLE_LOG.format(run["name"])), "wb")
             process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE)
@@ -1277,6 +1279,13 @@ def logged_results(folder):
     return found
 
 
+def hang(arguments):
+    """HANG_ARGUMENTS on one line with no line break after it, which a shell's $(...) splits into dotnet test's arguments
+    on every system (Windows' Python would end a line with a carriage return)."""
+    sys.stdout.write(" ".join(HANG_ARGUMENTS))
+    return 0
+
+
 def update(arguments):
     """TestTimes.json from runs' results: each class's seconds on each system for its tests in each lane, the mean of the
     runs that ran every test of it in that lane, each as a lone test process takes it (a run's beside another's at once
@@ -1450,6 +1459,10 @@ def main():
     command.add_argument("results", help="downloaded artifacts of shards, or a folder of .trx results")
     command.add_argument("--title", default="Failed tests", help="the table's heading")
     command.set_defaults(run=failures)
+
+    command = commands.add_parser("hang", help="print the arguments by which dotnet test stops and names a test hung for "
+                                  "HANG, on one line, for a workflow's own dotnet test of the tests")
+    command.set_defaults(run=hang)
 
     command = commands.add_parser("update", help="rewrite TestTimes.json from CI runs' results")
     command.add_argument("runs", nargs="+", help="a CI run's number (downloaded with gh), or a folder of its artifacts")

@@ -122,8 +122,7 @@ class Process:
             environment[TIME_SCALE] = scale
         built = [UNIT_ASSEMBLY if project == shards.UNIT_PROJECT else ASSEMBLY for project in shards.hand_projects(classes)]
         command = ["dotnet", "test"] + built + ["--settings", settings_path, "--results-directory", folder,
-                   "--logger", "trx", "--logger", "console;verbosity=normal",
-                   "--blame-hang-timeout", shards.HANG, "--blame-hang-dump-type", "none"]
+                   "--logger", "trx", "--logger", "console;verbosity=normal"] + shards.HANG_ARGUMENTS
         self.started = time.monotonic()
         self.log = open(self.log_path, "w", encoding="utf-8", errors="replace")
         if shown:

@@ -197,7 +197,7 @@ jobs:
         run: dotnet build tests/Passenger.Tests
 
       - name: An agent debugs through the installed Passenger, whose helpers run on its own runtime
-        run: dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
+        run: dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" $(python -I tools/test-shards.py hang)
 
       # Update.exe removes the folder a few seconds after it exits; the person's state and Velopack's own logs
       # (%LocalAppData%\velopack) stay.
@@ -312,7 +312,7 @@ jobs:
       - name: An agent debugs through the Passenger installed for one person, whose helpers run on its own runtime
         run: |
           export PASSENGER_EXECUTABLE=$HOME/.local/bin/passenger-ide
-          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" $(python3 -I tools/test-shards.py hang)
 
       - name: Uninstall for one person
         if: ${{ !cancelled() }}
@@ -344,7 +344,7 @@ jobs:
       - name: An agent debugs through the Passenger installed for everyone, whose helpers run on its own runtime
         run: |
           export PASSENGER_EXECUTABLE=/usr/local/bin/passenger-ide
-          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" --blame-hang-timeout 10m --blame-hang-dump-type none
+          dotnet test tests/Passenger.Tests --no-build --filter "FullyQualifiedName~McpDebuggingTests.An_agent_with_a_windowless_Passenger_finds_code_reads_its_warnings_and_debugs_it|FullyQualifiedName~McpDebuggingTests.Passengers_own_helpers_run_on_the_runtime_Passenger_runs_on" $(python3 -I tools/test-shards.py hang)
 
       - name: Uninstall for everyone
         if: ${{ !cancelled() && steps.system.outcome != 'skipped' }}
