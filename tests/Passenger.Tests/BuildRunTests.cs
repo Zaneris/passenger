@@ -466,6 +466,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             // The status bar says the restart however late: here once the Apply has ended.
             WaitWatched(window, () => window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, "the Apply before to end");
             int first = Processes.ReadId(started);
+            // A start again writes the id file again, told by its write rather than by an id the system may give twice.
+            DateTime firstWritten = FileStamp.WrittenAt(started);
             at = program.Text.Snapshot.ToString().IndexOf("Later() =>", StringComparison.Ordinal);
             window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, "Later() =>".Length, "Later(int times = 1) =>")]);
             Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
@@ -475,21 +477,23 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             WaitWatched(window, () => window.Status?.Contains("dotnet watch is restarting the application", StringComparison.Ordinal) == true,
                 "the status bar to say dotnet watch restarts the program, which called the method as it was after the Apply had ended", TimeSpan.FromMinutes(1));
             // An edit before dotnet watch loads the project again is in what it loads, never applied.
-            WaitWatched(window, () => Processes.ReadId(started) is int again && again > 0 && again != first
+            WaitWatched(window, () => FileStamp.WrittenAt(started) > firstWritten && Processes.ReadId(started) > 0
                 && Output(window) is { } output && output.LastIndexOf("Waiting for changes", StringComparison.Ordinal) > output.LastIndexOf("Restarting application", StringComparison.Ordinal),
-                "dotnet watch to start the program again and watch it", TimeSpan.FromMinutes(1));
+                () => $"dotnet watch to start the program again and watch it (its id file {IdSaid(started)}, process {first} before{(Processes.IsRunning(first) ? ", still running" : string.Empty)})", TimeSpan.FromMinutes(1));
 
             // The window kept from drawing from the Apply to the restart, as a slow machine's falls behind: both words come at once.
             int second = Processes.ReadId(started);
+            DateTime secondWritten = FileStamp.WrittenAt(started);
             at = program.Text.Snapshot.ToString().IndexOf("Later(int times = 1) =>", StringComparison.Ordinal);
             window.EditorArea.CodeEditor.ApplyEdits([new TextEdit(at, "Later(int times = 1) =>".Length, "Later(int times = 1, bool again = true) =>")]);
             Assert.True(window.Perform(AppActions.ApplyHotReloadChanges), $"Apply Hot Reload Changes could not run: {window.Status}");
             Assert.Equal("Hot Reload: saved for dotnet watch to apply", window.Status);
-            if (!Waiting.Until(() => Processes.ReadId(started) is int again && again > 0 && again != second, TimeSpan.FromMinutes(1)))
+            if (!Waiting.Until(() => FileStamp.WrittenAt(started) > secondWritten && Processes.ReadId(started) > 0, TimeSpan.FromMinutes(1)))
             {
                 // What dotnet watch said meanwhile reaches the Run window only once the window runs again.
                 Ui.Settle();
-                Assert.Fail($"dotnet watch did not start the program again, for the signature changed while the window was held; the Run window:\n{Output(window)}");
+                Assert.Fail($"dotnet watch did not start the program again, for the signature changed while the window was held (its id file {IdSaid(started)}, "
+                    + $"process {second} before{(Processes.IsRunning(second) ? ", still running" : string.Empty)}); the Run window:\n{Output(window)}");
             }
             WaitWatched(window, () => window.Status?.Contains("dotnet watch is restarting the application", StringComparison.Ordinal) == true,
                 "the status bar to say dotnet watch restarted the program while the window was held", TimeSpan.FromMinutes(1));
@@ -941,7 +945,10 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>Waits as <see cref="Ui.WaitFor"/> does for what the window says of a program under dotnet watch; one that
     /// never comes says what the status bar and the Run window said by the end of the wait, not as it began.</summary>
-    private static void WaitWatched(MainWindow window, Func<bool> condition, string what, TimeSpan? limit = null)
+    private static void WaitWatched(MainWindow window, Func<bool> condition, string what, TimeSpan? limit = null) => WaitWatched(window, condition, () => what, limit);
+
+    /// <inheritdoc cref="WaitWatched(MainWindow, Func{bool}, string, TimeSpan?)"/>
+    private static void WaitWatched(MainWindow window, Func<bool> condition, Func<string> what, TimeSpan? limit = null)
     {
         try
         {
@@ -2036,6 +2043,19 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     }
 
     private void Write(string relative, string text) => TestFolders.Write(Folder, relative, text);
+
+    /// <summary>What a program's id file says and when it was last written, for a wait on a program's start to say.</summary>
+    private static string IdSaid(string file)
+    {
+        try
+        {
+            return File.Exists(file) ? $"says \"{File.ReadAllText(file)}\", written {FileStamp.WrittenAt(file):HH:mm:ss.fff}" : "is not there";
+        }
+        catch (IOException error)
+        {
+            return $"could not be read: {error.Message}";
+        }
+    }
 
     /// <summary>MSBuild of a test's own, for what the IDE starts while it lasts (the IDE passes its environment on): a handshake
     /// salt no other build has, so no server or node another left is used and the test's builds start their own, as on a
