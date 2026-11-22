@@ -30,6 +30,12 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `MauiCatalystTests`' `A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start`,
+  CI 44984656678 to 45000646248 (macOS report shard 1), since 72ce5fd4f the Catalyst flow's last step: "Process … or …
+  does not run …/MauiApp1". **The test was written before what it reads changed**: it debugged the app and then ran the
+  same configuration, and since 67237a544 Run of a configuration being debugged ends the debugged program first, one
+  copy of a configuration running; a probe on the Mac found the debugged instance gone as Run's opened. Run now opens its
+  instance from a twin configuration (731e68032, #2103).
 - `AndroidTargetChoiceTests`' `After_a_run_on_an_android_target_this_machines_head_and_the_simulators_are_still_offered`,
   CI 44984656678 to 45000646248 (Linux report shard 1), as in CI 44970786971 below: "Only Passenger Relisted is listed,
   so a run's listing has nothing else to keep". **The test held a Mac's or Windows' targets**: on Linux its stand-in app
