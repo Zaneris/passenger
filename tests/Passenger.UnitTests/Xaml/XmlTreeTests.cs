@@ -52,6 +52,7 @@ public class XmlTreeTests
             ("&#65;&#x42;&#X43;", "ABC"),
             ("&#x1F600;", "\U0001F600"),
             ("&#xD83D;&#xDE00;", "&#xD83D;&#xDE00;"),
+            ("&#0;&#x110000;", "&#0;&#x110000;"),
             ("a & b &unknown; &amp", "a & b &unknown; &amp"),
         ], row => Character_references_read_as_what_they_name_and_any_other_ampersand_as_written(row.Item1, row.Item2))),
         ("a value written into a file escapes what would end it and reads back as it was", A_value_written_into_a_file_escapes_what_would_end_it_and_reads_back_as_it_was),

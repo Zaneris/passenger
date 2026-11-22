@@ -54,9 +54,11 @@ public class CSharpParsingTests
         ("a documentation comment's elements nested past what a parser is given are too deep, on one line or many, in a block comment or with attributes", () => Cases.Each(
         [
             ("/// ", "<a>", "", "\nclass C { }\n"),
+            ("/// ", "<a>", "</a>", "\nclass C { }\n"),
             ("", "/// <a>\n", "/// </a>\n", "class C { }\n"),
             ("/** ", "<a>", "", " */\nclass C { }\n"),
             ("/// ", "<a b='x'>", "", "\nclass C { }\n"),
+            ("class C {\n", "/// <a>\n", "", "int x;\n}\n"),
         ], row =>
         {
             Assert.Null(CSharpParsing.DeepAt(CSharpParsing.Parse(Nested(row.Item1, row.Item2, string.Empty, row.Item3, row.Item4, 900))));
@@ -133,6 +135,7 @@ public class CSharpParsingTests
         [
             ("class C { object x = ", "(\";\" + ", ")"),
             ("class C { object x = ", "(\"\\\";\" + ", ")"),
+            ("class C { object x = ", "(\")]}\" + ", ")"),
             ("class C { object x = ", "(';' + ", ")"),
             ("class C { object x = ", "(@\"\n;\n\" + ", ")"),
             ("class C { object x = ", "($\";{0}\" + ", ")"),
@@ -140,6 +143,8 @@ public class CSharpParsingTests
             ("class C { object x = ", "(/*;)*/", ")"),
             ("class C { object x = ", "(// ;\n", ")"),
             ("class C { object x = ", "(\n#if NEVER\n;\n#endif\n", ")"),
+            ("class C { object x = ", "(@$\"\n;\n\" + ", ")"),
+            ("class C { object x = ", "($\"{$\";\"}\" + ", ")"),
             ("class C { object x = ", "(\"\"\"\n;)\n\"\"\" + ", ")"),
             ("class C { object x = ", "($$\"\"\"{{\";\"}};)\"\"\" + ", ")"),
             ("class C { object x = ", "(\n/// ;)\n", ")"),
@@ -185,17 +190,25 @@ public class CSharpParsingTests
     /// code's accesses read whole however many.</summary>
     [Fact]
     public void A_run_of_conditional_accesses_goes_too_deep_at_its_twelfth_and_real_codes_read_whole() => Cases.All(
-        ("a run of conditional accesses read ahead through goes too deep at its twelfth, whatever its shape", () => Cases.Each(
+        ("a run of conditional accesses read ahead through goes too deep at its twelfth, whatever its shape and wherever it lies", () => Cases.Each(
         [
             ("class C { object x = a", "?[0]"),
             ("class C { object x = a", "?\n[0]"),
+            ("class C { object x = a", "? /* */ [0]"),
             ("class C { object x = a", "?.b?[0]"),
+            ("class C { object x = a", "?[0]!"),
             ("class C { object x = a", "?[0](1).b[2]"),
+            ("class C { object x = ", "a?["),
+            ("class C { object x = ", "a?[x => "),
             ("class C { object x = ", "a?[x => { return "),
             ("class C { object x = ", "a?[new C { P = "),
             ("class C { object x = ", "a?[0] switch { _ => "),
+            ("class C { object x = 0", " + a?[0]"),
             ("class C { object x = 0", " ?? a?[0]"),
+            ("class C { object x = 0", " + F<A, B>(0) + a?[0]"),
+            ("class C { object x = ", "c ? a?[0] : "),
             ("class C { object x = ", "c ? ["),
+            ("class C { object x = ", "c ? b?["),
             ("class C { bool x = a is int", "?[]"),
         ], row =>
         {
@@ -225,6 +238,8 @@ public class CSharpParsingTests
             ("class C { void M() { x = a{6};\n+ a{6}; } }", ";\n+", "\n+"),
             ("class C { void M() { x = \"a{12}\"; } }", "\"a", "a"),
             ("class C { void M() { x = a // {12}\n; } }", "// ", ""),
+            ("class C { void M() { x = a /* {12} */; } }", "/* ", ""),
+            ("class C { void M() { x = a{6} ?? F(y => { y = b; }); } }", "y = b;", "y = b{6};"),
             ("class C { int x = a{6} ?? F(y => { y = b; }); }", "y = b;", "y = b{6};"),
             ("#if !NEVER\nclass C { void M() { x = a{6}\n#else\n;\n#endif\n+ b; } }\n", "+ b;", "+ b{6};"),
         ], row =>
