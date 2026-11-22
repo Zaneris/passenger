@@ -65,8 +65,8 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     private string PurchasePath => Path.Combine(folder, "Purchase.cs");
 
-    /// <summary>The gate's renames of a class with its file, as one flow: to take the place of its two tests once it has
-    /// its record on CI.</summary>
+    /// <summary>The gate's renames of a class with its file, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void A_class_and_its_partial_parts_are_renamed_with_their_files_as_one_command_of_undo()
     {
@@ -76,8 +76,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
 
     /// <summary>A class renamed with its file, as the person, an agent, the solution view or a fix asks it: the file
     /// and its nested files renamed with it, Git seeing renames, a file whose name differs only in letter case renamed
-    /// too, and Undo and Redo taking it back whole. The gate's two such tests are steps here until this flow takes
-    /// their place.</summary>
+    /// too, and Undo and Redo taking it back whole.</summary>
     [AvaloniaFact]
     public void A_class_renamed_with_its_file_is_one_command_of_undo_and_git_sees_renames_however_the_rename_was_asked()
     {
@@ -104,9 +103,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>Rename on a class named like its file renames the file with it, its tab, breakpoint and bookmark following,
     /// its uses changing and Git seeing a rename; then Undo in the editor takes back what was typed after it on its own,
     /// and the next Undo the class, its file and the other file together, asked first, and Redo makes it all again.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Renaming_a_class_named_like_its_file_renames_the_file_Git_sees_a_rename_and_undo_and_redo_take_it_back_whole()
+    private void Renaming_a_class_named_like_its_file_renames_the_file_Git_sees_a_rename_and_undo_and_redo_take_it_back_whole()
     {
         string till = Path.Combine(folder, "Till.cs");
         MainWindow window = Open("Order.cs");
@@ -198,9 +195,7 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
     /// <summary>Every part of a partial class in a file named after it is renamed with it, a part named otherwise is not;
     /// then, with Also rename files to reflect this change turned off, only the code is renamed, and the option stays off
     /// for the next rename.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Each_partial_part_named_after_its_class_is_renamed_with_it_and_with_the_file_option_turned_off_only_the_code_is_and_it_stays_off()
+    private void Each_partial_part_named_after_its_class_is_renamed_with_it_and_with_the_file_option_turned_off_only_the_code_is_and_it_stays_off()
     {
         MainWindow window = Open("Basket.Lines.cs");
 

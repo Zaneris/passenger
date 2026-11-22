@@ -29,8 +29,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         app.Reset();
     }
 
-    /// <summary>The gate's XAML completion, checks, renames, assets, colours and preview as one flow, to take the place
-    /// of their eight tests once it has its record on CI.</summary>
+    /// <summary>The gate's XAML completion, checks, renames, assets, colours and preview, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_xaml_completion_checks_renames_assets_colours_and_preview_hold_as_one_flow()
     {
@@ -146,9 +146,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Flow.StepApart("opening and closing the XAML preview twenty times beside busy processes faults no read of the previewer", () => new XamlTests(app), t => t.Opening_and_closing_the_XAML_preview_twenty_times_beside_busy_processes_faults_no_read_of_the_previewer());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Typing_a_tag_offers_the_controls_then_a_controls_properties_and_then_the_values_of_the_one_chosen()
+    private void Typing_a_tag_offers_the_controls_then_a_controls_properties_and_then_the_values_of_the_one_chosen()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -186,9 +184,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_value_chosen_with_nothing_typed_from_the_list_its_property_opened_leaves_the_caret_after_it_to_type_on()
+    private void A_value_chosen_with_nothing_typed_from_the_list_its_property_opened_leaves_the_caret_after_it_to_type_on()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -257,9 +253,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_misspelt_property_enum_value_resource_and_binding_path_are_marked_as_typed_listed_in_problems_and_go_once_put_right()
+    private void A_misspelt_property_enum_value_resource_and_binding_path_are_marked_as_typed_listed_in_problems_and_go_once_put_right()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -992,9 +986,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Passengers_own_xaml_which_compiles_is_marked_with_no_problem()
+    private void Passengers_own_xaml_which_compiles_is_marked_with_no_problem()
     {
         MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false };
         window.Show();
@@ -1064,9 +1056,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_elements_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
+    private void An_elements_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml.cs"));
         CodeEditor code = window.EditorArea.CodeEditor;
@@ -1591,9 +1581,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void An_avares_path_completes_from_the_projects_assets_is_warned_of_when_missing_and_goes_to_its_file()
+    private void An_avares_path_completes_from_the_projects_assets_is_warned_of_when_missing_and_goes_to_its_file()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1627,9 +1615,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Colours_show_as_gutter_swatches_and_one_chosen_in_the_picker_is_written_back_as_it_was_written()
+    private void Colours_show_as_gutter_swatches_and_one_chosen_in_the_picker_is_written_back_as_it_was_written()
     {
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1804,11 +1790,9 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
-    [Gate]
     /// <summary>A window closed just after its XAML preview was sent its file, whose answer it waits for a minute at most: the
     /// window goes at once, held by nothing that wait leaves (#1445).</summary>
-    [AvaloniaFact]
-    public void A_window_closed_as_its_preview_waits_for_the_previewer_is_let_go()
+    private void A_window_closed_as_its_preview_waits_for_the_previewer_is_let_go()
     {
         Ui.Collected(Previewed(), "the window closed with its XAML preview to be let go well before the minute the preview waits for its previewer: "
             + "held by that wait, each previewing window would be kept a minute after it closed", TimeSpan.FromSeconds(15));

@@ -70,8 +70,9 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         project.Reset();
     }
 
-    /// <summary>The gate's Go to Type Declaration, Base and Derived Symbols, Recent Locations and Last Edit Location as
-    /// one flow, to take the place of their five tests once it has its record on CI.</summary>
+    /// <summary>The gate's Go to Type Declaration, Base and Derived Symbols, Recent Locations and Last Edit Location, as
+    /// one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_go_to_type_base_derived_recent_and_last_edit_hold_as_one_flow()
     {
@@ -92,9 +93,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         Flow.StepApart("the keymap's clicks go to the declaration, the type's declaration and, on macOS, the derived symbols where clicked", () => new GoToTests(project), t => t.The_keymaps_clicks_go_to_the_declaration_the_types_declaration_and_on_macOS_the_derived_symbols_where_clicked());
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Type_declaration_from_a_variable_goes_to_the_class_it_holds_not_to_where_the_variable_is_declared()
+    private void Type_declaration_from_a_variable_goes_to_the_class_it_holds_not_to_where_the_variable_is_declared()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -106,9 +105,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Base_symbols_go_from_an_override_to_what_it_overrides_from_an_implementation_to_the_interface_and_offer_both_when_there_are_two()
+    private void Base_symbols_go_from_an_override_to_what_it_overrides_from_an_implementation_to_the_interface_and_offer_both_when_there_are_two()
     {
         MainWindow window = project.Open("Shapes.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -141,9 +138,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Derived_symbols_from_the_editors_go_to_menu_offer_what_overrides_or_implements_a_member_or_derives_from_a_type()
+    private void Derived_symbols_from_the_editors_go_to_menu_offer_what_overrides_or_implements_a_member_or_derives_from_a_type()
     {
         MainWindow window = project.Open("Shapes.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -183,9 +178,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Recent_locations_lists_the_places_left_with_their_lines_of_code_and_goes_to_the_one_chosen()
+    private void Recent_locations_lists_the_places_left_with_their_lines_of_code_and_goes_to_the_one_chosen()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -271,9 +264,7 @@ public sealed class GoToTests : IClassFixture<GoToTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Last_edit_location_steps_back_through_edits_in_two_files_and_recent_lists_show_only_what_was_edited()
+    private void Last_edit_location_steps_back_through_edits_in_two_files_and_recent_lists_show_only_what_was_edited()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;

@@ -62,8 +62,8 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         TestFolders.Delete(settings);
     }
 
-    /// <summary>The gate's design-time builds kept and projects reaching the language server as one flow, to take the
-    /// place of their six tests once it has its record on CI.</summary>
+    /// <summary>The gate's design-time builds kept and projects reaching the language server, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_builds_kept_and_projects_reaching_the_server_hold_as_one_flow()
     {
@@ -174,9 +174,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         }
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_folder_opened_with_builds_kept_before_restore_inputs_were_stamped_is_built_again_once()
+    private void A_folder_opened_with_builds_kept_before_restore_inputs_were_stamped_is_built_again_once()
     {
         string program = Path.Combine(folder, "App", "Program.cs");
         MainWindow first = Keeping();
@@ -202,9 +200,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         third.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_folder_opened_again_has_the_language_server_load_its_projects_from_the_design_time_builds_kept()
+    private void A_folder_opened_again_has_the_language_server_load_its_projects_from_the_design_time_builds_kept()
     {
         string program = Path.Combine(folder, "App", "Program.cs");
         MainWindow first = Keeping();
@@ -224,9 +220,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         second.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_directory_build_file_made_above_the_projects_reaches_the_language_server_made_while_the_folder_was_closed_or_open()
+    private void A_directory_build_file_made_above_the_projects_reaches_the_language_server_made_while_the_folder_was_closed_or_open()
     {
         // Each error but the first compiled only under a constant a Directory.Build file above the projects defines.
         string counts = Path.Combine(folder, "App", "Counts.cs");
@@ -348,9 +342,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     /// only once it has said that file's project loaded, never one of its Miscellaneous Files meanwhile, though a program
     /// found beside the solution as it started is loaded beside the projects shown first; a file no project of the folder
     /// holds reaches it at once.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Files_open_as_the_server_starts_again_or_the_solution_gains_a_project_reach_it_once_their_projects_have_loaded()
+    private void Files_open_as_the_server_starts_again_or_the_solution_gains_a_project_reach_it_once_their_projects_have_loaded()
     {
         string program = Path.Combine(folder, "App", "Program.cs");
         string greeter = Path.Combine(folder, "Lib", "Greeter.cs");
@@ -515,9 +507,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     private static void WaitForCode(MainWindow window, string path, string code, string what) =>
         Ui.WaitFor(() => Codes(window, path).Contains(code), what, TimeSpan.FromMinutes(2));
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_file_of_a_multi_targeted_project_is_answered_for_in_the_target_framework_chosen_for_it()
+    private void A_file_of_a_multi_targeted_project_is_answered_for_in_the_target_framework_chosen_for_it()
     {
         string greeter = Path.Combine(folder, "Lib", "Greeter.cs");
         MainWindow window = Keeping();
@@ -643,9 +633,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
         Ui.Choose(Assert.IsType<ContextMenu>(window.OpenContextMenu), context);
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Leaving_a_folder_whose_projects_are_still_being_built_lets_the_next_folders_builds_start_at_once()
+    private void Leaving_a_folder_whose_projects_are_still_being_built_lets_the_next_folders_builds_start_at_once()
     {
         // A project whose design-time build waits three minutes, as a large solution's round goes on for minutes.
         string slow = PathNames.Canonical(TestFolders.Create("slow-"));

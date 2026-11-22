@@ -33,8 +33,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         project.Reset();
     }
 
-    /// <summary>The gate's completion, edits and cards of C# as one flow, to take the place of their six tests once it
-    /// has its record on CI.</summary>
+    /// <summary>The gate's completion, edits and cards of C#, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_completion_edits_and_cards_hold_as_one_flow()
     {
@@ -46,8 +46,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("the error stripe marks a problem in its colour, says what it is, and a click goes there", () => new CodeAssistTests(project), t => t.The_error_stripe_marks_a_problem_in_its_colour_says_what_it_is_and_a_click_goes_there());
     }
 
-    /// <summary>The gate's navigation and refactorings of C# as one flow, to take the place of their six tests once it
-    /// has its record on CI.</summary>
+    /// <summary>The gate's navigation and refactorings of C#, as one flow.</summary>
+    [Gate]
     [AvaloniaFact]
     public void The_gates_navigation_and_refactorings_hold_as_one_flow()
     {
@@ -705,9 +705,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_member_chosen_from_the_list_a_dot_opened_with_nothing_typed_leaves_the_caret_after_it()
+    private void A_member_chosen_from_the_list_a_dot_opened_with_nothing_typed_leaves_the_caret_after_it()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1107,9 +1105,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void The_error_stripe_marks_a_problem_in_its_colour_says_what_it_is_and_a_click_goes_there()
+    private void The_error_stripe_marks_a_problem_in_its_colour_says_what_it_is_and_a_click_goes_there()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1136,9 +1132,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_right_click_on_a_call_puts_the_caret_there_and_its_menu_renames_it_in_every_file_that_uses_it_and_goes_to_an_implementation()
+    private void A_right_click_on_a_call_puts_the_caret_there_and_its_menu_renames_it_in_every_file_that_uses_it_and_goes_to_an_implementation()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1420,9 +1414,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Undo and Redo of a paste at a file's end, the platform's input method following the editor as a
     /// desktop's does: each changes the text and keeps its step for the other, and the language server holds the
     /// editor's text.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Undo_and_redo_of_a_paste_at_a_files_end_keep_their_steps_and_the_servers_copy_with_an_input_method_following()
+    private void Undo_and_redo_of_a_paste_at_a_files_end_keep_their_steps_and_the_servers_copy_with_an_input_method_following()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1585,9 +1577,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Go to Declaration opens the other file at the method, and Forward after Back goes there again when the caret
     /// moved in between; Back lands on the call it left after a line is added above it; and Go to Declaration on a library
     /// type opens its decompiled source, read-only.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Go_to_declaration_back_and_forward_land_where_the_code_is_and_a_library_type_opens_its_decompiled_source_read_only()
+    private void Go_to_declaration_back_and_forward_land_where_the_code_is_and_a_library_type_opens_its_decompiled_source_read_only()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -1733,9 +1723,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         return window.EditorArea.Active!;
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Code_cleanup_removes_unused_usings_sorts_the_rest_and_reformats()
+    private void Code_cleanup_removes_unused_usings_sorts_the_rest_and_reformats()
     {
         MainWindow window = project.Open("Messy.cs");
         Passenger.App.Workspace.OpenDocument messy = window.EditorArea.Active!;
@@ -1753,9 +1741,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Refactor This lists only the refactorings at the selection; Extract Method asks for each new method's name at
     /// once, its rename box at the call offering the method just made, not the one before; and lines selected down to the
     /// next statement leave that statement on its own line.</summary>
-    [Gate]
-    [AvaloniaFact]
-    public void Extract_method_asks_each_new_methods_name_and_keeps_the_next_statement_on_its_line_and_refactor_this_lists_only_what_fits()
+    private void Extract_method_asks_each_new_methods_name_and_keeps_the_next_statement_on_its_line_and_refactor_this_lists_only_what_fits()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2004,9 +1990,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     private static string? IndentShown(MainWindow window) => Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "IndentText")!.Text;
 
-    [Gate]
-    [AvaloniaFact]
-    public void Choosing_await_in_a_method_not_yet_async_makes_the_method_async_as_well()
+    private void Choosing_await_in_a_method_not_yet_async_makes_the_method_async_as_well()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2027,9 +2011,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void A_fix_with_choices_offers_them_as_a_second_list_and_makes_the_one_chosen()
+    private void A_fix_with_choices_offers_them_as_a_second_list_and_makes_the_one_chosen()
     {
         MainWindow window = project.Open("Program.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2074,9 +2056,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Fix_all_offers_its_scopes_and_fixes_every_occurrence_in_the_one_chosen()
+    private void Fix_all_offers_its_scopes_and_fixes_every_occurrence_in_the_one_chosen()
     {
         MainWindow window = project.Open("Loop.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2259,9 +2239,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private static string Said(TextBlock block) =>
         block.Text is { Length: > 0 } text ? text : string.Concat(block.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(r => r.Text) ?? []);
 
-    [Gate]
-    [AvaloniaFact]
-    public void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()
+    private void Parameter_info_keeps_a_sentence_apart_from_a_parameter_its_documentation_names_straight_after_it()
     {
         MainWindow window = project.Open("Joins.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -2733,9 +2711,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
-    [Gate]
-    [AvaloniaFact]
-    public void Call_and_type_hierarchies_show_who_calls_a_method_and_what_derives_from_a_type()
+    private void Call_and_type_hierarchies_show_who_calls_a_method_and_what_derives_from_a_type()
     {
         MainWindow window = project.Open("Helper.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
