@@ -30,6 +30,16 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `SelfDebuggingTests`' `Passenger_opened_on_its_repository_debugs_itself_on_a_state_of_its_own_stopping_stepping_and_evaluating_in_its_ui_code`,
+  CI 45055574992 (Linux report shard 1), at 9350b8538: "Building Passenger rewrote the checkout's restore of 30 projects
+  … Passenger.Analyzers.csproj.nuget.dgspec.json, line 25, read "https://api.nuget.org/v3/index.json": {}" and now reads
+  "/usr/share/dotnet/library-packs": {},"". **The repository's build**: the deal put the class in the shard that
+  installs the mobile workloads after restoring the checkout, and once MAUI's library packs stand beside the SDK, the
+  SDK names their folder among every restore's sources, so any build after it, the person's own as much as Passenger's,
+  restored all of Passenger.App's projects again; the Linux VM, given such a folder only once the checkout was built,
+  failed the same way. Passenger's projects name no such folder (`DisableImplicitLibraryPacksFolder`), which
+  nuget.config's source mapping already kept from giving any package (f51aef8cb); the test passed on the VM with and
+  without one.
 - `GodotTuneTests`' `A_tuned_value_reaches_the_game_and_is_kept_where_asked`, CI 45047787920 (Linux report shard 3), at
   1ba3ef0e1, its second step, and CI 44984656678 (Windows gate shard 2), its first: "Waited 180 s for the colour picker
   over Tint's swatch". **A race in the IDE**: the Live Visual Tree showed a Godot game's monitors' line only as the first
