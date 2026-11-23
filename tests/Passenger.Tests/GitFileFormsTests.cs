@@ -189,7 +189,8 @@ public sealed class GitFileFormsTests : IDisposable
     /// <summary>Under core.autocrlf=input, which stores CRLF as LF: a file committed with LF and edited with CRLF line
     /// ends, which git takes as one line changed, shows that line alone in Show Diff (closed, then open and edited again in
     /// the diff), in Compare with Revision and in an agent's vcs_status, where each said its separators changed too; while
-    /// a file beside it git stores as written (-text), turned from LF to CRLF, still says its separators changed.</summary>
+    /// a file beside it git stores as written (-text), turned from LF to CRLF, still says its separators changed, and to an
+    /// agent git's own diff of its lines after it.</summary>
     private void Under_core_autocrlf_input_a_CRLF_files_diff_shows_only_its_edited_lines_and_a_file_stored_as_written_its_separators()
     {
         Git("config", "core.autocrlf", "input");
@@ -224,7 +225,12 @@ public sealed class GitFileFormsTests : IDisposable
 
         string kept = Changed(window, "kept.txt");
         Saying(window.ShowDiffAsync(kept), "Line separators changed: 3 lines from LF to CRLF", "Show Diff on kept.txt");
-        Assert.Equal("Line separators changed: 3 lines from LF to CRLF", Ui.Await(agent.VcsStatus("kept.txt"), "vcs_status of kept.txt"));
+        // Stored as written, its lines differ by their CRs, which git's own diff keeps for git apply.
+        string gits = Git("diff", "--", "kept.txt");
+        gits = gits[gits.IndexOf("--- ", StringComparison.Ordinal)..];
+        string? said = Ui.Await(agent.VcsStatus("kept.txt"), "vcs_status of kept.txt") as string;
+        Assert.True(said == $"Line separators changed: 3 lines from LF to CRLF\n{gits}",
+            $"vcs_status of kept.txt, stored as written, its LF breaks now CRLF, is not its words then git's own diff:\n{said}\ngit's:\n{gits}");
         window.Close();
     }
 
