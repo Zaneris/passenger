@@ -169,6 +169,11 @@ internal sealed partial class CodeActions
                 bool laidApart = dotnet && UsesDotnetFormat(file);
                 if (laidApart)
                 {
+                    if (editors.Find(file)?.ReadOnlyWhy is { } readOnly)
+                    {
+                        left.Add(new FileLeft(file, PassedOver.ReadOnly, $"{relative(file)}: {readOnly}"));
+                        continue;
+                    }
                     formatting.Add(file);
                     if (kind == Tidying.Reformat)
                     {
@@ -177,7 +182,10 @@ internal sealed partial class CodeActions
                 }
                 if (editors.Find(file) is { } shown)
                 {
-                    await TidiedAsync(shown, !laidApart);
+                    if (!await TidiedAsync(shown, !laidApart))
+                    {
+                        formatting.Remove(file);
+                    }
                     // Its step taken now, so what the person types there next stays theirs.
                     recording.TakeOpen();
                     continue;
@@ -190,7 +198,10 @@ internal sealed partial class CodeActions
                 }
                 using (hold)
                 {
-                    await TidiedAsync(borrowed, !laidApart);
+                    if (!await TidiedAsync(borrowed, !laidApart))
+                    {
+                        formatting.Remove(file);
+                    }
                     if (borrowed.IsModified && editors.SaveSaying(borrowed) is { } unsaved)
                     {
                         changed.RemoveAll(c => PathNames.Same(c.Path, file));
@@ -202,8 +213,12 @@ internal sealed partial class CodeActions
             {
                 stage?.Invoke($"{name}: dotnet format over {Plural.Of(formatting.Count, "C# file")}");
                 Dictionary<string, string?> was = formatting.ToDictionary(f => f, TextOf, PathNames.Comparer);
-                failed = await DotnetFormattedAsync(formatting, kind, stop);
+                (failed, IReadOnlyList<(string Path, string Break)> mixed) = await DotnetFormattedAsync(formatting, kind, stop);
                 recording.TakeOpen();
+                foreach ((string path, string kept) in mixed)
+                {
+                    recording.Change(path, text => LineEndings.In(text, kept));
+                }
                 foreach (string file in formatting.Where(f => TextOf(f) != was[f] && !changed.Any(c => PathNames.Same(c.Path, f))))
                 {
                     changed.Add(new FileTidied(file, DotnetFormatted));
@@ -219,12 +234,13 @@ internal sealed partial class CodeActions
 
         string? TextOf(string file) => editors.Find(file)?.Text.Snapshot.ToString() ?? FileText.Load(file)?.Text;
 
-        async Task TidiedAsync(OpenDocument document, bool layOut)
+        // Whether the file was taken, not passed over.
+        async Task<bool> TidiedAsync(OpenDocument document, bool layOut)
         {
             if (document.ReadOnlyWhy is { } readOnly)
             {
                 left.Add(new FileLeft(document.Path, PassedOver.ReadOnly, $"{relative(document.Path)}: {readOnly}"));
-                return;
+                return false;
             }
             // Its text's version says whether the run changed it, never the text made into a string twice.
             int before = document.Text.Version;
@@ -232,11 +248,13 @@ internal sealed partial class CodeActions
             if (done is null)
             {
                 left.Add(new FileLeft(document.Path, PassedOver.Unread, $"{relative(document.Path)}: the language server does not read it"));
+                return false;
             }
-            else if (document.Text.Version != before)
+            if (document.Text.Version != before)
             {
                 changed.Add(new FileTidied(document.Path, done));
             }
+            return true;
         }
     }
 
@@ -310,7 +328,7 @@ internal sealed partial class CodeActions
         using LocalHistory.Activity? named = context.History()?.Over(what, [document.Path]);
         using IDisposable? own = named?.Own();
         string before = document.Text.Snapshot.ToString();
-        if (await DotnetFormattedAsync([document.Path], kind, cancel) is { } failed)
+        if ((await DotnetFormattedAsync([document.Path], kind, cancel)).Why is { } failed)
         {
             return Reformatted.Refused(what, failed);
         }
@@ -321,36 +339,66 @@ internal sealed partial class CodeActions
 
     /// <summary>dotnet format over C# files, as Settings' C# formatter asks: each open one holding what is not saved saved
     /// first, as dotnet format reads the disk, then taken from disk again as one undoable step of its own, what dotnet format
-    /// wrote. Null once it ran, else why not.</summary>
-    private async Task<string?> DotnetFormattedAsync(IReadOnlyList<string> files, Tidying kind, CancellationToken cancel)
+    /// wrote. Each file keeps its own line breaks, where dotnet format writes the system's into the lines it changes unless
+    /// an .editorconfig says: an open one taken in its own (<see cref="TakeFormatted"/>), and those not open given back for
+    /// the caller's command to write in theirs. Why not, null once it ran.</summary>
+    private async Task<(string? Why, IReadOnlyList<(string Path, string Break)> Mixed)> DotnetFormattedAsync(IReadOnlyList<string> files, Tidying kind,
+        CancellationToken cancel)
     {
         if (context.DotnetFormat is not { } run)
         {
-            return Refusals.NoFolder;
+            return (Refusals.NoFolder, []);
         }
         foreach (OpenDocument unsaved in files.Select(context.Editors.Find).OfType<OpenDocument>().Where(d => d.IsModified))
         {
             if (context.Editors.SaveSaying(unsaved) is { } why)
             {
-                return $"{unsaved.Name} could not be saved: {why}";
+                return ($"{unsaved.Name} could not be saved: {why}", []);
             }
         }
         if (await EditorArea.LandedAsync(files, null) is [(string path, Exception refused), ..])
         {
-            return $"{Path.GetFileName(path)} could not be saved: {refused.Message}";
+            return ($"{Path.GetFileName(path)} could not be saved: {refused.Message}", []);
         }
+        Dictionary<string, string> breaks = files.ToDictionary(f => f, f => context.Editors.Find(f)?.Text.LineEnding ?? FileText.Load(f)?.Break ?? "\n", PathNames.Comparer);
+        string? failed;
         try
         {
-            return await run(files, kind == Tidying.Reformat, cancel);
+            failed = await run(files, kind == Tidying.Reformat, cancel);
         }
         finally
         {
             // What it wrote before it failed or was stopped is taken too.
             foreach (OpenDocument open in files.Select(context.Editors.Find).OfType<OpenDocument>())
             {
-                open.Reload();
+                TakeFormatted(open, breaks[open.Path]);
             }
         }
+        List<(string Path, string Break)> mixed = [];
+        foreach (string file in files.Where(f => context.Editors.Find(f) is null))
+        {
+            if (FileText.Load(file)?.Text is { } written && LineEndings.In(written, breaks[file]) != written)
+            {
+                mixed.Add((file, breaks[file]));
+            }
+        }
+        return (failed, mixed);
+    }
+
+    /// <summary>An open file takes what dotnet format wrote as one undoable step: read again from disk where every break is
+    /// its own, else in its own breaks over the lines that differ and saved so.</summary>
+    private void TakeFormatted(OpenDocument open, string kept)
+    {
+        if (FileText.Load(open.Path)?.Text is not { } written || LineEndings.In(written, kept) is var fitted && fitted == written)
+        {
+            open.Reload();
+            return;
+        }
+        if (fitted != open.Text.Snapshot.ToString())
+        {
+            open.Text.SetText(fitted, open.Selections);
+        }
+        context.Editors.SaveOver(open);
     }
 
     /// <summary>One file of a run, as its own command makes it, in the status bar's words; null where no language server
