@@ -361,6 +361,7 @@ internal sealed partial class CodeActions
             return ($"{Path.GetFileName(path)} could not be saved: {refused.Message}", []);
         }
         Dictionary<string, string> breaks = files.ToDictionary(f => f, f => context.Editors.Find(f)?.Text.LineEnding ?? FileText.Load(f)?.Break ?? "\n", PathNames.Comparer);
+        Dictionary<OpenDocument, long> places = files.Select(context.Editors.Find).OfType<OpenDocument>().ToDictionary(d => d, d => d.Text.UndoPlace);
         string? failed;
         try
         {
@@ -371,7 +372,7 @@ internal sealed partial class CodeActions
             // What it wrote before it failed or was stopped is taken too.
             foreach (OpenDocument open in files.Select(context.Editors.Find).OfType<OpenDocument>())
             {
-                TakeFormatted(open, breaks[open.Path]);
+                TakeFormatted(open, breaks[open.Path], places.TryGetValue(open, out long place) ? place : open.Text.UndoPlace);
             }
         }
         List<(string Path, string Break)> mixed = [];
@@ -386,19 +387,23 @@ internal sealed partial class CodeActions
     }
 
     /// <summary>An open file takes what dotnet format wrote as one undoable step: read again from disk where every break is
-    /// its own, else in its own breaks over the lines that differ and saved so.</summary>
-    private void TakeFormatted(OpenDocument open, string kept)
+    /// its own, else in its own breaks over the lines that differ and saved so; joined with what the folder's watcher took
+    /// of it while dotnet format ran (its steps since <paramref name="since"/>), so one Undo puts back the text before.</summary>
+    private void TakeFormatted(OpenDocument open, string kept, long since)
     {
         if (FileText.Load(open.Path)?.Text is not { } written || LineEndings.In(written, kept) is var fitted && fitted == written)
         {
             open.Reload();
-            return;
         }
-        if (fitted != open.Text.Snapshot.ToString())
+        else
         {
-            open.Text.SetText(fitted, open.Selections);
+            if (fitted != open.Text.Snapshot.ToString())
+            {
+                open.Text.SetText(fitted, open.Selections);
+            }
+            context.Editors.SaveOver(open);
         }
-        context.Editors.SaveOver(open);
+        open.Text.JoinUndoSince(since);
     }
 
     /// <summary>One file of a run, as its own command makes it, in the status bar's words; null where no language server

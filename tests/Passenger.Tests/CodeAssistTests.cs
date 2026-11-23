@@ -1241,7 +1241,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>The Explorer's Code menu: Reformat Code over a folder lays out the file open in its editor and the one not
     /// open on disk, and Code Cleanup over the project tidies every file of it, each as one command that one Undo in the
     /// Explorer takes back whole, saying what it changed; with dotnet format as the C# formatter, the folder's open file is
-    /// saved first and takes what dotnet format wrote, one Undo taking all of it back too.</summary>
+    /// saved first and takes what dotnet format wrote, one Undo taking all of it back too, the folder's watcher having
+    /// taken it first.</summary>
     private void Reformat_code_over_a_folder_and_code_cleanup_over_the_project_from_the_explorer_each_change_every_file_as_one_step_of_undo()
     {
         string crooked = project.PathOf("Tidy/Crooked.cs");
@@ -1287,6 +1288,23 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         // dotnet format as the C# formatter: it reads the disk, so the open file is saved first and takes what it wrote.
         window.ApplySettings(window.Settings with { CSharpFormatter = CSharpFormatter.DotnetFormat });
+        // The folder's watcher takes what dotnet format wrote into the open file before the run hands it back, as it may.
+        Func<IReadOnlyList<string>, bool, CancellationToken, Task<string?>> format = window.Assist.DotnetFormat!;
+        window.Assist.DotnetFormat = async (files, whitespace, cancel) =>
+        {
+            TaskCompletionSource taken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Taken(object? sender, DocumentChangedEventArgs change) => taken.TrySetResult();
+            shown.Text.Changed += Taken;
+            try
+            {
+                string? failed = await format(files, whitespace, cancel);
+                return failed ?? (await Waiting.Within(taken.Task, TimeSpan.FromSeconds(30)) ? null : "the folder's watcher never took what dotnet format wrote into Crooked.cs");
+            }
+            finally
+            {
+                shown.Text.Changed -= Taken;
+            }
+        };
         Ui.ChooseFromRowMenu(window, ExplorerRow(window, project.PathOf("Tidy"), Passenger.App.Explorer.NodeKind.Folder), "Code", "Reformat Code");
         Ui.WaitFor(() => window.Status?.StartsWith("Reformat Code ", StringComparison.Ordinal) == true && window.Status != "Reformat Code: finding the files of Tidy…",
             () => $"the folder's reformat by dotnet format; the status says '{window.Status}'");
@@ -1298,6 +1316,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.True(shown.Text.Snapshot.ToString() == Crooked && File.ReadAllText(spaced) == Spaced,
             $"One Undo of dotnet format's run left Crooked.cs as:\n{shown.Text.Snapshot}\nand Spaced.cs as:\n{File.ReadAllText(spaced)}");
+        window.Assist.DotnetFormat = format;
         shown.Save();
         window.ApplySettings(window.Settings with { CSharpFormatter = CSharpFormatter.Passenger });
         window.Close();
