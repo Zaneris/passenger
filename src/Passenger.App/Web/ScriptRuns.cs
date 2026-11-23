@@ -12,13 +12,21 @@ public static class ScriptRuns
 {
     /// <summary>The start of a package's script with these arguments after it in its folder, or why it cannot start: no
     /// Node.js (Bun runs scripts without one), or no package manager it runs with.</summary>
-    public static (ProcessStartInfo? Start, string? Problem) Start(NodePackage package, string script, IReadOnlyList<string> arguments, NodeRuntime node)
+    public static (ProcessStartInfo? Start, string? Problem) Start(NodePackage package, string script, IReadOnlyList<string> arguments, NodeRuntime node) =>
+        node.Problem is { } noNode && package.Manager != NodeManager.Bun
+            ? (null, $"{package.Name}'s scripts run on Node.js, and {noNode}")
+            : Of(package, NodeProjects.RunArguments(package.Manager, script, arguments), node);
+
+    /// <summary>The start of the install of a package's dependencies in its folder by its own package manager, so they are
+    /// laid out as it lays them (pnpm's store, Yarn's Plug'n'Play), or why it cannot start, as a script's.</summary>
+    public static (ProcessStartInfo? Start, string? Problem) Install(NodePackage package, NodeRuntime node) =>
+        node.Problem is { } noNode && package.Manager != NodeManager.Bun
+            ? (null, $"{NodeProjects.ProgramOf(package.Manager)} install needs Node.js: {noNode}")
+            : Of(package, ["install"], node);
+
+    /// <summary>A package manager's command with these words in a package's folder, on the Node.js in use.</summary>
+    private static (ProcessStartInfo? Start, string? Problem) Of(NodePackage package, IReadOnlyList<string> words, NodeRuntime node)
     {
-        if (node.Problem is { } noNode && package.Manager != NodeManager.Bun)
-        {
-            return (null, $"{package.Name}'s scripts run on Node.js, and {noNode}");
-        }
-        IReadOnlyList<string> words = NodeProjects.RunArguments(package.Manager, script, arguments);
         string? folder = node.Path is { } path && node.Problem is null ? Path.GetDirectoryName(path) : null;
         ProcessStartInfo? start = package.Manager == NodeManager.Npm && node.Path is { } runtime && folder is not null && Npm.Cli(runtime) is { } cli
             ? ChildProcesses.Command(runtime, [cli, .. words], package.Folder)

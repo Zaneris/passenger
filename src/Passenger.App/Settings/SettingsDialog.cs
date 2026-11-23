@@ -420,12 +420,13 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ConsoleBufferKb);
         Add(Declared.Browser);
 
+        Add(Declared.WebRuntime);
         string? onPath = Passenger.Core.Programs.Node();
         TextBox node = new() { Text = Working.NodeInterpreter ?? string.Empty, PlaceholderText = onPath ?? "Not found on the PATH", MaxWidth = OptionRow.EditorWidth };
         node.TextChanged += (_, _) => Change(s => s with { NodeInterpreter = string.IsNullOrWhiteSpace(node.Text) ? null : node.Text.Trim() });
         Add(NodePage, "Node interpreter", node, "node nodejs interpreter javascript typescript html css json language server npm path",
-            "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on. Empty, it is the first on the PATH, "
-            + "as the login shell finds it. Without one, those files keep their colours only.");
+            "The Node.js the JavaScript, TypeScript, HTML, CSS and JSON language servers run on where they run on Node.js. Empty, "
+            + "it is the first on the PATH, as the login shell finds it. Without one, those files keep their colours only.");
         AddCodeQualityTools();
         Add(Declared.DownloadJsonSchemas);
         Add(Declared.DownloadStylesheets);

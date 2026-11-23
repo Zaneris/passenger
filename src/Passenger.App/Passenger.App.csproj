@@ -49,6 +49,8 @@
     <None Include="Web/docker-hub.cjs" Link="web/passenger/docker-hub.cjs" CopyToOutputDirectory="PreserveNewest" />
     <!-- Passenger's preload for the YAML server, which has it ask Passenger for each schema's file (Web/JsonSchemas.cs). -->
     <None Include="Web/yaml-schemas.mjs" Link="web/passenger/yaml-schemas.mjs" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The empty Bun configuration Bun takes in place of a folder's own as it runs the servers (Web/NodeRuntime.cs). -->
+    <None Include="Web/bunfig.toml" Link="web/passenger/bunfig.toml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

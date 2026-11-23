@@ -497,6 +497,13 @@ public static class Declared
             + "Passenger's cache, to complete, describe and check the classes it defines; one whose link gives an integrity hash is "
             + "used only while it matches. The app's own stylesheets and its packages' are read from disk, never downloaded."));
 
+    public static readonly ChoiceSetting<RuntimeChoice> WebRuntime = new(s => s.WebRuntime, (s, v) => s with { WebRuntime = v },
+        [(RuntimeChoice.FromLockfile, "As the folder's lockfile says"), (RuntimeChoice.Node, "Node.js"), (RuntimeChoice.Bun, "Bun"), (RuntimeChoice.Deno, "Deno")],
+        new(D.NodePage, "Runtime", "runtime node nodejs bun deno lockfile bun.lock deno.lock javascript typescript language server eslint prettier",
+            "What the JavaScript, TypeScript, HTML, CSS, JSON, Dockerfile and YAML language servers, ESLint and Prettier run on. "
+            + "As the folder's lockfile says, a folder with a bun.lock (or a packageManager field naming Bun) runs them on Bun, one "
+            + "with a deno.lock on Deno, any other on Node.js. Bun and Deno are the first on the PATH."));
+
     public static readonly ToggleSetting DockerHubTags = new(s => s.DockerHubTags, (s, v) => s with { DockerHubTags = v },
         new(D.DockerPage, "Complete image tags from Docker Hub",
             "docker hub dockerfile containerfile image images tag tags from completion registry remote download web network",

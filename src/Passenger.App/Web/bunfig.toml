@@ -1,0 +1,2 @@
+# Passenger's own Bun configuration, empty, which Bun takes in place of a folder's bunfig.toml as it runs the web language
+# servers, ESLint and Prettier (Web/NodeRuntime.cs), so nothing the folder's configuration preloads runs.

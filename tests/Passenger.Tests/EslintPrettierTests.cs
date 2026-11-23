@@ -10,14 +10,16 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
 /// <summary>ESLint and Prettier through the window, on a project with its own eslint and prettier in node_modules (the
 /// tests' packages, pinned in NodePackages/ and put in place at build, never fetched from npm as the tests run) and its own
 /// eslint.config.js, .prettierrc and .prettierignore: problems as typed and their fixes, Fix ESLint Problems, Prettier on
-/// Reformat Code and on save, .prettierignore honoured, the banner offering npm install for what is not installed, and
-/// packages in a node_modules another user made above passed over. Each test opens its own window; one that cannot find
+/// Reformat Code and on save, .prettierignore honoured, the banner offering npm install for what is not installed,
+/// packages in a node_modules another user made above passed over, a Yarn Plug'n'Play project's packages found through its
+/// .pnp.cjs, and a Bun or Deno folder's servers run on its runtime. Each test opens its own window; one that cannot find
 /// Node.js skips, saying so.</summary>
 public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Project>
 {
@@ -46,6 +48,12 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         OpenWindows.CloseAll();
         Flow.Step(nameof(A_package_json_listing_ESLint_and_Prettier_not_installed_says_so_in_the_banner_whose_link_runs_npm_install_there_and_a_Manual_ESLint_checks_it),
             A_package_json_listing_ESLint_and_Prettier_not_installed_says_so_in_the_banner_whose_link_runs_npm_install_there_and_a_Manual_ESLint_checks_it);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_Yarn_Plug_n_Play_projects_ESLint_and_Prettier_are_found_through_its_pnp_cjs_with_no_node_modules_and_check_and_format_its_script),
+            A_Yarn_Plug_n_Play_projects_ESLint_and_Prettier_are_found_through_its_pnp_cjs_with_no_node_modules_and_check_and_format_its_script);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH),
+            A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH);
     }
 
     /// <summary>Prettier formats on Reformat Code and on save by the project's configuration, and a save lands whatever
@@ -432,6 +440,140 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         }
     }
 
+    /// <summary>A Yarn Plug'n'Play project, its packages laid out by Yarn with no registry and no node_modules anywhere: the
+    /// ESLint its .pnp.cjs places checks its script and its Prettier formats it, the servers running with its .pnp.cjs, and
+    /// no banner says they are missing.</summary>
+    private void A_Yarn_Plug_n_Play_projects_ESLint_and_Prettier_are_found_through_its_pnp_cjs_with_no_node_modules_and_check_and_format_its_script()
+    {
+        Project.SkipWithoutNode();
+        string folder = PathNames.Canonical(TestFolders.Create("pnp-"));
+        MainWindow? window = null;
+        try
+        {
+            Project.LaidOutByYarn(folder);
+            Assert.True(File.Exists(Path.Combine(folder, YarnPnp.ManifestName)) && !Directory.Exists(Path.Combine(folder, "node_modules")),
+                $"Yarn laid {folder} out with no .pnp.cjs, or a node_modules, so nothing is left to Plug'n'Play");
+            window = Ui.OpenFolder(folder, autosaves: false);
+            window.OpenFile(Path.Combine(folder, "src", "app.js"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument document = window.EditorArea.Active!;
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "let total = items.length;\nconsole.log(total);\n")]);
+            Ui.WaitFor(() => document.Markers.Any(m => m.Message == PreferConst), "the problem from the ESLint the project's .pnp.cjs places");
+            Assert.Null(window.EditorArea.ActiveGroup.BannerText);
+
+            window.OpenFile(Path.Combine(folder, "src", "format.js"));
+            Ui.Settle();
+            editor = window.EditorArea.CodeEditor;
+            Ui.Run(window, AppActions.Reformat);
+            Ui.WaitFor(() => editor.Document.Snapshot.ToString() == "const label = { name: \"tea\", price: 3 };\nconsole.log(label);\n",
+                "the file laid out by the Prettier the project's .pnp.cjs places");
+            Assert.Null(window.EditorArea.ActiveGroup.BannerText);
+        }
+        finally
+        {
+            window?.Close();
+            if (window is not null)
+            {
+                // The window's servers worked in the folder, which Windows deletes only once they have ended.
+                Ui.Ended(window);
+            }
+            TestFolders.Delete(folder);
+        }
+    }
+
+    /// <summary>A folder whose lockfile is Bun's, and one whose lockfile is Deno's, run TypeScript's server and ESLint on that
+    /// runtime with no Node.js on the PATH the IDE has: a TypeScript error is marked and ESLint's problem shown, the log
+    /// saying the runtime each server started on, and nothing the folder's own bunfig.toml preloads run. A runtime not
+    /// installed is passed over, said in the test's output, and the step skips where neither is.</summary>
+    private void A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH()
+    {
+        (ScriptRuntime Kind, string Program, string Lockfile, string Lock)[] runtimes =
+        [
+            (ScriptRuntime.Bun, "bun", "bun.lock", "{\n  \"lockfileVersion\": 1,\n  \"workspaces\": {\n    \"\": {\n      \"name\": \"shop-client\"\n    }\n  },\n  \"packages\": {}\n}\n"),
+            (ScriptRuntime.Deno, "deno", "deno.lock", "{\n  \"version\": \"5\"\n}\n"),
+        ];
+        List<string> missing = [];
+        foreach ((ScriptRuntime kind, string program, string lockfile, string written) in runtimes)
+        {
+            if (Programs.Command(program) is not { } found)
+            {
+                missing.Add($"{NodeRuntime.NameOf(kind)} is not on the PATH, so its folder was not run");
+                continue;
+            }
+            RunsOn(kind, found, lockfile, written);
+        }
+        foreach (string said in missing)
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine(said);
+        }
+        Assert.SkipWhen(missing.Count == runtimes.Length, string.Join("; ", missing));
+    }
+
+    /// <summary>A folder with a runtime's lockfile opened while the PATH holds that runtime and no Node.js: its TypeScript
+    /// error and ESLint problem shown by servers on that runtime.</summary>
+    private void RunsOn(ScriptRuntime kind, string found, string lockfile, string written)
+    {
+        string name = NodeRuntime.NameOf(kind);
+        string app = PathNames.Canonical(project.AddFolder(name.ToLowerInvariant(), ("package.json", Project.Package), (lockfile, written),
+            ("eslint.config.js", Project.Config), ("bunfig.toml", "preload = [\"./preload.cjs\"]\n"),
+            ("preload.cjs", "require(\"fs\").writeFileSync(require(\"path\").join(__dirname, \"preloaded\"), \"\");\n")));
+        project.AddFolder(Path.Combine(name.ToLowerInvariant(), "src"), ("app.js", Project.App), ("sum.ts", "const label: string = 5;\nconsole.log(label);\n"));
+        string bin = TestFolders.Create("runtime-");
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        string node = OperatingSystem.IsWindows() ? "node.exe" : "node";
+        MainWindow? window = null;
+        try
+        {
+            // The runtime alone in a folder of its own, where Node.js stands beside it (Homebrew's bin).
+            string runtime = Path.Combine(bin, Path.GetFileName(found));
+            if (OperatingSystem.IsWindows())
+            {
+                File.Copy(found, runtime);
+            }
+            else
+            {
+                File.CreateSymbolicLink(runtime, found);
+            }
+            Environment.SetEnvironmentVariable("PATH", string.Join(Path.PathSeparator,
+                [bin, .. (path ?? string.Empty).Split(Path.PathSeparator).Where(at => at.Length > 0 && !File.Exists(Path.Combine(at, node)))]));
+            Assert.True(Programs.Node() is null, $"Node.js is still on the PATH the test gives, at {Programs.Node()}");
+
+            window = Ui.OpenFolder(app, autosaves: false);
+            window.OpenFile(Path.Combine(app, "src", "sum.ts"));
+            Ui.Settle();
+            OpenDocument sum = window.EditorArea.Active!;
+            Ui.WaitFor(() => sum.Markers.Any(m => m.Kind == MarkerKind.Error && m.Message.StartsWith("TS2322:", StringComparison.Ordinal)),
+                $"TypeScript's error under the number given to a string, from its server on {name}");
+            Assert.Equal(kind, window.Session.Web!.Node?.Kind);
+
+            window.OpenFile(Path.Combine(app, "src", "app.js"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            OpenDocument document = window.EditorArea.Active!;
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.Length, 0, "let total = items.length;\nconsole.log(total);\n")]);
+            Ui.WaitFor(() => document.Markers.Any(m => m.Message == PreferConst), $"ESLint's problem from its server on {name}");
+            string log = Ui.IdeLog();
+            foreach (string server in (string[])["TypeScript", "ESLint"])
+            {
+                Assert.True(System.Text.RegularExpressions.Regex.IsMatch(log, $@"{server} language server \(process \d+\) started for {System.Text.RegularExpressions.Regex.Escape(app)} on {name} "),
+                    $"The IDE's log does not say the {server} server started on {name} for {app}");
+            }
+            Assert.False(File.Exists(Path.Combine(app, "preloaded")), $"{name} ran what the folder's own bunfig.toml preloads as it ran Passenger's servers");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", path);
+            window?.Close();
+            if (window is not null)
+            {
+                Ui.Ended(window);
+            }
+            project.Reset();
+            TestFolders.Delete(bin);
+        }
+    }
+
     /// <summary>A JavaScript project with its own ESLint and Prettier installed (the tests' packages copied into its
     /// node_modules once), a flat ESLint configuration, a .prettierrc and a .prettierignore; its files are put back as
     /// written after each test.</summary>
@@ -533,6 +675,31 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
             window.OpenFile(PathOf(file));
             Ui.Settle();
             return window;
+        }
+
+        /// <summary>A Yarn Plug'n'Play project written in a folder and laid out by the tests' own Yarn, offline: its every
+        /// package one of the tests' own, linked where it stands (Yarn's fallback giving each the others), its eslint
+        /// configuration, a script and one to format.</summary>
+        public static void LaidOutByYarn(string folder)
+        {
+            string packages = PathNames.Canonical(Path.Combine(AppContext.BaseDirectory, "node-packages", "node_modules"));
+            IEnumerable<string> names = Directory.EnumerateDirectories(packages)
+                .SelectMany(d => Path.GetFileName(d).StartsWith('@') ? Directory.EnumerateDirectories(d).Select(s => $"{Path.GetFileName(d)}/{Path.GetFileName(s)}") : [Path.GetFileName(d)])
+                .Where(n => !n.StartsWith('.') && !n.StartsWith("@yarnpkg/", StringComparison.Ordinal) && !n.StartsWith("@xterm/", StringComparison.Ordinal) && n != "prettier2")
+                .Order(StringComparer.Ordinal);
+            string links = string.Join(",\n", names.Select(n => $"    {System.Text.Json.JsonSerializer.Serialize(n)}: {System.Text.Json.JsonSerializer.Serialize("link:" + Path.Combine(packages, n).Replace('\\', '/'))}"));
+            File.WriteAllText(Path.Combine(folder, "package.json"), $"{{\n  \"name\": \"pnp-shop\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": {{\n{links}\n  }}\n}}\n");
+            File.WriteAllText(Path.Combine(folder, ".yarnrc.yml"), "nodeLinker: pnp\nenableNetwork: false\nenableTelemetry: false\nenableGlobalCache: false\n");
+            File.WriteAllText(Path.Combine(folder, "yarn.lock"), string.Empty);
+            File.WriteAllText(Path.Combine(folder, "eslint.config.js"), Config);
+            Directory.CreateDirectory(Path.Combine(folder, "src"));
+            File.WriteAllText(Path.Combine(folder, "src", "app.js"), App);
+            File.WriteAllText(Path.Combine(folder, "src", "format.js"), Format);
+            string yarn = Path.Combine(packages, "@yarnpkg", "cli-dist", "bin", "yarn.js");
+            System.Diagnostics.ProcessStartInfo install = ChildProcesses.Command(Programs.Node()!, [yarn, "install"], folder,
+                [new("YARN_GLOBAL_FOLDER", Path.Combine(folder, ".yarn", "global")), new("YARN_ENABLE_NETWORK", "0")]);
+            ChildResult laid = Ui.Await(Waiting.Apart(() => ChildProcesses.RunAsync(install, limit: TimeSpan.FromMinutes(2).Scaled())), "Yarn to lay the project out");
+            Assert.True(laid.Succeeded, $"Yarn could not lay {folder} out ({ExitCodes.Said(laid.ExitCode)}): {laid.Output}{laid.Error}");
         }
 
         /// <summary>Skips a test where there is no Node.js to run ESLint and Prettier on, or one older than the tests' eslint

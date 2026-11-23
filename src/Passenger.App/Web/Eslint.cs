@@ -7,13 +7,15 @@ using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Web;
 
 /// <summary>ESLint for the folder open: VS Code's ESLint language server (carried under web/ in
-/// vscode-langservers-extracted) on the web servers' Node.js, started with the first file it checks, running the
-/// project's own eslint package (found from each file's folder up, or the one Settings names) with its own
-/// configuration, for the files "Run for files" covers. Its problems are each file's as typed
+/// vscode-langservers-extracted) on the web servers' runtime, started with the first file it checks, running the
+/// project's own eslint package (found from each file's folder up as its package manager lays it out, a Yarn Plug'n'Play
+/// project's through its .pnp.cjs, or the one Settings names) with its own configuration, for the files "Run for files"
+/// covers. Its problems are each file's as typed
 /// (<see cref="EslintDocument"/>); a server that ends (as it starts too) is started again with its files, a few times at
 /// most, then left stopped until a person starts it again. A UI-thread object.</summary>
 public sealed class EslintService : IAsyncDisposable
@@ -29,7 +31,7 @@ public sealed class EslintService : IAsyncDisposable
     private NodeServer? server;
     private bool disposed;
 
-    /// <summary>ESLint for a folder, configured as Settings says, on the Node.js <paramref name="node"/> finds.</summary>
+    /// <summary>ESLint for a folder, configured as Settings says, on the runtime <paramref name="node"/> finds.</summary>
     public EslintService(string folder, Func<AppSettings> settings, Func<Task<NodeRuntime>> node)
     {
         this.folder = folder;
@@ -148,7 +150,7 @@ public sealed class EslintService : IAsyncDisposable
         || (name.StartsWith("eslint.config.", StringComparison.Ordinal) && Path.GetExtension(name) is ".js" or ".mjs" or ".cjs" or ".ts" or ".mts" or ".cts")
         || (name.StartsWith(".eslintrc.", StringComparison.Ordinal) && Path.GetExtension(name) is ".js" or ".cjs" or ".yaml" or ".yml" or ".json");
 
-    /// <summary>Ends the server and lets every file go, for Settings or the Node.js changed: the caller attaches them again.</summary>
+    /// <summary>Ends the server and lets every file go, for Settings or the runtime changed: the caller attaches them again.</summary>
     public void Reset()
     {
         UiThread.Check();
@@ -163,7 +165,8 @@ public sealed class EslintService : IAsyncDisposable
     }
 
     /// <summary>The server for the folder: its files connected once it has started, its own messages heard, and its end
-    /// a replacement. Without a Node.js, the file's banner says why for its language server, which needs one as much.</summary>
+    /// a replacement; in a Yarn Plug'n'Play project its .pnp.cjs loaded, through which its eslint resolves. Without a
+    /// runtime, the file's banner says why for its language server, which needs one as much.</summary>
     private NodeServer Server()
     {
         NodeServer made = null!;
@@ -171,7 +174,7 @@ public sealed class EslintService : IAsyncDisposable
         {
             Package = Path.Combine(WebLanguages.Modules, "vscode-langservers-extracted", "package.json"),
             Missing = () => File.Exists(Script) ? null : $"the ESLint language server is missing from the app's folder ({Script})",
-            Command = runtime => new ServerStart(ChildProcesses.Command(runtime, [Script, "--stdio"], folder), folder, WebLanguages.LogFolder, ClientCapabilities.Web)
+            Command = runtime => new ServerStart(runtime.Start(Script, ["--stdio"], folder, pnp: YarnPnp.ManifestFor(folder)), folder, WebLanguages.LogFolder, ClientCapabilities.Web)
             {
                 Configuration = Section,
             },
@@ -190,7 +193,7 @@ public sealed class EslintService : IAsyncDisposable
                 {
                     lint.Unreached();
                 }
-                if (!made.WithoutNode)
+                if (!made.WithoutRuntime)
                 {
                     Message?.Invoke(this, $"ESLint cannot run: {made.Problem}");
                 }

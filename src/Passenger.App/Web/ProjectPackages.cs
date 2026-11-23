@@ -2,22 +2,28 @@ using System.Diagnostics;
 using System.Text.Json;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.App.Web;
 
-/// <summary>A project's own npm packages for a file (its Automatic ESLint and Prettier configuration): installed in the
-/// node_modules of the file's folder or the nearest folder above it that has the package, as Node.js resolves it; or
-/// listed by the nearest package.json above the file that names it, and not installed. Only the person's folders are
-/// looked in (<see cref="FoldersUp"/>).</summary>
+/// <summary>A project's own npm packages for a file (its Automatic ESLint and Prettier configuration), as its package manager
+/// lays them out: where a Yarn Plug'n'Play project's .pnp.cjs places it for the file (<see cref="YarnPnp"/>), else in the
+/// node_modules of the file's folder or the nearest folder above it that has the package, as Node.js resolves it (pnpm's
+/// link there to its own store among them); or listed by the nearest package.json above the file that names it, and not
+/// installed. Only the person's folders are looked in (<see cref="FoldersUp"/>).</summary>
 public static class ProjectPackages
 {
     /// <summary>The fields of package.json that list what <c>npm install</c> installs.</summary>
     private static readonly string[] Lists = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
-    /// <summary>The package's folder as Node.js finds it from the file, in the person's folders (<see cref="FoldersUp"/>);
-    /// null when none is installed there.</summary>
+    /// <summary>The package's folder as Node.js finds it from the file, in the person's folders (<see cref="FoldersUp"/>),
+    /// a Plug'n'Play project's within its archive; null when none is installed there.</summary>
     public static string? Installed(string file, string name)
     {
+        if (YarnPnp.Resolve(file, name) is { } placed)
+        {
+            return YarnPnp.Exists(Path.Combine(placed, "package.json")) ? placed : null;
+        }
         foreach (string folder in Path.GetDirectoryName(file) is { } start ? FoldersUp.From(start) : [])
         {
             if (FoldersUp.Found(folder, Path.Combine("node_modules", name, "package.json")) is { } manifest && File.Exists(manifest))
@@ -63,10 +69,14 @@ public static class ProjectPackages
     {
         try
         {
-            using JsonDocument read = JsonDocument.Parse(File.ReadAllText(Path.Combine(package, "package.json")));
+            if (YarnPnp.ReadFile(Path.Combine(package, "package.json")) is not { } text)
+            {
+                return null;
+            }
+            using JsonDocument read = JsonDocument.Parse(text);
             return JsonMembers.Text(read.RootElement, "version");
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        catch (JsonException)
         {
             return null;
         }
@@ -101,8 +111,8 @@ public static class ProjectPackages
     }
 }
 
-/// <summary>npm for "Run 'npm install'": the npm that comes with the Node.js in use (its npm-cli.js, run on that
-/// Node.js, so a Windows npm.cmd needs no shell), else the one on the PATH, through ChildProcesses.</summary>
+/// <summary>npm's own script, which a package's install and scripts run on the Node.js in use (<see cref="ScriptRuns"/>),
+/// so a Windows npm.cmd needs no shell.</summary>
 public static class Npm
 {
     /// <summary>npm's own script for a Node.js, null when there is none beside it or on the PATH.</summary>
@@ -121,14 +131,5 @@ public static class Npm
             Path.Combine(onPath, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
         ];
         return candidates.Where(c => c.Length > 0 && File.Exists(c)).Select(Path.GetFullPath).FirstOrDefault();
-    }
-
-    /// <summary><c>npm install</c> in a folder on a Node.js, which its packages' scripts find first on the PATH.</summary>
-    public static ProcessStartInfo Install(string node, string cli, string folder)
-    {
-        ProcessStartInfo start = ChildProcesses.Command(node, [cli, "install"], folder);
-        string path = start.Environment.TryGetValue("PATH", out string? set) && set is not null ? set : string.Empty;
-        start.Environment["PATH"] = $"{Path.GetDirectoryName(node)}{Path.PathSeparator}{path}";
-        return start;
     }
 }

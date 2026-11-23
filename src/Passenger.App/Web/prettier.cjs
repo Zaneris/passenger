@@ -28,10 +28,12 @@ function load(folder) {
     return prettier;
 }
 
-// The project the package belongs to, from which a configuration's plugins are found.
+// The project the package belongs to, from which a configuration's plugins are found; the file's folder for a package
+// in a Plug'n'Play project's archive, which is no folder to work in.
 function projectOf(folder, file) {
     const parent = path.dirname(folder);
-    return path.basename(parent) === "node_modules" ? path.dirname(parent) : path.dirname(file);
+    const project = path.basename(parent) === "node_modules" ? path.dirname(parent) : path.dirname(file);
+    return /\.zip$/i.test(project) || project.split(/[\\/]/).includes("__virtual__") ? path.dirname(file) : project;
 }
 
 async function answer(request) {

@@ -389,7 +389,7 @@ for part in roslyn/Microsoft.CodeAnalysis.LanguageServer.dll roslyn-extension/Pa
     passenger-helper.deps.json passenger-helper.runtimeconfig.json LICENSE.txt THIRD-PARTY-NOTICES.txt; do
     [ -f "$shipped/Contents/MacOS/$part" ] || fail "the app has no $part"
 done
-for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/passenger/yaml-schemas.mjs web/schemas/compose-spec.json; do
+for part in web/passenger/prettier.cjs web/passenger/docker-hub.cjs web/passenger/yaml-schemas.mjs web/passenger/bunfig.toml web/schemas/compose-spec.json; do
     [ -f "$shipped/Contents/Resources/$part" ] || fail "the app has no $part in its Resources"
 done
 [ -x "$shipped/Contents/Resources/bin/passenger-ide" ] || fail "the app has no passenger-ide command in its Resources"

@@ -4,6 +4,7 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Languages;
 using Passenger.Lsp;
+using Passenger.Workspace;
 
 namespace Passenger.App.Web;
 
@@ -38,15 +39,15 @@ public enum WebServerKind
 public sealed record WebServerLost(string Said, Action? StartAgain);
 
 /// <summary>JavaScript, TypeScript, HTML, CSS, JSON, Dockerfiles, YAML and GDScript for the open folder: each kind's
-/// language server (the npm packages carried under <c>web/</c>, run on the machine's Node.js through ChildProcesses;
-/// GDScript's in Godot's editor, one for each Godot project a script is open in, the person's joined, a headless one started
-/// only when asked, <see cref="AskGodot"/>, never in a folder not trusted) started as the first file that needs it opens,
-/// every open file of its languages kept in step with it (a <see cref="WebDocument"/> each), and ended with the folder.
-/// Without a Node.js to run them (none found, or one too old), each file says why in its banner and the status bar, keeping
-/// its colours. A server that ends (as it starts too) or stops answering is started again with its files, a few times at
-/// most, then left stopped until a person starts it again. The project's own <c>node_modules/typescript</c> is the
-/// TypeScript server's where it has one in the person's folders and the folder is trusted (<see cref="WorkspaceTrust"/>),
-/// else the carried one. A UI-thread object: what a server says from its threads crosses through <see cref="UiThread"/>.</summary>
+/// language server (the npm packages carried under <c>web/</c>, run through ChildProcesses on the runtime its lockfile
+/// says, Node.js, Bun or Deno, or the one Settings chooses; GDScript's in Godot's editor, one for each Godot project a
+/// script is open in, the person's joined, a headless one started only when asked, <see cref="AskGodot"/>, never in a
+/// folder not trusted) started as the first file that needs it opens, every open file of its languages kept in step with
+/// it (a <see cref="WebDocument"/> each), and ended with the folder. Without a runtime to run them, each file says why in
+/// its banner and the status bar, keeping its colours. A server that ends or stops answering is started again with its
+/// files, a few times at most, then left stopped until a person starts it again. The project's own TypeScript serves
+/// where the folder is trusted (<see cref="WorkspaceTrust"/>), a Yarn Plug'n'Play project's with its .pnp.cjs
+/// (<see cref="YarnPnp"/>), else the carried one. A UI-thread object: a server's words cross through <see cref="UiThread"/>.</summary>
 public sealed class WebLanguages : IAsyncDisposable
 {
     private readonly string folder;
@@ -63,10 +64,11 @@ public sealed class WebLanguages : IAsyncDisposable
         public override int GetHashCode() => HashCode.Combine(Kind, Project is null ? 0 : PathNames.Comparer.GetHashCode(Project));
     }
 
-    /// <summary>The folders npm install runs in now, whose files' banners say so.</summary>
+    /// <summary>The folders a package manager's install runs in now, whose files' banners say so.</summary>
     private readonly HashSet<string> installing = new(PathNames.Comparer);
     private readonly CancellationTokenSource ending = new();
     private string? configured;
+    private RuntimeChoice runtime;
     private Task<NodeRuntime>? finding;
 
     /// <summary>The ESLint settings the ESLint server runs by, which a change of them starts it again for.</summary>
@@ -107,6 +109,7 @@ public sealed class WebLanguages : IAsyncDisposable
         this.settings = settings;
         AppSettings now = settings();
         configured = now.NodeInterpreter;
+        runtime = now.WebRuntime;
         linting = Linting(now);
         asksDockerHub = now.DockerHubTags;
         trusted = WorkspaceTrust.Trusts(folder);
@@ -125,7 +128,7 @@ public sealed class WebLanguages : IAsyncDisposable
     /// on the UI thread.</summary>
     public event EventHandler<WebServerLost>? Stopped;
 
-    /// <summary>Something else for the status bar: ESLint's word on a file, npm install's end. Raised on the UI thread.</summary>
+    /// <summary>Something else for the status bar: ESLint's word on a file, an install's end. Raised on the UI thread.</summary>
     public event EventHandler<string>? Message;
 
     public JsonSchemas Schemas { get; }
@@ -180,7 +183,9 @@ public sealed class WebLanguages : IAsyncDisposable
 
     /// <summary>The project's own tsserver.js, looked for from the folder up as TypeScript's server would, but in the person's
     /// folders alone (<see cref="FoldersUp"/>), and named to it so it looks no further: the nearest folder's TypeScript, where
-    /// it has a tsserver.js and says its version; null where it has none or there is none, which the carried one serves.</summary>
+    /// it has a tsserver.js and says its version, else the typescript package a Yarn Plug'n'Play project places for the
+    /// folder (in its archive, which the server reads through its .pnp.cjs); null where there is none, which the carried one
+    /// serves.</summary>
     internal static string? OwnTsserver(string folder)
     {
         foreach (string at in FoldersUp.From(folder))
@@ -194,13 +199,17 @@ public sealed class WebLanguages : IAsyncDisposable
                     : null;
             }
         }
-        return null;
+        return YarnPnp.Resolve(Path.Combine(folder, NodeProjects.ManifestName), "typescript") is { } placed
+            && ProjectPackages.Version(placed) is not null
+            && YarnPnp.Exists(Path.Combine(placed, "lib", "tsserver.js"))
+            ? Path.Combine(placed, "lib", "tsserver.js")
+            : null;
     }
 
     /// <summary>Where the servers, their schemas and Passenger's scripts for them are carried.</summary>
     public static string Carried { get; } = CarriedFiles.Folder("web");
 
-    /// <summary>The Node.js found for the servers, once one has been looked for.</summary>
+    /// <summary>The runtime found for the servers, once one has been looked for.</summary>
     public NodeRuntime? Node => finding is { IsCompletedSuccessfully: true } found ? found.Result : null;
 
     /// <summary>The server and language a file is answered in, by its language; null for a file none of them reads.</summary>
@@ -337,15 +346,35 @@ public sealed class WebLanguages : IAsyncDisposable
         }));
     }
 
-    /// <summary>The Node.js the servers run on, looked for once. Asked from any thread.</summary>
+    /// <summary>The runtime the servers run on, looked for once. Asked from any thread.</summary>
     private Task<NodeRuntime> FindNodeAsync() => UiThread.InvokeAsync(NodeAsync);
 
     /// <summary><see cref="FindNodeAsync"/> on the UI thread.</summary>
     private Task<NodeRuntime> NodeAsync()
     {
-        string? asked = configured;
-        return finding ??= BackgroundWork.Run(() => NodeRuntime.FindAsync(asked));
+        (string? asked, RuntimeChoice choice) = (configured, runtime);
+        return finding ??= BackgroundWork.Run(() => FindRuntimeAsync(folder, choice, asked));
     }
+
+    /// <summary>The runtime a folder's web servers run on: the one Settings chooses, else the one its lockfile says, with
+    /// the Node.js Settings names (<paramref name="node"/>, null for the PATH's). Reads files and asks the runtime its
+    /// version: a worker's job.</summary>
+    public static Task<NodeRuntime> FindRuntimeAsync(string folder, RuntimeChoice choice, string? node)
+    {
+        if (choice != RuntimeChoice.FromLockfile)
+        {
+            return NodeRuntime.FindAsync(KindOf(choice), node, null);
+        }
+        (ScriptRuntime kind, string source) = NodeProjects.RuntimeOf(folder);
+        return NodeRuntime.FindAsync(kind, node, kind == ScriptRuntime.Node ? null : source);
+    }
+
+    private static ScriptRuntime KindOf(RuntimeChoice choice) => choice switch
+    {
+        RuntimeChoice.Bun => ScriptRuntime.Bun,
+        RuntimeChoice.Deno => ScriptRuntime.Deno,
+        _ => ScriptRuntime.Node,
+    };
 
     private static (ToolConfiguration, string?, string) Linting(AppSettings settings) => (settings.Eslint, settings.EslintPackage, settings.EslintFiles);
 
@@ -384,18 +413,26 @@ public sealed class WebLanguages : IAsyncDisposable
             return;
         }
         string where = Path.GetDirectoryName(manifest)!;
+        string install = $"{NodeProjects.ProgramOf(ManagerOf(where))} install";
         if (installing.Contains(where))
         {
-            document.Notice = $"Running npm install in {Shown(where)}…";
+            document.Notice = $"Running {install} in {Shown(where)}…";
             document.NoticeAction = null;
             return;
         }
         string packages = Plural.Listed([.. tools.Select(t => t.ToLowerInvariant())]);
+        string holder = YarnPnp.ManifestFor(where) is null ? "node_modules" : YarnPnp.ManifestName;
         document.Notice = tools.Count == 1
-            ? $"{tools[0]} is not installed: {Shown(manifest)} lists {packages}, which is not in node_modules."
-            : $"{Plural.Listed(tools)} are not installed: {Shown(manifest)} lists {packages}, which are not in node_modules.";
-        document.NoticeAction = new NoticeAction("Run 'npm install'", () => IdeErrors.Observe(InstallAsync(where)));
+            ? $"{tools[0]} is not installed: {Shown(manifest)} lists {packages}, which is not in {holder}."
+            : $"{Plural.Listed(tools)} are not installed: {Shown(manifest)} lists {packages}, which are not in {holder}.";
+        document.NoticeAction = new NoticeAction($"Run '{install}'", () => IdeErrors.Observe(InstallAsync(where)));
     }
+
+    /// <summary>The package manager that installs a package's folder, as its lockfile or packageManager field says.</summary>
+    private NodeManager ManagerOf(string where) => PackageIn(where)?.Manager ?? NodeManager.Npm;
+
+    private NodePackage? PackageIn(string where) =>
+        NodeProjects.Read(folder, [PathNames.Canonical(Path.Combine(where, NodeProjects.ManifestName))]).FirstOrDefault();
 
     private void AnnounceAll()
     {
@@ -424,14 +461,15 @@ public sealed class WebLanguages : IAsyncDisposable
         AnnounceAll();
     }
 
-    /// <summary>Files changed on disk: a package.json or lock file looks for the packages again, and ESLint hears of its
-    /// configuration's changes.</summary>
+    /// <summary>Files changed on disk: a package.json, lock file or Yarn's .pnp.cjs looks for the packages again, and,
+    /// under the runtime the lockfile says, for the runtime; and ESLint hears of its configuration's changes.</summary>
     public void FilesChanged(IReadOnlyCollection<string> paths)
     {
         UiThread.Check();
-        if (paths.Any(p => Path.GetFileName(p) is "package.json" or "package-lock.json" or "npm-shrinkwrap.json" or "yarn.lock" or "pnpm-lock.yaml"))
+        if (paths.Any(p => NodeProjects.Concerns(p) || Path.GetFileName(p) == YarnPnp.ManifestName))
         {
             Recheck();
+            IdeErrors.Observe(FollowLockfileAsync());
         }
         Eslint.FilesChanged(paths);
         Checks.FilesChanged(paths);
@@ -455,9 +493,9 @@ public sealed class WebLanguages : IAsyncDisposable
         Recheck();
     }
 
-    /// <summary>"Run 'npm install'": npm install in the folder of the package.json that lists what is missing, on the
-    /// Node.js the servers run on, through ChildProcesses; the banners say so meanwhile, and once it is done ESLint
-    /// checks the files it covers and the banners go.</summary>
+    /// <summary>"Run 'npm install'": the install of the package manager of the folder of the package.json that lists what
+    /// is missing (<see cref="ScriptRuns.Install"/>: npm, pnpm, Yarn or Bun, as its lockfile says), through ChildProcesses;
+    /// the banners say so meanwhile, and once it is done ESLint checks the files it covers and the banners go.</summary>
     public async Task InstallAsync(string where)
     {
         UiThread.Check();
@@ -466,31 +504,34 @@ public sealed class WebLanguages : IAsyncDisposable
             return;
         }
         AnnounceAll();
-        Message?.Invoke(this, $"Running npm install in {Shown(where)}…");
+        string install = $"{NodeProjects.ProgramOf(ManagerOf(where))} install";
+        Message?.Invoke(this, $"Running {install} in {Shown(where)}…");
         try
         {
-            NodeRuntime node = await FindNodeAsync();
-            if (node.Problem is { } none)
+            string? asked = configured;
+            (NodePackage? package, NodeRuntime node) = await BackgroundWork.Run(async () => (PackageIn(where), await NodeRuntime.FindAsync(asked)));
+            if (package is null)
             {
-                Message?.Invoke(this, $"npm install needs Node.js: {none}");
+                Message?.Invoke(this, $"{install} cannot run: {Shown(Path.Combine(where, NodeProjects.ManifestName))} does not read as a package.json");
                 return;
             }
-            if (Npm.Cli(node.Path!) is not { } cli)
+            (ProcessStartInfo? start, string? problem) = ScriptRuns.Install(package, node);
+            if (start is null)
             {
-                Message?.Invoke(this, $"npm install cannot run: there is no npm beside {node.Path} or on the PATH");
+                Message?.Invoke(this, $"{install} cannot run: {problem}");
                 return;
             }
-            ChildResult result = await BackgroundWork.Run(() => ChildProcesses.RunAsync(Npm.Install(node.Path!, cli, where), cancel: ending.Token), ending.Token);
+            ChildResult result = await BackgroundWork.Run(() => ChildProcesses.RunAsync(start, cancel: ending.Token), ending.Token);
             if (result.Succeeded)
             {
-                Message?.Invoke(this, $"npm install finished in {Shown(where)}");
+                Message?.Invoke(this, $"{install} finished in {Shown(where)}");
             }
             else
             {
-                IdeErrors.Write($"npm install in {where} failed with {ExitCodes.Said(result.ExitCode)}:\n{result.Error}{result.Output}");
+                IdeErrors.Write($"{install} in {where} failed with {ExitCodes.Said(result.ExitCode)}:\n{result.Error}{result.Output}");
                 string said = (result.Error + "\n" + result.Output).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .FirstOrDefault(l => l.Contains("error", StringComparison.OrdinalIgnoreCase)) ?? "the IDE's log has what it said";
-                Message?.Invoke(this, $"npm install failed in {Shown(where)} ({ExitCodes.Said(result.ExitCode)}): {said}");
+                Message?.Invoke(this, $"{install} failed in {Shown(where)} ({ExitCodes.Said(result.ExitCode)}): {said}");
             }
         }
         catch (OperationCanceledException)
@@ -499,7 +540,7 @@ public sealed class WebLanguages : IAsyncDisposable
         }
         catch (Exception error) when (ChildFailures.Of(error))
         {
-            Message?.Invoke(this, $"npm install could not run in {Shown(where)}: {error.Message}");
+            Message?.Invoke(this, $"{install} could not run in {Shown(where)}: {error.Message}");
         }
         finally
         {
@@ -556,16 +597,38 @@ public sealed class WebLanguages : IAsyncDisposable
         return started?.Server is { HasExited: false } running ? running : null;
     });
 
-    /// <summary>Runs the servers on another Node.js (Settings changed it, null for the PATH's): those running end, and
-    /// start again on it with their files, as does any that had none to run on.</summary>
-    public void UseNode(string? node)
+    /// <summary>Under the runtime the lockfile says, the servers started again on another once a lockfile now says it.</summary>
+    private async Task FollowLockfileAsync()
+    {
+        if (runtime != RuntimeChoice.FromLockfile || finding is not { IsCompletedSuccessfully: true } found)
+        {
+            return;
+        }
+        ScriptRuntime now = await BackgroundWork.Run(() => NodeProjects.RuntimeOf(folder).Runtime);
+        if (!disposed && finding == found && found.Result.Kind != now)
+        {
+            IdeErrors.Write($"The web language servers start again for {folder} on {NodeRuntime.NameOf(now)}, which its lockfile now says");
+            Restart();
+        }
+    }
+
+    /// <summary>Runs the servers on another runtime (Settings changed it), or another Node.js (null for the PATH's): those
+    /// running end, and start again on it with their files, as does any that had none to run on.</summary>
+    public void UseRuntime(RuntimeChoice choice, string? node)
     {
         UiThread.Check();
-        if (disposed || node == configured)
+        if (disposed || (node == configured && choice == runtime))
         {
             return;
         }
         configured = node;
+        runtime = choice;
+        Restart();
+    }
+
+    /// <summary>The runtime looked for again, and every server started again on it.</summary>
+    private void Restart()
+    {
         finding = null;
         Eslint.Reset();
         IdeErrors.Observe(Prettier.ResetAsync());
@@ -650,6 +713,7 @@ public sealed class WebLanguages : IAsyncDisposable
             PreloadNeeds = kind == WebServerKind.Yaml ? JsonSchemas.YamlPreloadNode : null,
             Missing = () => Missing(kind),
             Command = node => Starting(kind, node),
+            Refused = node => Refused(kind, node),
             Elsewhere = kind == WebServerKind.GDScript ? () => GodotStart(place) : null,
             Configure = language => ConfigureAsync(kind, language),
             Listen = started => started.Server.TypeScriptVersion += (_, _) => UiThread.Post(() => StateChanged?.Invoke(this, EventArgs.Empty)),
@@ -736,6 +800,13 @@ public sealed class WebLanguages : IAsyncDisposable
         _ => null,
     };
 
+    /// <summary>Why a server cannot run on a runtime that runs its script: the YAML server's preload has its imports
+    /// resolved through <c>module.registerHooks</c>, which Bun lacks.</summary>
+    private static string? Refused(WebServerKind kind, NodeRuntime node) =>
+        kind == WebServerKind.Yaml && node.Kind == ScriptRuntime.Bun
+            ? $"Passenger's part of the YAML language server needs Node.js's module.registerHooks, which Bun lacks: choose Node.js or Deno in {NodeRuntime.SettingsPlace}"
+            : null;
+
     /// <summary>A server that cannot run: its files keep their colours and say why in their banner, the status bar in a
     /// few words.</summary>
     private void Unavailable(ServerPlace place)
@@ -783,20 +854,15 @@ public sealed class WebLanguages : IAsyncDisposable
         _ => Path.Combine(Modules, "vscode-langservers-extracted", "lib", "json-language-server", "node", "jsonServerMain.js"),
     };
 
-    /// <summary>How a server starts: its script on Node.js in the folder, with the options its package documents and its
-    /// preload (<see cref="Preload"/>). The TypeScript server never installs type packages from npm (automatic type
-    /// acquisition) behind the person's back, and renames a name where it is declared and everywhere it is used from any of
-    /// them (an import's too, which it would otherwise rename alone, aliased), answering from its project once loaded rather
-    /// than from the open files alone.</summary>
-    private ServerStart Starting(WebServerKind kind, string node)
+    /// <summary>How a server starts: its script on the folder's runtime in the folder, with the options its package documents
+    /// and its preload (<see cref="Preload"/>), TypeScript's in a trusted Plug'n'Play project with its .pnp.cjs. TypeScript's
+    /// never installs type packages from npm (automatic type acquisition) behind the person's back, and renames a name where
+    /// it is declared and everywhere it is used from any of them (an import's too, else renamed alone, aliased), answering
+    /// from its project once loaded rather than from the open files alone.</summary>
+    private ServerStart Starting(WebServerKind kind, NodeRuntime node)
     {
-        ProcessStartInfo process = ChildProcesses.Command(node, kind switch
-        {
-            WebServerKind.Dockerfile => ["--require", DockerHubTags.Preload, Script(kind), "--stdio"],
-            // An ES module's preload, named by its URL, which --import takes where a Windows path is no specifier.
-            WebServerKind.Yaml => ["--import", new Uri(JsonSchemas.YamlPreload).AbsoluteUri, Script(kind), "--stdio"],
-            _ => [Script(kind), "--stdio"],
-        }, folder);
+        string? pnp = kind == WebServerKind.TypeScript && trusted ? YarnPnp.ManifestFor(folder) : null;
+        ProcessStartInfo process = node.Start(Script(kind), ["--stdio"], folder, Preload(kind), pnp);
         if (kind == WebServerKind.Dockerfile && DockerHubTags.Told(asksDockerHub, DockerHub) is { } told)
         {
             process.Environment[DockerHubTags.Variable] = told;

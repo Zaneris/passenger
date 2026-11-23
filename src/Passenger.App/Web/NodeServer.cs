@@ -4,10 +4,10 @@ using Passenger.Lsp;
 
 namespace Passenger.App.Web;
 
-/// <summary>One language server on the web servers' Node.js for the folder open (or, <see cref="Elsewhere"/>, one that runs
-/// on none: GDScript's, in Godot's editor), from its start to its end: started on the Node.js found unless it cannot run
-/// there (none, one too old for its package, the server missing from the app's folder), which <see cref="Unavailable"/>
-/// hears; its log heard; its end (during its start too) or hang told to <see cref="Lost"/> while it is the one kept. A UI-thread object: what the server says from its threads crosses through
+/// <summary>One language server on the web servers' runtime for the folder open (Node.js, Bun or Deno; or, <see cref="Elsewhere"/>,
+/// one that runs on none: GDScript's, in Godot's editor), from its start to its end: started on the runtime found unless it
+/// cannot run there (none, one too old for its package or lacking what it needs, the server missing from the app's folder),
+/// which <see cref="Unavailable"/> hears; its log heard; its end (during its start too) or hang told to <see cref="Lost"/> while it is the one kept. A UI-thread object: what the server says from its threads crosses through
 /// <see cref="UiThread"/>.</summary>
 internal sealed class NodeServer
 {
@@ -16,7 +16,7 @@ internal sealed class NodeServer
     private CancellationTokenSource? cancel;
     private bool ended;
 
-    /// <summary>A server named as the status bar names it ("TypeScript", "ESLint"), on the Node.js
+    /// <summary>A server named as the status bar names it ("TypeScript", "ESLint"), on the runtime
     /// <paramref name="node"/> finds, counting its restarts in <paramref name="restarts"/>.</summary>
     public NodeServer(string name, string folder, Func<Task<NodeRuntime>> node, ServerRestarts restarts)
     {
@@ -38,8 +38,11 @@ internal sealed class NodeServer
     /// null for a server run with none that needs more.</summary>
     public string? PreloadNeeds { get; init; }
 
-    /// <summary>How it starts on the Node.js at the path given.</summary>
-    public required Func<string, ServerStart> Command { get; init; }
+    /// <summary>How it starts on the runtime found.</summary>
+    public required Func<NodeRuntime, ServerStart> Command { get; init; }
+
+    /// <summary>Why it cannot run on the runtime found (one lacking what Passenger's part of it needs), null where it can.</summary>
+    public Func<NodeRuntime, string?>? Refused { get; init; }
 
     /// <summary>How a server that runs on no Node.js starts, in place of <see cref="Command"/>: made on the UI thread as its
     /// start begins, then run off it to the server connected and initialized; a <see cref="Godot.GodotScripts.Unavailable"/>
@@ -79,14 +82,14 @@ internal sealed class NodeServer
 
     public Task<LanguageSession?>? Starting { get; private set; }
 
-    /// <summary>The Node.js it runs on, once it has started.</summary>
+    /// <summary>The runtime it runs on, once it has started.</summary>
     public NodeRuntime? Runtime { get; private set; }
 
     /// <summary>Why it cannot run, null while it can.</summary>
     public string? Problem { get; private set; }
 
-    /// <summary>Whether it cannot run for want of a Node.js that runs at all, which every web server lacks alike.</summary>
-    public bool WithoutNode { get; private set; }
+    /// <summary>Whether it cannot run for want of a runtime that runs at all, which every web server lacks alike.</summary>
+    public bool WithoutRuntime { get; private set; }
 
     /// <summary>What the status bar says of it while it cannot answer: starting, ready, or why not in a few words.</summary>
     public string State { get; private set; } = string.Empty;
@@ -163,8 +166,8 @@ internal sealed class NodeServer
             }
             if (runtime.Problem is { } none)
             {
-                WithoutNode = true;
-                Fail(none, runtime.Path is null || !File.Exists(runtime.Path) ? "no Node.js" : "Node.js could not run");
+                WithoutRuntime = true;
+                Fail(none, runtime.Path is null || !File.Exists(runtime.Path) ? $"no {runtime.Name}" : $"{runtime.Name} could not run");
                 return null;
             }
             if (runtime.TooOldFor(Package, $"the {Name} language server", PreloadNeeds) is { } old)
@@ -172,12 +175,17 @@ internal sealed class NodeServer
                 Fail(old, "Node.js too old");
                 return null;
             }
+            if (Refused?.Invoke(runtime) is { } refused)
+            {
+                Fail(refused, $"not on {runtime.Name}");
+                return null;
+            }
             if (Missing?.Invoke() is { } missing)
             {
                 Fail(missing, "language server missing");
                 return null;
             }
-            ServerStart start = Command(runtime.Path!);
+            ServerStart start = Command(runtime);
             LanguageSession started = await BackgroundWork.Run(() => LanguageSession.StartAsync(start, cancelled), cancelled);
             if (cancelled.IsCancellationRequested || ended)
             {
@@ -208,7 +216,7 @@ internal sealed class NodeServer
             Session = started;
             Runtime = runtime;
             State = $"{Name} ready";
-            IdeErrors.Write($"{Name} language server (process {started.Server.ProcessId}) started for {folder} on Node.js {runtime.Version} in {Durations.Said(Stopwatch.GetElapsedTime(began))}");
+            IdeErrors.Write($"{Name} language server (process {started.Server.ProcessId}) started for {folder} on {runtime.Name} {runtime.Version} in {Durations.Said(Stopwatch.GetElapsedTime(began))}");
             Started?.Invoke(started);
             return started;
         }

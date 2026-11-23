@@ -314,6 +314,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// first on the PATH as the login shell finds it.</summary>
     public string? NodeInterpreter { get; init; }
 
+    /// <summary>The runtime the web language servers, ESLint and Prettier run on: the one the folder's lockfile says (Bun's
+    /// or Deno's, else Node.js), or Node.js, Bun or Deno whatever it says.</summary>
+    public RuntimeChoice WebRuntime { get; init; } = RuntimeChoice.FromLockfile;
+
     /// <summary>The browser a web app's page opens in, and Debug drives to debug a Blazor app's WebAssembly half, with
     /// arguments given every start of it, as one command line (<see cref="Run.PageBrowsers"/>); null for the system's default
     /// browser, and for debugging the Chromium one found (<see cref="Passenger.Core.ChromiumBrowsers"/>).</summary>
@@ -726,6 +730,19 @@ public enum BuildResultsMode
     ForWarningsOrErrors,
     ForErrors,
     Never,
+}
+
+/// <summary>The runtime the web language servers, ESLint and Prettier run on, in the order Settings lists them.</summary>
+public enum RuntimeChoice
+{
+    /// <summary>The one the folder's lockfile says (<see cref="Passenger.Workspace.NodeProjects.RuntimeOf"/>).</summary>
+    FromLockfile,
+
+    Node,
+
+    Bun,
+
+    Deno,
 }
 
 /// <summary>How ESLint and Prettier are configured, in the order Settings lists them.</summary>

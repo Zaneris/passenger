@@ -12,6 +12,14 @@ public enum NodeManager
     Bun,
 }
 
+/// <summary>The program a folder's JavaScript runs on: the web language servers, ESLint and Prettier among it.</summary>
+public enum ScriptRuntime
+{
+    Node,
+    Bun,
+    Deno,
+}
+
 /// <summary>One of a package.json's scripts: its name and the command it runs.</summary>
 public sealed record NodeScript(string Name, string Command);
 
@@ -52,6 +60,9 @@ public static class NodeProjects
     /// <summary>The settings file of Yarn 2 and later, which Yarn 1 does not read.</summary>
     public const string YarnrcName = ".yarnrc.yml";
 
+    /// <summary>Deno's lockfile, which says a folder runs on Deno.</summary>
+    public const string DenoLockName = "deno.lock";
+
     /// <summary>How much of a lockfile is read for the format its header names: a lockfile may run to megabytes.</summary>
     private const int LockfileHead = 4096;
 
@@ -71,7 +82,32 @@ public static class NodeProjects
     public static bool Concerns(string path)
     {
         string name = Path.GetFileName(path);
-        return name is ManifestName or PnpmWorkspaceName or NpmrcName or YarnrcName || Lockfiles.Any(l => l.Name == name);
+        return name is ManifestName or PnpmWorkspaceName or NpmrcName or YarnrcName or DenoLockName || Lockfiles.Any(l => l.Name == name);
+    }
+
+    /// <summary>The runtime the folder open runs on as its files say, and which file said so: the nearest folder up from it
+    /// (above it only while a folder holds a package.json) whose package.json's <c>packageManager</c> field names a manager,
+    /// or that holds Deno's lockfile or another's, says it (Bun's field or lockfile Bun, Deno's lockfile Deno, any other
+    /// Node.js); Node.js where none does.</summary>
+    public static (ScriptRuntime Runtime, string Source) RuntimeOf(string top)
+    {
+        foreach (string at in ManagerFolders(top, top))
+        {
+            NodeManifest? made = ReadIn(at, ManifestName) is { } text ? ReadManifest(text) : null;
+            if (Named(made?.PackageManager) is { } named)
+            {
+                return (named == NodeManager.Bun ? ScriptRuntime.Bun : ScriptRuntime.Node, $"its {ManifestName}'s packageManager field ({made!.PackageManager!.Split('+')[0]})");
+            }
+            if (HasIn(at, DenoLockName))
+            {
+                return (ScriptRuntime.Deno, $"its {DenoLockName}");
+            }
+            if (OfLockfiles(Lockfiles.Select(l => l.Name).Where(name => HasIn(at, name))) is ({ } locked, { } lockfile))
+            {
+                return (locked == NodeManager.Bun ? ScriptRuntime.Bun : ScriptRuntime.Node, $"its {lockfile}");
+            }
+        }
+        return (ScriptRuntime.Node, "no lockfile names another");
     }
 
     /// <summary>The program a package manager is run as.</summary>
