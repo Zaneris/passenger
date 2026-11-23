@@ -66,7 +66,9 @@ public class StuckEvaluationTests(ITestOutputHelper testOutputHelper)
         EvaluateResponse stuck = await host.EvaluateAsync((await host.TopFrameAsync(thread)).Id, "Reads.Input", mayStand: true);
         Assert.Contains("could not be stopped", stuck.Result, StringComparison.Ordinal);
         Assert.Contains("so it is held unfinished until the program runs on", stuck.Result, StringComparison.Ordinal);
-        Assert.False(OperatingSystem.IsWindows() && !host.EngineLog().Contains("natively: ntdll.dll!NtReadFile+", StringComparison.Ordinal),
+        // ntdll exports its read as NtReadFile and ZwReadFile at one address, and dbghelp names it by either.
+        Assert.False(OperatingSystem.IsWindows() && !host.EngineLog().Contains("natively: ntdll.dll!NtReadFile+", StringComparison.Ordinal)
+            && !host.EngineLog().Contains("natively: ntdll.dll!ZwReadFile+", StringComparison.Ordinal),
             $"The engine's log did not name the read the evaluation stood in outside managed code by its native frames, so a wait there is told by nothing:\n{host.EngineLog()}");
 
         await host.ContinueAsync();
