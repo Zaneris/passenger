@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-22
 
+- `McpAspireStandInTests`' `An_agent_runs_an_AppHost_its_resources_commands_and_one_replicas_debugging_as_the_AppHost_…`,
+  CI 45088645427 (Windows report shard 1), at 4a288a12f: "An agent's run of the AppHost answered with a console that
+  is not the AppHost's, so it reads nothing of its start: {… "output":"…\\StandIn.AppHost.exe\n"}". **The test waited
+  wrong**: an agent's run of an AppHost answers once the AppHost's resources are up, and the stand-in AppHost wrote the
+  key that lets its stand-in resource service list them before it said it was up, so on the loaded runner the resources
+  came in the moment between the key and its first line (the first write to .NET's console, which sets it up) and the
+  run answered, rightly, with a console holding only the command that started it. With 1.5 s stalled there the old test
+  failed with CI's words on the Mac. The stand-in now says it is up before it writes its key; with the same stall after
+  the key it passes on the Mac, and McpAspireStandInTests passes on the Windows VM (7cd8a2763).
 - macOS's report shard 1, CI 45075856385 (an M1 of 7 GB and three processors), at 5ab484ccf: no test ran, the job
   cancelled 7 minutes into its Build, "The operation was canceled.". **The workflow, starving its runner**: 5ab484ccf
   booted the iOS simulator in the background as the solution built; the build, which prints a project every few
