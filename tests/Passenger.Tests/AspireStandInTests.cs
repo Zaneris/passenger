@@ -3490,10 +3490,11 @@ public sealed class StandInAppHost : SharedProject
             File.WriteAllText(keyFile + ".urls", $"{Environment.GetEnvironmentVariable("ASPNETCORE_URLS")}\n{Environment.GetEnvironmentVariable("ASPIRE_ALLOW_UNSECURED_TRANSPORT")}");
             File.WriteAllText(keyFile + ".dashboard", Environment.GetEnvironmentVariable("AppHost__DashboardApiKey"));
             File.WriteAllText(keyFile + ".session", $"{Environment.GetEnvironmentVariable("DEBUG_SESSION_PORT")}\n{Environment.GetEnvironmentVariable("DEBUG_SESSION_TOKEN")}\n{Environment.GetEnvironmentVariable("DEBUG_SESSION_INFO")}");
-            File.WriteAllText(keyFile + ".part", Environment.GetEnvironmentVariable("ASPIRE_DASHBOARD_RESOURCESERVICE_APIKEY"));
-            File.Move(keyFile + ".part", keyFile, overwrite: true);
+            // Said before the key, which lets its resource service answer: an agent's run answers once its resources are up.
             Console.WriteLine($"Built into {AppContext.BaseDirectory}");
             Console.WriteLine("The stand-in AppHost is up");
+            File.WriteAllText(keyFile + ".part", Environment.GetEnvironmentVariable("ASPIRE_DASHBOARD_RESOURCESERVICE_APIKEY"));
+            File.Move(keyFile + ".part", keyFile, overwrite: true);
             Thread.Sleep(Timeout.Infinite);
 
             // The backchannel's JSON-RPC, as StreamJsonRpc frames it, until it is asked to stop.
