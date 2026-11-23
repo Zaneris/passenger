@@ -37,6 +37,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>The colours of tests', changes' and signatures' states: the theme's own, or the colour-blind safe palette over it.</summary>
     public StatePalette StatePalette { get; init; }
 
+    /// <summary>Whether a plain folder, one Passenger draws nothing apart for, shows a folder's icon beside its chevron, or its
+    /// chevron alone.</summary>
+    public bool PlainFolderIcons { get; init; } = true;
+
     /// <summary>The theme sources the person added, each as <see cref="ThemeSource"/> keeps it, beside Passenger's themes
     /// repository, which every Passenger lists.</summary>
     public IReadOnlyList<string> ThemeSources { get; init; } = [];

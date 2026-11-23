@@ -20,12 +20,15 @@ public sealed class RowGlyphs : Control
     public static readonly StyledProperty<bool> TurnedProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(Turned));
     public static readonly StyledProperty<Geometry?> IconProperty = AvaloniaProperty.Register<RowGlyphs, Geometry?>(nameof(Icon));
     public static readonly StyledProperty<IBrush?> IconBrushProperty = AvaloniaProperty.Register<RowGlyphs, IBrush?>(nameof(IconBrush));
+    public static readonly StyledProperty<string?> IconKeyProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconKey));
+    public static readonly StyledProperty<string?> IconBrushKeyProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconBrushKey));
+    public static readonly StyledProperty<bool> PlainFolderProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(PlainFolder));
 
     static RowGlyphs()
     {
         WidthProperty.OverrideDefaultValue<RowGlyphs>(Column + IconSize + Gap);
         HeightProperty.OverrideDefaultValue<RowGlyphs>(ListRow.Height);
-        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconBrushProperty);
+        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconBrushProperty, IconKeyProperty, IconBrushKeyProperty, PlainFolderProperty);
     }
 
     public RowGlyphs()
@@ -58,11 +61,33 @@ public sealed class RowGlyphs : Control
         set => SetValue(IconProperty, value);
     }
 
-    /// <summary>The icon's brush; the theme's icon colour when none is given.</summary>
+    /// <summary>The icon's brush; the theme's of <see cref="IconBrushKey"/>, else its icon colour, when none is given.</summary>
     public IBrush? IconBrush
     {
         get => GetValue(IconBrushProperty);
         set => SetValue(IconBrushProperty, value);
+    }
+
+    /// <summary>The theme's key of the icon, drawn when <see cref="Icon"/> is null, so it follows a theme laid since.</summary>
+    public string? IconKey
+    {
+        get => GetValue(IconKeyProperty);
+        set => SetValue(IconKeyProperty, value);
+    }
+
+    /// <summary>The theme's key of the icon's brush, used when <see cref="IconBrush"/> is null.</summary>
+    public string? IconBrushKey
+    {
+        get => GetValue(IconBrushKeyProperty);
+        set => SetValue(IconBrushKeyProperty, value);
+    }
+
+    /// <summary>Whether its icon is a plain folder's, drawn only while Settings shows plain folders' icons, its chevron
+    /// alone otherwise, its words where they stand beside every row's icon.</summary>
+    public bool PlainFolder
+    {
+        get => GetValue(PlainFolderProperty);
+        set => SetValue(PlainFolderProperty, value);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -87,9 +112,9 @@ public sealed class RowGlyphs : Control
         {
             Glyph(context, chevron, themed, look, new Point((Column - ChevronSize) / 2, (Bounds.Height - ChevronSize) / 2), ChevronSize, Turned, scale);
         }
-        if (Icon is { } icon)
+        if ((Icon ?? (IconKey is { } key ? Resource(key) as Geometry : null)) is { } icon && !(PlainFolder && !Explorer.FileIcons.ShowsPlainFolders(this)))
         {
-            Glyph(context, icon, IconBrush ?? themed, look, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
+            Glyph(context, icon, IconBrush ?? (IconBrushKey is { } tint ? Resource(tint) as IBrush : null) ?? themed, look, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
         }
     }
 

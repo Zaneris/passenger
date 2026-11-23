@@ -16,8 +16,8 @@ public static class ThemeResources
     private static IReadOnlyDictionary<string, ThemeTokenKind>? kinds;
 
     /// <summary>Every token the default theme gives and those a theme may give beside them (<see cref="ThemeFiles.Optional"/>),
-    /// named without <c>Passenger.</c>, and the kind of value each takes; the languages a theme may colour are named to the
-    /// reader with them.</summary>
+    /// named without <c>Passenger.</c>, and the kind of value each takes; the languages a theme may colour and the icons it
+    /// may give in Passenger's place are named to the reader with them.</summary>
     public static IReadOnlyDictionary<string, ThemeTokenKind> Kinds
     {
         get
@@ -25,6 +25,7 @@ public static class ThemeResources
             if (kinds is null)
             {
                 ThemeFiles.LanguageIds = new HashSet<string>(Passenger.Languages.Language.Ids, StringComparer.Ordinal);
+                ThemeFiles.IconNames = IconNames();
                 kinds = Read();
             }
             return kinds;
@@ -113,6 +114,18 @@ public static class ThemeResources
             brush.GradientStops.Add(new GradientStop(Color.FromUInt32(stop.Argb), stop.Offset));
         }
         return brush;
+    }
+
+    /// <summary>The keys of every icon Passenger draws, its own (Icons.axaml) and its files' (FileIconSet.axaml).</summary>
+    private static HashSet<string> IconNames()
+    {
+        HashSet<string> names = new(StringComparer.Ordinal);
+        foreach (string set in (string[])["Icons.axaml", "FileIconSet.axaml"])
+        {
+            ResourceDictionary icons = (ResourceDictionary)AvaloniaXamlLoader.Load(new Uri($"avares://Passenger/Theme/{set}"));
+            names.UnionWith(icons.Keys.OfType<string>().Where(key => icons.TryGetValue(key, out object? icon) && icon is Geometry));
+        }
+        return names;
     }
 
     private static Dictionary<string, ThemeTokenKind> Read()

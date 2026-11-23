@@ -67,6 +67,7 @@ public sealed class SettingsPreview : IDisposable
         ColourScheme = Shown(from.ColourScheme, to.ColourScheme, saved.ColourScheme),
         FollowSystemContrast = Shown(from.FollowSystemContrast, to.FollowSystemContrast, saved.FollowSystemContrast),
         StatePalette = Shown(from.StatePalette, to.StatePalette, saved.StatePalette),
+        PlainFolderIcons = Shown(from.PlainFolderIcons, to.PlainFolderIcons, saved.PlainFolderIcons),
         EditorFontFamily = Shown(from.EditorFontFamily, to.EditorFontFamily, saved.EditorFontFamily),
         EditorFontSize = Shown(from.EditorFontSize, to.EditorFontSize, saved.EditorFontSize),
         EditorLineSpacing = Shown(from.EditorLineSpacing, to.EditorLineSpacing, saved.EditorLineSpacing),

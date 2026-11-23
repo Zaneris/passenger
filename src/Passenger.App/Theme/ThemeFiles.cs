@@ -104,6 +104,19 @@ public sealed record ThemeFile(string Name, string Description, IReadOnlyDiction
     /// Passenger's own, under every theme.</summary>
     public string? BuiltInBase { get; init; }
 
+    /// <summary>The icons it gives under Dark in Passenger's place, each by the key of the icon it stands for (<c>Icon.Run</c>,
+    /// <c>FileIcon.CSharp</c>) and its SVG's path beside the file.</summary>
+    public IReadOnlyDictionary<string, string> DarkIcons { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The icons it gives under Light, as <see cref="DarkIcons"/>.</summary>
+    public IReadOnlyDictionary<string, string> LightIcons { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The icons it gives under a variant.</summary>
+    public IReadOnlyDictionary<string, string> IconsOf(bool dark) => dark ? DarkIcons : LightIcons;
+
+    /// <summary>Every icon's file it names, each once.</summary>
+    public IEnumerable<string> IconFiles => DarkIcons.Values.Concat(LightIcons.Values).Distinct(StringComparer.Ordinal);
+
     /// <summary>The picture drawn under a variant, or null for none.</summary>
     public BackgroundValue? BackgroundOf(bool dark) => dark ? DarkBackground : LightBackground;
 
@@ -217,14 +230,17 @@ public static partial class ThemeFiles
         {
             WorkOutLaterTokens(sections, tokens);
         }
-        (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
+        (BackgroundValue? darkPicture, BackgroundValue? lightPicture) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
+        (Dictionary<string, string>? dark, Dictionary<string, string>? light) = code ? (null, null) : Icons(file, JsonMembers.Value(root, "icons"), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
         {
             Fonts = code ? ThemeFonts.None : Fonts(file, JsonMembers.Value(root, "fonts"), problems),
-            DarkBackground = dark,
-            LightBackground = light,
+            DarkBackground = darkPicture,
+            LightBackground = lightPicture,
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, plain, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
+            DarkIcons = dark is null ? new Dictionary<string, string>(StringComparer.Ordinal) : dark,
+            LightIcons = light is null ? new Dictionary<string, string>(StringComparer.Ordinal) : light,
             Base = Base(file, JsonMembers.Value(root, Member.VsCode), problems),
             BuiltInBase = carried,
         };

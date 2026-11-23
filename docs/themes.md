@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out, as may `background`, `fonts`, `languages`, `layout`, `base` and `vscode` below.
+three may be left out, as may `background`, `fonts`, `languages`, `layout`, `icons`, `base` and `vscode` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
@@ -64,6 +64,14 @@ Beside those, a theme may give three tokens Passenger's own theme leaves out, `S
 `Syntax.Brace6`: rainbow braces take turns in as many colours as a theme gives, three to six, a bracket's depth cycling
 through exactly those (`Syntax.Brace5` counts only after `Syntax.Brace4`, `Syntax.Brace6` only after both), so a theme of
 five draws the sixth depth in `Syntax.Brace1`'s colour. It may also give `SyntaxStyle.Parameter`, how a parameter is set.
+`Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
+Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
+theme, whose own they are.
+A file that leaves out `ButtonHover`, `ButtonPressed` or `AccentPressed`, a button's grounds under the pointer and
+pressed, has them worked out in each variant from its own colours, as Passenger's themes work them out: a plain button's
+are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
+as that is from its `Accent`. One that leaves out `Debug` or `TitleBar.Debug`, the Debug button's own colours, draws it in
+its own `Icon` and `TitleBar.Icon`.
 
 A theme may give three more for its icons, each left out of Passenger's own, whose icons are drawn as they are:
 `IconSaturation` and `IconBrightness`, numbers working on every icon's colours as CSS's `saturate()` and `brightness()`
@@ -77,14 +85,6 @@ its own (below), all colours of them. Give them in `dark` or `light` to set one 
 "tokens": { "IconSaturation": 0.55, "IconBrightness": 0.9 },
 "dark": { "IconTint": { "colour": "#E6C384", "opacity": 0.15 } }
 ```
-`Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
-Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
-theme, whose own they are.
-A file that leaves out `ButtonHover`, `ButtonPressed` or `AccentPressed`, a button's grounds under the pointer and
-pressed, has them worked out in each variant from its own colours, as Passenger's themes work them out: a plain button's
-are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
-as that is from its `Accent`. One that leaves out `Debug` or `TitleBar.Debug`, the Debug button's own colours, draws it in
-its own `Icon` and `TitleBar.Icon`.
 
 ### Its background picture
 
@@ -127,6 +127,36 @@ The picture is kept beside the theme when the theme is chosen, so it draws offli
 The code's and the window's family, each by its name, and the code's `size` in points (6 to 48). A family or size you
 choose in Settings wins wherever you chose one; Reset Font Size goes back to the theme's size. A family not installed
 here leaves Passenger's own.
+
+### Its own icons
+
+```json
+"icons": {
+  "FileIcon.CSharp": "icons/csharp.svg",
+  "Icon.Explorer": "icons/folder.svg",
+  "Icon.Run": { "dark": "icons/run-dark.svg", "light": "icons/run-light.svg" }
+}
+```
+
+A theme may draw any of Passenger's icons with an SVG of its own beside its file (its folders joined by `/`, no `..`),
+each named by the key Passenger draws it by: `Icon.*` for the window's icons, as
+[Icons.axaml](../src/Passenger.App/Theme/Icons.axaml) names them (`Icon.Run`, `Icon.Explorer`, a plain folder's, and
+`Icon.FolderOpen`, an open one's), and `FileIcon.*` for a kind of file, as
+[FileIconSet.axaml](../src/Passenger.App/Theme/FileIconSet.axaml) names them (`FileIcon.CSharp`, `FileIcon.Npm`,
+`FileIcon.Docker`). An icon is the same in both variants, or `{"dark": …, "light": …}`, either of which may be left out.
+Every icon it names none for stays Passenger's, and a key this Passenger does not draw is passed over and named.
+
+Its SVG is drawn in its own colours, fitted into the icon's place; where it says `currentColor` it takes the colour
+Passenger draws that icon in (a file's kind's colour, the theme's `Icon`), so a set of one colour follows the theme. The
+theme's icon saturation, brightness and tint above work on all its colours. An SVG is at most 256 KB, read as data alone:
+nothing it names beside it or on the web is read. The icons are fetched and kept with the theme, as its pictures are, so
+they draw offline, and a set whose licence allows it (Catppuccin's icons, under MIT) can be drawn so, each file mapped to
+the key it stands for.
+
+A theme over a carried theme takes the base's icons for the keys it names none for. A theme of your own, added from its
+file, may give icons over any base, a VS Code theme's too, so a set of icons goes with whichever colours you like. Settings
+| Appearance | Show icons on plain folders, off, leaves a plain folder's row its chevron alone whatever the theme draws,
+its name in line with its files'.
 
 ### The code's colours by language
 

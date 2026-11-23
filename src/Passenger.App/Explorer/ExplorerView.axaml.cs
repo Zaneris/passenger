@@ -649,8 +649,9 @@ public partial class ExplorerView : UserControl
             AutomationProperties.SetName(row, node.Said);
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;
-            glyphs.Icon = node.Icon;
-            glyphs.IconBrush = node.IconBrush;
+            glyphs.IconKey = node.IconKey;
+            glyphs.IconBrushKey = node.IconBrushKey;
+            glyphs.PlainFolder = node.IsPlainFolder;
             name.Text = node.Name;
             foreach (TextBlock coloured in (TextBlock[])[name, change])
             {

@@ -288,6 +288,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.ToolWindowLook);
         Add(Declared.ClosedToolWindows);
         Add(Declared.FindResults);
+        Add(Declared.PlainFolderIcons);
 
         Add(Declared.FollowSystemContrast);
         Add(Declared.StatePalette);

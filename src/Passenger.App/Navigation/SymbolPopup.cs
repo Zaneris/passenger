@@ -145,8 +145,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             badge.IsVisible = !file;
             if (file)
             {
-                icon.Data = Explorer.FileIcons.ForFile(symbol.Path);
-                icon.Foreground = Explorer.FileIcons.BrushForFile(symbol.Path);
+                icon.DataKey = Explorer.FileIcons.FileKey(symbol.Path);
+                icon.ForegroundKey = Explorer.FileIcons.FileBrushKey(symbol.Path);
             }
             else
             {

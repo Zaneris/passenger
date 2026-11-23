@@ -195,8 +195,8 @@ public sealed class SettingsStore : IDisposable
     }
 
     /// <summary>The process's share of the look, put in force once for every window: the theme, its dark or light and the
-    /// code's colours only when their settings change, so one named on the command line stands until then; the code font and
-    /// the window's; the carets' width.</summary>
+    /// code's colours only when their settings change, so one named on the command line stands until then; plain folders'
+    /// icons; the code font and the window's; the carets' width.</summary>
     private static void VisualsInForce(AppSettings? before, AppSettings after)
     {
         if (Avalonia.Application.Current is { } app && (before is null || before.Theme != after.Theme))
@@ -214,6 +214,10 @@ public sealed class SettingsStore : IDisposable
         if (Avalonia.Application.Current is { } coloured && (before is null || before.StatePalette != after.StatePalette))
         {
             Themes.UseStates(coloured, after.StatePalette);
+        }
+        if (Avalonia.Application.Current is { } foldered && (before is null || before.PlainFolderIcons != after.PlainFolderIcons))
+        {
+            Explorer.FileIcons.ShowPlainFolders(foldered, after.PlainFolderIcons);
         }
         FontsInForce(after);
         if (Avalonia.Application.Current is { } careted && (before is null || before.CaretWidth != after.CaretWidth))

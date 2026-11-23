@@ -75,6 +75,12 @@ public static class Declared
             + "a tab of their own to go back to; kept there, the places Go to Declaration, Go to Implementation and the like find "
             + "to choose from are listed there too. Open in Find Window in the popup puts the matches there either way."));
 
+    public static readonly ToggleSetting PlainFolderIcons = new(s => s.PlainFolderIcons, (s, v) => s with { PlainFolderIcons = v },
+        new(D.Appearance, "Show icons on plain folders", "folder folders icon icons plain generic chevron explorer tree commit quiet minimal",
+            "A folder Passenger draws nothing apart for shows a folder's icon beside its chevron in the Explorer and the Commit window. "
+            + "Off, it shows its chevron alone, its name in line with its files'; a folder drawn apart (.git, .github, node_modules, Properties, "
+            + "wwwroot, a solution folder) keeps its own."));
+
     public static readonly ChoiceSetting<StatePalette> StatePalette = new(s => s.StatePalette, (s, v) => s with { StatePalette = v },
         [(Passenger.App.StatePalette.Theme, "The theme's own"), (Passenger.App.StatePalette.ColourBlindSafe, "Colour-blind safe")],
         new(D.AccessibilityPage, "Colours of states", "colour color blind blindness deuteranopia protanopia tritanopia red green palette diff test passed failed added changed conflict git accessibility",

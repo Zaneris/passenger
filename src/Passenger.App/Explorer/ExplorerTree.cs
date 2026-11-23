@@ -1047,7 +1047,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
         {
             if (Set(ref projectKind, value))
             {
-                Raise(nameof(Icon));
+                Raise(nameof(IconKey));
                 Raise(nameof(Said));
                 Raise(nameof(Hover));
             }
@@ -1188,7 +1188,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
         {
             if (Set(ref isExpanded, value))
             {
-                Raise(nameof(Icon));
+                Raise(nameof(IconKey));
             }
         }
     }
@@ -1218,8 +1218,9 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     public Thickness Indent => new(Depth * Gaps.Indent, 0, 0, 0);
     public double Opacity => IsDimmed || IsCut ? ListRow.Dimmed : 1;
-    public Geometry Icon => FileIcons.For(this);
-    public IBrush IconBrush => FileIcons.BrushFor(this);
+    public string IconKey => FileIcons.KeyFor(this);
+    public string IconBrushKey => FileIcons.BrushKeyFor(this);
+    public bool IsPlainFolder => FileIcons.IsPlainFolder(this);
 
     /// <summary>Whether a path lies under this node: inside its folder, or its project's folder, or nested under its file.</summary>
     public bool Contains(string path)

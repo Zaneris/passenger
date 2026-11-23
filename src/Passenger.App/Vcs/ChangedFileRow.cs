@@ -47,8 +47,8 @@ public sealed class ChangedFileRow
     /// (<see cref="Folder"/>), or why it is as it is.</summary>
     public void Show(string path, ChangeKind kind, string where)
     {
-        icon.Data = FileIcons.ForFile(path);
-        icon.Foreground = FileIcons.BrushForFile(path);
+        icon.DataKey = FileIcons.FileKey(path);
+        icon.ForegroundKey = FileIcons.FileBrushKey(path);
         name.Text = Path.GetFileName(path);
         name.Resource(TextBlock.ForegroundProperty, ref colour, KindToken(kind));
         name.TextDecorations = kind is ChangeKind.Deleted ? TextDecorations.Strikethrough : null;

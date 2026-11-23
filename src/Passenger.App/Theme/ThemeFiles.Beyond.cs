@@ -59,8 +59,8 @@ public sealed record ThemeFonts(string? CodeFamily, double? CodeSize, string? Wi
 public sealed record LanguageColours(IReadOnlyDictionary<string, TokenValue> Both, IReadOnlyDictionary<string, TokenValue> Dark,
     IReadOnlyDictionary<string, TokenValue> Light);
 
-/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c>, <c>layout</c>, and its base,
-/// <c>vscode</c> or <c>base</c> (docs/themes.md).</summary>
+/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c>, <c>layout</c>, <c>icons</c>,
+/// and its base, <c>vscode</c> or <c>base</c> (docs/themes.md).</summary>
 public static partial class ThemeFiles
 {
     /// <summary>The most of a background picture that shows: every glyph keeps at least the rest of its difference from its
@@ -82,15 +82,22 @@ public static partial class ThemeFiles
     /// <summary>The largest size of the code's font, in points.</summary>
     public const double MostFontSize = 48;
 
+    /// <summary>The most an icon's SVG may hold.</summary>
+    public const int MostIconBytes = 256 * 1024;
+
     private const double OwnOpacity = 0.15;
     private const int LongestLanguage = 40;
 
-    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", Member.VsCode, Member.Base];
+    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", "icons", Member.VsCode, Member.Base];
     private static readonly string[] PictureTypes = [".png", ".jpg", ".jpeg", ".webp"];
     private static readonly (string Word, BackgroundPlaces Place)[] PlaceWords =
         [("editor", BackgroundPlaces.Editor), ("toolWindows", BackgroundPlaces.ToolWindows), ("frame", BackgroundPlaces.Frame), ("welcome", BackgroundPlaces.Welcome)];
     private static readonly (string Word, BackgroundFit Fit)[] FitWords =
         [("cover", BackgroundFit.Cover), ("contain", BackgroundFit.Contain), ("tile", BackgroundFit.Tile), ("centre", BackgroundFit.Centre)];
+
+    /// <summary>The keys of the icons a theme may give in Passenger's place, as the App's icon sets name them; a key outside
+    /// them is passed over and named. Empty, any key shaped as one (<c>Icon.Run</c>, <c>FileIcon.CSharp</c>) is taken.</summary>
+    public static IReadOnlySet<string> IconNames { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>The language ids a theme may give the code's colours for, as the App's languages name them; a language
     /// outside them is passed over and named. Empty, any id is taken.</summary>
@@ -253,6 +260,50 @@ public static partial class ThemeFiles
         return (x ?? 0.5, y ?? 0.5);
     }
 
+    /// <summary>The icons a theme gives in Passenger's place under Dark and under Light, each key's SVG beside the theme's
+    /// file, the same under both or <c>{"dark": …, "light": …}</c>, either of which may be left out.</summary>
+    private static (Dictionary<string, string>? Dark, Dictionary<string, string>? Light) Icons(string file, JsonElement? icons, List<string> problems)
+    {
+        if (icons is null)
+        {
+            return (null, null);
+        }
+        if (icons.Value.ValueKind != JsonValueKind.Object || icons.Value.EnumerateObject().Count() > MostEntries)
+        {
+            throw new FormatException($"gives icons as {ThemeJson.Shown(icons.Value)}: icons is an object of an icon's key (\"FileIcon.CSharp\", \"Icon.Run\") and its SVG "
+                + $"beside the theme's file, at most {Numbers.Said(MostEntries)}");
+        }
+        Dictionary<string, string> dark = new(StringComparer.Ordinal);
+        Dictionary<string, string> light = new(StringComparer.Ordinal);
+        foreach (JsonProperty icon in icons.Value.EnumerateObject())
+        {
+            if (!(IconNames.Count == 0 ? IconKey().IsMatch(icon.Name) : IconNames.Contains(icon.Name)))
+            {
+                problems.Add($"{file}: {icon.Name} in icons is no icon this Passenger draws, so it was passed over");
+                continue;
+            }
+            if (icon.Value.ValueKind == JsonValueKind.Object)
+            {
+                PassOver(file, icon.Value, ["dark", "light"], $"icons' {icon.Name}", problems);
+                foreach ((string variant, Dictionary<string, string> into) in ((string, Dictionary<string, string>)[])[("dark", dark), ("light", light)])
+                {
+                    if (JsonMembers.Value(icon.Value, variant) is { } given)
+                    {
+                        into[icon.Name] = Svg(icon.Name, $" under {variant}", given);
+                    }
+                }
+                continue;
+            }
+            dark[icon.Name] = light[icon.Name] = Svg(icon.Name, string.Empty, icon.Value);
+        }
+        return (dark, light);
+
+        static string Svg(string key, string variant, JsonElement value) =>
+            value.ValueKind == JsonValueKind.String && Inside(value.GetString()!, [".svg"]) ? value.GetString()!
+            : throw new FormatException($"gives icons' {key}{variant} as {ThemeJson.Shown(value)}: an icon is an SVG beside the theme's file, its folders joined by /, "
+                + "with no .., ending .svg, or {\"dark\": …, \"light\": …}");
+    }
+
     private static Dictionary<string, LanguageColours> Languages(string file, JsonElement? languages, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool plain,
         List<string> problems)
     {
@@ -411,8 +462,8 @@ public static partial class ThemeFiles
     }
 
     /// <summary>A theme laid over another, as over its base: the one under giving every token the one over leaves out, and
-    /// its fonts, its pictures, its layout and its languages' tokens where the one over gives none; the one over its name,
-    /// words and what it gives; a token the one over gives one variant alone keeps the one under's value for the other.</summary>
+    /// its fonts, pictures, layout, languages' tokens and icons where the one over gives none; the one over its name, words
+    /// and what it gives; a token the one over gives one variant alone keeps the one under's value for the other.</summary>
     public static ThemeFile Over(ThemeFile under, ThemeFile over)
     {
         (Dictionary<string, TokenValue> both, Dictionary<string, TokenValue> dark, Dictionary<string, TokenValue> light) =
@@ -437,7 +488,19 @@ public static partial class ThemeFiles
             LightBackground = pictured ? over.LightBackground : under.LightBackground,
             Languages = languages,
             Layout = over.Layout ?? under.Layout,
+            DarkIcons = Merged(under.DarkIcons, over.DarkIcons),
+            LightIcons = Merged(under.LightIcons, over.LightIcons),
         };
+
+        static Dictionary<string, string> Merged(IReadOnlyDictionary<string, string> beneath, IReadOnlyDictionary<string, string> given)
+        {
+            Dictionary<string, string> icons = new(beneath, StringComparer.Ordinal);
+            foreach ((string key, string path) in given)
+            {
+                icons[key] = path;
+            }
+            return icons;
+        }
     }
 
     /// <summary>Tokens for both variants, Dark and Light, laid over others: a value for both variants the one over gives
@@ -501,6 +564,10 @@ public static partial class ThemeFiles
 
     [GeneratedRegex(@"^[0-9A-Za-z.+-]{1,64}$")]
     private static partial Regex VersionWords();
+
+    // An icon's key as Passenger's icon sets name it.
+    [GeneratedRegex(@"^(?:Icon|FileIcon)\.[A-Za-z0-9]{1,64}$")]
+    private static partial Regex IconKey();
 
     private static string Listed(IEnumerable<string> words) => Plural.Either([.. words.Select(w => $"\"{w}\"")]);
 }

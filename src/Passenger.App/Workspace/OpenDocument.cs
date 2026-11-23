@@ -1399,10 +1399,11 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether text has unsaved changes; a read-only asset is never considered modified.</summary>
     public bool IsModified => Asset is null && Text.IsModified;
-    public Avalonia.Media.Geometry Icon => Tool is { } tool && Avalonia.Application.Current is { } app
-        && app.TryGetResource(tool.Window.Icon, app.ActualThemeVariant, out object? found) && found is Avalonia.Media.Geometry glyph ? glyph
-        : Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
-    public Avalonia.Media.IBrush IconBrush => Explorer.FileIcons.BrushForFile(Path);
+    /// <summary>The theme's key of its tab's icon: its tool window's, a diff's, or its file's by its name.</summary>
+    public string IconKey => Tool is { } tool ? tool.Window.Icon : Diff is not null ? Explorer.FileIcons.DiffKey : Explorer.FileIcons.FileKey(Path);
+
+    /// <summary>The theme's key of its tab's icon's tint, its file's.</summary>
+    public string IconBrushKey => Explorer.FileIcons.FileBrushKey(Path);
 
     /// <summary>The carets: the editor's while the file is shown there, as left otherwise, moved by every change to the text.</summary>
     public SelectionSet Selections { get; set; } = SelectionSet.Single(0);

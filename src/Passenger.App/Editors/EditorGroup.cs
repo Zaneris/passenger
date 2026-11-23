@@ -933,8 +933,8 @@ public sealed class EditorGroup : DockPanel
         {
             OpenDocument document = tab.Document;
             name.Text = document.Title;
-            icon.Data = document.Icon;
-            icon.Foreground = document.IconBrush;
+            icon.DataKey = document.IconKey;
+            icon.ForegroundKey = document.IconBrushKey;
             ToolTip.SetTip(border, document.Tool is not null ? document.Title
                 : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
             border.Classes.Set(StyleClasses.Follows, document.Follows);

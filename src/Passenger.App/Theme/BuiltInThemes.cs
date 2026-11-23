@@ -62,6 +62,18 @@ public static class BuiltInThemes
         return ThemeImages.WhyNot(image, bytes) is null ? bytes : null;
     }
 
+    /// <summary>A file a built-in theme names beside its own among the app's resources (an icon's SVG), as it is, or null where
+    /// none is carried.</summary>
+    public static byte[]? Beside(string name, string file)
+    {
+        if (Listed(ThemeResources.Kinds).Listed.FirstOrDefault(l => !l.Code && l.Read.Read?.Name == name) is not { } listed
+            || !AssetLoader.Exists(new Uri(Root, ThemeImages.Beside(listed.Path, file))))
+        {
+            return null;
+        }
+        return Read(ThemeImages.Beside(listed.Path, file));
+    }
+
     private static ListedTheme File(string path, bool code, IReadOnlyDictionary<string, ThemeTokenKind> kinds)
     {
         byte[] bytes = Read(path);

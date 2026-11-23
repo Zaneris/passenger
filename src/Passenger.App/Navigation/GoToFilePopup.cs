@@ -54,8 +54,8 @@ public sealed partial class GoToFilePopup : SearchPopup<FileHit>
     /// <summary>A file's row: its icon, its name and its folder at the row's end, as every popup row's detail.</summary>
     protected override Control Row() => Editors.HiddenTabsPopup.TabRow<FileHit>((hit, icon, name, folder) =>
     {
-        icon.Data = hit.Icon;
-        icon.Foreground = hit.IconBrush;
+        icon.DataKey = hit.IconKey;
+        icon.ForegroundKey = hit.IconBrushKey;
         name.Text = hit.Name;
         folder.Text = hit.Folder;
     });
@@ -66,6 +66,6 @@ public sealed record FileHit(string FullPath, string RelativePath)
 {
     public string Name => Path.GetFileName(RelativePath);
     public string Folder => Path.GetDirectoryName(RelativePath) is { Length: > 0 } folder ? folder : string.Empty;
-    public Geometry Icon => FileIcons.ForFile(FullPath);
-    public IBrush IconBrush => FileIcons.BrushForFile(FullPath);
+    public string IconKey => FileIcons.FileKey(FullPath);
+    public string IconBrushKey => FileIcons.FileBrushKey(FullPath);
 }

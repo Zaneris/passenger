@@ -45,6 +45,7 @@ public class ThemeBeyondTests
         ("a code colour scheme gives languages but no background or fonts which it passes over", A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over),
         ("a theme names a carried theme as its base and laid over it keeps all the base gives that it does not", A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not),
         ("an icons saturation brightness and tint work on its colour as CSSs filters do keeping its alpha", An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha),
+        ("a theme gives its own icons by key beside its file the same in both variants or each its own and laid over a base keeps the bases others", A_theme_gives_its_own_icons_by_key_beside_its_file_the_same_in_both_variants_or_each_its_own_and_laid_over_a_base_keeps_the_bases_others),
         ("a picture is read beside its themes file in the source", () => Cases.Each<(string, string, string)>(
         [
             ("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp"),
@@ -109,6 +110,13 @@ public class ThemeBeyondTests
             ("\"base\": [\"Cubicle\"]", "gives base as"),
             ("\"base\": \"Cubicle\", \"vscode\": {\"file\": \"dark.json\"}", "gives both base and vscode"),
         ], row => A_base_Passenger_does_not_carry_refuses_the_theme(row.Item1, row.Item2))),
+        ("an icon that is no SVG beside the themes file refuses the theme and one that does not read as an SVG is refused as its theme is fetched", () => Cases.Each<(string, string)>(
+        [
+            ("\"icons\": {\"Icon.Lantern\": \"run.png\"}", "gives icons' Icon.Lantern as \"run.png\": an icon is an SVG beside the theme's file"),
+            ("\"icons\": {\"Icon.Lantern\": \"../run.svg\"}", "an icon is an SVG beside the theme's file"),
+            ("\"icons\": {\"Icon.Lantern\": {\"dark\": 3}}", "gives icons' Icon.Lantern under dark as 3"),
+            ("\"icons\": [\"run.svg\"]", "gives icons as"),
+        ], row => An_icon_that_is_no_SVG_beside_the_themes_file_refuses_the_theme(row.Item1, row.Item2))),
         ("a pictures kind and size come from its header as PNG JPEG and each kind of WebP write them", A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them),
         ("a picture larger than a background may be is refused before anything decodes it", A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it));
 
@@ -190,6 +198,30 @@ public class ThemeBeyondTests
         Assert.True(ThemeFiles.CodeOf(laid) is { Both.Count: 0 } code && code.Dark.ContainsKey("Syntax.Keyword") && !code.Dark.ContainsKey("Frame"),
             "A code colour scheme over a carried theme takes more than the theme's code");
     }
+
+    private void A_theme_gives_its_own_icons_by_key_beside_its_file_the_same_in_both_variants_or_each_its_own_and_laid_over_a_base_keeps_the_bases_others()
+    {
+        ThemeRead<ThemeFile> read = Theme("""
+            "icons": {"FileIcon.CSharp": "icons/cs.svg", "Icon.Lantern": {"dark": "icons/lantern-dark.svg", "light": "icons/lantern-light.svg"},
+                      "Icon.Kettle": {"light": "icons/kettle.svg"}, "Wand": "icons/wand.svg"}
+            """);
+        ThemeFile own = read.Read!;
+        Assert.Equal(new Dictionary<string, string> { ["FileIcon.CSharp"] = "icons/cs.svg", ["Icon.Lantern"] = "icons/lantern-dark.svg" }, own.DarkIcons);
+        Assert.Equal(new Dictionary<string, string> { ["FileIcon.CSharp"] = "icons/cs.svg", ["Icon.Lantern"] = "icons/lantern-light.svg", ["Icon.Kettle"] = "icons/kettle.svg" }, own.LightIcons);
+        Assert.Equal(["icons/cs.svg", "icons/kettle.svg", "icons/lantern-dark.svg", "icons/lantern-light.svg"], own.IconFiles.Order(StringComparer.Ordinal));
+        Assert.Equal(["Mine.json: Wand in icons is no icon this Passenger draws, so it was passed over"], read.Problems);
+        ThemeFile under = Read("""
+            "icons": {"FileIcon.CSharp": "base/cs.svg", "FileIcon.Npm": "base/npm.svg"}
+            """);
+        ThemeFile laid = ThemeFiles.Over(under, own);
+        Assert.Equal("icons/cs.svg", laid.DarkIcons["FileIcon.CSharp"]);
+        Assert.Equal("base/npm.svg", laid.LightIcons["FileIcon.Npm"]);
+        Assert.Null(ThemeImages.IconWhyNot("cs.svg", Encoding.UTF8.GetBytes("""<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>""")));
+        Assert.Equal("cs.svg is no SVG: its first element is <html>", ThemeImages.IconWhyNot("cs.svg", Encoding.UTF8.GetBytes("<html></html>")));
+        Assert.Contains("more than the 256 KB an icon may hold", ThemeImages.IconWhyNot("big.svg", new byte[300_000]), StringComparison.Ordinal);
+    }
+
+    private void An_icon_that_is_no_SVG_beside_the_themes_file_refuses_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
 
     private void An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha()
     {

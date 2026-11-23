@@ -142,8 +142,8 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         StackPanel row = new() { Margin = new Thickness(0, Gaps.Hair, 0, Gaps.Small), Children = { header, frame } };
         return row.Showing<RecentLocation>(place =>
         {
-            icon.Data = Explorer.FileIcons.ForFile(place.Place.Path);
-            icon.Foreground = Explorer.FileIcons.BrushForFile(place.Place.Path);
+            icon.DataKey = Explorer.FileIcons.FileKey(place.Place.Path);
+            icon.ForegroundKey = Explorer.FileIcons.FileBrushKey(place.Place.Path);
             name.Text = place.Name;
             member.Text = place.Member ?? string.Empty;
             ToolTip.SetTip(header, place.Place.Path);

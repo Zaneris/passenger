@@ -86,15 +86,14 @@ public sealed class SolutionFoldersTests : IDisposable
         MainWindow window = Open();
         ExplorerTree tree = window.ExplorerView.Tree;
         ExplorerNode items = Row(window, NodeKind.SolutionFolder, "Solution Items");
-        Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolder), items.Icon), "A closed solution folder is drawn as a folder on disk is, so it passes for one");
-        Assert.NotSame(Resource(TokenKeys.File_Folder), items.IconBrush);
-        Assert.Same(Resource(TokenKeys.File_SolutionFolder), items.IconBrush);
+        Assert.True(items.IconKey == IconKeys.SolutionFolder, "A closed solution folder is drawn as a folder on disk is, so it passes for one");
+        Assert.Equal(TokenKeys.File_SolutionFolder, items.IconBrushKey);
 
         Ui.ClickRow(window, items);
         Ui.Press(window, "RIGHT");
         Ui.ClickRow(window, Row(window, NodeKind.SolutionFolder, "src"));
         Ui.Press(window, "RIGHT");
-        Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolderOpen), items.Icon), "An open solution folder still shows the closed one's icon");
+        Assert.True(items.IconKey == IconKeys.SolutionFolderOpen, "An open solution folder still shows the closed one's icon");
         // The solution declares the project first and README.md before .editorconfig: the view sorts by kind, then name.
         Assert.Equal(
             ["Shop", "  Solution Items", "    .editorconfig", "    README.md", "  src", "    Shop.Core", "  Shop.Web"],
@@ -461,12 +460,6 @@ public sealed class SolutionFoldersTests : IDisposable
     private static ExplorerNode Row(MainWindow window, NodeKind kind, string name) =>
         window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Kind == kind && r.Name == name)
         ?? throw new InvalidOperationException($"The Explorer shows no {kind} {name}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
-
-    private static object Resource(string key)
-    {
-        Application app = Application.Current!;
-        return app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is not null ? value : throw new InvalidOperationException($"The theme has no {key}");
-    }
 
     /// <summary>Agrees to every question the window asks, keeping their titles in order.</summary>
     private static List<string> Answer(MainWindow window)

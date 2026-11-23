@@ -10,7 +10,7 @@ namespace Passenger.App;
 public sealed record NamedTheme(SourcedTheme? Theme);
 
 /// <summary>Puts a theme and a code colour scheme in force for the process, each named by its source and name: Passenger's
-/// own theme is Tokens.axaml (App.axaml's), under every other; another's tokens, made from its file as kept
+/// own theme is Tokens.axaml (App.axaml's), under every other; another's tokens and icons, made from its file as kept
 /// (<see cref="KeptThemes"/>, or the built-in source's), laid over it in the application's resources, then the scheme's over
 /// either, so the last laid wins. One named but not kept yet is fetched from its source, Passenger's own drawn meanwhile and
 /// said so (<see cref="Said"/>), and laid once kept; one that cannot be fetched is said, never dropped from the settings.
@@ -151,7 +151,7 @@ public static class Themes
     /// it names again.</summary>
     public static void Wear(Application app, ThemeFile? theme, ThemeFile? scheme)
     {
-        Lay(app, theme, scheme, _ => null);
+        Lay(app, theme, scheme, _ => null, _ => null);
         applied = false;
     }
 
@@ -216,9 +216,13 @@ public static class Themes
         Func<string, byte[]?> own = theme is null || wanted is not { From: { } source } shown ? _ => null
             : source == ThemeSource.BuiltIn ? image => BuiltInThemes.Image(false, shown.Name, image)
             : image => KeptThemes.Image(source, false, shown.Name, image);
-        // A picture the theme takes from the carried theme it is laid over is the base's own.
+        Func<string, byte[]?> ownFiles = theme is null || wanted is not { From: { } from } named ? _ => null
+            : from == ThemeSource.BuiltIn ? file => BuiltInThemes.Beside(named.Name, file)
+            : file => KeptThemes.Beside(from, false, named.Name, file);
+        // A picture or icon the theme takes from the carried theme it is laid over is the base's own.
         Func<string, byte[]?> images = theme?.BuiltInBase is { } carried ? image => own(image) ?? BuiltInThemes.Image(false, carried, image) : own;
-        Lay(app, theme, scheme, images);
+        Func<string, byte[]?> beside = theme?.BuiltInBase is { } under ? file => ownFiles(file) ?? BuiltInThemes.Beside(under, file) : ownFiles;
+        Lay(app, theme, scheme, images, beside);
         Say();
     }
 
@@ -334,10 +338,11 @@ public static class Themes
         SaidChanged?.Invoke(null, EventArgs.Empty);
     }
 
-    private static void Lay(Application app, ThemeFile? theme, ThemeFile? scheme, Func<string, byte[]?> images)
+    private static void Lay(Application app, ThemeFile? theme, ThemeFile? scheme, Func<string, byte[]?> images, Func<string, byte[]?> beside)
     {
-        // Made before those in force go; the scheme after the theme, so it wins.
-        ResourceDictionary[] next = [.. ((ThemeFile?[])[theme, scheme]).OfType<ThemeFile>().Select(ThemeResources.Dictionary)];
+        // Made before those in force go; the scheme after the theme, so it wins; the theme's icons with them.
+        ResourceDictionary[] next = [.. ((ThemeFile?[])[theme, scheme]).OfType<ThemeFile>().Select(ThemeResources.Dictionary),
+            .. ((ResourceDictionary?[])[theme is null ? null : ThemeIcons.Dictionary(theme, beside)]).OfType<ResourceDictionary>()];
         IList<IResourceProvider> merged = app.Resources.MergedDictionaries;
         foreach (IResourceProvider was in laid)
         {

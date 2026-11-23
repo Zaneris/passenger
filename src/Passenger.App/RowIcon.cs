@@ -21,6 +21,7 @@ public sealed class RowIcon : Control
     public static readonly StyledProperty<IBrush?> ForegroundProperty = AvaloniaProperty.Register<RowIcon, IBrush?>(nameof(Foreground));
     public static readonly StyledProperty<string?> ForegroundKeyProperty = AvaloniaProperty.Register<RowIcon, string?>(nameof(ForegroundKey));
     public static readonly StyledProperty<bool> TurnedProperty = AvaloniaProperty.Register<RowIcon, bool>(nameof(Turned));
+    public static readonly StyledProperty<bool> PlainFolderProperty = AvaloniaProperty.Register<RowIcon, bool>(nameof(PlainFolder));
 
     /// <summary>Each geometry as a PathIcon's path holds it stretched, made once for every icon drawing it so.</summary>
     private static readonly ConditionalWeakTable<Geometry, Dictionary<Matrix, Geometry>> Stretched = [];
@@ -35,7 +36,7 @@ public sealed class RowIcon : Control
     {
         WidthProperty.OverrideDefaultValue<RowIcon>(Size);
         HeightProperty.OverrideDefaultValue<RowIcon>(Size);
-        AffectsRender<RowIcon>(DataProperty, DataKeyProperty, ForegroundProperty, ForegroundKeyProperty, TurnedProperty);
+        AffectsRender<RowIcon>(DataProperty, DataKeyProperty, ForegroundProperty, ForegroundKeyProperty, TurnedProperty, PlainFolderProperty);
     }
 
     public RowIcon()
@@ -72,6 +73,13 @@ public sealed class RowIcon : Control
         set => SetValue(TurnedProperty, value);
     }
 
+    /// <summary>Whether its icon is a plain folder's, drawn only while Settings shows plain folders' icons.</summary>
+    public bool PlainFolder
+    {
+        get => GetValue(PlainFolderProperty);
+        set => SetValue(PlainFolderProperty, value);
+    }
+
     public IBrush? Foreground
     {
         get => GetValue(ForegroundProperty);
@@ -91,7 +99,7 @@ public sealed class RowIcon : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         Geometry? data = Data ?? (DataKey is { } key ? Resource(key) as Geometry : null);
         IBrush? brush = Foreground ?? Resource(ForegroundKey ?? TokenKeys.Icon) as IBrush;
-        if (data is null)
+        if (data is null || (PlainFolder && !Explorer.FileIcons.ShowsPlainFolders(this)))
         {
             return;
         }
@@ -100,10 +108,10 @@ public sealed class RowIcon : Control
 
     /// <summary>Draws a geometry as a PathIcon arranged at <paramref name="bounds"/>, of size <paramref name="box"/>, draws
     /// it, turned a quarter about its middle as one under a RotateTransform of 90 about its centre is, its colours as the
-    /// theme's look of its icons draws them: the one place every icon is drawn.</summary>
+    /// theme's look of its icons draws them, and an icon a theme gives as an SVG fitted to the same place: the one place
+    /// every icon is drawn.</summary>
     internal static void Draw(DrawingContext context, Geometry data, IBrush? brush, IconLook look, Size bounds, Size box, bool turned, double scale)
     {
-        brush = look.Apply(brush);
         Rect extent = data.Bounds;
         if (extent.Width <= 0 || extent.Height <= 0)
         {
@@ -117,18 +125,23 @@ public sealed class RowIcon : Control
         Vector fit = Stretch.Uniform.CalculateScaling(box, path, StretchDirection.Both);
         Size shown = new Size(path.Width * fit.X, path.Height * fit.Y).Constrain(box);
         Point at = LayoutHelper.RoundLayoutPoint(new Point((available.Width - shown.Width) / 2, (available.Height - shown.Height) / 2), scale);
+        Matrix turn = turned ? Turn(bounds) : Matrix.Identity;
+        // The clip pushed before the turn, so it stands square to the device's pixels.
+        using DrawingContext.PushedState clipped = context.PushClip(Whole(new Rect(shown).TransformToAABB(Matrix.CreateTranslation(at.X, at.Y) * turn), scale));
+        using DrawingContext.PushedState turning = context.PushTransform(turn);
+        if (data is IconPicture picture)
+        {
+            picture.Draw(context, new Rect(at, shown), brush, look);
+            return;
+        }
         // The path arranged at its measure, rounded up, its geometry stretched to fill it.
         Size arranged = LayoutHelper.RoundLayoutSizeUp(LayoutHelper.RoundLayoutSizeUp(path, scale), scale);
         double stretch = Math.Min(arranged.Width / extent.Width, arranged.Height / extent.Height);
         Geometry drawn = StretchedOf(data, Matrix.CreateTranslation(-(Vector)extent.Position) * Matrix.CreateScale(stretch, stretch));
-        Matrix turn = turned ? Turn(bounds) : Matrix.Identity;
-        // The clip pushed before the turn, so it stands square to the device's pixels.
-        using (context.PushClip(Whole(new Rect(shown).TransformToAABB(Matrix.CreateTranslation(at.X, at.Y) * turn), scale)))
-        using (context.PushTransform(turn))
         using (context.PushTransform(Matrix.CreateTranslation(at.X, at.Y)))
         using (context.PushTransform(Matrix.CreateScale(fit.X, fit.Y)))
         {
-            context.DrawGeometry(brush, null, drawn);
+            context.DrawGeometry(look.Apply(brush), null, drawn);
         }
     }
 

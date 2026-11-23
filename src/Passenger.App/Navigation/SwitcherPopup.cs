@@ -14,12 +14,11 @@ namespace Passenger.App.Navigation;
 /// tool window by its icon, its name and its keys.</summary>
 public sealed record SwitcherRow(string Name, string After, OpenDocument? Document, ToolWindow? Window)
 {
-    public Geometry? Icon => Document?.Icon;
+    /// <summary>The theme's key of its icon: its tab's, or its tool window's.</summary>
+    public string? IconKey => Document?.IconKey ?? Window?.Icon;
 
-    public IBrush? IconBrush => Document?.IconBrush;
-
-    /// <summary>The theme's key of a tool window's icon.</summary>
-    public string? IconKey => Window?.Icon;
+    /// <summary>The theme's key of its icon's tint, its tab's.</summary>
+    public string? IconBrushKey => Document?.IconBrushKey;
 
     /// <summary>What a screen reader is told it is, after its name: a file's folder, or a tool window.</summary>
     public string Said => Window is null ? After : "tool window";
@@ -57,9 +56,8 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
 
     protected override Control Row() => HiddenTabsPopup.TabRow<SwitcherRow>((row, icon, name, after) =>
     {
-        icon.Data = row.Icon;
         icon.DataKey = row.IconKey;
-        icon.Foreground = row.IconBrush;
+        icon.ForegroundKey = row.IconBrushKey;
         name.Text = row.Name;
         after.Text = row.After;
     });

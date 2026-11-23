@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Explorer;
+using Passenger.App.Settings;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
@@ -54,6 +55,95 @@ public sealed class FileIconsTests : IDisposable
         Flow.StepApart<FileIconsTests>("each kind of file is drawn in a shape and colour of its own in the Explorer the tabs and the Commit window", t => t.Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window());
         Flow.StepApart<FileIconsTests>("a rows icon draws every icon of the theme pixel for pixel as a PathIcon draws it", t => t.A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it());
         Flow.StepApart<FileIconsTests>("a themes icon saturation brightness and tint reach every icon", t => t.A_themes_icon_saturation_brightness_and_tint_reach_every_icon());
+        Flow.StepApart<FileIconsTests>("a themes own icons replace those it names and leave the rest", t => t.A_themes_own_icons_replace_those_it_names_and_leave_the_rest());
+        Flow.StepApart<FileIconsTests>("a plain folder shows its chevron alone while Settings says so", t => t.A_plain_folder_shows_its_chevron_alone_while_Settings_says_so());
+    }
+
+    /// <summary>A theme's own icons, SVGs kept beside its file, replace in the Explorer those it names as it is chosen, each in
+    /// its own colours or, where it says currentColor, in the colour Passenger draws that icon in; the icons it names none for
+    /// stay Passenger's, and choosing Passenger's own theme brings Passenger's back.</summary>
+    private void A_themes_own_icons_replace_those_it_names_and_leave_the_rest()
+    {
+        string name = $"Own icons {Guid.NewGuid():N}";
+        byte[] green = System.Text.Encoding.UTF8.GetBytes("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#00C000"/></svg>""");
+        byte[] inked = System.Text.Encoding.UTF8.GetBytes("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="currentColor"/></svg>""");
+        string json = "{\"format\": 1, \"name\": \"" + name + "\", \"icons\": {\"FileIcon.CSharp\": \"icons/cs.svg\", \"FileIcon.Npm\": {\"dark\": \"icons/ink.svg\", \"light\": \"icons/ink.svg\"}}}";
+        Assert.Null(KeptThemes.Keep(ThemeSource.Added, false, name, System.Text.Encoding.UTF8.GetBytes(json),
+            new Dictionary<string, byte[]> { ["icons/cs.svg"] = green, ["icons/ink.svg"] = inked }));
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Geometry passengers = (Geometry)Resource("FileIcon.CSharp");
+            window.ApplySettings(window.Settings with { Look = new SourcedTheme(ThemeSource.Added.Name, name) });
+            Ui.Settle();
+            Assert.True(Themes.Said is null, $"The theme of own icons was not laid: {Themes.Said}");
+            Assert.True(Drawn(window, "Program.cs").Data is IconPicture { Name: "icons/cs.svg" }, "The theme's own C# icon is not drawn on Program.cs's row");
+            Assert.True(Drawn(window, "Dockerfile").Data is { } docker && docker is not IconPicture, "An icon the theme gives none for is no longer Passenger's");
+            Color red = ((ISolidColorBrush)Resource(TokenKeys.FileIcon_Red)).Color;
+            using (WriteableBitmap frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("The window drew no frame"))
+            {
+                foreach ((string file, Color expected) in ((string, Color)[])[("Program.cs", Color.Parse("#00C000")), ("package.json", red)])
+                {
+                    byte[] drawn = Pixels(frame, IconMiddle(window, file), window.RenderScaling, 1);
+                    Assert.True(Math.Abs(drawn[0] - expected.R) <= 1 && Math.Abs(drawn[1] - expected.G) <= 1 && Math.Abs(drawn[2] - expected.B) <= 1,
+                        $"{file}'s row draws #{drawn[0]:X2}{drawn[1]:X2}{drawn[2]:X2} in its icon's middle, where the theme's own icon draws {expected}");
+                }
+            }
+            window.ApplySettings(window.Settings with { Look = null });
+            Ui.Settle();
+            Assert.True(ReferenceEquals(passengers, Drawn(window, "Program.cs").Data), "Passenger's own C# icon did not come back with Passenger's own theme");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>With Settings' Show icons on plain folders off, a plain folder's row draws its chevron alone, its icon's place
+    /// left empty so its name stays in line with its files', while a folder Passenger draws apart keeps its icon; on again,
+    /// the plain folder's icon comes back.</summary>
+    private void A_plain_folder_shows_its_chevron_alone_while_Settings_says_so()
+    {
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            Assert.True(Inked(window, "src") > 0 && Inked(window, ".github") > 0, "A folder's row draws no icon with Settings' plain folders' icons on");
+            window.ApplySettings(window.Settings with { PlainFolderIcons = false });
+            Ui.Settle();
+            Assert.True(Inked(window, "src") == 0, $"The plain folder src still draws {Inked(window, "src")} pixels of an icon with Settings' plain folders' icons off");
+            Assert.True(Inked(window, ".github") > 0, ".github, which Passenger draws apart, lost its icon with plain folders' icons off");
+            window.ApplySettings(window.Settings with { PlainFolderIcons = true });
+            Ui.Settle();
+            Assert.True(Inked(window, "src") > 0, "The plain folder src did not draw its icon again once Settings showed plain folders' icons");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+
+        // How many pixels of the lower half of a row's icon's place differ from the row's ground at its far end.
+        static int Inked(MainWindow window, string name)
+        {
+            using WriteableBitmap frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("The window drew no frame");
+            Point middle = IconMiddle(window, name);
+            double scale = window.RenderScaling;
+            Point end = window.ExplorerView.TranslatePoint(new Point(window.ExplorerView.Bounds.Width - 24, 0), window) ?? throw new InvalidOperationException("The Explorer is not laid out");
+            byte[] ground = Pixels(frame, new Point(end.X, middle.Y), scale, 1);
+            byte[] place = Pixels(frame, middle - new Point(RowIcon.Size / 2, 0), scale, RowIcon.Size);
+            int width = PixelSize.FromSize(new Size(RowIcon.Size, Cell), scale).Width;
+            int rows = (int)(RowIcon.Size / 2 * scale);
+            return Enumerable.Range(0, width * rows).Count(i => !place.AsSpan(i * 4, 3).SequenceEqual(ground.AsSpan(0, 3)));
+        }
+    }
+
+    /// <summary>The middle of the icon a row of the Explorer draws, in the window.</summary>
+    private static Point IconMiddle(MainWindow window, string name)
+    {
+        ExplorerNode row = window.ExplorerView.Tree.Rows.First(r => r.Name == name);
+        RowGlyphs glyphs = window.ExplorerView.GetVisualDescendants().OfType<RowGlyphs>().First(i => ReferenceEquals(i.DataContext, row));
+        return glyphs.TranslatePoint(new Point(RowExpander.Column + (RowIcon.Size / 2), ListRow.Height / 2), window) ?? throw new InvalidOperationException("The Explorer's rows are not laid out");
     }
 
     /// <summary>A theme's icon saturation, brightness and tint reach every icon however it is drawn: a row's icon in a file's
@@ -141,12 +231,12 @@ public sealed class FileIconsTests : IDisposable
                     $"The Explorer does not draw {name} in the {colour ?? "plain"} file colour");
             }
             Assert.True(ReferenceEquals(Resource(IconKeys.Explorer), Drawn(window, "src").Data), "A plain folder lost the folder icon");
-            Assert.True(Icons(window.EditorArea).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.CSharp")) && ReferenceEquals(i.Foreground, Resource(TokenKeys.FileIcon_Blue))),
+            Assert.True(Icons(window.EditorArea).Any(i => i.DataKey == "FileIcon.CSharp" && i.ForegroundKey == TokenKeys.FileIcon_Blue),
                 "The open C# file's tab is not drawn with the C# icon");
 
             Ui.Landed(() => window.Vcs is { } vcs && vcs.Changes.Any(c => c.Name == "package.json"), "package.json listed as changed");
             window.DockHost.Show(ToolWindowIds.Commit);
-            Ui.Landed(() => Icons(window.CommitView).Any(i => ReferenceEquals(i.Data, Resource("FileIcon.Npm")) && ReferenceEquals(i.Foreground, Resource(TokenKeys.FileIcon_Red))),
+            Ui.Landed(() => Icons(window.CommitView).Any(i => i.DataKey == "FileIcon.Npm" && i.ForegroundKey == TokenKeys.FileIcon_Red),
                 "the Commit window's package.json drawn with npm's icon");
         }
         finally
@@ -355,7 +445,7 @@ public sealed class FileIconsTests : IDisposable
             ?? throw new InvalidOperationException($"The Explorer shows no {name}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
         RowGlyphs glyphs = window.ExplorerView.GetVisualDescendants().OfType<RowGlyphs>().FirstOrDefault(i => ReferenceEquals(i.DataContext, row))
             ?? throw new InvalidOperationException($"The Explorer draws no icon on {name}'s row");
-        return (glyphs.Icon, glyphs.IconBrush);
+        return (glyphs.Icon ?? (glyphs.IconKey is { } key ? Resource(key) as Geometry : null), glyphs.IconBrush ?? (glyphs.IconBrushKey is { } tint ? Resource(tint) as IBrush : null));
     }
 
     private static object Resource(string key)
