@@ -515,7 +515,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// the parameter the caret's argument fills strong in each that fits. An argument typed that only one overload takes sets
     /// the other back, and once it is gone again both fit; an argument not typed yet is no evidence against either. Arguments
     /// fit as C# converts them: a constant a smaller number's overload, strings a params span of strings, an interpolated
-    /// string its handler.</summary>
+    /// string its handler. A call closed inside another hands the card back to the outer call, whose own close ends it.</summary>
     private void Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit()
     {
         MainWindow window = project.Open("Kinds.cs");
@@ -579,6 +579,18 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.WaitFor(() => Overloads().Any(o => o.Code.EndsWith("AssertInterpolatedStringHandler message)", StringComparison.Ordinal)), () => $"Debug.Assert's overloads: {window.Assist.SignatureText}");
         Assert.True(Overloads().Any(o => o.Code.EndsWith("AssertInterpolatedStringHandler message)", StringComparison.Ordinal) && o.Fits),
             $"An interpolated string set back the overload whose handler takes it: {string.Join(" | ", Overloads())}");
+
+        Ui.Press(window, "END");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("_ = System.Math.Max(");
+        window.KeyTextInput("System.Math.Abs(");
+        window.KeyTextInput("1");
+        Ui.WaitFor(() => Overloads().Any(o => o.Code.Contains(".Abs(", StringComparison.Ordinal)), () => $"Math.Abs's overloads inside Max's call: {window.Assist.SignatureText}");
+        window.KeyTextInput(")");
+        Ui.WaitFor(() => Overloads().Any(o => o.Code.EndsWith("(byte val1, byte val2)", StringComparison.Ordinal)),
+            () => $"Math.Max's overloads again once Abs's call closed inside it, not {window.Assist.SignatureText ?? "no card"}");
+        window.KeyTextInput(")");
+        Ui.WaitFor(() => window.Assist.SignatureCard is null, () => $"the card gone once Max's call closed, not {window.Assist.SignatureText}");
         window.Close();
 
         // The overload the card marks chosen.

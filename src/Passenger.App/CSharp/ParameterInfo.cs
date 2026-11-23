@@ -18,7 +18,7 @@ internal interface IOwnSignatures
 
 /// <summary>Parameter Info: the card over the caret of the signature of the call it is in, its parameter there's
 /// documentation (else the signature's), shown after an opening bracket or a comma, following the caret moved through the
-/// call, and gone after the closing bracket or once the caret leaves it; a language's own (<see cref="Own"/>) first where
+/// call or out of a call closed inside it, and gone after the closing bracket or once the caret leaves it; a language's own (<see cref="Own"/>) first where
 /// it has one. Where the server says which overloads the arguments so far still fit (C#'s), every overload shows, the
 /// parameter the caret's argument fills strong in each that fits, the rest set back. A screen reader is told the
 /// signature as it shows, then the parameter the caret is at as it moves to another.</summary>
@@ -71,11 +71,11 @@ internal sealed class ParameterInfo
     /// <summary>The card while it shows.</summary>
     public Avalonia.Controls.Border? Card => card.IsVisible ? card : null;
 
-    /// <summary>The card shown after a call's bracket or comma just typed, and gone after its closing bracket or the
-    /// statement's end.</summary>
+    /// <summary>The card shown after a call's bracket or comma just typed, and gone after the statement's end; a closing
+    /// bracket typed while it shows asks again, so it follows to the call the caret is still in, or goes where it is in none.</summary>
     public void AfterTyped(char last)
     {
-        if (last is '(' or ',')
+        if (last is '(' or ',' || (last == ')' && card.IsVisible))
         {
             IdeErrors.Observe(Show());
         }
