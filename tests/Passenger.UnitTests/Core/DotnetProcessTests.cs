@@ -33,7 +33,8 @@ public sealed class DotnetProcessTests
     [
         ("dotnet", "/usr/share/dotnet/dotnet /app/Shop.Api.dll --urls http://+:80", "/app/Shop.Api.dll", "Shop.Api"),
         ("dotnet.exe", "\"C:\\Program Files\\dotnet\\dotnet.exe\" \"C:\\My App\\Shop.Api.dll\"", "C:\\My App\\Shop.Api.dll", "Shop.Api"),
-        ("dotnet", "dotnet watch run", null, "dotnet"),
+        ("dotnet", "/usr/share/dotnet/dotnet run --no-build -e DOTNET_WATCH=1 -e DOTNET_STARTUP_HOOKS=/usr/share/dotnet/sdk/10.0.404/DotnetTools/dotnet-watch/10.0.404/tools/net10.0/any/hotreload/net10.0/Microsoft.Extensions.DotNetDeltaApplier.dll", null, "dotnet"),
+        ("dotnet", "/usr/share/dotnet/dotnet exec --fx-version 10.0.15 /opt/passenger/passenger-helper.dll /opt/passenger/debugger/Passenger.DebugAdapter.dll", "/opt/passenger/debugger/Passenger.DebugAdapter.dll", "Passenger.DebugAdapter"),
         ("Passenger.Tests.exe", "C:\\work\\Passenger.Tests.exe", "C:\\work\\Passenger.Tests.dll", "Passenger.Tests"),
         ("passenger-helper", "/opt/passenger/passenger-helper /opt/passenger/host/Passenger.Host.dll --folder /src", "/opt/passenger/host/Passenger.Host.dll", "Passenger.Host"),
         ("passenger-helper.exe", "\"C:\\Passenger\\passenger-helper.exe\" C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "C:\\Passenger\\debugger\\Passenger.DebugAdapter.dll", "Passenger.DebugAdapter"),

@@ -31,20 +31,38 @@ public sealed record DotnetProcess(int Id, string Name, string CommandLine, stri
     /// else the executable's name without its extension.</summary>
     public string Program => IsHosted && Assembly is { } dll ? Named(dll) : Executable;
 
-    /// <summary>The program's own assembly as its command line names it, a path or a name in its working folder: the
-    /// first .dll after the dotnet host or Passenger's helper host (<see cref="ChildProcesses.HelperHost"/>) but the
-    /// helper host's own, else the .dll beside its apphost; null where the host names none.</summary>
+    /// <summary>The program's own assembly as its command line names it, a path or a name in its working folder: the .dll
+    /// the dotnet host or Passenger's helper host (<see cref="ChildProcesses.HelperHost"/>) runs, the one the helper host
+    /// runs where the dotnet host runs it, else the .dll beside its apphost; null where the host runs a command of the
+    /// SDK's (<c>dotnet run -e DOTNET_STARTUP_HOOKS=….dll</c>, as dotnet watch starts a program).</summary>
     public string? Assembly
     {
         get
         {
             List<string> words = Words(CommandLine);
-            if (IsHosted)
+            if (!IsHosted)
             {
-                return words.Skip(1).FirstOrDefault(word => word.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && Named(word) != ChildProcesses.HelperHost);
+                return words.Count == 0 ? null : (words[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? words[0][..^4] : words[0]) + ".dll";
             }
-            return words.Count == 0 ? null : (words[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? words[0][..^4] : words[0]) + ".dll";
+            int ran = Ran(words, 1);
+            return ran < 0 ? null : Named(words[ran]) == ChildProcesses.HelperHost && Ran(words, ran + 1) is >= 0 and int helped ? words[helped] : words[ran];
         }
+    }
+
+    /// <summary>The options the dotnet host takes before the program it runs, each with a value after it.</summary>
+    private static readonly string[] HostOptions = ["--additionalprobingpath", "--additional-deps", "--depsfile", "--fx-version", "--roll-forward",
+        "--roll-forward-on-no-candidate-fx", "--runtimeconfig"];
+
+    /// <summary>Where the .dll is that a host's words from <paramref name="at"/> run, past <c>exec</c> and the host's own
+    /// options, as the dotnet host reads them; -1 where the first word left is no .dll, a command of the SDK's.</summary>
+    private static int Ran(List<string> words, int at)
+    {
+        int word = at < words.Count && words[at] == "exec" ? at + 1 : at;
+        while (word < words.Count && words[word].StartsWith('-'))
+        {
+            word += HostOptions.Contains(words[word], StringComparer.OrdinalIgnoreCase) ? 2 : 1;
+        }
+        return word < words.Count && words[word].EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? word : -1;
     }
 
     /// <summary>The command line's words, the program first, each as it was given.</summary>
