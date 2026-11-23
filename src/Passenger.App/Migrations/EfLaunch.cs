@@ -105,9 +105,9 @@ internal sealed class EfLaunch
     }
 
     /// <summary>The start of one command (its words, its options and <c>--context</c>), its output prefixed as dotnet ef's is
-    /// asked to be, in the startup project's folder.</summary>
+    /// asked to be, in the startup project's folder, sending no telemetry the person has not asked for, as dotnet ef's would.</summary>
     public ProcessStartInfo Command(IEnumerable<string> command) =>
-        ChildProcesses.DotnetCommand([.. host, efDll, .. command, .. tail, "--prefix-output"], folder);
+        ChildProcesses.SendingNoTelemetry(ChildProcesses.DotnetCommand([.. host, efDll, .. command, .. tail, "--prefix-output"], folder));
 
     /// <summary>Roslyn's build host copied where it lacks, once for the launch, before any of its commands starts: what dotnet
     /// ef copies as each starts, which two copying at once fail at.</summary>

@@ -24,12 +24,14 @@ public static class FunctionsHost
     public static string? Func() => Programs.Command("func");
 
     /// <summary>The app's plan as func start runs it, in the folder its build writes, with the arguments given: the AppHost's
-    /// (its <c>--port</c>), else the launch profile's.</summary>
+    /// (its <c>--port</c>), else the launch profile's; func, a tool as dotnet run is, sending no telemetry the person has not
+    /// asked for.</summary>
     public static LaunchPlan Plan(LaunchPlan app, string func, IReadOnlyList<string> arguments) =>
         app with
         {
             Program = func,
             Arguments = ["start", .. arguments],
+            Environment = ChildProcesses.SendingNoTelemetry(app.Environment),
             Leading = 1,
             ArgumentsOfProject = false,
             ByAppHost = false,

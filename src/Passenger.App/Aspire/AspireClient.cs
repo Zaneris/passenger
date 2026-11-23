@@ -263,8 +263,8 @@ public sealed class AspireClient(string? program = null)
         {
             command.AddRange(["--apphost", appHost]);
         }
-        ProcessStartInfo start = ChildProcesses.Command(executable, command, appHost is null ? null : Path.GetDirectoryName(appHost));
-        start.Environment[AspireVariables.TelemetryOptOut] = "1";
+        // Neither the CLI nor what it builds and runs of the AppHost sends telemetry the person has not asked for.
+        ProcessStartInfo start = ChildProcesses.SendingNoTelemetry(ChildProcesses.Command(executable, command, appHost is null ? null : Path.GetDirectoryName(appHost)));
         start.StandardOutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         start.StandardErrorEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         ChildResult ran;

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Passenger.Core;
 
 namespace Passenger.UnitTests.Core;
@@ -5,7 +6,8 @@ namespace Passenger.UnitTests.Core;
 /// <summary>Where a dotnet run for a folder works: an SDK's command for a folder not trusted (every folder, in this process),
 /// or one under a global.json in a folder not trusted, works outside it, in the person's home, so that global.json never
 /// names the SDK that runs; a program's own run (by its path, or after exec) works in the folder, which no global.json
-/// chooses anything for.</summary>
+/// chooses anything for. And what a tool's start is told of telemetry: an SDK's command and a helper running the person's
+/// MSBuild send none the person has not asked for, where a program's own run is left with the person's environment.</summary>
 public sealed class DotnetFolderTests
 {
     private static readonly string Host = Path.GetFullPath(Path.Combine(Path.DirectorySeparatorChar.ToString(), "dotnet-folder-tests", "dotnet"));
@@ -15,10 +17,12 @@ public sealed class DotnetFolderTests
     private static readonly string Repository = Path.GetFullPath(Path.Combine(Path.DirectorySeparatorChar.ToString(), "dotnet-folder-tests", "repo"));
 
     [Fact]
-    public void An_SDKs_command_works_inside_a_folder_only_once_it_is_trusted() => Cases.All(
+    public void An_SDKs_command_works_inside_a_folder_only_once_it_is_trusted_and_sends_no_telemetry_unasked() => Cases.All(
         ("an sdks command for a folder not trusted works in the persons home", An_sdks_command_for_a_folder_not_trusted_works_in_the_persons_home),
         ("a programs own run works in its folder and an sdks command for a folder holding home on the disks root", A_programs_own_run_works_in_its_folder_and_an_sdks_command_for_a_folder_holding_home_on_the_disks_root),
-        ("a trusted folder takes only a global json in a folder trusted too", A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too));
+        ("a trusted folder takes only a global json in a folder trusted too", A_trusted_folder_takes_only_a_global_json_in_a_folder_trusted_too),
+        ("a tools start sends no telemetry the person has not asked for and a programs own run is left as the person has it",
+            A_tools_start_sends_no_telemetry_the_person_has_not_asked_for_and_a_programs_own_run_is_left_as_the_person_has_it));
 
     private void An_sdks_command_for_a_folder_not_trusted_works_in_the_persons_home()
     {
@@ -37,6 +41,47 @@ public sealed class DotnetFolderTests
         string above = Path.GetDirectoryName(Home)!;
         Assert.Equal(Path.GetPathRoot(above), ChildProcesses.DotnetCommand(Host, ["--version"], above).WorkingDirectory);
         Assert.Equal(string.Empty, ChildProcesses.DotnetCommand(Host, ["--version"], null).WorkingDirectory);
+    }
+
+    /// <summary>Each telemetry switch an SDK's command, a question of it and a helper running the person's MSBuild start with is
+    /// the person's own where this process's environment sets it, else on; a question's the .NET SDK's on whatever is set, so
+    /// it ends with its answer. A program's own run starts with each as the person has it, and a value the person gave a
+    /// tool, or its inherited environment holds, stands.</summary>
+    private void A_tools_start_sends_no_telemetry_the_person_has_not_asked_for_and_a_programs_own_run_is_left_as_the_person_has_it()
+    {
+        ProcessStartInfo question = ChildProcesses.DotnetQuestion(Host, ["--version"], Repository);
+        foreach ((string tool, ProcessStartInfo start) in (ReadOnlySpan<(string, ProcessStartInfo)>)[
+            ("dotnet build", ChildProcesses.DotnetCommand(Host, ["build", "App.csproj"], Repository)),
+            ("dotnet watch", ChildProcesses.DotnetCommand(Host, ["watch", "run", "--project", "App.csproj"], null)),
+            ("dotnet --version, asked", question),
+            ("a helper running the persons MSBuild", ChildProcesses.NamingDotnet(new ProcessStartInfo(Host), Repository))])
+        {
+            foreach (string variable in TelemetryOptOuts.All)
+            {
+                string? expected = start == question && variable == TelemetryOptOuts.DotnetCli ? TelemetryOptOuts.On : Environment.GetEnvironmentVariable(variable) ?? TelemetryOptOuts.On;
+                Assert.True(start.Environment.TryGetValue(variable, out string? given) && given == expected,
+                    $"{tool} started with {variable} {given ?? "unset"}, where {expected} keeps it from sending what the person never asked to send, or keeps the person's own");
+            }
+        }
+        ProcessStartInfo own = ChildProcesses.DotnetCommand(Host, ["exec", "--runtimeconfig", "App.runtimeconfig.json", "App.dll"], Repository);
+        foreach (string variable in TelemetryOptOuts.All)
+        {
+            string? given = own.Environment.TryGetValue(variable, out string? set) ? set : null;
+            Assert.True(given == Environment.GetEnvironmentVariable(variable), $"A program's own run started with {variable} {given}, which the person's environment does not set");
+        }
+
+        ProcessStartInfo kept = new(Host);
+        kept.Environment[TelemetryOptOuts.Avalonia] = "0";
+        kept.Environment[TelemetryOptOuts.TestingPlatform] = string.Empty;
+        ChildProcesses.SendingNoTelemetry(kept);
+        Assert.True(kept.Environment[TelemetryOptOuts.Avalonia] == "0" && kept.Environment[TelemetryOptOuts.TestingPlatform] == string.Empty,
+            "A tool's telemetry switch the person set was overridden, so a person who chose to send Avalonia's or the Testing Platform's telemetry no longer does");
+        Dictionary<string, string> over = ChildProcesses.SendingNoTelemetry(new Dictionary<string, string> { [TelemetryOptOuts.Avalonia] = "0" },
+            variable => variable == TelemetryOptOuts.DotnetCli ? "true" : null);
+        Assert.True(over[TelemetryOptOuts.Avalonia] == "0" && !over.ContainsKey(TelemetryOptOuts.DotnetCli),
+            "Variables a tool is started with over its inherited environment lost the person's own value, or gave one over what the environment it inherits sets");
+        Assert.True(TelemetryOptOuts.All.Where(v => v is not TelemetryOptOuts.Avalonia and not TelemetryOptOuts.DotnetCli).All(v => over.GetValueOrDefault(v) == TelemetryOptOuts.On),
+            $"Variables a tool is started with over its inherited environment lack a telemetry switch neither sets: {string.Join(", ", over.Select(v => $"{v.Key}={v.Value}"))}");
     }
 
     /// <summary>A trusted folder takes what the host reads there only where the nearest global.json over it, whose sdk.paths

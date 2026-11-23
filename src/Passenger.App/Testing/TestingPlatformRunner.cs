@@ -361,6 +361,8 @@ public sealed class TestingPlatformRunner : ITestRunner
                 "--client-port", ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture),
             ];
             string folder = Path.GetDirectoryName(assembly.Path)!;
+            // A test program, debugged or not, sends no telemetry the person has not asked for.
+            environment = ChildProcesses.SendingNoTelemetry(environment);
             StringBuilder said = new();
             Process? process = null;
             Task heard = Task.CompletedTask;
@@ -384,7 +386,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             else
             {
-                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(folder), arguments, folder, environment ?? new Dictionary<string, string>(), assembly.Framework));
+                id = await debugger.LaunchAsync(new TestHostStart(Dotnet.Host(folder), arguments, folder, environment, assembly.Framework));
             }
             TcpClient client;
             try

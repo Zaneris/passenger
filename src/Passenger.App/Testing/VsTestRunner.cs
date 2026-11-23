@@ -101,6 +101,8 @@ public sealed class VsTestRunner : ITestRunner
         ConsoleParameters parameters = new()
         {
             InheritEnvironmentVariables = true,
+            // Inherited by every test host it starts, so neither it nor what it runs sends telemetry the person has not asked for.
+            EnvironmentVariables = ChildProcesses.SendingNoTelemetry(variables: null).ToDictionary(v => v.Key, string? (v) => v.Value),
         };
         if (Environment.GetEnvironmentVariable(LogVariable) is { Length: > 0 } logFile)
         {

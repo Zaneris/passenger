@@ -104,13 +104,14 @@ public static class ChildProcesses
     }
 
     /// <summary>The .NET command line (<see cref="Dotnet.Host"/>, the one the folder's projects take) with these arguments,
-    /// in English (the IDE reads what it says) and with no first-run banner. It builds in its own process and worker nodes,
-    /// never in MSBuild's server, which would outlive it; a node left for the next build is the IDE's alone, so it ends with
-    /// the IDE (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
+    /// in English (the IDE reads what it says) and with no first-run banner; an SDK's command (<see cref="RunsSdk"/>) sending
+    /// no telemetry the person has not asked for (<see cref="SendingNoTelemetry(ProcessStartInfo)"/>). It builds in its own
+    /// process and worker nodes, never in MSBuild's server, which would outlive it; a node left for the next build is the
+    /// IDE's alone, so it ends with the IDE (<see cref="Lifeline"/>). A <see cref="FileNotFoundException"/> when there is none.</summary>
     public static ProcessStartInfo DotnetCommand(IEnumerable<string> arguments, string? folder = null)
     {
         string[] given = [.. arguments];
-        return TakingDotnet(AsDotnet(Command(Dotnet.Host(folder), given, DotnetFolder(given, folder))), folder);
+        return TakingDotnet(AsDotnet(Command(Dotnet.Host(folder), given, DotnetFolder(given, folder)), RunsSdk(given)), folder);
     }
 
     /// <summary><see cref="DotnetCommand(IEnumerable{string}, string?)"/> of the dotnet at <paramref name="host"/>, an
@@ -118,7 +119,36 @@ public static class ChildProcesses
     public static ProcessStartInfo DotnetCommand(string host, IEnumerable<string> arguments, string? folder)
     {
         string[] given = [.. arguments];
-        return AsDotnet(Command(host, given, DotnetFolder(given, folder)));
+        return AsDotnet(Command(host, given, DotnetFolder(given, folder)), RunsSdk(given));
+    }
+
+    /// <summary>A start of a .NET or Avalonia tool run for a folder's code given each of <see cref="TelemetryOptOuts.All"/>
+    /// its environment lacks: a value the person set stands, whatever it says. Never a program's own run, nor the terminal's
+    /// shell, whose environment is the person's.</summary>
+    public static ProcessStartInfo SendingNoTelemetry(ProcessStartInfo start)
+    {
+        foreach (string variable in TelemetryOptOuts.All)
+        {
+            start.Environment.TryAdd(variable, TelemetryOptOuts.On);
+        }
+        return start;
+    }
+
+    /// <summary>The variables a tool is started with over an environment it inherits, with each of
+    /// <see cref="TelemetryOptOuts.All"/> that neither they nor <paramref name="inherited"/> (this process's own environment
+    /// where null) set, as <see cref="SendingNoTelemetry(ProcessStartInfo)"/> gives a start.</summary>
+    public static Dictionary<string, string> SendingNoTelemetry(IReadOnlyDictionary<string, string>? variables, Func<string, string?>? inherited = null)
+    {
+        inherited ??= Environment.GetEnvironmentVariable;
+        Dictionary<string, string> sent = new(variables ?? new Dictionary<string, string>(), OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (string variable in TelemetryOptOuts.All)
+        {
+            if (!sent.ContainsKey(variable) && inherited(variable) is null)
+            {
+                sent[variable] = TelemetryOptOuts.On;
+            }
+        }
+        return sent;
     }
 
     /// <summary>Where a dotnet run for <paramref name="folder"/> works: there, but where the command runs an SDK (anything but
@@ -178,7 +208,7 @@ public static class ChildProcesses
         {
             throw new FileNotFoundException($"Passenger's helper host is missing from {beside}", program);
         }
-        return AsDotnet(Command(program, [.. words, assembly, .. arguments], folder));
+        return AsDotnet(Command(program, [.. words, assembly, .. arguments], folder), sdk: false);
     }
 
     /// <summary>A helper of the solution's (Roslyn's server, the project host) started with the runtime compacting its heap,
@@ -197,9 +227,11 @@ public static class ChildProcesses
     /// <summary>A helper's start (<see cref="HelperCommand"/>) naming the person's .NET command line (<see cref="Dotnet.Host"/>,
     /// the one the folder's projects take) as the one MSBuild, its SDK resolvers and its tools take for the installation, as
     /// the command line names itself to the builds it runs: the helper's own host is none of the person's. Where there is
-    /// none, none is named.</summary>
+    /// none, none is named. What it runs of the person's sends no telemetry they have not asked for
+    /// (<see cref="SendingNoTelemetry(ProcessStartInfo)"/>).</summary>
     public static ProcessStartInfo NamingDotnet(ProcessStartInfo start, string? folder = null)
     {
+        SendingNoTelemetry(start);
         try
         {
             start.Environment[RuntimeVariables.HostPath] = Dotnet.Host(folder);
@@ -229,9 +261,14 @@ public static class ChildProcesses
         return start;
     }
 
-    /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand(IEnumerable{string}, string?)"/>).</summary>
-    private static ProcessStartInfo AsDotnet(ProcessStartInfo start)
+    /// <summary>A start given the .NET command line's environment (<see cref="DotnetCommand(IEnumerable{string}, string?)"/>),
+    /// sending no telemetry where it runs an <paramref name="sdk"/>.</summary>
+    private static ProcessStartInfo AsDotnet(ProcessStartInfo start, bool sdk)
     {
+        if (sdk)
+        {
+            SendingNoTelemetry(start);
+        }
         start.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
         start.Environment["DOTNET_NOLOGO"] = "1";
         // MSBuild writes UTF-8, which is how its output is read, on every Windows: by itself it does only from 10 1909 on.
@@ -264,7 +301,7 @@ public static class ChildProcesses
 
     private static ProcessStartInfo Asked(ProcessStartInfo start)
     {
-        start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        start.Environment[TelemetryOptOuts.DotnetCli] = TelemetryOptOuts.On;
         return start;
     }
 

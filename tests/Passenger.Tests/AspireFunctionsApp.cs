@@ -125,7 +125,7 @@ public sealed class AspireFunctionsApp : SharedProject
                     ["environmentVariables"] = new JsonObject
                     {
                         ["HOME"] = FuncHome,
-                        ["FUNCTIONS_CORE_TOOLS_TELEMETRY_OPTOUT"] = "1",
+                        [TelemetryOptOuts.FunctionsCoreTools] = TelemetryOptOuts.On,
                     },
                 },
             },
