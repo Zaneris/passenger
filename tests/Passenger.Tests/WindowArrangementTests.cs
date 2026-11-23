@@ -55,7 +55,7 @@ public sealed class WindowArrangementTests : IDisposable
         Flow.StepApart<WindowArrangementTests>("a tool window closed by its x leaves its stripe through a restart until its action opens it and keeping icons changes only the x", t => t.A_tool_window_closed_by_its_x_leaves_its_stripe_through_a_restart_until_its_action_opens_it_and_keeping_icons_changes_only_the_x());
         Flow.StepApart<WindowArrangementTests>("Unit Tests dragged onto the editors is a tab among the files through a restart and docks again by its menu and by a drag", t => t.Unit_Tests_dragged_onto_the_editors_is_a_tab_among_the_files_through_a_restart_and_docks_again_by_its_menu_and_by_a_drag());
         Flow.StepApart<WindowArrangementTests>("a themes layout places a tool window among the editors", t => t.A_themes_layout_places_a_tool_window_among_the_editors());
-        Flow.StepApart<WindowArrangementTests>("Find in Files matches are kept in the Find window once one is gone to and Open in Find Windows keys put them there", t => t.Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_and_Open_in_Find_Windows_keys_put_them_there());
+        Flow.StepApart<WindowArrangementTests>("Find in Files matches are kept in the Find window once one is gone to Open in Find Windows keys put them there and they follow their file renamed", t => t.Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_Open_in_Find_Windows_keys_put_them_there_and_they_follow_their_file_renamed());
         Flow.StepApart<WindowArrangementTests>("an agents call for a window whose place is hidden docks it behind never over the editors with the persons keys", t => t.An_agents_call_for_a_window_whose_place_is_hidden_docks_it_behind_never_over_the_editors_with_the_persons_keys());
     }
 
@@ -244,7 +244,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    private void Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_and_Open_in_Find_Windows_keys_put_them_there()
+    private void Find_in_Files_matches_are_kept_in_the_Find_window_once_one_is_gone_to_Open_in_Find_Windows_keys_put_them_there_and_they_follow_their_file_renamed()
     {
         MainWindow window = Open();
         try
@@ -273,6 +273,23 @@ public sealed class WindowArrangementTests : IDisposable
             Ui.Press(window, OperatingSystem.IsMacOS() ? "meta ENTER" : "control ENTER");
             Assert.True(window.Find.Shown == "Occurrences of 'Two'" && window.Find.IsKeyboardFocusWithin,
                 $"Open in Find Window's keys left {window.Find.Shown} in the Find window, its keys {(window.Find.IsKeyboardFocusWithin ? "there" : "elsewhere")}");
+
+            // A file renamed while open takes its matches along: named anew, following its edits and gone to there.
+            Assert.Null(Ui.Await(window.RenameAsync(Path.Combine(folder, "Two.cs"), "Second.cs"), "the rename of Two.cs"));
+            string renamed = Passenger.Core.PathNames.Canonical(Path.Combine(folder, "Second.cs"));
+            Assert.Null(window.OpenFile(renamed));
+            Ui.Settle();
+            window.EditorArea.CodeEditor.GoTo(new Passenger.Text.TextPosition(0, 0));
+            Ui.Press(window, "ENTER");
+            Passenger.App.ToolWindows.FindRow match = window.Find.Rows.Single(r => r.Usage is not null);
+            Assert.True(match.Usage!.Path == renamed && match.Usage.Line == 1 && match.Detail == "2" && window.Find.Rows.Any(r => r.Label == "Second.cs")
+                && !window.Find.Rows.Any(r => r.Label == "Two.cs"),
+                $"The match in Two.cs, renamed Second.cs and pushed a line down, is listed at {match.Usage.Path}:{match.Detail} under [{string.Join(", ", window.Find.Rows.Where(r => r.Usage is null).Select(r => r.Label))}]");
+            window.Find.Selected = match;
+            window.Find.FocusRows();
+            Ui.Press(window, "ENTER");
+            Assert.True(window.EditorArea.Active?.Path == renamed && window.EditorArea.CodeEditor.CaretPosition.Line == 1,
+                $"Going to the match in Second.cs opened {window.EditorArea.Active?.Path} at line {window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
         }
         finally
         {

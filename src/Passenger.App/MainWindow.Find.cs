@@ -55,6 +55,9 @@ public partial class MainWindow
             }
         };
         Editors.Closed += (_, document) => find?.Detach(document.Path);
+        // A file moved, here or with a folder another program moved, is where its usages are from then on.
+        Editors.Moved += (_, move) => find?.Move(move.From, move.To);
+        Editors.Followed += (_, move) => find?.Move(move.From, move.To);
         assist.UsagesFound += (_, found) => IdeErrors.Observe(ShowUsagesAsync(found));
         actions!.Running += (_, running) =>
         {

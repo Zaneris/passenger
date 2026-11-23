@@ -81,6 +81,20 @@ public sealed class FindRow(string label, string? detail, int depth, Usage? usag
         Detail = (line + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Its file moved: a usage's row is in the file where it went, and a file's row takes its usages' file's
+    /// name.</summary>
+    internal void Moved(string from, string to)
+    {
+        if (usage is not null)
+        {
+            usage = usage with { Path = PathNames.Moved(usage.Path, from, to) };
+        }
+        else if (Children is [{ Usage: { } first }, ..] && Path.GetFileName(first.Path) is var name && name != label)
+        {
+            Label = name;
+        }
+    }
+
     public bool Expands => Children.Count > 0;
 
     public bool IsExpanded
@@ -262,6 +276,37 @@ public sealed class FindView : DockPanel
         if (attached && preview.Tag is string previewed && PathNames.Same(previewed, path))
         {
             previewFollows.Restart();
+        }
+    }
+
+    /// <summary>A file or folder moved: the usages found in it, or in a file it holds, are where it went from now on, their
+    /// files' rows named as they are now, and the code beside, showing one, is shown from there.</summary>
+    public void Move(string from, string to)
+    {
+        foreach (string path in placed.Keys.Where(p => PathNames.Within(p, from)).ToList())
+        {
+            placed.Remove(path, out List<FindRow>? rows);
+            string now = PathNames.Moved(path, from, to);
+            foreach (FindRow row in rows!)
+            {
+                row.Moved(from, to);
+            }
+            if (placed.TryGetValue(now, out List<FindRow>? there))
+            {
+                there.AddRange(rows);
+            }
+            else
+            {
+                placed[now] = rows;
+            }
+        }
+        foreach (FindRow file in searches.SelectMany(s => Every(s.Roots)).Where(r => r.Usage is null))
+        {
+            file.Moved(from, to);
+        }
+        if (attached && preview.Tag is string previewed && PathNames.Within(previewed, from))
+        {
+            ShowPreview();
         }
     }
 
