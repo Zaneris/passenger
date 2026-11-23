@@ -222,7 +222,7 @@ public sealed class RequestsView : DockPanel
             TextBlock verb = Tags.WordsOf(method);
             verb.Text = request.Method;
             verb.Resource(TextBlock.ForegroundProperty, ref methodColour, EndpointsView.MethodColour(request.Method));
-            string time = request.Milliseconds is { } ms ? string.Create(CultureInfo.InvariantCulture, $"{ms:0} ms") : "…";
+            string time = request.Milliseconds is { } ms ? $"{Numbers.Said(ms, 0)} ms" : "…";
             outcome.Text = $"{(request.Status is { } status ? status.ToString(CultureInfo.InvariantCulture) : "…")}  {time}";
             outcome.Resource(TextBlock.ForegroundProperty, ref outcomeColour, request.Error is not null || request.Status >= 500 ? TokenKeys.Error : null);
             repeated.IsVisible = request.HasRepeats;
@@ -259,7 +259,7 @@ public sealed class RequestsView : DockPanel
         {
             string rows = command.Rows is { } count and >= 0 ? $"{Plural.Of(count, "row")} changed  "
                 : command.Reads is { } reads ? $"{Plural.Of(reads, "read")}  " : string.Empty;
-            outcome.Text = command.Error ?? string.Create(CultureInfo.InvariantCulture, $"{rows}{command.Milliseconds:0.#} ms");
+            outcome.Text = command.Error ?? $"{rows}{Numbers.Said(command.Milliseconds, 1)} ms";
             slow.IsVisible = command.Slow;
             repeated.IsVisible = command.Repeated;
             ((TextBlock)repeated.Child!).Text = command.Repeated ? $"×{command.Runs}" : string.Empty;

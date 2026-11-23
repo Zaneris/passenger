@@ -39,6 +39,8 @@ public sealed class LiveRequestsTests
         app.MapGet("/orders", (Shop db) => string.Join(", ", db.Orders.ToList().Select(o => $"{o.Customer}: {db.Lines.Count(l => l.OrderId == o.Id)}")));
         app.MapGet("/sign-in/{name}", (string name, Shop db) =>
         {
+            // Held over a second, so its time is said in thousands.
+            Thread.Sleep(1100);
             string password = name + "-secret";
             return db.Orders.Any(o => o.Customer == password) ? "in" : "out";
         });
@@ -198,6 +200,9 @@ public sealed class LiveRequestsTests
             Assert.DoesNotContain("ada-secret", signIn.Parameters, StringComparison.Ordinal);
             Assert.DoesNotContain("ada-secret", window.Requests.Rows.OfType<RequestsView.CommandRow>().Select(r => r.Command.Text + r.Command.Parameters).Aggregate(string.Empty, string.Concat), StringComparison.Ordinal);
             Assert.False(one.HasRepeats, "A request that ran one command was marked as an N+1");
+            // A request's time is said in the IDE's digits, thousands set apart.
+            string time = RequestTime(window, window.RequestLog.Requests.Single(r => r.Path == "/sign-in/ada"));
+            Assert.True(System.Text.RegularExpressions.Regex.IsMatch(time, @"^200  \d,\d{3} ms$"), $"The sign-in, over a second, is said as \"{time}\", not as the IDE says a number");
 
             // EF's @p0, @p1… name no column: a value is masked by the column its command's text has it fill or meet.
             LiveRequest signUp = window.RequestLog.Requests.Single(r => r.Path == "/sign-up/ada");
@@ -611,6 +616,17 @@ public sealed class LiveRequestsTests
                 ?? throw new Xunit.Sdk.XunitException($"The pointer on the words of the command {row.Command.Text}'s row finds {found?.GetType().Name ?? "nothing"}, with no tooltip"));
         }
         return [.. tips];
+    }
+
+    /// <summary>What a request's row says of its status and time, the row scrolled into view first.</summary>
+    private static string RequestTime(MainWindow window, LiveRequest request)
+    {
+        ListBox list = window.Requests.GetVisualDescendants().OfType<ListBox>().Single();
+        list.ScrollIntoView(window.Requests.Rows.ToList().IndexOf(request));
+        Ui.Settle();
+        Control shown = list.ContainerFromIndex(window.Requests.Rows.ToList().IndexOf(request)) ?? throw new Xunit.Sdk.XunitException($"The row of the request {request.Path} is not shown");
+        return shown.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).OfType<string>().FirstOrDefault(t => t.EndsWith(" ms", StringComparison.Ordinal))
+            ?? throw new Xunit.Sdk.XunitException($"The row of the request {request.Path} says no time");
     }
 
     /// <summary>The shop written into a folder and restored from the run's local feed, its launch profile serving at the port

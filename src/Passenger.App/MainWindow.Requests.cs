@@ -292,7 +292,7 @@ public partial class MainWindow
         {
             said.Append('\n').Append(request.Method).Append(' ').Append(request.Path).Append(request.Query)
                 .Append(request.Status is { } status ? $" {status.ToString(CultureInfo.InvariantCulture)}" : " (under way)")
-                .Append(request.Milliseconds is { } ms ? string.Create(CultureInfo.InvariantCulture, $" {ms:0} ms") : string.Empty);
+                .Append(request.Milliseconds is { } ms ? $" {Numbers.Said(ms, 0)} ms" : string.Empty);
             if (request.Route is { } route)
             {
                 said.Append(" -> ").Append(RouteRequests.Title(route)).Append(", ").Append(route.Handler)
@@ -309,7 +309,7 @@ public partial class MainWindow
             foreach (LiveCommand command in request.Commands)
             {
                 said.Append("\n  ").Append(string.Join(' ', command.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)))
-                    .Append(string.Create(CultureInfo.InvariantCulture, $" ({command.Milliseconds:0.#} ms"))
+                    .Append($" ({Numbers.Said(command.Milliseconds, 1)} ms")
                     .Append(command.Rows is { } rows and >= 0 ? $", {Numbers.Said(rows)} rows changed" : command.Reads is { } reads ? $", {Numbers.Said(reads)} reads" : string.Empty)
                     .Append(command.Parameters is { Length: > 0 } parameters ? $", {parameters}" : string.Empty)
                     .Append(command.Repeated ? $", run {Numbers.Said(command.Runs)} times in this request" : string.Empty)
