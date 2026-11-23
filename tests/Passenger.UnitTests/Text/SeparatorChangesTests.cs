@@ -20,6 +20,9 @@ public class SeparatorChangesTests
         ("a\nb", "a\nb\n", "Line separators changed: LF added at the end"),
         ("a\r\nb\r\n", "a\r\nb", "Line separators changed: CRLF removed from the end"),
         ("a\nb\nc", "a\r\nb\r\nc\r\n", "Line separators changed: 2 lines from LF to CRLF; CRLF added at the end"),
+        // The text's end is its last line's, whichever lines were added or changed before it.
+        ("a\nb", "a\nb\nc\n", "Line separators changed: LF added at the end"),
+        ("a\nb\n", "a\nc", "Line separators changed: LF removed from the end"),
     ], row =>
     {
         (string before, string after, string said) = row;
@@ -33,6 +36,9 @@ public class SeparatorChangesTests
         ("a\r\nb\r\n", "a\r\nb\r\n"),
         ("", ""),
         ("a\nb\n", "a\nB\n"),
+        // A line added after a last line with none, or a last line removed, leaves the text ending as it did.
+        ("a\nb", "a\nb\nc"),
+        ("a\nb\nc", "a\nb"),
     ], row =>
     {
         (string before, string after) = row;

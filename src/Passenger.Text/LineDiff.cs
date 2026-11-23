@@ -161,10 +161,10 @@ public static class LineDiff
         return text.ToString();
     }
 
-    /// <summary>How the lines two texts have alike (those no hunk takes in) changed their separators, in words ("Line
-    /// separators changed: 3 lines from LF to CRLF; LF added at the end"), which a comparison of their lines alone never
-    /// sees; null where none did. With <paramref name="storedAlike"/>, LF and CRLF count as one separator, so only one
-    /// added or removed at the end is said.</summary>
+    /// <summary>How the lines two texts have alike (those no hunk takes in) changed their separators, and whether the texts
+    /// end with one, in words ("Line separators changed: 3 lines from LF to CRLF; LF added at the end"), which a comparison
+    /// of their lines alone never sees; null where none did. With <paramref name="storedAlike"/>, LF and CRLF count as one
+    /// separator, so only one added or removed at the end is said.</summary>
     public static string? SeparatorChanges(string before, string after, bool storedAlike)
     {
         string[] a = Lines(before);
@@ -181,7 +181,8 @@ public static class LineDiff
         void Pair(int line, int other)
         {
             (string from, string to) = (before(line), after(other));
-            if (from == to || (storedAlike && from.Length > 0 && to.Length > 0))
+            // Only a last line ends with none: whether a text ends with one is said apart.
+            if (from == to || from.Length == 0 || to.Length == 0 || storedAlike)
             {
                 return;
             }
@@ -210,17 +211,21 @@ public static class LineDiff
         {
             Pair(i, j);
         }
-        if (changed.Count == 0)
+        List<string> said = [.. changed.Select(c => $"{Plural.Of(c.Lines, "line")} from {c.From} to {c.To}")];
+        // Whether a text ends with a separator is its last line's, whatever lines were added or removed before it.
+        if (beforeLines > 0 && afterLines > 0)
         {
-            return null;
+            switch ((before(beforeLines - 1), after(afterLines - 1)))
+            {
+                case ("", { Length: > 0 } added):
+                    said.Add($"{added} added at the end");
+                    break;
+                case ({ Length: > 0 } removed, ""):
+                    said.Add($"{removed} removed from the end");
+                    break;
+            }
         }
-        // Only a text's last line ends with no separator.
-        return "Line separators changed: " + string.Join("; ", changed.Select(c => (c.From, c.To) switch
-        {
-            ("", _) => $"{c.To} added at the end",
-            (_, "") => $"{c.From} removed from the end",
-            _ => $"{Plural.Of(c.Lines, "line")} from {c.From} to {c.To}",
-        }));
+        return said.Count == 0 ? null : "Line separators changed: " + string.Join("; ", said);
     }
 
     /// <summary>Each of a text's <see cref="Lines"/>' separator, as <see cref="SeparatorChanges(IReadOnlyList{DiffHunk}, int, int, Func{int, string}, Func{int, string}, bool)"/> takes them.</summary>
