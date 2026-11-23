@@ -750,11 +750,11 @@ public static class OpenWindows
         };
     }
 
-    /// <summary>Closes every window still open, the last opened first, waits for what each started to end, and what each
-    /// the test closed itself started (its own limit kills what will not), then for their background work to land, which a
-    /// dispatcher that never runs again could not let go. A window left open (one that failed) leaves no warm server for the
-    /// next test: the one it would keep is ended with the rest. Whether it all landed: work that never does, the next window
-    /// test lets go of as it starts.</summary>
+    /// <summary>Closes every window still open, the last opened first, unsaved (a failed step may have taken its folder, where
+    /// a save refused would ask and keep it open into the next test), waits for what each started to end, and what each the
+    /// test closed itself started (its own limit kills what will not), then for their background work to land. A window left
+    /// open leaves no warm server for the next test: the one it would keep is ended with the rest. Whether it all landed:
+    /// work that never does, the next window test lets go of as it starts.</summary>
     public static bool CloseAll()
     {
         if (!Dispatcher.UIThread.CheckAccess())
@@ -768,6 +768,10 @@ public static class OpenWindows
             Open.RemoveAt(Open.Count - 1);
             if (last.IsVisible)
             {
+                if (last is Passenger.App.MainWindow left)
+                {
+                    left.Autosaves = false;
+                }
                 last.Close();
                 if (last is Passenger.App.MainWindow { Ended: { } ended } closed)
                 {
