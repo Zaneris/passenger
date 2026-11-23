@@ -870,9 +870,9 @@ public sealed partial class Vim
                 run++;
             }
             run = run == last ? run - 1 : run;
-            if (run > text.GetLineFromOffset(blank))
+            if (run > text.GetLineFromOffset(blank) && blank + 1 == VimMotions.LineOf(text, blank).End)
             {
-                // Empty lines after that white are taken in place of a sentence, short of the text's last line.
+                // Empty lines after a white of blanks alone are taken in place of a sentence, short of the text's last line.
                 return r with { Cursor = text.GetLineStart(run) };
             }
             return VimTextObjects.Of(text, blank + 1, "s", inner: true, 1, breakEnds) is { } sentence && sentence.End > blank + 1 && text[blank + 1] is not ('\n' or '\r')
