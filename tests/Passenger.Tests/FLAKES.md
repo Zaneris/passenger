@@ -28,6 +28,18 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
   - Outside the code: 7 (the runner, GitHub, xunit, Rosetta).
   - Unlabelled: 7.
 
+## 2026-11-23
+
+- `ContainerProfilingTests`' `A_program_in_a_container_is_profiled_and_snapshotted_there_debugged_or_held_at_its_start`,
+  CI 45088645427 (Linux, the report work in gate shard 2's job), at 4a288a12f: "The flow's step 2 failed … The IDE was not
+  quiet within 180 s. Still busy: background work begun at ProfilerCommands.cs:1172, for 3 minutes", with
+  `passenger-tools heap --pid 1` still running in the container. **A wait in the IDE with no limit**: the container
+  tools' snapshot made requests of the program's runtime with no limit (the sessions' starts through
+  `SessionStarts.OnAsync`, the induced collection's start, the runtime's dump), and the IDE's own limit, 10 minutes, said
+  nothing of where they stood, so which request the runtime left unanswered is unknown; not seen in about 120 tries on
+  the Mac and the Ubuntu VM. Each request now has a limit, the tools say each stage as it begins, and a snapshot that
+  stops fails naming its stage (SnapshotStages), held by the step itself with the program's runtime stopped (d4cb1c2d4).
+
 ## 2026-11-22
 
 - `McpAspireStandInTests`' `An_agent_runs_an_AppHost_its_resources_commands_and_one_replicas_debugging_as_the_AppHost_…`,
