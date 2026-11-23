@@ -30,6 +30,38 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-23
 
+- `XamlBreakpointsTests`' `A_XAML_breakpoint_stops_as_its_control_is_made_or_its_property_set_at_the_editors_line`,
+  CI 45219084616 (Linux report shard 2; Windows gate shard 1's job), at 43e51aa43, the first run on Avalonia 12.2:
+  "Waited 40 s for the status bar to say "binding", not "… Text on TextBlock#Caption is changed (Previous Value:
+  "Hello", New Value: "Renamed", its local value)"", and on Windows only "Access to the path 'Avalonia.Base.dll' is
+  denied". **A
+  regression in the IDE, from the move to Avalonia 12.2** (81c3e9c92): 12.2 makes a compiled binding to one member of
+  the DataContext a typed expression derived from no untyped one, the only kind the inspector read, so Break When Value
+  Changes took the binding's change for a local value, the Properties page named no binding and a XAML file's binding
+  values said none; on Windows the failed step left its debugged app holding its folder, whose removal failed, and the
+  step said that alone. The inspector reads either kind (4765d7f7f), and a step's own failure is said before its
+  clean-up's (8527126b7). Without the first the step fails on the Mac with "The caption's Text row named no binding" and
+  BindingValuesTests' typed Title with "Strings differ"; with it both pass on the Mac and the Linux VM, and
+  XamlBreakpointsTests on the Windows VM. The class runs on no macOS job, which runs only `[AboutMacOS]` classes.
+- `Debugging.StuckEvaluationTests`' `An_evaluation_that_cannot_be_stopped_or_ends_late_leaves_the_program_paused_and_going_on_whole`,
+  CI 45219084616 (Windows report shard 3), at 43e51aa43: "The engine's log did not name the read the evaluation stood in
+  outside managed code by its native frames", the log saying "natively: ntdll.dll!ZwReadFile+0x14 <
+  KERNELBASE.dll!ReadFile+0x8d". **The test**: its check, new in 54bb36f95 and met before only on Windows on Arm, where
+  dbghelp names the read NtReadFile, looked for that name alone, and ntdll exports the read as NtReadFile and as
+  ZwReadFile at one address, which dbghelp names ZwReadFile on x64; it takes either (4c4a09c24) and passes on the
+  Windows VM.
+- `MauiSimulatorTests`' `A_maui_apps_ios_head_debugged_on_a_simulator_stops_steps_evaluates_and_takes_a_hot_reload_edit`,
+  CI 45219084616 (macOS report shard 3, a 7 GB runner with 0.7 GB free at the least), at 43e51aa43, after 9 minutes 55
+  s: "MauiApp1 could not be installed on iPhone 17 - iOS 27.2: simctl did not finish installing it in 3 minutes". **A
+  limit in the IDE, on a starved runner**: the first install of a simulator's boot starts the simulator's install
+  services and has them make their first pass since the boot, 7 to 27 s on the Mac against under 2 s for the same app's
+  next install, and the class, its shard's first iOS test since the simulator is no longer booted before the tests
+  (b98279487), took the runner's first boot of its simulator and that first install, which ran past the IDE's 3 minutes
+  for any simctl command. An install is now waited for as long as it goes, as an Android device's is, Stop ending it
+  (1d5ae08da), and a start the window refuses in a device test now ends with the IDE's log, which times each program
+  the start ran, where it said nothing of the six minutes before the install (795a9dfe1). On that runner the test would
+  still have spent its 9.5 minutes: the first boot and first install inside the shard's first iOS test are the deal's,
+  which b98279487 chose. The test passes on the Mac in 1:14 to 1:32 (build 17 s, boot 8 s, install 17 s).
 - `ExplorerFilesTests`' `A_loaded_projects_folders_rename_waits_for_a_walk_of_its_build_output_under_way_for_the_language_server`,
   CI 44870878221 (Windows report shard 2), at 086fccf1b: "Assert.Null() Failure: Value is not null … Actual: "Lib could
   not be renamed: Access to the path 'C:\\"···". **A race in the IDE**: the window asks the C# language server whether
