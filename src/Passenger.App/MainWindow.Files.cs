@@ -655,7 +655,7 @@ public partial class MainWindow
             catch (TimeoutException)
             {
                 // Gone or moved anyway: what the build writes after makes only build output there again.
-                IdeErrors.Write($"Waited {Durations.Said(BuildsGoing)} for the design-time builds in {string.Join(", ", paths)}, and the watchers stopped there, to end, and went on without them");
+                IdeErrors.Write($"Waited {Durations.Said(BuildsGoing)} for the design-time builds in {string.Join(", ", paths)}, the watchers stopped there and the C# language server's questions that read there, to end, and went on without them");
             }
         }
         // Held only now, so what the watchers hear elsewhere meanwhile is not held up behind a change there.

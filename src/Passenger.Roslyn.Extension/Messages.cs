@@ -194,8 +194,9 @@ public sealed record ReferencedAsked([property: JsonPropertyName("paths")] IRead
 /// <summary>The paths asked of that a project references, as an assembly or an analyzer.</summary>
 public sealed record ReferencedFound([property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);
 
-/// <summary>A load of projects ended: the source generators' runs it queued are waited for.</summary>
-public sealed record GeneratorsAsked;
+/// <summary>A load of projects ended: the source generators' runs it queued are waited for, and nothing read under the
+/// folders about to go or move (<paramref name="Passing"/>).</summary>
+public sealed record GeneratorsAsked([property: JsonPropertyName("passing")] IReadOnlyList<string> Passing);
 
 /// <summary>The source generators' runs queued when asked have run; the files a project's builds write that the server
 /// holds otherwise than the disk, which they read as the server holds them.</summary>

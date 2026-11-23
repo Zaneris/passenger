@@ -95,6 +95,7 @@ public sealed class ExplorerFilesTests : IDisposable
         Flow.StepApart<ExplorerFilesTests>("typing in a file while its folders delete waits for a design time build goes to the Trash with it", t => t.Typing_in_a_file_while_its_folders_delete_waits_for_a_design_time_build_goes_to_the_Trash_with_it());
         Flow.StepApart<ExplorerFilesTests>("a loaded projects folder watched for the language server goes renames and moves (\"delete\")", t => t.A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves("delete"));
         Flow.StepApart<ExplorerFilesTests>("a loaded projects folder watched for the language server goes renames and moves (\"move\")", t => t.A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves("move"));
+        Flow.StepApart<ExplorerFilesTests>("a loaded projects folder renamed as the generators question is answered waits for the answer and one asked meanwhile reads nothing there", t => t.A_loaded_projects_folder_renamed_as_the_generators_question_is_answered_waits_for_the_answer_and_one_asked_meanwhile_reads_nothing_there());
         Flow.StepApart<ExplorerFilesTests>("a folders rename or move waits for the design time build of its project to end (true)", t => t.A_folders_rename_or_move_waits_for_the_design_time_build_of_its_project_to_end(true));
         Flow.StepApart<ExplorerFilesTests>("a projects folder renamed or deleted as its design time build lands goes before the language server is told the project (true)", t => t.A_projects_folder_renamed_or_deleted_as_its_design_time_build_lands_goes_before_the_language_server_is_told_the_project(true));
         Flow.StepApart<ExplorerFilesTests>("a folder let go of holds off evaluating the projects whose wildcards walk it until let go", t => t.A_folder_let_go_of_holds_off_evaluating_the_projects_whose_wildcards_walk_it_until_let_go());
@@ -244,6 +245,56 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.DoesNotContain(window.CSharpService?.Watching?.Watching ?? [], w => PathNames.Within(w.Folder, lib));
         window.Close();
     }
+
+    /// <summary>A loaded project's folder renamed as the C# language server answers the window's question of whether its
+    /// generators ran, which reads each document the projects' builds wrote, waits for the answer, and the question asked
+    /// meanwhile reads nothing under the folder: on Windows a folder with a file under it open does not move. The answer is
+    /// held, as a busy machine holds it.</summary>
+    private void A_loaded_projects_folder_renamed_as_the_generators_question_is_answered_waits_for_the_answer_and_one_asked_meanwhile_reads_nothing_there()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        string lib = PathNames.Canonical(library);
+        Ui.WaitFor(() => window.CSharpService?.Watching?.Watching.Any(w => PathNames.Within(w.Folder, lib)) == true,
+            () => $"Lib's build output to be watched for the C# language server, where {string.Join(", ", (window.CSharpService?.Watching?.Watching ?? []).Select(w => w.Folder))} are",
+            TimeSpan.FromMinutes(2));
+        Passenger.Lsp.RoslynSession server = window.CSharpService!.Session!;
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchExtensionMessage, p => AsksGenerators(p) is not null, released.Task);
+        Task<Passenger.Roslyn.Extension.GeneratorsRan> asked = server.GeneratorsRunAsync();
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Task<string?> renaming;
+        string? passed = null;
+        try
+        {
+            // Pumped, not settled: the answer held holds the IDE's quiet.
+            Ui.PumpUntil(() => held.IsCompleted, "the generators' question to be answered and its answer held", TimeSpan.FromMinutes(1));
+            renaming = window.RenameAsync(lib, "Core");
+            Ui.PumpUntil(() => renaming.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the rename to wait for the generators' answer");
+            Assert.False(renaming.IsCompleted, $"Lib was renamed while the generators' question, which reads its builds' documents, was still to be answered: {window.Status}");
+            Task told = server.Server.HoldNext(Passenger.Lsp.LspMethods.DispatchExtensionMessage, p => (passed ??= AsksGenerators(p)) is not null, Task.CompletedTask);
+            Ui.AwaitPumped(server.GeneratorsRunAsync(), "the generators' question asked as the rename waits", TimeSpan.FromMinutes(1));
+            Assert.True(told.IsCompleted, "The generators' question asked as the rename waits was never sent");
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
+        Assert.True(passed is not null && System.Text.Json.JsonSerializer.Deserialize<Passenger.Roslyn.Extension.GeneratorsAsked>(passed)?.Passing.Any(f => PathNames.Same(f, lib)) == true,
+            $"The generators' question asked as Lib's rename waited did not pass over Lib, so it may read there as Lib moves: {passed}");
+        Ui.AwaitPumped(asked, "the generators' question held");
+        string? refused = Ui.AwaitPumped(renaming, "the rename", TimeSpan.FromMinutes(1));
+        Assert.True(refused is null && File.Exists(Path.Combine(folder, "Core", "Lib.csproj")), $"Lib's rename did not take it to Core: {refused ?? window.Status}{Holders(window, lib)}");
+        window.Close();
+    }
+
+    /// <summary>The message of a request to the extension asking whether the generators ran, or null for another request.</summary>
+    private static string? AsksGenerators(object parameters) =>
+        parameters is Passenger.Lsp.RoslynExtension.DispatchWorkspaceMessageParams { MessageName: Passenger.Roslyn.Extension.Handlers.GeneratorsRun } ask ? ask.Message : null;
 
     /// <summary>A project's folder renamed, or moved into another folder, while its design-time build runs waits for the build
     /// to end, as a delete does: the build, still writing its obj/, would make the folder again where it was, and on Windows

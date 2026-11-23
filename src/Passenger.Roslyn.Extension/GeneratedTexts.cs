@@ -13,19 +13,21 @@ namespace Passenger.Roslyn.Extension;
 /// before, none of a generator just come. Its answer names the files in each project's intermediate output folder that the
 /// server holds otherwise than the disk: a load takes a design-time build's documents by their paths, so one it held
 /// before keeps the text it read until it hears the file changed, though the build has written it again (the analyzers'
-/// settings a generator reads, the global usings).</summary>
+/// settings a generator reads, the global usings). It reads nothing under a folder about to go or move, as Windows moves no
+/// folder with a file under it open.</summary>
 public sealed class GeneratorsRun : IExtensionWorkspaceMessageHandler<GeneratorsAsked, GeneratorsRan>
 {
     public async Task<GeneratorsRan> ExecuteAsync(GeneratorsAsked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
     {
         Microsoft.CodeAnalysis.Workspace workspace = context.Solution.Workspace;
         await workspace._updateSourceGeneratorsQueue.WaitUntilCurrentBatchCompletesAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        return new GeneratorsRan(await UnreadAsync(workspace.CurrentSolution, cancellationToken).ConfigureAwait(false));
+        return new GeneratorsRan(await UnreadAsync(workspace.CurrentSolution, message.Passing ?? [], cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>The documents of every kind in a project's intermediate output folder, where its builds write, whose text the
-    /// solution holds otherwise than the disk; one gone from disk is passed over.</summary>
-    private static async Task<List<string>> UnreadAsync(Solution solution, CancellationToken cancellationToken)
+    /// solution holds otherwise than the disk; one gone from disk, or under a folder <paramref name="passing"/> names, is
+    /// passed over.</summary>
+    private static async Task<List<string>> UnreadAsync(Solution solution, IReadOnlyList<string> passing, CancellationToken cancellationToken)
     {
         List<string> unread = [];
         foreach (Project project in solution.Projects)
@@ -36,7 +38,8 @@ public sealed class GeneratorsRun : IExtensionWorkspaceMessageHandler<Generators
             }
             foreach (TextDocument document in project.Documents.Concat<TextDocument>(project.AdditionalDocuments).Concat(project.AnalyzerConfigDocuments))
             {
-                if (document.FilePath is not { } path || !Passenger.Core.PathNames.IsUnder(path, built) || unread.Contains(path))
+                if (document.FilePath is not { } path || !Passenger.Core.PathNames.IsUnder(path, built) || unread.Contains(path)
+                    || passing.Any(folder => Passenger.Core.PathNames.Within(path, folder)))
                 {
                     continue;
                 }

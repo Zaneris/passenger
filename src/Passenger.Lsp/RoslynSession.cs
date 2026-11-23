@@ -338,9 +338,66 @@ public sealed class RoslynSession : IAsyncDisposable, IDocumentHost
 
     /// <summary>Done once the source generators' runs the server has queued, as a load changing a project's analyzers queues
     /// one, have run: before then it answers for a project's generated code as its generators made it before. With the
-    /// files its projects' builds write that it holds otherwise than the disk, which it has yet to hear of.</summary>
-    public Task<Roslyn.Extension.GeneratorsRan> GeneratorsRunAsync(CancellationToken cancel = default) =>
-        ExtensionAsync<Roslyn.Extension.GeneratorsRan>(Roslyn.Extension.Handlers.GeneratorsRun, new Roslyn.Extension.GeneratorsAsked(), cancel);
+    /// files its projects' builds write that it holds otherwise than the disk, which it has yet to hear of, but those under
+    /// a folder let go of (<see cref="LetGo"/>): the extension reads none of them, and none is named.</summary>
+    public async Task<Roslyn.Extension.GeneratorsRan> GeneratorsRunAsync(CancellationToken cancel = default)
+    {
+        TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        string[] passing;
+        lock (goingGate)
+        {
+            passing = [.. going.SelectMany(folders => folders)];
+            asking.Add(ended.Task);
+        }
+        try
+        {
+            Roslyn.Extension.GeneratorsRan ran = await ExtensionAsync<Roslyn.Extension.GeneratorsRan>(Roslyn.Extension.Handlers.GeneratorsRun,
+                new Roslyn.Extension.GeneratorsAsked(passing), cancel).ConfigureAwait(false);
+            lock (goingGate)
+            {
+                return new Roslyn.Extension.GeneratorsRan([.. ran.Unread.Where(path => !going.Any(folders => folders.Any(folder => PathNames.Within(path, folder))))]);
+            }
+        }
+        finally
+        {
+            lock (goingGate)
+            {
+                asking.Remove(ended.Task);
+            }
+            ended.TrySetResult();
+        }
+    }
+
+    /// <summary>The folders about to go or move, each let-go's own (<see cref="LetGo"/>), and the generators' questions under
+    /// way (<see cref="GeneratorsRunAsync"/>), each done once answered.</summary>
+    private readonly List<IReadOnlyList<string>> going = [];
+    private readonly List<Task> asking = [];
+    private readonly Lock goingGate = new();
+
+    /// <summary>Has the generators' questions read nothing under folders about to go or move until disposed (<c>Held</c>):
+    /// the extension reads each document its projects' builds wrote to answer one, and Windows moves no folder with a file
+    /// under it open. <c>Asked</c> is done once those asked before, which may still read there, are answered.</summary>
+    public (IDisposable Held, Task Asked) LetGo(IReadOnlyList<string> folders)
+    {
+        Task[] under;
+        lock (goingGate)
+        {
+            going.Add(folders);
+            under = [.. asking];
+        }
+        return (new LettingGo(this, folders), Task.WhenAll(under));
+    }
+
+    private sealed class LettingGo(RoslynSession session, IReadOnlyList<string> folders) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (session.goingGate)
+            {
+                session.going.Remove(folders);
+            }
+        }
+    }
 
     /// <summary>A message to Passenger's extension about the solution that nothing waits on, as a debugging session ends.</summary>
     public void TellExtension(string handler, object message) => RoslynExtension.TellWorkspace(Server, handler, message);

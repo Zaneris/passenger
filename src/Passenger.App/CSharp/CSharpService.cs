@@ -569,10 +569,11 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>What the server registered to hear of as files change on disk, watched for it; null with no server.</summary>
     public ServerWatches? Watching => watching;
 
-    /// <summary>Stops watching for the server what is under folders about to go or move, deleted, renamed or moved by the IDE
-    /// (<see cref="ServerWatches.LetGo"/>), in the watches of a server started or taken up meanwhile too, until disposed
-    /// (<c>Held</c>): Windows moves and deletes no folder with a folder inside it watched. <c>Stopped</c> is done once the
-    /// watchers stopped now have stopped reading there.</summary>
+    /// <summary>Stops watching for the server what is under folders the IDE deletes or moves (<see cref="ServerWatches.LetGo"/>),
+    /// and has its extension's questions read nothing there (<see cref="RoslynSession.LetGo"/>), for a server started or
+    /// taken up meanwhile too, until disposed (<c>Held</c>): Windows moves no folder with a folder inside it watched or a
+    /// file inside it open. <c>Stopped</c> is done once the watchers stopped have stopped reading there and the questions
+    /// asked before are answered.</summary>
     public (IDisposable Held, Task Stopped) LetGoOf(IReadOnlyList<string> folders)
     {
         UiThread.Check();
@@ -585,19 +586,26 @@ public sealed partial class CSharpService : IAsyncDisposable
                 letting.Watches = held;
                 stopped = watchersStopped;
             }
+            if (session?.LetGo(folders) is ({ } questions, Task asked))
+            {
+                letting.Questions = questions;
+                stopped = Task.WhenAll(stopped, asked);
+            }
             going.Add(letting);
         }
         return (letting, stopped);
     }
 
-    /// <summary>Has a server's new watches let go of every folder still going (<see cref="LetGoOf"/>), as they are made.</summary>
-    private void LetGoOfGoing(ServerWatches watches)
+    /// <summary>Has a server's new watches and its questions let go of every folder still going (<see cref="LetGoOf"/>), as
+    /// they are made.</summary>
+    private void LetGoOfGoing(ServerWatches watches, RoslynSession taken)
     {
         lock (goingGate)
         {
             foreach (FoldersGoing letting in going)
             {
                 letting.Watches = watches.LetGo(letting.Folders).Held;
+                letting.Questions = taken.LetGo(letting.Folders).Held;
             }
         }
     }
@@ -610,9 +618,14 @@ public sealed partial class CSharpService : IAsyncDisposable
         /// <summary>What the watches of the service's server let go of for it now; set under the service's gate.</summary>
         public IDisposable? Watches { get; set; }
 
+        /// <summary>What the service's server's questions let go of for it now (<see cref="RoslynSession.LetGo"/>); set under
+        /// the service's gate.</summary>
+        public IDisposable? Questions { get; set; }
+
         public void Dispose()
         {
             IDisposable? watches;
+            IDisposable? questions;
             lock (service.goingGate)
             {
                 if (!service.going.Remove(this))
@@ -620,8 +633,10 @@ public sealed partial class CSharpService : IAsyncDisposable
                     return;
                 }
                 watches = Watches;
+                questions = Questions;
             }
             watches?.Dispose();
+            questions?.Dispose();
         }
     }
 
@@ -1660,7 +1675,7 @@ public sealed partial class CSharpService : IAsyncDisposable
                 handed.Follow(opening.Folder);
             }
             watching = handed ?? new ServerWatches(started.Server, opening.Folder);
-            LetGoOfGoing(watching);
+            LetGoOfGoing(watching, started);
             foreach (FolderChanges held in unheard?.Take() ?? [])
             {
                 watching.Heard(held);
