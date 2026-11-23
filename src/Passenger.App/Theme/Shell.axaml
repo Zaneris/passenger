@@ -927,10 +927,9 @@
 
     <!-- What is chosen, the one way in every list, tree, drop-down, tab strip and stripe: its ground, and beside it the
          chosen mark (ChosenMark), a bar along its start or along a tab's edge toward what it names (its foot, but its top at
-         a place's foot) that reads at 3:1 on the page and the ground alike.
-         Each row, choice, tab and toolbar toggle is the theme's template with the mark beside its presenter; a Border laid
-         out by hand holds one through ChosenMark.Hold, an open tab's or a chosen row's (its chosen class) shown as a
-         template's is. -->
+         a place's foot) that reads at 3:1 on the page and the ground alike. Each row, choice, tab and toolbar toggle is the
+         theme's template with the mark beside its presenter; a Border laid out by hand holds one through ChosenMark.Hold,
+         an open tab's or a chosen row's (its chosen class) shown as a template's is. -->
     <Style Selector="ListBoxItem">
         <Setter Property="Template" Value="{x:Static app:ChosenMark.Rows}" />
     </Style>
