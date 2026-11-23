@@ -50,7 +50,8 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
     /// <summary>A folder whose global.json asks for the SDK only the home's .dotnet holds, while DOTNET_ROOT names another
     /// installation found first: its terminal's login shell (zsh or bash), whose startup files may put the system's .NET
     /// first (macOS's path_helper), runs the home's dotnet, at the version asked, and names it as DOTNET_ROOT; the folder
-    /// first on its PATH is the installation's own where it holds .NET's layout alone, else one holding that dotnet alone.</summary>
+    /// first on its PATH is the installation's own where it holds .NET's layout alone, else one holding that dotnet alone,
+    /// though the home's startup files turn nounset on.</summary>
     [Theory]
     [InlineData("zsh")]
     [InlineData("bash")]
@@ -65,9 +66,14 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
         string folder = PathNames.Canonical(TestFolders.Create("home-terminal-"));
         DeleteAtEnd(folder);
         File.WriteAllText(Path.Combine(folder, "global.json"), $$"""{ "sdk": { "version": "{{sdk}}", "rollForward": "disable" } }""");
+        // The person's startup files turn nounset on, which Passenger's hooks putting the folder first then run under.
+        File.WriteAllText(Path.Combine(home, ".zshenv"), "setopt nounset\n");
+        File.WriteAllText(Path.Combine(home, ".bash_profile"), "set -u\n");
+        Dictionary<string, string?> environment = Apart(home, other, $"/bin/{shell}");
+        environment["ZDOTDIR"] = null;
         try
         {
-            await using McpClient client = await Start(["--mcp", folder], environment: Apart(home, other, $"/bin/{shell}"), languageServer: false);
+            await using McpClient client = await Start(["--mcp", folder], environment: environment, languageServer: false);
             string answer = Text(await Call(client, McpTools.TerminalRun, new()
             {
                 ["command"] = "echo \"root=$DOTNET_ROOT\"; dotnet --version; echo \"first=${PATH%%:*}\"; printf 'held=%s\\n' \"$(ls -A \"${PATH%%:*}\" | tr '\\n' ' ')\"",
@@ -75,7 +81,7 @@ public sealed class HomeDotnetTests(LinkedDotnetTests.Linked linked) : McpRig, I
             }));
             string[] lines = answer.Split('\n', StringSplitOptions.TrimEntries);
             Assert.True(lines.Contains($"root={installation}") && lines.Any(line => line == sdk),
-                $"In a folder whose global.json asks for the SDK {sdk}, which only {home}/.dotnet holds, the terminal's {shell} ran another dotnet, DOTNET_ROOT naming {other} first:\n{answer}");
+                $"In a folder whose global.json asks for the SDK {sdk}, which only {home}/.dotnet holds, the terminal's {shell}, its startup files turning nounset on, ran another dotnet, DOTNET_ROOT naming {other} first:\n{answer}");
             Assert.True(Dotnet.HoldsLayoutAlone(installation) ? lines.Contains($"first={installation}")
                     : !lines.Contains($"first={installation}") && lines.Contains($"held={Dotnet.HostName}"),
                 $"The folder first on the terminal's PATH is not {installation}, which holds .NET's layout alone, or holds more than its dotnet where the installation holds more than .NET's layout, so {shell} would run its other programs in place of the system's:\n{answer}");

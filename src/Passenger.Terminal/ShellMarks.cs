@@ -48,7 +48,8 @@ public static class ShellMarks
 
         """;
 
-    /// <summary>zsh's hooks, defined in Passenger's .zshenv: the status taken by the first of the precmd functions.</summary>
+    /// <summary>zsh's hooks, defined in Passenger's .zshenv: the status taken by the first of the precmd functions. Every
+    /// array is read with a default, as the person's startup files may have turned nounset on.</summary>
     internal const string ZshHooks = """
         __passenger_marks_precmd() {
         __passenger_status=$?
@@ -60,15 +61,15 @@ public static class ShellMarks
         __passenger_ran=1
         printf '\033]133;C\007'
         }
-        precmd_functions=(__passenger_marks_precmd $precmd_functions)
+        precmd_functions=(__passenger_marks_precmd ${precmd_functions-})
         preexec_functions+=(__passenger_marks_preexec)
 
         """;
 
     /// <summary>What puts zsh's hooks back first at its first prompt, where the person's startup files may have moved them.</summary>
     internal const string ZshFirst = """
-        precmd_functions=(__passenger_marks_precmd ${precmd_functions:#__passenger_marks_precmd})
-        (( ${preexec_functions[(I)__passenger_marks_preexec]} )) || preexec_functions+=(__passenger_marks_preexec)
+        precmd_functions=(__passenger_marks_precmd ${${precmd_functions-}:#__passenger_marks_precmd})
+        (( ${preexec_functions[(I)__passenger_marks_preexec]-0} )) || preexec_functions+=(__passenger_marks_preexec)
 
         """;
 

@@ -57,7 +57,7 @@ public sealed record FirstOnPath(string Folder, string Variable, string Value, s
         unset {{ZdotdirVariable}}
         if [ -f "${ZDOTDIR:-$HOME}/.zshenv" ]; then . "${ZDOTDIR:-$HOME}/.zshenv"; fi
         {{ShellMarks.ZshHooks}}__passenger_first() {
-        precmd_functions=(${precmd_functions:#__passenger_first})
+        precmd_functions=(${${precmd_functions-}:#__passenger_first})
         {{ShellMarks.ZshFirst}}eval "${{{AgainVariable}}-}"
         unfunction __passenger_first
         }
