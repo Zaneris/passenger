@@ -356,6 +356,8 @@ public partial class MainWindow : IdeWindow
         // The session as each call finds it.
         assist.ConfiguredCodeOf = path => session.ConfiguredCodeOf(path);
         assist.ConfiguredBy = path => session.ConfiguredBy(path);
+        assist.IndexedFiles = () => session.Folder is { } folder ? (folder, session.Index.Files) : null;
+        assist.Repository = () => session.Vcs.Repository;
         assist.AddActions(actions!);
         usages.AddActions(actions!);
         DebugController.AddActions(actions!, () => session.Debug);

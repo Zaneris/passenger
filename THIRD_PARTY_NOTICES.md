@@ -1095,6 +1095,8 @@ tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLang
 `GDResource.tmLanguage.json` (scenes, resources and project.godot, which embeds the other two) and
 `GDShader.tmLanguage.json` (Godot's shaders).
 
+`gitattributes.tmLanguage.json`, which colours .gitattributes files, is Passenger's own, under Passenger's licence.
+
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block
 or flow mapping's keys, so a key such as a workflow's `on` is read as a key, ends a shell heredoc only at a line that is

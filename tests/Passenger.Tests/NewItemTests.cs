@@ -1,8 +1,10 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Templates;
+using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 
@@ -11,8 +13,9 @@ namespace Passenger.Tests;
 /// <summary>Add, New Item, from the item templates dotnet new has in the run's own template home and Passenger's own:
 /// an API Controller in a web project's Controllers folder takes the folder's namespace and builds, a Razor Component goes
 /// into a Blazor project's pages, Razor's templates listed first there, a .gitignore at the solution's folder, which lists
-/// only the templates of no language; each is opened once made, and one Undo takes it away. New Project's Web API offers
-/// Use controllers, which makes its Controllers folder.</summary>
+/// only the templates of no language; each is opened once made, and one Undo takes it away. The Add menu makes a folder's
+/// .gitignore, .gitattributes and .editorconfig, opening one already there, and a .gitattributes is read as git reads it.
+/// New Project's Web API offers Use controllers, which makes its Controllers folder.</summary>
 public sealed class NewItemTests : IDisposable
 {
     private readonly string place = TestFolders.Create("item-");
@@ -28,6 +31,7 @@ public sealed class NewItemTests : IDisposable
         Flow.StepApart<NewItemTests>("an API Controller goes into a web projects Controllers folder in its namespace builds and one Undo takes it away", t => t.An_API_Controller_goes_into_a_web_projects_Controllers_folder_in_its_namespace_builds_and_one_Undo_takes_it_away());
         Flow.StepApart<NewItemTests>("a Razor Component goes into a Blazor projects pages Razor templates listed first and one Undo takes it away", t => t.A_Razor_Component_goes_into_a_Blazor_projects_pages_Razor_templates_listed_first_and_one_Undo_takes_it_away());
         Flow.StepApart<NewItemTests>("a gitignore goes into the solutions folder from its New Item and one Undo takes it away", t => t.A_gitignore_goes_into_the_solutions_folder_from_its_New_Item_and_one_Undo_takes_it_away());
+        Flow.StepApart<NewItemTests>("the Add menu makes a gitignore and a gitattributes in the folder and opens the editorconfig already there", t => t.The_Add_menu_makes_a_gitignore_and_a_gitattributes_in_the_folder_and_opens_the_editorconfig_already_there());
     }
 
     /// <summary>An API Controller added to a web project's Controllers folder from the folder's Add menu: the web project's
@@ -127,6 +131,66 @@ public sealed class NewItemTests : IDisposable
             Assert.Equal(made, window.EditorArea.Active?.Path);
 
             Undone(window, made);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The solution's Add menu makes its folder's .gitignore, dotnet new's with Passenger's section after, and its
+    /// .gitattributes, each opened, one Undo taking the last away; the .editorconfig already there is opened as it is. A
+    /// .gitattributes marks a driver nothing declares and an eol git does not take, and completes a diff driver, git's own
+    /// and the repository's.</summary>
+    private void The_Add_menu_makes_a_gitignore_and_a_gitattributes_in_the_folder_and_opens_the_editorconfig_already_there()
+    {
+        WebProject(controllers: true);
+        const string Own = "root = true\n\n# The person's own.\n";
+        TestFolders.Write(place, ".editorconfig", Own);
+        TestFolders.Write(place, "Docs/.gitattributes", "*.md diff=mine\n*.txt diff=nosuch eol=cr\n");
+        TestGit.Init(place);
+        TestGit.Run(place, "config", "diff.mine.textconv", "cat");
+        string folder = PathNames.Canonical(place);
+        MainWindow window = Ui.OpenFolder(place, languageServer: false);
+        try
+        {
+            string ignore = Path.Combine(folder, ".gitignore");
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Solution, "Shop"), "Add", ".gitignore File");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == ignore, () => $"the .gitignore made and opened: {window.Status}", TimeSpan.FromMinutes(3));
+            string ignored = File.ReadAllText(ignore);
+            Assert.True(ignored.Contains("dotnet new gitignore", StringComparison.Ordinal) && ignored.EndsWith(RepositoryFiles.PassengerIgnores, StringComparison.Ordinal),
+                $"The .gitignore made is not dotnet new's with Passenger's section after:\n{ignored}");
+
+            string attributes = Path.Combine(folder, ".gitattributes");
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Solution, "Shop"), "Add", ".gitattributes File");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == attributes, () => $"the .gitattributes made and opened: {window.Status}");
+            Assert.Equal(RepositoryFiles.GitAttributes, File.ReadAllText(attributes));
+
+            string config = Path.Combine(folder, ".editorconfig");
+            Ui.ChooseFromRowMenu(window, Row(window, NodeKind.Solution, "Shop"), "Add", "Open .editorconfig");
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == config, () => $"the .editorconfig there opened: {window.Status}");
+            Assert.Equal(Own, File.ReadAllText(config));
+
+            Undone(window, attributes);
+
+            window.OpenFile(Path.Combine(folder, "Docs", ".gitattributes"));
+            OpenDocument docs = window.EditorArea.Active!;
+            string[] marked = ["nosuch = No diff driver nosuch: git has none built in, and its configuration declares no [diff \"nosuch\"]", "cr = eol takes lf or crlf, not cr"];
+            Ui.WaitFor(() => Marked().SequenceEqual(marked), () => $"The .gitattributes' marks are {string.Join("; ", Marked())}");
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            Ui.PlaceAfter(editor, "eol=cr");
+            Ui.Press(window, "ENTER");
+            window.KeyTextInput("*.cs diff=");
+            Ui.Run(window, AppActions.Complete);
+            Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("csharp") && window.Assist.CompletionLabels.Contains("mine"),
+                () => $"diff= lists {string.Join(", ", window.Assist.CompletionLabels)}, not git's own drivers and the repository's");
+            window.KeyTextInput("csh");
+            Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "csharp", () => $"diff=csh lists {string.Join(", ", window.Assist.CompletionLabels)} first");
+            Ui.Press(window, "ENTER");
+            Assert.EndsWith("\n*.cs diff=csharp\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+            IEnumerable<string> Marked() => docs.Markers.Select(m => $"{docs.Text.Snapshot.GetText(m.Range.Start, m.Range.Length)} = {m.Message}");
         }
         finally
         {

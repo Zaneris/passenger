@@ -271,6 +271,11 @@ public static class AppActions
     // New Item: dotnet new's item templates and Passenger's own, by Rider's New (NewElement) keys where Generate does not take
     // them (Visual Studio's keymaps; VS Code's give them all to Generate).
     public const string NewItem = "app.explorer.newItem";
+
+    // A folder's .editorconfig, .gitignore and .gitattributes made, or opened where one is: no keys of Rider's.
+    public const string NewEditorConfig = "app.explorer.newEditorConfig";
+    public const string NewGitIgnore = "app.explorer.newGitIgnore";
+    public const string NewGitAttributes = "app.explorer.newGitAttributes";
     public const string NewSolutionFolder = "app.explorer.newSolutionFolder";
     public const string AddExistingProject = "app.explorer.addExistingProject";
     public const string AddExistingItem = "app.explorer.addExistingItem";

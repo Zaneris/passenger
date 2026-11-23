@@ -71,6 +71,10 @@ public abstract class Setting
     /// <summary>The settings with this one at another value it takes, which tells what it is kept as (<see cref="Member"/>).</summary>
     public abstract AppSettings Other(AppSettings settings);
 
+    /// <summary>The values an .editorconfig key saying over it takes (<see cref="SettingRow.Over"/>) where they are few, as
+    /// its reader takes them; none for a number's or a text's.</summary>
+    public virtual IReadOnlyList<string> EditorConfigValues => [];
+
     /// <summary>Its name in settings.json, as the agents' settings tool names it: the member <see cref="Other"/> changes.</summary>
     public string Member => member ??= SettingMembers.Changed(new AppSettings(), Other(new AppSettings()))[0].Split('.')[0];
 
@@ -90,6 +94,8 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
     public override AppSettings Clamp(AppSettings settings) => settings;
 
     public override AppSettings Other(AppSettings settings) => set(settings, !get(settings));
+
+    public override IReadOnlyList<string> EditorConfigValues => ["true", "false"];
 }
 
 /// <summary>A number held between <paramref name="min"/> and <paramref name="max"/>, edited by a spin box in steps of
@@ -204,6 +210,24 @@ public sealed class ChoiceSetting<T> : Setting where T : struct, Enum
 
     public override AppSettings Other(AppSettings settings) =>
         set(settings, choices.Select(c => c.Value).FirstOrDefault(v => !EqualityComparer<T>.Default.Equals(v, get(settings))));
+
+    /// <summary>Its values' names with their words parted by underscores (<c>do_not_touch</c>), which a reader taking a name
+    /// with or without them takes.</summary>
+    public override IReadOnlyList<string> EditorConfigValues => [.. choices.Select(c => Parted(c.Value.ToString()))];
+
+    private static string Parted(string name)
+    {
+        System.Text.StringBuilder parted = new();
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (i > 0 && char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
+            {
+                parted.Append('_');
+            }
+            parted.Append(char.ToLowerInvariant(name[i]));
+        }
+        return parted.ToString();
+    }
 }
 
 /// <summary>One of an enum's values that a theme may give and the person's own choice wins over, edited by a drop-down: its

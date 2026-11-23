@@ -86,7 +86,8 @@ public sealed class CodeAssist
         CSharpAssist csharp = new(context, popups, completion, parameterInfo, navigation, actions, xaml);
         GDScriptAssist gdscript = new(context, completion, parameterInfo, navigation, actions);
         parameterInfo.Own = gdscript;
-        context.Languages = new LanguageAssists(new LinkAssist(context), new HttpAssist(context, navigation), new MSBuildAssist(context, popups, completion), xaml,
+        context.Languages = new LanguageAssists(new LinkAssist(context), new HttpAssist(context, navigation), new EditorConfigAssist(context, completion, navigation),
+            new GitAttributesAssist(context, completion), new MSBuildAssist(context, popups, completion), xaml,
             new ComposeAssist(context, popups, completion, navigation, actions), new SettingsAssist(context, completion, navigation),
             new CssClassAssist(context, completion, navigation), gdscript, new WebAssist(context, popups, completion, parameterInfo, actions),
             new GodotShaderAssist(context, completion, navigation, csharp), new GodotAssist(context, popups, completion, navigation, actions, csharp),
@@ -475,6 +476,24 @@ public sealed class CodeAssist
         set => context.Languages.Gherkin.Source = value;
     }
 
+    /// <summary>The open folder and its files by their paths from it, which an .editorconfig's sections match.</summary>
+    public Func<(string Folder, IReadOnlyList<string> Files)?>? IndexedFiles
+    {
+        get => context.Languages.EditorConfig.Indexed;
+        set => context.Languages.EditorConfig.Indexed = value;
+    }
+
+    /// <summary>The open folder's repository, whose configuration declares a .gitattributes' drivers.</summary>
+    public Func<Passenger.Vcs.Git?>? Repository
+    {
+        get => context.Languages.GitAttributes.Repository;
+        set => context.Languages.GitAttributes.Repository = value;
+    }
+
+    /// <summary>What an .editorconfig's readers take of it, with what Roslyn's server read of it where it answers, which its
+    /// marks are checked against.</summary>
+    internal Task<EditorConfigKnown> EditorConfigKnownAsync(OpenDocument document) => context.Languages.EditorConfig.KnownAsync(document);
+
     /// <summary>The routes the request on a line (the editor's, from zero) of an .http file calls.</summary>
     public Func<string, int, IReadOnlyList<LspLocation>>? HttpRouteTargets
     {
@@ -597,7 +616,7 @@ public sealed class CodeAssist
         context.Work = registry.Work;
         WebAssist web = context.Languages.Web;
         Code(AppActions.Complete, "Basic Completion", context => IdeErrors.Observe(completion.Start(null)), new("Code/Code Completion", 0, 0), xaml: true, msbuild: true,
-            godot: true, shader: true, writes: true);
+            godot: true, shader: true, writes: true, config: true);
         Code(AppActions.CompleteStatement, "Complete Current Statement", _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true, writes: true);
         registry.Add(new IdeAction(AppActions.NextOverload, "Next Overload", "Code", _ => parameterInfo.Step(1))
         {
@@ -684,7 +703,7 @@ public sealed class CodeAssist
             Menus = [new("Refactor", 4, 1)],
         });
         Code(AppActions.GoToDeclaration, "Go to Declaration", context => IdeErrors.Observe(navigation.GoToDefinition(Caret)), new("Navigate", 2, 0), xaml: true, msbuild: true, http: true,
-            godot: true, shader: true, gherkin: true, link: true);
+            godot: true, shader: true, gherkin: true, link: true, config: true);
         Code(AppActions.DerivedSymbols, "Derived Symbols", context => IdeErrors.Observe(navigation.GoToDerivedSymbols(Caret)), new("Navigate", 2, 1));
         Code(AppActions.GoToImplementation, "Go to Implementation", context => IdeErrors.Observe(navigation.GoToImplementation(Caret)), new("Navigate", 2, 2));
         Code(AppActions.GoToTypeDeclaration, "Go to Type Declaration", context => IdeErrors.Observe(navigation.GoToTypeDeclaration(Caret)), new("Navigate", 2, 3));
@@ -709,11 +728,12 @@ public sealed class CodeAssist
 
         // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
-            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false) =>
+            bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false, bool config = false) =>
             registry.Add(new IdeAction(id, title, "Code", run)
             {
-                // .http requests, Godot scenes' paths, shaders' names and features' steps are read with no language server.
+                // .http requests, Godot scenes' paths, shaders' names, features' steps and an .editorconfig's keys are read with no language server.
                 WhyNot = action => (http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
+                    || config && action.File?.Language is { } language && (language == Passenger.Languages.Language.EditorConfig || language == Passenger.Languages.Language.GitAttributes)
                     || shader && action.File is { } file && GodotFileKinds.IsShader(file.Path)
                     || gherkin && action.File is { } feature && Passenger.App.Bdd.FeatureChecks.IsFeature(feature.Path) ? null
                     : gdscript && CodeActions.IsGDScript(action.File) ? action.ReadOnlyWhy

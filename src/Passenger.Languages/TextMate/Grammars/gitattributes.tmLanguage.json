@@ -1,0 +1,39 @@
+{
+  "name": "Git Attributes",
+  "scopeName": "source.gitattributes",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#macro" },
+    { "include": "#line" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "^\\s*(#.*)$",
+      "captures": { "1": { "name": "comment.line.number-sign.gitattributes" } }
+    },
+    "macro": {
+      "begin": "^\\s*(\\[attr\\])(\\S*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.macro.gitattributes" },
+        "2": { "name": "entity.name.function.macro.gitattributes" }
+      },
+      "end": "$",
+      "patterns": [ { "include": "#attribute" } ]
+    },
+    "line": {
+      "begin": "^\\s*(\"(?:[^\"\\\\]|\\\\.)*\"?|\\S+)",
+      "beginCaptures": { "1": { "name": "entity.name.type.pattern.gitattributes" } },
+      "end": "$",
+      "patterns": [ { "include": "#attribute" } ]
+    },
+    "attribute": {
+      "match": "(?<=\\s)([-!])?([^\\s=]+)(?:(=)(\\S*))?",
+      "captures": {
+        "1": { "name": "keyword.operator.expression.gitattributes" },
+        "2": { "name": "variable.other.property.gitattributes" },
+        "3": { "name": "keyword.operator.assignment.gitattributes" },
+        "4": { "name": "string.unquoted.value.gitattributes" }
+      }
+    }
+  }
+}

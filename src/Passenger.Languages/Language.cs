@@ -148,6 +148,10 @@ public sealed class Language
     /// <summary>Ignore files, a Dockerfile's own (<c>Dockerfile.dockerignore</c>) among them, so before Dockerfile.</summary>
     public static readonly Language Ignore = new("ignore", "Ignore", ["*.dockerignore", "*.gitignore", ".*ignore"], line: "#");
 
+    /// <summary>Git's attributes files, coloured by Passenger's own grammar: a pattern, then its attributes.</summary>
+    public static readonly Language GitAttributes = new("gitattributes", "Git Attributes", [".gitattributes"], line: "#",
+        grammar: new("source.gitattributes", "gitattributes.tmLanguage.json"));
+
     public static readonly Language Dockerfile = new("dockerfile", "Dockerfile",
         ["Dockerfile", "Dockerfile.*", "Containerfile", "Containerfile.*", "*.dockerfile"], line: "#",
         grammar: new("source.dockerfile", "docker.tmLanguage.json"), service: LanguageService.Dockerfile, literals: LiteralLines.Heredocs);

@@ -1839,6 +1839,28 @@ public sealed partial class Git
         return UpdatePlan.Of(set.Succeeded ? set.Output : string.Empty, branch);
     }
 
+    /// <summary>The diff, merge and filter drivers git's configuration declares for the repository, each by its kind and
+    /// name (<c>[diff "csharp-own"]</c>); null where git could not say.</summary>
+    public async Task<IReadOnlySet<(string Kind, string Name)>?> DriversAsync()
+    {
+        GitResult set = await RunAsync(Root, ["config", "-z", "--name-only", "--get-regexp", $"^({GitAttributeNames.Diff}|{GitAttributeNames.Merge}|{GitAttributeNames.Filter})\\."], answers: [1]);
+        if (!set.Succeeded && set.Code != 1)
+        {
+            return null;
+        }
+        HashSet<(string, string)> drivers = [];
+        foreach (string key in set.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int first = key.IndexOf('.', StringComparison.Ordinal);
+            int last = key.LastIndexOf('.');
+            if (first > 0 && last > first)
+            {
+                drivers.Add((key[..first], key[(first + 1)..last]));
+            }
+        }
+        return drivers;
+    }
+
     /// <summary>Update Project's second half, once the upstream is fetched: the branch merged with it or rebased onto it as
     /// <paramref name="plan"/> says, its uncommitted changes to tracked files set aside first and put back after
     /// (--autostash); a merge or rebase stopped for conflicts puts them back once it is finished or aborted.</summary>

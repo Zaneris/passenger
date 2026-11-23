@@ -34,7 +34,7 @@ public sealed class EditorConfig
     /// <summary>The properties the .editorconfig files give a file at a (canonical) path.</summary>
     public static EditorConfig For(string path)
     {
-        List<(string Folder, ConfigFile Config)> chain = [];
+        List<(string Folder, ConfigText Config)> chain = [];
         foreach (string folder in Path.GetDirectoryName(path) is { } start ? FoldersUp.From(start) : [])
         {
             if (FoldersUp.Found(folder, FileName) is { } file && Read(file) is { } config)
@@ -49,10 +49,10 @@ public sealed class EditorConfig
         Dictionary<string, (string Value, string From)> properties = new(StringComparer.Ordinal);
         for (int i = chain.Count - 1; i >= 0; i--)
         {
-            (string folder, ConfigFile config) = chain[i];
+            (string folder, ConfigText config) = chain[i];
             string file = Path.Combine(folder, FileName);
             string relative = "/" + PathNames.Relative(path, folder);
-            foreach (Section section in config.Sections)
+            foreach (ConfigSection section in config.Sections)
             {
                 CompiledGlob glob = Compiled(section.Glob);
                 if (glob.Refused is { } why && Told.TryAdd((file, section.Glob), true))
@@ -63,7 +63,7 @@ public sealed class EditorConfig
                 {
                     continue;
                 }
-                foreach ((string key, string value, _) in section.Pairs)
+                foreach ((string key, string value, _, _, _) in section.Pairs)
                 {
                     if (Word(value) == "unset")
                     {
@@ -114,12 +114,14 @@ public sealed class EditorConfig
         .FirstOrDefault();
 
     /// <summary>The line separator <c>end_of_line</c> asks for; null for none.</summary>
-    public LineSeparator? EndOfLine => Word(this["end_of_line"]) switch
+    public LineSeparator? EndOfLine => Word(this["end_of_line"]) is { } word && EndsOfLine.TryGetValue(word, out LineSeparator separator) ? separator : null;
+
+    /// <summary>The line separators <c>end_of_line</c> names, by its words.</summary>
+    private static readonly Dictionary<string, LineSeparator> EndsOfLine = new(StringComparer.Ordinal)
     {
-        "lf" => LineSeparator.LF,
-        "crlf" => LineSeparator.CRLF,
-        "cr" => LineSeparator.CR,
-        _ => null,
+        ["lf"] = LineSeparator.LF,
+        ["crlf"] = LineSeparator.CRLF,
+        ["cr"] = LineSeparator.CR,
     };
 
     public bool TrimTrailingWhitespace => Flag(this["trim_trailing_whitespace"]) == true;
@@ -131,15 +133,35 @@ public sealed class EditorConfig
 
     /// <summary>The encoding <c>charset</c> asks a file be written in (UTF-16 with its BOM, the only way it is read back as
     /// UTF-16); null for none.</summary>
-    public FileEncoding? Charset => Word(this["charset"]) switch
+    public FileEncoding? Charset => Word(this["charset"]) is { } word && Charsets.TryGetValue(word, out FileEncoding? encoding) ? encoding : null;
+
+    /// <summary>The encodings <c>charset</c> names, by its words.</summary>
+    private static readonly Dictionary<string, FileEncoding> Charsets = new(StringComparer.Ordinal)
     {
-        "latin1" => FileEncoding.Latin1,
-        "utf-8" => FileEncoding.Utf8,
-        "utf-8-bom" => FileEncoding.Utf8Bom,
-        "utf-16be" => FileEncoding.Utf16BigEndian,
-        "utf-16le" => FileEncoding.Utf16,
-        _ => null,
+        ["latin1"] = FileEncoding.Latin1,
+        ["utf-8"] = FileEncoding.Utf8,
+        ["utf-8-bom"] = FileEncoding.Utf8Bom,
+        ["utf-16be"] = FileEncoding.Utf16BigEndian,
+        ["utf-16le"] = FileEncoding.Utf16,
     };
+
+    /// <summary>The value that takes a key back, whatever the key.</summary>
+    public const string Unset = "unset";
+
+    /// <summary>The keys editorconfig.org's format defines and Passenger reads, each with what it does and the values it
+    /// takes (none listed for a number's or a name's), as an .editorconfig's completion and hover card say them; <c>root</c>
+    /// is the file's own, before its first section.</summary>
+    public static readonly IReadOnlyList<StandardKey> Standard =
+    [
+        new("root", "Whether this is the top .editorconfig: none above its folder is read.", ["true", "false"], Numbered: false),
+        new("indent_style", "Whether a line is indented with tabs or spaces.", ["tab", "space"], Numbered: false),
+        new("indent_size", "How many columns an indent is, or tab for tab_width's.", ["tab"], Numbered: true),
+        new("tab_width", "How many columns a tab is; indent_size's unless given.", [], Numbered: true),
+        new("end_of_line", "The line break a save writes.", [.. EndsOfLine.Keys], Numbered: false),
+        new("charset", "The encoding a save writes.", [.. Charsets.Keys], Numbered: false),
+        new("trim_trailing_whitespace", "Whether a save takes the white space off each line's end.", ["true", "false"], Numbered: false),
+        new("insert_final_newline", "Whether a save ends the file with a line break (true) or none (false).", ["true", "false"], Numbered: false),
+    ];
 
     /// <summary>What a property says and the .editorconfig it comes from, as the status bar's tips name it
     /// ("end_of_line = lf in /src/.editorconfig"); null when no section gives it.</summary>
@@ -174,11 +196,25 @@ public sealed class EditorConfig
     /// <summary>A width in columns, or null for a value that is not one.</summary>
     private static int? Width(string? value) => Number(value) is int width and >= 1 and <= 32 ? width : null;
 
-    /// <summary>A section: its glob, the line its header is on (from 1), where the glob starts in the file's text, and its
-    /// pairs with the line each is on.</summary>
-    private sealed record Section(string Glob, int Line, int Offset, List<(string Key, string Value, int Line)> Pairs);
+    /// <summary>A key editorconfig.org's format defines: its name, what it does, the words it takes, and whether it takes a
+    /// number too.</summary>
+    public sealed record StandardKey(string Name, string Said, IReadOnlyList<string> Values, bool Numbered);
 
-    private sealed record ConfigFile(bool Root, List<Section> Sections);
+    /// <summary>A key a section sets as its text has it: the key in lower case, its value as written, the line it is on (from
+    /// 1), and where the key and the value are in the text.</summary>
+    public readonly record struct ConfigPair(string Key, string Value, int Line, TextRange KeyAt, TextRange ValueAt);
+
+    /// <summary>A section as its text has it: its glob, the line its header is on (from 1), where the glob is in the text,
+    /// and its pairs.</summary>
+    public sealed record ConfigSection(string Glob, int Line, TextRange GlobAt, IReadOnlyList<ConfigPair> Pairs);
+
+    /// <summary>An .editorconfig's text as its reader takes it (<see cref="Lines"/>): whether it is marked <c>root = true</c>,
+    /// the pairs before its first section, and its sections.</summary>
+    public sealed record ConfigText(bool Root, IReadOnlyList<ConfigPair> Preamble, IReadOnlyList<ConfigSection> Sections)
+    {
+        /// <summary>The section an offset of the text is in, the header's line included; null before the first.</summary>
+        public ConfigSection? SectionAt(int offset) => Sections.LastOrDefault(s => s.GlobAt.Start - 1 <= offset);
+    }
 
     /// <summary>A key a section sets: the section's glob as written, the line the key is on (from 1), the key in lower case
     /// and its value as written.</summary>
@@ -199,12 +235,15 @@ public sealed class EditorConfig
 
     /// <summary>The sections of an .editorconfig's text whose glob cannot be used, so they match no file: one whose
     /// brackets hold a range in reverse order (<c>[z-a]</c>), or whose braces nest too deep.</summary>
-    public static IReadOnlyList<RefusedSection> Refused(string text) =>
-        [.. Parse(text).Sections.Select(s => (Section: s, Compiled(s.Glob).Refused)).Where(s => s.Refused is not null)
-            .Select(s => new RefusedSection(new TextRange(s.Section.Offset, s.Section.Glob.Length), s.Refused!))];
+    public static IReadOnlyList<RefusedSection> Refused(string text) => Refused(Lines(text));
+
+    /// <summary>The sections of an .editorconfig's text, read, whose glob cannot be used (<see cref="Refused(string)"/>).</summary>
+    public static IReadOnlyList<RefusedSection> Refused(ConfigText text) =>
+        [.. text.Sections.Select(s => (Section: s, Compiled(s.Glob).Refused)).Where(s => s.Refused is not null)
+            .Select(s => new RefusedSection(s.Section.GlobAt, s.Refused!))];
 
     /// <summary>A .editorconfig read, or null when there is none to read.</summary>
-    private static ConfigFile? Read(string file)
+    private static ConfigText? Read(string file)
     {
         string text;
         try
@@ -219,17 +258,18 @@ public sealed class EditorConfig
         {
             return null;
         }
-        return Parse(text);
+        return Lines(text);
     }
 
     /// <summary>An .editorconfig's text read: comments (<c>#</c> or <c>;</c> starting a line), <c>[glob]</c> section
     /// headers, and <c>key = value</c> pairs, keys in any case; <c>root</c> counts only before the first section, and a
-    /// line that is none of these is passed over.</summary>
-    private static ConfigFile Parse(string text)
+    /// line that is none of these is passed over, as is a pair under a header that is no section's.</summary>
+    public static ConfigText Lines(string text)
     {
         bool root = false;
-        List<Section> sections = [];
-        Section? current = null;
+        List<ConfigPair> preamble = [];
+        List<ConfigSection> sections = [];
+        List<ConfigPair>? current = null;
         bool inSections = false;
         int next = 0;
         for (int number = 1; next <= text.Length; number++)
@@ -247,10 +287,11 @@ public sealed class EditorConfig
             if (line[0] == '[')
             {
                 inSections = true;
-                current = line.Length > 2 && line[^1] == ']' ? new Section(line[1..^1], number, start + 1, []) : null;
-                if (current is not null)
+                current = null;
+                if (line.Length > 2 && line[^1] == ']')
                 {
-                    sections.Add(current);
+                    current = [];
+                    sections.Add(new ConfigSection(line[1..^1], number, new TextRange(start + 1, line.Length - 2), current));
                 }
                 continue;
             }
@@ -259,18 +300,24 @@ public sealed class EditorConfig
             {
                 continue;
             }
-            string key = line[..equals].Trim().ToLowerInvariant();
+            string written = line[..equals].TrimEnd();
             string value = line[(equals + 1)..].Trim();
+            int valueStart = start + equals + 1 + (line.Length - equals - 1 - line[(equals + 1)..].TrimStart().Length);
+            ConfigPair pair = new(written.ToLowerInvariant(), value, number, new TextRange(start, written.Length), new TextRange(valueStart, value.Length));
             if (current is not null)
             {
-                current.Pairs.Add((key, value, number));
+                current.Add(pair);
             }
-            else if (!inSections && key == "root")
+            else if (!inSections)
             {
-                root = Flag(value) == true;
+                preamble.Add(pair);
+                if (pair.Key == "root")
+                {
+                    root = Flag(value) == true;
+                }
             }
         }
-        return new ConfigFile(root, sections);
+        return new ConfigText(root, preamble, sections);
     }
 
     /// <summary>Whether a section's glob matches a file, by its path from the .editorconfig's folder ("/src/A.cs"): a

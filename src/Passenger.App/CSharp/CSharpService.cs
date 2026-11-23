@@ -199,6 +199,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     {
         Each(document => document.FindContexts());
         Generated.Changed();
+        ForgetEditorConfigKeys();
         ProjectsLoaded?.Invoke(this, EventArgs.Empty);
     }
 

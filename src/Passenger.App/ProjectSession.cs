@@ -1489,7 +1489,7 @@ public sealed class ProjectSession : IAsyncDisposable
     public MSBuild.MSBuildService MSBuild { get; }
 
     /// <summary>The open files Passenger reads for itself (an .editorconfig, a .slnx) marked where it cannot use what they say.</summary>
-    internal FileChecks FileChecks { get; } = new();
+    internal FileChecks FileChecks => field ??= new FileChecks(() => CSharp, () => Vcs.Repository);
 
     /// <summary>The open .feature files read and their steps matched to their project's bindings.</summary>
     internal Bdd.FeatureChecks Features => field ??= new Bdd.FeatureChecks(this);
@@ -2077,6 +2077,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 {
                     Web?.Checks.CodeChanged();
                     GodotMarks.Changed();
+                    FileChecks.Changed();
                     Xaml.ServerLoaded();
                 }
             };
@@ -2086,6 +2087,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 if (CSharp == started)
                 {
                     GodotMarks.Changed();
+                    FileChecks.Changed();
                     if (started.IsReady)
                     {
                         Xaml.ServerLoaded();

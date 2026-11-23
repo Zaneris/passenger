@@ -31,6 +31,7 @@ public partial class MainWindow
         // Class, Interface, Record, Struct and Enum share this place, chosen in its popup.
         Row(A.NewType, "Class/Interface…", row => AskType(NewGoesIn(row)!), Holds);
         AddNewItemAction();
+        AddRepositoryFileActions();
         Row(A.NewSolutionFolder, "New Solution Folder…", row => AskName("New Solution Folder", string.Empty, name => AddSolutionFolderAsync(row.SolutionPath, name)),
             row => row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "A solution folder goes in the solution or one of its folders");
         Row(A.AddExistingProject, "Add Existing Project…", row => IdeErrors.Observe(AddExistingProjectsAsync(row.SolutionPath)),
@@ -419,7 +420,8 @@ public partial class MainWindow
                 {
                     add.Add(separator);
                 }
-                add.AddRange([Item(A.NewFile), Item(A.NewFolder), Item(A.NewType), Item(A.NewItem)]);
+                add.AddRange([Item(A.NewFile), Item(A.NewFolder), Item(A.NewType), Item(A.NewItem), separator, Item(A.NewEditorConfig), Item(A.NewGitIgnore),
+                    Item(A.NewGitAttributes)]);
             }
             if (node.Kind == NodeKind.Project && !node.IsShared)
             {

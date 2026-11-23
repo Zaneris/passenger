@@ -125,7 +125,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
     /// <summary>Reformat Code of a method, on save as one step of Undo or turned off, changes only its own file and
     /// never a letter typed meanwhile; and what a reformat, a completion, a template or a fix writes takes the file's
-    /// line breaks and indents as its .editorconfig says, else as the file's own lines.</summary>
+    /// line breaks and indents as its .editorconfig says, else as the file's own lines; an .editorconfig is read as
+    /// Roslyn's server and the projects' analyzers read it.</summary>
     [AvaloniaFact]
     public void Reformat_and_what_a_completion_or_fix_writes_keep_the_files_indent_and_line_breaks_and_only_their_own_file()
     {
@@ -136,6 +137,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("what a completion or a fix writes takes the file's line breaks, whichever the server writes", () => new CodeAssistTests(project), t => t.What_a_completion_or_a_fix_writes_takes_the_files_line_breaks_whichever_the_server_writes());
         Flow.StepApart("a tab-indented .editorconfig has Enter, Tab, a template, a completion and a fix indent with tabs", () => new CodeAssistTests(project), t => t.A_tab_indented_editorconfig_has_enter_tab_a_template_a_completion_and_a_fix_indent_with_tabs());
         Flow.StepApart("where no .editorconfig says, completions and reformatting indent as the file's own lines", () => new CodeAssistTests(project), t => t.Where_no_editorconfig_says_completions_and_reformatting_indent_as_the_files_own_lines());
+        Flow.StepApart("an .editorconfig marks what nothing reads, says what a key does and completes Roslyn's options and their values", () => new CodeAssistTests(project), t => t.An_editorconfig_marks_what_nothing_reads_says_what_a_key_does_and_completes_roslyns_options_and_their_values());
     }
 
     /// <summary>Edits keep the language server in step below line breaks only Roslyn counts, between a CRLF's halves
@@ -1959,6 +1961,39 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    private void An_editorconfig_marks_what_nothing_reads_says_what_a_key_does_and_completes_roslyns_options_and_their_values()
+    {
+        MainWindow window = project.Open("Keys/.editorconfig");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument keys = window.EditorArea.Active!;
+        string[] marked = ["ZZ9999 = No analyzer Sample runs reports ZZ9999", "csharp_unread_option = Nothing reads csharp_unread_option: no option of Roslyn's is named so",
+            "sometimes = Roslyn does not read sometimes as csharp_space_after_cast: it takes true or false", "lfx = end_of_line takes lf, crlf or cr, not lfx"];
+        Ui.WaitFor(() => Marked().SequenceEqual(marked), () => $"The .editorconfig's marks are {string.Join("; ", Marked())}");
+
+        editor.Focus();
+        int key = editor.Document.Snapshot.ToString().IndexOf("csharp_style_var_elsewhere", StringComparison.Ordinal) + 1;
+        window.MouseMove(editor.TranslatePoint(editor.PointOf(key) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.WaitFor(() => window.Assist.HoverText is not null, "the key's hover card");
+        string card = window.Assist.HoverText!;
+        Assert.True(card.Contains("var preferences", StringComparison.Ordinal) && card.Contains("Takes true or false", StringComparison.Ordinal)
+            && card.Contains("Default: ", StringComparison.Ordinal), $"The card on csharp_style_var_elsewhere does not say its group, values and default: {card}");
+        window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+
+        Ui.PlaceAfter(editor, "end_of_line = lfx");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("csharp_style_var_wh");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.FirstOrDefault() == "csharp_style_var_when_type_is_apparent",
+            () => $"Completion lists {string.Join(", ", window.Assist.CompletionLabels.Take(5))} for csharp_style_var_wh");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.Assist.CompletionLabels.SequenceEqual(["true", "false"]), () => $"The key chosen lists {string.Join(", ", window.Assist.CompletionLabels)} for its value");
+        Ui.Press(window, "ENTER");
+        Assert.EndsWith("\ncsharp_style_var_when_type_is_apparent = true\n", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        window.Close();
+
+        IEnumerable<string> Marked() => keys.Markers.Select(m => $"{keys.Text.Snapshot.GetText(m.Range.Start, m.Range.Length)} = {m.Message}");
+    }
+
     private void Where_no_editorconfig_says_completions_and_reformatting_indent_as_the_files_own_lines()
     {
         MainWindow window = project.Open("Detected/TwoSpaces.cs");
@@ -3269,6 +3304,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             Directory.CreateDirectory(PathOf("Tabs"));
             File.WriteAllText(PathOf("Tabs/.editorconfig"), "[*.cs]\nindent_style = tab\n");
             File.WriteAllText(PathOf("Tabs/Tabbed.cs"), "class Tabbed\n{\n\tpublic int X { get; }\n\n\tstatic void Make()\n\t{\n\t\tint made = 0;\n\t}\n}\n");
+            // Keys: an .editorconfig setting what Roslyn reads, and what nothing reads.
+            Directory.CreateDirectory(PathOf("Keys"));
+            File.WriteAllText(PathOf("Keys/.editorconfig"), "[*.cs]\ncsharp_style_var_elsewhere = true:warning\ndotnet_diagnostic.IDE0008.severity = suggestion\n"
+                + "dotnet_diagnostic.ZZ9999.severity = warning\ncsharp_unread_option = true\ncsharp_space_after_cast = sometimes\nend_of_line = lfx\n");
             Directory.CreateDirectory(PathOf("Detected"));
             File.WriteAllText(PathOf("Detected/TwoSpaces.cs"), "class TwoSpaces\n{\n  public int X { get; }\n\n  static void Make()\n  {\n    int made = 0;\n    if (made > 0)\n    {\n      made--;\n    }\n  }\n}\n");
             File.WriteAllText(PathOf("Detected/Sixes.cs"), Sixes);
