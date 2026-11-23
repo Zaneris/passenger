@@ -649,7 +649,10 @@ public sealed class CommandLineTests : IDisposable
         Directory.Delete(data, recursive: true);
         File.WriteAllText(data, "not a folder\n");
         (int code, string error) = await Run([".", "--size", "800x500", "--scale", "1", "--screenshot", "out.png"], settings, unset: [StateStore.Variable], program: program);
-        Assert.True(code == 2 && error.StartsWith($"passenger: {data} is no folder", StringComparison.Ordinal),
+        // The copy says its data by its own real path, where the test's folder may be reached through a link (macOS's /var).
+        string? named = error.StartsWith("passenger: ", StringComparison.Ordinal) && error.IndexOf(" is no folder", StringComparison.Ordinal) is > 0 and int end
+            ? error["passenger: ".Length..end] : null;
+        Assert.True(code == 2 && named is not null && PathNames.SameFile(named, data),
             $"A data file beside a copy did not end its start saying so, as a malformed flag does: exit code {code}\n{error}");
     }
 
