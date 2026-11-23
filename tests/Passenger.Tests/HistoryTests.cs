@@ -122,7 +122,7 @@ public sealed class HistoryTests : IDisposable
         Ui.Settle();
         Ui.RightClick(Ui.Row(window.ExplorerView, window.ExplorerView.Tree.Rows.First(r => r.Name == "Read.md")));
         MenuItem git = window.ExplorerView.OpenMenu!.Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Git");
-        Assert.Equal(["Compare with Revision…", "Compare with Branch or Tag…", "Show History"], git.Items.OfType<MenuItem>().Select(i => i.Header as string));
+        Assert.Equal(["Compare with Revision…", "Compare with Branch or Tag…", "Show History", "Add to .gitignore", "Go to Ignoring Line"], git.Items.OfType<MenuItem>().Select(i => i.Header as string));
         window.ExplorerView.OpenMenu.Close();
         window.GitWindow.ShowLog();
         Ui.Landed(() => window.GitLog.Rows.Count == 5, "the Log's five commits");
