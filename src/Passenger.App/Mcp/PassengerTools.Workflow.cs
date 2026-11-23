@@ -123,15 +123,16 @@ public sealed partial class PassengerTools
         {
             return Joined(mode, binary.Same ? null : binary.Unified(name, from));
         }
-        string head = await Session.Vcs.HeadTextAsync(full) ?? string.Empty;
+        // A side with no file (one new since the last commit, or one deleted) is /dev/null, as git names it.
+        string? head = await Session.Vcs.HeadTextAsync(full);
         string? encoding = await Session.Vcs.EncodingChangeAsync(full);
         bool breaksAlike = await Session.Vcs.BreaksStoredAlikeAsync(full);
         Passenger.App.Editors.OpenTexts texts = Editors.Texts();
         // Reading and comparing a large file would hold the person's window: the thread pool does both.
         (string diff, string? separators) = await BackgroundWork.Run(() =>
         {
-            string mine = texts.Text(full) ?? string.Empty;
-            return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head, mine, breaksAlike));
+            string? mine = texts.Text(full) ?? (File.Exists(full) ? string.Empty : null);
+            return (LineDiff.Unified(head, mine, name, from), LineDiff.SeparatorChanges(head ?? string.Empty, mine ?? string.Empty, breaksAlike));
         }, cancel);
         // What git's index holds of it, where it holds a change the person or a tool staged.
         string? staged = change is { HoldsStaged: true } && await Session.Vcs.IndexTextAsync(full) is { } index

@@ -1773,9 +1773,10 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"Check for Updates… with no release feed to ask answered: {Text(updates)}");
     }
 
-    /// <summary>A renamed file's diff names where it was and where it is; vcs_commit takes a folder's path as every change
-    /// under it, the untracked folder vcs_status lists as one entry and a tracked folder's new file among them, the rest
-    /// left; and Push run as an action where the repository has no remote answers why it did not push.</summary>
+    /// <summary>A renamed file's diff names where it was and where it is, a new file's and a deleted one's are git's own,
+    /// from /dev/null and to it; vcs_commit takes a folder's path as every change under it, the untracked folder vcs_status
+    /// lists as one entry and a tracked folder's new file among them, the rest left; and Push run as an action where the
+    /// repository has no remote answers why it did not push.</summary>
     private async Task An_agent_reads_a_renames_two_paths_commits_a_folders_changes_by_its_path_and_hears_why_push_did_not_go()
     {
         string repository = TestFolders.Create("mcp-folders-");
@@ -1783,7 +1784,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         TestFolders.Write(repository, "Notes.txt", "notes\n");
         TestFolders.Write(repository, "Old.txt", "old\n");
         TestFolders.Write(repository, "Lib/Shelf.txt", "shelf\n");
+        TestFolders.Write(repository, "Gone.txt", "one\ntwo\nthree\n");
         await TestGit.InitAsync(repository);
+        File.Delete(Path.Combine(repository, "Gone.txt"));
         await TestGit.RunAsync(repository, "mv", "Old.txt", "Renamed.txt");
         File.WriteAllText(Path.Combine(repository, "Renamed.txt"), "renamed\n");
         File.WriteAllText(Path.Combine(repository, "Notes.txt"), "notes, changed\n");
@@ -1795,6 +1798,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await using McpClient client = await Start(["--mcp", repository]);
         string diff = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Renamed.txt" })).GetString()!;
         Assert.True(diff.Contains("--- a/Old.txt\n+++ b/Renamed.txt\n", StringComparison.Ordinal), $"The diff of Old.txt renamed Renamed.txt named it so:\n{diff}");
+        // Git applies a deletion's diff only as one to /dev/null: to b/Gone.txt it leaves the file there, empty.
+        string gone = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Gone.txt" })).GetString()!;
+        string gitsGone = GitsDiff(await TestGit.RunAsync(repository, "diff", "--", "Gone.txt"));
+        Assert.True(gone == gitsGone, $"The diff of Gone.txt deleted, which git apply is to take as its deletion, is not git's own:\n{gone}\ngit's:\n{gitsGone}");
+        string added = (await Call(client, McpTools.VcsStatus, new() { ["path"] = "Lib/Added.txt" })).GetString()!;
         // An agent's paths are the system's, as every tool answers them.
         JsonElement fresh = Assert.Single((await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray(),
             c => c.GetProperty("path").GetString() == "Fresh" + Path.DirectorySeparatorChar);
@@ -1804,7 +1812,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal("A\tFresh/a.txt\nA\tFresh/b.txt", (await TestGit.RunAsync(repository, "show", "--name-status", "--format=", "HEAD")).Trim());
         await Call(client, McpTools.VcsCommit, new() { ["message"] = "Lib", ["paths"] = new[] { "Lib" } });
         Assert.Equal("A\tLib/Added.txt\nM\tLib/Shelf.txt", (await TestGit.RunAsync(repository, "show", "--name-status", "--format=", "HEAD")).Trim());
-        Assert.Equal(["Notes.txt modified", "Renamed.txt renamed"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray()
+        string gitsAdded = GitsDiff(await TestGit.RunAsync(repository, "show", "--format=", "HEAD", "--", "Lib/Added.txt"));
+        Assert.True(added == gitsAdded, $"The diff of Lib/Added.txt, new, which git apply is to take as making it, is not git's own:\n{added}\ngit's:\n{gitsAdded}");
+        Assert.Equal(["Gone.txt deleted", "Notes.txt modified", "Renamed.txt renamed"], (await Call(client, McpTools.VcsStatus)).GetProperty("changes").EnumerateArray()
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
         CallToolResult nothing = await Result(client, McpTools.VcsCommit, new() { ["message"] = "Nothing", ["paths"] = new[] { "Lib" } });
         Assert.True(nothing.IsError == true && Text(nothing).Contains("Lib has no changes to commit", StringComparison.Ordinal),
@@ -1814,6 +1824,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(pushed.IsError == true && Text(pushed).Contains("the repository has none", StringComparison.Ordinal),
             $"Push where the repository has no remote answered an agent: {Text(pushed)}");
     }
+
+    /// <summary>Git's diff of one file from its "---" line on, as vcs_status answers it: what comes before (its "diff --git",
+    /// mode and index lines) left out.</summary>
+    private static string GitsDiff(string said) =>
+        said.IndexOf("--- ", StringComparison.Ordinal) is >= 0 and int at ? said[at..] : throw new Xunit.Sdk.XunitException($"Git wrote no diff: {said}");
 
     /// <summary>A rebase stopped on a conflict that the agent resolves is still said by vcs_status, and vcs_commit refuses to
     /// commit beside it, naming Continue Rebase and Abort Rebase by the ids ide_action runs: no commit of the agent's takes

@@ -107,19 +107,19 @@ public static class LineDiff
     }
 
     /// <summary>The difference as `git diff` prints it: a header naming the file where it was (<paramref name="from"/>, for
-    /// one renamed) and where it is, then each hunk with three lines of context around it, hunks whose context touches merged
-    /// into one.</summary>
-    public static string Unified(string before, string after, string name, string? from = null, int context = 3)
+    /// one renamed) and where it is, /dev/null on a side with no file (<paramref name="before"/> or <paramref name="after"/>
+    /// null), then each hunk with three lines of context around it, hunks whose context touches merged into one.</summary>
+    public static string Unified(string? before, string? after, string name, string? from = null, int context = 3)
     {
-        string[] a = Lines(before);
-        string[] b = Lines(after);
+        string[] a = Lines(before ?? string.Empty);
+        string[] b = Lines(after ?? string.Empty);
         IReadOnlyList<DiffHunk> hunks = Hunks(a, b);
         if (hunks.Count == 0)
         {
             return string.Empty;
         }
         System.Text.StringBuilder text = new();
-        text.Append($"--- a/{from ?? name}\n+++ b/{name}\n");
+        text.Append($"--- {(before is null ? "/dev/null" : $"a/{from ?? name}")}\n+++ {(after is null ? "/dev/null" : $"b/{name}")}\n");
         int i = 0;
         while (i < hunks.Count)
         {
@@ -133,7 +133,7 @@ public static class LineDiff
             int oldTo = Math.Min(a.Length, hunks[j].OldStart + hunks[j].OldCount + context);
             int newFrom = Math.Max(0, hunks[i].NewStart - context);
             int newTo = Math.Min(b.Length, hunks[j].NewStart + hunks[j].NewCount + context);
-            text.Append($"@@ -{oldFrom + 1},{oldTo - oldFrom} +{newFrom + 1},{newTo - newFrom} @@\n");
+            text.Append($"@@ -{Range(oldFrom, oldTo)} +{Range(newFrom, newTo)} @@\n");
             int at = oldFrom;
             for (int k = i; k <= j; k++)
             {
@@ -159,6 +159,14 @@ public static class LineDiff
             i = j + 1;
         }
         return text.ToString();
+
+        // A hunk's lines from 1 as git writes them: one alone without its count, none as the line before them.
+        static string Range(int from, int to) => (to - from) switch
+        {
+            1 => $"{from + 1}",
+            0 => $"{from},0",
+            _ => $"{from + 1},{to - from}",
+        };
     }
 
     /// <summary>How the lines two texts have alike (those no hunk takes in) changed their separators, and whether the texts
