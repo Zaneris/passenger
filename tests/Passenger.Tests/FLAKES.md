@@ -30,6 +30,27 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-23
 
+- `CodeAssistTests`' `Reformat_and_what_a_completion_or_fix_writes_keep_the_files_indent_and_line_breaks_and_only_their_own_file`,
+  CI 45269750967 (Windows report shard 3), at f512f7ead: "One Undo of dotnet format's run left Crooked.cs as:" its
+  laid-out text. **A race in the IDE**, from #2156's dotnet format (e5dd778d7): on Windows dotnet format writes CRLF
+  into the lines it changes in an LF file, and the folder's watcher took that text into the open file as a step of its
+  own while dotnet format ran, before `CodeActions.TakeFormatted` put the file's own breaks back as a second step; the
+  Explorer's Undo steps an open file back once, leaving the watcher's text ("    {\r\n"). The steps the file took since
+  dotnet format began are now joined into one, and the step's dotnet format hands its run back only once the watcher has
+  taken what it wrote, so the race goes one way every run (f8932d514): without the fix the step fails so on the Windows
+  VM every run, with it it passes there and on the Mac.
+- `HistoryTests`' `A_files_or_a_folders_history_lists_the_commits_that_touched_it_as_git_names_it_and_shows_what_each_did`,
+  CI 45269750967 (Windows gate shard 1, Linux report shard 3), at f512f7ead: "Assert.Equal() Failure: Collections
+  differ … Actual: [… "Show History", "Add to .gitignore", "Go to Ignoring Line"]". **The test**: #2140 (07b49a57c) gave
+  the Explorer's Git menu Add to .gitignore and Go to Ignoring Line, and the step's list of a file's Git menu still
+  named the three items before them alone; it names all five (94524751e). The class runs on no macOS job.
+- `GitFileFormsTests`' `A_file_git_keeps_in_another_form_than_the_disks_shows_only_what_changed_and_rolls_back_in_its_own_form`,
+  CI 45269750967 (macOS gate shard 1's job, Linux report shard 2, Windows report shard 1), at f512f7ead: "Expected: Line
+  separators changed: 3 lines from LF to CRLF; Actual: Line separators changed: 3 lines from LF to CRLF\n--- a/kept.txt
+  …". **The test**: #2154 (e6ddf911e) has vcs_status follow those words with git's own diff of a file git stores as
+  written, each CR in it, and changed McpTests' step to match, while this step's kept.txt (`-text`) still wanted the
+  words alone; it now wants the words then git's diff (8a0648320). Its failed step left its window open over its deleted
+  folder, which failed DiscordTests after it on Windows (the rig's line below).
 - `AboutMacOSRulesTests`'
   `A_report_class_that_reaches_macOSs_own_behaviour_is_marked_to_run_there_and_a_marked_one_reaches_it`, CI 45269750967
   (Linux gate shard 2, Windows gate shard 2), at f512f7ead: "EslintPrettierTests reaches macOS's own behaviour, yet
