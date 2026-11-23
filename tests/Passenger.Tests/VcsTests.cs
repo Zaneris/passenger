@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App.Editors;
+using Passenger.App.History;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
@@ -121,8 +122,9 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>The log and annotations as one flow, each step the check one test made in an instance of its own:
     /// annotations in a SHA-256 repository, the Commit and Log menus ignoring a file, reverting a commit and branching
-    /// from one, a commit's file in the log jumping to its source and copying its path, and a commit made elsewhere
-    /// reaching the log of the working tree's top and of a folder in it.</summary>
+    /// from one, a commit's file in the log jumping to its source and copying its path, a commit made elsewhere reaching
+    /// the log of the working tree's top and of a folder in it, and an interactive rebase from the log making the history
+    /// its preview showed and going on from its stops.</summary>
     [AvaloniaFact]
     public void The_log_follows_commits_made_anywhere_and_its_menus_act_on_the_commit_or_file_chosen()
     {
@@ -130,6 +132,8 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("the commit and log menus ignore a file revert a commit and branch from one", t => t.The_commit_and_log_menus_ignore_a_file_revert_a_commit_and_branch_from_one());
         Flow.StepApart<VcsTests>("a commits file in the log jumps to its source and copies its path from its menu", t => t.A_commits_file_in_the_log_jumps_to_its_source_and_copies_its_path_from_its_menu());
         Flow.StepApart<VcsTests>("a commit made elsewhere reaches the log of the working trees top and of a folder in it", t => t.A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it());
+        Flow.StepApart<VcsTests>("an interactive rebase from the log moves squashes rewords and drops commits making the history its preview showed", t => t.An_interactive_rebase_from_the_log_moves_squashes_rewords_and_drops_commits_making_the_history_its_preview_showed());
+        Flow.StepApart<VcsTests>("an interactive rebase stops for conflicts and at an edit and goes on by skip commit and continue rebase", t => t.An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase());
     }
 
     /// <summary>Stash and Unstash as one flow, each step the check one test made in an instance of its own: nothing to
@@ -1936,6 +1940,119 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal("from-first", window.Vcs.Branch);
         Assert.Equal(first.Hash, Git("rev-parse", "HEAD").Trim());
         window.Close();
+    }
+
+    /// <summary>Interactively Rebase from Here plans the commits from the one chosen in the log: one dragged to the bottom,
+    /// one squashed by its key, one reworded by typing its message and one dropped from its menu, the preview showing the
+    /// history it makes before anything runs; Start Rebasing makes that history, the commits' messages and files as
+    /// planned, the dropped commit's file gone under one change of Local History named for the rebase.</summary>
+    private void An_interactive_rebase_from_the_log_moves_squashes_rewords_and_drops_commits_making_the_history_its_preview_showed()
+    {
+        foreach (string name in (string[])["One", "Two", "Three", "Four", "Five"])
+        {
+            File.WriteAllText(Path.Combine(folder, $"{name}.txt"), $"{name}\n");
+            Git("add", $"{name}.txt");
+            Git("commit", "-q", "-m", name);
+        }
+        MainWindow window = Open();
+        InteractiveRebaseDialog dialog = PlanRebase(window, "One");
+        Assert.Equal(["Five", "Four", "Three", "Two", "One"], dialog.Rows.Select(r => r.Step.Commit.Subject));
+        Assert.False(dialog.StartButton.IsEnabled, "Start Rebasing was offered for a plan that changes nothing");
+        ListBox commits = Find(dialog, dialog.Rows);
+
+        Ui.Drag(dialog, RowPoint(dialog, commits, 1, 0.5), RowPoint(dialog, commits, 4, 0.8));
+        Assert.Equal(["Five", "Three", "Two", "One", "Four"], dialog.Rows.Select(r => r.Step.Commit.Subject));
+        Ui.Click(RowView(commits, 1), new Point(300, ListRow.Height / 2));
+        Ui.Press(dialog, "S");
+        dialog.Chosen = dialog.RowOf("Five");
+        Ui.ChooseFromMenu(commits, "Drop");
+        dialog.Chosen = dialog.RowOf("One");
+        Ui.Click(dialog.MessageBox);
+        dialog.MessageBox.SelectAll();
+        dialog.KeyTextInput("One, reworded");
+        Ui.Settle();
+        Assert.Equal([RebaseCommand.Drop, RebaseCommand.Squash, RebaseCommand.Pick, RebaseCommand.Reword, RebaseCommand.Pick], dialog.Rows.Select(r => r.Step.Command));
+        Assert.Equal(dialog.RowOf("Two").Step.Commit.Short, dialog.RowOf("Three").Into);
+
+        string[] shown = [.. dialog.History.Where(r => r.Made is not null).Select(r => r.Subject)];
+        Assert.Equal(["Two", "One, reworded", "Four"], shown);
+        Assert.Equal(["new message, 1 folded in", "new message", "moved"], dialog.History.Where(r => r.Made is not null).Select(r => string.Join(", ", r.Tags)));
+        Assert.EndsWith(" First", dialog.History[^1].Subject);
+        Assert.Contains("Five", dialog.LeftOut, StringComparison.Ordinal);
+        Assert.True(dialog.StartButton.IsEnabled, dialog.Problem);
+
+        Ui.Click(dialog.StartButton);
+        Ui.Landed(() => window.InteractiveRebaseWindow is null && !window.Vcs.IsBusy, "the rebase's end");
+        Assert.Equal(MergeOperation.None, window.Vcs.Merge.Operation);
+        Assert.Equal([.. shown, "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Equal("Two\n\nThree", Git("log", "-1", "--format=%B").Trim());
+        Assert.False(File.Exists(Path.Combine(folder, "Five.txt")), "The dropped commit's file was still there after the rebase");
+        Assert.True(File.Exists(Path.Combine(folder, "Four.txt")), "The moved commit's file was gone after the rebase");
+        LocalHistory history = window.LocalHistory!;
+        Ui.WaitFor(() => history.Snapshot().Events.Any(e => e.Name == "Git rebase" && e.Path?.EndsWith("Five.txt", StringComparison.Ordinal) == true),
+            "the dropped commit's file kept in Local History under the rebase");
+        Assert.Single(history.Snapshot().Events.Where(e => e.Name == "Git rebase").Select(e => e.Set).Distinct());
+        window.Close();
+    }
+
+    /// <summary>An interactive rebase follows git through its stops as a rebase does: a commit moved under the one it builds
+    /// on stops it for conflicts, where Skip Commit leaves that commit out and goes on to the edit planned after it, where
+    /// it stops saying so with Skip Commit refused, and Continue Rebase finishes it.</summary>
+    private void An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Twice");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 3", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Thrice");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
+        Git("add", "Notes.txt");
+        Git("commit", "-q", "-m", "Notes");
+        MainWindow window = Open();
+        InteractiveRebaseDialog dialog = PlanRebase(window, "Twice");
+        ListBox commits = Find(dialog, dialog.Rows);
+        Ui.Click(RowView(commits, 1), new Point(300, ListRow.Height / 2));
+        Ui.Press(dialog, "alt DOWN");
+        Ui.Click(RowView(commits, 0), new Point(300, ListRow.Height / 2));
+        Ui.Press(dialog, "E");
+        Assert.Equal(["Notes", "Twice", "Thrice"], dialog.Rows.Select(r => r.Step.Commit.Subject));
+        Assert.Equal([true, false, false], dialog.History.Where(r => r.Made is not null).Select(r => r.Made!.Stops));
+
+        Ui.Click(dialog.StartButton);
+        Ui.WaitFor(() => window.ConflictsWindow is not null, "the Conflicts dialog for the moved commit");
+        window.ConflictsWindow!.Close();
+        Ui.Settle();
+        Assert.Equal((MergeOperation.Rebase, (RebaseStop?)null), (window.Vcs.Merge.Operation, window.Vcs.Merge.Stop));
+        Assert.True(window.Perform(AppActions.SkipRebase), window.Status);
+        Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Merge.Stop is { Step: RebaseStep.Edit }, "the rebase stopped at the planned edit");
+        Assert.Contains("stopped to edit", window.Status, StringComparison.Ordinal);
+        Assert.Contains("Continue Rebase goes on", window.Actions.WhyNot(AppActions.SkipRebase, window.Actions.Context()), StringComparison.Ordinal);
+        Assert.True(window.Perform(AppActions.ContinueRebase), window.Status);
+        Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Merge.Operation is MergeOperation.None, "the rebase's end");
+        Assert.Equal(["Notes", "Twice", "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Contains("count += 2", File.ReadAllText(Path.Combine(folder, "Shop.cs")), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>The Git log open, the commit with <paramref name="subject"/> chosen and Interactively Rebase from Here taken
+    /// from its menu: the dialog it opens.</summary>
+    private static InteractiveRebaseDialog PlanRebase(MainWindow window, string subject)
+    {
+        window.Perform(AppActions.ShowGit);
+        GitLogView log = window.GitLog;
+        Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == subject), "the log");
+        log.Select(log.Rows.First(r => r.Commit.Subject == subject).Commit);
+        Ui.ChooseFromMenu(Find(log, log.Rows), "Interactively Rebase from Here…");
+        Ui.WaitFor(() => window.InteractiveRebaseWindow is { IsVisible: true }, "the Interactive Rebase dialog");
+        return DialogButtonsTests.Check(window.InteractiveRebaseWindow!);
+    }
+
+    private static Control RowView(ListBox list, int index) => list.ContainerFromIndex(index) ?? throw new InvalidOperationException($"No row {index} is drawn");
+
+    /// <summary>A point of a row, past its box, in the dialog's units: <paramref name="down"/> of the way down it.</summary>
+    private static Point RowPoint(Window dialog, ListBox list, int index, double down)
+    {
+        Control row = RowView(list, index);
+        return row.TranslatePoint(new Point(300, row.Bounds.Height * down), dialog) ?? throw new InvalidOperationException($"Row {index} is not in the dialog");
     }
 
     /// <summary>A commit's file in the Git log offers what a changed file in the Commit window does: its diff, its file

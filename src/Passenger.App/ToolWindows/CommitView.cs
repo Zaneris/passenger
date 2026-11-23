@@ -223,6 +223,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly StackPanel underWay;
     private readonly TextBlock underWayText;
     private readonly Button continueRebase;
+    private readonly Button skipCommit;
     private readonly Button abort;
     private string? beforeAmend;
 
@@ -324,6 +325,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         underWayText = new TextBlock { TextWrapping = TextWrapping.Wrap };
         continueRebase = new Button { Classes = { StyleClasses.Link }, Content = "Continue Rebase" };
         continueRebase.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.ContinueRebase);
+        skipCommit = new Button { Classes = { StyleClasses.Link }, Content = "Skip Commit" };
+        skipCommit.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.SkipRebase);
         abort = new Button { Classes = { StyleClasses.Link } };
         abort.Click += (_, _) =>
         {
@@ -332,7 +335,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 ActionRequested?.Invoke(this, action.Id);
             }
         };
-        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Wide, Children = { continueRebase, abort } };
+        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Wide, Children = { continueRebase, skipCommit, abort } };
         underWay = new StackPanel { Margin = new Thickness(ListRow.TextStart, Gaps.Small, ListRow.TextStart, 0), Spacing = Gaps.Hair, IsVisible = false, Children = { underWayText, links } };
 
         amend = new CheckBox { Content = "Amend" };
@@ -964,6 +967,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         underWay.IsVisible = vcs.Merge.UnderWay is not null;
         underWayText.Text = vcs.Merge.UnderWay;
         continueRebase.IsVisible = vcs.Merge.Operation is MergeOperation.Rebase;
+        // Only where it stopped for conflicts: at an edit its commit is made already.
+        skipCommit.IsVisible = vcs.WhyNotSkip is null;
         abort.Content = AbortOf(vcs.Merge.Operation)?.Title;
         // A merge under way gives the commit that finishes it the message git wrote for it, until it ends.
         string? merging = vcs.Merge.CommitsWhole ? vcs.Merge.Message : null;

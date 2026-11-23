@@ -8,8 +8,8 @@ namespace Passenger.App;
 
 /// <summary>The window's merge conflicts: the Conflicts dialog (from Git | Resolve Conflicts..., the Commit window's
 /// Merge Conflicts, and by itself when an update, an unstash or a cherry-pick stops for them), the three-way merge
-/// window over it (from the dialog, the Commit window, and the banner over a file in conflict), and Continue Rebase and
-/// the Abort of what is under way (a rebase, a merge, a cherry-pick, a revert).</summary>
+/// window over it (from the dialog, the Commit window, and the banner over a file in conflict), Continue Rebase, Skip
+/// Commit and the Abort of what is under way (a rebase, a merge, a cherry-pick, a revert).</summary>
 public partial class MainWindow
 {
     private ConflictsDialog? conflictsDialog;
@@ -23,12 +23,13 @@ public partial class MainWindow
             () => session.Vcs.Conflicts.Count == 0 ? "No conflicts found" : null);
         Add(AppActions.ContinueRebase, "Continue Rebase", context => IdeErrors.Observe(session.Vcs.ContinueRebaseAsync()), 6,
             () => NoRebase() ?? (session.Vcs.Conflicts.Count > 0 ? VcsController.ContinueRefused : null));
-        Add(AppActions.AbortRebase, "Abort Rebase", context => IdeErrors.Observe(AbortAsync("Abort Rebase", $"Abort rebase in {Path.GetFileName(session.Vcs.Repository?.Root)}?")), 7, NoRebase);
-        Add(AppActions.AbortMerge, "Abort Merge", context => IdeErrors.Observe(AbortAsync("Abort Merge", "Abort merge?")), 8,
+        Add(AppActions.SkipRebase, "Skip Commit", context => IdeErrors.Observe(session.Vcs.SkipRebaseAsync()), 7, () => session.Vcs.WhyNotSkip);
+        Add(AppActions.AbortRebase, "Abort Rebase", context => IdeErrors.Observe(AbortAsync("Abort Rebase", $"Abort rebase in {Path.GetFileName(session.Vcs.Repository?.Root)}?")), 8, NoRebase);
+        Add(AppActions.AbortMerge, "Abort Merge", context => IdeErrors.Observe(AbortAsync("Abort Merge", "Abort merge?")), 9,
             () => session.Vcs.Merge.Operation is MergeOperation.Merge ? null : "No merge in progress");
-        Add(AppActions.AbortCherryPick, "Abort Cherry-Pick", context => IdeErrors.Observe(AbortAsync("Abort Cherry-Pick", "Abort cherry-pick?")), 9,
+        Add(AppActions.AbortCherryPick, "Abort Cherry-Pick", context => IdeErrors.Observe(AbortAsync("Abort Cherry-Pick", "Abort cherry-pick?")), 10,
             () => session.Vcs.Merge.Operation is MergeOperation.CherryPick ? null : "No cherry-pick in progress");
-        Add(AppActions.AbortRevert, "Abort Revert", context => IdeErrors.Observe(AbortAsync("Abort Revert", "Abort revert?")), 10,
+        Add(AppActions.AbortRevert, "Abort Revert", context => IdeErrors.Observe(AbortAsync("Abort Revert", "Abort revert?")), 11,
             () => session.Vcs.Merge.Operation is MergeOperation.Revert ? null : "No revert in progress");
 
         string? NoRebase() => session.Vcs.Merge.Operation is MergeOperation.Rebase ? null : "No rebase in progress";

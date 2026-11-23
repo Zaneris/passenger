@@ -1289,6 +1289,10 @@ public sealed class VcsController : IDisposable
             return Unsigned(await change(repository, signer), setup);
         }, done, activity, conflicted);
 
+    /// <summary>Where a rebase stopped at a step of its list (an edit), in the words the Commit window says it in; null
+    /// where none is under way, or it stopped for conflicts.</summary>
+    private string? RebaseStopped() => Merge is { Operation: MergeOperation.Rebase, Stop: not null } ? Merge.UnderWay : null;
+
     /// <summary>A git that was to sign, its words masked as every secret is, and where it failed for its signing, what the
     /// person is told in place of git's words.</summary>
     private static GitResult Unsigned(GitResult said, SigningSetup setup)
@@ -1501,6 +1505,66 @@ public sealed class VcsController : IDisposable
         }
         return SignedSwitchAsync((repository, signer) => repository.RebaseAsync(current, branch.Name, signer), $"Checked out {branch.Name} and rebased it on {current}", "Git rebase", "Rebase stopped due to conflicts");
     }
+
+    /// <summary>Why Interactively Rebase from Here cannot plan a rebase now: no working tree, or git in the middle of
+    /// something; null where it can.</summary>
+    public string? WhyNotInteractiveRebase => git is null ? NoRepository
+        : Merge.UnderWay is { } underWay ? $"{underWay}: it is finished or aborted first"
+        : IsBusy ? Busy
+        : null;
+
+    /// <summary>Interactively Rebase from Here's plan: <paramref name="from"/> and the commits after it up to HEAD, each
+    /// picked, or why there is none.</summary>
+    public async Task<(RebasePlan? Plan, string? WhyNot)> RebasePlanAsync(CommitInfo from)
+    {
+        UiThread.Check();
+        if (WhyNotInteractiveRebase is { } refused)
+        {
+            return (null, refused);
+        }
+        return await git!.RebasePlanAsync(from.Hash);
+    }
+
+    /// <summary>An interactive rebase as planned, held as its action's work: one change in Local History, stopping where git
+    /// does, at an edit (said as the Commit window says it) or for conflicts (the Conflicts dialog).</summary>
+    public async Task<VcsOutcome> InteractiveRebaseAsync(RebasePlan plan)
+    {
+        if ((WhyNotInteractiveRebase ?? plan.WhyNot) is { } refused)
+        {
+            return Report(false, refused);
+        }
+        if (!Begin(AppActions.InteractiveRebase, "Rebasing…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.InteractiveRebase));
+        }
+        using Working? held = work;
+        string branch = Branch ?? "HEAD";
+        int made = plan.Outcome().Count;
+        return await SignedSwitchAsync((repository, signer) => repository.InteractiveRebaseAsync(plan, Product.Program, signer),
+            $"Rebased {branch} as planned, making {Plural.Of(made, "commit")} of the {Numbers.Said(plan.Commits.Count)}", "Git rebase", "Rebase stopped due to conflicts");
+    }
+
+    /// <summary>Skip Commit, where a rebase stopped for its conflicts: that commit left out and the rest replayed, held as
+    /// its action's work.</summary>
+    public async Task<VcsOutcome> SkipRebaseAsync()
+    {
+        if (WhyNotSkip is { } refused)
+        {
+            return Report(false, refused);
+        }
+        if (!Begin(AppActions.SkipRebase, "Skipping the commit…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.SkipRebase));
+        }
+        using Working? held = work;
+        return await SignedSwitchAsync((repository, signer) => repository.SkipRebaseAsync(signer), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
+    }
+
+    /// <summary>Why Skip Commit cannot leave a commit out now: no rebase under way, or one stopped at a step of its list,
+    /// whose commit is made already; null where it stopped for conflicts.</summary>
+    public string? WhyNotSkip => Merge.Operation is not MergeOperation.Rebase ? "No rebase in progress"
+        : Merge.Stop is not null ? $"{Merge.UnderWay}, its commit made: Continue Rebase goes on"
+        : null;
 
     /// <summary>Rename of a local branch.</summary>
     public Task<VcsOutcome> RenameBranchAsync(BranchInfo branch, string name) =>
@@ -1816,7 +1880,7 @@ public sealed class VcsController : IDisposable
             {
                 return stopped;
             }
-            return Report(switched.Succeeded, switched.Succeeded ? done : switched.Message);
+            return Report(switched.Succeeded, switched.Succeeded ? RebaseStopped() ?? done : switched.Message);
         }, refused => refused);
     }
 

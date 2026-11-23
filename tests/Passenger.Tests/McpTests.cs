@@ -1904,7 +1904,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await TestGit.RunAsync(repository, "commit", "-q", "-m", "Later");
         ProcessStartInfo editing = ChildProcesses.Command("git", ["rebase", "-i", "HEAD~2"], repository);
         // The list's first step, Two's pick, made an edit, as a person's editor would.
-        editing.Environment["GIT_SEQUENCE_EDITOR"] = "sed -i.bak -e 1s/^pick/edit/";
+        editing.Environment[GitVariables.SequenceEditor] = "sed -i.bak -e 1s/^pick/edit/";
         ChildResult rebasing = await ChildProcesses.RunAsync(editing, limit: TimeSpan.FromMinutes(1), cancel: Cancel);
         Assert.True(File.Exists(Path.Combine(repository, ".git", "rebase-merge", "amend")), $"The rebase was to stop to edit Two: {rebasing.Error}{rebasing.Output}");
 

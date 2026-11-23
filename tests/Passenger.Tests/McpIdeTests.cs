@@ -417,7 +417,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
         ProcessStartInfo editing = ChildProcesses.Command("git", ["rebase", "-i", "HEAD~1"], repository);
         // The list's one step, the commit's pick, made an edit, as a person's editor would.
-        editing.Environment["GIT_SEQUENCE_EDITOR"] = "sed -i.bak -e 1s/^pick/edit/";
+        editing.Environment[GitVariables.SequenceEditor] = "sed -i.bak -e 1s/^pick/edit/";
         ChildResult stopping = await ChildProcesses.RunAsync(editing, limit: TimeSpan.FromMinutes(1), cancel: Cancel);
         Assert.True(File.Exists(Path.Combine(repository, ".git", "rebase-merge", "amend")), $"The rebase was to stop to edit: {stopping.Error}{stopping.Output}");
         Assert.Equal("Rebase successful", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase })).GetString());

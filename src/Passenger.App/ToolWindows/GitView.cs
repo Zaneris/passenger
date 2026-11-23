@@ -68,6 +68,8 @@ public sealed class GitView : DockPanel
 
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;
 
+    public event EventHandler<CommitInfo>? InteractiveRebaseRequested;
+
     /// <summary>Show History's tab for a file, a folder or lines: the one open for it, else a new one after the others.</summary>
     public GitLogView ShowHistory(HistoryScope scope, string title)
     {
@@ -199,6 +201,7 @@ public sealed class GitView : DockPanel
         view.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
         view.NewBranchRequested += (_, commit) => NewBranchRequested?.Invoke(this, commit);
         view.ResetRequested += (_, reset) => ResetRequested?.Invoke(this, reset);
+        view.InteractiveRebaseRequested += (_, commit) => InteractiveRebaseRequested?.Invoke(this, commit);
         return view;
     }
 

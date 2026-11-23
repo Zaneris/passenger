@@ -11,6 +11,17 @@ public static class GitVariables
     /// <summary>The editor git opens for a commit's message; "true" keeps the message it has.</summary>
     public const string Editor = "GIT_EDITOR";
 
+    /// <summary>The editor git opens an interactive rebase's list of steps in, given the list's file.</summary>
+    public const string SequenceEditor = "GIT_SEQUENCE_EDITOR";
+
+    /// <summary>The name, email and time (seconds since 1970 and the zone, as git writes them raw) a commit git makes is
+    /// authored by, over the configuration's.</summary>
+    public const string AuthorName = "GIT_AUTHOR_NAME";
+
+    public const string AuthorEmail = "GIT_AUTHOR_EMAIL";
+
+    public const string AuthorDate = "GIT_AUTHOR_DATE";
+
     /// <summary>"0" keeps git from asking for a login on a terminal.</summary>
     public const string TerminalPrompt = "GIT_TERMINAL_PROMPT";
 

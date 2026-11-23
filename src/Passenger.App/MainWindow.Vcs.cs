@@ -158,6 +158,7 @@ public partial class MainWindow
             popups.Show(popup, _ => { });
         };
         view.ResetRequested += (_, reset) => IdeErrors.Observe(ResetToAsync(reset));
+        view.InteractiveRebaseRequested += (_, commit) => IdeErrors.Observe(InteractiveRebaseAsync(commit));
         FollowBranches(view.Log.Branches!);
         return view;
     }
@@ -887,6 +888,12 @@ public partial class MainWindow
             WhyNot = NeedsRepository,
             IsChecked = _ => session.Vcs.GroupsByDirectory,
         });
+        // The commit chosen in the Git log and those after it, as its menu's Interactively Rebase from Here plans them.
+        actions.Add(new IdeAction(AppActions.InteractiveRebase, "Interactively Rebase from Here…", "Git", _ => IdeErrors.Observe(InteractiveRebaseAsync(gitView!.Log.Selected!)))
+        {
+            WhyNot = context => NeedsRepository(context) ?? session.Vcs.WhyNotInteractiveRebase
+                ?? (gitView?.Log.Selected is null ? "Choose the oldest commit to rebase in the Git log first" : null),
+        });
         actions.Add(new IdeAction(AppActions.GitLogRefresh, "Refresh Git Log", "Git", _ =>
         {
             session.Vcs.Signatures.Forget();
@@ -950,6 +957,44 @@ public partial class MainWindow
             return;
         }
         await session.Vcs.ResetAsync(reset.Commit.Hash, reset.Mode);
+    }
+
+    private InteractiveRebaseDialog? interactiveRebaseDialog;
+
+    /// <summary>The Interactive Rebase dialog while it is open.</summary>
+    public InteractiveRebaseDialog? InteractiveRebaseWindow => interactiveRebaseDialog;
+
+    /// <summary>Interactively Rebase from Here: the commits from <paramref name="from"/> up to HEAD planned in the Interactive
+    /// Rebase dialog, and the plan it closes with run, one change in Local History stopping where git stops.</summary>
+    private async Task InteractiveRebaseAsync(CommitInfo from)
+    {
+        RebasePlan? plan;
+        string? onto = null;
+        using (Working? reading = BeginWork(AppActions.InteractiveRebase, "Reading the commits…"))
+        {
+            if (reading is null)
+            {
+                return;
+            }
+            (plan, string? why) = await session.Vcs.RebasePlanAsync(from);
+            if (plan is null)
+            {
+                status.Text = why;
+                reading.Tell(false, why ?? "No commits to rebase");
+                return;
+            }
+            if (plan.Base is { } upon && session.Vcs.Repository is { } repository)
+            {
+                onto = $"{GitHashes.Short(upon)} {(await repository.MessageAsync(upon)).Split('\n')[0]}";
+            }
+        }
+        InteractiveRebaseDialog dialog = new(plan, session.Vcs.Branch ?? "Detached HEAD", onto);
+        interactiveRebaseDialog = dialog;
+        dialog.Closed += (_, _) => interactiveRebaseDialog = interactiveRebaseDialog == dialog ? null : interactiveRebaseDialog;
+        if (await dialog.ShowDialog<RebasePlan?>(this) is { } planned)
+        {
+            await session.Vcs.InteractiveRebaseAsync(planned);
+        }
     }
 
     private async Task RollbackAsync(IReadOnlyList<FileChange> changes)

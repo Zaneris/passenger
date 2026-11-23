@@ -5,7 +5,8 @@ using Passenger.Core;
 namespace Passenger.Vcs;
 
 /// <summary>A file a commit makes for git, deleted once git is done with it whatever came of the commit: its message
-/// (<c>commit -F</c>), or the data Passenger's gpg has gpg sign (<see cref="Signed"/>), written once under a name nothing
+/// (<c>commit -F</c>), an interactive rebase's planned steps (<see cref="Todo"/>), or the data Passenger's gpg has gpg sign
+/// (<see cref="Signed"/>), written once under a name nothing
 /// had, only the person's to read on macOS and Linux from its making, so a program that opens it a moment after (a
 /// scanner, an indexer) stands in no write's way; an index of its own in the git folder, which git writes; or an ignore
 /// file at its place in a tree of its own, which git reads as a work tree's (<see cref="Ignoring"/>). A deletion
@@ -67,6 +68,12 @@ internal sealed class CommitFile : IDisposable
     /// deleted, and the failure thrown.</summary>
     public static CommitFile Message(string message) =>
         Written(System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"passenger-message-{Guid.NewGuid():N}"), Encoding.UTF8.GetBytes(message), leftToOperation: false);
+
+    /// <summary>An interactive rebase's planned steps, which Passenger as git's sequence editor writes over git's
+    /// (<see cref="RebaseTodo"/>), written whole in a file of its own in the temporary folder; one whose write fails is
+    /// deleted, and the failure thrown.</summary>
+    public static CommitFile Todo(string steps) =>
+        Written(System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"passenger-todo-{Guid.NewGuid():N}"), Encoding.UTF8.GetBytes(steps), leftToOperation: false);
 
     /// <summary>The data Passenger's gpg has gpg sign, written whole beside the operation's <paramref name="socket"/>, whose
     /// end deletes it where this process could not (<see cref="DeleteSigned"/>); one whose write fails is deleted, and the

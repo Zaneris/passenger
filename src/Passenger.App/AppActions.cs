@@ -633,14 +633,18 @@ public static class AppActions
     // Rider's Git.Init, Create Git Repository: no keys in its Visual Studio keymaps or their parents.
     public const string CreateRepository = "app.vcs.createRepository";
 
-    // Rider's Git.ResolveConflicts, Git.Rebase.Continue, Git.Rebase.Abort, Git.Merge.Abort, Git.CherryPick.Abort and
-    // Git.Revert.Abort: no keys in its Visual Studio keymaps or their parents.
+    // Rider's Git.ResolveConflicts, Git.Rebase.Continue, Git.Rebase.Skip, Git.Rebase.Abort, Git.Merge.Abort,
+    // Git.CherryPick.Abort and Git.Revert.Abort: no keys in its Visual Studio keymaps or their parents.
     public const string ResolveConflicts = "app.vcs.resolveConflicts";
     public const string ContinueRebase = "app.vcs.continueRebase";
+    public const string SkipRebase = "app.vcs.skipRebase";
     public const string AbortRebase = "app.vcs.abortRebase";
     public const string AbortMerge = "app.vcs.abortMerge";
     public const string AbortCherryPick = "app.vcs.abortCherryPick";
     public const string AbortRevert = "app.vcs.abortRevert";
+
+    // Rider's Git.Interactive.Rebase, the log's Interactively Rebase from Here: no keys in any of its keymaps.
+    public const string InteractiveRebase = "app.vcs.interactiveRebase";
 
     // Rider's Vcs.ShowTabbedFileHistory, Vcs.ShowHistoryForBlock, Git.CompareWithBranch and Compare.Selected: no keys in
     // its Visual Studio keymaps or their parents.

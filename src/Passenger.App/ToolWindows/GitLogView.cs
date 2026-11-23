@@ -93,6 +93,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             new Separator(),
             ListMenus.Item("Cherry-Pick", () => IdeErrors.Observe(vcs.CherryPickAsync(commit.Hash))),
             ListMenus.Item("Revert Commit", () => IdeErrors.Observe(vcs.RevertAsync(commit.Hash))),
+            ListMenus.Item("Interactively Rebase from Here…", () => InteractiveRebaseRequested?.Invoke(this, commit), vcs.WhyNotInteractiveRebase),
             ListMenus.Sub("Reset Current Branch to Here",
                 ListMenus.Item("Soft: the changes since kept staged", () => ResetRequested?.Invoke(this, (commit, ResetMode.Soft))),
                 ListMenus.Item("Mixed: the changes since kept in the files", () => ResetRequested?.Invoke(this, (commit, ResetMode.Mixed))),
@@ -242,6 +243,9 @@ public sealed class GitLogView : DockPanel, IOwnKeys
 
     /// <summary>A branch to make at a commit, its name to be asked for.</summary>
     public event EventHandler<CommitInfo>? NewBranchRequested;
+
+    /// <summary>The commits from one up to HEAD to plan an interactive rebase of.</summary>
+    public event EventHandler<CommitInfo>? InteractiveRebaseRequested;
 
     /// <summary>The current branch to move to a commit, in a mode (a hard reset to be agreed to first).</summary>
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;

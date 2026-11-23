@@ -20,6 +20,11 @@ internal static class Program
     public static int Main(string[] args)
     {
         StartedAt = Stopwatch.GetTimestamp();
+        // Run by git as an interactive rebase's sequence editor, first, as git's other helpers share its environment.
+        if (Passenger.Vcs.RebaseTodo.Write(args) is int written)
+        {
+            return written;
+        }
         // Run by git to ask for a login: the window answers, and nothing of the IDE starts.
         if (Passenger.Vcs.GitAskPass.Answer(args) is int asked)
         {
