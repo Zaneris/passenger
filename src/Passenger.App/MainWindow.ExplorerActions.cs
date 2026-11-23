@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Passenger.App.Explorer;
+using Passenger.Core;
 using E = Passenger.Editor.EditorActions;
 using A = Passenger.App.AppActions;
 
@@ -248,12 +249,12 @@ public partial class MainWindow
 
     /// <summary>Delete on a row: what is the solution's own (a project, a solution folder, a file it lists) and a
     /// project reference leave it, their files staying on disk; a file or folder goes to the Trash, and so does every one
-    /// chosen with it, asked once, but those inside another.</summary>
+    /// chosen with it, asked once, but those inside another, a file with those nested under it.</summary>
     private async Task DeleteRowAsync(ExplorerNode row)
     {
         if (RowsDeleted(row) is { Count: > 1 } rows)
         {
-            await DeleteAsync(Outermost([.. rows.Where(n => n.IsMovable).Select(n => n.Path).OfType<string>()]));
+            await DeleteWithNestedAsync(Outermost([.. rows.Where(n => n.IsMovable).Select(n => n.Path).OfType<string>()]));
             return;
         }
         switch (row)
@@ -274,8 +275,24 @@ public partial class MainWindow
                 await RemoveProjectAsync(project);
                 break;
             case { Path: { } path }:
-                await DeleteAsync(path);
+                await DeleteWithNestedAsync([path]);
                 break;
+        }
+    }
+
+    /// <summary>Files and folders deleted to the Trash with the files nested under each file among them, as those go
+    /// where it is moved, the one question saying how many go with them.</summary>
+    private async Task DeleteWithNestedAsync(IReadOnlyList<string> paths)
+    {
+        HashSet<string> chosen = new(paths, PathNames.Comparer);
+        string[] nested = [.. DependentsOf(paths).Values.SelectMany(d => d).Where(d => !chosen.Contains(d)).Distinct(PathNames.Comparer)];
+        if (nested.Length == 0)
+        {
+            await DeleteAsync(paths);
+        }
+        else if (await Confirm("Delete", $"{DeleteQuestion(paths).TrimEnd('?')}, with {Plural.Of(nested.Length, "file")} nested under {Plural.Agreeing(paths.Count, "it", "them")}?", "Delete"))
+        {
+            await DeleteAsync([.. paths, .. nested], asked: true);
         }
     }
 

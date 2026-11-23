@@ -62,7 +62,7 @@ public sealed class FileNestingTests : IDisposable
     private string At(string relative) => Path.Combine(folder, "Shop", relative.Replace('/', Path.DirectorySeparatorChar));
 
     /// <summary>The solution view nests each file under the one it belongs to, by its name or a project's
-    /// DependentUpon, a parent renamed or moved takes its dependents along, and a rename that cannot move one moves
+    /// DependentUpon, a parent renamed, moved or deleted takes its dependents along, and a rename that cannot move one moves
     /// none, as one flow, each step the check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void Nested_files_follow_the_file_they_belong_to_and_a_rename_moves_all_or_none()
@@ -207,6 +207,22 @@ public sealed class FileNestingTests : IDisposable
         Assert.Empty(Directory.GetFiles(At("Forms")));
         Assert.Equal(["Form1.Designer.cs", "Form1.cs", "Form1.resx"], Directory.GetFiles(At("Archive")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
         Assert.Equal(At("Archive/Form1.cs"), Holder(window, At("Archive/Form1.resx")).Path);
+
+        // Deleted, the form takes the files nested under it to the Trash too, as it took them where it moved.
+        List<string> questions = [];
+        window.Confirm = (_, text, _) =>
+        {
+            questions.Add(text);
+            return Task.FromResult(true);
+        };
+        Choose(window, At("Archive/Form1.cs"));
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => Directory.GetFiles(At("Archive")).Length == 0,
+            () => $"Form1.cs to go to the Trash with the files nested under it, where Archive holds [{string.Join(", ", Directory.GetFiles(At("Archive")).Select(Path.GetFileName))}]: {window.Status}");
+        Assert.Equal(["Move Form1.cs to the Trash, with 2 files nested under it?"], questions);
+        Choose(window, At("Archive"));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => Directory.GetFiles(At("Archive")).Length == 3, () => $"Undo to bring Form1.cs and its nested files back: {window.Status}");
         window.Close();
     }
 
