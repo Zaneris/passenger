@@ -835,8 +835,48 @@ public sealed partial class Vim
     {
         if (r.Cursor < r.Anchor)
         {
+            LineSpan on = VimMotions.LineOf(text, r.Cursor);
+            if (n == 1 && on.Line > 0 && VimMotions.Blank(text, on.Line - 1) && TextNavigation.IndentEnd(text, on) is var indent
+                && r.Cursor < indent && indent < on.End)
+            {
+                // Below an empty line, a cursor in the blanks opening its line stays in that line.
+                int to = inner ? indent : on.Start;
+                return to != r.Cursor ? r with { Cursor = to } : null;
+            }
             int back = SentencesBack(text, r.Cursor, inner, n);
             return back != r.Cursor ? r with { Cursor = back } : null;
+        }
+        if (inner && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } empty && empty.EndIncludingBreak < text.Length
+            && text[empty.EndIncludingBreak] is ' ' or '\t')
+        {
+            // From an empty line, the blanks opening the next are a white of their own.
+            Region white = r with { Cursor = LastOpeningBlank(text, empty.EndIncludingBreak) };
+            return n > 1 ? SentencesOn(text, white, inner, n - 1) ?? white : white;
+        }
+        if ((inner || n == 1) && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } past && r.Cursor == past.End
+            && past.EndIncludingBreak < text.Length && text[past.EndIncludingBreak] is ' ' or '\t')
+        {
+            // Past its line's last character the cursor is in the white the next line's blanks end: is takes it, as the sentence too.
+            int blank = LastOpeningBlank(text, past.EndIncludingBreak);
+            Region white = r with { Cursor = blank };
+            if (inner)
+            {
+                return n > 1 ? SentencesOn(text, white, inner, n - 1) ?? white : white;
+            }
+            int last = VimMotions.LastLine(text, breakEnds);
+            int run = text.GetLineFromOffset(blank);
+            while (run < last && VimMotions.Blank(text, run + 1))
+            {
+                run++;
+            }
+            run = run == last ? run - 1 : run;
+            if (run > text.GetLineFromOffset(blank))
+            {
+                // Empty lines after that white are taken in place of a sentence, short of the text's last line.
+                return r with { Cursor = text.GetLineStart(run) };
+            }
+            return VimTextObjects.Of(text, blank + 1, "s", inner: true, 1, breakEnds) is { } sentence && sentence.End > blank + 1 && text[blank + 1] is not ('\n' or '\r')
+                ? r with { Cursor = VimMotions.StepBack(text, OwnLine(text, sentence).End) } : Ended(text, r, inner);
         }
         int after = CharEnd(text, r.Cursor);
         LineSpan line = VimMotions.LineOf(text, after);
@@ -857,6 +897,18 @@ public sealed partial class Vim
         }
         // Of the empty lines ending the text, the last is none to go to.
         return own.End > after ? r with { Cursor = VimMotions.StepBack(text, own.End) } : Ended(text, r, inner);
+    }
+
+    /// <summary>The last of the blanks opening a line, on through lines of blanks alone into the next line's.</summary>
+    private static int LastOpeningBlank(TextSnapshot text, int start)
+    {
+        LineSpan line = VimMotions.LineOf(text, start);
+        while (TextNavigation.IndentEnd(text, line) == line.End && line.EndIncludingBreak < text.Length
+            && text[line.EndIncludingBreak] is ' ' or '\t')
+        {
+            line = VimMotions.LineOf(text, line.EndIncludingBreak);
+        }
+        return TextNavigation.IndentEnd(text, line) - 1;
     }
 
     /// <summary>A stretch with nothing after its cursor to take: from a line of text above the empty lines ending the
@@ -1036,6 +1088,19 @@ public sealed partial class Vim
             return new Region(span.Start, span.Start > 0 ? CharacterBefore(text, span.Start) : span.Start);
         }
         Region found = Spanned(text, OwnLine(text, span));
+        if (!inner && n == 1 && found.Anchor == r.Cursor && found.Cursor == r.Cursor && VimMotions.LineOf(text, r.Cursor) is var alone
+            && alone.Start == r.Cursor && CharEnd(text, r.Cursor) == alone.End && alone.Line < lastLine && VimMotions.Blank(text, alone.Line + 1))
+        {
+            // A sentence that is its line's one character takes the empty lines below it, short of the text's last.
+            int to = alone.Line + 1;
+            while (to < lastLine && VimMotions.Blank(text, to + 1))
+            {
+                to++;
+            }
+            to = to == lastLine ? to - 1 : to;
+            more = true;
+            return to > alone.Line ? new Region(r.Cursor, text.GetLineStart(to)) : found;
+        }
         // A sentence no bigger than the character already shown takes the white after it too.
         if (found.Anchor == r.Cursor && found.Cursor == r.Cursor && r.Cursor < text.Length && text[r.Cursor] is not (' ' or '\t')
             && VimTextObjects.Of(text, r.Cursor, "s", inner, n + 1, breakEnds) is { } further)
