@@ -701,7 +701,8 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
     {
         MetadataReader reader = type.Module.MetadataReader.PeMetadataReader;
         TypeDefinition definition = reader.GetTypeDefinition(type.Handle);
-        return definition.BaseType.Kind switch
+        // An interface and System.Object derive from nothing: their base type is a nil definition, no row to read.
+        return !definition.BaseType.IsNil && definition.BaseType.Kind switch
         {
             // CoreLib defines System.ValueType and System.Enum itself: its base type is a definition, not a reference.
             HandleKind.TypeDefinition => IsSystemValueType(reader, reader.GetTypeDefinition((TypeDefinitionHandle)definition.BaseType)),

@@ -117,7 +117,7 @@ internal static class StackTraceText
                     return true;
                 }
             }
-            at = type.BaseType.Kind is HandleKind.TypeDefinition ? (TypeDefinitionHandle)type.BaseType : null;
+            at = type.BaseType is { IsNil: false, Kind: HandleKind.TypeDefinition } based ? (TypeDefinitionHandle)based : null;
         }
         return false;
     }

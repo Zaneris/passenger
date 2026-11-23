@@ -189,6 +189,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("2.5", (await Evaluate(host, frame, "new[] { 1.5, 2.5, 3.5 }[1]")).Value);
         Assert.Equal("-3", (await Evaluate(host, frame, "new sbyte[] { -1, -2, -3 }[2]")).Value);
         Assert.Equal("MinusOne", (await Evaluate(host, frame, "new[] { SignedEnum.MinusOne, SignedEnum.MinusOne, SignedEnum.MinusOne }[2]")).Value);
+        // Of types that derive from nothing, object and an interface.
+        Assert.Equal("\"two\"", (await Evaluate(host, frame, "new object[] { 1, \"two\" }[1]")).Value);
+        Assert.Equal("2", (await Evaluate(host, frame, "new IComparable[] { 1, \"two\" }.Length")).Value);
         Assert.Equal("5", (await Evaluate(host, frame, "new[] { 1, 2, 3, word.Length }[3]")).Value);
         Assert.Equal("5", (await Evaluate(host, frame, "word.Split('e', 'l', 'o').Length")).Value);
         Assert.Equal("98", (await Evaluate(host, frame, "\"abc\"u8[1]")).Value);
