@@ -188,9 +188,6 @@ internal sealed class ParameterInfo
         }
     }
 
-    /// <summary>The most overloads Parameter Info lists at once, the rest reached by stepping through them.</summary>
-    private const int MostOverloads = 8;
-
     /// <summary>The server's last answer shown, and the overload chosen in it: the server's, or the one stepped to.</summary>
     private SignatureHelp? answer;
     private int chosen = -1;
@@ -216,7 +213,7 @@ internal sealed class ParameterInfo
     }
 
     /// <summary>The card of an answer, <paramref name="overload"/> chosen: of a call of several overloads, every one as a
-    /// row, those the arguments so far still fit with the parameter the caret's fills, at most <see cref="MostOverloads"/>
+    /// row, those the arguments so far still fit with the parameter the caret's fills, at most <see cref="InfoCard.MostOverloads"/>
     /// round the chosen one and how many there are; else the signature alone; then the chosen one's documentation.</summary>
     private void Draw(int overload, Languages.Language? language)
     {
@@ -228,8 +225,8 @@ internal sealed class ParameterInfo
         int count = help.Signatures.Count;
         if (count > 1 && help.Signatures.Any(s => s.Fits is not null))
         {
-            int top = Math.Clamp(overload - (MostOverloads / 2), 0, Math.Max(0, count - MostOverloads));
-            for (int i = top; i < Math.Min(count, top + MostOverloads); i++)
+            int top = Math.Clamp(overload - (InfoCard.MostOverloads / 2), 0, Math.Max(0, count - InfoCard.MostOverloads));
+            for (int i = top; i < Math.Min(count, top + InfoCard.MostOverloads); i++)
             {
                 SignatureInformation each = help.Signatures[i];
                 bool fits = each.Fits != false;

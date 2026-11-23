@@ -172,13 +172,22 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
         }
     }
 
-    /// <summary>A completion item's overloads, each as <see cref="AddOverload"/> shows it, set back where the arguments of a
-    /// call its name already makes no longer fit it.</summary>
+    /// <summary>The most overloads a card lists at once, so what follows them shows in the editor's room: Parameter Info's
+    /// round the one chosen, a completion item's first.</summary>
+    public const int MostOverloads = 8;
+
+    /// <summary>A completion item's first <see cref="MostOverloads"/> overloads, each as <see cref="AddOverload"/> shows it,
+    /// set back where the arguments of a call its name already makes no longer fit it, and how many more there are.</summary>
     public void AddOverloads(IReadOnlyList<IReadOnlyList<Roslyn.Extension.CodePart>> overloads, IReadOnlyList<bool>? fits, Languages.Language? language)
     {
-        for (int i = 0; i < overloads.Count; i++)
+        int listed = Math.Min(overloads.Count, MostOverloads);
+        for (int i = 0; i < listed; i++)
         {
             AddOverload(Languages.CSharp.ServerCode.Of(overloads[i]).Text, overloads[i], language, fits is null || i >= fits.Count || fits[i], -1);
+        }
+        if (overloads.Count > listed)
+        {
+            AddText(Core.Plural.Of(overloads.Count - listed, "more overload"));
         }
     }
 

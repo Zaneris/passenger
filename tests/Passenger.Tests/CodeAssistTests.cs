@@ -960,8 +960,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         "Microsoft.VisualStudio.RpcContracts",
     ];
 
-    /// <summary>Typing after a dot opens completion, filtered as one types, and Enter commits the item chosen, from a
-    /// language server that has none of the Visual Studio assemblies Passenger leaves out.</summary>
+    /// <summary>Typing after a dot opens completion, filtered as one types, its card listing an item's first overloads and
+    /// how many more before its words, and Enter commits the item chosen, from a language server that has none of the
+    /// Visual Studio assemblies Passenger leaves out.</summary>
     private void Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out()
     {
         string roslyn = Path.Combine(AppContext.BaseDirectory, "roslyn");
@@ -981,6 +982,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.True(window.Assist.IsCompletionOpen);
         Assert.Equal("WriteLine", window.Assist.CompletionLabels.FirstOrDefault());
         Ui.WaitFor(() => window.Assist.ItemDocumentation is { Length: > 0 }, "WriteLine's documentation");
+        string card = window.Assist.ItemDocumentation!;
+        int listed = window.Assist.ItemCard!.GetVisualDescendants().OfType<ColouredCode>().Count();
+        Assert.True(listed == 8 && card.Contains(" more overloads", StringComparison.Ordinal) && card.Contains("Writes", StringComparison.Ordinal),
+            $"WriteLine's card lists {listed} overloads, not the first eight and how many more, its words after them out of the editor's room: {card}");
 
         Ui.Press(window, "ENTER");
         Ui.Settle();
