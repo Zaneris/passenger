@@ -36,8 +36,8 @@ public sealed partial class VcsTests
 
     /// <summary>Files and a folder chosen together and dragged onto a folder in the Explorer move in the index as git mv
     /// moves them, by one git writing it: each lists as renamed, a staged edit staying staged under the new name and an
-    /// edit not staged staying unstaged, a file git does not track staying untracked; Undo moves the index back with
-    /// the files, git's status as it was before the drag.</summary>
+    /// edit not staged staying unstaged, a file git does not track staying untracked, a moved file unstaged keeping its move;
+    /// Undo moves the index back with the files, git's status as it was before the drag.</summary>
     private void Files_and_a_folder_dragged_together_in_the_Explorer_move_in_the_index_by_one_git_and_undo_moves_it_back()
     {
         string tree = PathNames.Canonical(folder);
@@ -71,13 +71,21 @@ public sealed partial class VcsTests
 
         Assert.True(File.Exists(Path.Combine(tree, "Shelf", "Lines", "Draft.cs")), $"The drag moved nothing: {window.Status}");
         Assert.True(writes.Count == 1, $"The moves were written to the index by {writes.Count} gits: {string.Join("; ", writes)}");
-        Assert.Equal(
-            ["R  Basket.cs -> Shelf/Basket.cs", "R  Lines/Line.cs -> Shelf/Lines/Line.cs", "R  Lines/Price.cs -> Shelf/Lines/Price.cs"],
-            Git("status", "--porcelain", "--untracked-files=no").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Replace("RM ", "R  ", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+        string[] moves = ["R  Basket.cs -> Shelf/Basket.cs", "R  Lines/Line.cs -> Shelf/Lines/Line.cs", "R  Lines/Price.cs -> Shelf/Lines/Price.cs"];
+        IEnumerable<string> Renamed() =>
+            Git("status", "--porcelain", "--untracked-files=no").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Replace("RM ", "R  ", StringComparison.Ordinal)).Order(StringComparer.Ordinal);
+        Assert.Equal(moves, Renamed());
         Assert.True(Git("show", ":Shelf/Basket.cs").Contains("int staged;", StringComparison.Ordinal), "The staged edit of Basket.cs was not staged under its new name");
         Assert.Equal("Shelf/Lines/Line.cs", Git("diff", "--name-only").Trim());
         Assert.Equal("Shelf/Lines/Draft.cs", Git("ls-files", "--others", "--exclude-standard").Trim());
         Assert.Contains(window.Vcs.Changes, c => c.Kind == ChangeKind.Unversioned && c.Path == Path.Combine(tree, "Shelf", "Lines", "Draft.cs"));
+
+        // Unstaged, the moved file's staged edit leaves the index and its move stays there; staged again, the edit is back.
+        Assert.True(Ui.Await(window.Vcs.StageAsync([window.Vcs.Changes.Single(c => c.Name == "Basket.cs")], stage: false), "the unstage").Succeeded, window.Status);
+        Assert.Equal(moves, Renamed());
+        Assert.False(Git("show", ":Shelf/Basket.cs").Contains("int staged;", StringComparison.Ordinal), "Basket.cs's staged edit stayed staged once unstaged");
+        Assert.True(Ui.Await(window.Vcs.StageAsync([window.Vcs.Changes.Single(c => c.Name == "Basket.cs")], stage: true), "the stage").Succeeded, window.Status);
+        Assert.True(Git("show", ":Shelf/Basket.cs").Contains("int staged;", StringComparison.Ordinal), "Basket.cs staged again holds no staged edit");
 
         Ui.ClickRow(window, ExplorerRow(window, Path.Combine(tree, "Shelf", "Basket.cs")));
         Ui.Run(window, EditorActions.Undo);

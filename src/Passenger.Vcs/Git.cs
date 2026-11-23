@@ -1963,13 +1963,54 @@ public sealed partial class Git
         return gone.Length > 0 ? await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], gone) : Done;
     }
 
-    /// <summary>Unstages files whole: the index given back what the last commit has at each, none where it has none.</summary>
-    public async Task<GitResult> UnstageAsync(IReadOnlyList<string> paths)
+    /// <summary>Unstages files whole: the index given back what the last commit has at each, none where it has none; a moved
+    /// file (<paramref name="moves"/>, where it was and is) whose move the index holds keeps it there, its new name holding
+    /// what the last commit has at its old one, as a move in the Explorer leaves the index.</summary>
+    public async Task<GitResult> UnstageAsync(IReadOnlyList<string> paths, IReadOnlyList<(string From, string To)> moves)
     {
         string[] relative = [.. paths.Select(Relative).Distinct()];
-        return relative.Length == 0 ? Done
-            : await HeadAsync() is null ? await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], relative)
-            : await OnFilesAsync(["reset", "-q", "HEAD"], relative);
+        if (await HeadAsync() is null)
+        {
+            string[] every = [.. relative, .. moves.SelectMany(m => new[] { Relative(m.From), Relative(m.To) })];
+            return every.Length == 0 ? Done : await OnFilesAsync(["rm", "--cached", "-r", "-q", "--ignore-unmatch"], [.. every.Distinct()]);
+        }
+        Dictionary<string, (string Mode, string Blob)> committed = moves.Count == 0 ? [] : await HeadFilesAsync();
+        Dictionary<string, (string Mode, string Blob)> held = moves.Count == 0 ? [] : await StageZeroAsync();
+        bool composed = moves.Any(m => !Ascii.IsValid(Relative(m.From)) || !Ascii.IsValid(Relative(m.To))) && await ComposesAsync();
+        StringBuilder kept = new();
+        List<string> reset = [.. relative];
+        foreach ((string from, string to) in moves)
+        {
+            string was = GitForm(Relative(from), composed);
+            string now = GitForm(Relative(to), composed);
+            if (held.ContainsKey(now) && !held.ContainsKey(was) && committed.TryGetValue(was, out (string Mode, string Blob) entry))
+            {
+                kept.Append(System.Globalization.CultureInfo.InvariantCulture, $"{entry.Mode} {entry.Blob}\t{now}\0");
+            }
+            else
+            {
+                reset.AddRange([Relative(from), Relative(to)]);
+            }
+        }
+        GitResult unstaged = reset.Count == 0 ? Done : await OnFilesAsync(["reset", "-q", "HEAD"], [.. reset.Distinct()]);
+        return !unstaged.Succeeded || kept.Length == 0 ? unstaged : await RunAsync(Root, ["update-index", "-z", "--index-info"], kept.ToString());
+    }
+
+    /// <summary>The last commit's files, each by its name as git writes it with its mode and blob; none where git could not
+    /// read them.</summary>
+    private async Task<Dictionary<string, (string Mode, string Blob)>> HeadFilesAsync()
+    {
+        Dictionary<string, (string Mode, string Blob)> files = new(StringComparer.Ordinal);
+        GitResult tree = await RunAsync(Root, ["ls-tree", "-r", "-z", "--full-tree", "--end-of-options", "HEAD"]);
+        foreach (string entry in tree.Succeeded ? tree.Output.Split('\0') : [])
+        {
+            // "<mode> <type> <object>\t<name>": a submodule's commit is no file's blob.
+            if (entry.IndexOf('\t') is > 0 and int tab && entry[..tab].Split(' ') is [{ } mode, "blob", { } blob])
+            {
+                files[entry[(tab + 1)..]] = (mode, blob);
+            }
+        }
+        return files;
     }
 
     /// <summary>Stages some of a file's changes: what the index holds of it takes in <paramref name="chosen"/>'s changes as
