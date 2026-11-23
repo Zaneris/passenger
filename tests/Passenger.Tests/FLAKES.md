@@ -30,6 +30,40 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-23
 
+- `AboutMacOSRulesTests`'
+  `A_report_class_that_reaches_macOSs_own_behaviour_is_marked_to_run_there_and_a_marked_one_reaches_it`, CI 45269750967
+  (Linux gate shard 2, Windows gate shard 2), at f512f7ead: "EslintPrettierTests reaches macOS's own behaviour, yet
+  macOS's report lane passes it over: it asks whether it runs on macOS: … → System.OperatingSystem::IsMacOS". **The
+  test**: Biome's step, new in b1e049a28 (#2158), asked in the class's own code whether it ran on macOS, to skip where
+  the run's Biome home leaves the daemon's socket path too long. The rig answers that now (`TestRun.BiomeSocketUnfit`,
+  7c0e5f7c2), the class staying off macOS's report lane; the rule passes on the Mac and both VMs.
+- `EslintPrettierTests`' `Eslint_checks_and_fixes_as_its_server_says`, CI 45269750967 (Linux report shard 3, Windows
+  report shard 1), at f512f7ead: "Yarn could not lay … out (exit code 1): … YN0028: The lockfile would have been
+  modified by this install, which is explicitly forbidden". **The test**: the Plug'n'Play step, new in 926ece8c9
+  (#2157), wrote an empty yarn.lock for Yarn to fill, and Yarn refuses by default to change a lockfile where CI is set,
+  as on every CI runner, never on a developer's machine. The step runs yarn install --no-immutable (d3e02e0be) and
+  passes on the Mac and the Linux VM with CI=true.
+- `CommandLineTests`' `A_start_that_fails_says_why_once_and_a_relative_state_folder_is_where_it_started`, CI 45269750967
+  (macOS report shard 2), at f512f7ead: "A data file beside a copy did not end its start saying so, as a malformed flag
+  does: exit code 2 passenger: /private/var/folders/…/Passenger/data is no folder". **The test**: its portable copy
+  step, new in 8523f38ef (#2153), compared the copy's words with the path it made under the run's folder, which on
+  macOS's runners is reached through /var's link (`just test` runs under /private/tmp's real path), where the copy names
+  its data by its own real path; the copy refused the file as it should. The step compares the files (3ebfef49c) and
+  passes on the Mac with the temporary folder under /var, and on both VMs.
+- `NativeMenusTests`'
+  `The_Docks_menu_follows_the_recent_list_through_a_closed_solution_a_second_window_and_its_own_items`, CI 45269750967
+  (macOS report shard 4, in gate shard 1's job): "The Dock's New Window left 3 windows, so its item did nothing once its
+  menu followed a change"; and `DiscordTests`' `Discord_shows_what_the_person_chose_from_their_own_window_alone`
+  (Windows report shard 1): "Assert.Single() Failure: The collection contained 2 matching items", indices 0 and 2. **The
+  rig**: each ran after `GitFileFormsTests`' failed step in its process. A failed flow step's instance takes its folder
+  with it before the test ends, so the window's close as the test ended saved into a folder that was gone, was refused,
+  and asked about the unsaved file instead, leaving the window in `PassengerApp.Windows` for the next test. A window a
+  test leaves now closes unsaved (2af51482c): the failed GitFileFormsTests flow left one window on the Mac without it
+  and none with it.
+- The Debug relay job, CI 45269750967: cancelled after 15 minutes with no step run, "The job was not acquired by Runner
+  of type hosted even after multiple attempts", GitHub's notice "Due to capacity constraints, jobs targeting macOS arm64
+  runners may experience longer queue times" beside it. **Outside the code**: GitHub had no macOS arm64 runner for it
+  (the run's macOS gate shard 2 waited 20 minutes for one); a rerun of the job builds it.
 - `XamlBreakpointsTests`' `A_XAML_breakpoint_stops_as_its_control_is_made_or_its_property_set_at_the_editors_line`,
   CI 45219084616 (Linux report shard 2; Windows gate shard 1's job), at 43e51aa43, the first run on Avalonia 12.2:
   "Waited 40 s for the status bar to say "binding", not "… Text on TextBlock#Caption is changed (Previous Value:
