@@ -82,23 +82,24 @@ public sealed class RowGlyphs : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         double scale = LayoutHelper.GetLayoutScale(this);
         IBrush? themed = Resource(TokenKeys.Icon) as IBrush;
+        IconLook look = IconLook.Of(this, ActualThemeVariant);
         if (HasChevron && Resource(IconKeys.ChevronRight) is Geometry chevron)
         {
-            Glyph(context, chevron, themed, new Point((Column - ChevronSize) / 2, (Bounds.Height - ChevronSize) / 2), ChevronSize, Turned, scale);
+            Glyph(context, chevron, themed, look, new Point((Column - ChevronSize) / 2, (Bounds.Height - ChevronSize) / 2), ChevronSize, Turned, scale);
         }
         if (Icon is { } icon)
         {
-            Glyph(context, icon, IconBrush ?? themed, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
+            Glyph(context, icon, IconBrush ?? themed, look, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
         }
     }
 
     /// <summary>A glyph of a size where layout would put a RowIcon of it, its place rounded to whole device pixels.</summary>
-    private static void Glyph(DrawingContext context, Geometry geometry, IBrush? brush, Point place, double size, bool turned, double scale)
+    private static void Glyph(DrawingContext context, Geometry geometry, IBrush? brush, IconLook look, Point place, double size, bool turned, double scale)
     {
         Point at = LayoutHelper.RoundLayoutPoint(place, scale);
         using (context.PushTransform(Matrix.CreateTranslation(at.X, at.Y)))
         {
-            RowIcon.Draw(context, geometry, brush, new Size(size, size), new Size(size, size), turned, scale);
+            RowIcon.Draw(context, geometry, brush, look, new Size(size, size), new Size(size, size), turned, scale);
         }
     }
 

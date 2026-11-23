@@ -44,6 +44,7 @@ public class ThemeBeyondTests
         ("a language gives the codes tokens for both variants and for each and one this Passenger does not know is passed over", A_language_gives_the_codes_tokens_for_both_variants_and_for_each_and_one_this_Passenger_does_not_know_is_passed_over),
         ("a code colour scheme gives languages but no background or fonts which it passes over", A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over),
         ("a theme names a carried theme as its base and laid over it keeps all the base gives that it does not", A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not),
+        ("an icons saturation brightness and tint work on its colour as CSSs filters do keeping its alpha", An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha),
         ("a picture is read beside its themes file in the source", () => Cases.Each<(string, string, string)>(
         [
             ("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp"),
@@ -188,6 +189,17 @@ public class ThemeBeyondTests
         Assert.Equal(new ColourValue(0xFF404040, 1), laid.Languages["json"].Dark["Syntax.Keyword"]);
         Assert.True(ThemeFiles.CodeOf(laid) is { Both.Count: 0 } code && code.Dark.ContainsKey("Syntax.Keyword") && !code.Dark.ContainsKey("Frame"),
             "A code colour scheme over a carried theme takes more than the theme's code");
+    }
+
+    private void An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha()
+    {
+        Assert.Equal(0x80FF0000u, IconLook.AsDrawn.Apply(0x80FF0000));
+        Assert.Equal(0xFF363636u, new IconLook(0, 1, 0).Apply(0xFFFF0000));
+        Assert.Equal(0xFF404040u, new IconLook(1, 0.5, 0).Apply(0xFF808080));
+        Assert.Equal(0xC0800000u, new IconLook(1, 1, 0x80FF0000).Apply(0xC0000000));
+        Assert.Equal(0xFFFF0000u, new IconLook(3, 1, 0).Apply(0xFFFF4040));
+        // Saturation first, then brightness, then the tint, each clamped: a grey halved, then washed a quarter toward white.
+        Assert.Equal(0xFF545454u, new IconLook(0, 0.5, 0x40FFFFFF).Apply(0xFFFF0000));
     }
 
     private void A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them()

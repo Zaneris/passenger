@@ -53,6 +53,57 @@ public sealed class FileIconsTests : IDisposable
     {
         Flow.StepApart<FileIconsTests>("each kind of file is drawn in a shape and colour of its own in the Explorer the tabs and the Commit window", t => t.Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window());
         Flow.StepApart<FileIconsTests>("a rows icon draws every icon of the theme pixel for pixel as a PathIcon draws it", t => t.A_rows_icon_draws_every_icon_of_the_theme_pixel_for_pixel_as_a_PathIcon_draws_it());
+        Flow.StepApart<FileIconsTests>("a themes icon saturation brightness and tint reach every icon", t => t.A_themes_icon_saturation_brightness_and_tint_reach_every_icon());
+    }
+
+    /// <summary>A theme's icon saturation, brightness and tint reach every icon however it is drawn: a row's icon in a file's
+    /// colour, a tree row's chevron and icon, and a PathIcon in a button, each in its colour as the look draws it, dark and
+    /// light; and Passenger's own theme draws each as it is.</summary>
+    private void A_themes_icon_saturation_brightness_and_tint_reach_every_icon()
+    {
+        Geometry square = Geometry.Parse("M0,0 H16 V16 H0 Z");
+        RowIcon row = new() { Data = square, ForegroundKey = TokenKeys.FileIcon_Red };
+        RowGlyphs glyphs = new() { HasChevron = false, Icon = square, IconBrush = (IBrush)Resource(TokenKeys.FileIcon_Blue) };
+        PathIcon button = new() { Data = square };
+        StackPanel icons = new() { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, Margin = new Thickness(8), Children = { row, glyphs, new Button { Content = button } } };
+        Dictionary<string, TokenValue> look = new(StringComparer.Ordinal)
+        {
+            [IconLook.SaturationToken] = new NumberValue(0.3),
+            [IconLook.BrightnessToken] = new NumberValue(0.8),
+            [IconLook.TintToken] = new ColourValue(0xFFE0B070, 0.25),
+        };
+        IconLook muted = new(0.3, 0.8, 0x40E0B070);
+        foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+        {
+            Window window = new() { Width = 200, Height = 60, Content = icons, RequestedThemeVariant = variant };
+            window.Show();
+            try
+            {
+                foreach (bool worn in (bool[])[false, true])
+                {
+                    Themes.Wear(Application.Current!, worn ? new ThemeFile("Muted icons", string.Empty, look, new Dictionary<string, TokenValue>(), new Dictionary<string, TokenValue>()) : null, null);
+                    Ui.Settle();
+                    using WriteableBitmap frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("The window drew no frame");
+                    foreach ((Control icon, string key) in ((Control, string)[])[(row, TokenKeys.FileIcon_Red), (glyphs, TokenKeys.FileIcon_Blue), (button, TokenKeys.Icon)])
+                    {
+                        Color colour = icon is RowGlyphs { IconBrush: ISolidColorBrush given } ? given.Color
+                            : Application.Current!.TryGetResource(key, variant, out object? found) && found is ISolidColorBrush brush ? brush.Color : throw new InvalidOperationException($"The theme has no {key}");
+                        Color expected = worn ? muted.Apply(colour) : colour;
+                        Point middle = icon is RowGlyphs ? new Point(RowExpander.Column + 7, 12) : new Point(icon.Bounds.Width / 2, icon.Bounds.Height / 2);
+                        Point at = icon.TranslatePoint(middle, window) ?? throw new InvalidOperationException("The icons are not laid out");
+                        byte[] drawn = Pixels(frame, at, 1, 1);
+                        Assert.True(Math.Abs(drawn[0] - expected.R) <= 1 && Math.Abs(drawn[1] - expected.G) <= 1 && Math.Abs(drawn[2] - expected.B) <= 1,
+                            $"A {icon.GetType().Name} in {key} is drawn #{drawn[0]:X2}{drawn[1]:X2}{drawn[2]:X2} under {variant} {(worn ? "with the theme's muted icons" : "in Passenger's own theme")}, where {expected} was the colour");
+                    }
+                }
+            }
+            finally
+            {
+                Themes.Wear(Application.Current!, null, null);
+                window.Content = null;
+                window.Close();
+            }
+        }
     }
 
     private void Each_kind_of_file_is_drawn_in_a_shape_and_colour_of_its_own_in_the_Explorer_the_tabs_and_the_Commit_window()
@@ -204,23 +255,43 @@ public sealed class FileIconsTests : IDisposable
         {
             if (way == 5)
             {
-                PathIcon chevron = new() { Classes = { StyleClasses.Chevron }, RenderTransformOrigin = RelativePoint.Center, RenderTransform = new RotateTransform(icon.Bounds.Width > 15 ? 90 : 0) };
-                chevron.Bind(PathIcon.DataProperty, chevron.GetResourceObservable(IconKeys.ChevronRight));
                 return new StackPanel
                 {
                     Orientation = Avalonia.Layout.Orientation.Horizontal,
                     Height = 24,
-                    Children = { new Border { Width = RowExpander.Column, Height = 24, Background = Brushes.Transparent, Child = chevron }, new PathIcon { Data = icon, Width = RowIcon.Size, Height = RowIcon.Size, Margin = new Thickness(0, 0, 6, 0) } },
+                    Children =
+                    {
+                        new Border { Width = RowExpander.Column, Height = 24, Background = Brushes.Transparent, Child = Fluent(null, RowIcon.GlyphSize, null, turned: icon.Bounds.Width > 15) },
+                        Fluent(icon, RowIcon.Size, null, margin: new Thickness(0, 0, 6, 0)),
+                    },
                 };
             }
-            PathIcon drawn = way is 2 or 3 ? new() { Classes = { StyleClasses.Chevron } } : new();
-            drawn.Data = icon;
-            if (way == 1)
+            return way switch
             {
-                drawn.Width = drawn.Height = 14;
-                drawn.Foreground = given;
+                1 => Fluent(icon, 14, given),
+                2 or 3 => Fluent(icon, RowIcon.GlyphSize, null, turned: way == 3),
+                _ => Fluent(icon, 16, null),
+            };
+        }
+
+        // Avalonia's own PathIcon whole, its template a Path in a Viewbox in a Border, in the theme's icon colour where no brush is given.
+        static Control Fluent(Geometry? icon, double size, IBrush? given, bool turned = false, Thickness margin = default)
+        {
+            Avalonia.Controls.Shapes.Path path = new() { Data = icon, Stretch = Stretch.Uniform };
+            if (icon is null)
+            {
+                path.Bind(Avalonia.Controls.Shapes.Path.DataProperty, path.GetResourceObservable(IconKeys.ChevronRight));
             }
-            if (way == 3)
+            if (given is null)
+            {
+                path.Bind(Avalonia.Controls.Shapes.Shape.FillProperty, path.GetResourceObservable(TokenKeys.Icon));
+            }
+            else
+            {
+                path.Fill = given;
+            }
+            Border drawn = new() { Width = size, Height = size, Margin = margin, Child = new Viewbox { Width = size, Height = size, Child = path } };
+            if (turned)
             {
                 drawn.RenderTransformOrigin = RelativePoint.Center;
                 drawn.RenderTransform = new RotateTransform(90);

@@ -64,6 +64,19 @@ Beside those, a theme may give three tokens Passenger's own theme leaves out, `S
 `Syntax.Brace6`: rainbow braces take turns in as many colours as a theme gives, three to six, a bracket's depth cycling
 through exactly those (`Syntax.Brace5` counts only after `Syntax.Brace4`, `Syntax.Brace6` only after both), so a theme of
 five draws the sixth depth in `Syntax.Brace1`'s colour. It may also give `SyntaxStyle.Parameter`, how a parameter is set.
+
+A theme may give three more for its icons, each left out of Passenger's own, whose icons are drawn as they are:
+`IconSaturation` and `IconBrightness`, numbers working on every icon's colours as CSS's `saturate()` and `brightness()`
+filters work on sRGB (1 as drawn; 0 grey, or black; above 1 more vivid, or brighter), and `IconTint`, a colour washed over
+every icon at its opacity (`{"colour": "#E6C384", "opacity": 0.2}`). Each colour of an icon takes them in that order,
+saturation, brightness, then the tint, its alpha kept. Every icon in every window follows, wherever it is drawn: the file
+and folder icons, the tool windows' and the toolbar's, a tree's chevrons, a tab's close, and the icons a theme brings of
+its own (below), all colours of them. Give them in `dark` or `light` to set one variant's icons alone:
+
+```json
+"tokens": { "IconSaturation": 0.55, "IconBrightness": 0.9 },
+"dark": { "IconTint": { "colour": "#E6C384", "opacity": 0.15 } }
+```
 `Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
 Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
 theme, whose own they are.

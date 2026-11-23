@@ -31,6 +31,9 @@ public static class ThemeResources
         }
     }
 
+    /// <summary>A token's resource key: its name after <c>Passenger.</c>.</summary>
+    public static string KeyOf(string token) => Prefix + token;
+
     /// <summary>The theme's tokens as a dictionary of resources, a new one at each call.</summary>
     public static ResourceDictionary Dictionary(ThemeFile theme)
     {

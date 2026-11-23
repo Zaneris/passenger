@@ -145,13 +145,17 @@ public static partial class ThemeFiles
     private static readonly string[] CodePrefixes = ["Editor.", "Syntax.", "SyntaxStyle.", "Diff."];
 
     /// <summary>Tokens a theme may give that Passenger's own theme leaves out, each drawn as Passenger draws it without: the
-    /// fourth to sixth rainbow brace colours, so depths cycle through as many as a theme gives, and how a parameter is set.</summary>
+    /// fourth to sixth rainbow brace colours, so depths cycle through as many as a theme gives, how a parameter is set, and
+    /// how every icon is drawn beside its own colours (<see cref="IconLook"/>).</summary>
     public static readonly IReadOnlyDictionary<string, ThemeTokenKind> Optional = new Dictionary<string, ThemeTokenKind>(StringComparer.Ordinal)
     {
         ["Syntax.Brace4"] = ThemeTokenKind.Colour,
         ["Syntax.Brace5"] = ThemeTokenKind.Colour,
         ["Syntax.Brace6"] = ThemeTokenKind.Colour,
         ["SyntaxStyle.Parameter"] = ThemeTokenKind.TextStyle,
+        [IconLook.SaturationToken] = ThemeTokenKind.Number,
+        [IconLook.BrightnessToken] = ThemeTokenKind.Number,
+        [IconLook.TintToken] = ThemeTokenKind.Colour,
     };
 
     /// <summary>Kinds of code drawn in the code's plain words unless a file colours them: one a file leaves out takes the

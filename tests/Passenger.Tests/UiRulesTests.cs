@@ -5198,7 +5198,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 }
             }
         }
-        foreach (string optional in ThemeFiles.Optional.Where(o => o.Value == ThemeTokenKind.Colour).Select(o => o.Key))
+        // The icons' tint is no colour drawn alone but a wash over each icon's own.
+        foreach (string optional in ThemeFiles.Optional.Where(o => o.Value == ThemeTokenKind.Colour && o.Key != IconLook.TintToken).Select(o => o.Key))
         {
             Assert.True(optional.StartsWith("Syntax.Brace", StringComparison.Ordinal), $"{optional} is a colour a theme may give that no rule says what it is read on");
             pairs.AddRange(pairs.Where(p => p.Fore == TokenKeys.Syntax_Brace1).ToArray().Select(p => p with { Fore = "Passenger." + optional }));

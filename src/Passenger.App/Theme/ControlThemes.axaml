@@ -14,6 +14,17 @@
         </Setter>
     </ControlTheme>
 
+    <!-- Every PathIcon drawn by a RowIcon, where every icon is drawn: one control in its template where Fluent's is four,
+         its colours as the theme's look of its icons draws them, and an icon a theme gives in Passenger's place drawn whole. -->
+    <ControlTheme x:Key="{x:Type PathIcon}" TargetType="PathIcon">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <app:RowIcon Data="{TemplateBinding Data}" Foreground="{TemplateBinding Foreground}"
+                             Width="{TemplateBinding Width}" Height="{TemplateBinding Height}" />
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
     <!-- Every scrollbar: a thin rounded thumb over what scrolls, no arrows, no track until the pointer is over it, shown
          only while there is something to scroll (a ScrollViewer's Auto, the editor's own rule). A ScrollViewer lays what it
          shows under its upright bar (Fluent's AllowAutoHide, on by default), so that bar takes no room of its own; a
