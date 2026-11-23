@@ -205,6 +205,28 @@ public sealed class CodeAssist
         remove => context.Message -= value;
     }
 
+    /// <summary>What the Explorer has chosen for Reformat Code, Code Cleanup and Optimize Imports to run over where one is
+    /// asked of it; null where they act on the file shown.</summary>
+    public Func<ActionContext, ChosenFiles?> Chosen
+    {
+        get => context.Chosen;
+        set => context.Chosen = value;
+    }
+
+    /// <summary>The wait a run over many files takes for the C# language server (<see cref="AssistContext.WholeCode"/>).</summary>
+    public Func<CancellationToken, Task<Func<string, string?>>>? WholeCode
+    {
+        get => context.WholeCode;
+        set => context.WholeCode = value;
+    }
+
+    /// <summary>The open folder's Local History, which names a run over many files one change set.</summary>
+    public Func<Passenger.App.History.LocalHistory?> History
+    {
+        get => context.History;
+        set => context.History = value;
+    }
+
     /// <summary>Whether places to choose from are kept in the Find window rather than chosen in a popup.</summary>
     public Func<bool> KeepsPlaces
     {
@@ -648,15 +670,15 @@ public sealed class CodeAssist
             new("Code", 0, 2), writes: true);
         Code(AppActions.SurroundWith, "Surround With…", _ => completion.ShowSurround(), new("Code", 0, 3), server: false, syntax: true, markup: true, writes: true);
         // A file Prettier formats (Run on 'Reformat Code' action), a GDScript and a .feature file need no language server.
-        registry.Add(new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
+        registry.Add(OverChosen(Tidying.Reformat, new IdeAction(AppActions.Reformat, "Reformat Code", "Code", context => IdeErrors.Observe(actions.Reformat()))
         {
             WhyNot = context => (context.File is { } file && (web.PrettierReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path))
                 ? null : WhyNot(context, server: true, markup: true)) ?? context.ReadOnlyWhy,
             Menus = [new("Code", 1, 0)],
-        });
+        }));
         web.AddLintingActions(registry);
-        Code(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true, writes: true);
-        Code(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2), writes: true);
+        registry.Add(OverChosen(Tidying.Cleanup, CodeAction(AppActions.CodeCleanup, "Code Cleanup", context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true, writes: true)));
+        registry.Add(OverChosen(Tidying.OptimizeImports, CodeAction(AppActions.OptimizeUsings, "Optimize Imports", context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2), writes: true)));
         registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, "Find Unused Step Definitions", "Code",
             context => IdeErrors.Observe(this.context.Languages.Gherkin.ShowUnusedAsync()))
         {
@@ -730,7 +752,29 @@ public sealed class CodeAssist
         // One that edits the file shown (writes) greys on a read-only one, a file the language server serves too.
         void Code(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false,
             bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false, bool config = false) =>
-            registry.Add(new IdeAction(id, title, "Code", run)
+            registry.Add(CodeAction(id, title, run, menu, server, syntax, xaml, markup, msbuild, http, godot, shader, gdscript, gherkin, writes, link, config));
+
+        // Reformat Code, Code Cleanup and Optimize Imports run over what the Explorer has chosen where they are asked of it.
+        IdeAction OverChosen(Tidying kind, IdeAction action) => action with
+        {
+            Run = context =>
+            {
+                if (this.context.Chosen(context) is { } chosen)
+                {
+                    IdeErrors.Observe(actions.TidyChosenAsync(kind, chosen));
+                }
+                else
+                {
+                    action.Run(context);
+                }
+            },
+            WhyNot = context => this.context.Chosen(context) is { } chosen ? chosen.WhyNot(kind) : action.WhyNot(context),
+        };
+
+        IdeAction CodeAction(string id, string title, Action<ActionContext> run, MenuPlace menu, bool server = true, bool syntax = false, bool xaml = false, bool markup = false,
+            bool msbuild = false, bool http = false, bool godot = false, bool shader = false, bool gdscript = false, bool gherkin = false, bool writes = false, bool link = false,
+            bool config = false) =>
+            new(id, title, "Code", run)
             {
                 // .http requests, Godot scenes' paths, shaders' names, features' steps and an .editorconfig's keys are read with no language server.
                 WhyNot = action => (http && this.context.Languages.Http.IsHttpFile(action.File) || godot && IsGodotScene(action.File)
@@ -742,7 +786,7 @@ public sealed class CodeAssist
                     : WhyNot(action, server, syntax, xaml, markup, msbuild) is { } why && !(link && action.File is not null && action.Editor.LinkOn(action.Editor.Selections.Primary.Caret) is not null) ? why : null)
                     ?? (writes ? action.ReadOnlyWhy : null),
                 Menus = [menu],
-            });
+            };
     }
 
     private int Caret => Editor.Selections.Primary.Caret;

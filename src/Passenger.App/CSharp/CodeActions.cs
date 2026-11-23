@@ -996,7 +996,12 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// when given: XAML by Passenger's own layout, a web language by its project's Prettier where it formats it on Reformat
     /// Code, else the language <paramref name="server"/> gives, asked for only then; a read-only file refused before any is
     /// asked. Null with no server to ask, or once the file has closed.</summary>
-    internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server, CancellationToken cancel = default)
+    internal Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<LspDocument?> server, CancellationToken cancel = default) =>
+        ReformatAsync(document, within, () => Task.FromResult(server()), cancel);
+
+    /// <summary><see cref="ReformatAsync(OpenDocument, TextRange?, Func{LspDocument?}, CancellationToken)"/> with a server
+    /// that may be waited for.</summary>
+    internal async Task<Reformatted?> ReformatAsync(OpenDocument document, TextRange? within, Func<Task<LspDocument?>> server, CancellationToken cancel = default)
     {
         if (Reformatted.ReadOnly(document, "Reformat Code") is { } refused)
         {
@@ -1007,7 +1012,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return done;
         }
-        return server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code", within, cancel) : null;
+        return await server() is { } lsp ? await ServerFormatAsync(lsp, document, "Reformat Code", within, cancel) : null;
     }
 
     /// <summary>How long a save waits for a language server's layout before it goes on without it.</summary>

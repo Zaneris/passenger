@@ -112,6 +112,16 @@ public sealed class GeneratedCode
         return (copied, marked);
     }
 
+    /// <summary>The C# files among <paramref name="paths"/> (canonical) that are generated code as Roslyn tells it (<see
+    /// cref="SetApartAsync"/>), by their paths: those a run over many files passes over.</summary>
+    public async Task<IReadOnlySet<string>> GeneratedAmongAsync(IReadOnlyList<string> paths, CancellationToken cancel = default)
+    {
+        UiThread.Check();
+        LspRange top = new(new LspPosition(0, 0), new LspPosition(0, 0));
+        IReadOnlySet<string> generated = await GeneratedAsync([.. paths.Select(p => new LspLocation(DocumentUris.FromPath(p), top))], cancel);
+        return new HashSet<string>(generated.Select(DocumentUris.ToPath), PathNames.Comparer);
+    }
+
     /// <summary>The URIs of the places' documents that are generated code (<see cref="SetApartAsync"/>), the server asked
     /// once about every C# file among them.</summary>
     private async Task<IReadOnlySet<string>> GeneratedAsync(IReadOnlyList<LspLocation> places, CancellationToken cancel)

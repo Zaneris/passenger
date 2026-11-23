@@ -786,6 +786,14 @@ public static class Refusals
     /// (<see cref="Passenger.Workspace.GodotHolds"/>), which only the person may choose to.</summary>
     public static string HeldInGodot(string held) => $"{held}, which only the person may choose to write over: save it in Godot first";
 
+    /// <summary>A run of Reformat Code, Code Cleanup or Optimize Imports (<paramref name="what"/>) over what the Explorer has
+    /// chosen (<paramref name="of"/>, "of src/App") that holds no file it lays out.</summary>
+    public static string NothingToTidy(string what, string of) => $"{what} found no file it lays out {of}";
+
+    /// <summary>A file of generated code as Roslyn tells it (<see cref="CSharp.GeneratedCode.GeneratedAmongAsync"/>), which a
+    /// run over many files leaves as what generates it writes it.</summary>
+    public static string GeneratedLeft(string file) => $"{file} is generated code: what generates it writes it again, so it was left as it is";
+
     /// <summary>A source generator's code copied to read (<see cref="CSharp.GeneratedCode"/>), which the C# language server
     /// holds no file of, with what made it and for which project where known (<see cref="CSharp.GeneratedCode.OriginOf"/>).</summary>
     public static string Generated(string name, string? origin = null) =>

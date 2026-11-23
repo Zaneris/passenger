@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Passenger.App.Explorer;
 using Passenger.Core;
+using Passenger.Workspace;
 using E = Passenger.Editor.EditorActions;
 using A = Passenger.App.AppActions;
 
@@ -458,6 +459,11 @@ public partial class MainWindow
         }
         edit.AddRange([Item(A.FindInFiles), Item(A.ReplaceInFiles)]);
         entries.Add(Sub("Edit", edit));
+        // What is chosen laid out, cleaned up or its usings optimized, every file in it as its own command does it.
+        if (holds || solutionFolder || node.IsSolutionItem)
+        {
+            entries.Add(Sub("Code", [Item(A.Reformat), Item(A.CodeCleanup), Item(A.OptimizeUsings)]));
+        }
         // A solution folder is in no folder on disk, so it has no path to copy or show.
         if (!solutionFolder)
         {
@@ -502,6 +508,54 @@ public partial class MainWindow
 
         static MenuEntry Item(string action) => new(action);
         static MenuEntry Sub(string title, IReadOnlyList<MenuEntry> entries) => new(null, title, entries);
+    }
+
+    /// <summary>What Reformat Code, Code Cleanup and Optimize Imports run over where the Explorer's menu or keys ask: the rows
+    /// chosen with the one asked of, each file chosen, every file under a folder, each project's own files (a solution folder's
+    /// projects, the solution's every project, a project file's), those a run takes alone (<see cref="CSharp.CodeActions.Takes"/>); null where
+    /// they act on the file shown.</summary>
+    private CSharp.ChosenFiles? ChosenCode(ActionContext context)
+    {
+        if (RowOf(context) is not { } row)
+        {
+            return null;
+        }
+        IReadOnlyList<ExplorerNode> rows = Explorer.SelectedNodes is { Count: > 1 } chosen && chosen.Contains(row) ? chosen : [row];
+        List<string> files = [];
+        List<string> folders = [];
+        List<ProjectModel> projects = [];
+        foreach (ExplorerNode each in rows)
+        {
+            switch (each)
+            {
+                case { Kind: NodeKind.Solution }:
+                    projects.AddRange(session.Projects);
+                    break;
+                case { Kind: NodeKind.Project, Path: { } shared } when each.IsShared:
+                    folders.Add(Path.GetDirectoryName(shared)!);
+                    break;
+                case { Kind: NodeKind.Project or NodeKind.SolutionFolder }:
+                    projects.AddRange(Explorer.Tree.ProjectsOf(each).Select(p => session.Projects.FirstOrDefault(m => PathNames.Same(m.Path, p))).OfType<ProjectModel>());
+                    break;
+                case { Kind: NodeKind.Folder, Path: { } folder }:
+                    folders.Add(folder);
+                    break;
+                // A project's file in the Files view stands for its project.
+                case { Kind: NodeKind.File, Path: { } file } when session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, file)) is { } owner:
+                    projects.Add(owner);
+                    break;
+                case { Kind: NodeKind.File, Path: { } file }:
+                    files.Add(file);
+                    break;
+            }
+        }
+        string of = rows.Count > 1 ? $"of the {Numbers.Said(rows.Count)} chosen" : row.Kind == NodeKind.Solution ? "of the solution" : $"of {row.Name}";
+        return new CSharp.ChosenFiles(of, kind => [.. files.Concat(folders.SelectMany(f => FolderWalk.Files(f, built: true)))
+                .Concat(projects.SelectMany(p => FolderWalk.ProjectFiles(p)))
+                .Select(PathNames.Canonical).Distinct(PathNames.Comparer).Where(f => CSharp.CodeActions.Takes(kind, f)).Order(StringComparer.Ordinal)],
+            kind => files.Count + folders.Count + projects.Count == 0 ? Refusals.NothingToTidy(CSharp.CodeActions.TitleOf(kind), of)
+                : folders.Count + projects.Count == 0 && !files.Any(f => CSharp.CodeActions.Takes(kind, f)) ? Refusals.NothingToTidy(CSharp.CodeActions.TitleOf(kind), of)
+                : null);
     }
 
     /// <summary>The editor's keys the Explorer takes while it has them: Cut, Copy, Paste, Delete, Backspace, Undo and

@@ -133,6 +133,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a reformat started before switching tabs changes only its own file and breaks lines as the file does", () => new CodeAssistTests(project), t => t.A_reformat_started_before_switching_tabs_changes_only_its_own_file_and_breaks_lines_as_the_file_does());
         Flow.StepApart("Reformat Code with a method selected reformats that method alone and leaves the code around it", () => new CodeAssistTests(project), t => t.Reformat_code_with_a_method_selected_reformats_that_method_alone_and_leaves_the_code_around_it());
         Flow.StepApart("Reformat on Save lays a file out before writing it as one step of Undo, and without the server or turned off saves it as typed", () => new CodeAssistTests(project), t => t.Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed());
+        Flow.StepApart("Reformat Code over a folder and Code Cleanup over the project from the Explorer each change every file as one step of Undo", () => new CodeAssistTests(project), t => t.Reformat_code_over_a_folder_and_code_cleanup_over_the_project_from_the_explorer_each_change_every_file_as_one_step_of_undo());
         Flow.StepApart("a letter typed at the start of what a reformat is about to change stays once the reformat lands", () => new CodeAssistTests(project), t => t.A_letter_typed_at_the_start_of_what_a_reformat_is_about_to_change_stays_once_the_reformat_lands());
         Flow.StepApart("what a completion or a fix writes takes the file's line breaks, whichever the server writes", () => new CodeAssistTests(project), t => t.What_a_completion_or_a_fix_writes_takes_the_files_line_breaks_whichever_the_server_writes());
         Flow.StepApart("a tab-indented .editorconfig has Enter, Tab, a template, a completion and a fix indent with tabs", () => new CodeAssistTests(project), t => t.A_tab_indented_editorconfig_has_enter_tab_a_template_a_completion_and_a_fix_indent_with_tabs());
@@ -1236,6 +1237,69 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal("Reformatted", window.Status);
         window.Close();
     }
+
+    /// <summary>The Explorer's Code menu: Reformat Code over a folder lays out the file open in its editor and the one not
+    /// open on disk, and Code Cleanup over the project tidies every file of it, each as one command that one Undo in the
+    /// Explorer takes back whole, saying what it changed.</summary>
+    private void Reformat_code_over_a_folder_and_code_cleanup_over_the_project_from_the_explorer_each_change_every_file_as_one_step_of_undo()
+    {
+        string crooked = project.PathOf("Tidy/Crooked.cs");
+        string spaced = project.PathOf("Tidy/Spaced.cs");
+        MainWindow window = project.Open(crooked);
+        List<string> asked = [];
+        window.Confirm = (_, text, _) =>
+        {
+            asked.Add(text);
+            return Task.FromResult(true);
+        };
+        Passenger.App.Workspace.OpenDocument shown = window.EditorArea.Active!;
+        Passenger.App.Explorer.ExplorerNode folder = ExplorerRow(window, project.PathOf("Tidy"), Passenger.App.Explorer.NodeKind.Folder);
+        Ui.ChooseFromRowMenu(window, folder, "Code", "Reformat Code");
+        Ui.WaitFor(() => window.Status?.StartsWith("Reformat Code changed", StringComparison.Ordinal) == true, () => $"the folder's reformat; the status says '{window.Status}'");
+        Assert.Equal("Reformat Code changed 2 of the 2 files of Tidy", window.Status);
+        Assert.True(shown.Text.Snapshot.ToString() == CrookedLaid, $"Reformat Code over Tidy left Crooked.cs, open, as:\n{shown.Text.Snapshot}");
+        Assert.True(File.ReadAllText(spaced) == SpacedLaid, $"Reformat Code over Tidy left Spaced.cs, not open, as:\n{File.ReadAllText(spaced)}");
+
+        Ui.ClickRow(window, ExplorerRow(window, project.PathOf("Tidy"), Passenger.App.Explorer.NodeKind.Folder));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.Equal("Undo Reformat Code? It changes Crooked.cs and Spaced.cs.", asked.LastOrDefault());
+        Assert.True(shown.Text.Snapshot.ToString() == Crooked && File.ReadAllText(spaced) == Spaced,
+            $"One Undo in the Explorer left Crooked.cs as:\n{shown.Text.Snapshot}\nand Spaced.cs as:\n{File.ReadAllText(spaced)}");
+
+        string messy = project.PathOf("Messy.cs");
+        string messyBefore = File.ReadAllText(messy);
+        // A folder of a project and no solution shows its files: the project's file stands for it.
+        Passenger.App.Explorer.ExplorerNode sample = ExplorerRow(window, project.PathOf("Sample.csproj"), Passenger.App.Explorer.NodeKind.File);
+        Ui.ChooseFromRowMenu(window, sample, "Code", "Code Cleanup");
+        Ui.WaitFor(() => window.Status?.StartsWith("Code Cleanup changed", StringComparison.Ordinal) == true, () => $"the project's cleanup; the status says '{window.Status}'");
+        string cleaned = File.ReadAllText(messy);
+        Assert.True(cleaned.StartsWith("using System;\nusing System.Collections.Generic;\n", StringComparison.Ordinal) && !cleaned.Contains("System.Text", StringComparison.Ordinal)
+            && cleaned.Contains("\n        return names.Count;\n", StringComparison.Ordinal) && File.ReadAllText(spaced) == SpacedLaid && shown.Text.Snapshot.ToString() == CrookedLaid,
+            $"Code Cleanup over Sample ({window.Status}) left Messy.cs as:\n{cleaned}\nSpaced.cs as:\n{File.ReadAllText(spaced)}\nand Crooked.cs as:\n{shown.Text.Snapshot}");
+        Ui.ClickRow(window, ExplorerRow(window, project.PathOf("Sample.csproj"), Passenger.App.Explorer.NodeKind.File));
+        Ui.Run(window, EditorActions.Undo);
+        Ui.Settle();
+        Assert.StartsWith("Undo Code Cleanup? It changes ", asked.LastOrDefault(), StringComparison.Ordinal);
+        Assert.True(File.ReadAllText(messy) == messyBefore && File.ReadAllText(spaced) == Spaced && shown.Text.Snapshot.ToString() == Crooked,
+            $"One Undo of the project's Code Cleanup left Messy.cs as:\n{File.ReadAllText(messy)}\nSpaced.cs as:\n{File.ReadAllText(spaced)}\nand Crooked.cs as:\n{shown.Text.Snapshot}");
+        window.Close();
+    }
+
+    /// <summary>A row of the Explorer, shown, by its kind and path.</summary>
+    private static Passenger.App.Explorer.ExplorerNode ExplorerRow(MainWindow window, string path, Passenger.App.Explorer.NodeKind kind)
+    {
+        string full = PathNames.Canonical(path);
+        window.ExplorerView.Reveal(full);
+        Ui.Settle();
+        return window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Kind == kind && r.Path == full)
+            ?? throw new InvalidOperationException($"The Explorer does not show the {kind} {path}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => $"{r.Kind} {r.Name}"))}]");
+    }
+
+    private const string Crooked = "class Crooked\n{\n    public static int One()\n    {\n          return 1;\n    }\n}\n";
+    private const string CrookedLaid = "class Crooked\n{\n    public static int One()\n    {\n        return 1;\n    }\n}\n";
+    private const string Spaced = "class Spaced\n{\n    public static int Two( )\n    {\n        return   2;\n    }\n}\n";
+    private const string SpacedLaid = "class Spaced\n{\n    public static int Two()\n    {\n        return 2;\n    }\n}\n";
 
     /// <summary>Settings' Reformat on save: File, Save lays the changed file out as Reformat Code does before writing it, and
     /// one Undo takes the layout back; a language server that does not answer in time leaves the file saved as typed,
@@ -3317,6 +3381,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                 + "        list.ForEach(item => total += square(item));\n        List<int> kept = new();\n        total += Count(new());\n"
                 + "        var (first, second) = (total, \"two\");\n        return first + second.Length + kept.Count;\n    }\n\n"
                 + "    private static int Count(List<int> values) => values.Count;\n}\n");
+            // Tidy: laid out from the Explorer, one file open and one not.
+            Directory.CreateDirectory(PathOf("Tidy"));
+            File.WriteAllText(PathOf("Tidy/Crooked.cs"), Crooked);
+            File.WriteAllText(PathOf("Tidy/Spaced.cs"), Spaced);
             File.WriteAllText(PathOf("Messy.cs"), "using System.Text;\nusing System;\nusing System.Collections.Generic;\n\nstatic class Messy\n{\n    public static int Count()\n    {\n          List<string> names = [];\n        Console.WriteLine(names.Count);\n      return names.Count;\n    }\n}\n");
             // Each one test's own, which no other file uses: written by the test, it cost the warm server before and after it.
             File.WriteAllText(PathOf("Pairs.cs"), "class Counter(int start)\n{\n    public int Start => start;\n}\n\nrecord Pair(int Left, int Right)\n{\n"

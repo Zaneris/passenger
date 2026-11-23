@@ -499,9 +499,9 @@ public sealed partial class PassengerTools
     }
 
     /// <summary>Optimize Imports or Code Cleanup, as the window's command makes it, on a file or on each C# file of a
-    /// project or of the solution: those open first, each as its own command makes it, then those not open, read without a
-    /// tab, as one command that Undo takes back whole; one the language server holds in no project yet left as it is,
-    /// saying why, as a file's alone is refused.</summary>
+    /// project or of the solution, as the window's run over the Explorer's choice makes it (<see cref="CodeActions.TidyFilesAsync"/>):
+    /// one command that Undo takes back whole, one the language server holds in no project yet left as it is, saying why,
+    /// as a file's alone is refused.</summary>
     private async Task<RefactorAnswer> TidyAsync(string kind, string? path, JsonElement? options, bool describe, CancellationToken cancel)
     {
         bool cleanup = kind == "code_cleanup";
@@ -546,89 +546,31 @@ public sealed partial class PassengerTools
             throw new ArgumentException($"No scope '{scope}'; there are file, project and solution");
         }
         IReadOnlyList<string> files = await CodeFilesAsync(scope, path, cancel);
-        HashSet<string> named = new(files, StringComparer.Ordinal);
         if (describe)
         {
             return new RefactorAnswer(kind, $"{name} would tidy {Plural.Of(files.Count, "C# file")} of the {scope}",
                 [.. files.Select(f => new RefactorFile(Relative(f), "unchanged", []))], []);
         }
+        FilesTidied tidied = await window.Assist.Actions.TidyFilesAsync(cleanup ? Tidying.Cleanup : Tidying.OptimizeImports, files, WholeCodeAsync, Relative,
+            Session.LocalHistory, null, cancel);
+        cancel.ThrowIfCancellationRequested();
+        await LandedAsync(cancel);
+        return new RefactorAnswer(kind, $"{name} changed {Numbers.Said(tidied.Changed.Count)} of the {Plural.Of(files.Count, "C# file")} of the {scope}",
+            [.. tidied.Changed.Select(c => new RefactorFile(Relative(c.Path), Words(RefactoredChange.Changed), [], c.Done))], [.. tidied.Left.Select(l => l.Said)]);
+    }
+
+    /// <summary>The wait a change of the solution's whole code takes (<see cref="SettledServer"/>), then why each C# file the
+    /// server holds in no project yet, or whose project it has not loaded again, is left (<see cref="UntakenAsync"/>), by its
+    /// path: null for one it holds. An agent's Optimize Imports and Code Cleanup over a project and the window's runs over
+    /// the Explorer's choice take it alike.</summary>
+    internal async Task<Func<string, string?>> WholeCodeAsync(CancellationToken cancel)
+    {
         // Answers before the server has loaded the solution as it stands come from a file it knows alone, or from the code before.
         await SettledServer(cancel);
         IReadOnlyList<(string Path, string Project)> untaken = await UntakenAsync(cancel) ?? [];
-        CSharpService service = Session.CSharp ?? throw new InvalidOperationException(Session.WhyNoCSharp);
-        List<RefactorFile> tidied = [];
-        List<string> left = [];
-        // Those open are the person's, each with its own undo; the others are one command.
-        foreach (OpenDocument open in Editors.Documents.Where(d => named.Contains(d.Path)).ToList())
-        {
-            cancel.ThrowIfCancellationRequested();
-            if (Untaken(open.Path) is { } notTaken)
-            {
-                left.Add(notTaken);
-                continue;
-            }
-            await Tidied(open, service.For(open)?.Lsp);
-        }
-        using (Passenger.App.Editors.CommandHistory.Recording recording = Editors.Commands.RecordWrites(name))
-        {
-            HashSet<string> shown = new(Editors.Documents.Select(d => d.Path), StringComparer.Ordinal);
-            foreach (string file in files.Where(f => !shown.Contains(f)))
-            {
-                cancel.ThrowIfCancellationRequested();
-                if (Untaken(file) is { } notTaken)
-                {
-                    left.Add(notTaken);
-                    continue;
-                }
-                recording.Watch(file);
-                if (Editors.Borrow(file) is not ({ } borrowed, { } hold))
-                {
-                    left.Add($"{Relative(file)}: it cannot be read as text");
-                    continue;
-                }
-                using (hold)
-                {
-                    await Tidied(borrowed, service.For(borrowed)?.Lsp);
-                    if (borrowed.IsModified && !Editors.Save(borrowed))
-                    {
-                        left.Add($"{Relative(file)}: it could not be saved");
-                    }
-                }
-            }
-            foreach ((string unsaved, Exception refused) in await recording.LandedAsync(null))
-            {
-                tidied.RemoveAll(t => t.Path == Relative(unsaved));
-                left.Add($"{Relative(unsaved)}: it could not be saved: {refused.Message}");
-            }
-        }
-        await LandedAsync(cancel);
-        return new RefactorAnswer(kind, $"{name} changed {Numbers.Said(tidied.Count)} of the {Plural.Of(files.Count, "C# file")} of the {scope}", tidied, left);
-
-        // A file the server holds in no project yet, or whose project it has not loaded again, is refused as a file's tidy refuses it.
-        string? Untaken(string file) => untaken.FirstOrDefault(u => PathNames.Same(u.Path, file)
+        return file => untaken.FirstOrDefault(u => PathNames.Same(u.Path, file)
             || CSharpService.IsReload(u) && Session.ProjectOf(file) is { } owner && PathNames.Same(owner.Path, u.Project)) is { Path: not null } waited
             ? NotTakenIn([waited]) : null;
-
-        async Task Tidied(OpenDocument document, LspDocument? lsp)
-        {
-            if (lsp is null)
-            {
-                left.Add($"{Relative(document.Path)}: the language server does not read it");
-                return;
-            }
-            if (document.IsReadOnly)
-            {
-                left.Add(ReadOnlyHere(document.Path, Relative(document.Path)));
-                return;
-            }
-            // Its text's version says whether the tidy changed it, never the text made into a string twice.
-            int before = document.Text.Version;
-            string done = await TidyOne(lsp, document, cleanup);
-            if (document.Text.Version != before)
-            {
-                tidied.Add(new RefactorFile(Relative(document.Path), Words(RefactoredChange.Changed), [], done));
-            }
-        }
     }
 
     /// <summary>One file's Optimize Imports or Code Cleanup, in the status bar's words.</summary>

@@ -169,6 +169,17 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The window's actions' work, which a change says its waits through.</summary>
     public ActionWork? Work { get; set; }
 
+    /// <summary>What the Explorer has chosen for Reformat Code, Code Cleanup and Optimize Imports to run over where one is
+    /// asked of it (its menu, or its keys while it has them); null where they act on the file shown.</summary>
+    public Func<ActionContext, ChosenFiles?> Chosen { get; set; } = _ => null;
+
+    /// <summary>The wait a run over many files takes for the C# language server, giving why a file it holds in no project yet
+    /// is left (<see cref="Mcp.PassengerTools.WholeCodeAsync"/>).</summary>
+    public Func<CancellationToken, Task<Func<string, string?>>>? WholeCode { get; set; }
+
+    /// <summary>The open folder's Local History, which names a run over many files one change set.</summary>
+    public Func<Passenger.App.History.LocalHistory?> History { get; set; } = () => null;
+
     /// <summary>A change the window makes of a server's edit, run in a <see cref="Patience"/>: made again once the server has
     /// read the files not open written a moment before it was asked (by Undo, another change, another program), what it
     /// waits for said as the work of the <paramref name="action"/> that asked for it.</summary>

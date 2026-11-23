@@ -306,6 +306,10 @@ public partial class MainWindow : IdeWindow
         assist.FollowKeys = () => actions?.ShortcutsShown(AppActions.GoToDeclaration);
         assist.Play += (_, file) => IdeErrors.Observe(PlaySoundAsync(file));
         assist.FilesChanging = FollowingAsync;
+        assist.Chosen = ChosenCode;
+        // The wait an agent's run over a project takes, so the window's over the Explorer's choice is the same.
+        assist.WholeCode = cancel => new Mcp.PassengerTools(this).WholeCodeAsync(cancel);
+        assist.History = () => session.LocalHistory;
         assist.KeepsPlaces = () => settings.FindResultsIn() == FindResults.FindWindow;
         assist.HttpRouteTargets = HttpRouteTargets;
         assist.RouteCallers = RouteCallers;
