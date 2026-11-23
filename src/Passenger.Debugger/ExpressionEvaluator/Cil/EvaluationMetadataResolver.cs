@@ -483,9 +483,49 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         {
             HandleKind.TypeReference => ResolveTypeReference((TypeReferenceHandle)handle),
             HandleKind.TypeSpecification => ResolveTypeSpecification((TypeSpecificationHandle)handle),
+            HandleKind.TypeDefinition when OwnTypes.Made((TypeDefinitionHandle)handle) => ResolveEvaluationType((TypeDefinitionHandle)handle),
             _ => throw new NotSupportedException($"Evaluation type token kind '{handle.Kind}' is not supported")
         };
     }
+
+    /// <summary>The evaluation's own types the program makes, read from its metadata.</summary>
+    private OwnTypeProvider OwnTypes => field ??= new OwnTypeProvider(evaluationReader);
+
+    /// <summary>Whether the evaluation names a type of its own the program makes (<see cref="OwnTypeProvider"/>): in a type
+    /// or a method's type arguments it names, a method's signature, a field's or a local's type.</summary>
+    public bool NamesTypesOfItsOwn()
+    {
+        int typeSpecifications = evaluationReader.GetTableRowCount(TableIndex.TypeSpec);
+        int methodSpecifications = evaluationReader.GetTableRowCount(TableIndex.MethodSpec);
+        int signatures = evaluationReader.GetTableRowCount(TableIndex.StandAloneSig);
+        return Enumerable.Range(1, typeSpecifications).Any(row => evaluationReader.GetTypeSpecification(MetadataTokens.TypeSpecificationHandle(row)).DecodeSignature(OwnTypes, null))
+            || Enumerable.Range(1, methodSpecifications).Any(row => evaluationReader.GetMethodSpecification(MetadataTokens.MethodSpecificationHandle(row)).DecodeSignature(OwnTypes, null).Contains(true))
+            || evaluationReader.MethodDefinitions.Any(method => evaluationReader.GetMethodDefinition(method).DecodeSignature(OwnTypes, null) is var signature
+                && (signature.ReturnType || signature.ParameterTypes.Contains(true)))
+            || evaluationReader.FieldDefinitions.Any(field => evaluationReader.GetFieldDefinition(field).DecodeSignature(OwnTypes, null))
+            || Enumerable.Range(1, signatures).Select(row => evaluationReader.GetStandaloneSignature(MetadataTokens.StandaloneSignatureHandle(row)))
+                .Any(signature => signature.GetKind() == StandaloneSignatureKind.LocalVariables && signature.DecodeLocalSignature(OwnTypes, null).Contains(true));
+    }
+
+    /// <summary>Whether a method of the evaluation's own is of a type the program makes (<see cref="OwnTypeProvider"/>), not
+    /// a closure's.</summary>
+    public bool MadeInProgram(MethodDefinitionHandle handle) => OwnTypes.Made(evaluationReader.GetMethodDefinition(handle).GetDeclaringType());
+
+    /// <summary>A method of a type of the evaluation's own the program makes (<see cref="MadeInProgram"/>), in the evaluation's
+    /// assembly as the program loaded it.</summary>
+    public ResolvedRuntimeMethod ResolveOwnMethod(MethodDefinitionHandle handle)
+    {
+        MethodDefinition method = evaluationReader.GetMethodDefinition(handle);
+        return new ResolvedRuntimeMethod(ResolveEvaluationType(method.GetDeclaringType()), handle, evaluationReader.GetString(method.Name),
+            method.DecodeSignature(SignatureKeyProvider.Instance, genericContext: null), (method.Attributes & MethodAttributes.Static) != 0);
+    }
+
+    /// <summary>A type the evaluation defines that the program makes, in the evaluation's assembly as the program loaded it
+    /// (<see cref="ManagedDebugger.EvaluationModule"/>), which an evaluation naming one has it load first.</summary>
+    private ResolvedRuntimeType ResolveEvaluationType(TypeDefinitionHandle handle) =>
+        debugger.EvaluationModule(evaluationReader.GetGuid(evaluationReader.GetModuleDefinition().Mvid)) is { } loaded
+            ? new ResolvedRuntimeType(loaded, handle)
+            : throw new NotSupportedException($"The program has not loaded the evaluation's own type '{MetadataTypeNames.Of(evaluationReader, handle)}'");
 
     private ResolvedRuntimeType ResolveTypeSpecification(TypeSpecificationHandle handle)
     {
@@ -772,6 +812,29 @@ internal sealed class EvaluationMetadataResolver(ManagedDebugger debugger, Metad
         }
 
         return assemblyName.FullName!;
+    }
+
+    /// <summary>Whether a type names one of the evaluation's own the program makes: one it defines at its top level (an
+    /// anonymous type, an anonymous delegate, a collection expression's or an inline array's), its closures being nested in
+    /// its class and the interpreter's own.</summary>
+    private sealed class OwnTypeProvider(MetadataReader reader) : ISignatureTypeProvider<bool, object?>
+    {
+        public bool Made(TypeDefinitionHandle handle) => reader.GetTypeDefinition(handle).GetDeclaringType().IsNil;
+        public bool GetPrimitiveType(PrimitiveTypeCode typeCode) => false;
+        public bool GetTypeFromDefinition(MetadataReader metadata, TypeDefinitionHandle handle, byte rawTypeKind) => Made(handle);
+        public bool GetTypeFromReference(MetadataReader metadata, TypeReferenceHandle handle, byte rawTypeKind) => false;
+        public bool GetTypeFromSpecification(MetadataReader metadata, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            metadata.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+        public bool GetGenericInstantiation(bool genericType, ImmutableArray<bool> typeArguments) => genericType || typeArguments.Contains(true);
+        public bool GetArrayType(bool elementType, ArrayShape shape) => elementType;
+        public bool GetSZArrayType(bool elementType) => elementType;
+        public bool GetByReferenceType(bool elementType) => elementType;
+        public bool GetPointerType(bool elementType) => elementType;
+        public bool GetPinnedType(bool elementType) => elementType;
+        public bool GetModifiedType(bool modifier, bool unmodifiedType, bool isRequired) => unmodifiedType;
+        public bool GetFunctionPointerType(MethodSignature<bool> signature) => signature.ReturnType || signature.ParameterTypes.Contains(true);
+        public bool GetGenericMethodParameter(object? genericContext, int index) => false;
+        public bool GetGenericTypeParameter(object? genericContext, int index) => false;
     }
 
     private sealed class RuntimeTypeSignatureProvider(EvaluationMetadataResolver resolver) : ISignatureTypeProvider<ResolvedCilType, object?>

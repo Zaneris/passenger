@@ -36,6 +36,10 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         debugger.EvalStatus.Expression = time;
         try
         {
+            if (resolver.NamesTypesOfItsOwn())
+            {
+                await delegateAssemblyLoader.LoadOwnTypesAsync();
+            }
             CilValue result = await InterpretAsync(run, decoded, arguments, locals);
             if (resolver.ResolveMethodReturnType(compiled.EntryMethod).Primitive is PrimitiveTypeCode.Void)
             {
@@ -608,9 +612,10 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
     {
         EvaluationMetadataResolver resolver = run.Resolver;
         EvaluationHandleScope handles = run.Handles;
-        if (MetadataTokens.EntityHandle(instruction.Token) is { Kind: HandleKind.MethodDefinition } evaluationConstructor)
+        EntityHandle token = MetadataTokens.EntityHandle(instruction.Token);
+        if (token.Kind == HandleKind.MethodDefinition && !resolver.MadeInProgram((MethodDefinitionHandle)token))
         {
-            MethodDefinitionHandle constructorHandle = (MethodDefinitionHandle)evaluationConstructor;
+            MethodDefinitionHandle constructorHandle = (MethodDefinitionHandle)token;
             MethodSignature<string> signature = resolver.ResolveEvaluationMethodSignature(constructorHandle);
             if (signature.ParameterTypes.Length != 0)
             {
@@ -629,7 +634,17 @@ internal sealed class CilInterpreter(ManagedDebugger debugger, RuntimeAssemblyPr
         {
             return await NewArrayAsync(arrayType, Pop(stack, parameters), run);
         }
-        ResolvedRuntimeMethod constructor = resolver.ResolveMethod(instruction.Token);
+        ResolvedRuntimeMethod constructor;
+        if (token.Kind == HandleKind.MethodDefinition)
+        {
+            // A type of the evaluation's own the program makes (an anonymous type's): in its assembly as the program loaded it.
+            await run.Delegates.LoadOwnTypesAsync();
+            constructor = resolver.ResolveOwnMethod((MethodDefinitionHandle)token);
+        }
+        else
+        {
+            constructor = resolver.ResolveMethod(instruction.Token);
+        }
         CilValue[] constructorArguments = Pop(stack, constructor.Signature.ParameterTypes.Length);
         if (constructorArguments is [var delegateTarget, { Value: EvaluationFunctionPointer function }])
         {

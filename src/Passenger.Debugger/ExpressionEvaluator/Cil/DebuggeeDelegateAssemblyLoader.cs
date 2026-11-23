@@ -29,6 +29,10 @@ internal sealed class DebuggeeDelegateAssemblyLoader(
         return await making();
     });
 
+    /// <summary>Loads the evaluation's own assembly into the program, as its first lambda does, for the types of its own the
+    /// program makes (an anonymous type's), which the evaluation then finds there.</summary>
+    public Task LoadOwnTypesAsync() => MadeAsync(GetSessionIdAsync);
+
     public async Task<ICorDebugFunction> GetMaterializerFunctionAsync(string methodName)
     {
         ModuleInfo module = await EnsureMaterializerLoadedAsync();

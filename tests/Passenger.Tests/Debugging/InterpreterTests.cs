@@ -9,11 +9,11 @@ namespace Passenger.Tests.Debugging;
 [Collection(DebugSession.Collection)]
 public class InterpreterTests(ITestOutputHelper testOutputHelper)
 {
-    /// <summary>The evaluator's C#: integers, enums, conversions, unboxing, arrays and Set Value as the language says;
-    /// a pattern's or out argument's variables; With on a struct leaving the program's variable; arrays made as the
-    /// program makes them; a delegate given to a constructor made in the program; a large lambda as a small one, one
-    /// that loops without end stopped, the making of a session's first lambda not counted in its time; and a call that
-    /// throws, an index outside an array and a null named with the exception the program would throw.</summary>
+    /// <summary>The evaluator's C#: integers, enums, conversions, unboxing, arrays and Set Value as the language says; a
+    /// pattern's or out argument's variables; With on a struct leaving the program's variable; arrays made as the program
+    /// makes them; a delegate given to a constructor and an anonymous type made in the program; a large lambda as a small
+    /// one, one that loops without end stopped, the making of a session's first lambda not counted in its time; and a call
+    /// that throws, an index outside an array and a null named with the exception the program would throw.</summary>
     [Fact]
     public async Task An_expression_evaluates_as_the_language_says_and_one_that_loops_or_throws_is_stopped_or_named_as_the_program_would()
     {
@@ -93,8 +93,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         Assert.Equal("4294967295", (await Evaluate(host, frame, "myUInt")).Value);
     }
 
-    /// <summary>A lambda watch evaluates with a large lambda as with a small one, and an expression that loops without end
-    /// is stopped saying it took too long, the program as it was and evaluating on.</summary>
+    /// <summary>A lambda watch evaluates with a large lambda as with a small one, an anonymous type, the evaluation's own, is
+    /// made by a lambda in the program and by the expression itself, and an expression that loops without end is stopped
+    /// saying it took too long, the program as it was and evaluating on.</summary>
     private async Task A_large_lambda_evaluates_as_a_small_one_does_and_an_expression_that_loops_without_end_is_stopped()
     {
         // The first lambda loads the debugger's own code into the program, slow on a loaded machine.
@@ -113,6 +114,9 @@ public class InterpreterTests(ITestOutputHelper testOutputHelper)
         // A 32 K character string makes the assembly the lambda compiles to 64 KB larger.
         string text = new('x', 32 * 1024);
         Assert.Equal("4", (await Evaluate(host, frame, $"_intList.Where(x => \"{text}\".Length > x).Count()")).Value);
+        Assert.Equal("12", (await Evaluate(host, frame, "_intList.Select(x => new { Half = x / 2 }).Last().Half")).Value);
+        Assert.Equal("{ A = 4, B = \"two\" }", (await Evaluate(host, frame, "new { A = myInt, B = \"two\" }")).Value);
+        Assert.Equal("\"{ }\"", (await Evaluate(host, frame, "new { }.ToString()")).Value);
 
         CancellationToken cancelled = TestContext.Current.CancellationToken;
         Task<EvaluateResponse> evaluating = host.Connection.RequestAsync<EvaluateResponse>(DapCommands.Evaluate,

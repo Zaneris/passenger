@@ -1727,7 +1727,8 @@ public partial class ManagedDebugger
     /// <summary>Why what <see cref="CoreLib"/> holds cannot be read yet.</summary>
     internal const string CoreLibNotLoaded = "The program's runtime has not loaded its CoreLib yet";
 
-    internal ModuleInfo GetModuleInfoForModule(ICorDebugModule module) => FindModule(module) ?? throw new InvalidOperationException(ModuleWithoutMetadata);
+    internal ModuleInfo GetModuleInfoForModule(ICorDebugModule module) =>
+        FindModule(module) ?? FindEvaluationModule(module) ?? throw new InvalidOperationException(ModuleWithoutMetadata);
 
     private const string ModuleWithoutMetadata = "The code is in a module whose metadata the debugger could not read";
 
@@ -1841,6 +1842,7 @@ public partial class ManagedDebugger
             moduleInfo.Dispose();
         }
         _modules.Clear();
+        LetGoOfEvaluationModules();
 
         if (_entryBreakpoint is { } entryBreakpoint && !exited)
         {

@@ -237,8 +237,8 @@ public partial class ManagedDebugger
         }
         if (TryConsumeTransientEvaluationModule(metadataReader.Mvid))
         {
-            _logger?.Invoke($"  Ignoring transient evaluation module {metadataReader.Mvid}");
-            metadataReader.Dispose();
+            _logger?.Invoke($"  Kept apart: the evaluation's module {metadataReader.Mvid}");
+            KeepEvaluationModule(new ModuleInfo(corModule, modulePath, metadataReader, isUserCode: false));
             Continue(clearVariables: false);
             return;
         }
@@ -349,7 +349,7 @@ public partial class ManagedDebugger
     private void HandleModuleUnloaded(object? sender, UnloadModuleCorDebugManagedCallbackEventArgs unloadModuleEvent)
     {
         ICorDebugModule corModule = unloadModuleEvent.Module;
-        if (FindModule(corModule, reread: false) is not { } moduleInfo)
+        if (LetGoOfEvaluationModule(corModule) || FindModule(corModule, reread: false) is not { } moduleInfo)
         {
             Continue(clearVariables: false);
             return;
