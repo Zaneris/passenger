@@ -34,6 +34,8 @@ public sealed class ToolDocument : IDisposable
     private OpenDocument.CheckHold? awaitingPush;
     private CancellationTokenSource? pushLimit;
 
+    private readonly TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     internal ToolDocument(OpenDocument document, WebDocument web, WebTool tool)
     {
         this.document = document;
@@ -56,6 +58,9 @@ public sealed class ToolDocument : IDisposable
 
     /// <summary>The markers the problems draw as, where the text has carried them.</summary>
     public IReadOnlyList<Marker> Markers => diagnostics.Markers;
+
+    /// <summary>Ends once its server has connected the file, or cannot, or the file is let go.</summary>
+    public Task Reached => reached.Task;
 
     /// <summary>Whether its server pushes the file's problems rather than being asked for them.</summary>
     private bool Pushes => session?.Server.Provides("diagnosticProvider") != true;
@@ -82,6 +87,7 @@ public sealed class ToolDocument : IDisposable
     {
         waiting?.Dispose();
         waiting = null;
+        reached.TrySetResult();
     }
 
     /// <summary>The problems asked for again (the server's refresh).</summary>

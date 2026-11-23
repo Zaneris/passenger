@@ -55,13 +55,27 @@ internal sealed partial class WebAssist
             .Select(t => tools.FirstOrDefault(d => d.Tool == t)).OfType<ToolDocument>()];
     }
 
+    /// <summary>How long a formatter's server starting (as a run over a folder reads a file without a tab) is waited for.</summary>
+    private static TimeSpan FormatterStart => Waits.Of(TimeSpan.FromSeconds(3));
+
     /// <summary>A file laid out by the first of the folder's formatters that formats it (<see cref="FormattersOf"/>), as one
-    /// undoable edit, refused while one has yet to start; null where none lays it out, which leaves it to Prettier or its
-    /// language server.</summary>
+    /// undoable edit, its server waited for while it starts (<see cref="FormatterStart"/>), else refused; null where none lays
+    /// it out, which leaves it to Prettier or its language server.</summary>
     private async Task<CodeActions.Reformatted?> FormatWithToolsAsync(WebLanguages web, OpenDocument document, string what, TextRange? within, CancellationToken cancel = default)
     {
         foreach (ToolDocument formatter in FormattersOf(web, document))
         {
+            if (formatter.Lsp is null)
+            {
+                try
+                {
+                    await formatter.Reached.WaitAsync(FormatterStart, cancel);
+                }
+                catch (TimeoutException)
+                {
+                    // Still starting: refused below, saying so.
+                }
+            }
             if (formatter.Lsp is null)
             {
                 return CodeActions.Reformatted.Refused(what, $"{formatter.Tool.Name}'s language server is not running for {document.Name}");
