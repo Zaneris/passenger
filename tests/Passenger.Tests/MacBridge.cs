@@ -71,7 +71,8 @@ internal static partial class MacBridge
     public readonly record struct CGRect(double X, double Y, double Width, double Height);
 
     /// <summary>Avalonia's element for a control's peer, made by its own +acquire: as AppKit's questions make it, through
-    /// the peer's native wrapper Avalonia hands its bridge.</summary>
+    /// the peer's native wrapper Avalonia hands its bridge: given as a reference to the smart pointer holding it, the
+    /// address of a slot holding the wrapper's pointer.</summary>
     public static nint ElementOf(Control control)
     {
         Load();
@@ -83,7 +84,17 @@ internal static partial class MacBridge
         Type runtime = Type.GetType("MicroCom.Runtime.MicroComRuntime, MicroCom.Runtime", throwOnError: true)!;
         MethodInfo pointer = runtime.GetMethods().Single(m => m.Name == "GetNativeIntPtr" && m.IsGenericMethodDefinition && m.GetParameters().Length == 2).MakeGenericMethod(face);
         nint native = (nint)pointer.Invoke(null, [wrapped, false])!;
-        nint element = Send(Class(MacTextElements.AvaloniaClassName), Selector("acquire:"), native);
+        nint held = Marshal.AllocHGlobal(IntPtr.Size);
+        nint element;
+        try
+        {
+            Marshal.WriteIntPtr(held, native);
+            element = Send(Class(MacTextElements.AvaloniaClassName), Selector("acquire:"), held);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(held);
+        }
         Assert.True(element != 0, $"Avalonia's {MacTextElements.AvaloniaClassName} made no element for the {control.GetType().Name}'s peer");
         return element;
     }

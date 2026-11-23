@@ -210,7 +210,7 @@ Packages the build or the tests use that no app carries.
 
 | Package | In Passenger | Licence | Copyright |
 |---|---|---|---|
-| `Avalonia.BuildServices` | Avalonia's build task, whose telemetry `AVALONIA_TELEMETRY_OPTOUT` turns off (the README says how) | MIT | Copyright 2023-2025 © The AvaloniaUI Project |
+| `Avalonia.BuildServices` | Avalonia's build task, whose telemetry `AVALONIA_TELEMETRY_OPTOUT` turns off (the README says how) | MIT | Copyright 2023-2026 © The AvaloniaUI Project |
 | `Microsoft.CodeAnalysis.Analyzers` | Roslyn's analyzers, which come with Microsoft.CodeAnalysis.Common | MIT | © Microsoft Corporation. All rights reserved. |
 | `Krafs.Publicizer` | the debugger's build | MIT | © Krafs 2024 |
 | `Microsoft.Build`, `Microsoft.Build.Framework`, `Microsoft.NET.StringTools`, `System.Configuration.ConfigurationManager`, `System.Diagnostics.EventLog`, `System.Reflection.MetadataLoadContext`, `System.Security.Cryptography.ProtectedData` | the project host's build: MSBuild's API and what it depends on, compiled against and never carried, since the host runs the installed SDK's own MSBuild (`src/Passenger.Host`) | MIT | © Microsoft Corporation. All rights reserved. |
@@ -223,6 +223,7 @@ Packages the build or the tests use that no app carries.
 | `Cucumber.HtmlFormatter` | Reqnroll's dependency in the unit tests; Passenger never carries it | MIT | Copyright © Cucumber Ltd |
 | `Avalonia.Fonts.Inter` | Inter 3.019, which `Avalonia.Headless` names and the tests' Avalonia apps take; the app leaves its files out and carries its own Inter (below) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Templates` | Avalonia's dotnet new templates, downloaded for the tests' local feed, from which they install them as New Solution does (`AvaloniaApp.Feed`); Passenger never carries them, and installs them only when asked. The package names no licence; its repository's (AvaloniaUI/Avalonia.Templates) is MIT | MIT | Copyright (c) 2023 .NET Foundation and Contributors All Rights Reserved |
+| `Avalonia.Themes.Fluent2` | the Fluent 2 theme Avalonia's templates give an app they make, restored for the tests' package cache (tests/AvaloniaGraphs); Passenger never carries it | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `CommunityToolkit.Mvvm` | the MVVM Toolkit at the version Avalonia's MVVM template writes, downloaded for the tests' package cache, which an app of theirs restores with its generators; Passenger never carries it | MIT | (c) .NET Foundation and Contributors. All rights reserved. |
 | `ReactiveUI`, `ReactiveUI.Core`, `Splat`, `Splat.Builder`, `Splat.Core`, `Splat.Logging` | ReactiveUI and what it depends on, whose view models the XAML tests' Avalonia apps bind to: restored for the tests' package cache (tests/AvaloniaGraphs); Passenger never carries them | MIT | Copyright (c) .NET Foundation and Contributors |
 | `ReactiveUI.SourceGenerators`, `ReactiveUI.Binding` | ReactiveUI's source generators, which make the `[Reactive]` properties and `[ReactiveCommand]` commands those apps bind to, and its bindings: restored for the tests' package cache (tests/AvaloniaGraphs); Passenger never carries them | MIT | Copyright (c) 2026 ReactiveUI and Contributors |

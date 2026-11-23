@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -345,7 +346,9 @@ public sealed class NewSolutionTests : IDisposable
         Assert.Contains("<PackageReference Include=\"Avalonia.Desktop\"", File.ReadAllText(project), StringComparison.Ordinal);
 
         Ui.WaitFor(() => !window.IsBuilding, "the Avalonia app's build", TimeSpan.FromMinutes(4));
-        Assert.True(File.Exists(Path.Combine(folder, "Gallery", "bin", "Debug", TestProjects.Framework, "Gallery.dll")),
+        // The target the template gives, which New Solution leaves as it is.
+        string framework = XDocument.Load(project).Descendants("TargetFramework").Single().Value;
+        Assert.True(File.Exists(Path.Combine(folder, "Gallery", "bin", "Debug", framework, "Gallery.dll")),
             $"The Avalonia app was not built: {Ui.Said(window)}\n{window.BottomPanel.Build.Document.Snapshot}");
         Ui.Press(window, Ui.Shortcut(AppActions.RunProgram));
         Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the Avalonia app to run", TimeSpan.FromMinutes(3));
@@ -608,9 +611,11 @@ public sealed class NewSolutionTests : IDisposable
                     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
                     .AfterSetup(_ => Dispatcher.UIThread.Post(() =>
                     {
-                        IClassicDesktopStyleApplicationLifetime desktop = (IClassicDesktopStyleApplicationLifetime)Application.Current!.ApplicationLifetime!;
-                        System.Console.WriteLine($"{desktop.MainWindow?.Title} is up, showing {desktop.MainWindow?.Content}");
-                        desktop.Shutdown();
+                        if (Application.Current!.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                        {
+                            System.Console.WriteLine($"{desktop.MainWindow?.Title} is up, showing {desktop.MainWindow?.Content}");
+                            desktop.Shutdown();
+                        }
                     }))
                     .StartWithClassicDesktopLifetime(args);
             }

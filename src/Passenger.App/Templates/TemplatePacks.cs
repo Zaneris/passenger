@@ -86,7 +86,7 @@ public static partial class TemplatePacks
 
     public static IReadOnlyList<TemplatePack> All { get; } =
     [
-        new("Avalonia.Templates", "Install Avalonia templates for creating cross-platform desktop, mobile and browser apps", "12.1.6", "AvaloniaUI",
+        new("Avalonia.Templates", "Install Avalonia templates for creating cross-platform desktop, mobile and browser apps", "12.2.0", "AvaloniaUI",
         [
             new("Avalonia .NET App", "avalonia.app", false, ["C#", "F#"], "A cross-platform Avalonia UI Application targeting Desktop", Desktop, "AvaloniaApplication"),
             new("Avalonia .NET MVVM App", "avalonia.mvvm", false, ["C#", "F#"], "A cross-platform Avalonia UI Application using the MVVM pattern targeting Desktop",

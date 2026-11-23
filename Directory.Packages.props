@@ -9,7 +9,7 @@
     <RoslynServerVersion>5.13.0-1.26514.10</RoslynServerVersion>
     <!-- Avalonia's dotnet new templates at the Avalonia version below, downloaded for the tests' local feed so no test
          reaches nuget.org for them. -->
-    <AvaloniaTemplatesVersion>12.1.6</AvaloniaTemplatesVersion>
+    <AvaloniaTemplatesVersion>12.2.0</AvaloniaTemplatesVersion>
     <!-- Avalonia 11's last release, for the previewer's test of an app still on it (tests/AvaloniaGraphs). -->
     <AvaloniaOlderVersion>11.3.23</AvaloniaOlderVersion>
     <!-- The first Avalonia 12, which Passenger's hooks into an Avalonia app are compiled against (src/AvaloniaHooks.props),
@@ -20,10 +20,11 @@
     <Avalonia120Version>12.0.5</Avalonia120Version>
     <!-- The older Avalonia 12s whose headless platform and XAML compiler the inspector carries beside Passenger's own: each
          serves an app from its version to the next one's, as Avalonia changed what the headless platform implements or
-         calls at 12.1.0 (a window's frame theme), 12.1.2 (a popup's hit testing) and 12.1.3 (the mouse device it resets),
-         so an app on any Avalonia 12 up to Passenger's is given one built against its own platform's interfaces. A move of
-         Passenger's Avalonia adds the version it leaves, and any between where the platform changed. -->
-    <AvaloniaCarriedVersions>$(AvaloniaOldestVersion);12.1.0;12.1.2</AvaloniaCarriedVersions>
+         calls at 12.1.0 (a window's frame theme), 12.1.2 (a popup's hit testing), 12.1.3 (the mouse device it resets) and
+         12.2.0 (a top level's paint, and the runtime helpers the XAML compiler's code calls), so an app on any Avalonia 12
+         up to Passenger's is given one built against its own platform's interfaces. A move of Passenger's Avalonia adds
+         the version it leaves, and any between where the platform changed. -->
+    <AvaloniaCarriedVersions>$(AvaloniaOldestVersion);12.1.0;12.1.2;12.1.6</AvaloniaCarriedVersions>
     <!-- The MVVM Toolkit at the version Avalonia's MVVM template above writes, downloaded for the tests' package cache, so
          an app of theirs restores with its generators and reaches no feed. -->
     <CommunityToolkitMvvmVersion>8.4.2</CommunityToolkitMvvmVersion>
@@ -129,18 +130,18 @@
     <ProjectEvaluationSerilogVersion>4.0.0</ProjectEvaluationSerilogVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Avalonia" Version="12.1.6" />
-    <PackageVersion Include="Avalonia.Desktop" Version="12.1.6" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.6" />
+    <PackageVersion Include="Avalonia" Version="12.2.0" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.2.0" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.2.0" />
     <!-- An HTML file's preview beside its text, the system's own web view (MIT since it left Accelerate, at 11.4.0). -->
     <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.2" />
-    <PackageVersion Include="Avalonia.HarfBuzz" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.HarfBuzz" Version="12.2.0" />
     <!-- XAML Hot Reload's compiler, carried by the inspector into an app that has none: at Avalonia's version, as it reaches
          into Avalonia's own insides. -->
-    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="12.1.6" />
-    <PackageVersion Include="Avalonia.Headless" Version="12.1.6" />
-    <PackageVersion Include="Avalonia.Skia" Version="12.1.6" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Markup.Xaml.Loader" Version="12.2.0" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.2.0" />
+    <PackageVersion Include="Avalonia.Skia" Version="12.2.0" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.2.0" />
     <!-- Skia and HarfBuzz under Avalonia's renderer, Svg.Skia and the MAUI previewer, at their newest stable line rather
          than the older ones Avalonia.Skia and Avalonia.Controls.Maui name as their least, each with the Linux native
          library of its own version (macOS's and Windows' come with the managed package). -->
@@ -250,7 +251,9 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="$(NpgsqlEfVersion)" />
     <PackageVersion Include="ReactiveUI" Version="$(ReactiveUiVersion)" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="$(ReactiveUiGeneratorsVersion)" />
-    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.2.0" />
+    <!-- The theme Avalonia's templates give an app they make, restored for the tests' package cache (tests/AvaloniaGraphs). -->
+    <PackageVersion Include="Avalonia.Themes.Fluent2" Version="12.2.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <!-- The analyzers' (src/Passenger.Analyzers): the last release, MIT where netstandard2.0's 1.1.0 is not. -->
     <PackageVersion Include="Microsoft.NETCore.Platforms" Version="7.0.4" />

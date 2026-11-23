@@ -364,11 +364,11 @@ internal sealed partial class XamlAssist : LanguageAssist
             choice => choice?.Value is XamlTarget target ? Arrive(target, found.File) : Task.CompletedTask);
     }
 
-    /// <summary>Where in the theme library's own XAML (Fluent's) a control's theme, a part of its template, or a resource
-    /// the theme defines is written, its file had from the library's Source Link (to open read-only), and what to say of it;
-    /// no place, and why, where it cannot be had. The files are those compiled into the theme, then, where none of those
-    /// named for the target has it, those the files that merge others merge in: the theme's root (Fluent's FluentTheme.xaml,
-    /// merging its resources in) and its control list (FluentControls.xaml, merging Button.xaml in), whose own text says them.</summary>
+    /// <summary>Where in the theme library's own XAML (Fluent's) a control's theme, a part of its template, or a
+    /// resource the theme defines is written, its file had from the library's Source Link (to open read-only), and what
+    /// to say of it; no place, and why, where it cannot be had: from the files compiled into the theme, then those its
+    /// root (FluentTheme.xaml) and each control list it holds or merges in (FluentControls.xaml, holding Button.xaml)
+    /// merge in, as their text says.</summary>
     internal async Task<((string Path, TextPosition Position)? Place, string Said)> ThemePlaceAsync(XamlTarget target, XamlFile file)
     {
         if (context.Xaml?.Invoke() is not { } service)
@@ -428,13 +428,20 @@ internal sealed partial class XamlAssist : LanguageAssist
         (string Path, TextPosition Position, string Said)? found = namedFor ? await FoundAsync() : null;
         if (found is null)
         {
-            foreach (string hub in theme.ClassXamlFiles.Concat(theme.XamlFiles.Where(f => f.EndsWith("Controls.xaml", StringComparison.Ordinal))).Distinct(StringComparer.Ordinal))
+            static bool ControlList(string path) => path.EndsWith("Controls.xaml", StringComparison.Ordinal);
+            Queue<string> hubs = new(theme.ClassXamlFiles.Concat(theme.XamlFiles.Where(ControlList)).Distinct(StringComparer.Ordinal));
+            HashSet<string> read = new(StringComparer.Ordinal);
+            while (hubs.TryDequeue(out string? hub))
             {
-                if (await Fetch(hub) is { } local)
+                if (read.Add(hub) && await Fetch(hub) is { } local)
                 {
                     List<string> included = [.. Included(EditorArea.ReadText(local) ?? string.Empty, hub, theme.Name)];
                     known.AddRange(included.Where(f => !known.Contains(f)));
                     merged.AddRange(theme.ClassXamlFiles.Contains(hub) ? included.Where(f => !merged.Contains(f)) : []);
+                    foreach (string list in included.Where(ControlList))
+                    {
+                        hubs.Enqueue(list);
+                    }
                 }
             }
             found = await FoundAsync();

@@ -128,7 +128,7 @@
       },
       "Avalonia.Skia": {
         "type": "CentralTransitive",
-        "requested": "[12.1.6, )",
+        "requested": "[12.2.0, )",
         "resolved": "11.3.23",
         "contentHash": "ixxBSB4nijGgA6zPui7kgSj+4HBh0zn3HrlhTLpiG8AaPXJ4j2XfNSKcgLYSvAlDeKs6RhSz6LfTTSzZOYXUEQ==",
         "dependencies": {

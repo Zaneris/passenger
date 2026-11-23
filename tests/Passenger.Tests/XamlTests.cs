@@ -1705,7 +1705,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
         Passenger.App.Xaml.XamlDocument xaml = window.XamlService.For(window.EditorArea.Active!)!;
         Ui.WaitFor(() => xaml.IsLoaded, "the project's XAML read");
-        // Fluent's control list as an earlier session's Source Link gave it, merging in a file five folders up.
+        // Fluent's root and control list as Source Link gave them before, the list merging in a file five folders up.
         Passenger.Xaml.Metadata.AssemblyTypes fluent = Ui.Await(xaml.Loaded, "the project's XAML")!.Types.Assemblies.Single(a => a.Name == "Avalonia.Themes.Fluent");
         string entry = Path.Combine(Passenger.App.Xaml.LibrarySources.Folder, "SourceLink", fluent.Name,
             Passenger.App.Xaml.LibrarySources.Stamp(Passenger.App.Xaml.LibrarySources.Implementation(fluent.Path)));
@@ -1713,6 +1713,11 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         try
         {
             Directory.CreateDirectory(Path.Combine(entry, "Controls"));
+            File.WriteAllText(Path.Combine(entry, "FluentTheme.xaml"),
+                "<Styles xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" x:Class=\"Avalonia.Themes.Fluent.FluentTheme\">\n"
+                + "  <Styles.Resources>\n    <ResourceDictionary>\n      <ResourceDictionary.MergedDictionaries>\n"
+                + "        <MergeResourceInclude Source=\"/Controls/FluentControls.xaml\" />\n"
+                + "      </ResourceDictionary.MergedDictionaries>\n    </ResourceDictionary>\n  </Styles.Resources>\n</Styles>\n");
             File.WriteAllText(Path.Combine(entry, "Controls", "FluentControls.xaml"),
                 "<ResourceDictionary xmlns=\"https://github.com/avaloniaui\">\n  <ResourceDictionary.MergedDictionaries>\n"
                 + "    <MergeResourceInclude Source=\"../../../../../escaped/Button.xaml\" />\n  </ResourceDictionary.MergedDictionaries>\n</ResourceDictionary>\n");
@@ -1737,10 +1742,10 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         }
     }
 
-    /// <summary>A theme library's files as its Source Link would give them, laid out as Fluent 12's are, written into a
+    /// <summary>A theme library's files as its Source Link would give them, laid out as Fluent 12.2's are, written into a
     /// folder of the test's, each as <paramref name="written"/> rewrites it where given; what was asked for, in order. The
     /// theme's root merges in the resources its controls share (by theme variant, as Fluent keeps a control's colours) and
-    /// includes the control list, which merges in each control's file.</summary>
+    /// the control list, which merges in each control's file, and is compiled into the root rather than on its own.</summary>
     private sealed class ThemeSources(string folder, Func<string, string>? written = null) : Passenger.App.Xaml.ILibraryFiles
     {
         private const string Namespaces = "xmlns=\"https://github.com/avaloniaui\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"";
@@ -1755,8 +1760,8 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                 "/FluentTheme.xaml" => $"<Styles x:Class=\"Avalonia.Themes.Fluent.FluentTheme\" {Namespaces}>\n  <Styles.Resources>\n    <ResourceDictionary>\n"
                     + "      <ResourceDictionary.MergedDictionaries>\n        <ResourceInclude Source=\"/Accents/BaseColorsPalette.xaml\" />\n"
                     + "        <MergeResourceInclude Source=\"/Accents/BaseResources.xaml\" />\n        <MergeResourceInclude Source=\"/Accents/FluentControlResources.xaml\" />\n"
-                    + "      </ResourceDictionary.MergedDictionaries>\n    </ResourceDictionary>\n  </Styles.Resources>\n"
-                    + "  <StyleInclude Source=\"/Controls/FluentControls.xaml\" />\n</Styles>\n",
+                    + "        <MergeResourceInclude Source=\"/Controls/FluentControls.xaml\" />\n"
+                    + "      </ResourceDictionary.MergedDictionaries>\n    </ResourceDictionary>\n  </Styles.Resources>\n</Styles>\n",
                 "/Accents/BaseResources.xaml" => $"<ResourceDictionary {Namespaces} xmlns:sys=\"using:System\">\n"
                     + "  <sys:Double x:Key=\"ControlContentThemeFontSize\">14</sys:Double>\n  <ResourceDictionary.ThemeDictionaries>\n    <ResourceDictionary x:Key=\"Default\">\n"
                     + "      <SolidColorBrush x:Key=\"SystemControlForegroundBaseHighBrush\" Color=\"{StaticResource SystemBaseHighColor}\" />\n    </ResourceDictionary>\n"
@@ -1768,9 +1773,9 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
                     + "    <ResourceDictionary x:Key=\"Dark\">\n      <StaticResource x:Key=\"ButtonBackground\" ResourceKey=\"ControlFillColorDefaultBrush\" />\n"
                     + "      <StaticResource x:Key=\"TextControlBackground\" ResourceKey=\"SystemControlBackgroundAltMediumLowBrush\" />\n    </ResourceDictionary>\n"
                     + "  </ResourceDictionary.ThemeDictionaries>\n</ResourceDictionary>\n",
-                "/Controls/FluentControls.xaml" => $"<Styles {Namespaces}>\n  <Styles.Resources>\n    <ResourceDictionary>\n      <ResourceDictionary.MergedDictionaries>\n"
-                    + "        <MergeResourceInclude Source=\"avares://Avalonia.Themes.Fluent/Controls/Button.xaml\" />\n"
-                    + "      </ResourceDictionary.MergedDictionaries>\n    </ResourceDictionary>\n  </Styles.Resources>\n</Styles>\n",
+                "/Controls/FluentControls.xaml" => $"<ResourceDictionary {Namespaces}>\n  <ResourceDictionary.MergedDictionaries>\n"
+                    + "    <MergeResourceInclude Source=\"avares://Avalonia.Themes.Fluent/Controls/Button.xaml\" />\n"
+                    + "  </ResourceDictionary.MergedDictionaries>\n</ResourceDictionary>\n",
                 "/Controls/Button.xaml" => $"<ResourceDictionary {Namespaces}>\n"
                     + "  <ControlTheme x:Key=\"{x:Type Button}\" TargetType=\"Button\">\n    <Setter Property=\"Template\">\n      <ControlTemplate>\n"
                     + "        <ContentPresenter x:Name=\"PART_ContentPresenter\" Content=\"{TemplateBinding Content}\" />\n      </ControlTemplate>\n    </Setter>\n"
@@ -2758,6 +2763,9 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         internal static async Task MakeAsync(string folder)
         {
             await AvaloniaApp.CreateAsync(folder, "Gallery");
+            // Its App.axaml takes Fluent's theme, whose own XAML the tests go to, where the template's takes Fluent 2's.
+            string project = Path.Combine(folder, "Gallery.csproj");
+            File.WriteAllText(project, File.ReadAllText(project).Replace("\"Avalonia.Themes.Fluent2\"", "\"Avalonia.Themes.Fluent\"", StringComparison.Ordinal));
             Directory.CreateDirectory(Path.Combine(folder, "ViewModels"));
             Directory.CreateDirectory(Path.Combine(folder, "Styles"));
             Directory.CreateDirectory(Path.Combine(folder, "Assets"));

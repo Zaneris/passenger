@@ -141,7 +141,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// hello: an app nobody is to see whose Main would draw where people do.</summary>
     public bool MainLeftOut { get; private set; }
 
-    /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.1.6",
+    /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.2.0",
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf ? FrameworkSaid ?? "WPF"
         : Kind == LiveAppKind.Maui ? FrameworkSaid ?? "MAUI"

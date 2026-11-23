@@ -220,11 +220,14 @@
     <!-- The corner where a scroll view's two bars meet, the track's own wash (ControlThemes.axaml's bars). -->
     <x:String x:Key="ScrollViewerScrollBarsSeparatorBackground">Passenger.ScrollTrackHover</x:String>
 
-    <!-- A window's drawn title bar and its buttons where the system draws none: the frame's ground and the window's icons. -->
+    <!-- A window's drawn title bar and its buttons where the system draws none: the frame's ground and the window's icons,
+         Close under the pointer and pressed in the window buttons' own red. -->
     <x:String x:Key="TitleBarBackgroundBrush">Passenger.Frame</x:String>
     <x:String x:Key="CaptionButtonBackground">Passenger.Frame</x:String>
     <x:String x:Key="CaptionButtonBorderBrush">Passenger.WindowEdge</x:String>
     <x:String x:Key="CaptionButtonForeground">Passenger.Icon</x:String>
+    <x:String x:Key="CaptionButtonCloseBackground">Passenger.WindowButton.CloseHover</x:String>
+    <x:String x:Key="CaptionButtonCloseBorderBrush">Passenger.WindowButton.ClosePressed</x:String>
 
     <!-- Fluent's system brushes, which its templates for lists, progress bars, number boxes, separators and windows read:
          by what each is in Fluent's palette, Alt being the ground and Base the ink. Grounds: the accent, the field and the

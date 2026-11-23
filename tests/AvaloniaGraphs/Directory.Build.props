@@ -2,7 +2,7 @@
   <!-- The package graphs of the Avalonia apps the tests write, at the tests' own target, TestProjects.Framework: the
        Avalonia 11 app the previewer's tests write, at AvaloniaOlderVersion, the desktop app on Avalonia 12.0, at
        Avalonia120Version, and the apps on the Avalonia Passenger runs (AvaloniaApp), with the Skia and HarfBuzz that
-       Avalonia names rather than Passenger's newer ones. Restored with the
+       Avalonia names rather than Passenger's newer ones and the Fluent 2 theme its templates write. Restored with the
        solution so the package cache holds them: a test folder restores from the run's local feed alone, never
        nuget.org. Built as empty libraries, never run, under none of the repo's rules, which are for Passenger's code. -->
   <PropertyGroup>

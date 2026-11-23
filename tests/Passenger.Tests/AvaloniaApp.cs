@@ -121,13 +121,13 @@ internal static class AvaloniaApp
             && line.Trim() is not ("#if DEBUG" or "#endif"))));
     }
 
-    /// <summary>Makes Avalonia's cross-platform solution (<c>dotnet new avalonia.xplat</c>) in a folder, its projects named
-    /// after <paramref name="name"/> (<c>name.Android</c> beside the shared <c>name</c>), and takes Avalonia Accelerate's
-    /// developer tools out of it as New Solution does; nothing restored.</summary>
+    /// <summary>Makes Avalonia's cross-platform solution (<c>dotnet new avalonia.xplat</c>) in a folder on the tests' own
+    /// target, its projects named after <paramref name="name"/> (<c>name.Android</c> beside the shared <c>name</c>), and
+    /// takes Avalonia Accelerate's developer tools out of it as New Solution does; nothing restored.</summary>
     public static async Task CreateCrossPlatformAsync(string folder, string name)
     {
-        ChildResult made = await Run(["new", "avalonia.xplat", "--output", folder, "--name", name, "--avalonia-version", Version, "--no-update-check",
-            "--debug:custom-hive", await Hive.Value], null);
+        ChildResult made = await Run(["new", "avalonia.xplat", "--output", folder, "--name", name, "--framework", TestProjects.Framework, "--avalonia-version", Version,
+            "--no-update-check", "--debug:custom-hive", await Hive.Value], null);
         Assert.True(made.Succeeded, $"dotnet new avalonia.xplat did not make the test's solution (exit code {made.ExitCode}):\n{made.Output}{made.Error}");
         Passenger.App.Templates.DeveloperTools.TakeOut(folder);
     }
@@ -140,9 +140,8 @@ internal static class AvaloniaApp
     {
         await CreateCrossPlatformAsync(folder, name);
         string project = Path.Combine(folder, $"{name}.Android", $"{name}.Android.csproj");
-        // The template's head is .NET 10's, on Mono; on CoreCLR from .NET 11, whose Android workload takes API 24 at least.
-        File.WriteAllText(project, File.ReadAllText(project).Replace("net10.0-android", $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-android", StringComparison.Ordinal)
-            .Replace("<SupportedOSPlatformVersion>23<", "<SupportedOSPlatformVersion>24<", StringComparison.Ordinal));
+        // The head made for .NET 10 runs on Mono; on CoreCLR from .NET 11.
+        File.WriteAllText(project, File.ReadAllText(project).Replace("net10.0-android", $"net{Passenger.App.Mobile.MobilePlatforms.FirstOnCoreClr}.0-android", StringComparison.Ordinal));
         TestFolders.Write(folder, "nuget.config", TestRun.FromNuGetOrg);
         ChildResult restored = await ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["restore", project], Path.GetDirectoryName(project)!), limit: Limit * 2);
         return (project, restored.Succeeded ? null
