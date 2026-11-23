@@ -30,6 +30,15 @@ the gate until it is rewritten, and a report-lane failure is an issue (`ci-repor
 
 ## 2026-11-23
 
+- `ExplorerFilesTests`' `A_loaded_projects_folders_rename_waits_for_a_walk_of_its_build_output_under_way_for_the_language_server`,
+  CI 44870878221 (Windows report shard 2), at 086fccf1b: "Assert.Null() Failure: Value is not null … Actual: "Lib could
+  not be renamed: Access to the path 'C:\\"···". **A race in the IDE**: the window asks the C# language server whether
+  its source generators have run as a load ends, and Passenger's extension answers by reading each document the
+  projects' builds wrote, so the server opened Lib's in turn, a fraction of a millisecond each, as Lib moved, and Windows
+  moves no folder with a file under it open; a Kernel-File trace of 12 renames under load on the Windows VM caught those
+  reads 66 and 76 ms before the rename in both it covered, nothing else reading under Lib. A folder let go of for a
+  move or a delete now has the generators' questions read nothing under it, and waits for one asked before
+  (`RoslynSession.LetGo`) (5b6e675fb).
 - `ContainerProfilingTests`' `A_program_in_a_container_is_profiled_and_snapshotted_there_debugged_or_held_at_its_start`,
   CI 45088645427 (Linux, the report work in gate shard 2's job), at 4a288a12f: "The flow's step 2 failed … The IDE was not
   quiet within 180 s. Still busy: background work begun at ProfilerCommands.cs:1172, for 3 minutes", with
