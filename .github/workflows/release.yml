@@ -5,8 +5,11 @@
 # feed for each Windows channel. The files' names never change, since the site's download links, an installed Passenger
 # and a package manager's manifest take them by name; the assets job gives each file's SHA-256 by name as its output. Signed only when the repository's secrets hold the credentials (the signing steps name them), else unsigned.
 # A dry run, the default and from a branch the only kind, builds and checks everything and keeps what the release would
-# carry as the run's artifact. Only the last job, which publishes, can write to the repository. Actions are pinned to a
-# release's commit.
+# carry as the run's artifact. Only the job that publishes can write to the repository. Once published, the release is
+# told to each system's package manager, each only when the repository's secrets hold its credentials: Homebrew's cask
+# and WinGet's manifests as pull requests from the forks of PACKAGES_GITHUB_TOKEN's account (a classic token with
+# public_repo), the AUR's passenger-ide-bin pushed with AUR_SSH_PRIVATE_KEY (a key of the AUR account maintaining it).
+# Actions are pinned to a release's commit.
 name: Release
 
 on:
@@ -536,6 +539,14 @@ jobs:
           cat SHA256SUMS
           echo "sums=$(jq -cRn '[inputs | capture("^(?<sum>[0-9a-f]{64}) [ *](?<name>.+)$") | {(.name): .sum}] | add' < SHA256SUMS)" >> "$GITHUB_OUTPUT"
 
+      # What Homebrew, WinGet and the AUR are told of the release, written from its sums: kept beside the assets, so a
+      # dry run shows what would be sent.
+      - name: The package managers' files
+        run: |
+          tools/package-managers.sh "$VERSION" release/assets/SHA256SUMS release/packages
+          ruby -c release/packages/homebrew/passenger-ide.rb
+          cat release/packages/homebrew/passenger-ide.rb release/packages/winget/*.yaml release/packages/aur/PKGBUILD
+
       # The version's own notes (docs/release-notes), else the commits since the last release; a release published with
       # notes still the stand-in fails here.
       - name: Notes
@@ -577,3 +588,72 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
           VERSION: ${{ needs.version.outputs.version }}
         run: gh release create "$TAG" release/assets/* --verify-tag --title "Passenger $VERSION" --notes-file release/notes.md
+
+  # The published release told to each system's package manager, from the files the dry run showed. One's failure
+  # leaves the release and the others as they are: run again, each writes the same.
+  packages:
+    name: Package managers
+    needs: [version, release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ secrets.PACKAGES_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: Passenger-${{ needs.version.outputs.version }}
+          path: release
+
+      - name: Homebrew
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice title=Homebrew::No PACKAGES_GITHUB_TOKEN in the secrets: the cask is not sent"
+            exit 0
+          fi
+          tools/package-pr.sh Homebrew/homebrew-cask "passenger-ide-$VERSION" "passenger-ide $VERSION" Casks/p \
+            release/packages/homebrew/passenger-ide.rb
+
+      - name: WinGet
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice title=WinGet::No PACKAGES_GITHUB_TOKEN in the secrets: the manifests are not sent"
+            exit 0
+          fi
+          tools/package-pr.sh microsoft/winget-pkgs "Zaneris.Passenger-$VERSION" "New version: Zaneris.Passenger version $VERSION" \
+            "manifests/z/Zaneris/Passenger/$VERSION" release/packages/winget/*.yaml
+
+      # The AUR's host key as aur.archlinux.org publishes it (Ed25519, SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4).
+      # A package the AUR has not yet is made by its first push.
+      - name: AUR
+        if: ${{ !cancelled() }}
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::notice title=AUR::No AUR_SSH_PRIVATE_KEY in the secrets: passenger-ide-bin is not pushed"
+            exit 0
+          fi
+          key=$RUNNER_TEMP/aur-key
+          hosts=$RUNNER_TEMP/aur-hosts
+          (umask 077 && echo "$AUR_SSH_PRIVATE_KEY" > "$key")
+          echo "aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN" > "$hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
+          git clone ssh://aur@aur.archlinux.org/passenger-ide-bin.git "$RUNNER_TEMP/aur"
+          cp release/packages/aur/PKGBUILD release/packages/aur/.SRCINFO "$RUNNER_TEMP/aur/"
+          cd "$RUNNER_TEMP/aur"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "The AUR has $VERSION already"
+          else
+            git -c user.name=Passenger -c "user.email=$GITHUB_REPOSITORY_OWNER@users.noreply.github.com" commit -m "$VERSION"
+            git push origin HEAD:master
+          fi
+          rm -f "$key"
