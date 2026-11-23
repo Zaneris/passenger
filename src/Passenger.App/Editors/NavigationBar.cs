@@ -341,12 +341,13 @@ public sealed class NavigationBar
     public bool TakeKeys() => Bar.IsEffectivelyVisible && Buttons is { Count: > 0 } shown && shown[^1].Focus(NavigationMethod.Tab);
 
     /// <summary>Jump to Navigation Bar: the keys to its last button; with the bar hidden (the setting off), the list that
-    /// button would open, under the editor's top, the file's outline read for it.</summary>
-    public async Task JumpToAsync()
+    /// button would open, under the editor's top, the file's outline read for it. False where that outline holds nothing
+    /// to go to, for the window to say so.</summary>
+    public async Task<bool> JumpToAsync()
     {
         if (TakeKeys() || document is not { } reading || area.NavigationOutlineOf(reading) is not { } source)
         {
-            return;
+            return true;
         }
         Outline<SymbolRow> read;
         try
@@ -356,16 +357,20 @@ public sealed class NavigationBar
         catch (OperationCanceledException)
         {
             // The file changed as it was read: the next jump asks again.
-            return;
+            return true;
         }
         catch (LanguageServerFailed)
         {
             // Its server could not answer: the next jump asks again.
-            return;
+            return true;
         }
         if (document != reading || group.Editor.Document != reading.Text)
         {
-            return;
+            return true;
+        }
+        if (read.Rows.Count == 0)
+        {
+            return false;
         }
         (int[] at, int? lists) = Where(read, CaretLine());
         if (lists is { } parent)
@@ -376,6 +381,7 @@ public sealed class NavigationBar
         {
             Offer(read, read.ParentOf(at[^1]), at[^1], group.Editor, byKeys: false);
         }
+        return true;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)

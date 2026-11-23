@@ -493,6 +493,10 @@ public static class Refusals
     /// outlines, and none has it open.</summary>
     public static string NoOutline(string file) => $"{file} has no outline: no language server has it open";
 
+    /// <summary>Why Jump to Navigation Bar opens nothing in a file shown: its outline is read, and holds no declaration,
+    /// heading or key.</summary>
+    public static string DeclaresNothing(string file) => $"{file} declares nothing to go to";
+
     /// <summary>Why Context Help has nothing to name in a file shown: neither C#'s server nor GDScript's has it, and it is no shader.</summary>
     public static string NoContextHelp(string file) => $"{file} has no context help: Context Help opens Godot's reference from C#, GDScript and shaders";
 

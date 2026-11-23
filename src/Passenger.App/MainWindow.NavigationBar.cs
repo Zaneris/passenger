@@ -20,12 +20,15 @@ public partial class MainWindow
     }
 
     /// <summary>The keys to the active group's navigation bar, told as a region entered is; with the bar hidden, the list
-    /// its last part opens.</summary>
+    /// its last part opens; in a file that declares nothing, why nothing opens.</summary>
     private async Task JumpToNavigationBarAsync()
     {
         NavigationBar bar = Editors.ActiveGroup.Navigation;
-        await bar.JumpToAsync();
-        if (bar.Bar.IsKeyboardFocusWithin)
+        if (!await bar.JumpToAsync())
+        {
+            Refuse(Refusals.DeclaresNothing(Editors.Active?.Name ?? string.Empty));
+        }
+        else if (bar.Bar.IsKeyboardFocusWithin)
         {
             announcer.Tell(NavigationBar.Said, Urgency.Polite, regionTold);
         }

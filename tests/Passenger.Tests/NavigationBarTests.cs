@@ -32,8 +32,8 @@ public sealed class NavigationBarTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>The navigation bar names the namespace, type and member the caret rests in, each part listing what
-    /// stands beside it to go to, goes while the file declares nothing and comes as it declares again, and Jump to
-    /// Navigation Bar gives it the keys.</summary>
+    /// stands beside it to go to, goes while the file declares nothing (Jump to Navigation Bar saying so) and comes as it
+    /// declares again, and Jump to Navigation Bar gives it the keys.</summary>
     [AvaloniaFact]
     public void The_navigation_bar_names_where_the_caret_rests_and_takes_the_keys_to_go_along_it()
     {
@@ -94,6 +94,8 @@ public sealed class NavigationBarTests : IDisposable
             editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
             Ui.Press(window, "BACKSPACE");
             Ui.WaitFor(() => !bar.Bar.IsVisible, "the bar gone once the file declares nothing");
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
+            Ui.WaitFor(() => window.Status == Refusals.DeclaresNothing("Cart.cs"), () => $"Jump to Navigation Bar in a file declaring nothing saying why, not '{window.Status}'");
             window.KeyTextInput("record Order;");
             Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.SequenceEqual(["Order"]),
                 () => $"the bar back naming the record typed into the emptied file, not {(bar.Bar.IsVisible ? string.Join(" › ", bar.Shown) : "hidden")}");
