@@ -17,8 +17,9 @@ namespace Passenger.Tests;
 /// the running containers' when nothing of the folder's runs, or the one debugged there first, recorded there by
 /// Passenger's tools and read here, its hot method leading; the Frames page saying why a container's run has none; and
 /// memory snapshots taken there, with the container's own DAC, listing what the program keeps and compared object by
-/// object. Each skips, saying why, where no Linux engine runs. The program is built here for .NET 10 and copied into an
-/// image of .NET's runtime, labelled as the run's (<see cref="Spins"/>).</summary>
+/// object, one its held runtime never answers failing naming the stage it stopped at. Each skips, saying why, where no
+/// Linux engine runs. The program is built here for .NET 10 and copied into an image of .NET's runtime, labelled as the
+/// run's (<see cref="Spins"/>).</summary>
 [Collection(Alone.Name)]
 public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built built) : IClassFixture<ContainerProfilingTests.Spins.Built>
 {
@@ -26,13 +27,13 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
 
     /// <summary>Profiling a program in a container as one flow, every step needing a Linux container engine and the
     /// container tools, each in an instance of its own: Attach Profiler offering the container's programs and recording
-    /// the one chosen, memory snapshots taken there and compared, the program debugged there recorded without asking,
-    /// and one held at its start recorded from its first turn.</summary>
+    /// the one chosen, memory snapshots taken there and compared, one its held runtime never answers failing naming its
+    /// stage, the program debugged there recorded without asking, and one held at its start recorded from its first turn.</summary>
     [AvaloniaFact]
     public void A_program_in_a_container_is_profiled_and_snapshotted_there_debugged_or_held_at_its_start()
     {
         Flow.StepApart("attach Profiler offers the containers programs records the one chosen there and shows its hot method and why it has no frames", () => new ContainerProfilingTests(built), t => t.Attach_Profiler_offers_the_containers_programs_records_the_one_chosen_there_and_shows_its_hot_method_and_why_it_has_no_frames());
-        Flow.StepApart("memory snapshots of a program in a container are taken there and compared once its snapshot can be written and none is recorded before", () => new ContainerProfilingTests(built), t => t.Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_once_its_snapshot_can_be_written_and_none_is_recorded_before());
+        Flow.StepApart("memory snapshots of a program in a container are taken there and compared none recorded before one can be written and one its held runtime never answers fails naming its stage", () => new ContainerProfilingTests(built), t => t.Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_none_recorded_before_one_can_be_written_and_one_its_held_runtime_never_answers_fails_naming_its_stage());
         Flow.StepApart("attach Profiler records the program debugged in its container without asking", () => new ContainerProfilingTests(built), t => t.Attach_Profiler_records_the_program_debugged_in_its_container_without_asking());
         Flow.StepApart("a program held at its start in a container is let go by Attach Profiler and recorded from its first turn", () => new ContainerProfilingTests(built), t => t.A_program_held_at_its_start_in_a_container_is_let_go_by_Attach_Profiler_and_recorded_from_its_first_turn());
     }
@@ -76,12 +77,15 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         }
     }
 
-    private void Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_once_its_snapshot_can_be_written_and_none_is_recorded_before()
+    private void Memory_snapshots_of_a_program_in_a_container_are_taken_there_and_compared_none_recorded_before_one_can_be_written_and_one_its_held_runtime_never_answers_fails_naming_its_stage()
     {
         Assert.SkipWhen(spins.WhyNot is not null, spins.WhyNot ?? string.Empty);
         string container = spins.Start("memory");
         MainWindow window = Open();
         List<string> blocking = [];
+        // The program held below answers no session's start, which the tools there then give up on as soon as this lets them.
+        string? sessionLimit = Environment.GetEnvironmentVariable(SessionStarts.LimitVariable);
+        Environment.SetEnvironmentVariable(SessionStarts.LimitVariable, "4000");
         try
         {
             DotnetProcess program = Assert.Single(Ui.Await(window.AttachableAsync(), "the containers' programs to be listed"), p => p.Container == container);
@@ -104,6 +108,22 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
 
             Ui.Launched(window, window.AttachProfilerAsync(program), "the profiler to attach to the program in the container");
             Recording(window, container);
+
+            // A runtime held answers nothing: the snapshot fails within its first request's limit, naming that stage.
+            Docker.Run("kill", "--signal", "STOP", container);
+            try
+            {
+                window.Confirm = (_, _, _) => Task.FromResult(true);
+                Ui.ClickButton(window.ProfilerView, "Get Memory Snapshot");
+                Ui.WaitFor(() => window.Status?.StartsWith("No memory snapshot", StringComparison.Ordinal) == true,
+                    () => $"the held program's memory snapshot to fail, where the status bar says \"{window.Status}\"");
+                Assert.True(window.Status!.Contains($" while {SnapshotStages.Following} (", StringComparison.Ordinal) && window.ProfilerView.Memory is null,
+                    $"The held program's memory snapshot did not fail naming the stage it stopped at: {window.Status}");
+            }
+            finally
+            {
+                Docker.Run("kill", "--signal", "CONT", container);
+            }
 
             MemorySnapshot first = MemorySnapshot(window, 1);
             HeapType keepsakes = Assert.Single(first.Types, t => t.Name == "Keepsake");
@@ -137,6 +157,7 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
         }
         finally
         {
+            Environment.SetEnvironmentVariable(SessionStarts.LimitVariable, sessionLimit);
             window.Close();
             // Its program spins a core for as long as it runs, which every test after this one would share.
             Docker.Remove(container);

@@ -16,6 +16,17 @@ public static class InContainer
     /// held at its start has been let go): from then on its output is the trace.</summary>
     public const string Recording = "recording";
 
+    /// <summary>The word beginning each line <see cref="HeapAsync"/> writes on its error stream as a stage of a snapshot
+    /// begins, followed by the snapshot's count among those asked of it and the stage's words (<see cref="SnapshotStages"/>).</summary>
+    public const string Stage = "stage";
+
+    /// <summary>The snapshot's count and its stage that a line of <see cref="HeapAsync"/>'s error stream tells; null for any
+    /// other line.</summary>
+    internal static (int Snapshot, string Stage)? StageOf(string line) =>
+        line.Trim().Split(' ', 3) is [Stage, { } count, { Length: > 0 } words] && int.TryParse(count, NumberStyles.None, CultureInfo.InvariantCulture, out int snapshot)
+            ? (snapshot, words)
+            : null;
+
     /// <summary>The command <see cref="HeapAsync"/> takes a snapshot for, one a line.</summary>
     public const string TakeSnapshot = "snapshot";
 
@@ -132,10 +143,16 @@ public static class InContainer
     /// <summary>Takes a snapshot of the program's heap for each <see cref="TakeSnapshot"/> or
     /// <see cref="TakeSnapshotIntoOutput"/> line on <paramref name="input"/> and writes it to <paramref name="output"/>
     /// (<see cref="HeapWire"/>), its objects followed from one snapshot to the next through the collections between
-    /// them; one that fails is written as why. Ends with the input. Exit code 2 for a line it does not know.</summary>
+    /// them; one that fails is written as why. Each stage is said on <paramref name="said"/> as it begins
+    /// (<see cref="Stage"/>). Ends with the input. Exit code 2 for a line it does not know.</summary>
     public static async Task<int> HeapAsync(int processId, Stream input, Stream output, TextWriter said)
     {
-        await using HeapHistory history = new(processId);
+        int asked = 0;
+        await using HeapHistory history = new(processId, stage =>
+        {
+            said.WriteLine($"{Stage} {asked.ToString(CultureInfo.InvariantCulture)} {stage}");
+            said.Flush();
+        });
         using StreamReader commands = new(input);
         while (await commands.ReadLineAsync().ConfigureAwait(false) is { } line)
         {
@@ -145,6 +162,7 @@ public static class InContainer
                 await said.WriteLineAsync($"heap takes one command a line, {TakeSnapshot} or {TakeSnapshotIntoOutput}, not '{line}'").ConfigureAwait(false);
                 return 2;
             }
+            asked++;
             try
             {
                 MemorySnapshot taken = await history.TakeAsync(intoOutput, CancellationToken.None).ConfigureAwait(false);
@@ -154,7 +172,7 @@ public static class InContainer
             {
                 HeapWire.WriteIntoOutput(output, only.Message);
             }
-            catch (Exception error) when (error is HeapUnreadableException || DiagnosticsFailures.Of(error))
+            catch (Exception error) when (error is HeapUnreadableException or ProfilingException || DiagnosticsFailures.Of(error))
             {
                 HeapWire.WriteFailure(output, error is ServerNotAvailableException ? Unreachable(processId, error) : error.Message);
             }

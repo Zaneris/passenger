@@ -16,8 +16,14 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
     /// <summary>The run's snapshots that keep their objects here, the tools there following those of the newest as many.</summary>
     private readonly KeptSnapshots kept = new();
 
-    /// <summary>The last line the tools wrote to their errors: all that is kept of them, whatever they write.</summary>
+    /// <summary>The last line the tools wrote to their errors but a stage's: all that is kept of them, whatever they write.</summary>
     private string? lastError;
+
+    /// <summary>The stage the tools last said they began, with the snapshot it is of (<see cref="InContainer.Stage"/>).</summary>
+    private StageHeard? lastStage;
+
+    /// <summary>The snapshots asked of the tools running now, counted as they count them.</summary>
+    private int snapshotsAsked;
     private Process? tools;
     private Task errorsRead = Task.CompletedTask;
     private int disposed;
@@ -29,8 +35,9 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
     private int before;
 
     /// <summary>How long the tools may take over a snapshot (the heap dumped, read with the DAC and sent back) before they are
-    /// ended: 10 minutes, generous for a heap of millions of objects, which take a minute or two.</summary>
-    public static readonly TimeSpan Limit = TimeSpan.FromMinutes(10);
+    /// ended: 10 minutes, generous for a heap of millions of objects, which take a minute or two, and longer than every
+    /// limit of the tools' own requests of the runtime together, as much longer as <see cref="Waits"/> says.</summary>
+    public static TimeSpan Limit => Waits.Of(TimeSpan.FromMinutes(10));
 
     /// <summary>Takes the next snapshot, into the program's output only <paramref name="intoOutput"/>
     /// (<see cref="HeapHistory.TakeAsync"/>). Its answer is read whole or not at all: a frame left half read would be
@@ -43,6 +50,7 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
             Process running = Started();
+            int snapshot = ++snapshotsAsked;
             Stopwatch clock = Stopwatch.StartNew();
             try
             {
@@ -55,18 +63,20 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
             }
             (byte Kind, byte[] Body)? frame;
             Task<(byte Kind, byte[] Body)?> reading = HeapWire.ReadFrameAsync(ChildProcesses.OutputStream(running));
+            TimeSpan limit = Limit;
             try
             {
-                frame = await reading.WaitAsync(Limit, cancel).ConfigureAwait(false);
+                frame = await reading.WaitAsync(limit, cancel).ConfigureAwait(false);
             }
             catch (Exception stopped) when (stopped is TimeoutException or OperationCanceledException)
             {
                 // Its answer is never read now: the tools go, which ends the read, and the next snapshot starts them again.
+                string stage = Volatile.Read(ref lastStage) is { } heard && heard.Snapshot == snapshot ? $" while {heard.Stage}" : string.Empty;
                 await EndAsync(running).ConfigureAwait(false);
                 UnawaitedWork.Dismiss(reading);
                 throw new ProfilingException(stopped is TimeoutException
-                    ? $"Passenger's tools in {place.Where} took no memory snapshot in {Durations.Said(Limit)}, and were ended"
-                    : $"The memory snapshot of the program in {place.Where} was stopped, and Passenger's tools there ended", stopped);
+                    ? $"Passenger's tools in {place.Where} took no memory snapshot in {Durations.Said(limit)}, and were ended{stage}"
+                    : $"The memory snapshot of the program in {place.Where} was stopped{stage}, and Passenger's tools there ended", stopped);
             }
             catch (InvalidDataException unreadable)
             {
@@ -121,7 +131,9 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         tools?.Dispose();
         // A snapshot of the tools started again follows none of those before: numbered after them, compared with none.
         before = last;
+        snapshotsAsked = 0;
         Volatile.Write(ref lastError, null);
+        Volatile.Write(ref lastStage, null);
         ProcessStartInfo start = place.Tools([ContainerToolsWords.Heap, ContainerToolsWords.Pid, processId.ToString(CultureInfo.InvariantCulture)]);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
@@ -137,7 +149,11 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         Process started = tools;
         errorsRead = ErrorLines.Hear(started, line =>
         {
-            if (line.Trim() is { Length: > 0 } said)
+            if (InContainer.StageOf(line) is { } stage)
+            {
+                Volatile.Write(ref lastStage, new StageHeard(stage.Snapshot, stage.Stage));
+            }
+            else if (line.Trim() is { Length: > 0 } said)
             {
                 Volatile.Write(ref lastError, said);
             }
@@ -175,6 +191,9 @@ internal sealed class ContainerHeap(ProfilePlace place, int processId) : IAsyncD
         await ChildProcesses.EndThroughInputAsync(running, TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         running.Dispose();
     }
+
+    /// <summary>A stage the tools said they began, and the snapshot it is of.</summary>
+    private sealed record StageHeard(int Snapshot, string Stage);
 }
 
 /// <summary>What Passenger's tools in a container write to their errors, heard a line at a time as it comes, each line cut

@@ -504,20 +504,19 @@ public static class ContainerTools
 
     /// <summary>The adapter's command in a container, over docker exec's standard input and output, given the IDE's
     /// evaluation limit.</summary>
-    public static IReadOnlyList<string> AdapterCommand(string container, string executable, IReadOnlyList<string> adapterArguments)
-    {
-        List<string> words = ["exec", "-i", .. Unheld];
-        if (Environment.GetEnvironmentVariable(Dap.AdapterEnvironment.EvaluationTimeoutVariable) is { Length: > 0 } limit)
-        {
-            words.AddRange(["-e", $"{Dap.AdapterEnvironment.EvaluationTimeoutVariable}={limit}"]);
-        }
-        return [.. words, container, executable, Profiler.ContainerToolsWords.Dap, .. adapterArguments];
-    }
+    public static IReadOnlyList<string> AdapterCommand(string container, string executable, IReadOnlyList<string> adapterArguments) =>
+        ["exec", "-i", .. Unheld, .. Carried(Dap.AdapterEnvironment.EvaluationTimeoutVariable), container, executable, Profiler.ContainerToolsWords.Dap,
+            .. adapterArguments];
 
     /// <summary>A mode of the tools in a container, over docker exec's standard input and output: the profiler's
-    /// <c>trace</c>, <c>heap</c> and <c>sources</c>.</summary>
+    /// <c>trace</c>, <c>heap</c> and <c>sources</c>, given the IDE's limits on its requests of a runtime.</summary>
     public static IReadOnlyList<string> ToolsCommand(string container, string executable, IReadOnlyList<string> words) =>
-        ["exec", "-i", .. Unheld, container, executable, .. words];
+        ["exec", "-i", .. Unheld, .. Carried(Waits.ScaleVariable, Profiler.SessionStarts.LimitVariable), container, executable, .. words];
+
+    /// <summary>The IDE's own value of each variable set here, for the tools there: docker exec gives them the container's
+    /// environment alone.</summary>
+    private static IEnumerable<string> Carried(params string[] variables) =>
+        variables.SelectMany(variable => Environment.GetEnvironmentVariable(variable) is { Length: > 0 } value ? (string[])["-e", $"{variable}={value}"] : []);
 }
 
 /// <summary>Passenger's container tools could not be had or used: no copy and no download, a checksum that did not match, a

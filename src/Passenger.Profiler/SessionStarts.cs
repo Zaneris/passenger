@@ -84,10 +84,30 @@ public static class SessionStarts
     }
 
     /// <summary>A session of <paramref name="providers"/> at the port <paramref name="client"/> reaches, once its providers
-    /// are on (<see cref="TurnedOnAsync"/>). Given up as <paramref name="cancel"/> is, the session let go.</summary>
+    /// are on (<see cref="TurnedOnAsync"/>), its start given <see cref="Limit"/> (<see cref="WithinLimitAsync"/>). Given up
+    /// as <paramref name="cancel"/> is, the session let go.</summary>
     public static async Task<EventPipeSession> OnAsync(DiagnosticsClient client, IEnumerable<EventPipeProvider> providers, int circularBufferMB,
         CancellationToken cancel) =>
-        await TurnedOnAsync(client, await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, cancel), cancel);
+        await WithinLimitAsync(async answered => await TurnedOnAsync(client,
+            await client.StartEventPipeSessionAsync(providers, requestRundown: false, circularBufferMB, answered), cancel), cancel);
+
+    /// <summary>A session's start, <paramref name="start"/> given a token canceled once <see cref="Limit"/> has passed, after
+    /// which, or a limit of its own within it, a <see cref="TimeoutException"/> says the runtime took no session: a client
+    /// waits for good on a runtime that never answers. Given up as <paramref name="cancel"/> is.</summary>
+    internal static async Task<EventPipeSession> WithinLimitAsync(Func<CancellationToken, Task<EventPipeSession>> start, CancellationToken cancel)
+    {
+        TimeSpan limit = Limit;
+        using CancellationTokenSource answered = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        answered.CancelAfter(limit);
+        try
+        {
+            return await start(answered.Token);
+        }
+        catch (OperationCanceledException unanswered) when (!cancel.IsCancellationRequested)
+        {
+            throw new TimeoutException($"The program's runtime took no session in {Durations.Said(limit)}", unanswered);
+        }
+    }
 
     /// <summary><paramref name="session"/>, once its providers are on: a runtime may answer a session's start before it turns
     /// them on (.NET 11 does), and its diagnostics server takes one request at a time, so a session of no provider asked for

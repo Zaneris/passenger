@@ -62,7 +62,7 @@ internal static class GcHeapDump
         }
         if (!walked)
         {
-            throw new InvalidOperationException($"The program's runtime gave no heap dump within {Durations.Said(Waits.Of(Limit))}");
+            throw new TimeoutException($"The program's runtime gave no heap dump within {Durations.Said(Waits.Of(Limit))}");
         }
         if (source.EventsLost > 0)
         {
@@ -74,17 +74,20 @@ internal static class GcHeapDump
     }
 
     /// <summary>The session that has the runtime walk its heap: one that blocks the runtime rather than drop its events where
-    /// the runtime takes that (.NET 11), else one with a buffer a large heap's dump fits.</summary>
+    /// the runtime takes that (.NET 11), else one with a buffer a large heap's dump fits; each start within its limit
+    /// (<see cref="SessionStarts.WithinLimitAsync"/>).</summary>
     private static async Task<EventPipeSession> StartAsync(DiagnosticsClient client, CancellationToken cancel)
     {
         EventPipeProvider[] providers = [new(Runtime, EventLevel.Verbose, Keywords)];
         try
         {
-            return await client.StartEventPipeSessionAsync(new EventPipeSessionConfiguration(providers, 1024, 0, false, EventPipeBufferingMode.Block), cancel);
+            return await SessionStarts.WithinLimitAsync(answered =>
+                client.StartEventPipeSessionAsync(new EventPipeSessionConfiguration(providers, 1024, 0, false, EventPipeBufferingMode.Block), answered), cancel);
         }
         catch (UnsupportedCommandException)
         {
-            return await client.StartEventPipeSessionAsync(new EventPipeSessionConfiguration(providers, 1024, 0, false, EventPipeBufferingMode.Drop), cancel);
+            return await SessionStarts.WithinLimitAsync(answered =>
+                client.StartEventPipeSessionAsync(new EventPipeSessionConfiguration(providers, 1024, 0, false, EventPipeBufferingMode.Drop), answered), cancel);
         }
     }
 

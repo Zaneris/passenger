@@ -15,7 +15,8 @@ namespace Passenger.Profiler;
 /// the program, the one long stretch with no sample; a full collection induced right after it says when every
 /// collection before has been heard. A program no other may read is snapshot by its runtime's own heap dump
 /// (<see cref="GcHeapDump"/>), placed after the collection that walked it. Only the snapshots kept
-/// (<see cref="KeptSnapshots"/>) are followed.</summary>
+/// (<see cref="KeptSnapshots"/>) are followed. Each stage is told as it begins (<see cref="SnapshotStages"/>), and one
+/// whose request of the runtime goes past its limit fails the snapshot naming it.</summary>
 internal sealed class HeapHistory : IAsyncDisposable
 {
     private const string Runtime = "Microsoft-Windows-DotNETRuntime";
@@ -24,6 +25,7 @@ internal sealed class HeapHistory : IAsyncDisposable
     private const long CollectKeyword = 0x800000;
 
     private readonly int processId;
+    private readonly Action<string>? staged;
     private readonly KeptSnapshots kept;
     private readonly object gate = new();
     private readonly SemaphoreSlim taking = new(1, 1);
@@ -44,9 +46,11 @@ internal sealed class HeapHistory : IAsyncDisposable
     /// the first snapshot.</summary>
     private (string? Tool, string? WhyNot)? dumpTool;
 
-    public HeapHistory(int processId)
+    /// <summary>The snapshots of process <paramref name="processId"/>, each stage told to <paramref name="staged"/> as it begins.</summary>
+    public HeapHistory(int processId, Action<string>? staged = null)
     {
         this.processId = processId;
+        this.staged = staged;
         kept = new KeptSnapshots(Unfollow);
     }
 
@@ -92,8 +96,12 @@ internal sealed class HeapHistory : IAsyncDisposable
                         Dumped written = await DumpAsync(dump, started => writing = started, cancel);
                         TimeSpan dumped = clock.Elapsed;
                         reading = BackgroundWork.Run(() => HeapGraph.Read(dump, unread.Token), unread.Token);
-                        int induced = await InduceAsync(cancel);
-                        bool heard = induced >= 0 && await HeardAsync(induced, TimeSpan.FromSeconds(30));
+                        bool heard = await StageAsync(SnapshotStages.Collecting, async () =>
+                        {
+                            int induced = await InduceAsync(cancel);
+                            return induced >= 0 && await HeardAsync(induced, TimeSpan.FromSeconds(30));
+                        }, cancel);
+                        staged?.Invoke(SnapshotStages.Reading);
                         HeapGraph graph;
                         try
                         {
@@ -139,7 +147,7 @@ internal sealed class HeapHistory : IAsyncDisposable
         }
         try
         {
-            (HeapGraph graph, int collection, TimeSpan dumped) = await GcHeapDump.ReadAsync(processId, cancel);
+            (HeapGraph graph, int collection, TimeSpan dumped) = await StageAsync(SnapshotStages.Walking, () => GcHeapDump.ReadAsync(processId, cancel), cancel);
             bool heard = collection >= 0 && await HeardAsync(collection, TimeSpan.FromSeconds(30));
             string phases = $"heap dump {Durations.Said(dumped)}, retention {Durations.Said(graph.Analysed)}";
             return Place(graph, heard ? collections => collections.FindIndex(r => r.Count > collection) is var after and >= 0 ? after : collections.Count : null,
@@ -163,8 +171,8 @@ internal sealed class HeapHistory : IAsyncDisposable
     {
         DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
         List<DateTime> samples = [];
-        EventPipeSession sampling = await SessionStarts.OnAsync(client, [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)],
-            circularBufferMB: 64, cancel);
+        EventPipeSession sampling = await StageAsync(SnapshotStages.Sampling,
+            () => SessionStarts.OnAsync(client, [new EventPipeProvider(Snapshot.SampleProvider, EventLevel.Informational)], circularBufferMB: 64, cancel), cancel);
         Task reading = EventPipeReads.ToEndAsync(sampling.EventStream, events => events.AllEvents += e =>
         {
             lock (samples)
@@ -177,7 +185,7 @@ internal sealed class HeapHistory : IAsyncDisposable
         {
             Task writing = DumpTool.WriteAsync(dumpTool?.Tool, dumpTool is { WhyNot: null } ? null : client, processId, dump);
             started(writing);
-            await writing.WaitAsync(cancel);
+            await StageAsync(SnapshotStages.Dumping, () => WrittenAsync(writing, cancel), cancel);
         }
         finally
         {
@@ -198,6 +206,39 @@ internal sealed class HeapHistory : IAsyncDisposable
         lock (samples)
         {
             return new Dumped(sent, DateTime.UtcNow, [.. samples]);
+        }
+    }
+
+    /// <summary>Waits for the dump's writer within <see cref="SnapshotStages.DumpLimit"/>, past which it is left to end by
+    /// itself (<see cref="DumpTool.WriteAsync"/>) and a <see cref="TimeoutException"/> names it.</summary>
+    private async Task<bool> WrittenAsync(Task writing, CancellationToken cancel)
+    {
+        TimeSpan limit = SnapshotStages.DumpLimit;
+        try
+        {
+            await writing.WaitAsync(limit, cancel);
+            return true;
+        }
+        catch (TimeoutException past) when (!writing.IsCompleted)
+        {
+            string writer = dumpTool is { WhyNot: null, Tool: null } ? "Windows" : dumpTool is { WhyNot: null } ? "createdump" : "The program's runtime";
+            throw new TimeoutException($"{writer} wrote no dump in {Durations.Said(limit)}", past);
+        }
+    }
+
+    /// <summary>One stage of a snapshot, told as it begins: a request of the runtime in it past its limit (a
+    /// <see cref="TimeoutException"/>) fails the snapshot naming the stage, with what the program's port shows then.</summary>
+    private async Task<T> StageAsync<T>(string stage, Func<Task<T>> work, CancellationToken cancel)
+    {
+        staged?.Invoke(stage);
+        try
+        {
+            return await work();
+        }
+        catch (TimeoutException past)
+        {
+            (string why, _) = await UnansweredPorts.WhyAsync(processId, cancel);
+            throw new ProfilingException($"{past.Message} while {stage} ({why})", past);
         }
     }
 
@@ -307,8 +348,10 @@ internal sealed class HeapHistory : IAsyncDisposable
         {
             return;
         }
-        session = await SessionStarts.OnAsync(await DiagnosticPorts.ClientAsync(processId),
-            [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | MovementKeyword)], circularBufferMB: 256, cancel);
+        DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
+        session = await StageAsync(SnapshotStages.Following,
+            () => SessionStarts.OnAsync(client, [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | MovementKeyword)], circularBufferMB: 256, cancel),
+            cancel);
         source = new EventPipeEventSource(session.EventStream);
         source.Clr.GCStart += OnStart;
         source.Clr.GCGenerationRange += e => Current(lose: false)?.Range(e.Generation, e.RangeStart, e.RangeUsedLength);
@@ -438,18 +481,20 @@ internal sealed class HeapHistory : IAsyncDisposable
 
     /// <summary>Has the runtime collect in full (a session with the GCHeapCollect keyword), and gives that collection's
     /// number, or -1, as for a program that ended as it collected, whose runtime answered neither the session's start nor
-    /// its stop. The collection is over once the stop is taken: the runtime collects as it turns the session on, which may
-    /// come after its answer to the start but always before it takes the stop.</summary>
+    /// its stop; a start past its limit is a <see cref="TimeoutException"/>. The collection is over once the stop is taken:
+    /// the runtime collects as it turns the session on, which may come after its answer to the start but always before it
+    /// takes the stop.</summary>
     private async Task<int> InduceAsync(CancellationToken cancel)
     {
         int found = -1;
         EventPipeSession started;
         try
         {
-            started = await (await DiagnosticPorts.ClientAsync(processId)).StartEventPipeSessionAsync(
-                [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, cancel);
+            DiagnosticsClient client = await DiagnosticPorts.ClientAsync(processId);
+            started = await SessionStarts.WithinLimitAsync(answered => client.StartEventPipeSessionAsync(
+                [new EventPipeProvider(Runtime, EventLevel.Informational, GcKeyword | CollectKeyword)], requestRundown: false, circularBufferMB: 16, answered), cancel);
         }
-        catch (Exception error) when (DiagnosticsFailures.Of(error))
+        catch (Exception error) when (DiagnosticsFailures.Of(error) && error is not TimeoutException)
         {
             return -1;
         }
