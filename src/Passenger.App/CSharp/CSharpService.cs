@@ -573,8 +573,8 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <summary>Stops watching for the server what is under folders the IDE deletes or moves (<see cref="ServerWatches.LetGo"/>),
     /// and has its extension's questions read nothing there (<see cref="RoslynSession.LetGo"/>), for a server started or
     /// taken up meanwhile too, until disposed (<c>Held</c>): Windows moves no folder with a folder inside it watched or a
-    /// file inside it open. <c>Stopped</c> is done once the watchers stopped have stopped reading there and the questions
-    /// asked before are answered.</summary>
+    /// file inside it open. <c>Stopped</c> is done once the watchers stopped have stopped reading there, the questions
+    /// asked before are answered and the server's loads reading there have ended.</summary>
     public (IDisposable Held, Task Stopped) LetGoOf(IReadOnlyList<string> folders)
     {
         UiThread.Check();

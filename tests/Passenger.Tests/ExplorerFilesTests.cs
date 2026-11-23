@@ -96,6 +96,7 @@ public sealed class ExplorerFilesTests : IDisposable
         Flow.StepApart<ExplorerFilesTests>("a loaded projects folder watched for the language server goes renames and moves (\"delete\")", t => t.A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves("delete"));
         Flow.StepApart<ExplorerFilesTests>("a loaded projects folder watched for the language server goes renames and moves (\"move\")", t => t.A_loaded_projects_folder_watched_for_the_language_server_goes_renames_and_moves("move"));
         Flow.StepApart<ExplorerFilesTests>("a loaded projects folder renamed as the generators question is answered waits for the answer and one asked meanwhile reads nothing there", t => t.A_loaded_projects_folder_renamed_as_the_generators_question_is_answered_waits_for_the_answer_and_one_asked_meanwhile_reads_nothing_there());
+        Flow.StepApart<ExplorerFilesTests>("a loaded projects folder renamed as the language server loads it again waits for that load to end", t => t.A_loaded_projects_folder_renamed_as_the_language_server_loads_it_again_waits_for_that_load_to_end());
         Flow.StepApart<ExplorerFilesTests>("a folders rename or move waits for the design time build of its project to end (true)", t => t.A_folders_rename_or_move_waits_for_the_design_time_build_of_its_project_to_end(true));
         Flow.StepApart<ExplorerFilesTests>("a projects folder renamed or deleted as its design time build lands goes before the language server is told the project (true)", t => t.A_projects_folder_renamed_or_deleted_as_its_design_time_build_lands_goes_before_the_language_server_is_told_the_project(true));
         Flow.StepApart<ExplorerFilesTests>("a folder let go of holds off evaluating the projects whose wildcards walk it until let go", t => t.A_folder_let_go_of_holds_off_evaluating_the_projects_whose_wildcards_walk_it_until_let_go());
@@ -287,6 +288,44 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.True(passed is not null && System.Text.Json.JsonSerializer.Deserialize<Passenger.Roslyn.Extension.GeneratorsAsked>(passed)?.Passing.Any(f => PathNames.Same(f, lib)) == true,
             $"The generators' question asked as Lib's rename waited did not pass over Lib, so it may read there as Lib moves: {passed}");
         Ui.AwaitPumped(asked, "the generators' question held");
+        string? refused = Ui.AwaitPumped(renaming, "the rename", TimeSpan.FromMinutes(1));
+        Assert.True(refused is null && File.Exists(Path.Combine(folder, "Core", "Lib.csproj")), $"Lib's rename did not take it to Core: {refused ?? window.Status}{Holders(window, lib)}");
+        window.Close();
+    }
+
+    /// <summary>A loaded project's folder renamed as the C# language server loads the project again, which reads each of its
+    /// C# files and its assets file, waits for that load to end, then goes: on Windows a folder with a file under it open
+    /// does not move. The load's end is held, as a busy machine holds it.</summary>
+    private void A_loaded_projects_folder_renamed_as_the_language_server_loads_it_again_waits_for_that_load_to_end()
+    {
+        string library = Directory.CreateDirectory(Path.Combine(folder, "Lib")).FullName;
+        File.WriteAllText(Path.Combine(library, "Lib.csproj"), TestProjects.Library());
+        File.WriteAllText(Path.Combine(library, "Code.cs"), "class Code\n{\n}\n");
+        Restore.Run(Path.Combine(library, "Lib.csproj"));
+        MainWindow window = Ui.OpenFolder(folder);
+        string lib = PathNames.Canonical(library);
+        string project = Path.Combine(lib, "Lib.csproj");
+        Ui.WaitFor(() => window.CSharpService?.Session is { IsLoaded: true, Fed: true }, () => $"Lib to load ({window.CSharpService?.State})", TimeSpan.FromMinutes(2));
+        Passenger.Lsp.RoslynSession server = window.CSharpService!.Session!;
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task held = server.HoldLoadEnd(project, released.Task);
+        window.CSharpService.Reload([project]);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        Task<string?> renaming;
+        try
+        {
+            Ui.PumpUntil(() => held.IsCompleted, "Lib's load again to end and its end held", TimeSpan.FromMinutes(1));
+            // What the window does as the load ends (its generators asked again) is over first: only the load is left to wait for.
+            Ui.Settle();
+            renaming = window.RenameAsync(lib, "Core");
+            Ui.PumpUntil(() => renaming.IsCompleted || window.Status?.StartsWith("Waiting for the design-time build of Lib", StringComparison.Ordinal) == true,
+                "the rename to wait for Lib's load");
+            Assert.False(renaming.IsCompleted, $"Lib was renamed while the language server's load of it, which reads its files, was still under way: {window.Status}");
+        }
+        finally
+        {
+            released.TrySetResult();
+        }
         string? refused = Ui.AwaitPumped(renaming, "the rename", TimeSpan.FromMinutes(1));
         Assert.True(refused is null && File.Exists(Path.Combine(folder, "Core", "Lib.csproj")), $"Lib's rename did not take it to Core: {refused ?? window.Status}{Holders(window, lib)}");
         window.Close();

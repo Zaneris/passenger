@@ -1812,7 +1812,7 @@ public sealed class LanguageServer : IAsyncDisposable
                 owner.WatchedFiles.Given(infos, fed.Inputs ?? []);
             }
             owner.WatchedFiles.Tell(fed.Changed);
-            owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at, fed.Changed.Count > 0));
+            owner.ProjectGiven?.Invoke(owner, new ProjectGiven(asked.Path, at, fed.Changed.Count > 0, fed.Info.Infos));
             return fed.Info;
         }
 

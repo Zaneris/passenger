@@ -32,6 +32,6 @@ public sealed record FedProject(ProjectInfoResult Info, IReadOnlyList<FileEvent>
 public readonly record struct InputRead(string Path, FileStamp? Stamp);
 
 /// <summary>A project's design-time builds given to the server's loader (<see cref="LanguageServer.ProjectGiven"/>): the
-/// project, when the server asked for them (UTC), and whether what they read has changed since (<see cref="FedProject.Changed"/>),
-/// so the project is to be loaded again from builds made after it.</summary>
-public readonly record struct ProjectGiven(string Project, DateTime Asked, bool Stale);
+/// project, when the server asked for them (UTC), whether what they read has changed since (<see cref="FedProject.Changed"/>),
+/// so the project is to be loaded again from builds made after it, and the builds (null for none, which loads nothing).</summary>
+public readonly record struct ProjectGiven(string Project, DateTime Asked, bool Stale, string? Infos);

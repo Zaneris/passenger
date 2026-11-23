@@ -20,7 +20,8 @@ public static class ProjectMethods
     /// <summary>A request the server makes of Passenger: <see cref="ProjectInfoParams"/> to <see cref="ProjectInfoResult"/>.</summary>
     public const string Info = "passenger/projectInfo";
 
-    /// <summary>A request answered true by a server that has Passenger's loader, which a server without it refuses.</summary>
+    /// <summary>A request a server that has Passenger's loader answers (<see cref="LoaderReady"/>), which a server without
+    /// it refuses.</summary>
     public const string Ready = "passenger/projectLoader";
 
     /// <summary>A notification of files gone from disk, as workspace/didChangeWatchedFiles gives them, which the server takes
@@ -57,3 +58,7 @@ public sealed record ProjectDiagnostic(
     [property: JsonPropertyName("error")] bool Error,
     [property: JsonPropertyName("message")] string Message,
     [property: JsonPropertyName("project")] string Project);
+
+/// <summary>A server's answer that it has Passenger's loader: the words its log says a project's load ended in when the load
+/// met no problem, in its own language, with <c>{0}</c> where the project's path goes.</summary>
+public sealed record LoaderReady([property: JsonPropertyName("loaded")] string Loaded);

@@ -210,7 +210,8 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
     }
 
     /// <summary>Whether a C# file goes past the brackets a parser is given, which ends the server where it goes deeper than
-    /// its stack: each file read once for all of a project's frameworks, one that can't be read left to the server.</summary>
+    /// its stack: each file read once for all of a project's frameworks, one that can't be read left to the server. Read
+    /// sharing its deletion, so a folder moving or going on Windows never waits on the read.</summary>
     private static bool TooDeep(string path, ProjectFileInfo info, Dictionary<string, bool> deep)
     {
         if (deep.TryGetValue(path, out bool known))
@@ -220,7 +221,9 @@ internal sealed class PassengerProjectLoader : LanguageServerProjectLoader, ILsp
         string text;
         try
         {
-            text = File.ReadAllText(path);
+            using FileStream file = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using StreamReader reader = new(file);
+            text = reader.ReadToEnd();
         }
         catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
         {
@@ -373,15 +376,17 @@ internal sealed class FilesDeletedHandlerFactory : ILspServiceFactory
         new FilesDeletedHandler(lspServices.GetRequiredService<PassengerProjectLoader>(), lspServices.GetRequiredService<LspDidChangeWatchedFilesHandler>());
 }
 
-/// <summary><see cref="ProjectMethods.Ready"/>: true, from a server that has Passenger's loader.</summary>
+/// <summary><see cref="ProjectMethods.Ready"/>: answered by a server that has Passenger's loader, with the words its log
+/// says a project loaded in, in its own language.</summary>
 [Method(ProjectMethods.Ready)]
-internal sealed class LoaderReadyHandler : ILspServiceRequestHandler<LoaderReadyParams, bool>
+internal sealed class LoaderReadyHandler : ILspServiceRequestHandler<LoaderReadyParams, LoaderReady>
 {
     public bool MutatesSolutionState => false;
 
     public bool RequiresLSPSolution => false;
 
-    public Task<bool> HandleRequestAsync(LoaderReadyParams request, RequestContext context, CancellationToken cancellationToken) => Task.FromResult(true);
+    public Task<LoaderReady> HandleRequestAsync(LoaderReadyParams request, RequestContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(new LoaderReady(LanguageServerResources.Successfully_completed_load_of_0));
 }
 
 /// <summary>What <see cref="ProjectMethods.Ready"/> is asked with: nothing.</summary>

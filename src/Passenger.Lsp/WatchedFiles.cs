@@ -194,29 +194,9 @@ public sealed class WatchedFiles
     /// tells the server of none that stands so still (<see cref="StandsAsGiven"/>).</summary>
     internal void Given(string infos, IReadOnlyList<InputRead> inputs)
     {
-        List<string> folders = [];
-        try
+        // Builds the server cannot read either: it loads nothing of them, so nothing it read is left untold.
+        if (WrittenFolders(infos) is not { } folders)
         {
-            using JsonDocument read = JsonDocument.Parse(infos);
-            if (read.RootElement.ValueKind != JsonValueKind.Array)
-            {
-                return;
-            }
-            foreach (JsonElement info in read.RootElement.EnumerateArray())
-            {
-                foreach (string? file in (string?[])[JsonMembers.Text(info, "projectAssetsFilePath"), JsonMembers.Text(info, "intermediateOutputFilePath")])
-                {
-                    if (Path.GetDirectoryName(file) is { Length: > 0 } folder && Path.IsPathFullyQualified(folder) && !folders.Any(f => PathNames.Within(folder, f)))
-                    {
-                        folders.RemoveAll(f => PathNames.IsUnder(f, folder));
-                        folders.Add(folder);
-                    }
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // Builds the server cannot read either: it loads nothing of them, so nothing it read is left untold.
             return;
         }
         lock (gate)
@@ -251,6 +231,38 @@ public sealed class WatchedFiles
                 // Gone or changing as it was listed: what was listed is kept, the rest told as a walk finds it.
             }
         }
+    }
+
+    /// <summary>The folders a project's design-time builds (<paramref name="infos"/>) and the restore before them write, where
+    /// its assets file and its intermediate assembly lie, none within another; null for builds that are not Roslyn's
+    /// ProjectFileInfo array.</summary>
+    internal static List<string>? WrittenFolders(string infos)
+    {
+        List<string> folders = [];
+        try
+        {
+            using JsonDocument read = JsonDocument.Parse(infos);
+            if (read.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+            foreach (JsonElement info in read.RootElement.EnumerateArray())
+            {
+                foreach (string? file in (string?[])[JsonMembers.Text(info, "projectAssetsFilePath"), JsonMembers.Text(info, "intermediateOutputFilePath")])
+                {
+                    if (Path.GetDirectoryName(file) is { Length: > 0 } folder && Path.IsPathFullyQualified(folder) && !folders.Any(f => PathNames.Within(folder, f)))
+                    {
+                        folders.RemoveAll(f => PathNames.IsUnder(f, folder));
+                        folders.Add(folder);
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        return folders;
     }
 
     /// <summary>Whether a file stands as it did when the server was first given the builds that write it (<see cref="Given"/>),
