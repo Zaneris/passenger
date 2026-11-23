@@ -78,6 +78,16 @@ public sealed class TestRun : IAsyncDisposable
     private static IEnumerable<string> TemporaryBases() =>
         OperatingSystem.IsWindows() ? [PersonsTemporary] : [PersonsTemporary, OperatingSystem.IsMacOS() ? "/private/tmp" : "/tmp"];
 
+    /// <summary>Why the daemon of Biome's <paramref name="version"/> cannot listen in the run's Biome home, or null where it
+    /// can: on macOS its socket lies under that home's Library/Caches, whose path may pass the 103 bytes a socket's path
+    /// holds; Linux's cache folder is shorter, and Windows' daemon listens on a pipe.</summary>
+    public static string? BiomeSocketUnfit(string version)
+    {
+        string socket = Path.Combine(Environment.GetEnvironmentVariable(Passenger.App.Web.WebTool.BiomeHomeVariable) ?? string.Empty,
+            "Library", "Caches", "dev.biomejs.biome", "biome-daemon", $"biome-socket-{version}");
+        return OperatingSystem.IsMacOS() && socket.Length > 103 ? $"Biome's daemon socket in the run's folder, {socket}, is longer than the 103 bytes a socket's path holds" : null;
+    }
+
     /// <summary>The IDE's state folder for the whole run.</summary>
     public static string Settings => Path.Combine(Root, "settings");
 

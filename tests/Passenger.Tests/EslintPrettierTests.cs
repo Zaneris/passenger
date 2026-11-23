@@ -153,8 +153,10 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         string pipe = $"biome-service-{Project.VersionOf("@biomejs/biome")}";
         Assert.SkipWhen(OperatingSystem.IsWindows() && Directory.EnumerateFiles(@"\\.\pipe\").Any(p => Path.GetFileName(p) == pipe),
             $"A Biome daemon of the tests' version already runs here, and on Windows its pipe ({pipe}) is the machine's, so the test's Biome would join it");
-        string socket = Path.Combine(Environment.GetEnvironmentVariable(WebTool.BiomeHomeVariable) ?? string.Empty, "Library", "Caches", "dev.biomejs.biome", "biome-daemon", pipe.Replace("service", "socket", StringComparison.Ordinal));
-        Assert.SkipWhen(OperatingSystem.IsMacOS() && socket.Length > 103, $"Biome's daemon socket in the run's folder, {socket}, is longer than the 103 bytes a socket's path holds");
+        if (TestRun.BiomeSocketUnfit(Project.VersionOf("@biomejs/biome")) is { } unfit)
+        {
+            Assert.Skip(unfit);
+        }
         string folder = TestFolders.Create("biome-");
         Project.Write(folder,
             ("package.json", "{\n  \"name\": \"biome-client\",\n  \"private\": true,\n  \"devDependencies\": {\n"
