@@ -10,6 +10,7 @@ using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Text;
+using Passenger.Vcs;
 using Passenger.Workspace;
 
 namespace Passenger.App.Templates;
@@ -63,8 +64,9 @@ public delegate Task<(bool Installed, string Said, string? ToRun)> WorkloadInsta
 /// left (<see cref="TemplateFamilies"/>) under a search; on the right the names, where it goes, the family's Type, the
 /// framework, the language and the Type's options (a value set kept by a Type that has it), or a Type's package to
 /// install. A later read fills in, the choice kept. Create refuses a name taken or a folder not empty, saying why; else
-/// it runs dotnet new, takes Accelerate's tools out and closes with it (<see cref="Created"/>), or removes what it made;
-/// Passenger's own Godot game it writes itself, refusing it, saying how to get Godot, where no Godot is found.</summary>
+/// it runs dotnet new, takes Accelerate's tools out, makes New Solution's folder a Git repository with the files chosen
+/// (<see cref="RepositoryFiles"/>) and closes with it (<see cref="Created"/>), or removes what it made; Passenger's own
+/// Godot game it writes itself, refusing it, saying how to get Godot, where no Godot is found.</summary>
 public sealed class NewProjectDialog : IdeWindow
 {
     private readonly ProjectTarget? target;
@@ -86,6 +88,24 @@ public sealed class NewProjectDialog : IdeWindow
     private readonly TextBox directory = new();
     private readonly CheckBox sameDirectory = new() { Content = "Put solution and project in the same directory" };
     private readonly ComboBox format = new FormDropDown();
+    private readonly CheckBox createRepository = new() { Content = "Create Git repository" };
+
+    /// <summary>The files the repository is given, a check row each.</summary>
+    private readonly FileChoice[] repositoryFiles;
+    private readonly ListBox repositoryList;
+    private readonly TextBlock repositoryNote = FormRows.Note();
+
+    /// <summary>Whether the person wants a repository, kept while none is made where the directory chosen is.</summary>
+    private bool repositoryWanted;
+
+    /// <summary>The Git repository the directory chosen is in, as shown, once looked for; null for none.</summary>
+    private string? inRepository;
+
+    /// <summary>Why git cannot run here, once asked; null while it can.</summary>
+    private string? gitMissing;
+
+    /// <summary>Set while the dialog checks or clears the repository's box itself, so it is not taken for the person's.</summary>
+    private bool repositorySetting;
 
     /// <summary>Whether what the dialog says is a read of the templates that failed, which a later read takes back.</summary>
     private bool readFailed;
@@ -189,10 +209,15 @@ public sealed class NewProjectDialog : IdeWindow
     /// <param name="target">The solution a project is added to; null for New Solution.</param>
     /// <param name="containers">Why no container can be set up here, asked off the window's thread; null for no question.</param>
     /// <param name="godot">The Godot Settings names for a Godot game, its command line; null for the one found.</param>
-    /// <param name="recent">The templates something was made from lately, the newest first (<see cref="Recent"/>).</param>
-    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null, string? godot = null, IReadOnlyList<string>? recent = null)
+    /// <param name="recent">The templates something was made from lately, the newest first (<see cref="Recent"/>); <paramref name="repository"/> what New Solution made for Git last.</param>
+    public NewProjectDialog(string folder, ProjectTarget? target, Task<string?>? containers = null, string? godot = null, IReadOnlyList<string>? recent = null,
+        RepositoryChoices? repository = null)
     {
         Recent = recent ?? [];
+        RepositoryChoices chosen = repository ?? new RepositoryChoices();
+        repositoryWanted = chosen.Repository;
+        repositoryFiles = [.. Enum.GetValues<RepositoryFile>().Select(file => new FileChoice(file, chosen.Gives(file)))];
+        repositoryList = CheckRows.List(repositoryFiles);
         followFolder = new Passenger.Editor.Debounce(TimeSpan.FromMilliseconds(400), FollowFolderAsync);
         godotFound = BackgroundWork.Run(() => GodotLaunch.Found(godot));
         runtimes = BackgroundWork.Run(() => DotnetMachine.Read().Installation?.Runtimes ?? []);
@@ -282,6 +307,18 @@ public sealed class NewProjectDialog : IdeWindow
             fields.Children.Add(Row("Solution directory", folderRow, [where]));
             fields.Children.Add(sameRow);
             fields.Children.Add(formatRow);
+            createRepository.IsChecked = repositoryWanted;
+            createRepository.IsCheckedChanged += (_, _) =>
+            {
+                if (!repositorySetting)
+                {
+                    repositoryWanted = createRepository.IsChecked == true;
+                    ShowRepository();
+                }
+            };
+            fields.Children.Add(Row(null, createRepository));
+            fields.Children.Add(Row(null, new Border { Classes = { StyleClasses.Framed }, Child = repositoryList }, [repositoryNote]));
+            repositoryNote.IsVisible = false;
         }
         else
         {
@@ -365,6 +402,11 @@ public sealed class NewProjectDialog : IdeWindow
             IdeErrors.Observe(AskEngineAsync(containers));
         }
         IdeErrors.Observe(ShowGodotAsync());
+        if (target is null)
+        {
+            IdeErrors.Observe(AskGitAsync());
+            IdeErrors.Observe(FollowRepositoryAsync());
+        }
         // The name has the keys as the dialog opens, its default chosen to be typed over; again once laid out.
         void FocusName()
         {
@@ -487,6 +529,16 @@ public sealed class NewProjectDialog : IdeWindow
         get => sameDirectory.IsChecked == true;
         set => sameDirectory.IsChecked = value;
     }
+
+    /// <summary>What New Solution makes for Git as the person chose it, which the window keeps for the next.</summary>
+    public RepositoryChoices RepositoryChosen =>
+        repositoryFiles.Aggregate(new RepositoryChoices { Repository = repositoryWanted }, (choices, file) => choices.Giving(file.File, file.Wanted));
+
+    /// <summary>Whether Create makes a Git repository with the solution: the person's choice, where one can be made.</summary>
+    public bool MakesRepository => target is null && createRepository.IsChecked == true;
+
+    /// <summary>Why no repository is made where the directory chosen is, as the dialog says it; null where one can be.</summary>
+    public string? RepositoryNote => repositoryNote.IsVisible ? repositoryNote.Text : null;
 
     /// <summary>The solution's format: "slnx" or "sln", as dotnet new sln takes it.</summary>
     public string SolutionFormat => format.SelectedItem as string is { } chosen ? chosen.TrimStart('.') : catalog?.SolutionFormat ?? "sln";
@@ -613,6 +665,12 @@ public sealed class NewProjectDialog : IdeWindow
             return;
         }
         Plan plan = Planned();
+        // A directory taken into a Git repository since the dialog last looked goes into it, as the dialog then says.
+        if (MakesRepository && WorkspaceTrust.RepositoryOf(PathNames.Canonical(plan.Root)) is { } holding)
+        {
+            inRepository = PathNames.Shown(holding, null);
+            ShowRepository();
+        }
         Writes writes = new(plan.Root);
         ProjectSetup setUp = Setup;
         using CancellationTokenSource cancel = new();
@@ -641,7 +699,9 @@ public sealed class NewProjectDialog : IdeWindow
             }
             if (template.GodotGame)
             {
-                if (await MakeGameAsync(plan, writes, cancel.Token) is { } game)
+                // A game in the repository's top folder has its own .gitignore's lines in the repository's.
+                (string Heading, string Text)? ignores = Gives(RepositoryFile.GitIgnore) && PathNames.Same(plan.ProjectFolder, plan.Root) ? ("Godot", GodotGames.Ignores) : null;
+                if (await MakeGameAsync(plan, writes, ignores is not null, cancel.Token) is { } game && await MakeRepositoryAsync(plan, writes, ignores, cancel.Token))
                 {
                     Created = game;
                     creating = null;
@@ -715,6 +775,10 @@ public sealed class NewProjectDialog : IdeWindow
                     madeSolution = plan.Solution;
                 }
             }
+            if (!await MakeRepositoryAsync(plan, writes, null, cancel.Token))
+            {
+                return;
+            }
             Created = new CreatedProjects(madeSolution is null ? null : PathNames.Canonical(madeSolution), projects, PathNames.Canonical(plan.ProjectFolder), setUp)
             {
                 Central = central,
@@ -741,15 +805,17 @@ public sealed class NewProjectDialog : IdeWindow
     }
 
     /// <summary>A Godot game written as Godot's editor writes a new project (<see cref="GodotGames"/>) in the plan's project
-    /// folder, the solution made already for one in C#, whose project is restored then from the Godot found's own packages;
-    /// what was made, or null, what Create made removed and why said, when it could not be written.</summary>
-    private async Task<CreatedProjects?> MakeGameAsync(Plan plan, Writes writes, CancellationToken cancel)
+    /// folder, the solution made already for one in C#, whose project is restored then from the Godot found's own packages,
+    /// its .gitignore left to the repository's where that takes its lines (<paramref name="ignored"/>); what was made, or
+    /// null, what Create made removed and why said, when it could not be written.</summary>
+    private async Task<CreatedProjects?> MakeGameAsync(Plan plan, Writes writes, bool ignored, CancellationToken cancel)
     {
         GodotFound found = (await godotFound)!;
         bool csharp = !ScriptGame;
         string name = NameGiven;
         progress.Text = $"Writing the Godot game {name}…";
-        IReadOnlyList<(string Path, string Text)> files = GodotGames.Files(name, csharp, found.Version ?? string.Empty, Framework, found.Packages);
+        IReadOnlyList<(string Path, string Text)> files = [.. GodotGames.Files(name, csharp, found.Version ?? string.Empty, Framework, found.Packages)
+            .Where(f => !ignored || f.Path != RepositoryFiles.NameOf(RepositoryFile.GitIgnore))];
         string folder = plan.ProjectFolder;
         string? unwritten = await writes.During(() => BackgroundWork.Run(() =>
         {
@@ -790,6 +856,45 @@ public sealed class NewProjectDialog : IdeWindow
             Game = true,
         };
     }
+
+    /// <summary>The Git repository New Solution makes in the solution's folder once all else is made, where the person chose
+    /// one, given the files chosen, each written only where a template wrote none; false, what Create made removed and why
+    /// said, where dotnet new or git could not make it. <paramref name="besides"/> are lines its .gitignore takes too.</summary>
+    private async Task<bool> MakeRepositoryAsync(Plan plan, Writes writes, (string Heading, string Text)? besides, CancellationToken cancel)
+    {
+        if (!MakesRepository)
+        {
+            return true;
+        }
+        string root = PathNames.Canonical(plan.Root);
+        RepositoryFile[] given = [.. repositoryFiles.Where(f => f.IsChosen).Select(f => f.File)];
+        string? failed = await writes.During(async () =>
+        {
+            List<(RepositoryFile File, string Text)> texts = [];
+            foreach (RepositoryFile file in given)
+            {
+                progress.Text = $"Making {RepositoryFiles.NameOf(file)}…";
+                (string? text, string? why) = await RepositoryFiles.TextAsync(file, root, cancel, file == RepositoryFile.GitIgnore ? besides : null);
+                if (text is null)
+                {
+                    return $"{RepositoryFiles.NameOf(file)} could not be made: {why}";
+                }
+                texts.Add((file, text));
+            }
+            progress.Text = "Creating the Git repository…";
+            GitResult init = await Git.InitAsync(root);
+            return init.Succeeded ? (await RepositoryFiles.WriteAsync(root, texts)).Why : $"No Git repository was created: {init.Message}";
+        }, plan.Root);
+        if (failed is not null)
+        {
+            await FailedAsync(failed, writes);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Whether Create gives the repository it makes the file.</summary>
+    private bool Gives(RepositoryFile file) => MakesRepository && repositoryFiles[(int)file].IsChosen;
 
     /// <summary>Why a Godot game cannot be made here (<see cref="GodotGames.WhyNot"/>); null while the Godot is still looked for, or it can.</summary>
     private string? GodotWhyNot() => template is not { GodotGame: true } || !godotFound.IsCompletedSuccessfully ? null
@@ -1263,6 +1368,7 @@ public sealed class NewProjectDialog : IdeWindow
     /// may be another, making other templates and formats, or none.</summary>
     private async Task FollowFolderAsync()
     {
+        await FollowRepositoryAsync();
         if (Existing(Folder) is { } there && !PathNames.Same(there, readFrom))
         {
             readFrom = there;
@@ -1293,6 +1399,11 @@ public sealed class NewProjectDialog : IdeWindow
             return;
         }
         catalog = read;
+        foreach (FileChoice file in repositoryFiles)
+        {
+            file.Missing = RepositoryFiles.TemplateOf(file.File) is { } shortName && !read.Items.Any(t => t.Pack is null && t.ShortNames.Contains(shortName, StringComparer.OrdinalIgnoreCase))
+                ? $"dotnet new has no {shortName} template here" : null;
+        }
         families = TemplateFamilies.With([.. read.Families.Select(f => target is null ? f : f.Projects()).OfType<TemplateFamily>()], GodotFamily(read));
         setting = true;
         string? formatWas = format.SelectedItem as string;
@@ -1709,9 +1820,13 @@ public sealed class NewProjectDialog : IdeWindow
         install.IsEnabled = !busy;
         installSetup.IsEnabled = !busy;
         list.IsEnabled = !busy;
-        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, folderRow.Browse, sameDirectory, format, framework, language, options.Panel, options.Folded, setup])
+        foreach (Control field in (Control[])[search, typeChooser, solutionName, projectName, directory, folderRow.Browse, sameDirectory, format, framework, language, options.Panel, options.Folded, setup, createRepository, repositoryList])
         {
             field.IsEnabled = !busy;
+        }
+        if (!busy)
+        {
+            ShowRepository();
         }
         if (!busy && template is not null)
         {
@@ -1774,6 +1889,91 @@ public sealed class NewProjectDialog : IdeWindow
     {
         mark.Text = words;
         mark.IsVisible = words is not null;
+    }
+
+    /// <summary>The repository offered as the person wants it where one can be made; off and greyed, saying why, where the
+    /// directory chosen is in a Git repository already, which takes the solution, or git is not installed; its files
+    /// greyed while it is off. Greyed whole while Create or an install runs.</summary>
+    private void ShowRepository()
+    {
+        string? why = inRepository is { } top ? $"The solution goes into the Git repository at {top}: no second one is made in it" : gitMissing;
+        repositorySetting = true;
+        createRepository.IsChecked = repositoryWanted && why is null;
+        repositorySetting = false;
+        ToolButtons.Grey(createRepository, why);
+        bool busy = creating is not null || installing is not null;
+        createRepository.IsEnabled &= !busy;
+        repositoryList.IsEnabled = createRepository.IsChecked == true && !busy;
+        repositoryNote.Text = why;
+        repositoryNote.IsVisible = why is not null;
+    }
+
+    /// <summary>Looks for the Git repository the directory chosen is in, off the window's thread, and offers a repository
+    /// or not as it finds.</summary>
+    private async Task FollowRepositoryAsync()
+    {
+        if (target is not null)
+        {
+            return;
+        }
+        string folder = Folder;
+        string? top = await BackgroundWork.Run(() => Existing(folder) is { } there && WorkspaceTrust.RepositoryOf(PathNames.Canonical(there)) is { } found
+            ? PathNames.Shown(found, null) : null);
+        if (folder == Folder)
+        {
+            inRepository = top;
+            ShowRepository();
+        }
+    }
+
+    /// <summary>Asks whether git is installed, off the window's thread, the repository greyed saying so where it is not.</summary>
+    private async Task AskGitAsync()
+    {
+        gitMissing = await BackgroundWork.Run(Git.MissingAsync);
+        ShowRepository();
+    }
+
+    /// <summary>A file the repository is given, a check row: checked as the person wants it, greyed and unchecked saying
+    /// why where dotnet new has no template of it here, the person's choice kept for a read that has one.</summary>
+    private sealed class FileChoice(RepositoryFile file, bool wanted) : Observable, ICheckChoice
+    {
+        private bool isWanted = wanted;
+        private string? missing;
+
+        public RepositoryFile File { get; } = file;
+
+        public string Name => RepositoryFiles.NameOf(File);
+
+        public string Detail => missing ?? File switch
+        {
+            RepositoryFile.GitIgnore => "dotnet new gitignore's, with what Passenger's runs leave",
+            RepositoryFile.GitAttributes => "LF line breaks on every system, binary files marked",
+            _ => "dotnet new editorconfig's, with LF line breaks and UTF-8",
+        };
+
+        public bool CanChoose => missing is null;
+
+        /// <summary>Whether the person wants the file, whether or not it can be made here.</summary>
+        public bool Wanted => isWanted;
+
+        public bool IsChosen
+        {
+            get => isWanted && missing is null;
+            set
+            {
+                if (missing is null)
+                {
+                    Set(ref isWanted, value);
+                }
+            }
+        }
+
+        /// <summary>Why the file cannot be made here; null where it can.</summary>
+        public string? Missing
+        {
+            get => missing;
+            set => Set(ref missing, value);
+        }
     }
 
     /// <summary>A name cut short where it must be, with a mark after it ("Not installed" for what dotnet new has not got),

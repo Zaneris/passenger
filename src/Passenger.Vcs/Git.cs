@@ -3078,6 +3078,9 @@ public sealed partial class Git
     private static GitResult NotInstalled =>
         new(Absent, string.Empty, OperatingSystem.IsMacOS() ? "git is not installed: xcode-select --install installs it" : "git is not installed");
 
+    /// <summary>Why no git can be run here, in the words a call would fail with: it is not installed; null where one is.</summary>
+    public static async Task<string?> MissingAsync() => await Programs.GitAsync() is null ? NotInstalled.Error : null;
+
     /// <summary>What git exits with when what it is asked for is not there (a file at a revision, an upstream, a first
     /// commit, a working tree): the answer no to a question, which the log leaves out.</summary>
     private const int NotThere = 128;

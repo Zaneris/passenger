@@ -47,13 +47,17 @@ public partial class MainWindow
     /// <summary>New Solution: the dialog over this window, and the solution opened, built, once it is made.</summary>
     public NewProjectDialog ShowNewSolution()
     {
-        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable, RecentTemplates())
+        NewProjectDialog dialog = new(BesideLast(), null, ContainersWhyNot(), settings.GodotExecutable, RecentTemplates(), RepositoryKept())
         {
             Workloads = InstallAskedWorkloadsAsync, WorkloadPlace = WorkloadFoldersAsync,
         };
         dialog.Closed += (_, _) =>
         {
             KeepTemplate(dialog);
+            if (keepsWorkspace && dialog.Created is not null)
+            {
+                state!.NewSolution.Set(dialog.RepositoryChosen);
+            }
             // What Passenger made is the person's own code, opened trusted, but in a Git repository only the person trusts.
             if (dialog.Created is { } created && (created.Solution is not null || created.Game)
                 && PathNames.Canonical(created.Solution is { } named ? Path.GetDirectoryName(named)! : created.Folder) is { } own
@@ -82,6 +86,13 @@ public partial class MainWindow
         : Unseen && State.StateStore.Named is { } named
         ? new State.StateDocument<RecentTemplatesState>(Path.Combine(named, State.StateStore.TemplatesFile)).KeptNow()?.Newest() ?? []
         : [];
+
+    /// <summary>What New Solution made for Git with the last solution, as <see cref="RecentTemplates"/> reads the recent
+    /// templates; every file and the repository in a window that keeps none.</summary>
+    private RepositoryChoices RepositoryKept() => keepsWorkspace ? state!.NewSolution.Value
+        : Unseen && State.StateStore.Named is { } named
+        ? new State.StateDocument<RepositoryChoices>(Path.Combine(named, State.StateStore.NewSolutionFile)).KeptNow() ?? new RepositoryChoices()
+        : new RepositoryChoices();
 
     /// <summary>Keeps the template a dialog made something from among the recent ones, in the person's window.</summary>
     private void KeepTemplate(NewProjectDialog dialog)

@@ -266,7 +266,7 @@ public sealed class WorkspaceTrustTests
 
     /// <summary>A new solution made in a Git repository the person has not trusted is not trusted as it is made, as its
     /// projects would take in the repository's build files: it is made without its restore, and opens asking of the
-    /// repository.</summary>
+    /// repository; New Solution makes no second repository in it, saying so.</summary>
     private void A_new_solution_made_in_a_Git_repository_not_trusted_is_not_trusted_and_opens_asking_of_the_repository()
     {
         string repository = PathNames.Canonical(TestFolders.Create("new-in-repository-"));
@@ -284,9 +284,13 @@ public sealed class WorkspaceTrustTests
             dialog.SolutionName = "Made";
             dialog.ProjectName = "Made";
             dialog.Framework = TestProjects.Framework;
+            Ui.WaitFor(() => dialog.RepositoryNote is not null, () => $"New Solution to say it makes no repository in {repository}, which is one");
+            Assert.Equal($"The solution goes into the Git repository at {PathNames.Shown(repository, null)}: no second one is made in it", dialog.RepositoryNote);
+            Assert.False(dialog.MakesRepository, "New Solution offered a second Git repository inside one");
             NewServiceSetupTests.Created(dialog, "the solution");
 
             string made = Path.Combine(repository, "samples", "Made");
+            Assert.False(Path.Exists(Path.Combine(made, ".git")), "New Solution made a second Git repository inside one");
             Assert.True(File.Exists(Path.Combine(made, "Made", "Made.csproj")), $"No Made.csproj was made: {Ui.Said(window)}");
             Assert.False(WorkspaceTrust.Trusts(made), "The new solution made in a Git repository not trusted was trusted as it was made");
             Assert.False(File.Exists(Path.Combine(made, "Made", "obj", "project.assets.json")), "The new solution made in a Git repository not trusted was restored");

@@ -11,8 +11,10 @@ using Passenger.App;
 using Passenger.App.Explorer;
 using Passenger.App.Settings;
 using Passenger.App.Templates;
+using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Vcs;
 using Passenger.Workspace;
 
 namespace Passenger.Tests;
@@ -107,8 +109,8 @@ public sealed class NewSolutionTests : IDisposable
     }
 
     /// <summary>New Solution from the Welcome screen lists what dotnet new list reports, refuses a name already taken or a
-    /// directory not empty with why before anything is made, and makes a console app with the option chosen, opens it
-    /// built and runs it.</summary>
+    /// directory not empty with why before anything is made, and makes a console app with the option chosen in a Git
+    /// repository of its own, opens it built and runs it.</summary>
     private void New_Solution_from_the_Welcome_screen_makes_a_console_app_with_the_option_chosen_opens_it_built_and_runs_it()
     {
         using IDisposable theme = TestsTheme();
@@ -165,10 +167,36 @@ public sealed class NewSolutionTests : IDisposable
         Ui.WaitFor(() => !window.IsBuilding, "the new solution's build", TimeSpan.FromMinutes(3));
         Assert.True(File.Exists(Path.Combine(folder, "Greeter", "bin", "Debug", framework, "Greeter.dll")), $"The new solution was not built: {Ui.Said(window)}");
         Assert.Equal(["Greeter"], window.Configurations.Select(c => c.Name));
+        NewRepositoryHoldsItsFiles(window, folder, [$"Greeter.{dialog.SolutionFormat}", "Greeter/Greeter.csproj", "Greeter/Program.cs"]);
         Ui.Press(window, Ui.Shortcut(AppActions.RunProgram));
         Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the new console app to run to its end", TimeSpan.FromMinutes(2));
         Assert.Contains("Hello, World!", Output(window), StringComparison.Ordinal);
         window.Close();
+    }
+
+    /// <summary>A new solution's folder made a Git repository, as New Solution offers by default, given .gitignore (dotnet new's
+    /// with Passenger's own section after it), Passenger's .gitattributes and dotnet new's .editorconfig, every file of it
+    /// taking LF line breaks, a final one and UTF-8, each written with LF: the Commit window lists them as new beside the
+    /// solution's files, nothing of the build's output, as git does.</summary>
+    private static void NewRepositoryHoldsItsFiles(MainWindow window, string folder, IReadOnlyList<string> code)
+    {
+        Assert.True(Directory.Exists(Path.Combine(folder, ".git")), $"New Solution made no Git repository in {folder}");
+        string ignore = File.ReadAllText(Path.Combine(folder, ".gitignore"));
+        Assert.True(ignore.Contains("[Bb]in/", StringComparison.Ordinal) && ignore.EndsWith($"\n\n{RepositoryFiles.PassengerIgnores}", StringComparison.Ordinal),
+            $"The new repository's .gitignore is not dotnet new's with Passenger's section after it:\n{ignore}");
+        Assert.Equal(RepositoryFiles.GitAttributes, File.ReadAllText(Path.Combine(folder, ".gitattributes")));
+        string editorConfig = File.ReadAllText(Path.Combine(folder, ".editorconfig"));
+        string[] all = [.. editorConfig.Split('\n').SkipWhile(l => l != "[*]").Skip(1).TakeWhile(l => !l.StartsWith('['))];
+        Assert.True(editorConfig.StartsWith("root = true", StringComparison.Ordinal) && !editorConfig.Contains("insert_final_newline = false", StringComparison.Ordinal)
+            && ((string[])["end_of_line = lf", "insert_final_newline = true", "charset = utf-8"]).All(all.Contains),
+            $"The new repository's .editorconfig does not give every file LF line breaks, a final one and UTF-8:\n{editorConfig}");
+        Assert.DoesNotContain('\r', ignore + File.ReadAllText(Path.Combine(folder, ".gitattributes")) + editorConfig);
+
+        window.Perform(AppActions.ShowCommit);
+        string[] Listed() => [.. window.CommitView.Rows.OfType<CommitRow>().Where(r => r.Change.Kind == ChangeKind.Unversioned)
+            .Select(r => Path.GetRelativePath(folder, r.Change.Path).Replace('\\', '/')).Order(StringComparer.Ordinal)];
+        string[] made = [.. ((string[])[".editorconfig", ".gitattributes", ".gitignore", .. code]).Order(StringComparer.Ordinal)];
+        Ui.WaitFor(() => Listed().SequenceEqual(made), () => $"the Commit window to list [{string.Join(", ", made)}] as new, where it lists [{string.Join(", ", Listed())}]");
     }
 
     /// <summary>New Solution's WPF Application, listed everywhere: off Windows it is marked Windows only and says before

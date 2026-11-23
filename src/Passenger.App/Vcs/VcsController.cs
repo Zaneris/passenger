@@ -425,9 +425,9 @@ public sealed class VcsController : IDisposable
     public string? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;
 
     /// <summary>Create Git Repository: the open folder made a working tree and read as it is when a folder opens, given
-    /// first the .NET .gitignore <c>dotnet new gitignore</c> writes where it has none, so build output is never offered for
-    /// its first commit. A .gitignore that could not be written is said with the repository made; one written for a
-    /// repository git then could not make is taken away again.</summary>
+    /// first the .gitignore every repository Passenger makes is given where it has none (<see cref="RepositoryFiles.GitIgnoreAsync"/>),
+    /// so build output is never offered for its first commit. A .gitignore that could not be written is said with the
+    /// repository made; one written for a repository git then could not make is taken away again.</summary>
     public async Task<VcsOutcome> InitAsync()
     {
         UiThread.Check();
@@ -448,9 +448,10 @@ public sealed class VcsController : IDisposable
         string? unwritten = null;
         if (!ignoring)
         {
-            ChildResult made = await ChildProcesses.RunAsync(ProjectTemplates.NewCommand(["gitignore", "--output", folder, "--no-update-check"], folder), limit: TimeSpan.FromMinutes(2));
-            wrote = made.Succeeded;
-            unwritten = made.Succeeded ? null : made.Said;
+            (string? text, string? unmade) = await RepositoryFiles.GitIgnoreAsync(folder);
+            (IReadOnlyList<string> written, string? refused) = text is null ? ((IReadOnlyList<string>)[], unmade) : await RepositoryFiles.WriteAsync(folder, [(RepositoryFile.GitIgnore, text)]);
+            wrote = written.Count > 0;
+            unwritten = refused;
         }
         work?.Say(Creating);
         GitResult init = await Git.InitAsync(folder);

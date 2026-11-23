@@ -15,6 +15,9 @@ public static class GodotGames
     /// <summary>What the script prints as the game starts.</summary>
     public const string Greeting = "Hello from Godot!";
 
+    /// <summary>A game's .gitignore: Godot's cache and its Android build's folder, as Godot's editor writes one.</summary>
+    public const string Ignores = ".godot/\n/android/\n";
+
     /// <summary>Godot's download page, where both its builds come from.</summary>
     private const string Downloads = "godotengine.org/download";
 
@@ -48,7 +51,7 @@ public static class GodotGames
             (GodotProject.FileName, Project(name, csharp, version)),
             ("main.tscn", Scene(csharp)),
             (csharp ? "Main.cs" : "main.gd", csharp ? Script : GDScript),
-            (".gitignore", ".godot/\n/android/\n"),
+            (".gitignore", Ignores),
         ];
         if (csharp)
         {
