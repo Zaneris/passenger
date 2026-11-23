@@ -52,11 +52,12 @@ public sealed class EslintPrettierTests : IClassFixture<EslintPrettierTests.Proj
         Flow.Step(nameof(A_Yarn_Plug_n_Play_projects_ESLint_and_Prettier_are_found_through_its_pnp_cjs_with_no_node_modules_and_check_and_format_its_script),
             A_Yarn_Plug_n_Play_projects_ESLint_and_Prettier_are_found_through_its_pnp_cjs_with_no_node_modules_and_check_and_format_its_script);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH),
-            A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH);
-        OpenWindows.CloseAll();
         Flow.Step(nameof(A_folder_naming_Oxlint_and_Oxfmt_gets_Oxlints_problems_and_fixes_and_Oxfmts_layout_on_Reformat_Code_and_on_save),
             A_folder_naming_Oxlint_and_Oxfmt_gets_Oxlints_problems_and_fixes_and_Oxfmts_layout_on_Reformat_Code_and_on_save);
+        OpenWindows.CloseAll();
+        // Last, as its skip where neither Bun nor Deno is installed ends the flow.
+        Flow.Step(nameof(A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH),
+            A_Bun_or_Deno_folder_runs_TypeScript_and_ESLint_on_its_runtime_with_no_Node_js_on_the_PATH);
     }
 
     /// <summary>Prettier formats on Reformat Code and on save by the project's configuration, and a save lands whatever
