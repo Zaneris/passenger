@@ -1488,12 +1488,13 @@ public static class Ui
     private static InvalidOperationException NotEnded(string what) => new($"The wait for {what} came back before it ended");
 
     /// <summary>Waits for a launch the window started (Run, Debug, Profile, a test run) as <see cref="Await"/> does, and
-    /// fails unless it started, with its refusal and the build's own errors (<see cref="BuildErrors"/>).</summary>
+    /// fails unless it started, with its refusal, the build's own errors (<see cref="BuildErrors"/>) and, in a test of
+    /// minutes, where its time went (<see cref="Limits.WhereTheTimeWent"/>).</summary>
     public static void Launched(Passenger.App.MainWindow window, Task<string?> launch, string what, TimeSpan? limit = null)
     {
         if (Await(launch, what, limit) is { } refused)
         {
-            throw new Xunit.Sdk.XunitException($"Waiting for {what}, the window refused: {refused}{BuildErrors(window)}");
+            throw new Xunit.Sdk.XunitException($"Waiting for {what}, the window refused: {refused}{BuildErrors(window)}{Limits.WhereTheTimeWent()}");
         }
     }
 
