@@ -40,6 +40,25 @@ public sealed class WebTool
     public static readonly WebTool Biome = new("Biome", "@biomejs/biome", "biome", ["lsp-proxy"],
         ["biome.json", "biome.jsonc", ".biome.json", ".biome.jsonc"], lints: true, formats: true, "source.fixAll.biome");
 
+    /// <summary>The variable naming a folder under which Biome's language server keeps its daemon's socket, cache and logs in
+    /// place of the person's user cache, which every Biome of a version shares: a test run's.</summary>
+    [IdentifierHome]
+    public const string BiomeHomeVariable = "PASSENGER_BIOME_HOME";
+
+    /// <summary>The variables Biome's language server takes where <see cref="BiomeHomeVariable"/> names a folder: user folders
+    /// under it (<see cref="Godot.GodotUserFolders.Under"/>), whose cache holds its daemon's socket, and its logs' folder
+    /// (BIOME_LOG_PATH); none where it names none.</summary>
+    public static IReadOnlyDictionary<string, string> BiomeFolders()
+    {
+        if (Environment.GetEnvironmentVariable(BiomeHomeVariable) is not { Length: > 0 } home)
+        {
+            return new Dictionary<string, string>();
+        }
+        Dictionary<string, string> folders = Godot.GodotUserFolders.Under(home);
+        folders["BIOME_LOG_PATH"] = Directory.CreateDirectory(Path.Combine(home, "logs")).FullName;
+        return folders;
+    }
+
     /// <summary>Every tool, in the order a file's problems and fixes are listed.</summary>
     public static readonly IReadOnlyList<WebTool> All = [Eslint, Oxlint, Biome, Oxfmt];
 
@@ -129,11 +148,15 @@ public sealed class WebTool
         }
     }
 
-    /// <summary>The folder a package's server works in and is told is its workspace: the project the package is installed
-    /// for, where its configuration lies: the folder holding the node_modules it is in, or a Plug'n'Play project's, whose
-    /// .pnp.cjs places a package in an archive.</summary>
-    public static string ProjectOf(string package)
+    /// <summary>The folder a package's server for a file works in and is told is its workspace, where its configuration lies:
+    /// the project the package is installed for, a Plug'n'Play project's (the folder of the .pnp.cjs placing the file's
+    /// packages, wherever a package it links stands), else the folder holding the node_modules the package is in.</summary>
+    public static string ProjectOf(string package, string file)
     {
+        if (Path.GetDirectoryName(file) is { } start && YarnPnp.ManifestFor(start) is { } manifest)
+        {
+            return Path.GetDirectoryName(manifest)!;
+        }
         for (string? at = Path.GetDirectoryName(package); at is not null; at = Path.GetDirectoryName(at))
         {
             if (Path.GetFileName(at) == "node_modules" && Path.GetDirectoryName(at) is { } project && Directory.Exists(project))
@@ -141,7 +164,7 @@ public sealed class WebTool
                 return project;
             }
         }
-        return YarnPnp.ManifestFor(package) is { } manifest ? Path.GetDirectoryName(manifest)! : Path.GetDirectoryName(package) ?? package;
+        return Path.GetDirectoryName(package) ?? package;
     }
 
     /// <summary>One of its fixes, named as the editor lists it ("Oxlint: Disable prefer-const for this line"), its rule

@@ -43,7 +43,7 @@ public sealed partial class FolderTools
     public bool FixesOnSave => settings().EslintFixOnSave;
 
     /// <summary>ESLint's server, while it runs.</summary>
-    private NodeServer? EslintServer => servers.GetValueOrDefault(new Place(WebTool.Eslint, folder))?.Server;
+    private NodeServer? EslintServer => servers.GetValueOrDefault(new Place(WebTool.Eslint, folder, folder))?.Server;
 
     /// <summary>Whether a file configures ESLint: a configuration (flat or eslintrc), the ignore file, or package.json
     /// (its eslintConfig).</summary>

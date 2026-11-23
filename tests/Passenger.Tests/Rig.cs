@@ -35,9 +35,9 @@ public static class TestApp
 
 /// <summary>What the whole run shares, set before anything reads it and never changed: a folder of the run's own in the
 /// system's temporary folder, holding the IDE's state (<c>PASSENGER_SETTINGS</c>: its log, the language servers' logs,
-/// the profiler's snapshots; the agents' sockets go in a folder named for it), every test's folders, the shells' history and
-/// Godot's user folders, and an empty Git configuration in place of the person's and the system's, which every git the tests
-/// and the IDE run inherits. So a run never writes to the person's own state, log, history or Godot (<see cref="PersonsGodot"/>),
+/// the profiler's snapshots; the agents' sockets go in a folder named for it), every test's folders, the shells' history,
+/// Godot's and Biome's user folders, and an empty Git configuration in place of the person's and the system's, which every git
+/// the tests and the IDE run inherits. So a run never writes to the person's own state, log, history, Godot (<see cref="PersonsGodot"/>) or Biome,
 /// an agent of theirs never attaches to a test's window, and a person's commit signing or hooks never reach a test's commit.
 /// The folder goes when the run ends; one a run that was killed left goes when the next begins.</summary>
 public sealed class TestRun : IAsyncDisposable
@@ -161,6 +161,8 @@ public sealed class TestRun : IAsyncDisposable
         // Nor the person's Godot user folders: every Godot a window starts keeps its settings, logs and user:// in the run's.
         PersonsGodot.Begin();
         Environment.SetEnvironmentVariable(Passenger.App.Godot.GodotUserFolders.HomeVariable, Path.Combine(Root, "godot"));
+        // Nor the person's Biome: its daemon's socket, cache and logs, under the run's shortest folder, as its socket's path is long.
+        Environment.SetEnvironmentVariable(Passenger.App.Web.WebTool.BiomeHomeVariable, Temporary != PersonsTemporary ? Temporary : Path.Combine(Root, "biome"));
         string gitConfig = Path.Combine(Root, "gitconfig");
         File.WriteAllText(gitConfig, string.Empty);
         Environment.SetEnvironmentVariable(StateStore.Variable, Settings);

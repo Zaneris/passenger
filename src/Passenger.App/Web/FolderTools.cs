@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Passenger.App.Settings;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -23,12 +24,13 @@ public sealed partial class FolderTools : IAsyncDisposable
     private readonly HashSet<string> said = new(StringComparer.Ordinal);
     private bool disposed;
 
-    /// <summary>What a server serves: a tool, for the package it runs (ESLint's, for the folder open).</summary>
-    private readonly record struct Place(WebTool Tool, string Package)
+    /// <summary>What a server serves: a tool, for the package it runs and the project it works in (ESLint's, the folder
+    /// open, for both).</summary>
+    private readonly record struct Place(WebTool Tool, string Package, string Root)
     {
-        public bool Equals(Place other) => Tool == other.Tool && PathNames.Comparer.Equals(Package, other.Package);
+        public bool Equals(Place other) => Tool == other.Tool && PathNames.Comparer.Equals(Package, other.Package) && PathNames.Comparer.Equals(Root, other.Root);
 
-        public override int GetHashCode() => HashCode.Combine(Tool, PathNames.Comparer.GetHashCode(Package));
+        public override int GetHashCode() => HashCode.Combine(Tool, PathNames.Comparer.GetHashCode(Package), PathNames.Comparer.GetHashCode(Root));
     }
 
     /// <summary>One place's server, null before the first file it serves, with its files.</summary>
@@ -104,7 +106,7 @@ public sealed partial class FolderTools : IAsyncDisposable
             {
                 continue;
             }
-            Place place = new(tool, tool == WebTool.Eslint ? folder : package);
+            Place place = tool == WebTool.Eslint ? new(tool, folder, folder) : new(tool, package, WebTool.ProjectOf(package, document.Path));
             if (!servers.TryGetValue(place, out Served? served))
             {
                 servers[place] = served = new Served();
@@ -210,16 +212,24 @@ public sealed partial class FolderTools : IAsyncDisposable
     {
         bool eslint = place.Tool == WebTool.Eslint;
         string? script = eslint ? EslintScript : place.Tool.ScriptOf(place.Package);
-        string root = eslint ? folder : WebTool.ProjectOf(place.Package);
+        string root = place.Root;
         NodeServer made = null!;
         made = new NodeServer(place.Tool.Name, root, node, RestartsOf(place))
         {
             Package = eslint ? Path.Combine(WebLanguages.Modules, "vscode-langservers-extracted", "package.json") : Path.Combine(place.Package, "package.json"),
             Missing = () => eslint ? (File.Exists(EslintScript) ? null : $"the ESLint language server is missing from the app's folder ({EslintScript})")
                 : script is null ? $"{place.Tool.Package} in {PathNames.Shown(place.Package, folder)} has no {place.Tool.Command} command" : null,
-            Command = runtime => new ServerStart(runtime.Start(script!, eslint ? ["--stdio"] : place.Tool.Arguments, root, pnp: YarnPnp.ManifestFor(root)), root, WebLanguages.LogFolder, ClientCapabilities.Web)
+            Command = runtime =>
             {
-                Configuration = eslint ? Section : _ => null,
+                ProcessStartInfo start = runtime.Start(script!, eslint ? ["--stdio"] : place.Tool.Arguments, root, pnp: YarnPnp.ManifestFor(root));
+                foreach ((string name, string value) in place.Tool == WebTool.Biome ? WebTool.BiomeFolders() : new Dictionary<string, string>())
+                {
+                    start.Environment[name] = value;
+                }
+                return new ServerStart(start, root, WebLanguages.LogFolder, ClientCapabilities.Web)
+                {
+                    Configuration = eslint ? Section : _ => null,
+                };
             },
             HearsOwnLog = eslint,
             Listen = eslint ? Hear : null,
