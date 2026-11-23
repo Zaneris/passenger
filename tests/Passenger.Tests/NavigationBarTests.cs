@@ -32,15 +32,16 @@ public sealed class NavigationBarTests : IDisposable
     public void Dispose() => TestFolders.Delete(folder);
 
     /// <summary>The navigation bar names the namespace, type and member the caret rests in, each part listing what
-    /// stands beside it to go to, and Jump to Navigation Bar gives it the keys.</summary>
+    /// stands beside it to go to, goes while the file declares nothing and comes as it declares again, and Jump to
+    /// Navigation Bar gives it the keys.</summary>
     [AvaloniaFact]
     public void The_navigation_bar_names_where_the_caret_rests_and_takes_the_keys_to_go_along_it()
     {
-        Flow.StepApart<NavigationBarTests>("the bar names the namespace, type and member the caret rests in, and each part lists what stands beside it to go to", t => t.The_bar_names_the_namespace_type_and_member_the_caret_rests_in_and_each_part_lists_what_stands_beside_it_to_go_to());
+        Flow.StepApart<NavigationBarTests>("the bar names the namespace, type and member the caret rests in, each part lists what stands beside it to go to, and it goes as the file declares nothing and comes as it declares again", t => t.The_bar_names_the_namespace_type_and_member_the_caret_rests_in_each_part_lists_what_stands_beside_it_and_it_comes_as_an_emptied_file_declares_again());
         Flow.StepApart<NavigationBarTests>("Jump to Navigation Bar gives it the keys to move along it and open a list, and with the bar off lists the caret's part itself", t => t.Jump_to_Navigation_Bar_gives_it_the_keys_to_move_along_it_and_open_a_list_and_with_the_bar_off_lists_the_caret_s_part_itself());
     }
 
-    private void The_bar_names_the_namespace_type_and_member_the_caret_rests_in_and_each_part_lists_what_stands_beside_it_to_go_to()
+    private void The_bar_names_the_namespace_type_and_member_the_caret_rests_in_each_part_lists_what_stands_beside_it_and_it_comes_as_an_emptied_file_declares_again()
     {
         (MainWindow window, CodeEditor editor, NavigationBar bar) = OpenCart();
         try
@@ -89,6 +90,13 @@ public sealed class NavigationBarTests : IDisposable
             Assert.True(editor.CaretPosition.Line == RemoveLine, $"Remove chosen, the caret went to line {editor.CaretPosition.Line + 1}, not Remove's");
             Assert.True(editor.IsKeyboardFocusWithin, "A member chosen from the bar's list left the editor without the keys");
             Ui.WaitFor(() => bar.Shown.Count == 3 && bar.Shown[2] == "Remove(string)", () => $"the bar following the caret to Remove, not {string.Join(" › ", bar.Shown)}");
+
+            editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
+            Ui.Press(window, "BACKSPACE");
+            Ui.WaitFor(() => !bar.Bar.IsVisible, "the bar gone once the file declares nothing");
+            window.KeyTextInput("record Order;");
+            Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.SequenceEqual(["Order"]),
+                () => $"the bar back naming the record typed into the emptied file, not {(bar.Bar.IsVisible ? string.Join(" › ", bar.Shown) : "hidden")}");
         }
         finally
         {

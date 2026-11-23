@@ -149,7 +149,7 @@ public sealed class NavigationBar
 
     private void OnParsed(object? sender, ParsedText parsed)
     {
-        if (Bar.IsVisible)
+        if (FollowsText)
         {
             IdeErrors.Observe(ReadAsync());
         }
@@ -157,11 +157,15 @@ public sealed class NavigationBar
 
     private void OnTextChanged(object? sender, DocumentChangedEventArgs e)
     {
-        if (Bar.IsVisible)
+        if (FollowsText)
         {
             readAgain.Restart();
         }
     }
+
+    /// <summary>Whether the file's outline is read again as its text changes: while the bar names where the caret is, hidden
+    /// too while the outline holds nothing, so the bar comes as the file comes to declare something.</summary>
+    private bool FollowsText => document is { } shown && area.NamesWhereInBar(shown);
 
     /// <summary>Reads the file's outline again, the rows that did not change kept, and shows the path in it.</summary>
     private async Task ReadAsync()
