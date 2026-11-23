@@ -390,7 +390,7 @@ public partial class MainWindow
                     return (null, string.Empty, readOnly);
                 }
                 string before = document.Text.Snapshot.ToString();
-                TextEdit[] edits = [new TextEdit(before.Length, 0, added(before.Replace("\r\n", "\n", StringComparison.Ordinal)))];
+                TextEdit[] edits = [new TextEdit(before.Length, 0, LineEndings.In(added(before.Replace("\r\n", "\n", StringComparison.Ordinal)), document.Text.LineEnding))];
                 document.Text.Edit(edits, document.Selections, TextEditing.MapThrough(document.Selections, edits));
                 return (document.Text.Snapshot.ToString(), before, null);
             }

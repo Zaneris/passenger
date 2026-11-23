@@ -193,6 +193,9 @@ public sealed class WebRoutesTests
                 "the second answer", TimeSpan.FromMinutes(1));
             Assert.Equal(written, File.ReadAllText(http));
 
+            // Open with CRLF line ends, the file takes the controller's request in them.
+            File.WriteAllText(http, written.Replace("\n", "\r\n", StringComparison.Ordinal));
+            window.OpenFile(http);
             window.OpenFile(Path.Combine(folder, "Controllers", "ProductsController.cs"));
             Ui.Settle();
             Passenger.App.Workspace.OpenDocument products = window.EditorArea.Active!;
@@ -202,8 +205,10 @@ public sealed class WebRoutesTests
             Ui.Choose(window.RouteMarkMenu!, "Send GET /api/Products/{id}");
             Ui.WaitFor(() => window.Endpoints.Response.Response is not null && window.Endpoints.Response.Shown.Contains("Tea", StringComparison.Ordinal),
                 "the controller's answer", TimeSpan.FromMinutes(1));
-            written = File.ReadAllText(http);
-            Assert.Contains("# Controller: ProductsController.Get\n@details = true\nGET {{Shop_HostAddress}}/api/Products/{{id}}?details={{details}}\n", written, StringComparison.Ordinal);
+            written = window.EditorArea.Find(http)!.Text.Snapshot.ToString();
+            Assert.False(written.Replace("\r\n", string.Empty, StringComparison.Ordinal).Contains('\n', StringComparison.Ordinal),
+                $"The request written into the open Shop.http, whose line ends are CRLF, ends a line with LF alone: {written}");
+            Assert.Contains("# Controller: ProductsController.Get\r\n@details = true\r\nGET {{Shop_HostAddress}}/api/Products/{{id}}?details={{details}}\r\n", written, StringComparison.Ordinal);
 
             window.OpenFile(Path.Combine(folder, "Program.cs"));
             Ui.Settle();
