@@ -11,10 +11,11 @@ namespace Passenger.App;
 
 /// <summary>The mark beside what is chosen, the one way every list, tree, drop-down, tab strip, stripe and toolbar toggle
 /// shows its choice: a bar in the chosen mark's colour (Passenger.ChosenMark) along its host's start, or under it in a strip
-/// of tabs or on a toolbar, on the host's straight edge clear of its rounded corners, so the choice reads at 3:1 on the page
-/// and on its ground whatever that ground does. It spans its host whole; Shell.axaml shows it while the host is chosen and
-/// says which side it takes. A row, tab or toggle is given it by its template (<see cref="Rows"/>, <see cref="Choices"/>,
-/// <see cref="Template"/>) or, laid out by hand as a Border, by <see cref="Hold"/>.</summary>
+/// of tabs or on a toolbar (along its top in a place's tabs at its foot, toward the window they name), on the host's straight
+/// edge clear of its rounded corners and beside its words, so the choice reads at 3:1 on the page and on its ground whatever
+/// that ground does. It spans its host whole; Shell.axaml shows it while the host is chosen and says which side it takes. A
+/// row, tab or toggle is given it by its template (<see cref="Rows"/>, <see cref="Choices"/>, <see cref="Template"/>) or,
+/// laid out by hand as a Border, by <see cref="Hold"/>.</summary>
 public sealed class ChosenMark : Control
 {
     /// <summary>How broad the bar is.</summary>

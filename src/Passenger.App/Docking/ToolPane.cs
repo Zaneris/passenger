@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
 
 namespace Passenger.App.Docking;
@@ -186,6 +187,7 @@ internal sealed class ToolPane : DockPanel
             IsVisible = false,
             Child = tabRow,
         };
+        tabStrip.Styles.Add(TurnedOver(tabStrip));
         Children.Add(tabStrip);
         Children.Add(new Panel { Children = { body, new ThemeBackdrop(BackgroundPlaces.ToolWindows) } });
         Classes.Add(StyleClasses.ToolPane);
@@ -340,6 +342,18 @@ internal sealed class ToolPane : DockPanel
         }
         // The open window's tab stays in the strip, however many crowd it.
         tabRow.Kept = Window is { } open && tabs.TryGetValue(open, out Border? shownTab) ? shownTab : null;
+    }
+
+    /// <summary>The theme's tab turned over for a place's foot: the room and the corners it keeps at its top taken to its
+    /// foot, so a tab that rises from the editor below it hangs here from the window above it.</summary>
+    private static Style TurnedOver(Border strip)
+    {
+        Style tab = new(x => x.OfType<Border>().Class(StyleClasses.Tab));
+        tab.Setters.Add(new Setter(MarginProperty, strip.GetResourceObservable(TokenKeys.TabMargin,
+            margin => margin is Thickness given ? new Thickness(given.Left, given.Bottom, given.Right, given.Top) : margin).ToBinding()));
+        tab.Setters.Add(new Setter(Border.CornerRadiusProperty, strip.GetResourceObservable(TokenKeys.TabRadius,
+            radius => radius is CornerRadius given ? new CornerRadius(given.BottomLeft, given.BottomRight, given.TopRight, given.TopLeft) : radius).ToBinding()));
+        return tab;
     }
 
     /// <summary>The windows whose tabs have no room in the strip, in its order, which its last button lists.</summary>

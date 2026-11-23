@@ -460,6 +460,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     [AvaloniaFact]
     public void Every_choice_shows_the_chosen_mark_beside_its_ground_and_none_is_drawn_by_a_ground_of_its_own() => Cases.All(
         ("Every chosen row tab stripe button and toolbar toggle shows the chosen mark beside its ground and nothing else does", Every_chosen_row_tab_stripe_button_and_toolbar_toggle_shows_the_chosen_mark_beside_its_ground_and_nothing_else_does),
+        ("A places titled tabs stand on its own ground marked toward it and an edge tabs mark stands beside its words", A_places_titled_tabs_stand_on_its_own_ground_marked_toward_it_and_an_edge_tabs_mark_stands_beside_its_words),
         ("No list or tab draws its choice by a ground of its own", No_list_or_tab_draws_its_choice_by_a_ground_of_its_own));
 
     /// <summary>Every choice the window shows (a list's or a tree's chosen row, the open editor tab, a tool window's open
@@ -498,23 +499,95 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         }
     }
 
+    /// <summary>Under titled tabs, under each look and every carried one, dark and light: a place's tabs stand on its window's
+    /// own ground, hanging from it as the theme's tab rises from the editor, with nothing but the seam between them and the
+    /// window below, the open one marked along its top, toward the window it names; an open edge tab is marked along its
+    /// start down a side, as a stripe button is, and under it across the foot; no mark lies over its words or icon.</summary>
+    private void A_places_titled_tabs_stand_on_its_own_ground_marked_toward_it_and_an_edge_tabs_mark_stands_beside_its_words()
+    {
+        MainWindow window = Open(1200, 800);
+        try
+        {
+            window.OpenFile(project.PathOf("Program.cs"));
+            window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
+            SourcedTheme?[] looks = [.. Looks, .. ThemeSource.Carried.Select(SourcedTheme.BuiltIn)];
+            UnderEachVariant(window, variant =>
+            {
+                // A look's own layout may have put either away.
+                window.DockHost.Show(ToolWindowIds.Explorer);
+                window.DockHost.Show(ToolWindowIds.Build);
+                Ui.Settle();
+                FootTabsJoined(window, variant);
+                window.DockHost.Peek(ToolWindowIds.Bookmarks);
+                Ui.Settle();
+                ChoicesMarked(window, variant, ["titled tab", "edge tab down a side"], ["titled tab", "edge tab down a side"]);
+                window.DockHost.Hide(ToolWindowIds.Bookmarks);
+                Ui.Settle();
+            }, looks);
+
+            UnderEachVariant(window, variant =>
+            {
+                window.DockHost.Hide(ToolWindowIds.Build);
+                Ui.Settle();
+                window.DockHost.Peek(ToolWindowIds.Build);
+                Ui.Settle();
+                ChoicesMarked(window, variant, ["edge tab across the foot"], ["edge tab across the foot"]);
+                window.DockHost.Hide(ToolWindowIds.Build);
+                Ui.Settle();
+            }, looks);
+        }
+        finally
+        {
+            window.RequestedThemeVariant = null;
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    /// <summary>The Explorer's place's tabs on the Explorer's own ground, no line between them and it, the seam alone between
+    /// them and Build below, and its open tab hanging from it with the room the theme's tab keeps at its foot.</summary>
+    private static void FootTabsJoined(MainWindow window, ThemeVariant variant)
+    {
+        Control pane = Pane(window.ExplorerView);
+        Border strip = pane.GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.ToolTabStrip));
+        Border open = strip.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains(StyleClasses.Tab) && b.Classes.Contains(StyleClasses.Active));
+        Rect at = Placed(window, strip);
+        Point clear = new(at.Right - 12, at.Top);
+        Rect[] panes = [.. window.DockHost.GetVisualDescendants().OfType<Control>().Where(c => c != pane && c.IsEffectivelyVisible && c.Classes.Contains(StyleClasses.ToolPane))
+            .Select(c => Placed(window, c))];
+        Rect[] below = [.. panes.Where(p => Math.Abs(p.Top - at.Bottom) <= 2 && p.Left <= clear.X && p.Right >= clear.X)];
+        Assert.True(strip.IsEffectivelyVisible && below.Length == 1, $"{variant}: the Explorer's place shows {(strip.IsEffectivelyVisible ? "" : "no ")}tabs at its foot at {at}, "
+            + $"with {below.Length} windows right below them, the other windows at {string.Join("; ", panes)}");
+        Color panel = Brush(window, TokenKeys.Panel);
+        using (Picture picture = new(window))
+        {
+            picture.Meets("the Explorer and its place's tabs", clear, across: false, panel, panel);
+            picture.Seam("the Explorer's place's tabs and Build below them", clear.WithY(at.Bottom), panel, Brush(window, TokenKeys.Divider));
+        }
+        Thickness theme = window.TryFindResource(TokenKeys.TabMargin, window.ActualThemeVariant, out object? margin) && margin is Thickness given ? given : default;
+        double hangs = Placed(window, open).Top - at.Top;
+        Assert.True(Math.Abs(hangs - theme.Bottom) < 0.5, $"{variant}: the Explorer's open tab stands {hangs} below the top of its strip, where the theme's tab, "
+            + $"turned over, hangs {theme.Bottom} from the window it names");
+    }
+
     /// <summary>A toolbar's toggle shown in the window, by the name a screen reader says for it.</summary>
     private static ToggleButton Toggle(MainWindow window, string name) =>
         window.GetVisualDescendants().OfType<ToggleButton>().FirstOrDefault(t => t.IsEffectivelyVisible && AutomationProperties.GetName(t) == name)
         ?? throw new Xunit.Sdk.XunitException($"No toggle named {name} shows");
 
-    /// <summary>Holds the window to a check under each look, dark and light.</summary>
-    private static void UnderEachVariant(MainWindow window, Action<ThemeVariant> check)
+    /// <summary>Holds the window to a check under each look (<see cref="Looks"/>, or those given), dark and light.</summary>
+    private static void UnderEachVariant(MainWindow window, Action<ThemeVariant> check, IReadOnlyList<SourcedTheme?>? looks = null)
     {
         foreach (ThemeVariant variant in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
         {
             window.RequestedThemeVariant = variant;
-            UnderEachLook(window, () => check(variant));
+            UnderEachLook(window, () => check(variant), looks);
         }
     }
 
-    /// <summary>Holds every choice shown to the chosen mark, failing where a kind <paramref name="chosen"/> names was seen
-    /// nowhere chosen, or one <paramref name="unchosen"/> names nowhere unchosen, so it went unchecked.</summary>
+    /// <summary>Holds every choice shown to the chosen mark, on its kind's side and clear of its words and icons, failing
+    /// where a kind <paramref name="chosen"/> names was seen nowhere chosen, or one <paramref name="unchosen"/> names nowhere
+    /// unchosen, so it went unchecked.</summary>
     private static void ChoicesMarked(MainWindow window, ThemeVariant variant, string[] chosen, string[] unchosen)
     {
         Color ink = Brush(window, TokenKeys.ChosenMark);
@@ -531,7 +604,13 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 ToggleButton stripe when stripe.Classes.Contains(StyleClasses.Stripe) => ("stripe button", stripe.IsChecked == true, Dock.Left),
                 ToggleButton tab when tab.Classes.Contains(StyleClasses.PanelTab) || tab.Classes.Contains(StyleClasses.Segment) => ("tool window tab", tab.IsChecked == true, Dock.Bottom),
                 ToggleButton toggle when toggle.Classes.Contains(StyleClasses.Tool) || toggle.Classes.Contains(StyleClasses.Outcome) => ("toolbar toggle", toggle.IsChecked == true, Dock.Bottom),
-                Border tab when tab.Classes.Contains(StyleClasses.Tab) => ("editor tab", tab.Classes.Contains(StyleClasses.Active), Dock.Bottom),
+                Border tab when tab.Classes.Contains(StyleClasses.Tab) => TabsOf(tab) switch
+                {
+                    { } tabs when tabs.Classes.Contains(StyleClasses.ToolTabStrip) => ("titled tab", tab.Classes.Contains(StyleClasses.Active), Dock.Top),
+                    { } tabs when tabs.Classes.Contains(StyleClasses.EdgeTabsDown) => ("edge tab down a side", tab.Classes.Contains(StyleClasses.Active), Dock.Left),
+                    { } tabs when tabs.Classes.Contains(StyleClasses.EdgeTabs) => ("edge tab across the foot", tab.Classes.Contains(StyleClasses.Active), Dock.Bottom),
+                    _ => ("editor tab", tab.Classes.Contains(StyleClasses.Active), Dock.Bottom),
+                },
                 Border row when row.Classes.Contains(StyleClasses.Chosen) => ("row laid out by hand", true, Dock.Left),
                 _ => null,
             };
@@ -564,6 +643,16 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 {
                     wrong.Add($"{where} shows its mark along its {mark.Side} as {bar} in {mark.Fill}, where a {k.What}'s is {ChosenMark.Breadth} broad along its {k.Side} "
                         + $"in the chosen mark's {ink}");
+                }
+                foreach (Control part in host.GetVisualDescendants().OfType<Control>().Where(c => c is TextBlock { Text.Length: > 0 } or PathIcon or RowIcon && c.IsEffectivelyVisible))
+                {
+                    // Words turned to run down a side are measured by what turns them, which lays them out as drawn.
+                    Control laid = part.FindAncestorOfType<LayoutTransformControl>() is { } turned && host.IsVisualAncestorOf(turned) ? turned : part;
+                    Rect drawn = laid.TransformToVisual(mark) is { } into ? new Rect(laid.Bounds.Size).TransformToAABB(into) : default;
+                    if (drawn.Intersects(bar))
+                    {
+                        wrong.Add($"{where} draws its mark at {bar} over its {(part is TextBlock words ? $"'{words.Text}'" : "icon")} at {drawn}, where it stands beside them");
+                    }
                 }
             }
         }
@@ -3373,12 +3462,16 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
     }
 
+    [Fact]
+    public void Every_style_class_the_code_names_and_every_setter_of_the_theme_takes_effect() => Cases.All(
+        ("Every style class the code names is one a style takes", Every_style_class_the_code_names_is_one_a_style_takes),
+        ("No setter of the theme is undone by a broader style after it", No_setter_of_the_theme_is_undone_by_a_broader_style_after_it));
+
     /// <summary>Every style class the code names is one a style takes: StyleClasses holds each class the theme's selectors
     /// name, C# names a class from there (or takes it by a parameter marked [IdentifierOf] StyleClasses), and XAML's
     /// Classes name only those. A class written as text in C#, or one in XAML no style takes, fails here naming its line:
     /// misspelt or unstyled, it changes nothing, with no error.</summary>
-    [Fact]
-    public void Every_style_class_the_code_names_is_one_a_style_takes()
+    private static void Every_style_class_the_code_names_is_one_a_style_takes()
     {
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         HashSet<string> styled = new(StringComparer.Ordinal);
@@ -3437,6 +3530,59 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.True(found.Count == 0, $"{found.Count} classes the code names may be none a style takes, so a control given one looks as if it had none: "
             + $"name each from StyleClasses (a parameter that takes one marked [IdentifierOf(typeof(StyleClasses))]), and in XAML write only a class "
             + $"Shell.axaml or ControlThemes.axaml styles:\n{string.Join("\n", found)}");
+    }
+
+    /// <summary>No style of Shell.axaml sets a property that a broader style after it sets too: where both match, the later
+    /// one's value stands, so the narrower one's (its selector the broader's with more classes, or with what it stands in
+    /// before it) never shows, with no error. A selector the check cannot read part by part (:is, :not, a nesting) is passed
+    /// over.</summary>
+    private static void No_setter_of_the_theme_is_undone_by_a_broader_style_after_it()
+    {
+        string text = File.ReadAllText(Path.Combine(Passenger.Tests.Debugging.Helpers.Debuggees.Root, "src", "Passenger.App", "Theme", "Shell.axaml"));
+        Regex compound = new(@"^([\w|]*)((?:\.[\w-]+|#[\w-]+|:[\w-]+|\[[^\]]*\])*)$");
+        List<(int Line, string Selector, (string Before, string Type, string[] Parts)[] Chain, HashSet<string> Sets)> styles = [];
+        foreach (Match style in Regex.Matches(text, @"<Style\s[^>]*Selector=""([^""]*)""[^>]*>(.*?)</Style>", RegexOptions.Singleline))
+        {
+            HashSet<string> sets = [.. Regex.Matches(style.Groups[2].Value, @"<Setter\s+Property=""([^""]+)""").Select(m => m.Groups[1].Value)];
+            foreach (string alternative in style.Groups[1].Value.Split(','))
+            {
+                string selector = Regex.Replace(alternative.Trim(), @"\s+", " ");
+                if (sets.Count > 0 && Chain(selector) is { } chain)
+                {
+                    styles.Add((LineOf(text, style.Index), selector, chain, sets));
+                }
+            }
+        }
+        // Each part after its combinator (" ", ">", "/template/"), by its type and the rest it names; null where one reads otherwise.
+        (string Before, string Type, string[] Parts)[]? Chain(string selector)
+        {
+            string[] split = Regex.Split(selector, @"(\s*/template/\s*|\s*>\s*|\s)");
+            List<(string Before, string Type, string[] Parts)> chain = [];
+            for (int i = 0; i < split.Length; i += 2)
+            {
+                if (compound.Match(split[i]) is not { Success: true } read)
+                {
+                    return null;
+                }
+                string before = i == 0 ? string.Empty : split[i - 1].Trim() is { Length: > 0 } between ? between : " ";
+                chain.Add((before, read.Groups[1].Value, [.. Regex.Matches(read.Groups[2].Value, @"\.[\w-]+|#[\w-]+|:[\w-]+|\[[^\]]*\]").Select(m => m.Value)]));
+            }
+            return [.. chain];
+        }
+        // Whether every control the broad selector's last parts match, the narrow one's do too.
+        static bool Covers((string Before, string Type, string[] Parts)[] broad, (string Before, string Type, string[] Parts)[] narrow) =>
+            broad.Length <= narrow.Length
+            && Enumerable.Range(1, broad.Length).All(k => (broad[^k].Type.Length == 0 || broad[^k].Type == narrow[^k].Type) && broad[^k].Parts.All(narrow[^k].Parts.Contains)
+                && (k == broad.Length ? broad.Length == narrow.Length || narrow[^k].Before is " " or ">" : broad[^k].Before == narrow[^k].Before));
+        string[] found = [.. from narrow in styles.Index()
+                             from broad in styles.Skip(narrow.Index + 1)
+                             where broad.Line != narrow.Item.Line && Covers(broad.Chain, narrow.Item.Chain)
+                             let both = narrow.Item.Sets.Intersect(broad.Sets).ToArray()
+                             where both.Length > 0
+                             select $"Shell.axaml:{narrow.Item.Line}: {narrow.Item.Selector} sets {string.Join(", ", both)}, which {broad.Selector} at line {broad.Line} sets after it"];
+        Assert.True(styles.Count > 250, $"Only {styles.Count} styles were read: the check no longer reads Shell.axaml's selectors");
+        Assert.True(found.Length == 0, $"{found.Length} setters of the theme never show, a broader style after each setting the same property: put the narrower "
+            + $"style after the broader one:\n{string.Join("\n", found)}");
     }
 
     /// <summary>A message that sends a person to Settings names a page the dialog lists, as the dialog names it: through
@@ -5177,6 +5323,10 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     private static IEnumerable<Visual> ToolWindowParts(MainWindow window) =>
         window.DockHost.GetVisualDescendants().Where(v => v.IsEffectivelyVisible && !window.EditorArea.IsVisualAncestorOf(v) && v != window.EditorArea);
 
+    /// <summary>The strip a tab stands in: an editor's, a place's foot or an edge of the frame.</summary>
+    private static Border? TabsOf(Border tab) =>
+        tab.GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains(StyleClasses.TabStrip) || b.Classes.Contains(StyleClasses.EdgeTabs));
+
     private static string Words(Control host) => string.Join(" ", host.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
 
     /// <summary>A tab's name, read from what it shows whether it is shown now or not (a hidden one has no template applied).</summary>
@@ -5202,13 +5352,14 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         return window;
     }
 
-    /// <summary>Holds a window to a check under each look, switched in place as Settings switches it (the window's settings
-    /// put in force, so it is restyled where it stands), a failure naming the look; Passenger's own put back after it.</summary>
-    private static void UnderEachLook(MainWindow window, Action check)
+    /// <summary>Holds a window to a check under each look (<see cref="Looks"/>, or those given), switched in place as Settings
+    /// switches it (the window's settings put in force, so it is restyled where it stands), a failure naming the look;
+    /// Passenger's own put back after it.</summary>
+    private static void UnderEachLook(MainWindow window, Action check, IReadOnlyList<SourcedTheme?>? looks = null)
     {
         try
         {
-            foreach (SourcedTheme? look in Looks)
+            foreach (SourcedTheme? look in looks ?? Looks)
             {
                 window.ApplySettings(window.Settings with { Look = look });
                 Ui.Settle();

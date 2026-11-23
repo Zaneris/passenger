@@ -334,12 +334,14 @@
     <Style Selector="Border.sideTabs TextBlock.tabName">
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- A place's titled tool window tabs along its foot. -->
+    <!-- A place's titled tool window tabs along its foot, on the window's own ground, so they read as its and the seam
+         below parts them from the window under it. -->
     <Style Selector="Border.tabStrip.toolTabStrip">
         <Setter Property="Padding" Value="4,0,0,0" />
+        <Setter Property="Background" Value="Transparent" />
     </Style>
-    <!-- Under titled tabs, the hidden tool windows' tabs along the frame's edge, on the frame as a stripe stands; down a
-         side, each as narrow as its turned name and as far from the next as a tab across is. -->
+    <!-- Under titled tabs, the hidden tool windows' tabs along the frame's edge, on the frame as a stripe stands; their
+         tabs' own styles follow the editor tab's, which they narrow. -->
     <Style Selector="Border.edgeTabs">
         <Setter Property="Background" Value="{DynamicResource Passenger.Frame}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -347,17 +349,6 @@
     </Style>
     <Style Selector="Border.edgeTabs.edgeTabsDown">
         <Setter Property="Padding" Value="0,4" />
-    </Style>
-    <Style Selector="Border.edgeTabs Border.tab">
-        <Setter Property="Margin" Value="2,4" />
-        <Setter Property="Padding" Value="8,0" />
-    </Style>
-    <Style Selector="Border.edgeTabsDown Border.tab">
-        <Setter Property="Margin" Value="4,2" />
-        <Setter Property="Padding" Value="0,8" />
-    </Style>
-    <Style Selector="Border.edgeTabsDown Border.tab > Panel > app|ChosenMark">
-        <Setter Property="Side" Value="Left" />
     </Style>
     <!-- A tool window opened over the editors from its edge tab: on its own ground, lifted off the editors as a popup is,
          its edge toward them drawn. -->
@@ -935,7 +926,8 @@
     </Style>
 
     <!-- What is chosen, the one way in every list, tree, drop-down, tab strip and stripe: its ground, and beside it the
-         chosen mark (ChosenMark), a bar along its start or under a tab that reads at 3:1 on the page and the ground alike.
+         chosen mark (ChosenMark), a bar along its start or along a tab's edge toward what it names (its foot, but its top at
+         a place's foot) that reads at 3:1 on the page and the ground alike.
          Each row, choice, tab and toolbar toggle is the theme's template with the mark beside its presenter; a Border laid
          out by hand holds one through ChosenMark.Hold, an open tab's or a chosen row's (its chosen class) shown as a
          template's is. -->
@@ -1036,12 +1028,36 @@
     <Style Selector="Border.tab.active.elsewhere TextBlock.tabName">
         <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
     </Style>
-    <!-- A tool window's titled tab, open, on the window's own ground, joined to it. -->
+    <!-- A tool window's titled tab, open: on its window's ground as its strip is, its name in the text's colour, the
+         chosen mark along its top, toward the window it names. A tool window's tab takes no editor tab's shadow, which a
+         theme may draw as a line along one edge, a second mark on another side. -->
     <Style Selector="Border.toolTabStrip Border.tab.active">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
     </Style>
     <Style Selector="Border.toolTabStrip Border.tab.active:pointerover">
-        <Setter Property="Background" Value="{DynamicResource Passenger.Panel}" />
+        <Setter Property="Background" Value="{DynamicResource Passenger.Hover}" />
+    </Style>
+    <Style Selector="Border.toolTabStrip Border.tab.active TextBlock.tabName">
+        <Setter Property="Foreground" Value="{DynamicResource Passenger.Text}" />
+    </Style>
+    <Style Selector="Border.toolTabStrip Border.tab > Panel > app|ChosenMark">
+        <Setter Property="Side" Value="Top" />
+    </Style>
+    <!-- A hidden tool window's tab along the frame's edge: apart from the next, its words clear of its ends and of the
+         chosen mark, which stands at its start down a side as a stripe button's does, under it across the foot. -->
+    <Style Selector="Border.edgeTabs Border.tab">
+        <Setter Property="Margin" Value="2" />
+        <Setter Property="Padding" Value="8,0" />
+    </Style>
+    <Style Selector="Border.edgeTabsDown Border.tab">
+        <Setter Property="Padding" Value="0,8" />
+    </Style>
+    <Style Selector="Border.edgeTabs Border.tab.active">
+        <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+    </Style>
+    <Style Selector="Border.edgeTabsDown Border.tab > Panel > app|ChosenMark">
+        <Setter Property="Side" Value="Left" />
     </Style>
     <!-- A tab's dot while its file has unsaved changes (the tab's modified class), the open tab's too. -->
     <Style Selector="Ellipse.modified">
