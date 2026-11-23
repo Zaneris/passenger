@@ -54,15 +54,16 @@ public static partial class HttpVariables
         return [];
     }
 
-    /// <summary>Every variable a request of this file sees in an environment: the environment's ($shared first), then
-    /// the file's own (<c>@name = value</c>), which win.</summary>
+    /// <summary>Every variable a request of this file sees in an environment: <c>$shared</c>'s, then the environment's,
+    /// which win over any env file's <c>$shared</c>, the private file's winning over the public's in each, then the file's
+    /// own (<c>@name = value</c>), which win.</summary>
     public static Dictionary<string, string> For(HttpFile file, string? environment, string? root)
     {
         Dictionary<string, string> variables = new(StringComparer.Ordinal);
-        foreach (string envFile in FilesFor(file.Path, root))
+        List<Dictionary<string, Dictionary<string, string>>> envFiles = [.. FilesFor(file.Path, root).Select(Read)];
+        foreach (string name in new[] { Shared, environment }.OfType<string>())
         {
-            Dictionary<string, Dictionary<string, string>> environments = Read(envFile);
-            foreach (string name in new[] { Shared, environment }.OfType<string>())
+            foreach (Dictionary<string, Dictionary<string, string>> environments in envFiles)
             {
                 if (environments.TryGetValue(name, out Dictionary<string, string>? values))
                 {
