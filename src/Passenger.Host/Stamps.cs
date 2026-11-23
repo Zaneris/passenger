@@ -10,8 +10,10 @@ namespace Passenger.Host;
 public static class Stamps
 {
     /// <summary>Whether a folder's entry, by its path, is one a wildcard may take in or enter: a folder a project's wildcards
-    /// enter (<see cref="ProjectFolders.Enters"/>), any file but the system's own (<see cref="PathNames.IsSystemFile"/>).</summary>
-    public static bool Counts(string path, bool folder) => !PathNames.IsSystemFile(Path.GetFileName(path)) && (!folder || ProjectFolders.Enters(path));
+    /// enter (<see cref="ProjectFolders.Enters"/>), any file but the system's own (<see cref="PathNames.IsSystemFile"/>) and
+    /// the project a WPF build writes beside its own for the build's length (<see cref="ProjectFolders.IsMarkupProject"/>).</summary>
+    public static bool Counts(string path, bool folder) =>
+        !PathNames.IsSystemFile(Path.GetFileName(path)) && !ProjectFolders.IsMarkupProject(path) && (!folder || ProjectFolders.Enters(path));
 
     public static Stamp File(string path)
     {

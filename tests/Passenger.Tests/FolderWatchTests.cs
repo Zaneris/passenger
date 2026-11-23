@@ -961,9 +961,10 @@ public sealed class FolderWatchTests : IDisposable
             ("a file's case changed", () => File.Move(Path.Combine(folder, "App", "Renamed.cs"), Path.Combine(folder, "App", "renamed.cs"))),
             ("a folder's case changed", () => Directory.Move(Path.Combine(folder, "Moved", "Inner"), Path.Combine(folder, "Moved", "inner"))),
             ("a link to a folder made", () => TestFolders.LinkFolder(Path.Combine(folder, "Alias"), Path.Combine(folder, "App"))),
-            ("a save's temporary file and the system's own", () =>
+            ("a save's temporary file, a build's and the system's own", () =>
             {
                 Write("App/Sub/Deep.cs" + FileText.SaveSuffix, "class Deep { int saving; }\n");
+                Write(Momentary, "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
                 Write("Moved/.DS_Store", "the system's own\n");
             }),
             ("a folder deleted", () => Directory.Delete(Path.Combine(folder, "Moved"), recursive: true)),
@@ -986,8 +987,12 @@ public sealed class FolderWatchTests : IDisposable
             Ui.WaitFor(() => walked.SequenceEqual(window.FileIndex.Files),
                 () => $"Go to File after {what} to list [{string.Join(", ", walked)}], not [{string.Join(", ", window.FileIndex.Files)}]");
         }
+        Assert.False(window.FileIndex.Files.Contains(Path.Join("App", Path.GetFileName(Momentary))), "Go to File lists the project WPF's build writes for a moment, which no walk takes for one of the folder's files");
         window.Close();
     }
+
+    /// <summary>The project WPF's markup compilation writes beside a project's own for the length of a build.</summary>
+    private const string Momentary = "App/App_x1y2z3w4_wpftmp.csproj";
 
     /// <summary>The files a window opened on a folder afresh lists for Go to File, in their order.</summary>
     internal static string[] Walked(string root)

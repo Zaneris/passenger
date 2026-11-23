@@ -7,8 +7,8 @@ namespace Passenger.App.Workspace;
 
 /// <summary>Every file under the open folder, by relative path, for Go to File and Find in Files. Built off the UI
 /// thread when the folder opens, by the walk every look at the open folder's files takes (<see cref="FolderWalk"/>): build
-/// output, dependencies, version control, the system's own files and a save's temporary file (gone once the save is done,
-/// which walks nothing again) left out, a linked folder never walked twice or out of the folder. What comes or goes after
+/// output, dependencies, version control, the system's own files and what is there for a moment alone, a save's temporary
+/// file or a build's (gone once the work is done, which walks nothing again) left out, a linked folder never walked twice or out of the folder. What comes or goes after
 /// is put in or taken out in place (<see cref="Apply"/>), only a folder made walked, so a file made costs the same in a
 /// folder of any size. Files are kept in the walk's order (<see cref="WalkOrder"/>), which a search reads them in.</summary>
 public sealed class FileIndex
@@ -509,7 +509,7 @@ public sealed class FileIndex
                     string path = Path.Join(folder, name);
                     if (!isFolder)
                     {
-                        if (!PathNames.IsSystemFile(name) && !FileText.IsSaving(name))
+                        if (!PathNames.IsSystemFile(name) && !FolderWalk.IsMomentary(name))
                         {
                             came.Add(PathNames.Below(path, top).ToString());
                         }

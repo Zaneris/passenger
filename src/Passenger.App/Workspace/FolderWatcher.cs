@@ -274,7 +274,7 @@ public sealed class FolderWatcher : WatchedTree
     /// and a restore's are taken apart and count toward no burst.</summary>
     protected override Notice Noticed(string path, bool created)
     {
-        if (FileText.IsSaving(path))
+        if (FolderWalk.IsMomentary(path))
         {
             return default;
         }

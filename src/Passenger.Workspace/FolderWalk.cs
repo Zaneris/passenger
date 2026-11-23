@@ -6,8 +6,9 @@ namespace Passenger.Workspace;
 /// <summary>The one walk of the open folder's files: Go to File's and Find in Files' index, Local History's look at a
 /// folder made or deleted elsewhere, the projects of a folder with no solution, a project's own files and the XAML a
 /// class is declared in. One rule for what it passes over: <see cref="IgnoredFolders"/>, and where it looks for what a
-/// project builds also hidden folders, which MSBuild's own globs leave out (<c>**/.*/**</c>); the system's own files and a
-/// save's temporary file; a link resolved once, never into a folder twice or out of the walk (<see cref="PathNames.FilesUnder"/>).</summary>
+/// project builds also hidden folders, which MSBuild's own globs leave out (<c>**/.*/**</c>); the system's own files and
+/// what is there for a moment alone (<see cref="IsMomentary"/>); a link resolved once, never into a folder twice or out of
+/// the walk (<see cref="PathNames.FilesUnder"/>).</summary>
 public static class FolderWalk
 {
     /// <summary>The files under a folder, nearest first, by their canonical paths. <paramref name="built"/> passes over
@@ -45,11 +46,16 @@ public static class FolderWalk
     public static IEnumerable<string> Below(string root, string? from = null) =>
         PathNames.FilesUnder(from ?? root, folder => Enters(root, folder, built: false), (folder, name) => Relative(root, folder, name)).SelectMany(f => f.Files);
 
-    private static string? Joined(string folder, ReadOnlySpan<char> name) => FileText.IsSaving(name) ? null : Path.Join(folder, name);
+    /// <summary>Whether a file, by its name, is there for a moment alone, of the work that writes it, which no walk, listing or
+    /// watcher of a folder takes for one of its files: a save's temporary file, or the project a WPF build writes beside
+    /// its own (<see cref="ProjectFolders.IsMarkupProject"/>).</summary>
+    public static bool IsMomentary(ReadOnlySpan<char> name) => FileText.IsSaving(name) || ProjectFolders.IsMarkupProject(name);
+
+    private static string? Joined(string folder, ReadOnlySpan<char> name) => IsMomentary(name) ? null : Path.Join(folder, name);
 
     private static string? Relative(string root, string folder, ReadOnlySpan<char> name)
     {
-        if (FileText.IsSaving(name))
+        if (IsMomentary(name))
         {
             return null;
         }

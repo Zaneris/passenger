@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Media;
 using Passenger.Core;
 using Passenger.Host;
-using Passenger.Text;
 using Passenger.Vcs;
 using Passenger.Workspace;
 
@@ -904,7 +903,7 @@ public sealed class ExplorerTree
             .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed))
             .OrderBy(Listed)];
         List<(string Name, string Path)> held = [.. files.FilesIn(relative)
-            .Where(f => !FileText.IsSaving(f.Name))
+            .Where(f => !FolderWalk.IsMomentary(f.Name))
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
         IReadOnlyDictionary<string, string> parents = FileNesting.Parents([.. held.Select(f => f.Path)], files.DependentUpon, nesting.ByName);
         ILookup<string, string> nestedUnder = NestedUnder(held.Select(f => f.Path), parents);
@@ -932,8 +931,8 @@ public sealed class ExplorerTree
         return nodes;
     }
 
-    /// <summary>A folder's entries, folders first (the SDK's first of all), a save's temporary file left out (nothing reads
-    /// the folder again once the save is done); a project hides its own build output and file, and nests its files under
+    /// <summary>A folder's entries, folders first (the SDK's first of all), what is there for a moment alone left out, a
+    /// save's temporary file or a build's (nothing reads the folder again once the work is done); a project hides its own build output and file, and nests its files under
     /// those they belong to.</summary>
     private List<ExplorerNode> Contents(string folder, int depth, bool dimmed, string? skip, Nesting? nesting, ProjectModel? within = null)
     {
@@ -941,7 +940,7 @@ public sealed class ExplorerTree
         try
         {
             entries = [.. new DirectoryInfo(folder).EnumerateFileSystemInfos()
-                .Where(e => e.Name != GitStore && !(e is FileInfo && (FileText.IsSaving(e.Name) || PathNames.IsSystemFile(e.Name))))
+                .Where(e => e.Name != GitStore && !(e is FileInfo && (FolderWalk.IsMomentary(e.Name) || PathNames.IsSystemFile(e.Name))))
                 .Where(e => skip is null || (e.FullName != skip && !(e is DirectoryInfo && e.Name is "bin" or "obj")))
                 .OrderBy(e => e is FileInfo)
                 .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)];

@@ -177,9 +177,12 @@ public static partial class PathNames
     private static string Joined(string folder, ReadOnlySpan<char> name) => Path.Join(folder, name);
 
     /// <summary>Whether a path's extension is one of these, in any letter case, read where it lies.</summary>
-    public static bool HasExtension(string path, ReadOnlySpan<string> extensions)
+    public static bool HasExtension(string path, ReadOnlySpan<string> extensions) => HasExtension(path.AsSpan(), extensions);
+
+    /// <inheritdoc cref="HasExtension(string, ReadOnlySpan{string})"/>
+    public static bool HasExtension(ReadOnlySpan<char> path, ReadOnlySpan<string> extensions)
     {
-        ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
+        ReadOnlySpan<char> extension = Path.GetExtension(path);
         foreach (string one in extensions)
         {
             if (extension.Equals(one, StringComparison.OrdinalIgnoreCase))

@@ -4,8 +4,8 @@ using Passenger.Host;
 namespace Passenger.UnitTests.Workspace;
 
 /// <summary>A folder's stamp changes only with what a project's wildcards take in or enter, its folders found as a project's
-/// own are (<see cref="ProjectFolders.Enters"/>): build output, dependencies, hidden folders and the system's files passed
-/// over, a build folder's name in another letter case as its folder compares names, a file of any other name counted. A
+/// own are (<see cref="ProjectFolders.Enters"/>): build output, dependencies, hidden folders, the system's files and the
+/// project a WPF build writes for its length passed over, a build folder's name in another letter case as its folder compares names, a file of any other name counted. A
 /// file stamped by its presence changes as it comes or goes, never with an edit.</summary>
 public sealed class StampsTests : IDisposable
 {
@@ -31,7 +31,8 @@ public sealed class StampsTests : IDisposable
             Directory.CreateDirectory(Path.Join(project, folder));
         }
         File.WriteAllText(Path.Join(project, ".DS_Store"), string.Empty);
-        Assert.True(Stamps.Holds(stamp), "A build's output, the dependencies, a hidden folder or the system's file changed the project's stamp, so every build evaluates it again");
+        File.WriteAllText(Path.Join(project, "Shop_x1y2z3w4_wpftmp.csproj"), "<Project />");
+        Assert.True(Stamps.Holds(stamp), "A build's output, the dependencies, a hidden folder, the system's file or the project a WPF build writes for its length changed the project's stamp, so every build evaluates it again");
 
         Directory.CreateDirectory(Path.Join(project, "Shared"));
         Assert.False(Stamps.Holds(stamp), "A folder come into the project changed no stamp, so its files stay unseen until it is evaluated for another reason");

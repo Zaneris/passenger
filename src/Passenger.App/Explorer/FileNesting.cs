@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Passenger.Core;
-using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
@@ -261,14 +260,14 @@ public static partial class FileNesting
         }
         return found;
 
-        static List<string> Shown(ProjectFiles shown, string place) => [.. shown.FilesIn(place).Where(f => !FileText.IsSaving(f.Name)).Select(f => f.Path)];
+        static List<string> Shown(ProjectFiles shown, string place) => [.. shown.FilesIn(place).Where(f => !FolderWalk.IsMomentary(f.Name)).Select(f => f.Path)];
 
         static List<string>? OnDisk(string folder)
         {
             try
             {
                 return [.. Directory.EnumerateFiles(folder)
-                    .Where(f => !FileText.IsSaving(Path.GetFileName(f)) && !PathNames.IsSystemFile(Path.GetFileName(f)))
+                    .Where(f => !FolderWalk.IsMomentary(Path.GetFileName(f)) && !PathNames.IsSystemFile(Path.GetFileName(f)))
                     .Select(PathNames.Canonical)];
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)

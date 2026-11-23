@@ -41,6 +41,18 @@ public static class ProjectFolders
         return true;
     }
 
+    /// <summary>Whether a file is the project WPF's markup compilation writes beside a project's own for the length of a
+    /// build whose XAML uses the project's own types, and deletes as it ends (Name_random_wpftmp.csproj): never a project
+    /// of the folder, nor a name the project's wildcards take in.</summary>
+    public static bool IsMarkupProject(ReadOnlySpan<char> path) =>
+        PathNames.HasExtension(path, MarkupLanguages) && Path.GetFileNameWithoutExtension(path).EndsWith(MarkupProject, StringComparison.Ordinal);
+
+    /// <summary>The project files of WPF's languages, C# and Visual Basic, whose extension that project takes.</summary>
+    private static readonly string[] MarkupLanguages = [".csproj", ".vbproj"];
+
+    /// <summary>The end of the name WPF's markup compilation gives its project, before the extension.</summary>
+    private const string MarkupProject = "_wpftmp";
+
     /// <summary>Whether a folder holds a project file (<c>*.csproj</c>, <c>*.fsproj</c> and every other <c>*.*proj</c>),
     /// which makes it and the folders under it that project's own, whether a solution names it or not; false for one not
     /// there or that cannot be read.</summary>

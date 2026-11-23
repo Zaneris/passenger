@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO.Enumeration;
 using Passenger.Core;
-using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Workspace;
@@ -937,9 +936,9 @@ public abstract class WatchedTree : IDisposable
 
     /// <summary>What is in a folder now, its stamp read first so a change made while it is listed moves it past the one
     /// kept, and each file's last write when <paramref name="written"/> (read with the listing on Windows, a look at each
-    /// file's own record elsewhere); the system's own files, a save's temporary file and what the watcher never records
-    /// (<see cref="Passes"/>) passed over, as every walk does, with no string made for them, but a file written from
-    /// <paramref name="since"/> on. Null when it is gone.</summary>
+    /// file's own record elsewhere); the system's own files, what is there for a moment alone (<see cref="FolderWalk.IsMomentary"/>)
+    /// and what the watcher never records (<see cref="Passes"/>) passed over, as every walk does, with no string made for
+    /// them, but a file written from <paramref name="since"/> on. Null when it is gone.</summary>
     private (DateTime Stamp, List<Entry> Entries)? Listing(string at, bool written, DateTime? since = null)
     {
         DateTime stamp = Directory.GetLastWriteTimeUtc(at);
@@ -949,7 +948,7 @@ public abstract class WatchedTree : IDisposable
                 entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) != 0, written && !entry.IsDirectory ? entry.LastWriteTimeUtc.UtcDateTime : default,
                 since is null || Passes(entry.FileName, entry.IsDirectory)), Everything)
             {
-                ShouldIncludePredicate = (ref FileSystemEntry entry) => !PathNames.IsSystemFile(entry.FileName) && !FileText.IsSaving(entry.FileName)
+                ShouldIncludePredicate = (ref FileSystemEntry entry) => !PathNames.IsSystemFile(entry.FileName) && !FolderWalk.IsMomentary(entry.FileName)
                     && (Passes(entry.FileName, entry.IsDirectory) || since is { } from && !entry.IsDirectory && entry.LastWriteTimeUtc.UtcDateTime >= from),
             };
             return (stamp, [.. entries]);

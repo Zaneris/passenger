@@ -1,6 +1,5 @@
 using Passenger.Core;
 using Passenger.Host;
-using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Explorer;
@@ -173,7 +172,7 @@ internal sealed class ProjectFiles
         try
         {
             return [.. new DirectoryInfo(PathOf(relative)).EnumerateFiles()
-                .Where(f => !PathNames.IsSystemFile(f.Name) && !FileText.IsSaving(f.Name) && !SharedProjects.Is(f.FullName) && !SharedProjects.IsItemsFile(f.FullName))
+                .Where(f => !PathNames.IsSystemFile(f.Name) && !FolderWalk.IsMomentary(f.Name) && !SharedProjects.Is(f.FullName) && !SharedProjects.IsItemsFile(f.FullName))
                 .Select(f => (f.Name, PathNames.Canonical(f.FullName)))
                 .Where(f => !places.ContainsKey(f.Item2))];
         }
