@@ -69,10 +69,12 @@ public static class Flow
         {
             step(apart);
         }
-        finally
+        catch (Exception failure)
         {
-            Dispose(apart);
+            Kept(failure, () => Dispose(apart));
+            throw;
         }
+        Dispose(apart);
     });
 
     /// <summary><see cref="StepApart{TTest}(string, Func{TTest}, Action{TTest})"/> for a class made with no
@@ -88,10 +90,12 @@ public static class Flow
         {
             await step(apart);
         }
-        finally
+        catch (Exception failure)
         {
-            await DisposeAsync(apart);
+            await KeptAsync(failure, () => DisposeAsync(apart));
+            throw;
         }
+        await DisposeAsync(apart);
     });
 
     /// <summary><see cref="StepApartAsync{TTest}(string, Func{TTest}, Func{TTest, Task})"/> for a class made with no
@@ -137,11 +141,40 @@ public static class Flow
             {
                 await step(apart);
             }
-            finally
+            catch (Exception failure)
             {
-                await apart.DisposeAsync();
+                await KeptAsync(failure, () => apart.DisposeAsync().AsTask());
+                throw;
             }
+            await apart.DisposeAsync();
         });
+
+    /// <summary>Puts back what a step that failed set up, its own failure said first where that fails too: what the step left
+    /// behind (a folder a program it started still holds) is a consequence of its failure, never in its place.</summary>
+    private static void Kept(Exception failure, Action putBack)
+    {
+        try
+        {
+            putBack();
+        }
+        catch (Exception left)
+        {
+            throw new AggregateException(failure, left);
+        }
+    }
+
+    /// <summary><see cref="Kept"/> for what is put back asynchronously.</summary>
+    private static async Task KeptAsync(Exception failure, Func<Task> putBack)
+    {
+        try
+        {
+            await putBack();
+        }
+        catch (Exception left)
+        {
+            throw new AggregateException(failure, left);
+        }
+    }
 
     /// <summary>A step run in a copy of the caller's execution context, so nothing ambient it sets (an AsyncLocal) reaches
     /// the steps after it, as when each was a test of its own; what it makes is handed on as ever.</summary>
